@@ -38,6 +38,7 @@ const repository = (result: "ok" | "conflict" = "ok") => ({
   createBooking: jest.fn(),
   listOrders: jest.fn(),
   findOrderById: jest.fn(),
+  findScheduleSlotById: jest.fn(),
   transitionOrder: jest.fn(),
   confirmManualPayment: jest.fn(),
   refundManualPayment: jest.fn(),

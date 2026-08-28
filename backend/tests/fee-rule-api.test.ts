@@ -70,6 +70,8 @@ const createFixture = async () => {
     "auth:refresh",
     "auth:logout",
     "finance:fee-rule:list",
+    "finance:fee-rule:write",
+    "finance:fee-rule:activate",
     "finance:fee-rule:preview",
     "finance:calculation-log:list"
   ].map(makePermission);
@@ -162,6 +164,23 @@ const createFixture = async () => {
       userRoles: [{ deletedAt: null, role: viewerRole }]
     }
   ];
+  const managedRuleSet = {
+    id: 1,
+    name: "Default Booking NDP Rules",
+    description: null,
+    scopeType: "platform",
+    familyCode: "booking_default",
+    priority: 100,
+    status: "active",
+    version: 1,
+    effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+    effectiveTo: null,
+    createdById: 1,
+    updatedById: 1,
+    createdAt: now,
+    updatedAt: now,
+    rules: []
+  };
   const feeRuleRepository = {
     listRuleSets: jest.fn(async () => ({
       list: [
@@ -179,8 +198,9 @@ const createFixture = async () => {
       page_size: 20
     })),
     createRuleSet: jest.fn(),
-    updateRuleSet: jest.fn(),
-    setRuleSetStatus: jest.fn(),
+    findRuleSetById: jest.fn(async () => managedRuleSet),
+    updateRuleSet: jest.fn(async () => managedRuleSet),
+    setRuleSetStatus: jest.fn(async () => managedRuleSet),
     findActiveRuleSets: jest.fn(async () => []),
     listActiveCampaigns: jest.fn(async () => []),
     countCompletedOrdersForPeriod: jest.fn(async () => 0),
@@ -281,5 +301,30 @@ describe("finance fee-rule APIs", () => {
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN);
       });
+  });
+
+  it("blocks generic mutation of the managed Booking fee family", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("finance@example.com");
+
+    for (const mutation of [
+      request(fixture.app)
+        .put("/api/v1/finance/fee-rule-sets/1")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "Unsafe rename" }),
+      request(fixture.app)
+        .post("/api/v1/finance/fee-rule-sets/1/pause")
+        .set("Authorization", `Bearer ${token}`)
+    ]) {
+      await mutation.expect(409).expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.PLATFORM_FEE_MANAGED_RULE_CONFLICT,
+          message: "error.platform_fee_policy.managed_rule"
+        });
+      });
+    }
+
+    expect(fixture.feeRuleRepository.updateRuleSet).not.toHaveBeenCalled();
+    expect(fixture.feeRuleRepository.setRuleSetStatus).not.toHaveBeenCalled();
   });
 });

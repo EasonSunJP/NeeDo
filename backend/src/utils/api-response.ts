@@ -6,8 +6,12 @@ export const successResponse = <TData>(data: TData): ApiSuccessResponse<TData> =
   data
 });
 
-export const errorResponse = (code: number, message: string): ApiErrorResponse => ({
+export const errorResponse = (
+  code: number,
+  message: string,
+  data: unknown = null
+): ApiErrorResponse => ({
   code,
   message,
-  data: null
+  data
 });

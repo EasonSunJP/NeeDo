@@ -71,6 +71,17 @@ const authActionErrorResponses = {
   }
 };
 
+const platformFeePolicyErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or scope" },
+  "404": { description: "error.shop.not_found — shop does not exist" },
+  "409": {
+    description:
+      "error.platform_fee_policy.version_conflict or error.platform_fee_policy.config_conflict"
+  }
+};
+
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -3590,6 +3601,94 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      GlobalBookingPlatformFee: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountNdp", "version", "effectiveFrom", "source"],
+        properties: {
+          amountNdp: { type: "integer", minimum: 0 },
+          version: { type: "integer", minimum: 0 },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          source: { type: "string", enum: ["persisted", "default"] }
+        }
+      },
+      ShopPlatformFeePolicy: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "shopId",
+          "shopPublicId",
+          "shopName",
+          "globalAmountNdp",
+          "globalVersion",
+          "feeEnabled",
+          "payerType",
+          "policyVersion",
+          "policySource",
+          "updatedAt"
+        ],
+        properties: {
+          shopId: {
+            type: "integer",
+            minimum: 1,
+            description: "Internal numeric shop key; this is not a NeeDo ID"
+          },
+          shopPublicId: {
+            type: ["string", "null"],
+            pattern: "^shop[0-9]{10}$",
+            description: "Public shop NeeDo ID"
+          },
+          shopName: { type: "string" },
+          globalAmountNdp: { type: "integer", minimum: 0 },
+          globalVersion: { type: "integer", minimum: 0 },
+          feeEnabled: { type: "boolean" },
+          payerType: { type: "string", enum: ["shop", "technician"] },
+          policyVersion: { type: "integer", minimum: 0 },
+          policySource: { type: "string", enum: ["persisted", "default"] },
+          updatedAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ShopPlatformFeePolicyPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopPlatformFeePolicy" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      GlobalPlatformFeeUpdateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountNdp", "expectedVersion"],
+        properties: {
+          amountNdp: { type: "integer", minimum: 0, maximum: 10000000 },
+          expectedVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      ShopFeeEnabledUpdateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["feeEnabled", "expectedVersion"],
+        properties: {
+          feeEnabled: { type: "boolean" },
+          expectedVersion: { type: "integer", minimum: 0 }
+        }
+      },
+      ShopFeePayerUpdateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["payerType", "expectedVersion"],
+        properties: {
+          payerType: { type: "string", enum: ["shop", "technician"] },
+          expectedVersion: { type: "integer", minimum: 0 }
+        }
+      },
       AffiliateClaimPage: {
         type: "object",
         required: ["list", "total", "page", "page_size"],
@@ -3606,6 +3705,119 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    [`${config.API_PREFIX}/backoffice/platform-fee-policy`]: {
+      get: {
+        tags: ["Platform Fee Policy"],
+        summary: "Read the current global Booking platform fee",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current global Booking platform fee", {
+            $ref: "#/components/schemas/GlobalBookingPlatformFee"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Platform Fee Policy"],
+        summary: "Create the next effective global Booking platform fee version",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/GlobalPlatformFeeUpdateRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated global Booking platform fee", {
+            $ref: "#/components/schemas/GlobalBookingPlatformFee"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shop-platform-fee-policies`]: {
+      get: {
+        tags: ["Platform Fee Policy"],
+        summary: "List effective platform fee policies for shops",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 160 } },
+          { name: "feeEnabled", in: "query", schema: { type: "boolean" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated effective shop platform fee policies", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicyPage"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{shopId}/platform-fee-policy`]: {
+      patch: {
+        tags: ["Platform Fee Policy"],
+        summary: "Enable or disable platform fee collection for one shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("shopId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopFeeEnabledUpdateRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated shop platform fee collection state", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicy"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/platform-fee-policy`]: {
+      get: {
+        tags: ["Platform Fee Policy"],
+        summary: "Read a shop platform fee policy in the active merchant identity scope",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("shopId")],
+        responses: {
+          "200": jsonDataResponse("Effective shop platform fee policy", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicy"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/platform-fee-policy/payer`]: {
+      patch: {
+        tags: ["Platform Fee Policy"],
+        summary: "Set the shop or technician as platform fee payer",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("shopId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopFeePayerUpdateRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated shop platform fee payer", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicy"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/employees`]: {
       get: {
         tags: ["Merchant Employees"],
@@ -6125,9 +6337,72 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
         ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  insufficientBalanceConfirmation: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["confirmed", "idempotencyKey", "previewVersion"],
+                    properties: {
+                      confirmed: { type: "boolean", const: true },
+                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 },
+                      previewVersion: {
+                        type: "string",
+                        pattern: "^sha256:[a-f0-9]{64}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         responses: {
           "200": { description: "Order confirmed" },
-          "409": { description: "Invalid state transition" }
+          "409": {
+            description: "Invalid state transition or platform-fee balance confirmation required",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer" },
+                    message: {
+                      type: "string",
+                      enum: [
+                        "error.order.invalid_transition",
+                        "error.platform_fee.insufficient_balance_confirmation_required",
+                        "error.platform_fee.preview_stale",
+                        "error.platform_fee.technician_required",
+                        "error.platform_fee.confirmation_conflict"
+                      ]
+                    },
+                    data: {
+                      type: ["object", "null"],
+                      properties: {
+                        feeAmountNdp: { type: "integer", minimum: 0 },
+                        availableBalanceNdp: { type: "integer" },
+                        shortfallNdp: { type: "integer", minimum: 0 },
+                        payerType: { type: "string", enum: ["shop", "technician"] },
+                        walletOwnerType: { type: "string", enum: ["shop", "user"] },
+                        previewVersion: {
+                          type: "string",
+                          pattern: "^sha256:[a-f0-9]{64}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -8721,6 +8996,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/technician/schedule/slots/{id}`]: {
+      get: {
+        tags: ["Schedule"],
+        summary: "Read a schedule slot owned by the authenticated technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Technician-owned schedule slot", {
+            $ref: "#/components/schemas/ScheduleSlot"
+          }),
+          "400": { description: "Invalid schedule slot identifier" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Technician schedule read permission required" },
+          "404": { description: "Slot not found for current technician" }
+        }
+      },
       patch: {
         tags: ["Schedule"],
         summary: "Update a schedule slot owned by the authenticated technician",

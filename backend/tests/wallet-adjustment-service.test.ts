@@ -54,7 +54,10 @@ const createRepository = (availableBalance = 1000) => {
   let request: Record<string, unknown> | null = null;
   const repository: Record<string, jest.Mock> = {};
   Object.assign(repository, {
-    runInTransaction: jest.fn(async (handler: (repository: unknown, transactionClient: unknown) => Promise<unknown>) => handler(repository, {})),
+    runInTransaction: jest.fn(
+      async (handler: (repository: unknown, transactionClient: unknown) => Promise<unknown>) =>
+        handler(repository, {})
+    ),
     findWalletAdjustmentByIdempotencyKey: jest.fn(async () => request),
     createWalletAdjustmentRequest: jest.fn(async (input: Record<string, unknown>) => {
       request = {
@@ -77,23 +80,47 @@ const createRepository = (availableBalance = 1000) => {
       };
       return request;
     }),
-    listWalletAdjustmentRequests: jest.fn(async () => ({ list: request ? [request] : [], total: request ? 1 : 0, page: 1, page_size: 20 })),
+    listWalletAdjustmentRequests: jest.fn(async () => ({
+      list: request ? [request] : [],
+      total: request ? 1 : 0,
+      page: 1,
+      page_size: 20
+    })),
     lockWalletAdjustmentRequest: jest.fn(async () => request),
     approveWalletAdjustmentRequest: jest.fn(async (input: Record<string, unknown>) => {
-      request = { ...request, status: "approved", reviewedById: input.reviewedById, reviewedAt: now, reviewNote: input.reviewNote ?? null, ledgerTransactionId: input.ledgerTransactionId };
+      request = {
+        ...request,
+        status: "approved",
+        reviewedById: input.reviewedById,
+        reviewedAt: now,
+        reviewNote: input.reviewNote ?? null,
+        ledgerTransactionId: input.ledgerTransactionId
+      };
       return request;
     }),
     rejectWalletAdjustmentRequest: jest.fn(async (input: Record<string, unknown>) => {
-      request = { ...request, status: "rejected", reviewedById: input.reviewedById, reviewedAt: now, reviewNote: input.reviewNote };
+      request = {
+        ...request,
+        status: "rejected",
+        reviewedById: input.reviewedById,
+        reviewedAt: now,
+        reviewNote: input.reviewNote
+      };
       return request;
     }),
     findTransactionByIdempotencyKey: jest.fn(async () => null),
     getOrCreateWallet: jest.fn(async () => wallet),
-    applyWalletDelta: jest.fn(async (input: { availableDelta: number; requireAvailableAtLeast?: number }) => {
-      if (input.requireAvailableAtLeast && wallet.availableBalance < input.requireAvailableAtLeast) return null;
-      wallet = { ...wallet, availableBalance: wallet.availableBalance + input.availableDelta };
-      return wallet;
-    }),
+    applyWalletDelta: jest.fn(
+      async (input: { availableDelta: number; requireAvailableAtLeast?: number }) => {
+        if (
+          input.requireAvailableAtLeast &&
+          wallet.availableBalance < input.requireAvailableAtLeast
+        )
+          return null;
+        wallet = { ...wallet, availableBalance: wallet.availableBalance + input.availableDelta };
+        return wallet;
+      }
+    ),
     createTransaction: jest.fn(async (input: Record<string, unknown>) => ({
       id: 51,
       transactionNo: "NDP202608250051",
@@ -110,9 +137,17 @@ const createRepository = (availableBalance = 1000) => {
       updatedAt: now,
       entries: []
     })),
-    createLedgerEntry: jest.fn(async (input: Record<string, unknown>) => ({ id: 61, createdAt: now, ...input })),
+    createLedgerEntry: jest.fn(async (input: Record<string, unknown>) => ({
+      id: 61,
+      createdAt: now,
+      ...input
+    })),
     createFinanceReconciliation: jest.fn(async () => undefined),
     createAuditLog: jest.fn(async () => undefined),
+    getDatabaseNow: jest.fn(async () => now),
+    listOutstandingPlatformFeeDebtIds: jest.fn(async () => []),
+    lockPlatformFeeDebt: jest.fn(async () => null),
+    updatePlatformFeeDebt: jest.fn(async () => true),
     findWallet: jest.fn(async (input: { ownerType: string; ownerId: number }) =>
       input.ownerType === wallet.ownerType && input.ownerId === wallet.ownerId ? wallet : null
     ),
@@ -127,12 +162,7 @@ describe("LedgerService wallet adjustment requests", () => {
     const eligibility = {
       assertEligible: jest.fn(async () => ({ eKycVerificationId: 11, bankAccountId: 21 }))
     };
-    const service = new LedgerService(
-      repository as never,
-      undefined,
-      eligibility,
-      () => now
-    );
+    const service = new LedgerService(repository as never, undefined, eligibility, () => now);
 
     const requestInput = {
       type: "withdrawal" as const,
@@ -154,12 +184,7 @@ describe("LedgerService wallet adjustment requests", () => {
         throw new Error("error.affiliate_withdrawal.ekyc_required");
       })
     };
-    const service = new LedgerService(
-      repository as never,
-      undefined,
-      eligibility,
-      () => now
-    );
+    const service = new LedgerService(repository as never, undefined, eligibility, () => now);
 
     await expect(
       service.createWalletAdjustmentRequest(affiliate, {
@@ -221,6 +246,319 @@ describe("LedgerService wallet adjustment requests", () => {
     expect(repository.applyWalletDelta).toHaveBeenCalledWith(
       expect.objectContaining({ availableDelta: 5000, frozenDelta: 0 })
     );
+    expect(repository.listOutstandingPlatformFeeDebtIds).toHaveBeenCalledWith({
+      walletId: 3,
+      limit: 100
+    });
+  });
+
+  it("allocates a partial top-up only to the oldest outstanding debt", async () => {
+    const repository = createRepository(-380);
+    const debts = installDebtRecords(repository, [
+      debtRecord({ id: 1, bookingOrderId: 101, acceptedAt: "2026-08-01", outstanding: 380 }),
+      debtRecord({ id: 2, bookingOrderId: 102, acceptedAt: "2026-08-02", outstanding: 200 })
+    ]);
+    const service = new LedgerService(repository as never, undefined, undefined, () => now);
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 100,
+      idempotencyKey: "wallet-topup-partial-oldest"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "部分补交"
+    });
+
+    expect(debts[0]).toMatchObject({ platformFeeOutstandingNdp: 280 });
+    expect(debts[1]).toMatchObject({ platformFeeOutstandingNdp: 200 });
+    expect(repository.updatePlatformFeeDebt).toHaveBeenCalledTimes(1);
+    expect(repository.updatePlatformFeeDebt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 1,
+        expectedOutstandingNdp: 380,
+        platformFeeOutstandingNdp: 280,
+        platformFeeDebtStatus: "outstanding"
+      })
+    );
+  });
+
+  it("settles debts FIFO and leaves top-up excess in the payer wallet", async () => {
+    const repository = createRepository(-300);
+    const debts = installDebtRecords(repository, [
+      debtRecord({ id: 1, bookingOrderId: 101, acceptedAt: "2026-08-01", outstanding: 100 }),
+      debtRecord({ id: 2, bookingOrderId: 102, acceptedAt: "2026-08-02", outstanding: 200 })
+    ]);
+    const service = new LedgerService(repository as never, undefined, undefined, () => now);
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 500,
+      idempotencyKey: "wallet-topup-fifo-excess"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "完整补交"
+    });
+
+    expect(debts).toEqual([
+      expect.objectContaining({
+        bookingOrderId: 101,
+        platformFeeOutstandingNdp: 0,
+        platformFeeDebtStatus: "settled"
+      }),
+      expect.objectContaining({
+        bookingOrderId: 102,
+        platformFeeOutstandingNdp: 0,
+        platformFeeDebtStatus: "settled"
+      })
+    ]);
+    expect(repository.applyWalletDelta).toHaveBeenCalledWith(
+      expect.objectContaining({ walletId: 3, availableDelta: 500 })
+    );
+    await expect(service.getMyWallet(merchant)).resolves.toMatchObject({
+      availableBalance: 200
+    });
+  });
+
+  it("grants one delayed reward when a completed debt is settled before its deadline", async () => {
+    const repository = createRepository(-380);
+    const debts = installDebtRecords(repository, [
+      debtRecord({
+        id: 1,
+        bookingOrderId: 101,
+        acceptedAt: "2026-08-01",
+        outstanding: 380,
+        settlementStatus: "settled",
+        rewardStatus: "pending",
+        rewardDeadlineAt: new Date(now.getTime() + 1_000)
+      })
+    ]);
+    const customerWallet = {
+      id: 9,
+      ownerType: "user" as const,
+      ownerId: 30,
+      currency: "NDP" as const,
+      availableBalance: 0,
+      frozenBalance: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    repository.getOrCreateWallet.mockImplementation(async (input: { ownerType: string }) =>
+      input.ownerType === "user"
+        ? customerWallet
+        : {
+            id: 3,
+            ownerType: "shop",
+            ownerId: 7,
+            currency: "NDP",
+            availableBalance: 0,
+            frozenBalance: 0,
+            createdAt: now,
+            updatedAt: now
+          }
+    );
+    repository.applyWalletDelta.mockImplementation(
+      async (input: { walletId: number; availableDelta: number }) => {
+        if (input.walletId === customerWallet.id) {
+          customerWallet.availableBalance += input.availableDelta;
+          return customerWallet;
+        }
+        return {
+          id: 3,
+          ownerType: "shop",
+          ownerId: 7,
+          currency: "NDP",
+          availableBalance: 0,
+          frozenBalance: 0,
+          createdAt: now,
+          updatedAt: now
+        };
+      }
+    );
+    const service = new LedgerService(repository as never, undefined, undefined, () => now);
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 380,
+      idempotencyKey: "wallet-topup-delayed-reward"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "期限内补交"
+    });
+
+    expect(debts[0]).toMatchObject({
+      platformFeeOutstandingNdp: 0,
+      platformFeeDebtStatus: "settled",
+      userRewardStatus: "paid",
+      userRewardNdp: 100,
+      userRewardGrantedAt: now
+    });
+    expect(customerWallet.availableBalance).toBe(100);
+    expect(repository.createTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "booking:101:reward:settlement",
+        type: "booking_complete_settlement",
+        amount: 100
+      })
+    );
+  });
+
+  it("expires a completed reward settled at its deadline without granting NDP", async () => {
+    const repository = createRepository(-380);
+    const debts = installDebtRecords(repository, [
+      debtRecord({
+        id: 1,
+        bookingOrderId: 101,
+        acceptedAt: "2026-08-01",
+        outstanding: 380,
+        settlementStatus: "settled",
+        rewardStatus: "pending",
+        rewardDeadlineAt: now
+      })
+    ]);
+    const service = new LedgerService(repository as never, undefined, undefined, () => now);
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 380,
+      idempotencyKey: "wallet-topup-expired-reward"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "截止后补交"
+    });
+
+    expect(debts[0]).toMatchObject({
+      platformFeeOutstandingNdp: 0,
+      platformFeeDebtStatus: "settled",
+      userRewardStatus: "expired",
+      userRewardNdp: 0,
+      userRewardGrantedAt: null
+    });
+    expect(repository.createTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the database clock when the application clock is still before the reward deadline", async () => {
+    const repository = createRepository(-380);
+    const debts = installDebtRecords(repository, [
+      debtRecord({
+        id: 1,
+        bookingOrderId: 101,
+        acceptedAt: "2026-08-01",
+        outstanding: 380,
+        settlementStatus: "settled",
+        rewardStatus: "pending",
+        rewardDeadlineAt: now
+      })
+    ]);
+    const applicationNow = new Date(now.getTime() - 1);
+    const service = new LedgerService(
+      repository as never,
+      undefined,
+      undefined,
+      () => applicationNow
+    );
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 380,
+      idempotencyKey: "wallet-topup-database-clock-expired-reward"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "数据库时钟已到截止时间"
+    });
+
+    expect(repository.getDatabaseNow).toHaveBeenCalled();
+    expect(debts[0]).toMatchObject({
+      platformFeeOutstandingNdp: 0,
+      platformFeeDebtStatus: "settled",
+      userRewardStatus: "expired",
+      userRewardNdp: 0,
+      userRewardGrantedAt: null
+    });
+  });
+
+  it("marks debt settled before completion and does not grant the reward early", async () => {
+    const repository = createRepository(-380);
+    const debts = installDebtRecords(repository, [
+      debtRecord({ id: 1, bookingOrderId: 101, acceptedAt: "2026-08-01", outstanding: 380 })
+    ]);
+    const service = new LedgerService(repository as never, undefined, undefined, () => now);
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 380,
+      idempotencyKey: "wallet-topup-before-completion"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "完单前补交"
+    });
+
+    expect(debts[0]).toMatchObject({
+      platformFeeOutstandingNdp: 0,
+      platformFeeDebtStatus: "settled",
+      userRewardStatus: "immediate",
+      userRewardNdp: 0,
+      userRewardGrantedAt: null
+    });
+    expect(repository.createTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not allocate debt twice when the same approved review is retried", async () => {
+    const repository = createRepository(-380);
+    installDebtRecords(repository, [
+      debtRecord({ id: 1, bookingOrderId: 101, acceptedAt: "2026-08-01", outstanding: 380 })
+    ]);
+    const service = new LedgerService(repository as never, undefined, undefined, () => now);
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 380,
+      idempotencyKey: "wallet-topup-idempotent-debt"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, { action: "approve", note: "初次" });
+    await service.reviewWalletAdjustmentRequest(operator, 41, { action: "approve", note: "重试" });
+
+    expect(repository.updatePlatformFeeDebt).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not approve the top-up when delayed reward settlement fails", async () => {
+    const repository = createRepository(-380);
+    installDebtRecords(repository, [
+      debtRecord({
+        id: 1,
+        bookingOrderId: 101,
+        acceptedAt: "2026-08-01",
+        outstanding: 380,
+        settlementStatus: "settled",
+        rewardStatus: "pending",
+        rewardDeadlineAt: new Date(now.getTime() + 1_000)
+      })
+    ]);
+    repository.createLedgerEntry.mockImplementation(async (input: { reason: string }) => {
+      if (input.reason === "booking_delayed_customer_reward") {
+        throw new Error("ledger write failed");
+      }
+      return { id: 61, createdAt: now, ...input };
+    });
+    const service = new LedgerService(repository as never, undefined, undefined, () => now);
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 380,
+      idempotencyKey: "wallet-topup-reward-failure"
+    });
+
+    await expect(
+      service.reviewWalletAdjustmentRequest(operator, 41, {
+        action: "approve",
+        note: "触发失败"
+      })
+    ).rejects.toThrow("ledger write failed");
+    expect(repository.approveWalletAdjustmentRequest).not.toHaveBeenCalled();
   });
 
   it("rolls back an approved withdrawal when available NDP is insufficient", async () => {
@@ -239,6 +577,7 @@ describe("LedgerService wallet adjustment requests", () => {
       message: "error.wallet.insufficient_available"
     });
     expect(repository.approveWalletAdjustmentRequest).not.toHaveBeenCalled();
+    expect(repository.listOutstandingPlatformFeeDebtIds).not.toHaveBeenCalled();
   });
 
   it("rejects a pending request without changing the wallet", async () => {
@@ -264,11 +603,94 @@ describe("LedgerService wallet adjustment requests", () => {
     const repository = createRepository();
     const service = new LedgerService(repository as never);
 
-    await expect(service.getMyWallet(merchant)).resolves.toMatchObject({ ownerType: "shop", ownerId: 7 });
-    await expect(service.listWalletLedger(merchant, { walletId: 3, page: 1, pageSize: 20 })).resolves.toMatchObject({ total: 0 });
-    await expect(service.listWalletLedger(merchant, { walletId: 999, page: 1, pageSize: 20 })).rejects.toMatchObject({
+    await expect(service.getMyWallet(merchant)).resolves.toMatchObject({
+      ownerType: "shop",
+      ownerId: 7
+    });
+    await expect(
+      service.listWalletLedger(merchant, { walletId: 3, page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({ total: 0 });
+    await expect(
+      service.listWalletLedger(merchant, { walletId: 999, page: 1, pageSize: 20 })
+    ).rejects.toMatchObject({
       code: ERROR_CODES.WALLET_NOT_FOUND,
       message: "error.wallet.not_found"
     });
   });
 });
+
+interface DebtRecord {
+  id: number;
+  bookingOrderId: number;
+  customerUserId: number;
+  platformFeeWalletId: number;
+  platformFeeAcceptedAt: Date;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: "outstanding" | "settled";
+  userRewardEligibleNdp: number;
+  userRewardStatus: "pending" | "immediate" | "paid" | "expired";
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  userRewardNdp: number;
+  settlementStatus: "holding" | "settled";
+}
+
+const debtRecord = (input: {
+  id: number;
+  bookingOrderId: number;
+  acceptedAt: string;
+  outstanding: number;
+  settlementStatus?: "holding" | "settled";
+  rewardStatus?: DebtRecord["userRewardStatus"];
+  rewardDeadlineAt?: Date | null;
+}): DebtRecord => ({
+  id: input.id,
+  bookingOrderId: input.bookingOrderId,
+  customerUserId: 30,
+  platformFeeWalletId: 3,
+  platformFeeAcceptedAt: new Date(`${input.acceptedAt}T00:00:00.000Z`),
+  platformFeeOutstandingNdp: input.outstanding,
+  platformFeeDebtStatus: "outstanding",
+  userRewardEligibleNdp: 100,
+  userRewardStatus: input.rewardStatus ?? "pending",
+  userRewardDeadlineAt: input.rewardDeadlineAt ?? null,
+  userRewardGrantedAt: null,
+  userRewardNdp: 0,
+  settlementStatus: input.settlementStatus ?? "holding"
+});
+
+const installDebtRecords = (
+  repository: Record<string, jest.Mock>,
+  debts: DebtRecord[]
+): DebtRecord[] => {
+  repository.listOutstandingPlatformFeeDebtIds.mockImplementation(
+    async ({ walletId, limit }: { walletId: number; limit: number }) =>
+      debts
+        .filter(
+          (debt) =>
+            debt.platformFeeWalletId === walletId &&
+            debt.platformFeeDebtStatus === "outstanding" &&
+            debt.platformFeeOutstandingNdp > 0
+        )
+        .sort(
+          (left, right) =>
+            left.platformFeeAcceptedAt.getTime() - right.platformFeeAcceptedAt.getTime() ||
+            left.id - right.id
+        )
+        .slice(0, limit)
+        .map((debt) => debt.id)
+  );
+  repository.lockPlatformFeeDebt.mockImplementation(
+    async (id: number) => debts.find((debt) => debt.id === id) ?? null
+  );
+  repository.updatePlatformFeeDebt.mockImplementation(async (input: Record<string, unknown>) => {
+    const debt = debts.find((candidate) => candidate.id === input.id);
+    if (!debt || debt.platformFeeOutstandingNdp !== input.expectedOutstandingNdp) {
+      return false;
+    }
+    Object.assign(debt, input);
+    return true;
+  });
+
+  return debts;
+};

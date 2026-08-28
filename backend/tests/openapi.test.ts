@@ -211,6 +211,28 @@ describe("GET /api/v1/openapi.json", () => {
     );
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/confirm");
+    const confirmOperation = response.body.paths["/api/v1/orders/{id}/confirm"].post;
+    const confirmBodySchema = confirmOperation.requestBody.content["application/json"].schema;
+    expect(confirmBodySchema.additionalProperties).toBe(false);
+    expect(confirmBodySchema.properties.insufficientBalanceConfirmation).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["confirmed", "idempotencyKey", "previewVersion"]
+      })
+    );
+    const insufficientBalanceSchema =
+      confirmOperation.responses["409"].content["application/json"].schema.properties.data;
+    expect(insufficientBalanceSchema.properties).toEqual(
+      expect.objectContaining({
+        feeAmountNdp: expect.any(Object),
+        availableBalanceNdp: expect.any(Object),
+        shortfallNdp: expect.any(Object),
+        payerType: expect.any(Object),
+        walletOwnerType: expect.any(Object),
+        previewVersion: expect.any(Object)
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/cancel");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/start");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/complete");
@@ -435,6 +457,17 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule/slots/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots");
     expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots/{id}");
+    expect(response.body.paths["/api/v1/technician/schedule/slots/{id}"].get).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      parameters: [expect.objectContaining({ name: "id", in: "path", required: true })],
+      responses: expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      })
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations");
     expect(response.body.paths).toHaveProperty(
       "/api/v1/im/conversations/{conversationId}/messages"
@@ -908,15 +941,25 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).not.toContain("scout");
   });
 
+<<<<<<< HEAD
   it("documents strict authenticated affiliate alliance read and create contracts", () => {
     type Operation = {
       security: Array<Record<string, unknown>>;
       requestBody?: { content: Record<string, { schema: Record<string, string> }> };
       responses: Record<string, unknown>;
+=======
+  it("documents the formal platform fee policy contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<string, unknown>;
+      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
+      parameters?: Array<{ name: string; in: string }>;
+>>>>>>> codex/technician-schedule-formal-cutover
     };
     type Schema = {
       additionalProperties?: boolean;
       required?: string[];
+<<<<<<< HEAD
       properties: Record<string, unknown>;
     };
     const document = createOpenApiDocument(env) as unknown as {
@@ -929,6 +972,25 @@ describe("GET /api/v1/openapi.json", () => {
     expect(mine.security).toEqual([{ bearerAuth: [] }]);
     expect(create.security).toEqual([{ bearerAuth: [] }]);
     for (const operation of [mine, create]) {
+=======
+      properties: Record<string, { type?: string; pattern?: string }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "patch", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const operations = [
+      document.paths["/api/v1/backoffice/platform-fee-policy"].get,
+      document.paths["/api/v1/backoffice/platform-fee-policy"].patch,
+      document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get,
+      document.paths["/api/v1/backoffice/shops/{shopId}/platform-fee-policy"].patch,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy"].get,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy/payer"].patch
+    ];
+
+    for (const operation of operations) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+>>>>>>> codex/technician-schedule-formal-cutover
       expect(operation.responses).toEqual(
         expect.objectContaining({
           "400": expect.any(Object),
@@ -938,6 +1000,7 @@ describe("GET /api/v1/openapi.json", () => {
         })
       );
     }
+<<<<<<< HEAD
     expect(create.requestBody?.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/AffiliateAllianceCreate"
     });
@@ -958,5 +1021,33 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).toContain("needoId");
     expect(publicContract).toContain("canViewAllianceWallet");
     expect(publicContract).not.toMatch(/userId|identityId|scout/);
+=======
+    expect(document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "pageSize", in: "query" })
+      ])
+    );
+    for (const schemaName of [
+      "GlobalPlatformFeeUpdateRequest",
+      "ShopFeeEnabledUpdateRequest",
+      "ShopFeePayerUpdateRequest"
+    ]) {
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    expect(document.components.schemas.ShopPlatformFeePolicy.properties.shopId.type).toBe(
+      "integer"
+    );
+    expect(document.components.schemas.ShopPlatformFeePolicy.properties.shopPublicId.pattern).toBe(
+      "^shop[0-9]{10}$"
+    );
+    expect(document.components.schemas).toEqual(
+      expect.objectContaining({
+        GlobalBookingPlatformFee: expect.any(Object),
+        ShopPlatformFeePolicy: expect.any(Object),
+        ShopPlatformFeePolicyPage: expect.any(Object)
+      })
+    );
+>>>>>>> codex/technician-schedule-formal-cutover
   });
 });

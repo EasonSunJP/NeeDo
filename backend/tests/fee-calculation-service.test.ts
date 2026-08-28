@@ -18,6 +18,11 @@ class InMemoryFeeRuleRepository implements FeeRuleRepositoryPort {
   public campaigns: FeeCampaignPayload[] = [];
   public completedCount = 0;
   public logs: FeeCalculationLogPayload[] = [];
+  public lastActiveRuleQuery: {
+    feeType: FeeType;
+    orderType: FinanceOrderType;
+    at: Date;
+  } | null = null;
 
   private logId = 1;
 
@@ -34,6 +39,10 @@ class InMemoryFeeRuleRepository implements FeeRuleRepositoryPort {
     return ruleSet;
   }
 
+  public async findRuleSetById(id: number): Promise<PlatformFeeRuleSetPayload | null> {
+    return this.ruleSets.find((ruleSet) => ruleSet.id === id) ?? null;
+  }
+
   public async updateRuleSet() {
     return null;
   }
@@ -47,8 +56,14 @@ class InMemoryFeeRuleRepository implements FeeRuleRepositoryPort {
     orderType: FinanceOrderType;
     at: Date;
   }): Promise<PlatformFeeRuleSetPayload[]> {
+    this.lastActiveRuleQuery = input;
     return this.ruleSets
-      .filter((ruleSet) => ruleSet.status === "active")
+      .filter(
+        (ruleSet) =>
+          ruleSet.status === "active" &&
+          (!ruleSet.effectiveFrom || ruleSet.effectiveFrom <= input.at) &&
+          (!ruleSet.effectiveTo || ruleSet.effectiveTo > input.at)
+      )
       .map((ruleSet) => ({
         ...ruleSet,
         rules: ruleSet.rules.filter(
@@ -125,6 +140,47 @@ describe("FeeCalculationService", () => {
     });
     await expect(service.calculateFee(baseInput("user_reward"))).resolves.toMatchObject({
       finalFeeNdp: 100
+    });
+  });
+
+  it("preserves rule evidence while overriding the payer or waiving by shop policy", async () => {
+    const repository = defaultRepository();
+    const service = new FeeCalculationService(repository);
+
+    await expect(
+      service.calculateFee({
+        ...baseInput("b_platform_fee"),
+        castId: 9,
+        payerOverride: { payerType: "cast", payerId: 9 }
+      })
+    ).resolves.toMatchObject({
+      payerType: "cast",
+      payerId: 9,
+      baseFeeNdp: 500,
+      finalFeeNdp: 500,
+      holdAmountNdp: 500
+    });
+
+    const waived = await service.calculateFee({
+      ...baseInput("b_platform_fee"),
+      payerOverride: { payerType: "shop", payerId: 10 },
+      waiveReason: "shop_policy_disabled"
+    });
+    expect(waived).toMatchObject({
+      payerType: "shop",
+      payerId: 10,
+      baseFeeNdp: 500,
+      finalFeeNdp: 0,
+      holdAmountNdp: 0
+    });
+    expect(waived.appliedRuleIds).toEqual(["rule_set:1:rule:101"]);
+    expect(waived.explanation).toContain("Waived by shop platform-fee policy");
+    expect(repository.logs.at(-1)).toMatchObject({
+      payerType: "shop",
+      payerId: 10,
+      baseFeeNdp: 500,
+      finalFeeNdp: 0,
+      holdAmountNdp: 0
     });
   });
 
@@ -260,6 +316,39 @@ describe("FeeCalculationService", () => {
       finalFeeNdp: 700
     });
   });
+
+  it("prices Booking platform-fee capture at acceptedAt", async () => {
+    const repository = new InMemoryFeeRuleRepository();
+    const previous = makeRuleSet(1, {
+      name: "Booking default v1",
+      status: "active",
+      version: 1,
+      effectiveFrom: new Date("2026-08-01T00:00:00.000Z"),
+      effectiveTo: new Date("2026-08-29T00:00:00.000Z"),
+      rules: [{ feeType: "b_platform_fee", orderType: "booking", baseAmountNdp: 500 }]
+    });
+    const current = makeRuleSet(2, {
+      name: "Booking default v2",
+      status: "active",
+      version: 2,
+      effectiveFrom: new Date("2026-08-29T00:00:00.000Z"),
+      effectiveTo: null,
+      rules: [{ feeType: "b_platform_fee", orderType: "booking", baseAmountNdp: 700 }]
+    });
+    repository.ruleSets = [previous, current];
+    const service = new FeeCalculationService(repository);
+    const acceptedAt = new Date("2026-08-28T09:00:00.000Z");
+
+    await expect(
+      service.calculateFee({
+        ...baseInput("b_platform_fee"),
+        stage: "capture",
+        acceptedAt,
+        completedAt: new Date("2026-08-29T09:00:00.000Z")
+      })
+    ).resolves.toMatchObject({ finalFeeNdp: 500 });
+    expect(repository.lastActiveRuleQuery?.at).toEqual(acceptedAt);
+  });
 });
 
 function baseInput(feeType: FeeType) {
@@ -314,6 +403,7 @@ function defaultRepositoryWithNightWindow() {
 function makeRuleSet(id: number, input: FeeRuleMutationInput): PlatformFeeRuleSetPayload {
   return {
     id,
+    familyCode: null,
     name: input.name,
     description: input.description ?? null,
     scopeType: input.scopeType ?? "platform",

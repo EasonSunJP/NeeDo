@@ -68,6 +68,9 @@ export function mapScheduleSlotToCalendarItem(slot: BookingScheduleSlot): Formal
 }
 
 export const schedulingApi = {
+  getTechnicianSlot(id: number) {
+    return httpClient.request<BookingScheduleSlot>(`/technician/schedule/slots/${id}`);
+  },
   listSlots(scope: SchedulingScope, input: ScheduleSlotListInput) {
     return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>(prefix(scope), {
       query: {

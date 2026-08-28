@@ -7,6 +7,7 @@ import {
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
+  orderConfirmBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
   scheduleSlotCreateBodySchema,
@@ -104,6 +105,7 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const body = orderConfirmBodySchema.parse(request.body);
       response
         .status(200)
         .json(
@@ -111,7 +113,9 @@ export class BookingController {
             await this.bookingService.transitionOrder(
               this.getActor(response),
               this.getOrderId(request),
-              "confirm"
+              "confirm",
+              undefined,
+              body
             )
           )
         );
@@ -235,6 +239,25 @@ export class BookingController {
     try {
       response.status(200).json(successResponse(await this.bookingService.listScheduleSlots(getAuthenticatedAccess(response), scheduleSlotListQuerySchema.parse(request.query))));
     } catch (error) { next(error); }
+  };
+
+  public getScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.getScheduleSlot(
+            getAuthenticatedAccess(response),
+            this.getOrderId(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
   };
 
   public createScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {

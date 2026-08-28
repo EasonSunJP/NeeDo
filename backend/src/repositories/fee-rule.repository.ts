@@ -99,8 +99,17 @@ export class FeeRuleRepository implements FeeRuleRepositoryPort {
 
       await this.createRules(tx, ruleSet.id, input.rules ?? [], input.actorUserId);
 
-      return this.findRuleSetById(tx, ruleSet.id);
+      return this.findRuleSetRecordById(tx, ruleSet.id);
     });
+  }
+
+  public async findRuleSetById(id: number): Promise<PlatformFeeRuleSetPayload | null> {
+    const ruleSet = await this.client.platformFeeRuleSet.findFirst({
+      where: { id, deletedAt: null },
+      include: this.ruleSetInclude()
+    });
+
+    return ruleSet ? this.mapRuleSet(ruleSet) : null;
   }
 
   public async updateRuleSet(
@@ -137,7 +146,7 @@ export class FeeRuleRepository implements FeeRuleRepositoryPort {
         await this.createRules(tx, id, input.rules, input.actorUserId);
       }
 
-      return this.findRuleSetById(tx, id);
+      return this.findRuleSetRecordById(tx, id);
     });
   }
 
@@ -155,7 +164,7 @@ export class FeeRuleRepository implements FeeRuleRepositoryPort {
       return null;
     }
 
-    return this.findRuleSetById(this.client, id);
+    return this.findRuleSetRecordById(this.client, id);
   }
 
   public async findActiveRuleSets(input: {
@@ -397,7 +406,7 @@ export class FeeRuleRepository implements FeeRuleRepositoryPort {
     });
   }
 
-  private async findRuleSetById(
+  private async findRuleSetRecordById(
     client: FeeRulePrismaClient,
     id: number
   ): Promise<PlatformFeeRuleSetPayload> {
@@ -431,6 +440,7 @@ export class FeeRuleRepository implements FeeRuleRepositoryPort {
   private mapRuleSet(ruleSet: RuleSetRecord): PlatformFeeRuleSetPayload {
     return {
       id: ruleSet.id,
+      familyCode: ruleSet.familyCode,
       name: ruleSet.name,
       description: ruleSet.description,
       scopeType: ruleSet.scopeType,

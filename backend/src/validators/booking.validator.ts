@@ -71,6 +71,19 @@ export const orderIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
 
+export const orderConfirmBodySchema = z
+  .object({
+    insufficientBalanceConfirmation: z
+      .object({
+        confirmed: z.literal(true),
+        idempotencyKey: z.string().trim().min(16).max(160),
+        previewVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/)
+      })
+      .strict()
+      .optional()
+  })
+  .strict();
+
 export const orderListQuerySchema = z.object({
   ...paginationQuerySchema,
   customerUserId: z.coerce.number().int().positive().optional(),
@@ -167,6 +180,7 @@ export const scheduleSlotUpdateBodySchema = z.object({
 export type AvailabilityListQuery = z.infer<typeof availabilityListQuerySchema>;
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;
 export type OrderIdParams = z.infer<typeof orderIdParamSchema>;
+export type OrderConfirmBody = z.infer<typeof orderConfirmBodySchema>;
 export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 export type OrderCancelBody = z.infer<typeof orderCancelBodySchema>;
 export type ManualPaymentConfirmBody = z.infer<typeof manualPaymentConfirmBodySchema>;

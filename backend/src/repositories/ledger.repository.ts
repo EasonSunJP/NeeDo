@@ -12,7 +12,9 @@ import type {
   LedgerTransactionPayload,
   LedgerTransactionStatus,
   LedgerTransactionType,
+  OrderFinancialPlatformFeeSnapshot,
   OrderFinancialUpsertInput,
+  PlatformFeeDebtAllocationRecord,
   WalletLedgerDirection,
   WalletLedgerListInput,
   WalletLedgerPayload,
@@ -55,6 +57,50 @@ type WalletHoldRecord = Prisma.WalletHoldGetPayload<Record<string, never>>;
 type WalletAdjustmentRequestRecord = Prisma.WalletAdjustmentRequestGetPayload<
   Record<string, never>
 >;
+type LockedOrderFinancialPlatformFeeRow = {
+  bookingOrderId: number;
+  customerUserId: number;
+  shopId: number;
+  technicianProfileId: number | null;
+  platformFeeEnabledSnapshot: boolean | number;
+  platformFeeAmountNdpSnapshot: number;
+  platformFeeWalletOwnerType: string | null;
+  platformFeeWalletOwnerId: number | null;
+  platformFeeWalletId: number | null;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: string;
+  platformFeeAcceptedAt: Date | null;
+  userRewardEligibleNdp: number;
+  userRewardStatus: string;
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  settlementStatus: string;
+};
+type LockedPlatformFeeDebtRow = {
+  id: number;
+  bookingOrderId: number;
+  customerUserId: number;
+  platformFeeWalletId: number | null;
+  platformFeeAcceptedAt: Date | null;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: string;
+  userRewardEligibleNdp: number;
+  userRewardStatus: string;
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  userRewardNdp: number;
+  settlementStatus: string;
+};
+type LockedWalletRow = {
+  id: number;
+  ownerType: string;
+  ownerId: number;
+  currency: string;
+  availableBalance: number;
+  frozenBalance: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 export class LedgerRepository implements LedgerRepositoryPort {
   public constructor(private readonly client: LedgerPrismaClient = prisma) {}
@@ -127,6 +173,19 @@ export class LedgerRepository implements LedgerRepositoryPort {
     });
 
     return this.mapWallet(wallet);
+  }
+
+  public async findTechnicianUserId(technicianProfileId: number): Promise<number | null> {
+    const technician = await this.client.technicianProfile.findFirst({
+      where: {
+        id: technicianProfileId,
+        deletedAt: null,
+        user: { deletedAt: null }
+      },
+      select: { userId: true }
+    });
+
+    return technician?.userId ?? null;
   }
 
   public async applyWalletDelta(input: {
@@ -462,6 +521,266 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return this.mapWalletHold(hold);
   }
 
+  public async findOrderFinancialByOverdraftConfirmationKey(
+    idempotencyKey: string
+  ): Promise<{ bookingOrderId: number; previewVersion: string } | null> {
+    const financial = await this.client.orderFinancial.findFirst({
+      where: {
+        platformFeeOverdraftConfirmationKey: idempotencyKey,
+        deletedAt: null
+      },
+      select: {
+        bookingOrderId: true,
+        platformFeePreviewVersion: true
+      }
+    });
+
+    return financial
+      ? {
+          bookingOrderId: financial.bookingOrderId,
+          previewVersion: financial.platformFeePreviewVersion ?? ""
+        }
+      : null;
+  }
+
+  public async findOrderFinancialPlatformFeeSnapshot(
+    bookingOrderId: number
+  ): Promise<OrderFinancialPlatformFeeSnapshot | null> {
+    const financial = await this.client.orderFinancial.findFirst({
+      where: {
+        bookingOrderId,
+        platformFeeEnabledSnapshot: { not: null },
+        deletedAt: null
+      },
+      select: {
+        bookingOrderId: true,
+        customerUserId: true,
+        shopId: true,
+        technicianProfileId: true,
+        platformFeeEnabledSnapshot: true,
+        platformFeeAmountNdpSnapshot: true,
+        platformFeeWalletOwnerType: true,
+        platformFeeWalletOwnerId: true,
+        platformFeeWalletId: true,
+        platformFeeOutstandingNdp: true,
+        platformFeeDebtStatus: true,
+        platformFeeAcceptedAt: true,
+        userRewardEligibleNdp: true,
+        userRewardStatus: true,
+        userRewardDeadlineAt: true,
+        userRewardGrantedAt: true,
+        settlementStatus: true
+      }
+    });
+    if (!financial || financial.platformFeeEnabledSnapshot === null) {
+      return null;
+    }
+
+    return {
+      ...financial,
+      platformFeeEnabledSnapshot: financial.platformFeeEnabledSnapshot,
+      platformFeeWalletOwnerType: financial.platformFeeWalletOwnerType
+        ? this.ownerTypeFromDb(financial.platformFeeWalletOwnerType)
+        : null,
+      platformFeeDebtStatus:
+        financial.platformFeeDebtStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["platformFeeDebtStatus"],
+      userRewardStatus:
+        financial.userRewardStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["userRewardStatus"],
+      settlementStatus:
+        financial.settlementStatus as OrderFinancialPlatformFeeSnapshot["settlementStatus"]
+    };
+  }
+
+  public async lockOrderFinancialPlatformFeeSnapshot(
+    bookingOrderId: number
+  ): Promise<OrderFinancialPlatformFeeSnapshot | null> {
+    const rows = await this.client.$queryRaw<LockedOrderFinancialPlatformFeeRow[]>(
+      Prisma.sql`SELECT
+          booking_order_id AS bookingOrderId,
+          customer_user_id AS customerUserId,
+          shop_id AS shopId,
+          technician_profile_id AS technicianProfileId,
+          platform_fee_enabled_snapshot AS platformFeeEnabledSnapshot,
+          platform_fee_amount_ndp_snapshot AS platformFeeAmountNdpSnapshot,
+          platform_fee_wallet_owner_type AS platformFeeWalletOwnerType,
+          platform_fee_wallet_owner_id AS platformFeeWalletOwnerId,
+          platform_fee_wallet_id AS platformFeeWalletId,
+          platform_fee_outstanding_ndp AS platformFeeOutstandingNdp,
+          platform_fee_debt_status AS platformFeeDebtStatus,
+          platform_fee_accepted_at AS platformFeeAcceptedAt,
+          user_reward_eligible_ndp AS userRewardEligibleNdp,
+          user_reward_status AS userRewardStatus,
+          user_reward_deadline_at AS userRewardDeadlineAt,
+          user_reward_granted_at AS userRewardGrantedAt,
+          settlement_status AS settlementStatus
+        FROM order_financials
+        WHERE booking_order_id = ${bookingOrderId}
+          AND platform_fee_enabled_snapshot IS NOT NULL
+          AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const financial = rows[0];
+    if (!financial || rows.length !== 1) {
+      return null;
+    }
+    return {
+      ...financial,
+      platformFeeEnabledSnapshot: Boolean(financial.platformFeeEnabledSnapshot),
+      platformFeeWalletOwnerType: financial.platformFeeWalletOwnerType
+        ? this.ownerTypeFromDb(financial.platformFeeWalletOwnerType)
+        : null,
+      platformFeeDebtStatus:
+        financial.platformFeeDebtStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["platformFeeDebtStatus"],
+      userRewardStatus:
+        financial.userRewardStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["userRewardStatus"],
+      settlementStatus:
+        financial.settlementStatus as OrderFinancialPlatformFeeSnapshot["settlementStatus"]
+    };
+  }
+
+  public async lockWalletById(walletId: number): Promise<WalletPayload | null> {
+    const rows = await this.client.$queryRaw<LockedWalletRow[]>(
+      Prisma.sql`SELECT
+          id,
+          owner_type AS ownerType,
+          owner_id AS ownerId,
+          currency,
+          available_balance AS availableBalance,
+          frozen_balance AS frozenBalance,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM wallets
+        WHERE id = ${walletId} AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const wallet = rows[0];
+    if (!wallet || rows.length !== 1) {
+      return null;
+    }
+    return this.mapWallet(wallet);
+  }
+
+  public async getDatabaseNow(): Promise<Date> {
+    const rows = await this.client.$queryRaw<Array<{ now: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS now`
+    );
+    const databaseNow = rows[0]?.now;
+    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime())) {
+      throw new Error("error.database_clock_unavailable");
+    }
+    return databaseNow;
+  }
+
+  public async findPlatformFeeHoldByBookingOrderId(
+    bookingOrderId: number
+  ): Promise<WalletHoldPayload | null> {
+    const hold = await this.client.walletHold.findFirst({
+      where: {
+        bookingOrderId,
+        feeType: "b_platform_fee",
+        status: { in: ["ACTIVE", "PARTIALLY_CAPTURED"] },
+        deletedAt: null
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+
+    return hold ? this.mapWalletHold(hold) : null;
+  }
+
+  public async listOutstandingPlatformFeeDebtIds(input: {
+    walletId: number;
+    limit: number;
+  }): Promise<number[]> {
+    const rows = await this.client.orderFinancial.findMany({
+      where: {
+        platformFeeWalletId: input.walletId,
+        platformFeeDebtStatus: "OUTSTANDING",
+        platformFeeOutstandingNdp: { gt: 0 },
+        platformFeeAcceptedAt: { not: null },
+        deletedAt: null
+      },
+      select: { id: true },
+      orderBy: [{ platformFeeAcceptedAt: "asc" }, { id: "asc" }],
+      take: input.limit
+    });
+
+    return rows.map((row) => row.id);
+  }
+
+  public async lockPlatformFeeDebt(id: number): Promise<PlatformFeeDebtAllocationRecord | null> {
+    const rows = await this.client.$queryRaw<LockedPlatformFeeDebtRow[]>(
+      Prisma.sql`SELECT
+          id,
+          booking_order_id AS bookingOrderId,
+          customer_user_id AS customerUserId,
+          platform_fee_wallet_id AS platformFeeWalletId,
+          platform_fee_accepted_at AS platformFeeAcceptedAt,
+          platform_fee_outstanding_ndp AS platformFeeOutstandingNdp,
+          platform_fee_debt_status AS platformFeeDebtStatus,
+          user_reward_eligible_ndp AS userRewardEligibleNdp,
+          user_reward_status AS userRewardStatus,
+          user_reward_deadline_at AS userRewardDeadlineAt,
+          user_reward_granted_at AS userRewardGrantedAt,
+          user_reward_ndp AS userRewardNdp,
+          settlement_status AS settlementStatus
+        FROM order_financials
+        WHERE id = ${id} AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const financial = rows[0];
+    if (
+      !financial ||
+      financial.platformFeeWalletId === null ||
+      financial.platformFeeAcceptedAt === null
+    ) {
+      return null;
+    }
+
+    return {
+      ...financial,
+      platformFeeWalletId: financial.platformFeeWalletId,
+      platformFeeAcceptedAt: financial.platformFeeAcceptedAt,
+      platformFeeDebtStatus:
+        financial.platformFeeDebtStatus.toLowerCase() as PlatformFeeDebtAllocationRecord["platformFeeDebtStatus"],
+      userRewardStatus:
+        financial.userRewardStatus.toLowerCase() as PlatformFeeDebtAllocationRecord["userRewardStatus"],
+      settlementStatus:
+        financial.settlementStatus as PlatformFeeDebtAllocationRecord["settlementStatus"]
+    };
+  }
+
+  public async updatePlatformFeeDebt(input: {
+    id: number;
+    expectedOutstandingNdp: number;
+    platformFeeOutstandingNdp: number;
+    platformFeeDebtStatus: "outstanding" | "settled";
+    userRewardStatus?: PlatformFeeDebtAllocationRecord["userRewardStatus"];
+    userRewardNdp?: number;
+    userRewardGrantedAt?: Date | null;
+  }): Promise<boolean> {
+    const update = await this.client.orderFinancial.updateMany({
+      where: {
+        id: input.id,
+        platformFeeOutstandingNdp: input.expectedOutstandingNdp,
+        platformFeeDebtStatus: "OUTSTANDING",
+        deletedAt: null
+      },
+      data: {
+        platformFeeOutstandingNdp: input.platformFeeOutstandingNdp,
+        platformFeeDebtStatus: this.platformFeeDebtStatusToDb(input.platformFeeDebtStatus),
+        ...(input.userRewardStatus !== undefined
+          ? { userRewardStatus: this.userRewardStatusToDb(input.userRewardStatus) }
+          : {}),
+        ...(input.userRewardNdp !== undefined ? { userRewardNdp: input.userRewardNdp } : {}),
+        ...(input.userRewardGrantedAt !== undefined
+          ? { userRewardGrantedAt: input.userRewardGrantedAt }
+          : {})
+      }
+    });
+
+    return update.count === 1;
+  }
+
   public async upsertOrderFinancial(input: OrderFinancialUpsertInput): Promise<void> {
     const existing = await this.client.orderFinancial.findUnique({
       where: { bookingOrderId: input.bookingOrderId }
@@ -505,6 +824,64 @@ export class LedgerRepository implements LedgerRepositoryPort {
         : {}),
       ...(input.platformFeePayerId !== undefined
         ? { platformFeePayerId: input.platformFeePayerId }
+        : {}),
+      ...(input.platformFeeEnabledSnapshot !== undefined
+        ? { platformFeeEnabledSnapshot: input.platformFeeEnabledSnapshot }
+        : {}),
+      ...(input.platformFeeGlobalVersion !== undefined
+        ? { platformFeeGlobalVersion: input.platformFeeGlobalVersion }
+        : {}),
+      ...(input.platformFeePolicyVersion !== undefined
+        ? { platformFeePolicyVersion: input.platformFeePolicyVersion }
+        : {}),
+      ...(input.platformFeeAmountNdpSnapshot !== undefined
+        ? { platformFeeAmountNdpSnapshot: input.platformFeeAmountNdpSnapshot }
+        : {}),
+      ...(input.platformFeeWalletOwnerType !== undefined
+        ? {
+            platformFeeWalletOwnerType:
+              input.platformFeeWalletOwnerType === null
+                ? null
+                : this.ownerTypeToDb(input.platformFeeWalletOwnerType)
+          }
+        : {}),
+      ...(input.platformFeeWalletOwnerId !== undefined
+        ? { platformFeeWalletOwnerId: input.platformFeeWalletOwnerId }
+        : {}),
+      ...(input.platformFeeWalletId !== undefined
+        ? { platformFeeWalletId: input.platformFeeWalletId }
+        : {}),
+      ...(input.platformFeeShortfallNdp !== undefined
+        ? { platformFeeShortfallNdp: input.platformFeeShortfallNdp }
+        : {}),
+      ...(input.platformFeeOutstandingNdp !== undefined
+        ? { platformFeeOutstandingNdp: input.platformFeeOutstandingNdp }
+        : {}),
+      ...(input.platformFeeDebtStatus !== undefined
+        ? { platformFeeDebtStatus: this.platformFeeDebtStatusToDb(input.platformFeeDebtStatus) }
+        : {}),
+      ...(input.platformFeeAcceptedAt !== undefined
+        ? { platformFeeAcceptedAt: input.platformFeeAcceptedAt }
+        : {}),
+      ...(input.platformFeeOverdraftConfirmationKey !== undefined
+        ? {
+            platformFeeOverdraftConfirmationKey: input.platformFeeOverdraftConfirmationKey
+          }
+        : {}),
+      ...(input.platformFeePreviewVersion !== undefined
+        ? { platformFeePreviewVersion: input.platformFeePreviewVersion }
+        : {}),
+      ...(input.userRewardEligibleNdp !== undefined
+        ? { userRewardEligibleNdp: input.userRewardEligibleNdp }
+        : {}),
+      ...(input.userRewardStatus !== undefined
+        ? { userRewardStatus: this.userRewardStatusToDb(input.userRewardStatus) }
+        : {}),
+      ...(input.userRewardDeadlineAt !== undefined
+        ? { userRewardDeadlineAt: input.userRewardDeadlineAt }
+        : {}),
+      ...(input.userRewardGrantedAt !== undefined
+        ? { userRewardGrantedAt: input.userRewardGrantedAt }
         : {}),
       ...(input.completedOrderOrdinalInPeriod !== undefined
         ? { completedOrderOrdinalInPeriod: input.completedOrderOrdinalInPeriod }
@@ -879,6 +1256,21 @@ export class LedgerRepository implements LedgerRepositoryPort {
     }
 
     return "USER" as const;
+  }
+
+  private platformFeeDebtStatusToDb(status: "none" | "outstanding" | "settled") {
+    if (status === "outstanding") {
+      return "OUTSTANDING" as const;
+    }
+    if (status === "settled") {
+      return "SETTLED" as const;
+    }
+
+    return "NONE" as const;
+  }
+
+  private userRewardStatusToDb(status: "disabled" | "immediate" | "pending" | "paid" | "expired") {
+    return status.toUpperCase() as "DISABLED" | "IMMEDIATE" | "PENDING" | "PAID" | "EXPIRED";
   }
 
   private ownerTypeFromDb(ownerType: string): WalletOwnerType {

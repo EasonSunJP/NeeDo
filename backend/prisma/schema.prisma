@@ -139,6 +139,24 @@ enum WalletAdjustmentStatus {
   @@map("wallet_adjustment_status")
 }
 
+enum PlatformFeeDebtStatus {
+  NONE        @map("none")
+  OUTSTANDING @map("outstanding")
+  SETTLED     @map("settled")
+
+  @@map("platform_fee_debt_status")
+}
+
+enum UserRewardStatus {
+  DISABLED  @map("disabled")
+  IMMEDIATE @map("immediate")
+  PENDING   @map("pending")
+  PAID      @map("paid")
+  EXPIRED   @map("expired")
+
+  @@map("user_reward_status")
+}
+
 enum LedgerTransactionType {
   BOOKING_ACCEPT_FREEZE                @map("booking_accept_freeze")
   BOOKING_CANCEL_UNFREEZE              @map("booking_cancel_unfreeze")
@@ -328,6 +346,11 @@ enum FinanceReconciliationStatus {
   @@map("finance_reconciliation_status")
 }
 
+enum ShopPlatformFeePayerType {
+  SHOP
+  TECHNICIAN
+}
+
 enum ConversationType {
   DIRECT @map("direct")
   GROUP  @map("group")
@@ -512,6 +535,8 @@ model User {
   externalAccounts                ExternalAuthAccount[]
   createdTechnicianShopAffiliations TechnicianShopAffiliation[] @relation("TechnicianShopAffiliationCreatedBy")
   updatedTechnicianShopAffiliations TechnicianShopAffiliation[] @relation("TechnicianShopAffiliationUpdatedBy")
+  createdShopPlatformFeePolicies  ShopPlatformFeePolicy[]    @relation("ShopPlatformFeePolicyCreatedBy")
+  updatedShopPlatformFeePolicies  ShopPlatformFeePolicy[]    @relation("ShopPlatformFeePolicyUpdatedBy")
 
   @@index([email])
   @@index([phone])
@@ -619,6 +644,7 @@ model Shop {
   technicianShopAffiliations TechnicianShopAffiliation[]
   publicIdentifier        PublicIdentifier?
   customerSupportAccount  CustomerSupportAccount?
+  platformFeePolicy       ShopPlatformFeePolicy?
 
   @@index([ownerUserId])
   @@index([city])
@@ -2078,6 +2104,7 @@ model PlatformFeeRuleSet {
   name          String    @db.VarChar(160)
   description   String?   @db.VarChar(500)
   scopeType     String    @default("platform") @map("scope_type") @db.VarChar(40)
+  familyCode    String?   @map("family_code") @db.VarChar(80)
   priority      Int       @default(100)
   status        String    @default("draft") @db.VarChar(40)
   version       Int       @default(1)
@@ -2091,12 +2118,38 @@ model PlatformFeeRuleSet {
 
   rules PlatformFeeRule[]
 
+  @@unique([familyCode, version], map: "platform_fee_rule_sets_family_version_key")
   @@index([status])
   @@index([priority])
   @@index([effectiveFrom, effectiveTo])
+  @@index([familyCode, status, effectiveFrom, effectiveTo], map: "platform_fee_rule_sets_family_effective_idx")
   @@index([createdById])
   @@index([deletedAt])
   @@map("platform_fee_rule_sets")
+}
+
+model ShopPlatformFeePolicy {
+  id          Int                      @id @default(autoincrement())
+  shopId      Int                      @unique @map("shop_id")
+  feeEnabled  Boolean                  @default(true) @map("fee_enabled")
+  payerType   ShopPlatformFeePayerType @default(SHOP) @map("payer_type")
+  version     Int                      @default(1)
+  createdById Int?                     @map("created_by_id")
+  updatedById Int?                     @map("updated_by_id")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  deletedAt   DateTime?                @map("deleted_at")
+
+  shop      Shop  @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("ShopPlatformFeePolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("ShopPlatformFeePolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([feeEnabled, deletedAt], map: "shop_platform_fee_policies_enabled_deleted_idx")
+  @@index([payerType, deletedAt], map: "shop_platform_fee_policies_payer_deleted_idx")
+  @@index([createdById], map: "shop_platform_fee_policies_created_by_idx")
+  @@index([updatedById], map: "shop_platform_fee_policies_updated_by_idx")
+  @@index([deletedAt], map: "shop_platform_fee_policies_deleted_idx")
+  @@map("shop_platform_fee_policies")
 }
 
 model PlatformFeeRule {
@@ -2281,43 +2334,60 @@ model WalletHold {
 }
 
 model OrderFinancial {
-  id                                  Int       @id @default(autoincrement())
-  bookingOrderId                      Int       @unique @map("booking_order_id")
-  orderType                           String    @default("booking") @map("order_type") @db.VarChar(40)
-  customerUserId                      Int       @map("customer_user_id")
-  shopId                              Int       @map("shop_id")
-  technicianProfileId                 Int?      @map("technician_profile_id")
-  serviceAmountJpy                    Int       @default(0) @map("service_amount_jpy")
-  platformCollectedServiceAmountJpy   Int       @default(0) @map("platform_collected_service_amount_jpy")
-  offlineReportedServiceAmountJpy     Int       @default(0) @map("offline_reported_service_amount_jpy")
-  unknownOrUnreportedServiceAmountJpy Int       @default(0) @map("unknown_or_unreported_service_amount_jpy")
-  paymentChannel                      String    @default("unknown") @map("payment_channel") @db.VarChar(60)
-  serviceIncomeStatus                 String    @default("unreported") @map("service_income_status") @db.VarChar(60)
-  bPlatformFeeHoldNdp                 Int       @default(0) @map("b_platform_fee_hold_ndp")
-  bPlatformFeeActualNdp               Int       @default(0) @map("b_platform_fee_actual_ndp")
-  cRequestFeeHoldNdp                  Int       @default(0) @map("c_request_fee_hold_ndp")
-  cRequestFeeActualNdp                Int       @default(0) @map("c_request_fee_actual_ndp")
-  userRewardNdp                       Int       @default(0) @map("user_reward_ndp")
-  penaltyNdp                          Int       @default(0) @map("penalty_ndp")
-  compensationToUserNdp               Int       @default(0) @map("compensation_to_user_ndp")
-  campaignDiscountNdp                 Int       @default(0) @map("campaign_discount_ndp")
-  releasedNdp                         Int       @default(0) @map("released_ndp")
-  platformFeePayerType                String?   @map("platform_fee_payer_type") @db.VarChar(40)
-  platformFeePayerId                  Int?      @map("platform_fee_payer_id")
-  platformFeeBearerForPayroll         String?   @map("platform_fee_bearer_for_payroll") @db.VarChar(40)
-  completedOrderOrdinalInPeriod       Int?      @map("completed_order_ordinal_in_period")
-  appliedFeeRuleIdsJson               Json?     @map("applied_fee_rule_ids_json")
-  moneyTimelineJson                   Json?     @map("money_timeline_json")
-  serviceIncomeReportedById           Int?      @map("service_income_reported_by_id")
-  serviceIncomeReportedAt             DateTime? @map("service_income_reported_at")
-  serviceIncomeConfirmedById          Int?      @map("service_income_confirmed_by_id")
-  serviceIncomeConfirmedAt            DateTime? @map("service_income_confirmed_at")
-  serviceIncomeNote                   String?   @map("service_income_note") @db.VarChar(500)
-  serviceIncomeProofUrl               String?   @map("service_income_proof_url") @db.VarChar(500)
-  settlementStatus                    String    @default("pending") @map("settlement_status") @db.VarChar(40)
-  createdAt                           DateTime  @default(now()) @map("created_at")
-  updatedAt                           DateTime  @updatedAt @map("updated_at")
-  deletedAt                           DateTime? @map("deleted_at")
+  id                                  Int                   @id @default(autoincrement())
+  bookingOrderId                      Int                   @unique @map("booking_order_id")
+  orderType                           String                @default("booking") @map("order_type") @db.VarChar(40)
+  customerUserId                      Int                   @map("customer_user_id")
+  shopId                              Int                   @map("shop_id")
+  technicianProfileId                 Int?                  @map("technician_profile_id")
+  serviceAmountJpy                    Int                   @default(0) @map("service_amount_jpy")
+  platformCollectedServiceAmountJpy   Int                   @default(0) @map("platform_collected_service_amount_jpy")
+  offlineReportedServiceAmountJpy     Int                   @default(0) @map("offline_reported_service_amount_jpy")
+  unknownOrUnreportedServiceAmountJpy Int                   @default(0) @map("unknown_or_unreported_service_amount_jpy")
+  paymentChannel                      String                @default("unknown") @map("payment_channel") @db.VarChar(60)
+  serviceIncomeStatus                 String                @default("unreported") @map("service_income_status") @db.VarChar(60)
+  bPlatformFeeHoldNdp                 Int                   @default(0) @map("b_platform_fee_hold_ndp")
+  bPlatformFeeActualNdp               Int                   @default(0) @map("b_platform_fee_actual_ndp")
+  cRequestFeeHoldNdp                  Int                   @default(0) @map("c_request_fee_hold_ndp")
+  cRequestFeeActualNdp                Int                   @default(0) @map("c_request_fee_actual_ndp")
+  userRewardNdp                       Int                   @default(0) @map("user_reward_ndp")
+  penaltyNdp                          Int                   @default(0) @map("penalty_ndp")
+  compensationToUserNdp               Int                   @default(0) @map("compensation_to_user_ndp")
+  campaignDiscountNdp                 Int                   @default(0) @map("campaign_discount_ndp")
+  releasedNdp                         Int                   @default(0) @map("released_ndp")
+  platformFeePayerType                String?               @map("platform_fee_payer_type") @db.VarChar(40)
+  platformFeePayerId                  Int?                  @map("platform_fee_payer_id")
+  platformFeeBearerForPayroll         String?               @map("platform_fee_bearer_for_payroll") @db.VarChar(40)
+  platformFeeEnabledSnapshot          Boolean?              @map("platform_fee_enabled_snapshot")
+  platformFeeGlobalVersion            Int?                  @map("platform_fee_global_version")
+  platformFeePolicyVersion            Int?                  @map("platform_fee_policy_version")
+  platformFeeAmountNdpSnapshot        Int                   @default(0) @map("platform_fee_amount_ndp_snapshot")
+  platformFeeWalletOwnerType          WalletOwnerType?      @map("platform_fee_wallet_owner_type")
+  platformFeeWalletOwnerId            Int?                  @map("platform_fee_wallet_owner_id")
+  platformFeeWalletId                 Int?                  @map("platform_fee_wallet_id")
+  platformFeeShortfallNdp             Int                   @default(0) @map("platform_fee_shortfall_ndp")
+  platformFeeOutstandingNdp           Int                   @default(0) @map("platform_fee_outstanding_ndp")
+  platformFeeDebtStatus               PlatformFeeDebtStatus @default(NONE) @map("platform_fee_debt_status")
+  platformFeeAcceptedAt               DateTime?             @map("platform_fee_accepted_at")
+  platformFeeOverdraftConfirmationKey String?               @unique(map: "order_financials_overdraft_confirmation_key") @map("platform_fee_overdraft_confirmation_key") @db.VarChar(160)
+  platformFeePreviewVersion           String?               @map("platform_fee_preview_version") @db.VarChar(71)
+  userRewardEligibleNdp               Int                   @default(0) @map("user_reward_eligible_ndp")
+  userRewardStatus                    UserRewardStatus      @default(DISABLED) @map("user_reward_status")
+  userRewardDeadlineAt                DateTime?             @map("user_reward_deadline_at")
+  userRewardGrantedAt                 DateTime?             @map("user_reward_granted_at")
+  completedOrderOrdinalInPeriod       Int?                  @map("completed_order_ordinal_in_period")
+  appliedFeeRuleIdsJson               Json?                 @map("applied_fee_rule_ids_json")
+  moneyTimelineJson                   Json?                 @map("money_timeline_json")
+  serviceIncomeReportedById           Int?                  @map("service_income_reported_by_id")
+  serviceIncomeReportedAt             DateTime?             @map("service_income_reported_at")
+  serviceIncomeConfirmedById          Int?                  @map("service_income_confirmed_by_id")
+  serviceIncomeConfirmedAt            DateTime?             @map("service_income_confirmed_at")
+  serviceIncomeNote                   String?               @map("service_income_note") @db.VarChar(500)
+  serviceIncomeProofUrl               String?               @map("service_income_proof_url") @db.VarChar(500)
+  settlementStatus                    String                @default("pending") @map("settlement_status") @db.VarChar(40)
+  createdAt                           DateTime              @default(now()) @map("created_at")
+  updatedAt                           DateTime              @updatedAt @map("updated_at")
+  deletedAt                           DateTime?             @map("deleted_at")
 
   bookingOrder           BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
   serviceIncomeReporter  User?        @relation("OrderFinancialIncomeReporter", fields: [serviceIncomeReportedById], references: [id], onDelete: SetNull)
@@ -2334,6 +2404,8 @@ model OrderFinancial {
   @@index([serviceIncomeReportedAt])
   @@index([serviceIncomeConfirmedAt])
   @@index([settlementStatus])
+  @@index([platformFeeWalletId, platformFeeDebtStatus, platformFeeAcceptedAt, id], map: "order_financials_wallet_debt_accepted_idx")
+  @@index([userRewardStatus, userRewardDeadlineAt, id], map: "order_financials_reward_deadline_idx")
   @@index([deletedAt])
   @@map("order_financials")
 }

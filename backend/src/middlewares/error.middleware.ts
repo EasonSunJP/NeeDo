@@ -36,5 +36,7 @@ export const errorMiddleware: ErrorRequestHandler = (error, request, response, n
     logger.warn({ error: appError, path: request.path }, appError.message);
   }
 
-  response.status(appError.statusCode).json(errorResponse(appError.code, appError.message));
+  response
+    .status(appError.statusCode)
+    .json(errorResponse(appError.code, appError.message, appError.data));
 };

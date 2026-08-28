@@ -5,7 +5,9 @@ import portalSource from "../../pages/mobile/TechnicianPortalPage.tsx?raw";
 describe("FormalTechnicianOrdersPanel", () => {
   it("replaces the visible technician order tab with identity-scoped server data", () => {
     expect(portalSource).toContain("<FormalTechnicianOrdersPanel />");
-    expect(panelSource).toContain("bookingApi.listOrders({ page: 1, pageSize: 100 })");
+    expect(panelSource).toContain("loadEveryTechnicianOrder()");
+    expect(panelSource).toContain('`/technician/orders/${order.id}`');
+    expect(panelSource).toContain("查看详情");
     expect(panelSource).not.toContain("../../data/mock");
     expect(panelSource).not.toContain("orderServiceSessionStore");
     expect(panelSource).not.toContain("localStorage");

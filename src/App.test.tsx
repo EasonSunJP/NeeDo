@@ -21,6 +21,17 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).not.toContain("needsPortalSync");
   });
 
+  it("shows a retryable identity-service outage without rendering protected portal data", () => {
+    expect(requirePortalAuthSource).toContain("restoreError");
+    expect(requirePortalAuthSource).toContain("retrySessionRestore");
+    expect(requirePortalAuthSource).toContain("身份服务暂时不可用，请稍后重试。");
+    expect(requirePortalAuthSource).toContain("重新加载");
+    expect(requirePortalAuthSource).toContain("if (restoreError || isRestoring");
+    expect(requirePortalAuthSource.indexOf("if (restoreError && !isAuthenticated)")).toBeLessThan(
+      requirePortalAuthSource.indexOf("if (isRestoring || isPortalRestorePending")
+    );
+  });
+
   it("aligns the active backend identity before rendering an already-authorized portal", () => {
     expect(requirePortalAuthSource).toContain("isSessionAlignedWithPortal(session, portal)");
     expect(requirePortalAuthSource).toContain("needsPortalAlignment");
@@ -81,6 +92,12 @@ describe("production route chunk boundaries", () => {
     expect(appSource).not.toContain('import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";');
     expect(appSource).toContain('lazy(() => import("./pages/mobile/TechnicianPortalPage")');
     expect(appSource.match(/<Suspense fallback=\{null\}><TechnicianPortalPage \/><\/Suspense>/g)).toHaveLength(2);
+  });
+
+  it("routes the accepted technician schedule index directly to the formal-only page", () => {
+    expect(appSource).toContain(
+      'path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)}'
+    );
   });
 
   it("exposes the same account social page in user, merchant, and technician portals", () => {

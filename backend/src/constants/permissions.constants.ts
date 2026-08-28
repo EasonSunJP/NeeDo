@@ -446,6 +446,20 @@ export const SYSTEM_PERMISSIONS = [
     "读取运营后台真实指标"
   ),
   createPermission(
+    "backoffice:platform-fee-policy:read",
+    "运营后台平台费策略读取",
+    "api",
+    "backoffice",
+    "读取全局平台费与店铺收费策略"
+  ),
+  createPermission(
+    "backoffice:platform-fee-policy:write",
+    "运营后台平台费策略管理",
+    "api",
+    "backoffice",
+    "修改全局平台费金额与店铺收费状态"
+  ),
+  createPermission(
     "backoffice:orders:list",
     "运营后台订单列表",
     "api",
@@ -605,6 +619,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "merchant-admin",
     "读取商户后台真实指标"
+  ),
+  createPermission(
+    "merchant-admin:platform-fee-policy:read",
+    "商户平台费策略读取",
+    "api",
+    "merchant-admin",
+    "读取当前商户身份可管理店铺的平台费策略"
+  ),
+  createPermission(
+    "merchant-admin:platform-fee-policy:write",
+    "商户平台费承担者管理",
+    "api",
+    "merchant-admin",
+    "设置当前商户身份可管理店铺的平台费承担者"
   ),
   createPermission(
     "merchant-admin:orders:list",
@@ -1157,6 +1185,7 @@ const FINANCE_PERMISSION_CODES = [
   "finance:fee-rule:list",
   "finance:fee-rule:preview",
   "finance:calculation-log:list",
+  "backoffice:platform-fee-policy:read",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -1165,6 +1194,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:admin-console",
   "backoffice:dashboard:read",
+  "backoffice:platform-fee-policy:read",
+  "backoffice:platform-fee-policy:write",
   "backoffice:orders:list",
   "backoffice:schedule:list",
   "backoffice:finance:list",
@@ -1200,6 +1231,8 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "menu:merchant-app",
   "menu:merchant-admin",
   "merchant-admin:dashboard:read",
+  "merchant-admin:platform-fee-policy:read",
+  "merchant-admin:platform-fee-policy:write",
   "merchant-admin:orders:list",
   "merchant-admin:schedule:list",
   "merchant-admin:finance:list",
