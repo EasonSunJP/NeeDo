@@ -5264,6 +5264,7 @@ export function ImConversationRoomPage({
         });
       })
       .catch((error: unknown) => {
+        closeMessageMenu();
         setActionNotice(
           error instanceof Error && error.message.includes("error.im.recall_window_expired")
             ? "发送超过3分钟后无法撤回"
@@ -5611,8 +5612,16 @@ export function ImConversationRoomPage({
           ) : null}
 
           {actionNotice ? (
-            <div aria-live="assertive" className={cn("relative z-10 px-4 py-2 text-xs", recordingHintClass)}>
-              <p>{actionNotice}</p>
+            <div
+              aria-atomic="true"
+              aria-live="assertive"
+              className="pointer-events-none absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+92px)] z-40 flex justify-center px-4"
+              data-testid="im-conversation-action-notice"
+              role="alert"
+            >
+              <p className="max-w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#202124]/95 px-4 py-3 text-center text-sm font-black leading-5 text-white shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur-md">
+                {actionNotice}
+              </p>
             </div>
           ) : null}
 
