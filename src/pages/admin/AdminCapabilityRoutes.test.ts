@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 const timelineSource = readFileSync(new URL("./OperationTimelinePage.tsx", import.meta.url), "utf8");
 const exchangeSource = readFileSync(new URL("./NeedoExchangeAdminPage.tsx", import.meta.url), "utf8");
 const carouselSource = readFileSync(new URL("./CarouselPage.tsx", import.meta.url), "utf8");
-const decorationSource = readFileSync(new URL("./DecorationPage.tsx", import.meta.url), "utf8");
 const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.url), "utf8");
 const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
 const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
@@ -19,6 +18,15 @@ const adminLayoutSource = readFileSync(
 );
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
 const supportSource = readFileSync(new URL("./AdminSupportPage.tsx", import.meta.url), "utf8");
+
+describe("removed admin design modules", () => {
+  it("does not register or import either deleted design page", () => {
+    expect(appSource).not.toContain('./pages/admin/DecorationPage');
+    expect(appSource).not.toContain('./pages/merchant-admin/MerchantAdminDesignPage');
+    expect(appSource).not.toContain('path="/admin/decoration"');
+    expect(appSource).not.toContain('path="/merchant-admin/design"');
+  });
+});
 
 describe("operations timeline production capability gate", () => {
   it("does not present sample operations history as persisted records", () => {
@@ -57,22 +65,19 @@ describe("official notification production capability gate", () => {
 });
 
 describe("platform content and media production capability gates", () => {
-  it("does not publish carousel, decoration, or ornament data from browser stores", () => {
+  it("does not publish carousel or ornament data from browser stores", () => {
     expect(carouselSource).not.toContain("useCarouselStore");
     expect(carouselSource).not.toContain("useEntityStore");
-    expect(decorationSource).not.toContain("../../data/mock");
-    expect(decorationSource).not.toContain("profileCardBackgroundStore");
     expect(badgesSource).not.toContain("useEntityStore");
     expect(badgesSource).not.toContain("buildOrnamentsSeed");
   });
 
-  it("keeps all three routes behind explicit formal publication prerequisites", () => {
-    for (const pageSource of [carouselSource, decorationSource, badgesSource]) {
+  it("keeps the remaining routes behind explicit formal publication prerequisites", () => {
+    for (const pageSource of [carouselSource, badgesSource]) {
       expect(pageSource).toContain("PlatformContentCapabilityGate");
       expect(pageSource).toContain("当前不会展示模拟");
     }
     expect(carouselSource).toContain("CarouselScene、CarouselSlide 与 ContentVersion 表和 migration");
-    expect(decorationSource).toContain("PageLayout、PageComponent 与 ContentVersion 表和 migration");
     expect(badgesSource).toContain("OrnamentDefinition、OrnamentGrant 与 RuleEvaluation 表和 migration");
   });
 });

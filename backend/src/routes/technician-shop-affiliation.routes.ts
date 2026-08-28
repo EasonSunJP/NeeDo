@@ -14,7 +14,8 @@ import { TechnicianShopAffiliationService } from "../services/technician-shop-af
 import {
   merchantEmployeeAffiliationBodySchema,
   merchantEmployeeListQuerySchema,
-  merchantEmployeeParamSchema
+  merchantEmployeeParamSchema,
+  merchantEmployeeProfileBodySchema
 } from "../validators/technician-shop-affiliation.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -67,6 +68,16 @@ export const createTechnicianShopAffiliationRoutes = (
       body: merchantEmployeeAffiliationBodySchema
     }),
     controller.upsertAffiliation
+  );
+  router.patch(
+    "/merchant-admin/employees/:needoId/profile",
+    authenticate(),
+    createAuthorizeMiddleware(EMPLOYEE_AFFILIATION_PERMISSIONS.write),
+    validateRequest({
+      params: merchantEmployeeParamSchema,
+      body: merchantEmployeeProfileBodySchema
+    }),
+    controller.updateProfile
   );
 
   return router;

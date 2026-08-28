@@ -3554,6 +3554,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shop: { $ref: "#/components/schemas/MerchantEmployeeShop" }
         }
       },
+      MerchantEmployeeProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bio", "city", "serviceArea", "yearsExperience", "updatedAt"],
+        properties: {
+          bio: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          serviceArea: { type: ["string", "null"], maxLength: 255 },
+          yearsExperience: { type: "integer", minimum: 0, maximum: 80 },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      MerchantEmployeeAccount: {
+        type: "object",
+        additionalProperties: false,
+        required: ["isActive", "lastLoginAt"],
+        properties: {
+          isActive: { type: "boolean" },
+          lastLoginAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
       MerchantEmployee: {
         type: "object",
         additionalProperties: false,
@@ -3565,6 +3586,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "phone",
           "profileStatus",
           "verifiedAt",
+          "profile",
+          "account",
           "affiliation"
         ],
         properties: {
@@ -3575,6 +3598,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           phone: { type: ["string", "null"] },
           profileStatus: { type: "string" },
           verifiedAt: { type: ["string", "null"], format: "date-time" },
+          profile: { $ref: "#/components/schemas/MerchantEmployeeProfile" },
+          account: { $ref: "#/components/schemas/MerchantEmployeeAccount" },
           affiliation: { $ref: "#/components/schemas/MerchantEmployeeAffiliation" }
         }
       },
@@ -3609,6 +3634,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description:
               "Required for ended relationships and null for active, on_leave, or suspended relationships"
           }
+        }
+      },
+      MerchantEmployeeProfileInput: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 1,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          bio: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          serviceArea: { type: ["string", "null"], maxLength: 255 },
+          yearsExperience: { type: "integer", minimum: 0, maximum: 80 }
         }
       },
       GlobalBookingPlatformFee: {
@@ -3876,6 +3913,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [merchantEmployeeNeedoIdParameter],
         responses: {
           "200": jsonDataResponse("Current-shop employee affiliation", {
+            $ref: "#/components/schemas/MerchantEmployee"
+          }),
+          ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/profile`]: {
+      patch: {
+        tags: ["Merchant Employees"],
+        summary: "Update the authenticated shop employee's global technician profile",
+        description:
+          "The employee is resolved by canonical technician S NeeDoID and must have a current affiliation with the authenticated shop. Account credentials and contact fields are read-only here.",
+        security: [{ bearerAuth: [] }],
+        parameters: [merchantEmployeeNeedoIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantEmployeeProfileInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated employee profile", {
             $ref: "#/components/schemas/MerchantEmployee"
           }),
           ...merchantEmployeeErrorResponses

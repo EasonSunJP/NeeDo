@@ -42,4 +42,11 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain("setMerchantAdminPreviewShop(shopId)");
     expect(source).toContain("navigate(0)");
   });
+
+  it("does not expose the removed merchant UI decoration module", () => {
+    expect(source).not.toContain('key: "design"');
+    expect(source).not.toContain('title: "UI装修"');
+    expect(source).not.toContain('to: "/merchant-admin/design"');
+    expect(source).not.toContain('to: "/merchant-admin/design?module=cards"');
+  });
 });

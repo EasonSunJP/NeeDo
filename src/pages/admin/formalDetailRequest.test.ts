@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import {
   createFormalDetailRequestCoordinator,
-  runFormalDetailMutationSequence
+  runFormalDetailMutationSequence,
 } from "./formalDetailRequest";
 
 type Deferred<T> = {
@@ -25,7 +25,10 @@ function requestHarness() {
   const pending = new Map<number, Deferred<string>>();
   const events: string[] = [];
   const coordinator = createFormalDetailRequestCoordinator<string>({
-    onError: (error, id) => events.push(`error:${id}:${error instanceof Error ? error.message : String(error)}`),
+    onError: (error, id) =>
+      events.push(
+        `error:${id}:${error instanceof Error ? error.message : String(error)}`,
+      ),
     onFinally: (id) => events.push(`finally:${id}`),
     onStart: (id) => events.push(`start:${id}`),
     onSuccess: (detail, id) => events.push(`success:${id}:${detail}`),
@@ -33,12 +36,32 @@ function requestHarness() {
       const request = deferred<string>();
       pending.set(id, request);
       return request.promise;
-    }
+    },
   });
   return { coordinator, events, pending };
 }
 
 describe("formal detail request coordinator", () => {
+  it("supports canonical string identifiers such as employee NeeDoID", async () => {
+    const requestedIds: string[] = [];
+    const coordinator = createFormalDetailRequestCoordinator<string, string>({
+      onError: () => undefined,
+      onFinally: () => undefined,
+      onStart: () => undefined,
+      onSuccess: () => undefined,
+      request: async (needoId) => {
+        requestedIds.push(needoId);
+        return `detail:${needoId}`;
+      },
+    });
+
+    await coordinator.load("NEEDO-S-47");
+    await coordinator.retry();
+
+    expect(requestedIds).toEqual(["NEEDO-S-47", "NEEDO-S-47"]);
+    expect(coordinator.getSelectedId()).toBe("NEEDO-S-47");
+  });
+
   it("applies only the latest selected detail when A resolves after B", async () => {
     const { coordinator, events, pending } = requestHarness();
 
@@ -49,7 +72,12 @@ describe("formal detail request coordinator", () => {
     pending.get(1)?.resolve("detail-A");
     await loadA;
 
-    expect(events).toEqual(["start:1", "start:2", "success:2:detail-B", "finally:2"]);
+    expect(events).toEqual([
+      "start:1",
+      "start:2",
+      "success:2:detail-B",
+      "finally:2",
+    ]);
     expect(coordinator.getSelectedId()).toBe(2);
   });
 
@@ -82,59 +110,103 @@ describe("formal detail request coordinator", () => {
     pending.get(22)?.resolve("active-detail");
     await Promise.all([disposedLoad, activeLoad]);
 
-    expect(events).toEqual(["start:21", "start:22", "success:22:active-detail", "finally:22"]);
+    expect(events).toEqual([
+      "start:21",
+      "start:22",
+      "success:22:active-detail",
+      "finally:22",
+    ]);
     expect(coordinator.getSelectedId()).toBe(22);
   });
 
-  it.each([403, 404])("keeps selection after %s and retries the same ID without fallback", async (status) => {
-    const requestedIds: number[] = [];
-    const states: string[] = [];
-    let attempt = 0;
-    const coordinator = createFormalDetailRequestCoordinator<string>({
-      onError: (error) => states.push(`error:${error instanceof Error ? error.message : String(error)}`),
-      onFinally: () => states.push("finally"),
-      onStart: () => states.push("start"),
-      onSuccess: (detail) => states.push(`success:${detail}`),
-      request: async (id) => {
-        requestedIds.push(id);
-        attempt += 1;
-        if (attempt === 1) throw new ApiClientError(`backend-${status}`, status, status);
-        return "formal-detail";
-      }
-    });
+  it.each([403, 404])(
+    "keeps selection after %s and retries the same ID without fallback",
+    async (status) => {
+      const requestedIds: number[] = [];
+      const states: string[] = [];
+      let attempt = 0;
+      const coordinator = createFormalDetailRequestCoordinator<string>({
+        onError: (error) =>
+          states.push(
+            `error:${error instanceof Error ? error.message : String(error)}`,
+          ),
+        onFinally: () => states.push("finally"),
+        onStart: () => states.push("start"),
+        onSuccess: (detail) => states.push(`success:${detail}`),
+        request: async (id) => {
+          requestedIds.push(id);
+          attempt += 1;
+          if (attempt === 1)
+            throw new ApiClientError(`backend-${status}`, status, status);
+          return "formal-detail";
+        },
+      });
 
-    await coordinator.load(44);
-    expect(coordinator.getSelectedId()).toBe(44);
-    expect(states).toEqual(["start", `error:backend-${status}`, "finally"]);
+      await coordinator.load(44);
+      expect(coordinator.getSelectedId()).toBe(44);
+      expect(states).toEqual(["start", `error:backend-${status}`, "finally"]);
 
-    await coordinator.retry();
-    expect(requestedIds).toEqual([44, 44]);
-    expect(coordinator.getSelectedId()).toBe(44);
-    expect(states).toEqual(["start", `error:backend-${status}`, "finally", "start", "success:formal-detail", "finally"]);
-  });
+      await coordinator.retry();
+      expect(requestedIds).toEqual([44, 44]);
+      expect(coordinator.getSelectedId()).toBe(44);
+      expect(states).toEqual([
+        "start",
+        `error:backend-${status}`,
+        "finally",
+        "start",
+        "success:formal-detail",
+        "finally",
+      ]);
+    },
+  );
 
   it("starts by clearing old detail and error while keeping the ID-driven drawer selected on failure", async () => {
     const request = deferred<string>();
-    const state: { detail: string | null; error: string; loading: boolean; selectedId: number | null } = {
+    const state: {
+      detail: string | null;
+      error: string;
+      loading: boolean;
+      selectedId: number | null;
+    } = {
       detail: "old-detail",
       error: "old-error",
       loading: false,
-      selectedId: 71
+      selectedId: 71,
     };
     const coordinator = createFormalDetailRequestCoordinator<string>({
-      onError: (error) => { state.error = error instanceof Error ? error.message : String(error); },
-      onFinally: () => { state.loading = false; },
-      onStart: () => { state.detail = null; state.error = ""; state.loading = true; },
-      onSuccess: (detail) => { state.detail = detail; },
-      request: () => request.promise
+      onError: (error) => {
+        state.error = error instanceof Error ? error.message : String(error);
+      },
+      onFinally: () => {
+        state.loading = false;
+      },
+      onStart: () => {
+        state.detail = null;
+        state.error = "";
+        state.loading = true;
+      },
+      onSuccess: (detail) => {
+        state.detail = detail;
+      },
+      request: () => request.promise,
     });
 
     const load = coordinator.load(71);
-    expect(state).toEqual({ detail: null, error: "", loading: true, selectedId: 71 });
+    expect(state).toEqual({
+      detail: null,
+      error: "",
+      loading: true,
+      selectedId: 71,
+    });
     request.reject(new ApiClientError("backend-forbidden", 403, 403));
     await load;
 
-    expect(state).toEqual({ detail: null, error: "backend-forbidden", loading: false, selectedId: 71 });
+    expect(state).toEqual({
+      detail: null,
+      error: "backend-forbidden",
+      loading: false,
+      selectedId: 71,
+    });
     expect(coordinator.getSelectedId()).toBe(71);
   });
 });
@@ -144,14 +216,20 @@ describe("formal detail mutation sequence", () => {
     const order: string[] = [];
     const result = await runFormalDetailMutationSequence({
       isDetailCurrent: () => true,
-      mutate: async () => { order.push("mutation"); },
-      refreshDetail: async () => { order.push("detail"); },
-      refreshList: async () => { order.push("list"); }
+      mutate: async () => {
+        order.push("mutation");
+      },
+      refreshDetail: async () => {
+        order.push("detail");
+      },
+      refreshList: async () => {
+        order.push("list");
+      },
     });
     expect(order).toEqual(["mutation", "list", "detail"]);
     expect(result).toEqual({
       refreshDetail: { status: "fulfilled" },
-      refreshList: { status: "fulfilled" }
+      refreshList: { status: "fulfilled" },
     });
   });
 
@@ -159,9 +237,16 @@ describe("formal detail mutation sequence", () => {
     const order: string[] = [];
     const result = await runFormalDetailMutationSequence({
       isDetailCurrent: () => true,
-      mutate: async () => { order.push("mutation"); },
-      refreshDetail: async () => { order.push("detail"); },
-      refreshList: async () => { order.push("list"); throw new Error("list-refresh-failed"); }
+      mutate: async () => {
+        order.push("mutation");
+      },
+      refreshDetail: async () => {
+        order.push("detail");
+      },
+      refreshList: async () => {
+        order.push("list");
+        throw new Error("list-refresh-failed");
+      },
     });
 
     expect(order).toEqual(["mutation", "list", "detail"]);
@@ -173,9 +258,16 @@ describe("formal detail mutation sequence", () => {
     const order: string[] = [];
     const result = await runFormalDetailMutationSequence({
       isDetailCurrent: () => true,
-      mutate: async () => { order.push("mutation"); },
-      refreshDetail: async () => { order.push("detail"); throw new Error("detail-refresh-failed"); },
-      refreshList: async () => { order.push("list"); }
+      mutate: async () => {
+        order.push("mutation");
+      },
+      refreshDetail: async () => {
+        order.push("detail");
+        throw new Error("detail-refresh-failed");
+      },
+      refreshList: async () => {
+        order.push("list");
+      },
     });
 
     expect(order).toEqual(["mutation", "list", "detail"]);
@@ -184,19 +276,27 @@ describe("formal detail mutation sequence", () => {
   });
 
   it("does not refresh or clear page-owned draft and selection after a failed write", async () => {
-    const state: { draft: string; selectedId: number | null } = { draft: "edited-name", selectedId: 91 };
+    const state: { draft: string; selectedId: number | null } = {
+      draft: "edited-name",
+      selectedId: 91,
+    };
     const order: string[] = [];
     const clearPageState = (step: "detail" | "list") => {
       order.push(step);
       state.draft = "";
       state.selectedId = null;
     };
-    await expect(runFormalDetailMutationSequence({
-      isDetailCurrent: () => true,
-      mutate: async () => { order.push("mutation"); throw new Error("write-failed"); },
-      refreshDetail: async () => clearPageState("detail"),
-      refreshList: async () => clearPageState("list")
-    })).rejects.toThrow("write-failed");
+    await expect(
+      runFormalDetailMutationSequence({
+        isDetailCurrent: () => true,
+        mutate: async () => {
+          order.push("mutation");
+          throw new Error("write-failed");
+        },
+        refreshDetail: async () => clearPageState("detail"),
+        refreshList: async () => clearPageState("list"),
+      }),
+    ).rejects.toThrow("write-failed");
     expect(order).toEqual(["mutation"]);
     expect(state).toEqual({ draft: "edited-name", selectedId: 91 });
   });
@@ -206,8 +306,10 @@ describe("formal detail mutation sequence", () => {
     const result = await runFormalDetailMutationSequence({
       isDetailCurrent: () => false,
       mutate: async () => undefined,
-      refreshDetail: async () => { detailRefreshCount += 1; },
-      refreshList: async () => undefined
+      refreshDetail: async () => {
+        detailRefreshCount += 1;
+      },
+      refreshList: async () => undefined,
     });
 
     expect(detailRefreshCount).toBe(0);

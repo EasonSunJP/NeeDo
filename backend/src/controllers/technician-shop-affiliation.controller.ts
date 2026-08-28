@@ -5,7 +5,8 @@ import { getAuthenticatedAccess, getRequestContext } from "../utils/request-cont
 import {
   merchantEmployeeAffiliationBodySchema,
   merchantEmployeeListQuerySchema,
-  merchantEmployeeParamSchema
+  merchantEmployeeParamSchema,
+  merchantEmployeeProfileBodySchema
 } from "../validators/technician-shop-affiliation.validator";
 
 export class TechnicianShopAffiliationController {
@@ -68,6 +69,30 @@ export class TechnicianShopAffiliationController {
               getRequestContext(request),
               needoId,
               merchantEmployeeAffiliationBodySchema.parse(request.body)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public updateProfile = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { needoId } = merchantEmployeeParamSchema.parse(request.params);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.updateCurrentShopEmployeeProfile(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              needoId,
+              merchantEmployeeProfileBodySchema.parse(request.body)
             )
           )
         );

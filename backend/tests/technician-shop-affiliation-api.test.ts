@@ -16,6 +16,17 @@ const employee: MerchantEmployeePayload = {
   phone: "+81-90-0000-0000",
   profileStatus: "published",
   verifiedAt: "2026-05-25T00:00:00.000Z",
+  profile: {
+    bio: "整体与放松护理",
+    city: "东京都涩谷区",
+    serviceArea: "涩谷区、新宿区",
+    yearsExperience: 9,
+    updatedAt: "2026-08-28T00:00:00.000Z"
+  },
+  account: {
+    isActive: true,
+    lastLoginAt: "2026-08-27T12:00:00.000Z"
+  },
   affiliation: {
     id: 91,
     relationshipType: "partner",
@@ -39,6 +50,7 @@ const createRepository = (): jest.Mocked<TechnicianShopAffiliationRepositoryPort
       page_size: 20
     })),
     findCurrentShopEmployee: jest.fn(async () => employee),
+    updateCurrentShopEmployeeProfile: jest.fn(async () => employee),
     upsertCurrentAffiliation: jest.fn(async () => employee)
   }) as unknown as jest.Mocked<TechnicianShopAffiliationRepositoryPort>;
 
@@ -298,6 +310,68 @@ describe("merchant employee affiliation HTTP API", () => {
           email: expect.anything(),
           phone: expect.anything()
         })
+      })
+    );
+  });
+
+  it("validates and persists a strict shop-scoped employee profile patch", async () => {
+    const readOnly = createFixture(["merchant-admin:employee-affiliation:read"]);
+    const endpoint = "/api/v1/merchant-admin/employees/s0000000086/profile";
+    const body = {
+      displayName: "斋藤 健太",
+      bio: "整体与放松护理",
+      city: "东京都涩谷区",
+      serviceArea: "涩谷区、新宿区",
+      yearsExperience: 9
+    };
+
+    await request(readOnly.app)
+      .patch(endpoint)
+      .set("Authorization", `Bearer ${readOnly.token}`)
+      .send(body)
+      .expect(403);
+
+    const fixture = createFixture();
+    const authorization = `Bearer ${fixture.token}`;
+    for (const invalidBody of [
+      {},
+      { city: "" },
+      { displayName: "" },
+      { yearsExperience: -1 },
+      { yearsExperience: 81 },
+      { city: "东京都", shopId: 99 }
+    ]) {
+      await request(fixture.app)
+        .patch(endpoint)
+        .set("Authorization", authorization)
+        .send(invalidBody)
+        .expect(400);
+    }
+
+    await request(fixture.app)
+      .patch(endpoint)
+      .set("Authorization", authorization)
+      .send(body)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 0,
+          data: { needoId: "s0000000086", profile: { yearsExperience: 9 } }
+        });
+      });
+    expect(fixture.repository.updateCurrentShopEmployeeProfile).toHaveBeenCalledWith({
+      shopId: 16,
+      technicianIdentityId: 86,
+      actorUserId: 7,
+      profile: body
+    });
+    expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "merchant_admin.employee_profile.update",
+        metadata: {
+          shopId: 16,
+          changedFields: ["bio", "city", "displayName", "serviceArea", "yearsExperience"]
+        }
       })
     );
   });
