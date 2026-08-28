@@ -73,7 +73,16 @@ export type ImApi = {
   ): Promise<{ message: ConversationMessage }>;
   estimateTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignEstimate>;
   sendTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignResult>;
-  recallMessage(messageId: string): Promise<{ conversation: Conversation; message: ConversationMessage }>;
+  recallMessage(
+    conversationId: string,
+    messageId: string,
+    mode: "standard",
+  ): Promise<{
+    conversationId: string;
+    messageId: string;
+    message: ConversationMessage;
+    mode: "standard";
+  }>;
   resendMessage(messageId: string): Promise<{ conversation: Conversation; message: ConversationMessage }>;
   forwardMessage(messageId: string, conversationId: string): Promise<{
     conversation: Conversation;

@@ -228,7 +228,7 @@ describe("UserCenterPage inline profile editing", () => {
 
     expect(nickname).not.toBeNull();
     expect(nickname?.className).toContain("text-lg");
-    expect(container.textContent).toContain("ID u0000000041");
+    expect(container.textContent).toContain("ID u3141592653");
   });
 
   it("does not reserve an empty membership badge slot before the level label", async () => {
