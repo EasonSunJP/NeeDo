@@ -11,6 +11,7 @@ import { AuditLogService } from "../services/audit-log.service";
 import { CompensationProfileService } from "../services/compensation-profile.service";
 import {
   compensationProfileBodySchema,
+  employeeCompensationProfileParamSchema,
   compensationProfileParamSchema,
   compensationProfilePreviewBodySchema
 } from "../validators/compensation-profile.validator";
@@ -65,6 +66,34 @@ export const createCompensationProfileRoutes = (
       body: compensationProfilePreviewBodySchema
     }),
     controller.previewCompensationProfile
+  );
+
+  router.get(
+    "/merchant-admin/employees/:needoId/compensation-profile",
+    authenticate(),
+    authorize(COMPENSATION_PROFILE_ROUTE_PERMISSIONS.read),
+    validateRequest({ params: employeeCompensationProfileParamSchema }),
+    controller.getEmployeeCompensationProfile
+  );
+  router.put(
+    "/merchant-admin/employees/:needoId/compensation-profile",
+    authenticate(),
+    authorize(COMPENSATION_PROFILE_ROUTE_PERMISSIONS.write),
+    validateRequest({
+      params: employeeCompensationProfileParamSchema,
+      body: compensationProfileBodySchema
+    }),
+    controller.updateEmployeeCompensationProfile
+  );
+  router.post(
+    "/merchant-admin/employees/:needoId/compensation-profile/preview",
+    authenticate(),
+    authorize(COMPENSATION_PROFILE_ROUTE_PERMISSIONS.preview),
+    validateRequest({
+      params: employeeCompensationProfileParamSchema,
+      body: compensationProfilePreviewBodySchema
+    }),
+    controller.previewEmployeeCompensationProfile
   );
 
   return router;

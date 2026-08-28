@@ -412,6 +412,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/shops/{shopId}/technicians/{technicianProfileId}/compensation-profile/preview"
     );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/employees/{needoId}/compensation-profile"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/employees/{needoId}/compensation-profile/preview"
+    );
+    const employeeCompensationSchema =
+      response.body.components.schemas.EmployeeCompensationProfile;
+    expect(employeeCompensationSchema.properties).not.toHaveProperty("shopId");
+    expect(employeeCompensationSchema.properties).not.toHaveProperty("technicianProfileId");
+    expect(employeeCompensationSchema.properties).not.toHaveProperty("createdById");
+    expect(employeeCompensationSchema.properties).not.toHaveProperty("updatedById");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}");

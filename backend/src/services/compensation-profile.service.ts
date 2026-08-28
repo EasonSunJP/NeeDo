@@ -31,6 +31,48 @@ export interface CompensationProfilePreviewResult {
   preview: CompensationPreviewPayload;
 }
 
+export interface EmployeePayrollSummaryPayload {
+  payslipId: number | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  status: string | null;
+  disputeStatus: string | null;
+  completedOrderCount: number;
+  workedMinutes: number;
+  serviceIncomeJpy: number;
+  basePayJpy: number;
+  commissionJpy: number;
+  bonusJpy: number;
+  allowanceJpy: number;
+  deductionJpy: number;
+  platformFeeShareDeductionJpy: number;
+  netPayJpy: number;
+  paidAmountJpy: number;
+  unpaidAmountJpy: number;
+  payoutRecordCount: number;
+}
+
+export type EmployeeCompensationProfilePayload = Omit<
+  CompensationProfilePayload,
+  | "id"
+  | "shopId"
+  | "technicianProfileId"
+  | "createdById"
+  | "updatedById"
+>;
+
+export interface EmployeeCompensationResult {
+  employee: { needoId: string };
+  profile: EmployeeCompensationProfilePayload;
+  payrollSummary: EmployeePayrollSummaryPayload;
+}
+
+export interface EmployeeCompensationPreviewResult {
+  employee: { needoId: string };
+  profile: EmployeeCompensationProfilePayload;
+  preview: CompensationPreviewPayload;
+}
+
 export interface CompensationProfileRepositoryPort {
   findActiveProfile: (
     shopId: number,
@@ -43,6 +85,14 @@ export interface CompensationProfileRepositoryPort {
     input: ParsedCompensationProfileBody,
     actorUserId: number
   ) => Promise<CompensationProfilePayload>;
+  findCurrentEmployeeAffiliation: (
+    shopId: number,
+    needoId: string
+  ) => Promise<{ id: number; technicianProfileId: number } | null>;
+  findEmployeePayrollSummary: (
+    shopId: number,
+    technicianProfileId: number
+  ) => Promise<EmployeePayrollSummaryPayload>;
 }
 
 type AuditRecorder = Pick<AuditLogService, "record">;
@@ -130,6 +180,107 @@ export class CompensationProfileService {
     );
 
     return { shopId, technicianProfileId, profile, preview };
+  }
+
+  public async getEmployeeCompensationProfile(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    needoId: string
+  ): Promise<EmployeeCompensationResult> {
+    const shopId = this.requireMerchantShopScope(actor);
+    const affiliation = await this.requireEmployeeAffiliation(shopId, needoId);
+    const [profile, payrollSummary] = await Promise.all([
+      this.getProfileOrFallback(shopId, affiliation.technicianProfileId),
+      this.repository.findEmployeePayrollSummary(shopId, affiliation.technicianProfileId)
+    ]);
+    await this.recordEmployee(
+      actor,
+      context,
+      "merchant_admin.compensation_profile.read",
+      affiliation.id,
+      { shopId, sourceType: profile.sourceType }
+    );
+    return {
+      employee: { needoId },
+      profile: this.toEmployeeProfile(profile),
+      payrollSummary
+    };
+  }
+
+  public async updateEmployeeCompensationProfile(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    needoId: string,
+    input: CompensationProfileBody
+  ): Promise<EmployeeCompensationResult> {
+    const shopId = this.requireMerchantShopScope(actor);
+    const affiliation = await this.requireEmployeeAffiliation(shopId, needoId);
+    const profile = await this.repository.replaceActiveProfile(
+      shopId,
+      affiliation.technicianProfileId,
+      this.normalizeProfileInput(input),
+      actor.userId
+    );
+    const payrollSummary = await this.repository.findEmployeePayrollSummary(
+      shopId,
+      affiliation.technicianProfileId
+    );
+    await this.recordEmployee(
+      actor,
+      context,
+      "merchant_admin.compensation_profile.update",
+      affiliation.id,
+      {
+        shopId,
+        profileId: profile.id,
+        wageMode: profile.wageMode,
+        ndpFeeBearer: profile.ndpFeeBearer
+      }
+    );
+    return {
+      employee: { needoId },
+      profile: this.toEmployeeProfile(profile),
+      payrollSummary
+    };
+  }
+
+  public async previewEmployeeCompensationProfile(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    needoId: string,
+    input: CompensationProfilePreviewBody
+  ): Promise<EmployeeCompensationPreviewResult> {
+    const shopId = this.requireMerchantShopScope(actor);
+    const affiliation = await this.requireEmployeeAffiliation(shopId, needoId);
+    const profile = await this.getProfileOrFallback(shopId, affiliation.technicianProfileId);
+    const preview = this.compensationEngine.calculate(profile, input);
+    await this.recordEmployee(
+      actor,
+      context,
+      "merchant_admin.compensation_profile.preview",
+      affiliation.id,
+      {
+        shopId,
+        profileId: profile.id,
+        technicianNetIncomeJpy: preview.technicianNetIncomeJpy,
+        shopEstimatedGrossProfitJpy: preview.shopEstimatedGrossProfitJpy
+      }
+    );
+    return { employee: { needoId }, profile: this.toEmployeeProfile(profile), preview };
+  }
+
+  private toEmployeeProfile(
+    profile: CompensationProfilePayload
+  ): EmployeeCompensationProfilePayload {
+    const {
+      id: _id,
+      shopId: _shopId,
+      technicianProfileId: _technicianProfileId,
+      createdById: _createdById,
+      updatedById: _updatedById,
+      ...publicProfile
+    } = profile;
+    return publicProfile;
   }
 
   private async getProfileOrFallback(
@@ -233,6 +384,48 @@ export class CompensationProfileService {
       code: ERROR_CODES.IDENTITY_FORBIDDEN,
       message: "error.identity.forbidden",
       statusCode: 403
+    });
+  }
+
+  private requireMerchantShopScope(actor: AuthenticatedAccessContext): number {
+    if (
+      actor.currentIdentityScopeType === "shop" &&
+      typeof actor.currentIdentityScopeId === "number" &&
+      actor.currentIdentityScopeId > 0
+    ) {
+      return actor.currentIdentityScopeId;
+    }
+    throw new AppError({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.identity.forbidden",
+      statusCode: 403
+    });
+  }
+
+  private async requireEmployeeAffiliation(shopId: number, needoId: string) {
+    const affiliation = await this.repository.findCurrentEmployeeAffiliation(shopId, needoId);
+    if (affiliation) return affiliation;
+    throw new AppError({
+      code: ERROR_CODES.TECHNICIAN_AFFILIATION_NOT_FOUND,
+      message: "error.technician_affiliation.not_found",
+      statusCode: 404
+    });
+  }
+
+  private async recordEmployee(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    action: string,
+    affiliationId: number,
+    metadata?: unknown
+  ): Promise<void> {
+    await this.auditLogService.record({
+      actor,
+      action,
+      targetType: "technician_shop_affiliation",
+      targetId: affiliationId,
+      context,
+      metadata
     });
   }
 

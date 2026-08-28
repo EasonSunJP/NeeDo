@@ -2683,6 +2683,176 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           preview: { $ref: "#/components/schemas/CompensationPreview" }
         }
       },
+      EmployeeCompensationProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceType",
+          "name",
+          "status",
+          "version",
+          "wageMode",
+          "baseSalaryJpy",
+          "hourlyRateJpy",
+          "dailyRateJpy",
+          "fixedOrderPayJpy",
+          "commissionRatePercent",
+          "guaranteedMinimumJpy",
+          "ndpFeeBearer",
+          "technicianNdpSharePercent",
+          "bonusRules",
+          "deductionRules",
+          "effectiveFrom",
+          "effectiveTo",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          sourceType: { type: "string", enum: ["shop_default", "technician_override"] },
+          name: { type: "string" },
+          status: { type: "string", enum: ["active", "archived"] },
+          version: { type: "integer", minimum: 0 },
+          wageMode: {
+            type: "string",
+            enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+          },
+          baseSalaryJpy: { type: "integer", minimum: 0 },
+          hourlyRateJpy: { type: "integer", minimum: 0 },
+          dailyRateJpy: { type: "integer", minimum: 0 },
+          fixedOrderPayJpy: { type: "integer", minimum: 0 },
+          commissionRatePercent: { type: "number", minimum: 0, maximum: 100 },
+          guaranteedMinimumJpy: { type: "integer", minimum: 0 },
+          ndpFeeBearer: { type: "string", enum: ["shop", "technician", "split"] },
+          technicianNdpSharePercent: { type: "number", minimum: 0, maximum: 100 },
+          bonusRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          deductionRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      EmployeePayrollSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "payslipId",
+          "periodStart",
+          "periodEnd",
+          "status",
+          "disputeStatus",
+          "completedOrderCount",
+          "workedMinutes",
+          "serviceIncomeJpy",
+          "basePayJpy",
+          "commissionJpy",
+          "bonusJpy",
+          "allowanceJpy",
+          "deductionJpy",
+          "platformFeeShareDeductionJpy",
+          "netPayJpy",
+          "paidAmountJpy",
+          "unpaidAmountJpy",
+          "payoutRecordCount"
+        ],
+        properties: {
+          payslipId: { type: ["integer", "null"], minimum: 1 },
+          periodStart: { type: ["string", "null"], format: "date-time" },
+          periodEnd: { type: ["string", "null"], format: "date-time" },
+          status: { type: ["string", "null"] },
+          disputeStatus: { type: ["string", "null"] },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          workedMinutes: { type: "integer", minimum: 0 },
+          serviceIncomeJpy: { type: "integer", minimum: 0 },
+          basePayJpy: { type: "integer" },
+          commissionJpy: { type: "integer" },
+          bonusJpy: { type: "integer" },
+          allowanceJpy: { type: "integer" },
+          deductionJpy: { type: "integer" },
+          platformFeeShareDeductionJpy: { type: "integer" },
+          netPayJpy: { type: "integer" },
+          paidAmountJpy: { type: "integer", minimum: 0 },
+          unpaidAmountJpy: { type: "integer", minimum: 0 },
+          payoutRecordCount: { type: "integer", minimum: 0 }
+        }
+      },
+      EmployeeCompensationResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["employee", "profile", "payrollSummary"],
+        properties: {
+          employee: {
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId"],
+            properties: { needoId: { type: "string", pattern: "^s\\d{10}$" } }
+          },
+          profile: { $ref: "#/components/schemas/EmployeeCompensationProfile" },
+          payrollSummary: { $ref: "#/components/schemas/EmployeePayrollSummary" }
+        }
+      },
+      EmployeeCompensationPreviewResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["employee", "profile", "preview"],
+        properties: {
+          employee: {
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId"],
+            properties: { needoId: { type: "string", pattern: "^s\\d{10}$" } }
+          },
+          profile: { $ref: "#/components/schemas/EmployeeCompensationProfile" },
+          preview: { $ref: "#/components/schemas/CompensationPreview" }
+        }
+      },
+      CompensationProfileInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "wageMode"],
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          wageMode: {
+            type: "string",
+            enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+          },
+          baseSalaryJpy: { type: "integer", minimum: 0, default: 0 },
+          hourlyRateJpy: { type: "integer", minimum: 0, default: 0 },
+          dailyRateJpy: { type: "integer", minimum: 0, default: 0 },
+          fixedOrderPayJpy: { type: "integer", minimum: 0, default: 0 },
+          commissionRatePercent: { type: "number", minimum: 0, maximum: 100, default: 60 },
+          guaranteedMinimumJpy: { type: "integer", minimum: 0, default: 0 },
+          ndpFeeBearer: {
+            type: "string",
+            enum: ["shop", "technician", "split"],
+            default: "shop"
+          },
+          technicianNdpSharePercent: {
+            type: "number",
+            minimum: 0,
+            maximum: 100,
+            default: 0
+          },
+          bonusRules: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          deductionRules: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" }
+        }
+      },
       OrderFinanceDetail: {
         type: "object",
         required: [
@@ -8048,6 +8218,105 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/compensation-profile`]: {
+      get: {
+        tags: ["Finance Center"],
+        summary: "Read an employee compensation rule and latest payroll summary by NeeDoID",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s\\d{10}$" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Employee compensation and payroll summary", {
+            $ref: "#/components/schemas/EmployeeCompensationResult"
+          }),
+          "400": { description: "error.validation — malformed technician NeeDoID" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing compensation read permission or shop identity" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      },
+      put: {
+        tags: ["Finance Center"],
+        summary: "Create a versioned compensation override for a current-shop employee",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s\\d{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CompensationProfileInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated employee compensation and payroll summary", {
+            $ref: "#/components/schemas/EmployeeCompensationResult"
+          }),
+          "400": { description: "error.validation — invalid compensation profile" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing compensation write permission or shop identity" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/compensation-profile/preview`]: {
+      post: {
+        tags: ["Finance Center"],
+        summary: "Preview the effective current-shop employee compensation rule",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s\\d{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["serviceAmountJpy"],
+                properties: {
+                  serviceAmountJpy: { type: "integer", minimum: 0 },
+                  platformFeeNdp: { type: "integer", minimum: 0, default: 500 },
+                  workedMinutes: { type: "integer", minimum: 0, default: 60 },
+                  monthlyCompletedOrders: { type: "integer", minimum: 0, default: 0 },
+                  monthlyServiceGmvJpy: { type: "integer", minimum: 0, default: 0 },
+                  ratingAverage: { type: "number", minimum: 0, maximum: 5, default: 0 },
+                  lateCancellationCount: { type: "integer", minimum: 0, default: 0 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Employee compensation preview", {
+            $ref: "#/components/schemas/EmployeeCompensationPreviewResult"
+          }),
+          "400": { description: "error.validation — invalid preview input" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing compensation preview permission or shop identity" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/payroll-schedule-policy`]: {
       get: {
         tags: ["Payroll Schedule Policy"],
