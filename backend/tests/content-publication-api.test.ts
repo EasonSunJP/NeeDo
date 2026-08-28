@@ -99,7 +99,7 @@ const fixture = () => {
     getPublishedScene: jest.fn(async (scene: string, locale: string) => ({
       scene,
       locale,
-      releaseVersion: 1,
+      releaseVersion: 1 as number | null,
       generatedAt: now.toISOString(),
       slides: [
         {
@@ -291,5 +291,108 @@ describe("formal carousel publication HTTP API", () => {
         /shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId|releaseId/
       );
     }
+  });
+
+  it.each(["zh-CN", "zh-TW", "en", "ja", "ko"])(
+    "accepts only the canonical public locale %s and fixes the scene in the route",
+    async (locale) => {
+      const f = fixture();
+      const authorization = `Bearer ${f.tokens[7]}`;
+
+      const user = await request(f.app)
+        .get(`/api/v1/content/carousels/user-home?locale=${encodeURIComponent(locale)}`)
+        .set("Authorization", authorization)
+        .expect(200);
+      const affiliate = await request(f.app)
+        .get(`/api/v1/affiliate/content/carousel?locale=${encodeURIComponent(locale)}`)
+        .set("Authorization", authorization)
+        .expect(200);
+
+      expect(user.body.data).toMatchObject({ scene: "USER_HOME", locale });
+      expect(affiliate.body.data).toMatchObject({ scene: "AFFILIATE_HOME_NOTICE", locale });
+      expect(f.service.getPublishedScene).toHaveBeenNthCalledWith(
+        1,
+        "USER_HOME",
+        locale,
+        expect.objectContaining({ userId: 7 })
+      );
+      expect(f.service.getPublishedScene).toHaveBeenNthCalledWith(
+        2,
+        "AFFILIATE_HOME_NOTICE",
+        locale,
+        expect.objectContaining({ userId: 7 })
+      );
+    }
+  );
+
+  it.each(["zh", "zh_CN", "jp", "en-US"])(
+    "rejects locale alias %s at both public API boundaries",
+    async (locale) => {
+      const f = fixture();
+      const authorization = `Bearer ${f.tokens[7]}`;
+      for (const path of [
+        "/api/v1/content/carousels/user-home",
+        "/api/v1/affiliate/content/carousel"
+      ]) {
+        await request(f.app)
+          .get(`${path}?locale=${encodeURIComponent(locale)}`)
+          .set("Authorization", authorization)
+          .expect(400)
+          .expect((response) => expect(response.body.message).toBe("error.content.locale_invalid"));
+      }
+      expect(f.service.getPublishedScene).not.toHaveBeenCalled();
+    }
+  );
+
+  it("requires authentication and the Affiliate marketplace page permission", async () => {
+    const f = fixture();
+    await request(f.app).get("/api/v1/content/carousels/user-home?locale=ja").expect(401);
+    await request(f.app).get("/api/v1/affiliate/content/carousel?locale=ja").expect(401);
+    await request(f.app)
+      .get("/api/v1/affiliate/content/carousel?locale=ja")
+      .set("Authorization", `Bearer ${f.tokens[8]}`)
+      .expect(403);
+    expect(f.service.getPublishedScene).not.toHaveBeenCalled();
+  });
+
+  it("returns a successful minimal zero-slide payload without historical fallback", async () => {
+    const f = fixture();
+    f.service.getPublishedScene.mockResolvedValueOnce({
+      scene: "USER_HOME",
+      locale: "ja",
+      releaseVersion: null,
+      generatedAt: now.toISOString(),
+      slides: []
+    });
+
+    const response = await request(f.app)
+      .get("/api/v1/content/carousels/user-home?locale=ja")
+      .set("Authorization", `Bearer ${f.tokens[7]}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual({
+      scene: "USER_HOME",
+      locale: "ja",
+      releaseVersion: null,
+      generatedAt: now.toISOString(),
+      slides: []
+    });
+  });
+
+  it("does not expose draft translations, slot keys, audit metadata, or numeric target IDs", async () => {
+    const f = fixture();
+    const response = await request(f.app)
+      .get("/api/v1/content/carousels/user-home?locale=ja")
+      .set("Authorization", `Bearer ${f.tokens[7]}`)
+      .expect(200);
+    const payload = JSON.stringify(response.body.data);
+
+    expect(payload).not.toMatch(
+      /releaseId|publishedSlotKey|translations|sourceLocale|isInitialCopy|createdBy|updatedBy|publishedBy|disabledBy|userId|shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId/
+    );
+    expect(response.body.data.slides[0].target).toEqual({
+      type: "shop",
+      publicId: "shop0000000001"
+    });
   });
 });

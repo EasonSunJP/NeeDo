@@ -141,8 +141,7 @@ export interface RollbackAnnouncementMutation extends IdempotentReleaseMutation 
   reason: string;
 }
 
-export interface OfficialAnnouncementRepositoryPort
-  extends ContentPublicationActivationRepositoryPort {
+export interface OfficialAnnouncementRepositoryPort extends ContentPublicationActivationRepositoryPort {
   createDraft(input: CreateAnnouncementDraftMutation): Promise<OfficialAnnouncementPayload>;
   list(input: { page: number; pageSize: number }): Promise<{
     list: OfficialAnnouncementPayload[];
@@ -433,6 +432,7 @@ export class OfficialAnnouncementService {
     publicId: string,
     locale: ContentLocaleCode
   ): Promise<PublicOfficialAnnouncementPayload> {
+    this.requireAffiliateIdentity(actor);
     const release = await this.repository.findPublished(publicId, locale, this.now());
     if (!release) {
       throw this.contentError("error.content.not_found", 404);
@@ -449,6 +449,16 @@ export class OfficialAnnouncementService {
       activatedAt: release.activatedAt,
       taskAction: await this.resolveTaskAction(actor, release.affiliateTaskId)
     };
+  }
+
+  private requireAffiliateIdentity(actor: AuthenticatedAccessContext): void {
+    if (actor.currentIdentityType !== "scout") {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.affiliate_profile.identity_required",
+        statusCode: 403
+      });
+    }
   }
 
   private async requireRelease(

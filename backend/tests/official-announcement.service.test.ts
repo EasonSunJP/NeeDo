@@ -20,6 +20,10 @@ const actor: AuthenticatedAccessContext = {
     "button:backoffice-affiliate-announcement-publish"
   ]
 };
+const affiliateActor: AuthenticatedAccessContext = {
+  ...actor,
+  currentIdentityType: "scout"
+};
 
 const context = { ip: "203.0.113.9", userAgent: "announcement-test-agent" };
 const idempotencyKey = "11111111-1111-4111-8111-111111111111";
@@ -510,7 +514,7 @@ describe("OfficialAnnouncementService", () => {
     );
     const service = new OfficialAnnouncementService(repo, tasks, { now: () => now });
 
-    const result = await service.getPublishedForAffiliate(actor, payload().publicId, "ja");
+    const result = await service.getPublishedForAffiliate(affiliateActor, payload().publicId, "ja");
 
     expect(result.taskAction).toBeNull();
     expect(result).not.toHaveProperty("affiliateTaskId");
@@ -523,7 +527,7 @@ describe("OfficialAnnouncementService", () => {
     repo.findPublished.mockResolvedValue(published({ locale: "en", title: "Important notice" }));
     const service = new OfficialAnnouncementService(repo, marketplace(), { now: () => now });
 
-    const result = await service.getPublishedForAffiliate(actor, payload().publicId, "en");
+    const result = await service.getPublishedForAffiliate(affiliateActor, payload().publicId, "en");
 
     expect(result).toMatchObject({
       publicId: payload().publicId,

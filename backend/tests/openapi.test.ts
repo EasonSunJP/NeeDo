@@ -1355,4 +1355,27 @@ describe("GET /api/v1/openapi.json", () => {
       ]
     });
   });
+
+  it("documents canonical Service UUID and legacy numeric identifiers on the same detail route", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, { parameters: Array<Record<string, unknown>> }>>;
+      components: {
+        schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
+      };
+    };
+    const operation = document.paths["/api/v1/services/{id}"].get;
+    const id = operation.parameters.find((parameter) => parameter.name === "id") as {
+      schema: { oneOf: Array<Record<string, unknown>> };
+    };
+
+    expect(id.schema.oneOf).toEqual([
+      { type: "integer", minimum: 1 },
+      { type: "string", format: "uuid" }
+    ]);
+    expect(document.components.schemas.ServiceCard.required).toContain("publicId");
+    expect(document.components.schemas.ServiceCard.properties).toHaveProperty("publicId", {
+      type: "string",
+      format: "uuid"
+    });
+  });
 });

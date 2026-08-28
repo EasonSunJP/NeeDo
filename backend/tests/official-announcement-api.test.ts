@@ -2,6 +2,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { OfficialAnnouncementService } from "../src/services/official-announcement.service";
 
 const now = new Date("2026-08-29T03:00:00.000Z");
 const publicId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -68,7 +69,7 @@ const createUser = (id: number, permissions: string[]) => ({
     {
       id: 100 + id,
       userId: id,
-      type: id === 8 ? "customer" : "admin",
+      type: id === 8 ? "scout" : id === 11 ? "customer" : "admin",
       scopeType: "global",
       scopeId: null,
       displayName: `Announcement ${id}`,
@@ -81,7 +82,7 @@ const createUser = (id: number, permissions: string[]) => ({
     {
       deletedAt: null,
       role: {
-        code: id === 8 ? "scout" : "operator",
+        code: id === 8 || id === 11 ? "scout" : "operator",
         deletedAt: null,
         rolePermissions: permissions.map((code) => ({
           deletedAt: null,
@@ -105,7 +106,8 @@ const createFixture = () => {
     ]),
     createUser(8, ["page:affiliate-marketplace"]),
     createUser(9, ["page:backoffice-affiliate-announcement"]),
-    createUser(10, ["button:backoffice-affiliate-announcement-edit"])
+    createUser(10, ["button:backoffice-affiliate-announcement-edit"]),
+    createUser(11, ["page:affiliate-marketplace"])
   ];
   const service = {
     list: jest.fn(async () => ({ list: [protectedPayload], total: 1, page: 1, page_size: 20 })),
@@ -119,18 +121,24 @@ const createFixture = () => {
     schedule: jest.fn(async () => ({ ...protectedPayload, status: "scheduled" })),
     disable: jest.fn(async () => ({ ...protectedPayload, status: "disabled" })),
     rollback: jest.fn(async () => ({ ...protectedPayload, releaseId: 72, version: 2 })),
-    getPublishedForAffiliate: jest.fn(async () => ({
-      publicId,
-      version: 1,
-      locale: "ja",
-      title: "お知らせ",
-      summary: null,
-      body: "本文",
-      visibleFrom: null,
-      visibleUntil: null,
-      activatedAt: now,
-      taskAction: { taskCode: "AFF-PUBLIC-29", label: "Visible task", claimable: true }
-    }))
+    getPublishedForAffiliate: jest.fn(
+      async (_actor: unknown, _publicId: string, locale: string) => ({
+        publicId,
+        version: 1,
+        locale,
+        title: "お知らせ",
+        summary: null,
+        body: "本文",
+        visibleFrom: null,
+        visibleUntil: null,
+        activatedAt: now,
+        taskAction: {
+          taskCode: "AFF-PUBLIC-29",
+          label: "Visible task",
+          claimable: true
+        } as { taskCode: string; label: string; claimable: boolean } | null
+      })
+    )
   };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
@@ -337,6 +345,132 @@ describe("official Affiliate announcement HTTP API", () => {
       expect.objectContaining({ userId: 8 }),
       publicId,
       "ja"
+    );
+  });
+
+  it.each(["zh-CN", "zh-TW", "en", "ja", "ko"])(
+    "accepts the canonical public announcement locale %s",
+    async (locale) => {
+      const fixture = createFixture();
+      const response = await request(fixture.app)
+        .get(`/api/v1/affiliate/announcements/${publicId}?locale=${encodeURIComponent(locale)}`)
+        .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+        .expect(200);
+
+      expect(response.body.data.locale).toBe(locale);
+      expect(response.body.data).not.toHaveProperty("translations");
+      expect(fixture.service.getPublishedForAffiliate).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 8, currentIdentityType: "scout" }),
+        publicId,
+        locale
+      );
+    }
+  );
+
+  it.each(["zh", "zh_CN", "jp", "en-US"])(
+    "rejects announcement locale alias %s at the API boundary",
+    async (locale) => {
+      const fixture = createFixture();
+      await request(fixture.app)
+        .get(`/api/v1/affiliate/announcements/${publicId}?locale=${encodeURIComponent(locale)}`)
+        .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+        .expect(400)
+        .expect((response) => expect(response.body.message).toBe("error.content.locale_invalid"));
+      expect(fixture.service.getPublishedForAffiliate).not.toHaveBeenCalled();
+    }
+  );
+
+  it("requires authentication and Affiliate marketplace page permission", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .get(`/api/v1/affiliate/announcements/${publicId}?locale=ja`)
+      .expect(401);
+    await request(fixture.app)
+      .get(`/api/v1/affiliate/announcements/${publicId}?locale=ja`)
+      .set("Authorization", `Bearer ${fixture.tokens[9]}`)
+      .expect(403);
+    expect(fixture.service.getPublishedForAffiliate).not.toHaveBeenCalled();
+  });
+
+  it("requires the active identity to be Affiliate even when the page permission is present", async () => {
+    const repository = {
+      findPublished: jest.fn(async () => ({
+        publicId,
+        releaseId: 71,
+        version: 1,
+        locale: "ja",
+        title: "お知らせ",
+        summary: null,
+        body: "本文",
+        visibleFrom: null,
+        visibleUntil: null,
+        activatedAt: now,
+        affiliateTaskId: null
+      }))
+    };
+    const service = new OfficialAnnouncementService(
+      repository as never,
+      {
+        getTask: jest.fn()
+      } as never
+    );
+    const app = createApp(undefined, {
+      redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
+      testOnlyAllowLegacyAuthAdapters: true,
+      authRepository: {
+        findUserById: jest.fn(async (id: number) =>
+          id === 11
+            ? {
+                ...createUser(11, ["page:affiliate-marketplace"]),
+                identities: [createUser(11, []).identities[0]]
+              }
+            : null
+        )
+      },
+      authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
+      otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
+      officialAnnouncementService: service
+    } as never);
+    const token = new AuthTokenService(env).issueAccessToken({
+      id: 11,
+      email: "announcement-11@example.test",
+      currentIdentityId: 111
+    }).token;
+
+    await request(app)
+      .get(`/api/v1/affiliate/announcements/${publicId}?locale=ja`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403)
+      .expect((response) =>
+        expect(response.body.message).toBe("error.affiliate_profile.identity_required")
+      );
+    expect(repository.findPublished).not.toHaveBeenCalled();
+  });
+
+  it("hides unavailable task actions and excludes internal publication metadata", async () => {
+    const fixture = createFixture();
+    fixture.service.getPublishedForAffiliate.mockResolvedValueOnce({
+      publicId,
+      version: 1,
+      locale: "ja",
+      title: "お知らせ",
+      summary: null,
+      body: "本文",
+      visibleFrom: null,
+      visibleUntil: null,
+      activatedAt: now,
+      taskAction: null
+    });
+
+    const response = await request(fixture.app)
+      .get(`/api/v1/affiliate/announcements/${publicId}?locale=ja`)
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .expect(200);
+    const payload = JSON.stringify(response.body.data);
+
+    expect(response.body.data.taskAction).toBeNull();
+    expect(payload).not.toMatch(
+      /releaseId|affiliateTaskId|translations|publishedSlotKey|sourceLocale|isInitialCopy|createdBy|updatedBy|publishedBy|disabledBy|userId/
     );
   });
 });

@@ -2067,6 +2067,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         required: [
           "id",
+          "publicId",
           "name",
           "description",
           "category",
@@ -2081,6 +2082,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
+          publicId: { type: "string", format: "uuid" },
           name: { type: "string" },
           description: { type: ["string", "null"] },
           category: { $ref: "#/components/schemas/Category" },
@@ -6901,9 +6903,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Public service detail",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", format: "uuid" }
+              ]
+            }
+          }
+        ],
         responses: {
           "200": { description: "Service detail" },
+          "400": { description: "error.validation" },
           "404": { description: "Service not found" }
         }
       }

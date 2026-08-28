@@ -7,6 +7,7 @@ import { CoreReadService } from "../services/core-read.service";
 import {
   categoryListQuerySchema,
   coreReadIdParamSchema,
+  coreReadServiceIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
   serviceListQuerySchema
@@ -31,7 +32,7 @@ export const createCoreReadRoutes = (dependencies: AppDependencies): Router => {
   );
   router.get(
     "/services/:id",
-    validateRequest({ params: coreReadIdParamSchema }),
+    validateRequest({ params: coreReadServiceIdParamSchema }),
     controller.getServiceDetail
   );
   router.get(

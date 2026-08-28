@@ -49,6 +49,7 @@ describe("Step 08 core read API", () => {
   };
   const serviceCard = {
     id: 1,
+    publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     name: "Shiatsu Recovery",
     description: "60 minute recovery session",
     category,
@@ -209,5 +210,34 @@ describe("Step 08 core read API", () => {
     expect(JSON.stringify(customerResponse.body)).not.toContain("passwordHash");
     expect(JSON.stringify(customerResponse.body)).not.toContain("email");
     expect(JSON.stringify(customerResponse.body)).not.toContain("phone");
+  });
+
+  it("resolves Service UUIDs to the same public detail while keeping numeric strings numeric", async () => {
+    const fixture = createFixture();
+    const servicePublicId = serviceCard.publicId;
+
+    const legacyResponse = await request(fixture.app).get("/api/v1/services/1").expect(200);
+    const publicResponse = await request(fixture.app)
+      .get(`/api/v1/services/${servicePublicId}`)
+      .expect(200);
+
+    expect(publicResponse.body.data).toEqual(legacyResponse.body.data);
+    expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenNthCalledWith(1, 1);
+    expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenNthCalledWith(
+      2,
+      servicePublicId
+    );
+  });
+
+  it("rejects malformed Service identifiers without treating numeric strings as UUIDs", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/services/not-a-service-id").expect(400);
+    await request(fixture.app).get("/api/v1/services/0").expect(400);
+    expect(fixture.coreReadRepository.findServiceDetail).not.toHaveBeenCalled();
+
+    await request(fixture.app).get("/api/v1/services/123").expect(200);
+    expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenCalledWith(123);
+    expect(fixture.coreReadRepository.findServiceDetail).not.toHaveBeenCalledWith("123");
   });
 });
