@@ -67,6 +67,25 @@ export interface PaginatedMerchantEmployees {
   page_size: number;
 }
 
+export type EmployeeTimelineTone = "accent" | "red" | "neutral";
+
+export interface EmployeeTimelineEvent {
+  id: string;
+  at: string;
+  actorName: string;
+  actorAvatarUrl: string | null;
+  actorRole: string;
+  message: string;
+  tone: EmployeeTimelineTone;
+}
+
+export interface PaginatedEmployeeTimeline {
+  list: EmployeeTimelineEvent[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export type EmployeeScheduleView = "day" | "week" | "month";
 
 interface EmployeeScheduleEventBase {
@@ -157,6 +176,23 @@ export const merchantEmployeeApi = {
           to: query.to,
           view: query.view,
         },
+      },
+    );
+  },
+
+  timeline(needoId: string, page = 1, pageSize = 20) {
+    return httpClient.request<PaginatedEmployeeTimeline>(
+      `${employeePath(needoId)}/timeline`,
+      { query: { page, pageSize } },
+    );
+  },
+
+  addTimelineComment(needoId: string, message: string) {
+    return httpClient.request<{ created: true }>(
+      `${employeePath(needoId)}/timeline/comments`,
+      {
+        body: { message: message.trim() },
+        method: "POST",
       },
     );
   },

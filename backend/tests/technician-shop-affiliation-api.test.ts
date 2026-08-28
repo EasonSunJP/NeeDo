@@ -50,6 +50,22 @@ const createRepository = (): jest.Mocked<TechnicianShopAffiliationRepositoryPort
       page_size: 20
     })),
     findCurrentShopEmployee: jest.fn(async () => employee),
+    listCurrentShopEmployeeTimeline: jest.fn(async () => ({
+      list: [
+        {
+          id: "audit-501",
+          at: "2026-08-28T15:43:00.000Z",
+          actorName: "LifeDance 管理员",
+          actorAvatarUrl: "/admin-avatar.png",
+          actorRole: "基本资料",
+          message: "更新了姓名、城市",
+          tone: "accent" as const
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    })),
     listCurrentShopEmployeeSchedule: jest.fn(async () => [
       {
         projectionId: "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
@@ -282,6 +298,51 @@ describe("merchant employee affiliation HTTP API", () => {
       )
       .set("Authorization", authorization)
       .expect(400);
+  });
+
+  it("lists semantic timeline events and persists comments with dedicated permissions", async () => {
+    const fixture = createFixture();
+    const authorization = `Bearer ${fixture.token}`;
+    const timelineEndpoint =
+      "/api/v1/merchant-admin/employees/s0000000086/timeline?page=1&pageSize=20";
+
+    await request(fixture.app)
+      .get(timelineEndpoint)
+      .set("Authorization", authorization)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          list: [
+            {
+              id: "audit-501",
+              actorName: "LifeDance 管理员",
+              actorRole: "基本资料",
+              message: "更新了姓名、城市"
+            }
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20
+        });
+        expect(JSON.stringify(response.body.data)).not.toContain("merchant_admin.");
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/employees/s0000000086/timeline/comments")
+      .set("Authorization", authorization)
+      .send({ message: "已与员工确认本月现金结算。" })
+      .expect(201)
+      .expect((response) => {
+        expect(response.body.data).toEqual({ created: true });
+      });
+
+    expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "merchant_admin.employee_timeline.comment",
+        targetId: 91,
+        metadata: { message: "已与员工确认本月现金结算。", shopId: 16 }
+      })
+    );
   });
 
   it("validates strict mutation dates and maps an exclusivity collision to safe 409", async () => {

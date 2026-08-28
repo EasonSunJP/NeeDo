@@ -42,6 +42,25 @@ export interface MerchantEmployeePayload {
   };
 }
 
+export type EmployeeTimelineTone = "accent" | "red" | "neutral";
+
+export interface EmployeeTimelineEventPayload {
+  id: string;
+  at: string;
+  actorName: string;
+  actorAvatarUrl: string | null;
+  actorRole: string;
+  message: string;
+  tone: EmployeeTimelineTone;
+}
+
+export type EmployeeTimelineListInput = PaginationInput;
+
+export interface EmployeeTimelineRepositoryInput extends EmployeeTimelineListInput {
+  affiliationId: number;
+  shopId: number;
+}
+
 export interface EmployeeProfileUpdateInput {
   displayName?: string;
   bio?: string | null;
@@ -162,6 +181,9 @@ export interface TechnicianShopAffiliationRepositoryPort {
   listCurrentShopEmployeeSchedule(
     input: EmployeeScheduleRepositoryInput
   ): Promise<EmployeeScheduleEvent[] | null>;
+  listCurrentShopEmployeeTimeline(
+    input: EmployeeTimelineRepositoryInput
+  ): Promise<PaginatedResponse<EmployeeTimelineEventPayload>>;
   updateCurrentShopEmployeeProfile(
     input: EmployeeProfileUpdateRepositoryInput
   ): Promise<MerchantEmployeePayload | null>;
@@ -263,6 +285,48 @@ export class TechnicianShopAffiliationService {
       },
       events
     };
+  }
+
+  public async getCurrentShopEmployeeTimeline(
+    actor: AuthenticatedAccessContext,
+    publicId: string,
+    input: EmployeeTimelineListInput
+  ): Promise<PaginatedResponse<EmployeeTimelineEventPayload>> {
+    const shopId = this.requireMerchantShopScope(actor);
+    const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
+    const employee = await this.repository.findCurrentShopEmployee(shopId, technicianIdentityId);
+    if (!employee) throw this.notFound();
+
+    return this.repository.listCurrentShopEmployeeTimeline({
+      affiliationId: employee.affiliation.id,
+      shopId,
+      ...input
+    });
+  }
+
+  public async addCurrentShopEmployeeTimelineComment(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    message: string
+  ): Promise<{ created: true }> {
+    const shopId = this.requireMerchantShopScope(actor);
+    if (actor.isReadOnlyMerchantPreview) {
+      throw this.forbidden();
+    }
+    const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
+    const employee = await this.repository.findCurrentShopEmployee(shopId, technicianIdentityId);
+    if (!employee) throw this.notFound();
+
+    await this.auditLogService.record({
+      actor,
+      action: "merchant_admin.employee_timeline.comment",
+      targetType: "technician_shop_affiliation",
+      targetId: employee.affiliation.id,
+      context,
+      metadata: { message, shopId }
+    });
+    return { created: true };
   }
 
   public async upsertCurrentShopAffiliation(

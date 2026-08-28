@@ -21,6 +21,19 @@ export const merchantEmployeeListQuerySchema = z
   })
   .strict();
 
+export const merchantEmployeeTimelineQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20)
+  })
+  .strict();
+
+export const merchantEmployeeTimelineCommentBodySchema = z
+  .object({
+    message: z.string().trim().min(1).max(1000)
+  })
+  .strict();
+
 const employeeScheduleDateSchema = z
   .union([z.date(), z.string().datetime({ offset: true })])
   .transform((value) => (value instanceof Date ? value : new Date(value)));
@@ -95,6 +108,9 @@ export const merchantEmployeeProfileBodySchema = z
   });
 
 export type ParsedMerchantEmployeeListQuery = z.output<typeof merchantEmployeeListQuerySchema>;
+export type ParsedMerchantEmployeeTimelineQuery = z.output<
+  typeof merchantEmployeeTimelineQuerySchema
+>;
 export type ParsedMerchantEmployeeAffiliationBody = z.output<
   typeof merchantEmployeeAffiliationBodySchema
 >;

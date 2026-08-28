@@ -154,6 +154,71 @@ describe("TechnicianShopAffiliationRepository", () => {
     );
   });
 
+  it("maps scoped audit mutations into paginated semantic employee events", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 501,
+        action: "merchant_admin.employee_profile.update",
+        metadata: { changedFields: ["displayName", "city"] },
+        createdAt: new Date("2026-08-28T15:43:00.000Z"),
+        actor: {
+          username: "LifeDance 管理员",
+          email: "admin@example.jp",
+          avatarUrl: "/admin-avatar.png"
+        }
+      }
+    ]);
+    const count = jest.fn().mockResolvedValue(1);
+    const transaction = jest.fn(async (queries: Array<Promise<unknown>>) =>
+      Promise.all(queries)
+    );
+    const repository = new TechnicianShopAffiliationRepository({
+      auditLog: { findMany, count },
+      $transaction: transaction
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeTimeline({
+      affiliationId: 91,
+      shopId: 16,
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result).toEqual({
+      list: [
+        {
+          id: "audit-501",
+          at: "2026-08-28T15:43:00.000Z",
+          actorName: "LifeDance 管理员",
+          actorAvatarUrl: "/admin-avatar.png",
+          actorRole: "基本资料",
+          message: "更新了姓名、城市",
+          tone: "accent"
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          action: { in: expect.arrayContaining(["merchant_admin.employee_profile.update"]) },
+          targetType: "technician_shop_affiliation",
+          targetId: 91,
+          deletedAt: null
+        },
+        skip: 0,
+        take: 20
+      })
+    );
+    expect(findMany.mock.calls[0]?.[0]?.select?.actor?.select).toEqual({
+      username: true,
+      avatarUrl: true
+    });
+    expect(JSON.stringify(result)).not.toMatch(/changedFields|merchant_admin|shopId|targetId/);
+  });
+
   it("projects partner availability and merges other-shop confirmed time without leaking details", async () => {
     const bookingFindMany = jest
       .fn()

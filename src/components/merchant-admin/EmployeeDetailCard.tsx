@@ -15,9 +15,15 @@ import type {
   MerchantEmployee,
   MerchantEmployeeAffiliationUpdate,
   MerchantEmployeeProfileUpdate,
+  PaginatedEmployeeTimeline,
 } from "../../features/merchant-admin/employeeApi";
+import { useOptionalAuth } from "../../auth/AuthProvider";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
+import {
+  ContactEventTimelinePanel,
+  type ContactEventTimelineEntry,
+} from "../mobile/ContactEventTimeline";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { PayrollSchedulePolicyEditor } from "./PayrollSchedulePolicyEditor";
@@ -40,6 +46,9 @@ interface EmployeeDetailCardProps {
   payrollPolicyError: string;
   payrollPolicyLoading: boolean;
   payrollPolicySaving: boolean;
+  timeline: PaginatedEmployeeTimeline | null;
+  timelineError: string;
+  timelineLoading: boolean;
   onRetryPayrollPolicy: () => void;
   onRetryCompensation: () => void;
   onSaveCompensation: (
@@ -52,6 +61,8 @@ interface EmployeeDetailCardProps {
     input: EmployeePayrollSchedulePolicyInput,
   ) => Promise<void>;
   onSaveProfile: (input: MerchantEmployeeProfileUpdate) => Promise<void>;
+  onRetryTimeline: () => void;
+  onSubmitTimelineComment: (message: string) => Promise<void>;
   onSaveAffiliation: (
     input: MerchantEmployeeAffiliationUpdate,
   ) => Promise<void>;
@@ -123,6 +134,34 @@ function compactDate(value: string, locale: string) {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date);
 }
 
+function localizeTimelineMessage(
+  message: string,
+  actorRole: string,
+  language: "zh" | "zh-Hant" | "ja" | "en" | "ko",
+  t: (source: string) => string,
+) {
+  if (actorRole === "财务备注") return message;
+  if (actorRole === "基本资料" && message.startsWith("更新了")) {
+    const fields = message.slice(3).split("、").map(t).join(
+      language === "en" ? ", " : language === "ja" ? "・" : "、",
+    );
+    if (language === "ja") return `${fields}を更新しました`;
+    if (language === "en") return `Updated ${fields}`;
+    if (language === "ko") return `${fields} 업데이트`;
+    return `${t("更新了")}${fields}`;
+  }
+  const affiliation = message.match(/^更新为(.+)，当前状态：(.+)$/);
+  if (actorRole === "从属关系" && affiliation) {
+    const relationship = t(affiliation[1]);
+    const status = t(affiliation[2]);
+    if (language === "ja") return `${relationship}、現在の状態：${status}`;
+    if (language === "en") return `Changed to ${relationship}; current status: ${status}`;
+    if (language === "ko") return `${relationship}(으)로 변경, 현재 상태: ${status}`;
+    return `${t("更新为")}${relationship}，${t("当前状态：")}${status}`;
+  }
+  return t(message);
+}
+
 export function EmployeeDetailCard({
   compensation,
   compensationError,
@@ -144,7 +183,13 @@ export function EmployeeDetailCard({
   payrollPolicyLoading,
   payrollPolicySaving,
   saving,
+  timeline,
+  timelineError,
+  timelineLoading,
+  onRetryTimeline,
+  onSubmitTimelineComment,
 }: EmployeeDetailCardProps) {
+  const auth = useOptionalAuth();
   const { language } = useOptionalI18n();
   const t = (source: string) => translateText(source, language);
   const [profileEditing, setProfileEditing] = useState(false);
@@ -227,6 +272,52 @@ export function EmployeeDetailCard({
   const profileSaving = saving === "profile";
   const affiliationSaving = saving === "affiliation";
   const blocked = saving !== null || payrollPolicySaving || compensationSaving;
+  const timelineEvents = useMemo<ContactEventTimelineEntry[]>(() => {
+    const auditedEvents: ContactEventTimelineEntry[] = (timeline?.list ?? []).map(
+      (event) => ({
+        actorAvatarSrc: event.actorAvatarUrl ?? undefined,
+        actorName: event.actorName,
+        actorRole: t(event.actorRole),
+        atLabel: event.at,
+        id: event.id,
+        message: localizeTimelineMessage(
+          event.message,
+          event.actorRole,
+          language,
+          t,
+        ),
+        title: t(event.actorRole),
+        tone: event.tone,
+      }),
+    );
+    const persistedProfileEvents: ContactEventTimelineEntry[] = [];
+
+    if (employee.verifiedAt) {
+      persistedProfileEvents.push({
+        actorName: t("NeeDo 系统"),
+        actorRole: t("档案验证"),
+        atLabel: employee.verifiedAt,
+        id: `verified-${employee.needoId}`,
+        message: t("员工档案已通过验证"),
+        title: t("档案验证"),
+        tone: "green",
+      });
+    }
+
+    persistedProfileEvents.push({
+      actorName: t("NeeDo 系统"),
+      actorRole: t("从属关系"),
+      atLabel: employee.affiliation.startsAt,
+      id: `affiliation-${employee.needoId}-${employee.affiliation.shop.publicId}`,
+      message: `${t("加入店铺并建立员工从属关系")} · ${employee.affiliation.shop.name}`,
+      title: t("从属关系"),
+      tone: "green",
+    });
+
+    return [...auditedEvents, ...persistedProfileEvents].sort((left, right) =>
+      String(right.atLabel).localeCompare(String(left.atLabel)),
+    );
+  }, [employee, language, timeline]);
 
   return (
     <article className="space-y-5" data-testid="employee-detail-card">
@@ -611,6 +702,36 @@ export function EmployeeDetailCard({
           </Badge>
         </div>
       </section>
+
+      <div>
+        {timelineLoading ? (
+          <div className="rounded-[24px] border border-line bg-white px-5 py-6 text-sm font-bold text-ink/50 shadow-sm">
+            {t("正在读取员工动态...")}
+          </div>
+        ) : timelineError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-coral/35 bg-coral/10 px-5 py-4 text-sm font-bold text-[#9b3f35]">
+            <span>{timelineError}</span>
+            <Button onClick={onRetryTimeline} size="sm" variant="secondary">
+              {t("重试")}
+            </Button>
+          </div>
+        ) : (
+          <ContactEventTimelinePanel
+            className="border-line bg-white shadow-sm"
+            commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
+            commentAuthorName={auth?.session?.username ?? t("当前管理员")}
+            commentAuthorRole={t("员工备注")}
+            commentButtonLabel={t("评论")}
+            commentPlaceholder={t("写下员工档案备注...")}
+            emptyLabel={t("暂无员工动态。")}
+            events={timelineEvents}
+            onCommentSubmit={(message) => {
+              void onSubmitTimelineComment(message).catch(() => undefined);
+            }}
+            title={t("员工动态")}
+          />
+        )}
+      </div>
 
       <EmployeeSchedulePanel employee={employee} />
 

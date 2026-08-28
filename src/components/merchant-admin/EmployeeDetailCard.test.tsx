@@ -186,6 +186,26 @@ async function renderCard(
         onSaveAffiliation={vi.fn(async () => undefined)}
         onSaveProfile={vi.fn(async () => undefined)}
         saving={null}
+        timeline={{
+          list: [
+            {
+              id: "audit-501",
+              at: "2026-08-28T15:43:00.000Z",
+              actorName: "LifeDance 管理员",
+              actorAvatarUrl: "/admin-avatar.png",
+              actorRole: "基本资料",
+              message: "更新了姓名、城市",
+              tone: "accent",
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        }}
+        timelineError=""
+        timelineLoading={false}
+        onRetryTimeline={vi.fn()}
+        onSubmitTimelineComment={vi.fn(async () => undefined)}
         {...props}
       />,
     );
@@ -246,7 +266,31 @@ describe("EmployeeDetailCard", () => {
     expect(container.textContent).not.toContain("薪酬设置");
     expect(container.textContent).toContain("薪酬与结算 · NEEDO-S-47");
     expect(container.textContent).not.toContain("时间线");
+    expect(container.textContent).toContain("员工动态");
+    expect(container.textContent).toContain("LifeDance 管理员（基本资料）：更新了姓名、城市");
     expect(container.textContent).toContain("员工日程 · NEEDO-S-47");
+  });
+
+  it("uses the shared event timeline and persists comments through the parent", async () => {
+    const onSubmitTimelineComment = vi.fn(async () => undefined);
+    await renderCard({ onSubmitTimelineComment });
+
+    await act(async () => button("评论").click());
+    const textarea = container.querySelector<HTMLTextAreaElement>(
+      'textarea[placeholder="写下员工档案备注..."]',
+    );
+    expect(textarea).not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      setter?.call(textarea, "已确认本月结算。");
+      textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button("发送").click());
+
+    expect(onSubmitTimelineComment).toHaveBeenCalledWith("已确认本月结算。");
   });
 
   it("submits edited basic profile fields through the real mutation contract", async () => {

@@ -3872,6 +3872,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      MerchantEmployeeTimelineEvent: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "at", "actorName", "actorAvatarUrl", "actorRole", "message", "tone"],
+        properties: {
+          id: { type: "string", pattern: "^audit-[0-9]+$" },
+          at: { type: "string", format: "date-time" },
+          actorName: { type: "string" },
+          actorAvatarUrl: { type: ["string", "null"], format: "uri-reference" },
+          actorRole: { type: "string" },
+          message: { type: "string" },
+          tone: { type: "string", enum: ["accent", "red", "neutral"] }
+        }
+      },
+      MerchantEmployeeTimelinePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MerchantEmployeeTimelineEvent" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      MerchantEmployeeTimelineCommentInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["message"],
+        properties: {
+          message: { type: "string", minLength: 1, maxLength: 1000 }
+        }
+      },
       MerchantEmployeeScheduleVisibleEvent: {
         type: "object",
         additionalProperties: false,
@@ -4324,6 +4360,56 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": merchantEmployeeErrorResponses["401"],
           "403": merchantEmployeeErrorResponses["403"],
           "404": merchantEmployeeErrorResponses["404"]
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/timeline`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "List semantic employee result events",
+        description:
+          "Returns only mutation outcomes for the authenticated shop affiliation. Read and preview audit actions, internal IDs, raw actions, and raw metadata are not exposed.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          merchantEmployeeNeedoIdParameter,
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated employee event timeline", {
+            $ref: "#/components/schemas/MerchantEmployeeTimelinePage"
+          }),
+          ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/timeline/comments`]: {
+      post: {
+        tags: ["Merchant Employees"],
+        summary: "Add an employee timeline comment",
+        description:
+          "Persists a scoped audit comment. It does not change payroll status or initiate a payment.",
+        security: [{ bearerAuth: [] }],
+        parameters: [merchantEmployeeNeedoIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantEmployeeTimelineCommentInput" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Employee timeline comment created", {
+            type: "object",
+            required: ["created"],
+            properties: { created: { type: "boolean", enum: [true] } }
+          }),
+          ...merchantEmployeeErrorResponses
         }
       }
     },

@@ -8,6 +8,8 @@ import type {
   EmployeeRelationshipType,
   EmployeeScheduleEvent,
   EmployeeScheduleRepositoryInput,
+  EmployeeTimelineEventPayload,
+  EmployeeTimelineRepositoryInput,
   EmployeeWorkStatus,
   MerchantEmployeePayload,
   TechnicianShopAffiliationRepositoryPort
@@ -17,6 +19,67 @@ import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination"
 const CURRENT_WORK_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED"] as const;
 const CURRENT_BOOKING_STATUSES = ["PENDING", "CONFIRMED", "IN_SERVICE", "COMPLETED"] as const;
 const BUSY_BOOKING_STATUSES = ["CONFIRMED", "IN_SERVICE"] as const;
+const EMPLOYEE_TIMELINE_ACTIONS = [
+  "merchant_admin.employee_profile.update",
+  "merchant_admin.employee_affiliation.update",
+  "merchant_admin.compensation_profile.update",
+  "merchant_admin.employee_payroll_schedule_override.update",
+  "merchant_admin.employee_timeline.comment"
+] as const;
+
+const employeeProfileFieldLabels: Record<string, string> = {
+  bio: "个人简介",
+  city: "城市",
+  displayName: "姓名",
+  serviceArea: "服务区域",
+  yearsExperience: "从业年限"
+};
+
+function auditMetadata(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function timelineRole(action: string) {
+  if (action === "merchant_admin.employee_profile.update") return "基本资料";
+  if (action === "merchant_admin.employee_affiliation.update") return "从属关系";
+  if (action === "merchant_admin.compensation_profile.update") return "薪酬方案";
+  if (action === "merchant_admin.employee_payroll_schedule_override.update") return "结算周期";
+  return "财务备注";
+}
+
+function timelineMessage(action: string, metadata: Record<string, unknown>) {
+  if (action === "merchant_admin.employee_profile.update") {
+    const fields = Array.isArray(metadata.changedFields)
+      ? metadata.changedFields
+          .filter((field): field is string => typeof field === "string")
+          .map((field) => employeeProfileFieldLabels[field] ?? field)
+      : [];
+    return fields.length > 0 ? `更新了${fields.join("、")}` : "更新了员工基本资料";
+  }
+  if (action === "merchant_admin.employee_affiliation.update") {
+    const relationship = metadata.relationshipType === "exclusive" ? "专属技师" : "合作技师";
+    const status =
+      metadata.workStatus === "active"
+        ? "在职"
+        : metadata.workStatus === "on_leave"
+          ? "休假"
+          : metadata.workStatus === "suspended"
+            ? "停职"
+            : "已离职";
+    return `更新为${relationship}，当前状态：${status}`;
+  }
+  if (action === "merchant_admin.compensation_profile.update") {
+    return "更新了员工薪酬与分成方案";
+  }
+  if (action === "merchant_admin.employee_payroll_schedule_override.update") {
+    return metadata.inheritShopPolicy
+      ? "改为继承店铺工资结算周期"
+      : "更新了员工独立工资结算周期";
+  }
+  return typeof metadata.message === "string" ? metadata.message : "添加了员工档案备注";
+}
 
 type ScheduleRange = { startsAt: Date; endsAt: Date };
 
@@ -419,6 +482,54 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       `${left.startsAt}:${left.endsAt}:${left.projectionId}`.localeCompare(
         `${right.startsAt}:${right.endsAt}:${right.projectionId}`
       )
+    );
+  }
+
+  public async listCurrentShopEmployeeTimeline(
+    input: EmployeeTimelineRepositoryInput
+  ) {
+    const where = {
+      action: { in: [...EMPLOYEE_TIMELINE_ACTIONS] },
+      targetType: "technician_shop_affiliation",
+      targetId: input.affiliationId,
+      deletedAt: null
+    } satisfies Prisma.AuditLogWhereInput;
+    const { skip, take } = toPrismaPagination(input);
+    const [rows, total] = await this.client.$transaction([
+      this.client.auditLog.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip,
+        take,
+        select: {
+          id: true,
+          action: true,
+          metadata: true,
+          createdAt: true,
+          actor: { select: { username: true, avatarUrl: true } }
+        }
+      }),
+      this.client.auditLog.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      rows.map((row): EmployeeTimelineEventPayload => {
+        const metadata = auditMetadata(row.metadata);
+        const blockingStatus =
+          row.action === "merchant_admin.employee_affiliation.update" &&
+          (metadata.workStatus === "suspended" || metadata.workStatus === "ended");
+        return {
+          id: `audit-${row.id}`,
+          at: row.createdAt.toISOString(),
+          actorName: row.actor?.username ?? "NeeDo 系统",
+          actorAvatarUrl: row.actor?.avatarUrl ?? null,
+          actorRole: timelineRole(row.action),
+          message: timelineMessage(row.action, metadata),
+          tone: blockingStatus ? "red" : "accent"
+        };
+      }),
+      total,
+      input
     );
   }
 

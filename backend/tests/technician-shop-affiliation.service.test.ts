@@ -81,6 +81,22 @@ const setup = () => {
       page_size: 20
     }),
     findCurrentShopEmployee: jest.fn().mockResolvedValue(employee()),
+    listCurrentShopEmployeeTimeline: jest.fn().mockResolvedValue({
+      list: [
+        {
+          id: "audit-501",
+          at: "2026-08-28T15:43:00.000Z",
+          actorName: "LifeDance 管理员",
+          actorAvatarUrl: "/admin-avatar.png",
+          actorRole: "基本资料",
+          message: "更新了姓名、城市",
+          tone: "accent" as const
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    }),
     listCurrentShopEmployeeSchedule: jest.fn().mockResolvedValue([
       {
         projectionId: "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
@@ -212,6 +228,51 @@ describe("TechnicianShopAffiliationService", () => {
       expect.objectContaining({
         action: "merchant_admin.employee_schedule.read",
         metadata: { eventCount: 1, shopId: 16 }
+      })
+    );
+  });
+
+  it("returns only the current shop employee result timeline without writing a read audit", async () => {
+    const { service, repository, audit } = setup();
+
+    await expect(
+      service.getCurrentShopEmployeeTimeline(
+        actorForShop(16),
+        "s0000000047",
+        { page: 1, pageSize: 20 }
+      )
+    ).resolves.toMatchObject({
+      list: [{ actorRole: "基本资料", message: "更新了姓名、城市" }],
+      total: 1
+    });
+
+    expect(repository.listCurrentShopEmployeeTimeline).toHaveBeenCalledWith({
+      affiliationId: 31,
+      page: 1,
+      pageSize: 20,
+      shopId: 16
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("persists an employee timeline comment as a scoped audit event", async () => {
+    const { service, audit } = setup();
+
+    await expect(
+      service.addCurrentShopEmployeeTimelineComment(
+        actorForShop(16),
+        context,
+        "s0000000047",
+        "已与员工确认本月现金结算。"
+      )
+    ).resolves.toEqual({ created: true });
+
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "merchant_admin.employee_timeline.comment",
+        targetType: "technician_shop_affiliation",
+        targetId: 31,
+        metadata: { message: "已与员工确认本月现金结算。", shopId: 16 }
       })
     );
   });
