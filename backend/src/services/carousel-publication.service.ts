@@ -585,7 +585,7 @@ export class CarouselPublicationService {
     ) {
       throw this.carouselError("error.carousel.no_visible_slide", 409);
     }
-    return sorted.map((slide) => {
+    const normalized = sorted.map((slide) => {
       this.assertTarget(scene, slide.target);
       if (
         slide.visibleFrom &&
@@ -625,6 +625,9 @@ export class CarouselPublicationService {
         translations
       };
     });
+    if (new Set(normalized.map((slide) => slide.publicId)).size !== normalized.length)
+      throw this.carouselError("error.carousel.sort_invalid", 409);
+    return normalized;
   }
 
   private assertCompleteTranslation(value: CarouselTranslationInput): void {

@@ -264,7 +264,8 @@ describe("CarouselPublicationRepository", () => {
         slides: CreateCarouselDraftMutation["slides"],
         actorUserId: number,
         effectiveAt: Date,
-        validateAffiliateTask: (taskId: number) => Promise<void>
+        validateAffiliateTask: (taskId: number) => Promise<void>,
+        scopeShopId: number | null
       ) => Promise<Array<{ mediaAssetId: number; target: { type: "shop"; shopId: number } }>>;
     };
     const result = await resolver.resolveSlides(
@@ -284,7 +285,8 @@ describe("CarouselPublicationRepository", () => {
       ],
       41,
       now,
-      jest.fn(async () => undefined)
+      jest.fn(async () => undefined),
+      null
     );
     expect(mediaFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -354,6 +356,118 @@ describe("CarouselPublicationRepository", () => {
       })
     );
     expect(JSON.stringify(result)).not.toMatch(/shopId|technicianProfileId|serviceId/);
+  });
+
+  it("combines technician shop scope and text search without overwriting either predicate", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const repository = new CarouselPublicationRepository({
+      technicianProfile: { findMany, count }
+    } as never);
+
+    await repository.searchTargets({
+      scene: "USER_HOME",
+      type: "technician",
+      q: "Scoped",
+      page: 1,
+      pageSize: 10,
+      scopeShopId: 7,
+      actor: createInput.actor,
+      now,
+      validateAffiliateTask: jest.fn(async () => undefined)
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { shopId: 7 },
+                {
+                  technicianShopAffiliations: {
+                    some: { shopId: 7, workStatus: "ACTIVE", deletedAt: null }
+                  }
+                }
+              ]
+            },
+            { OR: [{ displayName: { contains: "Scoped" } }, { city: { contains: "Scoped" } }] }
+          ]
+        })
+      })
+    );
+  });
+
+  it("enforces shop scope while resolving directly submitted picker targets", async () => {
+    const shopFindFirst = jest.fn(async () => null);
+    const technicianFindFirst = jest.fn(async () => null);
+    const serviceFindFirst = jest.fn(async () => null);
+    const repository = new CarouselPublicationRepository({} as never);
+    const resolver = repository as unknown as {
+      resolveTarget: (
+        tx: unknown,
+        scene: "USER_HOME",
+        target:
+          | { type: "shop"; publicId: string }
+          | { type: "technician"; technicianProfileId: number }
+          | { type: "service"; serviceId: number },
+        scopeShopId: number | null
+      ) => Promise<unknown>;
+    };
+    const transaction = {
+      shop: { findFirst: shopFindFirst },
+      technicianProfile: { findFirst: technicianFindFirst },
+      service: { findFirst: serviceFindFirst }
+    };
+
+    await expect(
+      resolver.resolveTarget(
+        transaction,
+        "USER_HOME",
+        { type: "shop", publicId: "shop0000000099" },
+        7
+      )
+    ).rejects.toMatchObject({ message: "error.content.target_unavailable" });
+    await expect(
+      resolver.resolveTarget(
+        transaction,
+        "USER_HOME",
+        { type: "technician", technicianProfileId: 99 },
+        7
+      )
+    ).rejects.toMatchObject({ message: "error.content.target_unavailable" });
+    await expect(
+      resolver.resolveTarget(transaction, "USER_HOME", { type: "service", serviceId: 99 }, 7)
+    ).rejects.toMatchObject({ message: "error.content.target_unavailable" });
+
+    expect(shopFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ AND: expect.arrayContaining([{ id: 7 }]) })
+      })
+    );
+    expect(technicianFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            {
+              OR: [
+                { shopId: 7 },
+                {
+                  technicianShopAffiliations: {
+                    some: { shopId: 7, workStatus: "ACTIVE", deletedAt: null }
+                  }
+                }
+              ]
+            }
+          ])
+        })
+      })
+    );
+    expect(serviceFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ AND: expect.arrayContaining([{ shopId: 7 }]) })
+      })
+    );
   });
 
   it("searches only current published announcements inside shop scope", async () => {
@@ -437,7 +551,7 @@ describe("CarouselPublicationRepository", () => {
     expect(JSON.stringify(result)).not.toMatch(/"id"|taskId|affiliateTaskId/);
   });
 
-  it("keeps mixed user-home pagination stable with one merge comparator", async () => {
+  it("keeps mixed user-home pagination stable in type-grouped database order", async () => {
     const shops = [
       [1, "Zulu", "shop0000000001"],
       [2, "Echo", "shop0000000002"],
@@ -519,14 +633,14 @@ describe("CarouselPublicationRepository", () => {
     const flattened = pages.flatMap((page) => page.list);
     expect(flattened.map((item) => item.label)).toEqual([
       "Alpha",
-      "Bravo",
-      "Charlie",
       "Echo",
+      "Zulu",
+      "Bravo",
       "Foxtrot",
-      "Golf",
-      "Xray",
       "Yankee",
-      "Zulu"
+      "Charlie",
+      "Golf",
+      "Xray"
     ]);
     expect(new Set(flattened.map((item) => `${item.type}:${item.label}`)).size).toBe(9);
     expect(JSON.stringify(flattened)).not.toMatch(/shopId|technicianProfileId|serviceId/);

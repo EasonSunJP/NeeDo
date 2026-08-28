@@ -234,6 +234,40 @@ describe("CarouselPublicationService", () => {
     });
   });
 
+  it("rejects duplicate submitted slide public IDs before repository work", async () => {
+    const repo = repository();
+    const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
+    const publicId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const slide = (sortOrder: number) => ({
+      publicId,
+      mediaAssetPublicId: mediaPublicId,
+      sortOrder,
+      isEnabled: true,
+      visibleFrom: null,
+      visibleUntil: null,
+      target: { type: "shop" as const, shopId: 7 },
+      translations: [
+        {
+          locale: "ja" as const,
+          badge: null,
+          title: `ホーム-${sortOrder}`,
+          caption: null,
+          ctaLabel: null,
+          imageAltText: `ホーム画像-${sortOrder}`
+        }
+      ]
+    });
+
+    await expect(
+      service.createDraft("USER_HOME", actor, context, {
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [slide(0), slide(1)]
+      })
+    ).rejects.toMatchObject({ message: "error.carousel.sort_invalid" });
+    expect(repo.createDraft).not.toHaveBeenCalled();
+  });
+
   it("keeps independent scenes and passes target revalidation into publish and schedule transactions", async () => {
     const repo = repository();
     repo.publish.mockResolvedValue(payload({ status: "published", lockVersion: 2 }));

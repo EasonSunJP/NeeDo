@@ -20,6 +20,8 @@ let shopPublicId = "";
 let mediaAssetId = 0;
 const extraMediaAssetIds: number[] = [];
 const extraUserIds: number[] = [];
+const extraShopIds: number[] = [];
+const extraCategoryIds: number[] = [];
 let prisma: PrismaClient;
 let repository: CarouselPublicationRepository;
 let disconnectPrisma: () => Promise<void>;
@@ -205,8 +207,13 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       await prisma.carouselRelease.deleteMany({ where: { id: { in: releaseIds } } });
       await prisma.mediaAsset.deleteMany({ where: { id: mediaAssetId } });
       await prisma.mediaAsset.deleteMany({ where: { id: { in: extraMediaAssetIds } } });
-      await prisma.publicIdentifier.deleteMany({ where: { shopId } });
+      await prisma.service.deleteMany({ where: { shopId: { in: extraShopIds } } });
+      await prisma.publicIdentifier.deleteMany({
+        where: { shopId: { in: [shopId, ...extraShopIds] } }
+      });
+      await prisma.shop.deleteMany({ where: { id: { in: extraShopIds } } });
       await prisma.shop.deleteMany({ where: { id: shopId } });
+      await prisma.category.deleteMany({ where: { id: { in: extraCategoryIds } } });
       await prisma.user.deleteMany({ where: { id: actorUserId } });
       await prisma.user.deleteMany({ where: { id: { in: extraUserIds } } });
     }
@@ -374,6 +381,79 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       expectedLockVersion: published.lockVersion,
       reason: "cleanup"
     });
+  }, 30_000);
+
+  it("keeps mixed target pagination stable under the real MySQL collation", async () => {
+    const category = await prisma.category.create({
+      data: { code: marker, name: marker, isActive: true }
+    });
+    extraCategoryIds.push(category.id);
+    for (const [index, label] of ["Álpha", "中文"].entries()) {
+      const numberPart = String(randomInt(1_000_000_000, 10_000_000_000));
+      const shop = await prisma.shop.create({
+        data: {
+          name: `${marker}-${label}`,
+          city: marker,
+          address: `${marker}-${index}`,
+          status: "published"
+        }
+      });
+      extraShopIds.push(shop.id);
+      await prisma.publicIdentifier.create({
+        data: {
+          publicId: `shop${numberPart}`,
+          numberPart,
+          kind: "SHOP",
+          shopId: shop.id,
+          status: "ACTIVE"
+        }
+      });
+      await prisma.service.create({
+        data: {
+          categoryId: category.id,
+          shopId: shop.id,
+          name: `${marker}-${index === 0 ? "Alpha" : "あ"}`,
+          city: marker,
+          priceAmount: 1000,
+          durationMinutes: 30,
+          status: "published"
+        }
+      });
+    }
+
+    const pages = [];
+    for (const page of [1, 2, 3]) {
+      pages.push(
+        await repository.searchTargets({
+          scene: "USER_HOME",
+          q: marker,
+          page,
+          pageSize: 2,
+          scopeShopId: null,
+          actor: actor(),
+          now: new Date(),
+          validateAffiliateTask: async () => undefined
+        })
+      );
+    }
+    const flattened = pages.flatMap((page) => page.list);
+    expect(pages.map((page) => page.total)).toEqual([5, 5, 5]);
+    expect(flattened.map((item) => item.type)).toEqual([
+      "shop",
+      "shop",
+      "shop",
+      "service",
+      "service"
+    ]);
+    expect(
+      new Set(
+        flattened.map((item) =>
+          item.type === "affiliate_task"
+            ? `${item.type}:${item.taskCode}`
+            : `${item.type}:${item.publicId}`
+        )
+      ).size
+    ).toBe(5);
   }, 30_000);
 
   it("replays simultaneous identical publication and commits one command and audit", async () => {

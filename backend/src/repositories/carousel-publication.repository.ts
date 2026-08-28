@@ -148,7 +148,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           input.slides,
           input.actorUserId,
           input.now,
-          input.validateAffiliateTask
+          input.validateAffiliateTask,
+          this.actorShopScopeId(input.actor)
         );
         const release = await transaction.carouselRelease.create({
           data: {
@@ -205,7 +206,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           input.slides,
           input.actorUserId,
           input.now,
-          input.validateAffiliateTask
+          input.validateAffiliateTask,
+          this.actorShopScopeId(input.actor)
         );
         const bumped = await transaction.carouselRelease.updateMany({
           where: {
@@ -526,6 +528,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           input.actorUserId,
           input.now,
           input.validateAffiliateTask,
+          this.actorShopScopeId(input.actor),
           new Set(source.slides.map((slide) => slide.mediaAssetId))
         );
         await this.createSlides(transaction, clone.id, resolved, input.now);
@@ -692,22 +695,20 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       );
     }
     if (types.includes("technician")) {
+      const scopedTechnician = input.scopeShopId
+        ? this.technicianShopScope(input.scopeShopId)
+        : null;
       const where: Prisma.TechnicianProfileWhereInput = {
         deletedAt: null,
         status: "published",
-        ...(input.scopeShopId
+        ...(scopedTechnician || contains
           ? {
-              OR: [
-                { shopId: input.scopeShopId },
-                {
-                  technicianShopAffiliations: {
-                    some: { shopId: input.scopeShopId, workStatus: "ACTIVE", deletedAt: null }
-                  }
-                }
+              AND: [
+                ...(scopedTechnician ? [scopedTechnician] : []),
+                ...(contains ? [{ OR: [{ displayName: contains }, { city: contains }] }] : [])
               ]
             }
           : {}),
-        ...(contains ? { OR: [{ displayName: contains }, { city: contains }] } : {}),
         user: {
           deletedAt: null,
           isActive: true,
@@ -865,7 +866,6 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       total += visibleTasks.length;
       items.push(...visibleTasks);
     }
-    items.sort((left, right) => this.compareSearchTargets(left, right));
     const start = (input.page - 1) * input.pageSize;
     return { list: items.slice(start, start + input.pageSize), total };
   }
@@ -918,6 +918,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
     actorUserId: number,
     effectiveAt: Date,
     validateAffiliateTask: (taskId: number) => Promise<void>,
+    scopeShopId: number | null,
     authorizedMediaAssetIds: ReadonlySet<number> = new Set()
   ): Promise<ResolvedCarouselSlide[]> {
     const result: ResolvedCarouselSlide[] = [];
@@ -940,7 +941,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         orderBy: { id: "desc" }
       });
       if (!media) throw this.contentError("error.content.media_invalid", 409);
-      const target = await this.resolveTarget(transaction, scene, slide.target);
+      const target = await this.resolveTarget(transaction, scene, slide.target, scopeShopId);
       if (scene === "AFFILIATE_HOME_NOTICE" && target.type === "affiliate_announcement") {
         const announcement = await transaction.officialAnnouncement.findUniqueOrThrow({
           where: { publicId: target.announcementPublicId },
@@ -974,7 +975,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   private async resolveTarget(
     transaction: Prisma.TransactionClient,
     scene: CarouselSceneCode,
-    target: CarouselTargetInput
+    target: CarouselTargetInput,
+    scopeShopId: number | null
   ): Promise<CarouselTarget> {
     if (scene === "USER_HOME" && target.type === "shop") {
       const row = await transaction.shop.findFirst({
@@ -988,7 +990,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
               status: PublicIdentifierStatus.ACTIVE,
               deletedAt: null
             }
-          }
+          },
+          ...(scopeShopId ? { AND: [{ id: scopeShopId }] } : {})
         },
         select: { id: true }
       });
@@ -1018,7 +1021,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
                 }
               }
             }
-          }
+          },
+          ...(scopeShopId ? { AND: [this.technicianShopScope(scopeShopId)] } : {})
         },
         select: { id: true }
       });
@@ -1031,7 +1035,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           ...("serviceId" in target ? { id: target.serviceId } : { publicId: target.publicId }),
           status: "published",
           deletedAt: null,
-          shop: { status: "published", deletedAt: null }
+          shop: { status: "published", deletedAt: null },
+          ...(scopeShopId ? { AND: [{ shopId: scopeShopId }] } : {})
         },
         select: { id: true }
       });
@@ -1040,7 +1045,13 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
     }
     if (scene === "AFFILIATE_HOME_NOTICE" && target.type === "affiliate_announcement") {
       const row = await transaction.officialAnnouncement.findFirst({
-        where: { publicId: target.announcementPublicId, deletedAt: null },
+        where: {
+          publicId: target.announcementPublicId,
+          deletedAt: null,
+          ...(scopeShopId
+            ? { affiliateTask: { is: { publisherShopId: scopeShopId, deletedAt: null } } }
+            : {})
+        },
         select: { id: true, affiliateTaskId: true, affiliateTask: { select: { taskCode: true } } }
       });
       const matches =
@@ -1485,22 +1496,22 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   private slotKey(scene: CarouselSceneCode, slot: "draft" | "published" | "scheduled") {
     return `carousel:${scene}:${slot}`;
   }
-  private compareSearchTargets(
-    left: CarouselTargetSearchItem,
-    right: CarouselTargetSearchItem
-  ): number {
-    const labelOrder = left.label.localeCompare(right.label);
-    if (labelOrder !== 0) return labelOrder;
-    const ranks: Record<CarouselTargetSearchItem["type"], number> = {
-      shop: 0,
-      technician: 1,
-      service: 2,
-      affiliate_announcement: 3,
-      affiliate_task: 4
+  private actorShopScopeId(actor: PublishCarouselMutation["actor"]): number | null {
+    return actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId
+      ? actor.currentIdentityScopeId
+      : null;
+  }
+  private technicianShopScope(shopId: number): Prisma.TechnicianProfileWhereInput {
+    return {
+      OR: [
+        { shopId },
+        {
+          technicianShopAffiliations: {
+            some: { shopId, workStatus: "ACTIVE", deletedAt: null }
+          }
+        }
+      ]
     };
-    const typeOrder = ranks[left.type] - ranks[right.type];
-    if (typeOrder !== 0) return typeOrder;
-    return 0;
   }
   private isUniqueConflict(error: unknown) {
     return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
