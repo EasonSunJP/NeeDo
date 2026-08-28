@@ -39,6 +39,7 @@ import {
   hasAnyPermissionInSession,
   hasPermissionInSession,
   isLoginMethod,
+  isSessionAlignedWithPortal,
   normalizeAuthSessionEntityIds,
   type AuthMePayload,
   type AuthSession,
@@ -668,20 +669,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: restored.message };
       }
 
-      const portalIdentity = findIdentityForPortal(session.identities, portal);
-      const nextLocalSession = {
-        ...session,
-        portal
-      };
-      const needsBackendIdentitySwitch =
-        Boolean(portalIdentity) &&
-        portalIdentity?.id !== session.currentIdentity.id &&
-        Boolean(getAccessToken()) &&
-        Boolean(getStoredRefreshToken());
+      if (isSessionAlignedWithPortal(session, portal)) {
+        return { ok: true, session };
+      }
 
-      if (!needsBackendIdentitySwitch || !portalIdentity) {
+      const portalIdentity = findIdentityForPortal(session.identities, portal);
+      if (!portalIdentity || portalIdentity.id === session.currentIdentity.id) {
+        const nextLocalSession = {
+          ...session,
+          portal
+        };
         persistSession(nextLocalSession);
         return { ok: true, session: nextLocalSession };
+      }
+
+      if (!getAccessToken() || !getStoredRefreshToken()) {
+        return { ok: false, message: "error.auth.service_unavailable" };
       }
 
       let identitySwitchCompleted = false;

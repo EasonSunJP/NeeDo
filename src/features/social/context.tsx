@@ -132,6 +132,11 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SocialState>(emptyFormalSocialState);
   const [profiles, setProfiles] = useState<Record<string, SocialProfile>>({});
   const accountProfileRequestsRef = useRef(new Map<number, Promise<SocialProfile | undefined>>());
+  const sessionUserId = session?.id ?? null;
+  const sessionIdentityType = session?.currentIdentity?.type;
+  const sessionUsername = session?.username ?? "";
+  const sessionAvatarUrl = session?.avatarUrl ?? null;
+  const sessionLoggedInAt = session?.loggedInAt ?? "";
 
   const ensureAccountProfile = useCallback((userId: number) => {
     const pendingRequest = accountProfileRequestsRef.current.get(userId);
@@ -139,7 +144,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       return pendingRequest;
     }
 
-    if (!session || isRestoring || !Number.isSafeInteger(userId) || userId <= 0) {
+    if (sessionUserId === null || isRestoring || !Number.isSafeInteger(userId) || userId <= 0) {
       return Promise.resolve(undefined);
     }
 
@@ -157,7 +162,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
           ? { ...profile, coverImage: profile.coverImage || postProfile.coverImage, location: postProfile.location }
           : profile;
         const mappedPosts = postPage.list.map(mapFormalSocialPost);
-        const actorKey = `${formalEntityType(session.currentIdentity?.type)}:${session.id}`;
+        const actorKey = `${formalEntityType(sessionIdentityType)}:${sessionUserId}`;
 
         setProfiles((current) => ({ ...current, ...postProfiles, [targetKey]: mergedProfile }));
         setState((current) => {
@@ -192,13 +197,13 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
     accountProfileRequestsRef.current.set(userId, request);
     return request;
-  }, [isRestoring, session]);
+  }, [isRestoring, sessionIdentityType, sessionUserId]);
 
   const loadFormalSocial = useCallback(async () => {
-    if (!session || isRestoring) return;
+    if (sessionUserId === null || isRestoring) return;
     const [timelinePage, minePage, notificationPage] = await Promise.all([
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100 }),
-      realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: session.id }),
+      realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: sessionUserId }),
       realtimeApi.listNotifications({ page: 1, pageSize: 100 })
     ]);
     const rawPosts = [...timelinePage.list, ...minePage.list].filter(
@@ -206,17 +211,17 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     );
     const nextPosts = sortPostsByNewest(rawPosts.map(mapFormalSocialPost));
     const nextProfiles = mapFormalSocialProfiles(rawPosts);
-    const ownProfile = Object.values(nextProfiles).find((profile) => Number(profile.id) === session.id);
-    const fallbackEntityType = formalEntityType(session.currentIdentity?.type);
+    const ownProfile = Object.values(nextProfiles).find((profile) => Number(profile.id) === sessionUserId);
+    const fallbackEntityType = formalEntityType(sessionIdentityType);
     const fallbackProfile: SocialProfile = {
-      id: String(session.id),
+      id: String(sessionUserId),
       entityType: fallbackEntityType,
-      displayName: session.username,
-      handle: session.username,
-      avatar: session.avatarUrl ?? "",
-      coverImage: session.avatarUrl ?? "",
+      displayName: sessionUsername,
+      handle: sessionUsername,
+      avatar: sessionAvatarUrl ?? "",
+      coverImage: sessionAvatarUrl ?? "",
       bio: "NeeDo 正式账号",
-      joinedAt: session.loggedInAt,
+      joinedAt: sessionLoggedInAt,
       verifiedStatus: fallbackEntityType === "shop" ? "business" : fallbackEntityType === "technician" ? "verified" : "none",
       followerCount: 0,
       followingCount: 0,
@@ -243,11 +248,18 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       notifications,
       refreshedAt: new Date().toISOString()
     }));
-  }, [isRestoring, session]);
+  }, [
+    isRestoring,
+    sessionAvatarUrl,
+    sessionIdentityType,
+    sessionLoggedInAt,
+    sessionUserId,
+    sessionUsername
+  ]);
 
   useEffect(() => { void loadFormalSocial(); }, [loadFormalSocial]);
   useEffect(() => {
-    if (!session || isRestoring) return undefined;
+    if (sessionUserId === null || isRestoring) return undefined;
 
     return subscribeRealtimeEvents({
       onEvent: (event) => {
@@ -256,7 +268,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         }
       }
     });
-  }, [isRestoring, loadFormalSocial, session]);
+  }, [isRestoring, loadFormalSocial, sessionUserId]);
 
   const value = useMemo<SocialContextValue>(() => {
     const profileList = Object.values(profiles);
