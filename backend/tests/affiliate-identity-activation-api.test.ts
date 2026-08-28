@@ -12,9 +12,7 @@ const contract = {
   contentHash: "a".repeat(64)
 };
 
-const createFixture = (
-  permissions = ["contract:read", "contract:accept", "bank-account:own"]
-) => {
+const createFixture = (permissions = ["contract:read", "contract:accept", "bank-account:own"]) => {
   const user = {
     id: 7,
     email: "customer@example.test",
@@ -66,13 +64,10 @@ const createFixture = (
           acceptedAt: new Date("2026-08-26T05:00:00.000Z"),
           receiptId: "receipt-91"
         },
-        identity: {
-          identityId: 81,
-          userId: 7,
-          identityType: "scout",
-          roleCode: "scout",
-          scopeType: "global",
-          scopeId: null
+        affiliate: {
+          affiliateStatus: "active",
+          needoId: "u0000000007",
+          profileId: 57
         }
       };
     })
@@ -195,16 +190,19 @@ describe("affiliate identity activation HTTP API", () => {
         .set("Authorization", `Bearer ${fixture.token}`)
         .send(body)
         .expect(200)
-        .expect((response) =>
-          expect(response.body.data.identity).toMatchObject({
-            identityType: "scout",
-            roleCode: "scout"
-          })
-        );
+        .expect((response) => {
+          expect(response.body.data.affiliate).toEqual({
+            affiliateStatus: "active",
+            needoId: "u0000000007",
+            profileId: 57
+          });
+          expect(JSON.stringify(response.body.data)).not.toContain("identityId");
+          expect(JSON.stringify(response.body.data)).not.toContain("userId");
+          expect(JSON.stringify(response.body.data)).not.toContain("scout");
+        });
     }
     expect(fixture.affiliateIdentityActivationService.activate).toHaveBeenCalledTimes(2);
-    const activationInput =
-      fixture.affiliateIdentityActivationService.activate.mock.calls[0]?.[0];
+    const activationInput = fixture.affiliateIdentityActivationService.activate.mock.calls[0]?.[0];
     expect(activationInput).toMatchObject({
       userId: 7,
       contractVersion: contract.version,

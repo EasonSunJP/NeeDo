@@ -16,6 +16,7 @@ import {
 } from "./middlewares/security.middleware";
 import { createTracingMiddleware } from "./middlewares/tracing.middleware";
 import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
+import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
 import type { AuthRepositoryPort } from "./repositories/auth.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
 import type {
@@ -27,6 +28,7 @@ import type {
   AffiliateMarketplaceService
 } from "./services/affiliate-marketplace.service";
 import type { AffiliateCheckoutService } from "./services/affiliate-checkout.service";
+import type { AffiliateProfileService } from "./services/affiliate-profile.service";
 import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
@@ -76,6 +78,7 @@ import type { UserRepositoryPort } from "./repositories/user.repository";
 import { createAuthRoutes } from "./routes/auth.routes";
 import { createAffiliateTaskRoutes } from "./routes/affiliate-task.routes";
 import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace.routes";
+import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
@@ -148,6 +151,8 @@ export interface AppDependencies {
   identityApplicationMediaStorage?: IdentityApplicationMediaStoragePort;
   affiliateIdentityActivationRepository?: AffiliateIdentityActivationRepositoryPort;
   affiliateIdentityActivationService?: AffiliateIdentityActivationService;
+  affiliateProfileRepository?: AffiliateProfileRepositoryPort;
+  affiliateProfileService?: AffiliateProfileService;
   affiliateWithdrawalEligibilityRepository?: AffiliateWithdrawalEligibilityRepositoryPort;
   affiliateWithdrawalEligibilityService?: AffiliateWithdrawalEligibilityService;
   affiliateBankAccountRepository?: AffiliateBankAccountRepositoryPort;
@@ -234,6 +239,7 @@ export const createApp = (
   apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityActivationRoutes(config, resolvedDependencies));
+  apiRouter.use(createAffiliateProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));

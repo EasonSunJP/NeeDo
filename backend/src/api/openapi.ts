@@ -211,6 +211,14 @@ const affiliateMarketplaceErrorResponses = {
   "409": { description: "Task eligibility or claim uniqueness conflict" }
 };
 
+const affiliateProfileErrorResponses = {
+  "400": { description: "Invalid affiliate profile or channel contract" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing affiliate profile permission or active affiliate identity" },
+  "404": { description: "Affiliate profile or owned channel not found" },
+  "409": { description: "Profile version, channel limit, or channel uniqueness conflict" }
+};
+
 const customerProfileErrorResponses = {
   "400": { description: "Invalid customer self-profile update payload" },
   "401": { description: "Missing or invalid access token" },
@@ -607,14 +615,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       SocialProfileSummary: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "userId",
-          "username",
-          "displayName",
-          "avatarUrl",
-          "entityType",
-          "joinedAt"
-        ],
+        required: ["userId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
         properties: {
           userId: { type: "integer" },
           username: { type: "string" },
@@ -2814,6 +2815,170 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           updatedAt: { type: "string", format: "date-time" }
         }
       },
+      AffiliateProfileChannel: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "channelId",
+          "platform",
+          "customLabel",
+          "homepageUrl",
+          "sortOrder",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          channelId: { type: "integer", minimum: 1 },
+          platform: {
+            type: "string",
+            enum: ["x", "instagram", "youtube", "tiktok", "custom"]
+          },
+          customLabel: { type: ["string", "null"], minLength: 1, maxLength: 60 },
+          homepageUrl: { type: "string", format: "uri", maxLength: 500 },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "profileId",
+          "needoId",
+          "displayName",
+          "avatarUrl",
+          "affiliateStatus",
+          "cooperationStatus",
+          "version",
+          "bio",
+          "strengths",
+          "serviceAreas",
+          "channels",
+          "updatedAt"
+        ],
+        properties: {
+          profileId: { type: "integer", minimum: 1 },
+          needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1 },
+          avatarUrl: { type: ["string", "null"], format: "uri" },
+          affiliateStatus: { type: "string", enum: ["active", "suspended", "closed"] },
+          cooperationStatus: {
+            type: "string",
+            enum: ["available", "selective", "unavailable"]
+          },
+          version: { type: "integer", minimum: 1 },
+          bio: { type: ["string", "null"], maxLength: 1000 },
+          strengths: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          serviceAreas: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 80 }
+          },
+          channels: {
+            type: "array",
+            maxItems: 10,
+            items: { $ref: "#/components/schemas/AffiliateProfileChannel" }
+          },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateProfileUpdate: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 2,
+        required: ["expectedVersion"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          bio: { type: ["string", "null"], maxLength: 1000 },
+          strengths: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          serviceAreas: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 80 }
+          },
+          cooperationStatus: {
+            type: "string",
+            enum: ["available", "selective", "unavailable"]
+          }
+        }
+      },
+      AffiliateChannelCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedProfileVersion", "platform", "homepageUrl"],
+        properties: {
+          expectedProfileVersion: { type: "integer", minimum: 1 },
+          platform: {
+            type: "string",
+            enum: ["x", "instagram", "youtube", "tiktok", "custom"]
+          },
+          customLabel: { type: ["string", "null"], minLength: 1, maxLength: 60 },
+          homepageUrl: { type: "string", format: "uri", maxLength: 500 },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000, default: 0 }
+        }
+      },
+      AffiliateChannelUpdate: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 2,
+        required: ["expectedProfileVersion"],
+        properties: {
+          expectedProfileVersion: { type: "integer", minimum: 1 },
+          platform: {
+            type: "string",
+            enum: ["x", "instagram", "youtube", "tiktok", "custom"]
+          },
+          customLabel: { type: ["string", "null"], minLength: 1, maxLength: 60 },
+          homepageUrl: { type: "string", format: "uri", maxLength: 500 },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000 }
+        }
+      },
+      AffiliateIdentityActivation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["contractAcceptance", "affiliate"],
+        properties: {
+          contractAcceptance: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "id",
+              "contractType",
+              "contractVersion",
+              "contentHash",
+              "acceptedAt",
+              "receiptId"
+            ],
+            properties: {
+              id: { type: "integer", minimum: 1 },
+              contractType: { type: "string", enum: ["affiliate"] },
+              contractVersion: { type: "string", minLength: 1, maxLength: 80 },
+              contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              acceptedAt: { type: "string", format: "date-time" },
+              receiptId: { type: "string", minLength: 1, maxLength: 191 }
+            }
+          },
+          affiliate: {
+            type: "object",
+            additionalProperties: false,
+            required: ["affiliateStatus", "needoId", "profileId"],
+            properties: {
+              affiliateStatus: { type: "string", enum: ["active", "suspended", "closed"] },
+              needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+              profileId: { type: "integer", minimum: 1 }
+            }
+          }
+        }
+      },
       AffiliateTaskShopSnapshot: {
         type: "object",
         required: ["id", "shopId", "shopNameSnapshot"],
@@ -3200,6 +3365,101 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    [`${config.API_PREFIX}/affiliate/profile`]: {
+      get: {
+        tags: ["Affiliate Profile"],
+        summary: "Get the authenticated affiliate's public profile",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Authenticated affiliate profile", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Affiliate Profile"],
+        summary: "Update the authenticated affiliate's public profile using optimistic lock",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateProfileUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated affiliate profile", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/profile/channels`]: {
+      post: {
+        tags: ["Affiliate Profile"],
+        summary: "Add a validated external social homepage to the authenticated affiliate profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateChannelCreate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Affiliate profile with the created channel", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/profile/channels/{channelId}`]: {
+      patch: {
+        tags: ["Affiliate Profile"],
+        summary: "Update an owned external social homepage using optimistic lock",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("channelId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateChannelUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Affiliate profile with the updated channel", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      },
+      delete: {
+        tags: ["Affiliate Profile"],
+        summary: "Soft-delete an owned external social homepage using optimistic lock",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter("channelId"),
+          {
+            name: "expected_profile_version",
+            in: "query",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Affiliate profile without the deleted channel", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/affiliate/tasks`]: {
       get: {
         tags: ["Affiliate Task Publishing"],
@@ -7815,21 +8075,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       })
     },
     [`${config.API_PREFIX}/identity-activations/affiliate`]: {
-      post: identityWorkflowOperation(
-        "Accept the affiliate contract and activate the affiliate identity",
-        {
-          requestBody: identityJsonBody(
-            {
-              contractVersion: { type: "string", minLength: 1, maxLength: 80 },
-              contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
-              language: { type: "string", enum: ["zh-CN", "ja", "en"] },
-              hasRead: { type: "boolean", enum: [true] },
-              hasAgreed: { type: "boolean", enum: [true] }
-            },
-            ["contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
-          )
+      post: {
+        ...identityWorkflowOperation(
+          "Accept the affiliate contract and activate the affiliate identity",
+          {
+            requestBody: identityJsonBody(
+              {
+                contractVersion: { type: "string", minLength: 1, maxLength: 80 },
+                contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+                language: { type: "string", enum: ["zh-CN", "ja", "en"] },
+                hasRead: { type: "boolean", enum: [true] },
+                hasAgreed: { type: "boolean", enum: [true] }
+              },
+              ["contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
+            )
+          }
+        ),
+        responses: {
+          "200": jsonDataResponse("Activated affiliate identity and profile", {
+            $ref: "#/components/schemas/AffiliateIdentityActivation"
+          }),
+          "400": { description: "Invalid contract acknowledgements" },
+          "401": { description: "Missing or invalid access token" },
+          "403": { description: "Missing contract acceptance permission" },
+          "404": { description: "Current affiliate contract not found" },
+          "409": { description: "Contract version or activation state conflict" }
         }
-      )
+      }
     },
     [`${config.API_PREFIX}/bank-accounts/affiliate-withdrawal`]: {
       put: identityWorkflowOperation("Bind an eKYC-matched affiliate withdrawal bank account", {

@@ -82,10 +82,7 @@ export const affiliateChannelDeleteQuerySchema = z
   .object({
     expected_profile_version: z.coerce.number().int().positive()
   })
-  .strict()
-  .transform(({ expected_profile_version }) => ({
-    expectedProfileVersion: expected_profile_version
-  }));
+  .strict();
 
 export type AffiliateProfileUpdateBody = z.infer<typeof affiliateProfileUpdateBodySchema>;
 export type AffiliateChannelCreateBody = z.infer<typeof affiliateChannelCreateBodySchema>;
