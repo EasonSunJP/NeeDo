@@ -220,13 +220,42 @@ const affiliateProfileErrorResponses = {
 };
 
 const affiliateAllianceErrorResponses = {
-  "400": { description: "Invalid strict affiliate alliance create contract" },
+  "400": { description: "Invalid strict affiliate alliance or invitation contract" },
   "401": { description: "Missing or invalid access token" },
   "403": {
-    description: "Missing alliance permission, Affiliate identity, or active Affiliate profile"
+    description:
+      "Missing alliance permission, owner scope, reciprocal contact, Affiliate identity, or active Affiliate profile"
   },
-  "409": { description: "The current user already has an active alliance membership" }
+  "404": { description: "Invitation not found in the authenticated invitee scope" },
+  "409": {
+    description:
+      "Active membership, duplicate invitation, parent, expiry, or invitation-state conflict"
+  }
 };
+
+const affiliateAllianceListParameters = [
+  { name: "q", in: "query", schema: { type: "string", maxLength: 80 } },
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+  }
+];
+
+const affiliateAllianceInvitationListParameters = [
+  {
+    name: "status",
+    in: "query",
+    schema: { type: "string", enum: ["pending", "accepted", "rejected", "expired"] }
+  },
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+  }
+];
 
 const customerProfileErrorResponses = {
   "400": { description: "Invalid customer self-profile update payload" },
@@ -3069,6 +3098,185 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 }
         }
       },
+      AffiliateAlliancePublicPerson: {
+        type: "object",
+        additionalProperties: false,
+        required: ["needoId", "displayName", "avatarUrl"],
+        properties: {
+          needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1 },
+          avatarUrl: { type: ["string", "null"], format: "uri" }
+        }
+      },
+      AffiliateAllianceMemberParent: {
+        type: "object",
+        additionalProperties: false,
+        required: ["memberId", "person"],
+        properties: {
+          memberId: { type: "integer", minimum: 1 },
+          person: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" }
+        }
+      },
+      AffiliateAllianceMember: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "memberId",
+          "person",
+          "role",
+          "parent",
+          "promoterShareBpsOverride",
+          "permissions",
+          "joinedAt"
+        ],
+        properties: {
+          memberId: { type: "integer", minimum: 1 },
+          person: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" },
+          role: { type: "string", enum: ["owner", "partner", "subordinate"] },
+          parent: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliateAllianceMemberParent" },
+              { type: "null" }
+            ]
+          },
+          promoterShareBpsOverride: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 10000
+          },
+          permissions: { $ref: "#/components/schemas/AffiliateAlliancePermissions" },
+          joinedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateAllianceInvitation: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "invitationId",
+          "alliance",
+          "inviter",
+          "invitee",
+          "role",
+          "proposedParent",
+          "status",
+          "expiresAt",
+          "respondedAt",
+          "createdAt"
+        ],
+        properties: {
+          invitationId: { type: "integer", minimum: 1 },
+          alliance: {
+            type: "object",
+            additionalProperties: false,
+            required: ["allianceId", "name"],
+            properties: {
+              allianceId: { type: "integer", minimum: 1 },
+              name: { type: "string", minLength: 2, maxLength: 120 }
+            }
+          },
+          inviter: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" },
+          invitee: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" },
+          role: { type: "string", enum: ["partner", "subordinate"] },
+          proposedParent: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliateAllianceMemberParent" },
+              { type: "null" }
+            ]
+          },
+          status: {
+            type: "string",
+            enum: ["pending", "accepted", "rejected", "expired"]
+          },
+          expiresAt: { type: "string", format: "date-time" },
+          respondedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateAllianceMemberPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateAllianceMember" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliateAllianceCandidatePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliateAllianceInvitationPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateAllianceInvitation" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliateAllianceInvitationCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["inviteeNeedoId", "role"],
+        properties: {
+          inviteeNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          role: { type: "string", enum: ["partner", "subordinate"] },
+          proposedParentMemberId: { type: ["integer", "null"], minimum: 1 }
+        },
+        allOf: [
+          {
+            if: { properties: { role: { const: "subordinate" } } },
+            then: { required: ["proposedParentMemberId"] }
+          },
+          {
+            if: { properties: { role: { const: "partner" } } },
+            then: { properties: { proposedParentMemberId: { type: "null" } } }
+          }
+        ]
+      },
+      AffiliateAllianceInvitationCreated: {
+        type: "object",
+        additionalProperties: false,
+        required: ["invitation"],
+        properties: {
+          invitation: { $ref: "#/components/schemas/AffiliateAllianceInvitation" }
+        }
+      },
+      AffiliateAllianceInvitationAccepted: {
+        type: "object",
+        additionalProperties: false,
+        required: ["invitation", "member"],
+        properties: {
+          invitation: { $ref: "#/components/schemas/AffiliateAllianceInvitation" },
+          member: { $ref: "#/components/schemas/AffiliateAllianceMember" }
+        }
+      },
+      StrictEmptyBody: {
+        type: "object",
+        additionalProperties: false,
+        maxProperties: 0,
+        properties: {}
+      },
       AffiliateChannelCreate: {
         type: "object",
         additionalProperties: false,
@@ -3776,6 +3984,128 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/AffiliateProfile"
           }),
           ...affiliateProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances/me/members`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List members of the authenticated owner's active alliance",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:members:list",
+        parameters: affiliateAllianceListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated alliance members", {
+            $ref: "#/components/schemas/AffiliateAllianceMemberPage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances/me/eligible-contacts`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List reciprocal NeeDo friends eligible for an alliance invitation",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:candidates:list",
+        parameters: affiliateAllianceListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated eligible reciprocal contacts", {
+            $ref: "#/components/schemas/AffiliateAllianceCandidatePage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances/me/invitations`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List invitations sent by the authenticated alliance owner",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:invitations:list",
+        parameters: affiliateAllianceInvitationListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated sent alliance invitations", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationPage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      },
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Invite an eligible reciprocal NeeDo friend",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:affiliate-alliance-invite",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateAllianceInvitationCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created alliance invitation", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationCreated"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliance-invitations/mine`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List alliance invitations received by the authenticated Affiliate",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:invitations:list",
+        parameters: affiliateAllianceInvitationListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated received alliance invitations", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationPage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliance-invitations/{id}/accept`]: {
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Accept the authenticated Affiliate's pending alliance invitation",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:affiliate-alliance-invitation-respond",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/StrictEmptyBody" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Accepted invitation and created member", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationAccepted"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliance-invitations/{id}/reject`]: {
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Reject the authenticated Affiliate's pending alliance invitation",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:affiliate-alliance-invitation-respond",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/StrictEmptyBody" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Rejected alliance invitation", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationCreated"
+          }),
+          ...affiliateAllianceErrorResponses
         }
       }
     },

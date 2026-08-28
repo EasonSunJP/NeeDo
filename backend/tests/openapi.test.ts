@@ -959,4 +959,91 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).toContain("canViewAllianceWallet");
     expect(publicContract).not.toMatch(/userId|identityId|scout/);
   });
+
+  it("documents all paginated alliance invitation operations and exact permissions", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      parameters?: Array<Record<string, unknown>>;
+      requestBody?: { content: Record<string, { schema: Record<string, string> }> };
+      responses: Record<string, unknown>;
+      "x-permission": string;
+    };
+    type Schema = { additionalProperties?: boolean; properties?: Record<string, unknown> };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const operations = [
+      ["/api/v1/affiliate/alliances/me/members", "get", "affiliate-alliance:members:list"],
+      ["/api/v1/affiliate/alliances/me/eligible-contacts", "get", "affiliate-alliance:candidates:list"],
+      ["/api/v1/affiliate/alliances/me/invitations", "get", "affiliate-alliance:invitations:list"],
+      ["/api/v1/affiliate/alliances/me/invitations", "post", "button:affiliate-alliance-invite"],
+      ["/api/v1/affiliate/alliance-invitations/mine", "get", "affiliate-alliance:invitations:list"],
+      ["/api/v1/affiliate/alliance-invitations/{id}/accept", "post", "button:affiliate-alliance-invitation-respond"],
+      ["/api/v1/affiliate/alliance-invitations/{id}/reject", "post", "button:affiliate-alliance-invitation-respond"]
+    ] as const;
+
+    for (const [path, method, permissionCode] of operations) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toBeDefined();
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation["x-permission"]).toBe(permissionCode);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+
+    expect(
+      document.paths["/api/v1/affiliate/alliances/me/invitations"].post.requestBody
+        ?.content["application/json"].schema
+    ).toEqual({ $ref: "#/components/schemas/AffiliateAllianceInvitationCreate" });
+    for (const path of [
+      "/api/v1/affiliate/alliance-invitations/{id}/accept",
+      "/api/v1/affiliate/alliance-invitations/{id}/reject"
+    ]) {
+      const operation = document.paths[path].post;
+      expect(operation.requestBody?.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/StrictEmptyBody"
+      });
+      expect(operation.parameters).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "id", in: "path", required: true })])
+      );
+    }
+    for (const schemaName of [
+      "AffiliateAlliancePublicPerson",
+      "AffiliateAllianceMember",
+      "AffiliateAllianceInvitation",
+      "AffiliateAllianceInvitationCreate",
+      "StrictEmptyBody"
+    ]) {
+      expect(document.components.schemas[schemaName]).toBeDefined();
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    const publicSchemaNames = [
+      "AffiliateAlliancePublicPerson",
+      "AffiliateAllianceMemberParent",
+      "AffiliateAllianceMember",
+      "AffiliateAllianceInvitation",
+      "AffiliateAllianceMemberPage",
+      "AffiliateAllianceCandidatePage",
+      "AffiliateAllianceInvitationPage",
+      "AffiliateAllianceInvitationCreate",
+      "AffiliateAllianceInvitationCreated",
+      "AffiliateAllianceInvitationAccepted",
+      "StrictEmptyBody"
+    ];
+    const publicContract = JSON.stringify({
+      operations,
+      schemas: Object.fromEntries(
+        publicSchemaNames.map((schemaName) => [schemaName, document.components.schemas[schemaName]])
+      )
+    });
+    expect(publicContract).not.toMatch(/passwordHash|email|phone|identityId|bankAccount|ekyc/);
+  });
 });
