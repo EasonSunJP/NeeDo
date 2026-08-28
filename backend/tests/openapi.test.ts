@@ -186,29 +186,30 @@ describe("GET /api/v1/openapi.json", () => {
       "image/png",
       "image/webp"
     ]);
-    expect(contentMediaUpload.responses["201"].content["application/json"].schema.properties.data)
-      .toMatchObject({
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "publicId",
-          "mediaAssetId",
-          "url",
-          "mimeType",
-          "width",
-          "height",
-          "checksumSha256"
-        ],
-        properties: {
-          publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
-          mediaAssetId: { type: "integer", minimum: 1 },
-          url: { type: "string", pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$" },
-          mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
-          width: { type: "null" },
-          height: { type: "null" },
-          checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
-        }
-      });
+    expect(
+      contentMediaUpload.responses["201"].content["application/json"].schema.properties.data
+    ).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "publicId",
+        "mediaAssetId",
+        "url",
+        "mimeType",
+        "width",
+        "height",
+        "checksumSha256"
+      ],
+      properties: {
+        publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        mediaAssetId: { type: "integer", minimum: 1 },
+        url: { type: "string", pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$" },
+        mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+        width: { type: "null" },
+        height: { type: "null" },
+        checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
+      }
+    });
     expect(contentMediaUpload.responses).toEqual(
       expect.objectContaining({
         "400": expect.objectContaining({ description: expect.stringContaining("media_invalid") }),
@@ -1027,12 +1028,24 @@ describe("GET /api/v1/openapi.json", () => {
     };
     const operations = [
       ["/api/v1/affiliate/alliances/me/members", "get", "affiliate-alliance:members:list"],
-      ["/api/v1/affiliate/alliances/me/eligible-contacts", "get", "affiliate-alliance:candidates:list"],
+      [
+        "/api/v1/affiliate/alliances/me/eligible-contacts",
+        "get",
+        "affiliate-alliance:candidates:list"
+      ],
       ["/api/v1/affiliate/alliances/me/invitations", "get", "affiliate-alliance:invitations:list"],
       ["/api/v1/affiliate/alliances/me/invitations", "post", "button:affiliate-alliance-invite"],
       ["/api/v1/affiliate/alliance-invitations/mine", "get", "affiliate-alliance:invitations:list"],
-      ["/api/v1/affiliate/alliance-invitations/{id}/accept", "post", "button:affiliate-alliance-invitation-respond"],
-      ["/api/v1/affiliate/alliance-invitations/{id}/reject", "post", "button:affiliate-alliance-invitation-respond"]
+      [
+        "/api/v1/affiliate/alliance-invitations/{id}/accept",
+        "post",
+        "button:affiliate-alliance-invitation-respond"
+      ],
+      [
+        "/api/v1/affiliate/alliance-invitations/{id}/reject",
+        "post",
+        "button:affiliate-alliance-invitation-respond"
+      ]
     ] as const;
 
     for (const [path, method, permissionCode] of operations) {
@@ -1052,8 +1065,9 @@ describe("GET /api/v1/openapi.json", () => {
     }
 
     expect(
-      document.paths["/api/v1/affiliate/alliances/me/invitations"].post.requestBody
-        ?.content["application/json"].schema
+      document.paths["/api/v1/affiliate/alliances/me/invitations"].post.requestBody?.content[
+        "application/json"
+      ].schema
     ).toEqual({ $ref: "#/components/schemas/AffiliateAllianceInvitationCreate" });
     for (const path of [
       "/api/v1/affiliate/alliance-invitations/{id}/accept",
@@ -1064,7 +1078,9 @@ describe("GET /api/v1/openapi.json", () => {
         $ref: "#/components/schemas/StrictEmptyBody"
       });
       expect(operation.parameters).toEqual(
-        expect.arrayContaining([expect.objectContaining({ name: "id", in: "path", required: true })])
+        expect.arrayContaining([
+          expect.objectContaining({ name: "id", in: "path", required: true })
+        ])
       );
     }
     for (const schemaName of [
@@ -1202,5 +1218,91 @@ describe("GET /api/v1/openapi.json", () => {
     ]) {
       expect(lifecycleContract).toContain(errorKey);
     }
+  });
+
+  it("documents both fixed carousel scenes, target search, copy-to-all, and public-safe payloads", () => {
+    type CarouselOperation = {
+      security: Array<Record<string, unknown>>;
+      parameters: Array<{ name: string }>;
+      responses: Record<string, unknown>;
+      "x-permission": string;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, CarouselOperation>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const scenes = [
+      [
+        "user-home",
+        "page:backoffice-user-home-carousel",
+        "button:backoffice-user-home-carousel-edit",
+        "button:backoffice-user-home-carousel-publish"
+      ],
+      [
+        "affiliate-home-notice",
+        "page:backoffice-affiliate-notice-carousel",
+        "button:backoffice-affiliate-notice-carousel-edit",
+        "button:backoffice-affiliate-notice-carousel-publish"
+      ]
+    ] as const;
+    for (const [slug, read, edit, publish] of scenes) {
+      const base = `/api/v1/backoffice/content/carousels/${slug}`;
+      const release = `${base}/releases/{releaseId}`;
+      const operations = [
+        [base, "get", read],
+        [base + "/releases", "post", edit],
+        [base + "/history", "get", read],
+        [base + "/targets", "get", read],
+        [release, "get", read],
+        [release, "patch", edit],
+        [release + "/slides/{slidePublicId}/locales/{locale}", "patch", edit],
+        [release + "/slides/{slidePublicId}/copy-to-all", "post", edit],
+        [release + "/preview", "get", read],
+        [release + "/publish", "post", publish],
+        [release + "/schedule", "post", publish],
+        [release + "/disable", "post", publish],
+        [release + "/rollback", "post", publish]
+      ] as const;
+      for (const [path, method, permission] of operations) {
+        expect(document.paths[path]?.[method]).toEqual(
+          expect.objectContaining({
+            security: [{ bearerAuth: [] }],
+            "x-permission": permission,
+            responses: expect.objectContaining({
+              "400": expect.any(Object),
+              "401": expect.any(Object),
+              "403": expect.any(Object),
+              "404": expect.any(Object),
+              "409": expect.any(Object)
+            })
+          })
+        );
+      }
+      expect(document.paths[base + "/targets"].get.parameters.map((value) => value.name)).toEqual(
+        expect.arrayContaining(["type", "q", "page", "pageSize"])
+      );
+    }
+    expect(document.paths["/api/v1/content/carousels/user-home"].get).toBeDefined();
+    expect(document.paths["/api/v1/affiliate/content/carousel"].get["x-permission"]).toBe(
+      "page:affiliate-marketplace"
+    );
+    const publicPayload = JSON.stringify({
+      payload: document.components.schemas.PublishedCarouselPayload,
+      target: document.components.schemas.PublishedCarouselTarget
+    });
+    expect(publicPayload).toContain("releaseVersion");
+    expect(publicPayload).toContain("publicId");
+    expect(publicPayload).not.toMatch(
+      /shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId|releaseId/
+    );
+    const targetSearch = JSON.stringify({
+      page: document.components.schemas.CarouselTargetSearchPage,
+      item: document.components.schemas.CarouselTargetSearchItem
+    });
+    expect(targetSearch).toContain("publicId");
+    expect(targetSearch).toContain("taskCode");
+    expect(targetSearch).not.toMatch(
+      /shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId/
+    );
   });
 });

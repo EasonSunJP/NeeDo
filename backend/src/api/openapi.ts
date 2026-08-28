@@ -321,6 +321,209 @@ const announcementOperation = (
   }
 });
 
+const carouselErrorResponses = {
+  "400": {
+    description:
+      "error.validation, error.content.locale_invalid, error.content.media_invalid, or error.carousel.target_invalid"
+  },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden — missing the exact fixed-scene permission" },
+  "404": { description: "error.content.release_not_found — carousel release is unavailable" },
+  "409": {
+    description:
+      "error.content.draft_exists, error.content.lock_conflict, error.content.incomplete_translations, error.content.schedule_conflict, error.content.target_unavailable, error.content.invalid_state_transition, error.carousel.sort_invalid, error.carousel.no_visible_slide, or error.idempotency_key_reused"
+  }
+};
+
+const carouselOperation = (
+  summary: string,
+  permission: string | null,
+  extras: Record<string, unknown> = {}
+) => ({
+  tags: ["Carousel Content Publication"],
+  summary,
+  security: [{ bearerAuth: [] }],
+  ...(permission ? { "x-permission": permission } : {}),
+  ...extras,
+  responses: {
+    ...carouselErrorResponses,
+    ...((extras.responses as Record<string, unknown> | undefined) ?? {})
+  }
+});
+
+const carouselReleaseIdParameter = {
+  name: "releaseId",
+  in: "path",
+  required: true,
+  schema: { type: "integer", minimum: 1 }
+};
+const carouselSlidePublicIdParameter = {
+  name: "slidePublicId",
+  in: "path",
+  required: true,
+  schema: { type: "string", format: "uuid" }
+};
+const carouselLocaleParameter = {
+  name: "locale",
+  in: "path",
+  required: true,
+  schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+};
+const carouselPublicLocaleParameter = {
+  name: "locale",
+  in: "query",
+  required: true,
+  schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+};
+
+const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
+  const paths: Record<string, unknown> = {};
+  const scenes = [
+    {
+      slug: "user-home",
+      read: "page:backoffice-user-home-carousel",
+      edit: "button:backoffice-user-home-carousel-edit",
+      publish: "button:backoffice-user-home-carousel-publish",
+      targetTypes: ["shop", "technician", "service"]
+    },
+    {
+      slug: "affiliate-home-notice",
+      read: "page:backoffice-affiliate-notice-carousel",
+      edit: "button:backoffice-affiliate-notice-carousel-edit",
+      publish: "button:backoffice-affiliate-notice-carousel-publish",
+      targetTypes: ["announcement", "affiliate_task"]
+    }
+  ] as const;
+  const jsonBody = (schema: string) => ({
+    required: true,
+    content: { "application/json": { schema: { $ref: `#/components/schemas/${schema}` } } }
+  });
+  const protectedResponse = (description: string) => ({
+    "200": jsonDataResponse(description, { $ref: "#/components/schemas/CarouselProtectedPayload" })
+  });
+  for (const scene of scenes) {
+    const base = `${config.API_PREFIX}/backoffice/content/carousels/${scene.slug}`;
+    const release = `${base}/releases/{releaseId}`;
+    paths[base] = {
+      get: carouselOperation("Read fixed-scene carousel publication slots", scene.read, {
+        responses: {
+          "200": jsonDataResponse("Current fixed-scene slots", {
+            $ref: "#/components/schemas/CarouselSceneState"
+          })
+        }
+      })
+    };
+    paths[`${base}/releases`] = {
+      post: carouselOperation("Create one current fixed-scene carousel draft", scene.edit, {
+        requestBody: jsonBody("CarouselDraftCreate"),
+        responses: {
+          "201": jsonDataResponse("Carousel draft created", {
+            $ref: "#/components/schemas/CarouselProtectedPayload"
+          })
+        }
+      })
+    };
+    paths[`${base}/history`] = {
+      get: carouselOperation("List immutable fixed-scene carousel history", scene.read, {
+        parameters: contentHistoryParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated carousel history", {
+            $ref: "#/components/schemas/CarouselProtectedPage"
+          })
+        }
+      })
+    };
+    paths[`${base}/targets`] = {
+      get: carouselOperation("Search live targets inside the authenticated scope", scene.read, {
+        parameters: [
+          { name: "type", in: "query", schema: { type: "string", enum: scene.targetTypes } },
+          { name: "q", in: "query", schema: { type: "string", minLength: 1, maxLength: 160 } },
+          ...contentHistoryParameters
+        ],
+        responses: {
+          "200": jsonDataResponse("Public-safe paginated target picker", {
+            $ref: "#/components/schemas/CarouselTargetSearchPage"
+          })
+        }
+      })
+    };
+    paths[release] = {
+      get: carouselOperation("Read one protected carousel release", scene.read, {
+        parameters: [carouselReleaseIdParameter],
+        responses: protectedResponse("Protected carousel release")
+      }),
+      patch: carouselOperation("Atomically replace one draft slide set", scene.edit, {
+        parameters: [carouselReleaseIdParameter],
+        requestBody: jsonBody("CarouselDraftReplace"),
+        responses: protectedResponse("Carousel draft replaced")
+      })
+    };
+    paths[`${release}/slides/{slidePublicId}/locales/{locale}`] = {
+      patch: carouselOperation("Update exactly one slide locale", scene.edit, {
+        parameters: [
+          carouselReleaseIdParameter,
+          carouselSlidePublicIdParameter,
+          carouselLocaleParameter
+        ],
+        requestBody: jsonBody("CarouselLocaleUpdate"),
+        responses: protectedResponse("Carousel locale updated")
+      })
+    };
+    paths[`${release}/slides/{slidePublicId}/copy-to-all`] = {
+      post: carouselOperation("Copy one explicit source locale to all five locales", scene.edit, {
+        parameters: [carouselReleaseIdParameter, carouselSlidePublicIdParameter],
+        requestBody: jsonBody("CarouselCopyAll"),
+        responses: protectedResponse("Carousel locale copied to all")
+      })
+    };
+    paths[`${release}/preview`] = {
+      get: carouselOperation("Preview the protected five-locale draft", scene.read, {
+        parameters: [carouselReleaseIdParameter],
+        responses: protectedResponse("Protected carousel preview")
+      })
+    };
+    for (const [action, schema, summary] of [
+      ["publish", "ContentPublishCommand", "Publish a complete carousel draft immediately"],
+      ["schedule", "ContentScheduleCommand", "Schedule a complete carousel draft"],
+      ["disable", "ContentDisableCommand", "Disable a published or scheduled carousel release"],
+      ["rollback", "ContentRollbackCommand", "Clone immutable history into a new rollback draft"]
+    ] as const) {
+      paths[`${release}/${action}`] = {
+        post: carouselOperation(summary, scene.publish, {
+          parameters: [carouselReleaseIdParameter],
+          requestBody: jsonBody(schema),
+          responses: protectedResponse(`Carousel ${action} command completed`)
+        })
+      };
+    }
+  }
+  paths[`${config.API_PREFIX}/content/carousels/user-home`] = {
+    get: carouselOperation("Read the actual current user-home PUBLISHED slot", null, {
+      parameters: [carouselPublicLocaleParameter],
+      responses: {
+        "200": jsonDataResponse("One-locale user-home carousel", {
+          $ref: "#/components/schemas/PublishedCarouselPayload"
+        })
+      }
+    })
+  };
+  paths[`${config.API_PREFIX}/affiliate/content/carousel`] = {
+    get: carouselOperation(
+      "Read the actual current Affiliate notice PUBLISHED slot",
+      "page:affiliate-marketplace",
+      {
+        parameters: [carouselPublicLocaleParameter],
+        responses: {
+          "200": jsonDataResponse("One-locale Affiliate notice carousel", {
+            $ref: "#/components/schemas/PublishedCarouselPayload"
+          })
+        }
+      }
+    )
+  };
+  return paths;
+};
+
 const merchantEmployeeNeedoIdParameter = {
   name: "needoId",
   in: "path",
@@ -3061,13 +3264,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       AffiliateAllianceMembership: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "memberId",
-          "role",
-          "managerNeedoId",
-          "promoterShareBpsOverride",
-          "permissions"
-        ],
+        required: ["memberId", "role", "managerNeedoId", "promoterShareBpsOverride", "permissions"],
         properties: {
           memberId: { type: "integer", minimum: 1 },
           role: { type: "string", enum: ["owner", "partner", "subordinate"] },
@@ -3119,10 +3316,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           owner: { $ref: "#/components/schemas/AffiliateAllianceOwner" },
           membership: { $ref: "#/components/schemas/AffiliateAllianceMembership" },
           wallet: {
-            oneOf: [
-              { $ref: "#/components/schemas/AffiliateAllianceWallet" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/AffiliateAllianceWallet" }, { type: "null" }]
           },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
@@ -3134,10 +3328,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["alliance"],
         properties: {
           alliance: {
-            oneOf: [
-              { $ref: "#/components/schemas/AffiliateAlliance" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/AffiliateAlliance" }, { type: "null" }]
           }
         }
       },
@@ -3859,6 +4050,289 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      CarouselTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["locale", "badge", "title", "caption", "ctaLabel", "imageAltText"],
+        properties: {
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 }
+        }
+      },
+      CarouselProtectedTarget: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "shopId"],
+            properties: { type: { const: "shop" }, shopId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "technicianProfileId"],
+            properties: {
+              type: { const: "technician" },
+              technicianProfileId: { type: "integer", minimum: 1 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "serviceId"],
+            properties: { type: { const: "service" }, serviceId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "affiliateTaskId"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              affiliateTaskId: { type: ["integer", "null"], minimum: 1 }
+            }
+          }
+        ]
+      },
+      CarouselSlideInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "mediaAssetPublicId",
+          "sortOrder",
+          "isEnabled",
+          "visibleFrom",
+          "visibleUntil",
+          "target",
+          "translations"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          mediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          sortOrder: { type: "integer", minimum: 0 },
+          isEnabled: { type: "boolean" },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" },
+          target: { $ref: "#/components/schemas/CarouselProtectedTarget" },
+          translations: {
+            type: "array",
+            minItems: 1,
+            maxItems: 5,
+            items: { $ref: "#/components/schemas/CarouselTranslationInput" }
+          }
+        }
+      },
+      CarouselDraftCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "sourceLocale", "slides"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          slides: {
+            type: "array",
+            minItems: 1,
+            maxItems: 50,
+            items: { $ref: "#/components/schemas/CarouselSlideInput" }
+          }
+        }
+      },
+      CarouselDraftReplace: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "sourceLocale", "slides"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          slides: {
+            type: "array",
+            minItems: 1,
+            maxItems: 50,
+            items: { $ref: "#/components/schemas/CarouselSlideInput" }
+          }
+        }
+      },
+      CarouselLocaleUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "badge", "title", "caption", "ctaLabel", "imageAltText"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 }
+        }
+      },
+      CarouselCopyAll: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "sourceLocale"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+        }
+      },
+      CarouselProtectedPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "scene",
+          "releaseId",
+          "version",
+          "status",
+          "lockVersion",
+          "publishAt",
+          "activatedAt",
+          "disabledAt",
+          "archivedAt",
+          "sourceReleaseId",
+          "slides",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          scene: { type: "string", enum: ["USER_HOME", "AFFILIATE_HOME_NOTICE"] },
+          releaseId: { type: "integer", minimum: 1 },
+          version: { type: "integer", minimum: 1 },
+          status: {
+            type: "string",
+            enum: ["draft", "scheduled", "published", "disabled", "archived"]
+          },
+          lockVersion: { type: "integer", minimum: 1 },
+          publishAt: { type: ["string", "null"], format: "date-time" },
+          activatedAt: { type: ["string", "null"], format: "date-time" },
+          disabledAt: { type: ["string", "null"], format: "date-time" },
+          archivedAt: { type: ["string", "null"], format: "date-time" },
+          sourceReleaseId: { type: ["integer", "null"], minimum: 1 },
+          slides: { type: "array", items: { type: "object" } },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      CarouselProtectedPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/CarouselProtectedPayload" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      CarouselSceneState: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scene", "draft", "published", "scheduled"],
+        properties: {
+          scene: { type: "string", enum: ["USER_HOME", "AFFILIATE_HOME_NOTICE"] },
+          draft: {
+            anyOf: [{ $ref: "#/components/schemas/CarouselProtectedPayload" }, { type: "null" }]
+          },
+          published: {
+            anyOf: [{ $ref: "#/components/schemas/CarouselProtectedPayload" }, { type: "null" }]
+          },
+          scheduled: {
+            anyOf: [{ $ref: "#/components/schemas/CarouselProtectedPayload" }, { type: "null" }]
+          }
+        }
+      },
+      CarouselTargetSearchItem: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId", "label", "status"],
+            properties: {
+              type: {
+                type: "string",
+                enum: ["shop", "technician", "service", "affiliate_announcement"]
+              },
+              publicId: { type: "string" },
+              label: { type: "string" },
+              status: { type: "string" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "taskCode", "label", "status"],
+            properties: {
+              type: { const: "affiliate_task" },
+              taskCode: { type: "string" },
+              label: { type: "string" },
+              status: { type: "string" }
+            }
+          }
+        ]
+      },
+      CarouselTargetSearchPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/CarouselTargetSearchItem" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      PublishedCarouselTarget: {
+        type: "object",
+        additionalProperties: false,
+        required: ["type", "publicId"],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["shop", "technician", "service", "affiliate_announcement"]
+          },
+          publicId: { type: "string" }
+        }
+      },
+      PublishedCarouselPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scene", "locale", "releaseVersion", "generatedAt", "slides"],
+        properties: {
+          scene: { type: "string", enum: ["USER_HOME", "AFFILIATE_HOME_NOTICE"] },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          releaseVersion: { type: ["integer", "null"], minimum: 1 },
+          generatedAt: { type: "string", format: "date-time" },
+          slides: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "id",
+                "badge",
+                "title",
+                "caption",
+                "ctaLabel",
+                "imageAltText",
+                "imageUrl",
+                "target"
+              ],
+              properties: {
+                id: { type: "string", format: "uuid" },
+                badge: { type: ["string", "null"] },
+                title: { type: "string" },
+                caption: { type: ["string", "null"] },
+                ctaLabel: { type: ["string", "null"] },
+                imageAltText: { type: "string" },
+                imageUrl: { type: "string", format: "uri-reference" },
+                target: { $ref: "#/components/schemas/PublishedCarouselTarget" }
+              }
+            }
+          }
+        }
+      },
       OfficialAnnouncementTranslationInput: {
         type: "object",
         additionalProperties: false,
@@ -4093,6 +4567,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...createCarouselOpenApiPaths(config),
     [`${config.API_PREFIX}/merchant-admin/employees`]: {
       get: {
         tags: ["Merchant Employees"],
@@ -6537,7 +7012,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Booking"],
         summary: "Paginated available schedule slots",
-        description: "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. Results are limited to published, unsuspended shops and available slots with remaining capacity.",
+        description:
+          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. Results are limited to published, unsuspended shops and available slots with remaining capacity.",
         parameters: [
           {
             name: "serviceId",
@@ -6668,7 +7144,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "to",
             in: "query",
-            description: "Exclusive ISO 8601 booking start timestamp; requires from; maximum window is 93 days",
+            description:
+              "Exclusive ISO 8601 booking start timestamp; requires from; maximum window is 93 days",
             schema: { type: "string", format: "date-time" }
           },
           {
@@ -9231,7 +9708,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "400": { description: "error.content.media_invalid — invalid query or media bytes" },
           "401": { description: "error.auth.token_invalid — missing or invalid access token" },
           "403": { description: "error.forbidden — missing content media upload permission" },
-          "409": { description: "error.content.lock_conflict — checksum lock acquisition timed out" },
+          "409": {
+            description: "error.content.lock_conflict — checksum lock acquisition timed out"
+          },
           "413": { description: "error.content.media_too_large — upload exceeds 8 MiB" },
           "415": { description: "error.content.media_invalid — unsupported media or encoding" }
         }

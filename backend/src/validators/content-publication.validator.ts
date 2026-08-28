@@ -360,6 +360,29 @@ export const carouselTargetSearchQuerySchemaByScene = {
   "affiliate-home-notice": affiliateNoticeCarouselTargetSearchQuerySchema
 } as const;
 
+export const carouselSlideParamSchema = z
+  .object({
+    releaseId: z.coerce.number().int().positive(),
+    slidePublicId: z.string().uuid()
+  })
+  .strict();
+
+export const carouselSlideLocaleParamSchema = carouselSlideParamSchema.extend({
+  locale: localeSchema
+});
+
+export const carouselLocaleUpdateBodySchema = translationBodySchema
+  .omit({ locale: true })
+  .extend({ expectedLockVersion: positiveVersionSchema })
+  .strict();
+
+export const carouselCopyAllBodySchema = z
+  .object({
+    expectedLockVersion: positiveVersionSchema,
+    sourceLocale: localeSchema
+  })
+  .strict();
+
 export type CarouselSceneParam = z.infer<typeof carouselSceneParamSchema>;
 export type CarouselDraftBody = z.infer<typeof carouselDraftBodySchema>;
 export type AnnouncementDraftBody = z.infer<typeof announcementDraftBodySchema>;
@@ -374,3 +397,5 @@ export type ContentHistoryQuery = z.infer<typeof contentHistoryQuerySchema>;
 export type CarouselTargetSearchQuery =
   | z.infer<typeof userHomeCarouselTargetSearchQuerySchema>
   | z.infer<typeof affiliateNoticeCarouselTargetSearchQuerySchema>;
+export type CarouselLocaleUpdateBody = z.infer<typeof carouselLocaleUpdateBodySchema>;
+export type CarouselCopyAllBody = z.infer<typeof carouselCopyAllBodySchema>;
