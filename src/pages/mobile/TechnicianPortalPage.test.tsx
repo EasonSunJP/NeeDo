@@ -13,6 +13,14 @@ function expectInOrder(text: string, labels: string[]) {
 }
 
 describe("TechnicianPortalPage profile card", () => {
+  it("waits for formal technician and shop data before mounting the portal body", () => {
+    expect(source).toContain("function TechnicianPortalDataGate");
+    expect(source).toContain("if (!formalTechnicianProfileId || !formalTechnician || !formalStore)");
+    expect(source).toContain("正在加载技师资料");
+    expect(source).toContain("技师资料加载失败");
+    expect(source).toContain("<TechnicianPortalContent");
+  });
+
   it("binds the authenticated technician and shop identity to formal profile data", () => {
     expect(source).toContain("getFormalTechnicianProfileId(session)");
     expect(source).toContain("coreReadApi.getTechnicianDetail(formalTechnicianProfileId)");

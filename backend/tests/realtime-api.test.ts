@@ -318,6 +318,9 @@ const createFixture = async () => {
     userId: number;
     emoji: string;
   }> = [];
+  const clearedThroughMessageIdByParticipant = new Map<string, number>();
+  const participantClearKey = (conversationId: number, userId: number) =>
+    `${conversationId}:${userId}`;
   const contacts: Array<{
     id: number;
     ownerUserId: number;
@@ -387,8 +390,13 @@ const createFixture = async () => {
   };
 
   const mapConversation = (conversation: (typeof conversations)[number], userId: number) => {
+    const clearedThroughMessageId =
+      clearedThroughMessageIdByParticipant.get(participantClearKey(conversation.id, userId)) ?? 0;
     const lastMessage = messages
-      .filter((message) => message.conversationId === conversation.id)
+      .filter(
+        (message) =>
+          message.conversationId === conversation.id && message.id > clearedThroughMessageId
+      )
       .sort((left, right) => right.id - left.id)[0];
 
     return {
@@ -686,6 +694,13 @@ const createFixture = async () => {
 
         const sorted = messages
           .filter((message) => message.conversationId === input.conversationId)
+          .filter(
+            (message) =>
+              message.id >
+              (clearedThroughMessageIdByParticipant.get(
+                participantClearKey(input.conversationId, input.userId)
+              ) ?? 0)
+          )
           .filter((message) => (input.beforeId ? message.id < input.beforeId : true))
           .sort((left, right) => right.id - left.id);
         const pageSize = input.pageSize ?? 20;
@@ -811,6 +826,21 @@ const createFixture = async () => {
       conversation.unreadByUserId.set(input.userId, 0);
       return mapConversation(conversation, input.userId);
     }),
+    clearConversationMessages: jest.fn(
+      async (input: { conversationId: number; userId: number }) => {
+        const conversation = conversations.find((item) => item.id === input.conversationId);
+        if (!conversation?.participantUserIds.includes(input.userId)) return null;
+        const latestMessageId = messages
+          .filter((message) => message.conversationId === input.conversationId)
+          .reduce((latest, message) => Math.max(latest, message.id), 0);
+        clearedThroughMessageIdByParticipant.set(
+          participantClearKey(input.conversationId, input.userId),
+          latestMessageId
+        );
+        conversation.unreadByUserId.set(input.userId, 0);
+        return mapConversation(conversation, input.userId);
+      }
+    ),
     listContacts: jest.fn(async (userId: number) =>
       listPage(contacts.filter((contact) => contact.ownerUserId === userId))
     ),
@@ -1445,6 +1475,46 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(200)
       .expect((response) => {
         expect(response.body.data).toMatchObject({ total: 1 });
+      });
+  });
+
+  it("clears history permanently for only the requesting participant", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "direct", participantUserIds: [2] })
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/1/messages")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "text", content: "仅删除我方历史" })
+      .expect(201);
+
+    await request(fixture.app)
+      .delete("/api/v1/im/conversations/1/messages")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ lastMessage: null, unreadCount: 0 });
+      });
+    await request(fixture.app)
+      .get("/api/v1/im/conversations/1/messages?pageSize=20")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ list: [], total: 0 });
+      });
+    await request(fixture.app)
+      .get("/api/v1/im/conversations/1/messages?pageSize=20")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.list).toHaveLength(1);
+        expect(response.body.data.list[0]).toMatchObject({ content: "仅删除我方历史" });
       });
   });
 

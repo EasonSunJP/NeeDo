@@ -101,11 +101,47 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async leaveConversation(
     auth: AuthenticatedAccessContext,
+    conversationId: number,
+    transferOwnerUserId?: number
+  ) {
+    const outcome = await this.repository.leaveConversation({
+      conversationId,
+      userId: auth.userId,
+      transferOwnerUserId
+    });
+
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.group_conversation_not_found");
+    }
+    if (outcome.status === "transfer_required") {
+      throw this.validationError("error.realtime.group_owner_transfer_required");
+    }
+    if (outcome.status === "invalid_transfer") {
+      throw this.validationError("error.realtime.group_owner_transfer_invalid");
+    }
+
+    const { result } = outcome;
+
+    for (const recipientUserId of result.recipientUserIds) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: result.dissolved ? "conversation.dissolved" : "conversation.member.left",
+        recipientUserId,
+        payload: result,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return result;
+  }
+
+  public async dissolveConversation(
+    auth: AuthenticatedAccessContext,
     conversationId: number
   ) {
-    const result = await this.repository.leaveConversation({
+    const result = await this.repository.dissolveConversation({
       conversationId,
-      userId: auth.userId
+      ownerUserId: auth.userId
     });
 
     if (!result) {
@@ -115,7 +151,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     for (const recipientUserId of result.recipientUserIds) {
       this.eventGateway.publish({
         id: this.createEventId(),
-        type: "conversation.member.left",
+        type: "conversation.dissolved",
         recipientUserId,
         payload: result,
         createdAt: new Date().toISOString()
@@ -288,6 +324,18 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async hideConversation(auth: AuthenticatedAccessContext, conversationId: number) {
     const conversation = await this.repository.hideConversation({
+      conversationId,
+      userId: auth.userId
+    });
+    if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
+    return conversation;
+  }
+
+  public async clearConversationMessages(
+    auth: AuthenticatedAccessContext,
+    conversationId: number
+  ) {
+    const conversation = await this.repository.clearConversationMessages({
       conversationId,
       userId: auth.userId
     });

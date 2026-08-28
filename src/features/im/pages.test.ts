@@ -201,7 +201,8 @@ describe("IM pages", () => {
     expect(pagesSource).toContain("选择新群主");
     expect(pagesSource).toContain("解散群聊");
     expect(pagesSource).toContain("store.dissolveConversation(conversation.id)");
-    expect(pagesSource).toContain("store.removeConversationMember(conversation.id, store.currentUserId, transferOwnerUserId)");
+    expect(pagesSource).toContain("store.removeConversationMember(");
+    expect(pagesSource).toContain("transferOwnerUserId,");
     expect(pagesSource).toContain("群成员不足 2 人时将自动解散");
   });
 

@@ -818,6 +818,34 @@ describe("formal IM adapter", () => {
     expect(dissolveConversation).toHaveBeenCalledWith(91);
   });
 
+  it("persists a participant-only irreversible message clear through the formal endpoint", async () => {
+    const conversation = {
+      id: 91,
+      type: "direct" as const,
+      title: null,
+      participants: [
+        { userId: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null, role: "member" as const },
+        { userId: 201, needoId: "u0000000201", username: "对方", avatarUrl: null, role: "member" as const },
+      ],
+      lastMessage: null,
+      unreadCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const clearConversationMessages = vi
+      .spyOn(realtimeApi, "clearConversationMessages")
+      .mockResolvedValue(conversation);
+    const api = createFormalImApi({
+      currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(api.clearConversation("91")).resolves.toMatchObject({
+      conversation: { id: "91", lastMessageId: undefined },
+    });
+    expect(clearConversationMessages).toHaveBeenCalledWith(91);
+  });
+
   it("does not turn a harmless SSE connected event into a three-request bootstrap refresh", () => {
     expect(shouldForwardFormalImEvent({ id: "1", payload: {}, type: "connected" })).toBe(false);
     const reactionEvent = {

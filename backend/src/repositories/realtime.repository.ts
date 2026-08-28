@@ -196,14 +196,22 @@ export interface UpdateConversationPrivacyInput {
 export interface LeaveConversationInput {
   conversationId: number;
   userId: number;
+  transferOwnerUserId?: number;
 }
 
 export interface LeaveConversationPayload {
   conversationId: number;
   removedUserId: number;
   newOwnerUserId: number | null;
+  dissolved: boolean;
   recipientUserIds: number[];
 }
+
+export type LeaveConversationOutcome =
+  | { status: "left"; result: LeaveConversationPayload }
+  | { status: "not_found" }
+  | { status: "transfer_required" }
+  | { status: "invalid_transfer" };
 
 export interface ListMessagesInput {
   conversationId: number;
@@ -306,7 +314,11 @@ export interface RealtimeRepositoryPort {
   ) => Promise<ConversationPayload | null>;
   leaveConversation: (
     input: LeaveConversationInput
-  ) => Promise<LeaveConversationPayload | null>;
+  ) => Promise<LeaveConversationOutcome>;
+  dissolveConversation: (input: {
+    conversationId: number;
+    ownerUserId: number;
+  }) => Promise<LeaveConversationPayload | null>;
   getConversationForUser: (
     conversationId: number,
     userId: number
@@ -333,6 +345,10 @@ export interface RealtimeRepositoryPort {
     input: UpdateConversationPreferencesInput
   ) => Promise<ConversationPayload | null>;
   hideConversation: (input: {
+    conversationId: number;
+    userId: number;
+  }) => Promise<ConversationPayload | null>;
+  clearConversationMessages: (input: {
     conversationId: number;
     userId: number;
   }) => Promise<ConversationPayload | null>;
@@ -597,7 +613,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async leaveConversation(
     input: LeaveConversationInput
-  ): Promise<LeaveConversationPayload | null> {
+  ): Promise<LeaveConversationOutcome> {
     return this.client.$transaction(async (tx) => {
       const conversation = await tx.conversation.findFirst({
         where: {
@@ -618,20 +634,33 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
 
       if (!conversation) {
-        return null;
+        return { status: "not_found" } as const;
       }
 
       const leaving = conversation.participants.find(
         (participant) => participant.userId === input.userId
       );
       if (!leaving) {
-        return null;
+        return { status: "not_found" } as const;
       }
 
       const remaining = conversation.participants.filter(
         (participant) => participant.userId !== input.userId
       );
-      const nextOwner = leaving.role === "owner" ? (remaining[0] ?? null) : null;
+      const requestedOwner = input.transferOwnerUserId
+        ? remaining.find((participant) => participant.userId === input.transferOwnerUserId)
+        : undefined;
+      if (leaving.role === "owner" && !input.transferOwnerUserId) {
+        return { status: "transfer_required" } as const;
+      }
+      if (leaving.role === "owner" && !requestedOwner) {
+        return { status: "invalid_transfer" } as const;
+      }
+
+      const shouldDissolve = remaining.length < 2;
+      const nextOwner = leaving.role === "owner" && !shouldDissolve
+        ? (requestedOwner ?? null)
+        : null;
       const now = new Date();
 
       if (nextOwner) {
@@ -641,22 +670,30 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         });
       }
 
-      await tx.conversationParticipant.update({
-        where: { id: leaving.id },
-        data: {
-          deletedAt: now,
-          hiddenAt: now,
-          unreadCount: 0,
-          isPinned: false
-        }
-      });
-
-      if (remaining.length === 0) {
+      if (shouldDissolve) {
+        await tx.conversationParticipant.updateMany({
+          where: { conversationId: input.conversationId, deletedAt: null },
+          data: {
+            deletedAt: now,
+            hiddenAt: now,
+            unreadCount: 0,
+            isPinned: false
+          }
+        });
         await tx.conversation.update({
           where: { id: input.conversationId },
           data: { deletedAt: now }
         });
       } else {
+        await tx.conversationParticipant.update({
+          where: { id: leaving.id },
+          data: {
+            deletedAt: now,
+            hiddenAt: now,
+            unreadCount: 0,
+            isPinned: false
+          }
+        });
         await tx.conversation.update({
           where: { id: input.conversationId },
           data: { updatedAt: now }
@@ -671,14 +708,84 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           targetId: input.conversationId,
           ip: null,
           userAgent: null,
-          metadata: { newOwnerUserId: nextOwner?.userId ?? null }
+          metadata: {
+            newOwnerUserId: nextOwner?.userId ?? null,
+            dissolved: shouldDissolve
+          }
+        }
+      });
+
+      return {
+        status: "left" as const,
+        result: {
+          conversationId: input.conversationId,
+          removedUserId: input.userId,
+          newOwnerUserId: nextOwner?.userId ?? null,
+          dissolved: shouldDissolve,
+          recipientUserIds: conversation.participants.map((participant) => participant.userId)
+        }
+      };
+    });
+  }
+
+  public async dissolveConversation(input: {
+    conversationId: number;
+    ownerUserId: number;
+  }): Promise<LeaveConversationPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const conversation = await tx.conversation.findFirst({
+        where: {
+          id: input.conversationId,
+          type: ConversationType.GROUP,
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: input.ownerUserId,
+              role: "owner",
+              deletedAt: null
+            }
+          }
+        },
+        include: {
+          participants: {
+            where: { deletedAt: null },
+            select: { userId: true }
+          }
+        }
+      });
+      if (!conversation) return null;
+
+      const now = new Date();
+      await tx.conversationParticipant.updateMany({
+        where: { conversationId: input.conversationId, deletedAt: null },
+        data: {
+          deletedAt: now,
+          hiddenAt: now,
+          unreadCount: 0,
+          isPinned: false
+        }
+      });
+      await tx.conversation.update({
+        where: { id: input.conversationId },
+        data: { deletedAt: now }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.ownerUserId,
+          action: "im.conversation.dissolved",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: { memberCount: conversation.participants.length }
         }
       });
 
       return {
         conversationId: input.conversationId,
-        removedUserId: input.userId,
-        newOwnerUserId: nextOwner?.userId ?? null,
+        removedUserId: input.ownerUserId,
+        newOwnerUserId: null,
+        dissolved: true,
         recipientUserIds: conversation.participants.map((participant) => participant.userId)
       };
     });
@@ -996,7 +1103,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const where: Prisma.MessageWhereInput = {
       conversationId: input.conversationId,
       deletedAt: null,
-      ...(input.beforeId ? { id: { lt: input.beforeId } } : {})
+      ...(input.beforeId || participant.clearedThroughMessageId
+        ? {
+            id: {
+              ...(input.beforeId ? { lt: input.beforeId } : {}),
+              ...(participant.clearedThroughMessageId
+                ? { gt: participant.clearedThroughMessageId }
+                : {})
+            }
+          }
+        : {})
     };
     const [list, total] = await Promise.all([
       this.client.message.findMany({
@@ -1162,6 +1278,56 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       data: { hiddenAt: new Date(), isPinned: false, unreadCount: 0 }
     });
     return this.getConversationForUser(input.conversationId, input.userId);
+  }
+
+  public async clearConversationMessages(input: {
+    conversationId: number;
+    userId: number;
+  }): Promise<ConversationPayload | null> {
+    const cleared = await this.client.$transaction(async (tx) => {
+      const participant = await tx.conversationParticipant.findFirst({
+        where: {
+          conversationId: input.conversationId,
+          userId: input.userId,
+          deletedAt: null,
+          conversation: { deletedAt: null }
+        },
+        select: { id: true }
+      });
+      if (!participant) return false;
+
+      const latestMessage = await tx.message.findFirst({
+        where: { conversationId: input.conversationId, deletedAt: null },
+        orderBy: { id: "desc" },
+        select: { id: true, createdAt: true }
+      });
+
+      await tx.conversationParticipant.update({
+        where: { id: participant.id },
+        data: {
+          clearedThroughMessageId: latestMessage?.id ?? null,
+          lastReadMessageId: latestMessage?.id ?? null,
+          lastReadAt: latestMessage?.createdAt ?? new Date(),
+          unreadCount: 0
+        }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.userId,
+          action: "im.conversation.messages_cleared",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: { clearedThroughMessageId: latestMessage?.id ?? null }
+        }
+      });
+      return true;
+    });
+
+    return cleared
+      ? this.getConversationForUser(input.conversationId, input.userId)
+      : null;
   }
 
   public async listContacts(
@@ -1817,7 +1983,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         deletedAt: null,
         conversation: { deletedAt: null }
       },
-      select: { id: true }
+      select: { id: true, clearedThroughMessageId: true }
     });
   }
 
@@ -1925,6 +2091,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         this.mapParticipant(participant.user, participant.role)
       ),
       lastMessage: conversation.messages[0]
+        && conversation.messages[0].id > (viewer?.clearedThroughMessageId ?? 0)
         ? this.mapMessage(conversation.messages[0], viewerUserId)
         : null,
       unreadCount: viewer?.unreadCount ?? 0,

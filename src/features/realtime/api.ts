@@ -79,6 +79,7 @@ export type RealtimeLeaveConversationResult = {
   conversationId: number;
   removedUserId: number;
   newOwnerUserId: number | null;
+  dissolved: boolean;
 };
 
 export type RealtimeMessageHistory = PaginatedRealtimeData<RealtimeMessage> & {
@@ -224,14 +225,29 @@ export const realtimeApi = {
       method: "PATCH"
     });
   },
-  leaveConversation(conversationId: number) {
+  leaveConversation(conversationId: number, transferOwnerUserId?: number) {
     return httpClient.request<RealtimeLeaveConversationResult>(
       `/im/conversations/${conversationId}/leave`,
+      {
+        body: transferOwnerUserId ? { transferOwnerUserId } : {},
+        method: "POST"
+      }
+    );
+  },
+  dissolveConversation(conversationId: number) {
+    return httpClient.request<RealtimeLeaveConversationResult>(
+      `/im/conversations/${conversationId}/dissolve`,
       { method: "POST" }
     );
   },
   deleteConversation(conversationId: number) {
     return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}`, { method: "DELETE" });
+  },
+  clearConversationMessages(conversationId: number) {
+    return httpClient.request<RealtimeConversation>(
+      `/im/conversations/${conversationId}/messages`,
+      { method: "DELETE" }
+    );
   },
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });

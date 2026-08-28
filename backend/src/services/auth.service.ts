@@ -1703,11 +1703,15 @@ export class AuthService {
     }
     const sharedPrimaryPublicId = allActiveIdentities.find((identity) => identity.publicId !== null)
       ?.publicId;
+    const hasCustomerIdentity = allActiveIdentities.some((identity) =>
+      ["customer", "user", "u"].includes(identity.type)
+    );
     const sharedPrimaryIdentities = sharedPrimaryPublicId
       ? allActiveIdentities
           .filter(
             (identity) =>
-              ["customer", "user", "u", "scout"].includes(identity.type) &&
+              (["customer", "user", "u"].includes(identity.type) ||
+                (identity.type === "scout" && hasCustomerIdentity)) &&
               identity.publicId === null
           )
           .map((identity) => ({ ...identity, publicId: sharedPrimaryPublicId }))
