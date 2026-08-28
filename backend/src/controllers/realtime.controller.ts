@@ -283,10 +283,14 @@ export class RealtimeController {
     this.service.getUnreadCounts(getAuthenticatedAccess(response))
   );
 
-  public streamEvents = (request: Request, response: Response, next: NextFunction): void => {
+  public streamEvents = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       void request;
-      this.service.streamEvents(getAuthenticatedAccess(response), response);
+      await this.service.streamEvents(getAuthenticatedAccess(response), response);
     } catch (error) {
       next(error);
     }

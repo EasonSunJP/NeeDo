@@ -162,3 +162,9 @@ The dev compose stack contains:
 - `backend`: Express API, configured by `backend/.env.dev`.
 - `mysql`: MySQL 8.0 with UTF8MB4 defaults.
 - `redis`: Redis 7.2 with append-only persistence.
+
+All backend instances in one environment must use the same `REALTIME_REDIS_CHANNEL`
+value so directed SSE events can cross process boundaries. Keep staging, production,
+and local acceptance on different channel names. The realtime layer uses one Redis
+subscription and one publisher connection per backend process, not per connected
+user; MySQL remains the durable message source and reconnect recovery path.

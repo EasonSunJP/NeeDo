@@ -1599,6 +1599,8 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 
 正式运行模式不使用上述旧 mock 写入路径：聊天搜索只查询当前设备已加载的 IM store；添加好友通过分页 `/api/v1/im/directory` 和 `/api/v1/im/contacts`；图片消息通过会话成员校验后的 `/api/v1/im/conversations/:conversationId/media` 上传；消息到达由每标签页共享的 SSE 连接即时合并，断线或标签页恢复时只做一次受控补拉。联系人拉黑状态持久化在 `contacts.blocked_at`，并由服务端阻止被拉黑发送方继续写入直接会话消息。
 
+正式 SSE 在每个可见浏览器标签页只保留一条共享连接。后端每个实例只使用一个 Redis Pub/Sub 订阅和一个发布连接，把定向事件转发到其他实例，不按用户轮询或创建 Redis 订阅；消息正文和未读状态继续以 MySQL 为权威。Redis 短暂异常时同实例投递继续可用，断线客户端通过既有 REST 补拉恢复；慢 SSE 客户端触发背压时会被主动断开，防止服务端无界缓存。
+
 同一套接口通过 `scope` 区分角色视图：
 
 - `scope=user`

@@ -133,6 +133,11 @@ describe("production safety", () => {
       { CORS_ALLOWED_ORIGINS: "https://needo.example" },
       "CORS_ALLOWED_ORIGINS"
     ],
+    [
+      "unsafe realtime Redis channel",
+      { REALTIME_REDIS_CHANNEL: "needo realtime events" },
+      "REALTIME_REDIS_CHANNEL"
+    ],
     ["missing metrics token", { METRICS_BEARER_TOKEN: "" }, "METRICS_BEARER_TOKEN"],
     ["blank Google client ID", { GOOGLE_AUTH_CLIENT_ID: "" }, "GOOGLE_AUTH_CLIENT_ID"],
     ["whitespace Google client ID", { GOOGLE_AUTH_CLIENT_ID: "   " }, "GOOGLE_AUTH_CLIENT_ID"],

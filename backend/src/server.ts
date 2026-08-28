@@ -1,7 +1,7 @@
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
-import { disconnectRedis } from "./config/redis";
+import { checkRedisHealth, createRedisClient, disconnectRedis } from "./config/redis";
 import { disconnectPrisma } from "./prisma/client";
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
@@ -11,13 +11,31 @@ import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.ser
 import { BookingUserRewardExpiryService } from "./services/booking-user-reward-expiry.service";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
+import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
+import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { createShutdownHandler } from "./server-shutdown";
 import { LedgerService } from "./services/ledger.service";
 import { AffiliateTaskExpiryWorker } from "./workers/affiliate-task-expiry.worker";
 import { BookingUserRewardExpiryWorker } from "./workers/booking-user-reward-expiry.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 
-const app = createApp(env);
+const realtimeEventGateway = new SseRealtimeEventGateway({
+  eventBus: new RedisRealtimeEventBus({
+    channel: env.REALTIME_REDIS_CHANNEL,
+    publisher: createRedisClient(),
+    subscriber: createRedisClient(),
+    onError: (error, connection) => {
+      logger.error({ connection, error }, "Realtime Redis connection error");
+    }
+  }),
+  onError: (error, operation) => {
+    logger.error({ error, operation }, "Realtime event delivery error");
+  }
+});
+const app = createApp(env, {
+  redisHealthCheck: checkRedisHealth,
+  realtimeEventGateway
+});
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
   new IdentityApplicationPurgeService(
     new IdentityApplicationPurgeRepository(),
@@ -73,11 +91,14 @@ const server = app.listen(env.PORT, () => {
 const shutdown = createShutdownHandler({
   closeServer: (callback) => server.close(callback),
   disconnect: async () => {
-    await Promise.all([disconnectPrisma(), disconnectRedis()]);
+    await Promise.all([disconnectPrisma(), disconnectRedis(), realtimeEventGateway.close()]);
   },
   exit: (code) => process.exit(code),
   logger,
   stopWorker: () => {
+    void realtimeEventGateway.close().catch((error) => {
+      logger.error({ error }, "Realtime gateway shutdown failed");
+    });
     bookingUserRewardExpiryWorker.stop();
     affiliateTaskExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();

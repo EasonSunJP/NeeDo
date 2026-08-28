@@ -461,8 +461,8 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.getUnreadCounts(auth.userId);
   }
 
-  public streamEvents(auth: AuthenticatedAccessContext, response: Response): void {
-    this.eventGateway.subscribe(auth.userId, response);
+  public async streamEvents(auth: AuthenticatedAccessContext, response: Response): Promise<void> {
+    await this.eventGateway.subscribe(auth.userId, response);
   }
 
   public async notifyOrderStatusChanged(input: OrderStatusNotificationInput): Promise<void> {
