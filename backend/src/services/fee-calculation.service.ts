@@ -64,6 +64,7 @@ export interface PlatformFeeRulePayload {
 
 export interface PlatformFeeRuleSetPayload {
   id: number;
+  familyCode: string | null;
   name: string;
   description: string | null;
   scopeType: string;
@@ -228,6 +229,7 @@ export interface FeeRuleRepositoryPort {
   createRuleSet: (
     input: FeeRuleMutationInput & { actorUserId: number | null }
   ) => Promise<PlatformFeeRuleSetPayload>;
+  findRuleSetById: (id: number) => Promise<PlatformFeeRuleSetPayload | null>;
   updateRuleSet: (
     id: number,
     input: Partial<FeeRuleMutationInput> & { actorUserId: number | null }
@@ -280,6 +282,7 @@ export class FeeCalculationService {
     input: Partial<FeeRuleMutationInput>,
     actorUserId: number | null
   ): Promise<PlatformFeeRuleSetPayload> {
+    await this.assertRuleSetIsNotManaged(id);
     const updated = await this.repository.updateRuleSet(id, { ...input, actorUserId });
 
     if (!updated) {
@@ -294,6 +297,7 @@ export class FeeCalculationService {
     status: "active" | "paused",
     actorUserId: number | null
   ): Promise<PlatformFeeRuleSetPayload> {
+    await this.assertRuleSetIsNotManaged(id);
     const updated = await this.repository.setRuleSetStatus(id, status, actorUserId);
 
     if (!updated) {
@@ -435,6 +439,13 @@ export class FeeCalculationService {
   }
 
   private resolveCalculationTime(input: FeeCalculationInput): Date {
+    if (
+      input.stage === "capture" &&
+      input.feeType === "b_platform_fee" &&
+      input.acceptedAt
+    ) {
+      return input.acceptedAt;
+    }
     if (input.stage === "capture" && input.completedAt) {
       return input.completedAt;
     }
@@ -443,6 +454,20 @@ export class FeeCalculationService {
     }
 
     return input.scheduledStartAt ?? input.completedAt ?? input.acceptedAt ?? new Date();
+  }
+
+  private async assertRuleSetIsNotManaged(id: number): Promise<void> {
+    const ruleSet = await this.repository.findRuleSetById(id);
+    if (!ruleSet) {
+      throw this.notFoundError();
+    }
+    if (ruleSet.familyCode === "booking_default") {
+      throw new AppError({
+        code: ERROR_CODES.PLATFORM_FEE_MANAGED_RULE_CONFLICT,
+        message: "error.platform_fee_policy.managed_rule",
+        statusCode: 409
+      });
+    }
   }
 
   private ruleMatches(rule: PlatformFeeRulePayload, input: FeeCalculationInput, at: Date): boolean {

@@ -262,7 +262,7 @@ git commit -m "feat: add platform fee policy schema"
 - Consumes: active effective-dated `booking_default` rule-set family and authenticated identity scope.
 - Produces: `GlobalBookingPlatformFeePayload`, `ShopPlatformFeePolicyPayload`, `EffectiveShopPlatformFeePolicy`, and mutation result contracts.
 
-- [ ] **Step 1: Write failing acceptance-time and managed-family tests**
+- [x] **Step 1: Write failing acceptance-time and managed-family tests**
 
 In `fee-calculation-service.test.ts`, prove that a completed Booking uses the rule effective at acceptance, not completion:
 
@@ -285,7 +285,7 @@ it("prices Booking platform-fee capture at acceptedAt", async () => {
 
 In `fee-rule-api.test.ts`, add a managed-family fixture and assert generic update/pause returns 409 with `error.platform_fee_policy.managed_rule`.
 
-- [ ] **Step 2: Write failing policy service tests**
+- [x] **Step 2: Write failing policy service tests**
 
 Create `platform-fee-policy-service.test.ts` covering:
 
@@ -334,7 +334,7 @@ it("updates only payerType inside the active merchant identity scope", async () 
 
 Also prove version conflict maps to `PLATFORM_FEE_POLICY_VERSION_CONFLICT`, missing canonical global family maps to `PLATFORM_FEE_POLICY_CONFIG_CONFLICT`, and a non-shop/non-merchant identity receives `IDENTITY_FORBIDDEN`.
 
-- [ ] **Step 3: Run focused tests and verify RED**
+- [x] **Step 3: Run focused tests and verify RED**
 
 Run:
 
@@ -345,7 +345,7 @@ npm test -- fee-calculation-service.test.ts fee-rule-api.test.ts platform-fee-po
 
 Expected: FAIL because the new service/contracts and pricing lock are absent.
 
-- [ ] **Step 4: Add explicit error codes**
+- [x] **Step 4: Add explicit error codes**
 
 Append unique codes after the existing 409xx range:
 
@@ -363,7 +363,7 @@ error.platform_fee_policy.config_conflict
 error.platform_fee_policy.managed_rule
 ```
 
-- [ ] **Step 5: Make global fee capture acceptance-time stable**
+- [x] **Step 5: Make global fee capture acceptance-time stable**
 
 Extend `PlatformFeeRuleSetPayload` with `familyCode: string | null` and map it in `FeeRuleRepository`. Change only Booking platform-fee capture time:
 
@@ -384,7 +384,7 @@ private resolveCalculationTime(input: FeeCalculationInput): Date {
 
 Before generic rule-set update/activate/pause, reject any `familyCode === "booking_default"`. The dedicated policy repository in Task 3 becomes its only write path.
 
-- [ ] **Step 6: Implement the policy service contract**
+- [x] **Step 6: Implement the policy service contract**
 
 Use these public types:
 
@@ -423,7 +423,7 @@ updateShopPayerType(input: ShopPayerMutationInput): Promise<PolicyMutationResult
 
 Do not expose a general `updatePolicy` method.
 
-- [ ] **Step 7: Run focused verification**
+- [x] **Step 7: Run focused verification**
 
 Run:
 
