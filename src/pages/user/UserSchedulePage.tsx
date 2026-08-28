@@ -6,22 +6,35 @@ import { roleBasedTabConfig, userNavItems } from "../../components/mobile/navIte
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { ScheduleSearchField } from "../../components/scheduling/ScheduleSearchField";
 import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
-import { useAuth } from "../../auth/AuthProvider";
+import { useCustomerSelfProfile } from "../../features/core-read/useCustomerSelfProfile";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
-import { useEntityStore } from "../../state/entityStore";
-import { useHomeLayoutStore } from "../../state/homeLayoutStore";
 
 export function UserSchedulePage() {
   const userPortalConfig = roleBasedTabConfig.user;
-  const { session } = useAuth();
-  const { customers } = useEntityStore();
-  const { config } = useHomeLayoutStore();
+  const { profile, customer, loading, error, reload } = useCustomerSelfProfile();
   const [scheduleSearchQuery, setScheduleSearchQuery] = useState("");
-  const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
-  const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
 
-  if (!currentCustomer || !selectedLocation) {
-    return null;
+  if (loading) {
+    return (
+      <MobileShell navItems={userNavItems}>
+        <div aria-label="正在读取用户资料" className="mx-4 mt-6 rounded-[22px] border border-[color:var(--client-line)] px-4 py-5 text-sm font-black text-[color:var(--client-muted)]" role="status">
+          正在读取用户资料...
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (error || !profile || !customer) {
+    return (
+      <MobileShell navItems={userNavItems}>
+        <div className="mx-4 mt-6 rounded-[22px] border border-red-300 bg-red-50 px-4 py-5 text-sm font-black text-red-700" role="alert">
+          <p>用户资料读取失败：{error ?? "正式用户资料不可用"}</p>
+          <button className="focus-ring mt-3 rounded-full border border-red-300 px-4 py-2" onClick={reload} type="button">
+            重试
+          </button>
+        </div>
+      </MobileShell>
+    );
   }
 
   return (
@@ -32,12 +45,12 @@ export function UserSchedulePage() {
       >
         <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
           <SharedHomeHeader
-            avatarAlt={currentCustomer.name}
-            avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
-            avatarMembershipLevel={currentCustomer.memberLevel}
-            avatarSrc={currentCustomer.avatar}
+            avatarAlt={customer.name}
+            avatarLevelLabel={getCustomerLevelLabel(customer.activeScore)}
+            avatarMembershipLevel={customer.memberLevel}
+            avatarSrc={customer.avatar}
             avatarTo={userPortalConfig.myPath}
-            locationLabel={selectedLocation.label}
+            locationLabel={profile.city ?? "服务区域未设置"}
             locationCaption="当前服务区域"
             locationTo="/me/settings/service-range"
             settingsLabel="系统设置"
@@ -49,7 +62,7 @@ export function UserSchedulePage() {
       </FloatingHomeHeader>
 
       <div className="space-y-3 px-4 pb-28 pt-2">
-        <UnifiedUserCalendar currentCustomer={currentCustomer} searchQuery={scheduleSearchQuery} />
+        <UnifiedUserCalendar currentCustomer={customer} formalOnly searchQuery={scheduleSearchQuery} />
       </div>
     </MobileShell>
   );
