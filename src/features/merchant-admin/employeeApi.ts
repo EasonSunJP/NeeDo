@@ -72,15 +72,18 @@ const employeePath = (needoId: string) =>
 
 export const merchantEmployeeApi = {
   list(query: MerchantEmployeeListQuery = {}) {
-    return httpClient.request<PaginatedMerchantEmployees>("/merchant-admin/employees", {
-      query: {
-        keyword: query.keyword,
-        page: query.page ?? 1,
-        page_size: query.pageSize ?? 20,
-        relationship_type: query.relationshipType,
-        work_status: query.workStatus
-      }
-    });
+    return httpClient.request<PaginatedMerchantEmployees>(
+      "/merchant-admin/employees",
+      {
+        query: {
+          keyword: query.keyword,
+          page: query.page ?? 1,
+          page_size: query.pageSize ?? 20,
+          relationship_type: query.relationshipType,
+          work_status: query.workStatus,
+        },
+      },
+    );
   },
 
   detail(needoId: string) {
@@ -88,16 +91,22 @@ export const merchantEmployeeApi = {
   },
 
   updateProfile(needoId: string, body: MerchantEmployeeProfileUpdate) {
-    return httpClient.request<MerchantEmployee>(`${employeePath(needoId)}/profile`, {
-      body,
-      method: "PATCH"
-    });
+    return httpClient.request<MerchantEmployee>(
+      `${employeePath(needoId)}/profile`,
+      {
+        body,
+        method: "PATCH",
+      },
+    );
   },
 
   updateAffiliation(needoId: string, body: MerchantEmployeeAffiliationUpdate) {
-    return httpClient.request<MerchantEmployee>(`${employeePath(needoId)}/affiliation`, {
-      body,
-      method: "PUT"
-    });
-  }
+    return httpClient.request<MerchantEmployee>(
+      `${employeePath(needoId)}/affiliation`,
+      {
+        body,
+        method: "PUT",
+      },
+    );
+  },
 };

@@ -4,8 +4,8 @@ import { merchantEmployeeApi } from "./employeeApi";
 
 vi.mock("../../api/httpClient", () => ({
   httpClient: {
-    request: vi.fn()
-  }
+    request: vi.fn(),
+  },
 }));
 
 describe("merchant employee API client", () => {
@@ -19,22 +19,26 @@ describe("merchant employee API client", () => {
       page: 2,
       pageSize: 10,
       relationshipType: "partner",
-      workStatus: "active"
+      workStatus: "active",
     });
     await merchantEmployeeApi.detail(" NEEDO-S-47 ");
 
-    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/merchant-admin/employees", {
-      query: {
-        keyword: "NEEDO-S-47",
-        page: 2,
-        page_size: 10,
-        relationship_type: "partner",
-        work_status: "active"
-      }
-    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/merchant-admin/employees",
+      {
+        query: {
+          keyword: "NEEDO-S-47",
+          page: 2,
+          page_size: 10,
+          relationship_type: "partner",
+          work_status: "active",
+        },
+      },
+    );
     expect(httpClient.request).toHaveBeenNthCalledWith(
       2,
-      "/merchant-admin/employees/NEEDO-S-47"
+      "/merchant-admin/employees/NEEDO-S-47",
     );
   });
 
@@ -43,13 +47,13 @@ describe("merchant employee API client", () => {
 
     await merchantEmployeeApi.updateProfile("NEEDO-S-47/东京", {
       city: "東京都",
-      displayName: "斉藤 健太"
+      displayName: "斉藤 健太",
     });
     await merchantEmployeeApi.updateAffiliation("NEEDO-S-47/东京", {
       endsAt: null,
       relationshipType: "exclusive",
       startsAt: "2026-08-28T00:00:00.000Z",
-      workStatus: "on_leave"
+      workStatus: "on_leave",
     });
 
     expect(httpClient.request).toHaveBeenNthCalledWith(
@@ -57,8 +61,8 @@ describe("merchant employee API client", () => {
       "/merchant-admin/employees/NEEDO-S-47%2F%E4%B8%9C%E4%BA%AC/profile",
       {
         body: { city: "東京都", displayName: "斉藤 健太" },
-        method: "PATCH"
-      }
+        method: "PATCH",
+      },
     );
     expect(httpClient.request).toHaveBeenNthCalledWith(
       2,
@@ -68,10 +72,10 @@ describe("merchant employee API client", () => {
           endsAt: null,
           relationshipType: "exclusive",
           startsAt: "2026-08-28T00:00:00.000Z",
-          workStatus: "on_leave"
+          workStatus: "on_leave",
         },
-        method: "PUT"
-      }
+        method: "PUT",
+      },
     );
   });
 });
