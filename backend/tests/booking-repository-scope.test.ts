@@ -32,6 +32,8 @@ describe("BookingRepository order list scope", () => {
       customerUserId: 7,
       shopId: 11,
       technicianProfileId: 17,
+      from: new Date("2026-09-01T00:00:00.000Z"),
+      to: new Date("2026-12-01T00:00:00.000Z"),
       page: 1,
       pageSize: 20
     });
@@ -41,7 +43,11 @@ describe("BookingRepository order list scope", () => {
         deletedAt: null,
         customerUserId: 7,
         shopId: 11,
-        technicianProfileId: 17
+        technicianProfileId: 17,
+        startsAt: {
+          gte: new Date("2026-09-01T00:00:00.000Z"),
+          lt: new Date("2026-12-01T00:00:00.000Z")
+        }
       }
     }));
     expect(bookingOrder.count).toHaveBeenCalledWith({
@@ -49,7 +55,11 @@ describe("BookingRepository order list scope", () => {
         deletedAt: null,
         customerUserId: 7,
         shopId: 11,
-        technicianProfileId: 17
+        technicianProfileId: 17,
+        startsAt: {
+          gte: new Date("2026-09-01T00:00:00.000Z"),
+          lt: new Date("2026-12-01T00:00:00.000Z")
+        }
       }
     });
   });

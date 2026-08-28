@@ -5435,6 +5435,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
+            name: "from",
+            in: "query",
+            description: "Inclusive ISO 8601 booking start timestamp; requires to",
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            description: "Exclusive ISO 8601 booking start timestamp; requires from; maximum window is 93 days",
+            schema: { type: "string", format: "date-time" }
+          },
+          {
             name: "status",
             in: "query",
             schema: {
