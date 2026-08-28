@@ -38,7 +38,7 @@ export type AffiliateAlliance = {
     currency: "NDP";
     availableBalance: number;
     frozenBalance: number;
-  };
+  } | null;
   createdAt: string;
   updatedAt: string;
 };

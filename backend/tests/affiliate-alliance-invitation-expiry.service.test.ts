@@ -61,6 +61,32 @@ describe("AffiliateAllianceInvitationExpiryService", () => {
     });
   });
 
+  it("periodically revisits passed lower ids while higher-id pages remain full", async () => {
+    const repository: jest.Mocked<AffiliateAllianceInvitationExpiryRepositoryPort> = {
+      listExpiryCandidateInvitationIds: jest
+        .fn()
+        .mockResolvedValueOnce([10, 20])
+        .mockResolvedValueOnce([30, 40])
+        .mockResolvedValueOnce([50, 60])
+        .mockResolvedValueOnce([15, 70]),
+      expireInvitation: jest.fn().mockResolvedValue(true)
+    };
+    const service = new AffiliateAllianceInvitationExpiryService(repository);
+    const now = new Date("2026-08-31T12:00:00.000Z");
+
+    await service.expireDue({ now, batchSize: 2 });
+    await service.expireDue({ now, batchSize: 2 });
+    await service.expireDue({ now, batchSize: 2 });
+    await service.expireDue({ now, batchSize: 2 });
+
+    expect(
+      repository.listExpiryCandidateInvitationIds.mock.calls.map(
+        ([input]) => input.afterInvitationId
+      )
+    ).toEqual([0, 20, 40, 0]);
+    expect(repository.expireInvitation).toHaveBeenCalledWith({ invitationId: 15, now });
+  });
+
   it.each([
     { now: new Date("invalid"), batchSize: 1 },
     { now: new Date(), batchSize: 0 },

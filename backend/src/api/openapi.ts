@@ -3062,7 +3062,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 },
           owner: { $ref: "#/components/schemas/AffiliateAllianceOwner" },
           membership: { $ref: "#/components/schemas/AffiliateAllianceMembership" },
-          wallet: { $ref: "#/components/schemas/AffiliateAllianceWallet" },
+          wallet: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliateAllianceWallet" },
+              { type: "null" }
+            ]
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
         }

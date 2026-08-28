@@ -248,6 +248,14 @@ const main = async (): Promise<void> => {
     console.log("PASS rejection created no member");
 
     const expiryInvitation = await createInvitation(ownerService, ownerOne, "expiry", "partner", null);
+    const persistedExpiryTimes = await prisma.affiliateAllianceInvitation.findUniqueOrThrow({
+      where: { id: expiryInvitation.invitationId },
+      select: { createdAt: true, expiresAt: true }
+    });
+    assert(
+      persistedExpiryTimes.expiresAt.getTime() - persistedExpiryTimes.createdAt.getTime() === 259_200_000,
+      "persisted invitation creation and expiry were not exactly 72 hours apart"
+    );
     let expiryError: unknown;
     try {
       await createService(expiresAtBoundary).acceptInvitation(actorFor("expiry"), context, expiryInvitation.invitationId);
@@ -294,15 +302,27 @@ const main = async (): Promise<void> => {
       createService(baseNow).acceptInvitation(raceActor, context, raceOne.invitationId),
       createService(baseNow).acceptInvitation(raceActor, context, raceTwo.invitationId)
     ]);
+    const fulfilledResults = concurrentResults.filter(
+      (result) => result.status === "fulfilled"
+    );
+    const rejectedResults = concurrentResults.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    const rejectedReason = rejectedResults[0]?.reason as {
+      message?: string;
+      statusCode?: number;
+    } | undefined;
     assert(
-      concurrentResults.filter((result) => result.status === "fulfilled").length === 1 &&
-        concurrentResults.filter((result) => result.status === "rejected").length === 1 &&
+      fulfilledResults.length === 1 &&
+        rejectedResults.length === 1 &&
+        rejectedReason?.message === "error.affiliate_alliance.already_joined" &&
+        rejectedReason.statusCode === 409 &&
         (await prisma.affiliateAllianceMember.count({
           where: { userId: raceActor.userId, activeKey: `user:${raceActor.userId}`, leftAt: null, deletedAt: null }
         })) === 1,
-      "concurrent cross-alliance acceptance created more than one membership"
+      "concurrent cross-alliance acceptance did not return one stable already-joined conflict"
     );
-    console.log("PASS concurrent cross-alliance acceptance created one membership");
+    console.log("PASS concurrent cross-alliance acceptance created one membership with a stable conflict");
 
     const freshService = createService(new Date());
     const freshPartner = await freshService.getMine(actorFor("partner"));
@@ -326,20 +346,40 @@ const main = async (): Promise<void> => {
     }, null, 2));
   } finally {
     if (captured.userIds.length > 0) {
-      if (captured.allianceIds.length === 0) {
-        captured.allianceIds.push(...(await prisma.affiliateAlliance.findMany({
-          where: { ownerUserId: { in: captured.userIds } }, select: { id: true }
-        })).map((row) => row.id));
-      }
-      if (captured.invitationIds.length === 0 && captured.allianceIds.length > 0) {
-        captured.invitationIds.push(...(await prisma.affiliateAllianceInvitation.findMany({
-          where: { allianceId: { in: captured.allianceIds } }, select: { id: true }
-        })).map((row) => row.id));
-      }
       assertCapturedAffiliateAllianceInvitationCleanupIds(captured);
 
+      const mergeCapturedIds = (target: number[], ids: number[]) => {
+        target.splice(0, target.length, ...new Set([...target, ...ids]));
+      };
+      mergeCapturedIds(
+        captured.allianceIds,
+        (await prisma.affiliateAlliance.findMany({
+          where: { ownerUserId: { in: captured.userIds } },
+          select: { id: true }
+        })).map((row) => row.id)
+      );
+      mergeCapturedIds(
+        captured.invitationIds,
+        (await prisma.affiliateAllianceInvitation.findMany({
+          where: {
+            OR: [
+              { allianceId: { in: captured.allianceIds } },
+              { inviteeUserId: { in: captured.userIds } },
+              { inviterMember: { userId: { in: captured.userIds } } }
+            ]
+          },
+          select: { id: true }
+        })).map((row) => row.id)
+      );
+
       const memberIds = (await prisma.affiliateAllianceMember.findMany({
-        where: { allianceId: { in: captured.allianceIds } }, select: { id: true }
+        where: {
+          OR: [
+            { allianceId: { in: captured.allianceIds } },
+            { userId: { in: captured.userIds } }
+          ]
+        },
+        select: { id: true }
       })).map((row) => row.id);
       const identityIds = (await prisma.userIdentity.findMany({
         where: { userId: { in: captured.userIds } }, select: { id: true }
@@ -350,8 +390,8 @@ const main = async (): Promise<void> => {
       const ledgerTransactionIds = (await prisma.walletLedger.findMany({
         where: { walletId: { in: walletIds } }, select: { transactionId: true }
       })).map((row) => row.transactionId);
-      captured.walletIds.push(...walletIds);
-      captured.ledgerTransactionIds.push(...ledgerTransactionIds);
+      mergeCapturedIds(captured.walletIds, walletIds);
+      mergeCapturedIds(captured.ledgerTransactionIds, ledgerTransactionIds);
 
       await prisma.$transaction(async (transaction) => {
         await transaction.walletLedger.deleteMany({ where: { walletId: { in: walletIds } } });
@@ -387,7 +427,16 @@ const main = async (): Promise<void> => {
       prisma.affiliateAlliance.count({ where: { name: { startsWith: marker } } }),
       prisma.affiliateAllianceMember.count({ where: { userId: { in: captured.userIds } } }),
       prisma.affiliateAlliancePermission.count({ where: { member: { userId: { in: captured.userIds } } } }),
-      prisma.affiliateAllianceInvitation.count({ where: { id: { in: captured.invitationIds } } }),
+      prisma.affiliateAllianceInvitation.count({
+        where: {
+          OR: [
+            { id: { in: captured.invitationIds } },
+            { alliance: { ownerUserId: { in: captured.userIds } } },
+            { inviteeUserId: { in: captured.userIds } },
+            { inviterMember: { userId: { in: captured.userIds } } }
+          ]
+        }
+      }),
       prisma.wallet.count({ where: { ownerType: "ALLIANCE", ownerId: { in: captured.allianceIds } } }),
       prisma.walletLedger.count({ where: { walletId: { in: captured.walletIds } } }),
       prisma.ledgerTransaction.count({ where: { id: { in: captured.ledgerTransactionIds } } }),

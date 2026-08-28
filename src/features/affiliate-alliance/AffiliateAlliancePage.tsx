@@ -551,6 +551,11 @@ function ReceivedInvitations({
                   <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">
                     {t("邀请方")} · {invitation.inviter.displayName} · {t(memberRoleLabels[invitation.role])}
                   </p>
+                  {invitation.proposedParent ? (
+                    <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">
+                      {t("直属上级")} · {invitation.proposedParent.person.displayName} · {invitation.proposedParent.person.needoId}
+                    </p>
+                  ) : null}
                 </div>
                 <InvitationStatus status={invitation.status} t={t} />
               </div>
@@ -805,7 +810,7 @@ function AllianceCharter({
         </div>
       </section>
 
-      {alliance.membership.permissions.canViewAllianceWallet ? (
+      {alliance.membership.permissions.canViewAllianceWallet && alliance.wallet ? (
         <section className="rounded-[26px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5">
           <SectionHeading
             caption={t("与个人钱包分开记账，余额只来自正式联盟结算。")}

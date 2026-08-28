@@ -131,6 +131,32 @@ describe("AffiliateAllianceRepository", () => {
     expect(JSON.stringify(result)).not.toMatch(/userId|identityId|scout/);
   });
 
+  it("does not query or return alliance wallet balances without wallet permission", async () => {
+    const restrictedPermission = {
+      ...permissionRecord,
+      canViewAllianceWallet: false
+    };
+    const walletFindFirst = jest.fn();
+    const client = {
+      affiliateAllianceMember: { findFirst: jest.fn().mockResolvedValue(memberRecord) },
+      affiliateAlliancePermission: {
+        findFirst: jest.fn().mockResolvedValue(restrictedPermission)
+      },
+      wallet: { findFirst: walletFindFirst }
+    } as unknown as PrismaClient;
+    const repository = new AffiliateAllianceRepository(client);
+
+    const result = await repository.findMine(8);
+
+    expect(walletFindFirst).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      membership: { permissions: restrictedPermission },
+      wallet: null
+    });
+    expect(JSON.stringify(result)).not.toContain("availableBalance");
+    expect(JSON.stringify(result)).not.toContain("frozenBalance");
+  });
+
   it("reads profile status and active membership eligibility from canonical records", async () => {
     const client = {
       affiliateProfile: {
@@ -369,6 +395,76 @@ describe("AffiliateAllianceRepository", () => {
     expect(count).toHaveBeenCalledWith({ where });
   });
 
+  it("persists invitation creation and expiry from the same transaction-time clock", async () => {
+    const createdAt = new Date("2026-08-28T12:34:56.789Z");
+    const expiresAt = new Date(createdAt.getTime() + 72 * 60 * 60 * 1000);
+    const createdInvitation = {
+      id: 70,
+      alliance: { id: 42, name: "东京美容联盟" },
+      inviterMember: {
+        user: { needoId: "u0000000007", username: "山本太郎", avatarUrl: null }
+      },
+      invitee: { needoId: "u0000000008", username: "佐藤花子", avatarUrl: null },
+      role: "PARTNER",
+      proposedParentMember: null,
+      status: "PENDING",
+      expiresAt,
+      respondedAt: null,
+      createdAt
+    };
+    const invitationFindFirst = jest
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(createdInvitation);
+    const invitationCreate = jest.fn().mockResolvedValue({ id: 70 });
+    const transaction = {
+      affiliateAllianceMember: {
+        findFirst: jest.fn().mockResolvedValueOnce({ id: 91 }).mockResolvedValueOnce(null)
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 8,
+          needoId: "u0000000008",
+          username: "佐藤花子",
+          avatarUrl: null
+        })
+      },
+      contact: { findFirst: jest.fn().mockResolvedValue({ id: 1 }) },
+      affiliateAllianceInvitation: {
+        findFirst: invitationFindFirst,
+        create: invitationCreate
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 901 }) }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(transaction))
+    } as unknown as PrismaClient;
+    const repository = new AffiliateAllianceRepository(client);
+
+    await expect(
+      repository.createInvitation({
+        allianceId: 42,
+        inviterMemberId: 91,
+        inviterUserId: 7,
+        inviteeNeedoId: "u0000000008",
+        role: "partner",
+        proposedParentMemberId: null,
+        now: () => createdAt,
+        invitationTtlMs: 72 * 60 * 60 * 1000,
+        auditLog
+      })
+    ).resolves.toMatchObject({ kind: "created" });
+
+    expect(invitationCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        createdAt,
+        expiresAt
+      }),
+      select: { id: true }
+    });
+    expect(expiresAt.getTime() - createdAt.getTime()).toBe(259_200_000);
+  });
+
   it("commits request-time expiration and system audit before returning expired", async () => {
     const expiresAt = new Date("2026-08-28T12:00:00.000Z");
     const transaction = {
@@ -418,6 +514,97 @@ describe("AffiliateAllianceRepository", () => {
         targetId: 71
       })
     });
+  });
+
+  it("retries a transaction conflict and returns the stable already-joined outcome", async () => {
+    const retryableConflict = Object.assign(new Error("deadlock 1213"), { code: "P2034" });
+    const transaction = {
+      affiliateAllianceInvitation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 73,
+          allianceId: 42,
+          status: "PENDING",
+          expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+          version: 1,
+          proposedParentMemberId: null,
+          alliance: { status: "ACTIVE", deletedAt: null },
+          inviterMember: {
+            userId: 7,
+            role: "OWNER",
+            leftAt: null,
+            deletedAt: null
+          }
+        })
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 8,
+          needoId: "u0000000008",
+          username: "佐藤花子",
+          avatarUrl: null
+        })
+      },
+      contact: { findFirst: jest.fn().mockResolvedValue({ id: 1 }) },
+      affiliateAllianceMember: { findFirst: jest.fn().mockResolvedValue({ id: 999 }) }
+    };
+    const transactionRunner = jest
+      .fn()
+      .mockRejectedValueOnce(retryableConflict)
+      .mockImplementationOnce(async (callback) => callback(transaction));
+    const client = { $transaction: transactionRunner } as unknown as PrismaClient;
+    const repository = new AffiliateAllianceRepository(client);
+
+    await expect(
+      repository.acceptInvitation({
+        invitationId: 73,
+        inviteeUserId: 8,
+        now: timestamp,
+        auditLog: {
+          actorId: 8,
+          action: "affiliate_alliance.invitation_accepted",
+          targetType: "AffiliateAllianceInvitation"
+        },
+        expiryAuditLog: {
+          actorId: null,
+          action: "affiliate_alliance.invitation_expired",
+          targetType: "AffiliateAllianceInvitation"
+        }
+      })
+    ).resolves.toEqual({ kind: "already_joined" });
+    expect(transactionRunner).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not leak a database conflict after transaction retries are exhausted", async () => {
+    const retryableConflict = Object.assign(new Error("serialization failure 40001"), {
+      code: "P2034"
+    });
+    const transactionRunner = jest.fn().mockRejectedValue(retryableConflict);
+    const client = {
+      $transaction: transactionRunner,
+      affiliateAllianceMember: {
+        findFirst: jest.fn().mockResolvedValue({ id: 999 })
+      }
+    } as unknown as PrismaClient;
+    const repository = new AffiliateAllianceRepository(client);
+
+    await expect(
+      repository.acceptInvitation({
+        invitationId: 74,
+        inviteeUserId: 8,
+        now: timestamp,
+        auditLog: {
+          actorId: 8,
+          action: "affiliate_alliance.invitation_accepted",
+          targetType: "AffiliateAllianceInvitation"
+        },
+        expiryAuditLog: {
+          actorId: null,
+          action: "affiliate_alliance.invitation_expired",
+          targetType: "AffiliateAllianceInvitation"
+        }
+      })
+    ).resolves.toEqual({ kind: "already_joined" });
+    expect(transactionRunner).toHaveBeenCalledTimes(3);
   });
 
   it("commits reject-time expiration instead of leaving a stale pending row", async () => {

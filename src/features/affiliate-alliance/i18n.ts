@@ -172,6 +172,7 @@ export const affiliateAllianceTranslations: Record<string, AffiliateAllianceTran
   重试收到的邀请: { "zh-Hant": "重試收到的邀請", ja: "受信した招待を再読み込み", en: "Retry received invitations", ko: "받은 초대 다시 시도" },
   暂无待处理邀请: { "zh-Hant": "暫無待處理邀請", ja: "対応が必要な招待はありません", en: "No invitations need a response", ko: "처리할 초대가 없습니다" },
   邀请方: { "zh-Hant": "邀請方", ja: "招待者", en: "Invited by", ko: "초대한 사람" },
+  直属上级: { "zh-Hant": "直屬上級", ja: "直属の上位メンバー", en: "Direct parent", ko: "직속 상위 회원" },
   接受邀请: { "zh-Hant": "接受邀請", ja: "招待を承諾", en: "Accept invitation", ko: "초대 수락" },
   拒绝邀请: { "zh-Hant": "拒絕邀請", ja: "招待を辞退", en: "Reject invitation", ko: "초대 거절" },
   处理中: { "zh-Hant": "處理中", ja: "処理中", en: "Processing", ko: "처리 중" },

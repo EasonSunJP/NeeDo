@@ -42,14 +42,24 @@ describe("affiliate alliance invitation real-database checker", () => {
     });
   });
 
-  it("refuses cleanup before all marker-owned ids are captured", () => {
+  it("allows exact cleanup to start after only the first marker-owned user is captured", () => {
     expect(() =>
       assertCapturedAffiliateAllianceInvitationCleanupIds({
-        allianceIds: [1],
+        allianceIds: [],
         invitationIds: [],
         userIds: [2]
       })
-    ).toThrow("cleanup requires captured invitation ids");
+    ).not.toThrow();
+  });
+
+  it("still refuses cleanup without a captured marker-owned user", () => {
+    expect(() =>
+      assertCapturedAffiliateAllianceInvitationCleanupIds({
+        allianceIds: [],
+        invitationIds: [],
+        userIds: []
+      })
+    ).toThrow("cleanup requires captured user ids");
   });
 
   it("declares the guarded command and all nine durable assertions", () => {
@@ -70,6 +80,11 @@ describe("affiliate alliance invitation real-database checker", () => {
       expect(source).toContain(evidence);
     }
     expect(source).toContain("Promise.allSettled");
+    expect(source).toContain('message === "error.affiliate_alliance.already_joined"');
+    expect(source).toContain("statusCode === 409");
+    expect(source).toContain(
+      "persistedExpiryTimes.expiresAt.getTime() - persistedExpiryTimes.createdAt.getTime() === 259_200_000"
+    );
     expect(source).toContain("finally");
   });
 });

@@ -32,6 +32,10 @@ import type {
 import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import {
+  isRetryableTransactionConflict,
+  runWithTransactionConflictRetry
+} from "../utils/transaction-conflict-retry";
+import {
   toAuditLogCreateData,
   type AuditLogCreateInput
 } from "./audit-log.repository";
@@ -424,6 +428,9 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
           return { kind: "parent_invalid" } as const;
         }
 
+        const createdAt = input.now();
+        const expiresAt = new Date(createdAt.getTime() + input.invitationTtlMs);
+
         const created = await transaction.affiliateAllianceInvitation.create({
           data: {
             allianceId: input.allianceId,
@@ -433,8 +440,9 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
             proposedParentMemberId: input.proposedParentMemberId,
             status: PrismaAffiliateAllianceInvitationStatus.PENDING,
             pendingKey: this.pendingInvitationKey(input.allianceId, invitee.id),
-            expiresAt: input.expiresAt,
-            version: 1
+            expiresAt,
+            version: 1,
+            createdAt
           },
           select: { id: true }
         });
@@ -455,7 +463,8 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
     input: AffiliateAllianceRespondInvitationInput & { expiryAuditLog: AuditLogCreateInput }
   ): Promise<AffiliateAllianceAcceptInvitationResult> {
     try {
-      return await this.client.$transaction(async (transaction) => {
+      return await runWithTransactionConflictRetry(() =>
+        this.client.$transaction(async (transaction) => {
         const invitation = await this.findScopedInvitation(
           transaction,
           input.invitationId,
@@ -576,13 +585,23 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
           permissions,
           joinedAt: member.joinedAt.toISOString()
         };
-        return { kind: "accepted", invitation: acceptedInvitation, member: memberPayload } as const;
-      });
+          return {
+            kind: "accepted",
+            invitation: acceptedInvitation,
+            member: memberPayload
+          } as const;
+        })
+      );
     } catch (error) {
       if (error instanceof AffiliateAllianceInvitationStateRaceError) {
         return { kind: "state_conflict" };
       }
       if (this.isUniqueConflictFor(error, "active_key")) return { kind: "already_joined" };
+      if (isRetryableTransactionConflict(error)) {
+        return (await this.hasActiveMembership(this.client, input.inviteeUserId))
+          ? { kind: "already_joined" }
+          : { kind: "state_conflict" };
+      }
       throw error;
     }
   }
@@ -948,22 +967,24 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
     });
     if (!membership) return null;
 
-    const [permission, wallet] = await Promise.all([
-      client.affiliateAlliancePermission.findFirst({
-        where: { memberId: membership.id, deletedAt: null },
-        select: permissionSelect
-      }),
-      client.wallet.findFirst({
-        where: {
-          ownerType: PrismaWalletOwnerType.ALLIANCE,
-          ownerId: membership.alliance.id,
-          currency: "NDP",
-          deletedAt: null
-        },
-        select: walletSelect
-      })
-    ]);
-    if (!permission || !wallet) throw this.dataInvalid();
+    const permission = await client.affiliateAlliancePermission.findFirst({
+      where: { memberId: membership.id, deletedAt: null },
+      select: permissionSelect
+    });
+    if (!permission) throw this.dataInvalid();
+
+    const wallet = permission.canViewAllianceWallet
+      ? await client.wallet.findFirst({
+          where: {
+            ownerType: PrismaWalletOwnerType.ALLIANCE,
+            ownerId: membership.alliance.id,
+            currency: "NDP",
+            deletedAt: null
+          },
+          select: walletSelect
+        })
+      : null;
+    if (permission.canViewAllianceWallet && !wallet) throw this.dataInvalid();
 
     return this.mapPayload(membership, permission, wallet);
   }
@@ -971,7 +992,7 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
   private mapPayload(
     membership: AllianceMemberRecord,
     permission: AlliancePermissionRecord,
-    wallet: AllianceWalletRecord
+    wallet: AllianceWalletRecord | null
   ): AffiliateAlliancePayload {
     const alliance = membership.alliance;
     const managerNeedoId =
@@ -998,11 +1019,13 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
         promoterShareBpsOverride: membership.promoterShareBpsOverride,
         permissions: permission
       },
-      wallet: {
-        currency: "NDP",
-        availableBalance: wallet.availableBalance,
-        frozenBalance: wallet.frozenBalance
-      },
+      wallet: wallet
+        ? {
+            currency: "NDP",
+            availableBalance: wallet.availableBalance,
+            frozenBalance: wallet.frozenBalance
+          }
+        : null,
       createdAt: alliance.createdAt.toISOString(),
       updatedAt: alliance.updatedAt.toISOString()
     };

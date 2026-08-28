@@ -22,8 +22,13 @@ export interface AffiliateAllianceInvitationExpirySummary {
   failed: number;
 }
 
+const FORWARD_RUNS_PER_REVISIT = 3;
+
 export class AffiliateAllianceInvitationExpiryService {
   private afterInvitationId = 0;
+  private forwardRunsSinceRevisit = 0;
+  private revisitAfterInvitationId = 0;
+  private revisitUpperBound = 0;
 
   public constructor(
     private readonly repository: AffiliateAllianceInvitationExpiryRepositoryPort
@@ -33,17 +38,9 @@ export class AffiliateAllianceInvitationExpiryService {
     input: AffiliateAllianceInvitationExpiryInput
   ): Promise<AffiliateAllianceInvitationExpirySummary> {
     this.validateInput(input);
-    let candidateIds = await this.repository.listExpiryCandidateInvitationIds({
-      now: input.now,
-      batchSize: input.batchSize,
-      afterInvitationId: this.afterInvitationId
-    });
-    candidateIds = candidateIds.slice(0, input.batchSize);
-    if (candidateIds.length === 0 && this.afterInvitationId !== 0) {
-      this.afterInvitationId = 0;
-      return { scanned: 0, expired: 0, skipped: 0, failed: 0 };
-    }
-    if (candidateIds.length > 0) {
+    const candidatePage = await this.listCandidateIds(input);
+    const candidateIds = candidatePage.invitationIds;
+    if (candidatePage.advanceForwardCursor && candidateIds.length > 0) {
       this.afterInvitationId = candidateIds[candidateIds.length - 1];
     }
 
@@ -63,6 +60,72 @@ export class AffiliateAllianceInvitationExpiryService {
       }
     }
     return summary;
+  }
+
+  private async listCandidateIds(input: AffiliateAllianceInvitationExpiryInput): Promise<{
+    invitationIds: number[];
+    advanceForwardCursor: boolean;
+  }> {
+    if (
+      this.afterInvitationId !== 0 &&
+      this.forwardRunsSinceRevisit >= FORWARD_RUNS_PER_REVISIT
+    ) {
+      this.forwardRunsSinceRevisit = 0;
+      return this.listRevisitCandidateIds(input);
+    }
+
+    const invitationIds = (
+      await this.repository.listExpiryCandidateInvitationIds({
+        now: input.now,
+        batchSize: input.batchSize,
+        afterInvitationId: this.afterInvitationId
+      })
+    ).slice(0, input.batchSize);
+    if (invitationIds.length === 0 && this.afterInvitationId !== 0) {
+      this.afterInvitationId = 0;
+      this.forwardRunsSinceRevisit = 0;
+      this.resetRevisitSweep();
+      return { invitationIds: [], advanceForwardCursor: true };
+    }
+
+    this.forwardRunsSinceRevisit += 1;
+    return { invitationIds, advanceForwardCursor: true };
+  }
+
+  private async listRevisitCandidateIds(
+    input: AffiliateAllianceInvitationExpiryInput
+  ): Promise<{ invitationIds: number[]; advanceForwardCursor: false }> {
+    if (this.revisitUpperBound === 0) {
+      this.revisitUpperBound = this.afterInvitationId;
+    }
+    const candidateIds = (
+      await this.repository.listExpiryCandidateInvitationIds({
+        now: input.now,
+        batchSize: input.batchSize,
+        afterInvitationId: this.revisitAfterInvitationId
+      })
+    ).slice(0, input.batchSize);
+    const invitationIds = candidateIds.filter(
+      (invitationId) => invitationId <= this.revisitUpperBound
+    );
+
+    if (invitationIds.length > 0) {
+      this.revisitAfterInvitationId = invitationIds[invitationIds.length - 1];
+    }
+    if (
+      candidateIds.length < input.batchSize ||
+      invitationIds.length !== candidateIds.length ||
+      this.revisitAfterInvitationId >= this.revisitUpperBound
+    ) {
+      this.resetRevisitSweep();
+    }
+
+    return { invitationIds, advanceForwardCursor: false };
+  }
+
+  private resetRevisitSweep(): void {
+    this.revisitAfterInvitationId = 0;
+    this.revisitUpperBound = 0;
   }
 
   private validateInput(input: AffiliateAllianceInvitationExpiryInput): void {

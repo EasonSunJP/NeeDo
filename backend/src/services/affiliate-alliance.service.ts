@@ -57,7 +57,7 @@ export interface AffiliateAlliancePayload {
     currency: "NDP";
     availableBalance: number;
     frozenBalance: number;
-  };
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -132,8 +132,8 @@ export interface AffiliateAllianceCreateInvitationInput {
   inviteeNeedoId: string;
   role: AffiliateAllianceInvitationRole;
   proposedParentMemberId: number | null;
-  now: Date;
-  expiresAt: Date;
+  now: () => Date;
+  invitationTtlMs: number;
   auditLog: AuditLogCreateInput;
 }
 
@@ -308,7 +308,6 @@ export class AffiliateAllianceService {
     input: AffiliateAllianceInvitationCreateBody
   ): Promise<{ invitation: AffiliateAllianceInvitationPayload }> {
     const alliance = await this.requireOwnerAlliance(actor);
-    const now = this.now();
     const proposedParentMemberId =
       input.role === "subordinate" ? input.proposedParentMemberId : null;
     const result = await this.repository.createInvitation({
@@ -318,8 +317,8 @@ export class AffiliateAllianceService {
       inviteeNeedoId: input.inviteeNeedoId,
       role: input.role,
       proposedParentMemberId,
-      now,
-      expiresAt: new Date(now.getTime() + ALLIANCE_INVITATION_TTL_MS),
+      now: this.now,
+      invitationTtlMs: ALLIANCE_INVITATION_TTL_MS,
       auditLog: this.auditLogService.createInput({
         actor,
         context,

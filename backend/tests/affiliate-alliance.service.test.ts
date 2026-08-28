@@ -273,9 +273,10 @@ describe("AffiliateAllianceService invitation workflow", () => {
   it("creates a 72-hour invitation with owner scope and an audited immutable NeeDo ID", async () => {
     const repository = createRepository();
     const audit = createAudit();
+    const clock = jest.fn(() => currentTime);
     repository.findMine.mockResolvedValue(alliance);
     repository.createInvitation.mockResolvedValue({ kind: "created", invitation });
-    const service = new AffiliateAllianceService(repository, audit, () => currentTime);
+    const service = new AffiliateAllianceService(repository, audit, clock);
 
     await expect(
       service.createInvitation(actor, context, {
@@ -291,8 +292,8 @@ describe("AffiliateAllianceService invitation workflow", () => {
       inviteeNeedoId: "u0000000008",
       role: "partner",
       proposedParentMemberId: null,
-      now: currentTime,
-      expiresAt: new Date("2026-08-31T12:00:00.000Z"),
+      now: clock,
+      invitationTtlMs: 259_200_000,
       auditLog: expect.objectContaining({
         actorId: 7,
         action: "affiliate_alliance.invitation_created",

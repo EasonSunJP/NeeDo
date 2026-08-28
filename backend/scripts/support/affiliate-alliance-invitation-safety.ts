@@ -71,6 +71,10 @@ export function assertCapturedAffiliateAllianceInvitationCleanupIds(
   input: CapturedAffiliateAllianceInvitationCleanupIds
 ): void {
   assert(input.userIds.length > 0, "cleanup requires captured user ids");
-  assert(input.allianceIds.length > 0, "cleanup requires captured alliance ids");
-  assert(input.invitationIds.length > 0, "cleanup requires captured invitation ids");
+  assert(
+    [...input.userIds, ...input.allianceIds, ...input.invitationIds].every(
+      (id) => Number.isSafeInteger(id) && id > 0
+    ),
+    "cleanup requires positive captured ids"
+  );
 }

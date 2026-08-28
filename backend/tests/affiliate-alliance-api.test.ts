@@ -169,6 +169,8 @@ const createFixture = () => {
     }),
     createInvitation: jest.fn(async (input) => {
       const alliance = [...alliances.values()].find((item) => item.allianceId === input.allianceId)!;
+      const createdAt = input.now();
+      const expiresAt = new Date(createdAt.getTime() + input.invitationTtlMs);
       const invitation: AffiliateAllianceInvitationPayload = {
         invitationId: 70 + invitationRecords.length + 1,
         alliance: { allianceId: alliance.allianceId, name: alliance.name },
@@ -177,9 +179,9 @@ const createFixture = () => {
         role: input.role,
         proposedParent: null,
         status: "pending",
-        expiresAt: input.expiresAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
         respondedAt: null,
-        createdAt: input.now.toISOString()
+        createdAt: createdAt.toISOString()
       };
       invitationRecords.push(invitation);
       return { kind: "created" as const, invitation };

@@ -381,6 +381,24 @@ describe("AffiliateAlliancePage", () => {
     await waitFor(() => expect(container.textContent).toContain("东京美容联盟"));
   });
 
+  it("shows the proposed direct parent before a subordinate accepts", async () => {
+    const subordinateInvitation: AffiliateAllianceInvitation = {
+      ...pendingInvitation,
+      role: "subordinate",
+      proposedParent: {
+        memberId: partnerMember.memberId,
+        person: partnerMember.person
+      }
+    };
+    apiMocks.listReceivedInvitations.mockResolvedValue(page([subordinateInvitation]));
+
+    await renderPage();
+    await waitFor(() => expect(container.textContent).toContain("直属上级"));
+
+    expect(container.textContent).toContain(partnerMember.person.displayName);
+    expect(container.textContent).toContain(partnerMember.person.needoId);
+  });
+
   it("shows a joined non-owner's real permissions without owner controls or hidden wallet", async () => {
     const joinedAlliance: AffiliateAlliance = {
       ...alliance,
