@@ -657,7 +657,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         ext: options?.ext
       });
       replaceLocalMessage(optimistic.localId, response.message);
-      upsertConversation(response.conversation);
+      if (response.conversation) {
+        upsertConversation(response.conversation);
+      }
       removeDraft(conversationId);
       emit();
       return response.message;
