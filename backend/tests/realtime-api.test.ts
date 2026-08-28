@@ -507,6 +507,7 @@ const createFixture = async () => {
         return mapMessage(message, input.senderUserId);
       }
     ),
+    isMessageSenderBlocked: jest.fn(async () => false),
     recallMessage: jest.fn(
       async (input: {
         conversationId: number;

@@ -41,6 +41,55 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("uses the paginated directory endpoint for add-friend discovery", async () => {
+    const emptyPage = { list: [], total: 0, page: 1, page_size: 50 };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(emptyPage));
+
+    await realtimeApi.searchDirectory({ query: "u0000000167", page: 1, pageSize: 50 });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/directory?query=u0000000167&page=1&pageSize=50",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("adds a discovered user as a formal contact", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ id: 31 }, 201));
+
+    await realtimeApi.addContact(167);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/contacts",
+      expect.objectContaining({
+        body: JSON.stringify({ targetUserId: 167 }),
+        method: "POST"
+      })
+    );
+  });
+
+  it("uploads the selected image bytes to the conversation-scoped media endpoint", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      fileName: "album.png",
+      fileSize: 8,
+      mimeType: "image/png",
+      url: "http://127.0.0.1:3000/media/im/opaque.png"
+    }, 201));
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], "album.png", {
+      type: "image/png"
+    });
+
+    await realtimeApi.uploadConversationImage(91, file);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/conversations/91/media?fileName=album.png",
+      expect.objectContaining({
+        body: file,
+        headers: expect.objectContaining({ "Content-Type": "image/png" }),
+        method: "POST"
+      })
+    );
+  });
+
   it("loads one friend's rolling activity status without listing or downloading post media", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       status: "recent_posts",

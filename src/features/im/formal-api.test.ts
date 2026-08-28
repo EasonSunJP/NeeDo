@@ -502,6 +502,42 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("maps message.created SSE payloads directly so an open chat updates without refresh", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-created-1",
+        type: "message.created",
+        payload: {
+          id: 701,
+          conversationId: 91,
+          senderUserId: 201,
+          type: "text",
+          content: "即时到达的信息",
+          metadata: null,
+          reactions: [],
+          createdAt: now,
+        },
+      }),
+    ).toMatchObject({
+      type: "message.created",
+      message: {
+        id: "701",
+        conversationId: "91",
+        content: "即时到达的信息",
+      },
+    });
+  });
+
+  it("turns a connected event into one bounded catch-up refresh", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-connected-1",
+        type: "connected",
+        payload: { userId: 100 },
+      }),
+    ).toEqual({ type: "refresh" });
+  });
+
   it("persists conversation pin, mute, unread, and personal deletion state", async () => {
     const conversation = {
       id: 91,
@@ -576,5 +612,98 @@ describe("formal IM adapter", () => {
     expect(updateConversationPreferences).toHaveBeenNthCalledWith(2, 91, { isMuted: true });
     expect(markConversationUnread).toHaveBeenCalledWith(91);
     expect(deleteConversation).toHaveBeenCalledWith(91);
+  });
+
+  it("discovers add-friend candidates by fuzzy name or immutable NeeDoID", async () => {
+    const searchDirectory = vi.spyOn(realtimeApi, "searchDirectory").mockResolvedValue({
+      list: [
+        {
+          userId: 201,
+          needoId: "u0000000167",
+          username: "小松 美咲",
+          avatarUrl: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 50,
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.searchDirectory("小松")).resolves.toEqual({
+      users: [expect.objectContaining({ id: "201", nickname: "小松 美咲", userIdLabel: "u0000000167" })],
+    });
+    await expect(api.searchDirectory("u0000000167")).resolves.toEqual({
+      users: [expect.objectContaining({ id: "201", nickname: "小松 美咲", userIdLabel: "u0000000167" })],
+    });
+    expect(searchDirectory).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists a discovered user as a contact and maps the returned relation", async () => {
+    const addContact = vi.spyOn(realtimeApi, "addContact").mockResolvedValue({
+      id: 31,
+      ownerUserId: 100,
+      contactUserId: 201,
+      contactUser: {
+        userId: 201,
+        needoId: "u0000000167",
+        username: "小松 美咲",
+        avatarUrl: null,
+      },
+      nickname: null,
+      source: "manual",
+      isBlocked: false,
+      createdAt: now,
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.addContact("201")).resolves.toEqual({
+      contact: expect.objectContaining({ targetUserId: "201", relationStatus: "active" }),
+    });
+    expect(addContact).toHaveBeenCalledWith(201);
+  });
+
+  it("uploads a selected image instead of invoking the unavailable placeholder", async () => {
+    const upload = vi.spyOn(realtimeApi, "uploadConversationImage").mockResolvedValue({
+      fileName: "album.png",
+      fileSize: 8,
+      mimeType: "image/png",
+      url: "http://127.0.0.1:3000/media/im/opaque.png",
+    });
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], "album.png", {
+      type: "image/png",
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.uploadImage("91", file)).resolves.toMatchObject({
+      fileName: "album.png",
+      mimeType: "image/png",
+      url: expect.stringContaining("/media/im/"),
+    });
+    expect(upload).toHaveBeenCalledWith(91, file);
   });
 });

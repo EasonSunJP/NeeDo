@@ -92,6 +92,16 @@ export interface SetContactBlockedInput {
   isBlocked: boolean;
 }
 
+export interface DirectorySearchInput extends PaginationInput {
+  query: string;
+}
+
+export interface AddContactInput {
+  contactUserId: number;
+  ownerUserId: number;
+  source: "manual";
+}
+
 export interface FriendRequestPayload {
   id: number;
   requesterUserId: number;
@@ -269,6 +279,7 @@ export interface RealtimeRepositoryPort {
     input: PaginationInput
   ) => Promise<PaginatedResponse<ConversationPayload>>;
   createMessage: (input: CreateMessageInput) => Promise<MessagePayload | null>;
+  isMessageSenderBlocked: (conversationId: number, senderUserId: number) => Promise<boolean>;
   recallMessage: (input: RecallMessageInput) => Promise<StandardRecallRepositoryOutcome>;
   listMessages: (input: ListMessagesInput) => Promise<MessageHistoryPayload | null>;
   setMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
@@ -292,6 +303,11 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ContactPayload>>;
+  searchDirectory: (
+    userId: number,
+    input: DirectorySearchInput
+  ) => Promise<PaginatedResponse<ParticipantPayload>>;
+  addContact: (input: AddContactInput) => Promise<ContactPayload>;
   setContactBlocked: (input: SetContactBlockedInput) => Promise<ContactPayload | null>;
   ensureDirectContactConversation: (
     input: EnsureTechnicianApplicationContactInput
@@ -594,6 +610,41 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
       return this.mapMessage(message, input.senderUserId);
     });
+  }
+
+  public async isMessageSenderBlocked(
+    conversationId: number,
+    senderUserId: number
+  ): Promise<boolean> {
+    const blockingRecipient = await this.client.conversationParticipant.findFirst({
+      where: {
+        conversationId,
+        userId: { not: senderUserId },
+        deletedAt: null,
+        conversation: {
+          type: ConversationType.DIRECT,
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: senderUserId,
+              deletedAt: null
+            }
+          }
+        },
+        user: {
+          ownedContacts: {
+            some: {
+              contactUserId: senderUserId,
+              blockedAt: { not: null },
+              deletedAt: null
+            }
+          }
+        }
+      },
+      select: { id: true }
+    });
+
+    return Boolean(blockingRecipient);
   }
 
   public async recallMessage(
@@ -937,6 +988,82 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async searchDirectory(
+    userId: number,
+    input: DirectorySearchInput
+  ): Promise<PaginatedResponse<ParticipantPayload>> {
+    const pagination = toPrismaPagination(input);
+    const query = input.query.trim();
+    const where: Prisma.UserWhereInput = {
+      id: { not: userId },
+      isActive: true,
+      deletedAt: null,
+      OR: [
+        { username: { contains: query } },
+        { needoId: { contains: query } }
+      ],
+      NOT: {
+        contactEntries: {
+          some: {
+            ownerUserId: userId,
+            deletedAt: null
+          }
+        }
+      }
+    };
+    const select = {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    } satisfies Prisma.UserSelect;
+    const [list, total] = await Promise.all([
+      this.client.user.findMany({
+        where,
+        select,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ username: "asc" }, { id: "asc" }]
+      }),
+      this.client.user.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((user) => ({
+        userId: user.id,
+        needoId: user.needoId,
+        username: user.username,
+        avatarUrl: user.avatarUrl
+      })),
+      total,
+      pagination
+    );
+  }
+
+  public async addContact(input: AddContactInput): Promise<ContactPayload> {
+    const contact = await this.client.contact.upsert({
+      where: {
+        ownerUserId_contactUserId: {
+          ownerUserId: input.ownerUserId,
+          contactUserId: input.contactUserId
+        }
+      },
+      create: {
+        ownerUserId: input.ownerUserId,
+        contactUserId: input.contactUserId,
+        source: input.source
+      },
+      update: {
+        blockedAt: null,
+        deletedAt: null,
+        source: input.source
+      },
+      include: contactInclude
+    });
+
+    return this.mapContact(contact);
   }
 
   public async setContactBlocked(input: SetContactBlockedInput): Promise<ContactPayload | null> {

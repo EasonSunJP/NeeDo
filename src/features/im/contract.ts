@@ -19,6 +19,7 @@ import type {
 export type ImApi = {
   bootstrap(): Promise<ImBootstrapPayload>;
   listContacts(): Promise<{ contacts: ContactRelation[]; users: ImDatabase["users"] }>;
+  searchDirectory(query: string): Promise<{ users: ImDatabase["users"] }>;
   addContact(targetUserId: string, source?: string, description?: string): Promise<{ contact: ContactRelation }>;
   getContact(contactId: string): Promise<{ contact: ContactRelation; user?: ImDatabase["users"][number] }>;
   updateRemark(contactId: string, remarkName: string): Promise<{ contact: ContactRelation }>;
@@ -88,11 +89,10 @@ export type ImApi = {
     conversation: Conversation;
     message: ConversationMessage;
   }>;
-  search(query: string, conversationId?: string): Promise<{
-    contacts: ContactRelation[];
-    conversations: Conversation[];
-    messages: ConversationMessage[];
+  uploadImage(conversationId: string, file: File): Promise<{
+    fileName: string;
+    fileSize: number;
+    mimeType: "image/jpeg" | "image/png" | "image/webp";
+    url: string;
   }>;
-  uploadInit(kind: string): Promise<{ uploadId: string; uploadUrl: string; fileUrl: string }>;
-  uploadComplete(uploadId: string): Promise<{ success: boolean }>;
 };

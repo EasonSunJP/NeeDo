@@ -135,6 +135,13 @@ export type RealtimeUnreadCounts = {
 
 type PageQuery = { page?: number; pageSize?: number };
 
+export type RealtimeUploadedImage = {
+  fileName: string;
+  fileSize: number;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  url: string;
+};
+
 export const realtimeApi = {
   listConversations(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeConversation>>("/im/conversations", { query });
@@ -186,6 +193,23 @@ export const realtimeApi = {
   },
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });
+  },
+  searchDirectory(query: PageQuery & { query: string }) {
+    return httpClient.request<PaginatedRealtimeData<RealtimeParticipant>>("/im/directory", { query });
+  },
+  addContact(targetUserId: number) {
+    return httpClient.request<RealtimeContact>("/im/contacts", {
+      body: { targetUserId },
+      method: "POST"
+    });
+  },
+  uploadConversationImage(conversationId: number, file: File) {
+    return httpClient.request<RealtimeUploadedImage>(`/im/conversations/${conversationId}/media`, {
+      body: file,
+      headers: { "Content-Type": file.type },
+      method: "POST",
+      query: { fileName: file.name }
+    });
   },
   blockContact(contactId: number) {
     return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "POST" });

@@ -9,6 +9,7 @@ import type {
   CreateOrderStatusNotificationInput,
   CreateSocialPostInput,
   FriendRequestListInput,
+  DirectorySearchInput,
   ListMessagesInput,
   MessageReactionMutationInput,
   NotificationListInput,
@@ -75,6 +76,14 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<CreateMessageInput, "senderUserId">
   ) {
+    if (await this.repository.isMessageSenderBlocked(input.conversationId, auth.userId)) {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.recipient_blocked",
+        statusCode: 403
+      });
+    }
+
     const message = await this.repository.createMessage({
       ...input,
       senderUserId: auth.userId
@@ -231,6 +240,31 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public listContacts(auth: AuthenticatedAccessContext, input: PaginationInput) {
     return this.repository.listContacts(auth.userId, input);
+  }
+
+  public searchDirectory(auth: AuthenticatedAccessContext, input: DirectorySearchInput) {
+    return this.repository.searchDirectory(auth.userId, input);
+  }
+
+  public async addContact(auth: AuthenticatedAccessContext, contactUserId: number) {
+    if (auth.userId === contactUserId) {
+      throw this.validationError("error.realtime.contact_self");
+    }
+
+    await this.assertActiveUsers([contactUserId]);
+    const contact = await this.repository.addContact({
+      ownerUserId: auth.userId,
+      contactUserId,
+      source: "manual"
+    });
+    this.eventGateway.publish({
+      id: this.createEventId(),
+      type: "contact.updated",
+      recipientUserId: auth.userId,
+      payload: contact,
+      createdAt: new Date().toISOString()
+    });
+    return contact;
   }
 
   public async setContactBlocked(

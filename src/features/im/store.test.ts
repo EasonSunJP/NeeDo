@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ConversationMessage } from "./model";
 import {
+  buildCachedImSearchResults,
+  getMessageFailureReason,
   mergeConversationMessageHistory,
   preferTerminalMessage,
   upsertConversationMessage,
@@ -60,5 +62,75 @@ describe("formal IM recall terminal precedence", () => {
       "const response = await api.recallMessage(conversationId, messageId, mode);",
     );
     expect(source).toContain("upsertMessage(response.message);");
+  });
+});
+
+describe("formal IM cached fuzzy search", () => {
+  it("matches partial contact names and loaded message content without a server search", () => {
+    const user = {
+      id: "201",
+      accountId: "u0000000167",
+      nickname: "木村 颯大",
+      avatar: "",
+      status: "active" as const,
+      sortKey: "木村 颯大",
+      profileKind: "person" as const,
+      roleType: "user" as const,
+      searchableFields: ["木村 颯大", "u0000000167"],
+      tags: [],
+      userIdLabel: "u0000000167",
+    };
+    const contact = {
+      id: "31",
+      ownerUserId: "100",
+      targetUserId: "201",
+      relationStatus: "active" as const,
+      source: "manual",
+      isBlocked: false,
+      isStarred: false,
+      tags: [],
+      createdAt: sentAt,
+      updatedAt: sentAt,
+    };
+    const conversation = {
+      id: "91",
+      type: "single" as const,
+      title: "木村 颯大",
+      avatar: "",
+      memberIds: ["100", "201"],
+      contactUserId: "201",
+      lastMessagePreview: "稍后确认",
+      lastMessageAt: sentAt,
+      lastMessageTime: sentAt,
+      unreadCount: 0,
+      isPinned: false,
+      isMuted: false,
+      isDeleted: false,
+      createdAt: sentAt,
+      updatedAt: sentAt,
+    };
+    const snapshot = {
+      currentUserId: "100",
+      users: [user],
+      contacts: [contact],
+      conversations: [conversation],
+      members: [],
+      messagesByConversation: {
+        "91": [message({ content: "木村已经确认时间" })],
+      },
+    };
+
+    expect(buildCachedImSearchResults(snapshot, "木村")).toMatchObject({
+      contacts: [{ targetUserId: "201" }],
+      conversations: [{ id: "91" }],
+      messages: [{ content: "木村已经确认时间" }],
+    });
+  });
+});
+
+describe("formal IM send failure reason", () => {
+  it("keeps the recipient-blocked reason on the optimistic failed message", () => {
+    expect(getMessageFailureReason(new Error("error.im.recipient_blocked"))).toBe("recipient_blocked");
+    expect(getMessageFailureReason(new Error("error.network.timeout"))).toBe("send_failed");
   });
 });

@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
   applyConversationDraft,
+  buildSearchResults,
   buildMessagePreview,
   canRecallMessage,
   getConversationById,
@@ -15,6 +16,7 @@ import {
   type CreateConversationPrivacyOptions,
   type FriendRequest,
   type ImMessageType,
+  type ImDatabase,
   type ImRealtimeEvent,
   type ImRoleType,
   type ImRuntimeConfig,
@@ -111,6 +113,12 @@ export function mergeConversationMessageHistory(
     );
 }
 
+export function getMessageFailureReason(error: unknown): ConversationMessage["failureReason"] {
+  return error instanceof Error && error.message === "error.im.recipient_blocked"
+    ? "recipient_blocked"
+    : "send_failed";
+}
+
 type ImSnapshot = {
   status: StoreStatus;
   error?: string;
@@ -128,6 +136,40 @@ type ImSnapshot = {
   activeConversationId?: string;
   ui: UiState;
 };
+
+type CachedImSearchSnapshot = Pick<
+  ImSnapshot,
+  "contacts" | "conversations" | "currentUserId" | "members" | "messagesByConversation" | "users"
+>;
+
+export function buildCachedImSearchResults(
+  snapshot: CachedImSearchSnapshot,
+  query: string,
+  conversationId?: string,
+) {
+  const database: ImDatabase = {
+    currentUserId: snapshot.currentUserId ?? "",
+    config: {
+      allowStrangerMessaging: true,
+      preserveConversationAfterDelete: true,
+      recallWindowMs: 180_000,
+      separatorThresholdMs: 300_000,
+      syncDraftAcrossDevices: false,
+    },
+    users: snapshot.users,
+    contacts: snapshot.contacts,
+    friendRequests: [],
+    conversations: snapshot.conversations,
+    members: snapshot.members,
+    messages: Object.values(snapshot.messagesByConversation).flat(),
+    attachments: [],
+    readCursors: [],
+    messageCampaigns: [],
+    messageCampaignRecipients: [],
+  };
+
+  return buildSearchResults(database, query, conversationId);
+}
 
 function createInitialSnapshot(): ImSnapshot {
   return {
@@ -397,13 +439,32 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
         if (!realtimeUnsubscribe) {
           realtimeUnsubscribe = backend.subscribeUpdates((update) => {
-            if (update.type === "message.recalled") {
+            if (
+              update.type === "message.created" ||
+              update.type === "message.updated" ||
+              update.type === "message.recalled"
+            ) {
               upsertMessage(update.message);
               emit();
+
+              if (
+                update.type === "message.created" &&
+                snapshot.activeConversationId === update.message.conversationId &&
+                update.message.senderId !== snapshot.currentUserId
+              ) {
+                void markConversationRead(update.message.conversationId);
+              }
+
+              if (update.type !== "message.recalled") {
+                void refreshBootstrap();
+              }
               return;
             }
 
             void refreshBootstrap();
+            if (snapshot.activeConversationId) {
+              void loadMessages(snapshot.activeConversationId, { reset: true, limit: 40 });
+            }
           });
         }
 
@@ -603,7 +664,8 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     } catch (error) {
       replaceLocalMessage(optimistic.localId, {
         ...optimistic,
-        status: "failed"
+        status: "failed",
+        failureReason: getMessageFailureReason(error)
       });
       emit();
       throw error;
@@ -850,7 +912,15 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function search(query: string, conversationId?: string) {
     await hydrateStore();
-    return api.search(query, conversationId);
+    return buildCachedImSearchResults(snapshot, query, conversationId);
+  }
+
+  async function searchDirectory(query: string) {
+    await hydrateStore();
+    const response = await api.searchDirectory(query);
+    mergeUsers(response.users);
+    emit();
+    return response.users;
   }
 
   function rememberSearchTerm(value: string) {
@@ -961,6 +1031,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       acceptFriendRequest,
       rejectFriendRequest,
       search,
+      searchDirectory,
       rememberSearchTerm,
       clearSearchHistory
     };

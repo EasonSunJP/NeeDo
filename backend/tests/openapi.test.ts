@@ -186,6 +186,12 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/services/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/home/recommendations");
     expect(response.body.paths).toHaveProperty("/api/v1/search");
+    expect(response.body.paths).toHaveProperty("/api/v1/im/directory");
+    expect(response.body.paths["/api/v1/im/contacts"].post).toBeDefined();
+    expect(response.body.paths).toHaveProperty("/api/v1/im/conversations/{conversationId}/media");
+    expect(
+      response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody.content
+    ).toHaveProperty("image/png");
     expect(response.body.paths).toHaveProperty("/api/v1/shops/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/profiles/customers/{id}");

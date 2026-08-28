@@ -1597,6 +1597,8 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 
 三端 IM 当前统一走 `/api/im/*` mock 接口，后端未接入时也可以完整跑通。
 
+正式运行模式不使用上述旧 mock 写入路径：聊天搜索只查询当前设备已加载的 IM store；添加好友通过分页 `/api/v1/im/directory` 和 `/api/v1/im/contacts`；图片消息通过会话成员校验后的 `/api/v1/im/conversations/:conversationId/media` 上传；消息到达由每标签页共享的 SSE 连接即时合并，断线或标签页恢复时只做一次受控补拉。联系人拉黑状态持久化在 `contacts.blocked_at`，并由服务端阻止被拉黑发送方继续写入直接会话消息。
+
 同一套接口通过 `scope` 区分角色视图：
 
 - `scope=user`

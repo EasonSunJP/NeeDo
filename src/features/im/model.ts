@@ -266,6 +266,7 @@ export type ConversationMessage = {
   content: string;
   quotedMessageId?: string;
   status: ImMessageStatus;
+  failureReason?: "recipient_blocked" | "send_failed";
   sentAt: string;
   editedAt?: string;
   contentPurgedAt?: string;
@@ -295,6 +296,8 @@ export type ImRecallMessageResult = {
 };
 
 export type ImStoreUpdate =
+  | { type: "message.created"; message: ConversationMessage }
+  | { type: "message.updated"; message: ConversationMessage }
   | { type: "message.recalled"; message: ConversationMessage }
   | { type: "refresh" };
 

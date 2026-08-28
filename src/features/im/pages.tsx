@@ -2296,10 +2296,12 @@ export function ImContactsListPage() {
                       },
                       {
                         key: "block",
-                        label: "拉黑",
+                        label: contact.isBlocked ? "解除" : "拉黑",
                         tone: "warning",
                         width: 76,
-                        onClick: () => void store.blockContact(contact.id)
+                        onClick: () => void (contact.isBlocked
+                          ? store.unblockContact(contact.id)
+                          : store.blockContact(contact.id))
                       },
                       {
                         key: "remark",
@@ -4147,6 +4149,8 @@ export function ImConversationRoomPage({
   const recordingStopReasonRef = useRef<"send" | "cancel" | "timeout" | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [imageSending, setImageSending] = useState(false);
 
   useDocumentScrollLock(true);
   useIosScrollContainer(listRef, Boolean(menuState));
@@ -4950,19 +4954,7 @@ export function ImConversationRoomPage({
     }
 
     if (type === "image") {
-      const upload = await api.uploadInit("image");
-      await store.sendMessage(conversationId, "image", upload.fileUrl, {
-        ext: {
-          url: upload.fileUrl,
-          thumbnailUrl: upload.fileUrl,
-          fileName: "album-image.jpg",
-          fileSize: 380_000,
-          mimeType: "image/jpeg",
-          width: 960,
-          height: 1280
-        }
-      });
-      setPanel(null);
+      imageInputRef.current?.click();
       return;
     }
 
@@ -4976,6 +4968,37 @@ export function ImConversationRoomPage({
       setPanel(null);
       setContactCardQuery("");
       setContactCardPickerOpen(true);
+    }
+  };
+
+  const sendSelectedImage = async (file?: File) => {
+    if (!file || imageSending) {
+      return;
+    }
+
+    setImageSending(true);
+    setActionNotice(null);
+    try {
+      const previewUrl = URL.createObjectURL(file);
+      const size = await readImageSize(previewUrl).catch(() => undefined);
+      URL.revokeObjectURL(previewUrl);
+      const upload = await api.uploadImage(conversationId, file);
+      await store.sendMessage(conversationId, "image", upload.url, {
+        ext: {
+          url: upload.url,
+          thumbnailUrl: upload.url,
+          fileName: upload.fileName,
+          fileSize: upload.fileSize,
+          mimeType: upload.mimeType,
+          width: size?.width,
+          height: size?.height
+        }
+      });
+      setPanel(null);
+    } catch {
+      setActionNotice("图片发送失败，请重试");
+    } finally {
+      setImageSending(false);
     }
   };
 
@@ -5688,6 +5711,18 @@ export function ImConversationRoomPage({
                 recording={recording}
                 textareaRef={textareaRef}
                 voiceMode={voiceMode}
+              />
+              <input
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                disabled={imageSending}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  void sendSelectedImage(file);
+                }}
+                ref={imageInputRef}
+                type="file"
               />
             </>
           )}
@@ -6690,8 +6725,14 @@ export function ImConversationInfoPage() {
           ) : (
             <>
               {contact && config.messageActionConfig.detailToggles.includes("blacklist") ? (
-                <button className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[color:var(--client-text)]" onClick={() => void store.blockContact(contact.id)} type="button">
-                  加入黑名单
+                <button
+                  className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[color:var(--client-text)]"
+                  onClick={() => void (contact.isBlocked
+                    ? store.unblockContact(contact.id)
+                    : store.blockContact(contact.id))}
+                  type="button"
+                >
+                  {contact.isBlocked ? "解除黑名单" : "加入黑名单"}
                 </button>
               ) : null}
               {contact && config.messageActionConfig.detailToggles.includes("deleteContact") ? (
@@ -6904,6 +6945,8 @@ export function ImNewConversationPage() {
   const forwardMessageId = searchParams.get("messageId");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
+  const [directoryCandidates, setDirectoryCandidates] = useState<ImUser[]>([]);
+  const [directoryStatus, setDirectoryStatus] = useState<"idle" | "searching" | "ready" | "error">("idle");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [groupTitle, setGroupTitle] = useState("");
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
@@ -6956,7 +6999,7 @@ export function ImNewConversationPage() {
         .map((contact) => contact.targetUserId)
     );
   }, [scope, store.contacts, store.usersById]);
-  const availableFriendCandidates = useMemo(() => store.users.filter((user) => {
+  const availableFriendCandidates = useMemo(() => directoryCandidates.filter((user) => {
     if (user.id === store.currentUserId || user.serviceAccount) {
       return false;
     }
@@ -6966,7 +7009,7 @@ export function ImNewConversationPage() {
     }
 
     return !activeContactUserIds.has(user.id);
-  }), [activeContactUserIds, scope, store.currentUserId, store.users]);
+  }), [activeContactUserIds, directoryCandidates, scope, store.currentUserId]);
   const filteredFriendCandidates = useMemo(() => {
     const keyword = deferredQuery.trim().toLowerCase();
 
@@ -6974,6 +7017,40 @@ export function ImNewConversationPage() {
       !keyword || [user.nickname, user.userIdLabel, ...user.searchableFields].some((field) => field.toLowerCase().includes(keyword))
     );
   }, [availableFriendCandidates, deferredQuery]);
+
+  useEffect(() => {
+    if (!isFriendMode) {
+      return undefined;
+    }
+
+    const keyword = deferredQuery.trim();
+    if (!keyword) {
+      setDirectoryCandidates([]);
+      setDirectoryStatus("idle");
+      return undefined;
+    }
+
+    let alive = true;
+    setDirectoryStatus("searching");
+    const timer = window.setTimeout(() => {
+      void store.searchDirectory(keyword)
+        .then((users) => {
+          if (!alive) return;
+          setDirectoryCandidates(users);
+          setDirectoryStatus("ready");
+        })
+        .catch(() => {
+          if (!alive) return;
+          setDirectoryCandidates([]);
+          setDirectoryStatus("error");
+        });
+    }, 250);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [deferredQuery, isFriendMode, store.searchDirectory]);
   const collectAmountValue = Number(collectAmount.replace(/[^\d]/g, ""));
   const canSubmitCollection = Boolean(selectedCollectUserId && Number.isFinite(collectAmountValue) && collectAmountValue > 0);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
@@ -7306,7 +7383,11 @@ export function ImNewConversationPage() {
           </section>
 
           <section className="rounded-[24px] bg-white p-3 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-            {filteredFriendCandidates.length > 0 ? (
+            {directoryStatus === "searching" ? (
+              <div className="px-4 py-10 text-center text-sm text-ink/42">正在搜索账号…</div>
+            ) : directoryStatus === "error" ? (
+              <div className="px-4 py-10 text-center text-sm text-ink/42">搜索失败，请稍后重试</div>
+            ) : filteredFriendCandidates.length > 0 ? (
               <div className="space-y-2">
                 {filteredFriendCandidates.map((user) => (
                   <ContactRow
@@ -7318,7 +7399,9 @@ export function ImNewConversationPage() {
                 ))}
               </div>
             ) : (
-              <div className="px-4 py-10 text-center text-sm text-ink/42">没有找到可添加的好友</div>
+              <div className="px-4 py-10 text-center text-sm text-ink/42">
+                {deferredQuery.trim() ? "没有找到可添加的好友" : "请输入昵称或 NeeDoID 搜索"}
+              </div>
             )}
           </section>
         </div>

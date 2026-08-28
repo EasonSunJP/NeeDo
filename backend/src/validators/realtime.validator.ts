@@ -95,6 +95,15 @@ export const contactListQuerySchema = z.object({
   ...paginationQuerySchema
 });
 
+export const directorySearchQuerySchema = z.object({
+  ...paginationQuerySchema,
+  query: z.string().trim().min(1).max(100)
+});
+
+export const contactCreateBodySchema = z.object({
+  targetUserId: z.coerce.number().int().positive()
+});
+
 export const contactIdParamSchema = z.object({
   contactId: z.coerce.number().int().positive()
 });
@@ -164,6 +173,8 @@ export type MessageListQuery = z.infer<typeof messageListQuerySchema>;
 export type MessageReactionBody = z.infer<typeof messageReactionBodySchema>;
 export type MessageRecallBody = z.infer<typeof messageRecallBodySchema>;
 export type ContactListQuery = z.infer<typeof contactListQuerySchema>;
+export type DirectorySearchQuery = z.infer<typeof directorySearchQuerySchema>;
+export type ContactCreateBody = z.infer<typeof contactCreateBodySchema>;
 export type FriendRequestCreateBody = z.infer<typeof friendRequestCreateBodySchema>;
 export type FriendRequestListQuery = z.infer<typeof friendRequestListQuerySchema>;
 export type SocialPostCreateBody = z.infer<typeof socialPostCreateBodySchema>;
