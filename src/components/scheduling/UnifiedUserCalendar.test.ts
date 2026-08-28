@@ -28,6 +28,14 @@ describe("UnifiedUserCalendar event detail page", () => {
   });
 });
 
+describe("UnifiedUserCalendar privacy projection", () => {
+  it("keeps the locked badge in compact cross-shop redacted events", () => {
+    expect(source).toContain('event.visibility === "busy_redacted"');
+    expect(source).toContain("? event.badge");
+    expect(source).toContain("getEventStyle(event)");
+  });
+});
+
 describe("UnifiedUserCalendar event editor page", () => {
   it("opens the add and edit itinerary editor as a fullscreen mobile page", () => {
     expect(source).toContain("function CalendarEventEditorPage");

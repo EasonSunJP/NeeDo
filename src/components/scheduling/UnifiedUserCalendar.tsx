@@ -2424,7 +2424,12 @@ function CalendarEventCard({
   onOpen: (event: UnifiedCalendarEvent) => void;
 }) {
   const source = sourceConfigs[event.sourceId];
-  const badgeLabel = compact ? source.shortLabel : event.badge;
+  const badgeLabel =
+    event.visibility === "busy_redacted"
+      ? event.badge
+      : compact
+        ? source.shortLabel
+        : event.badge;
   return (
     <button
       className={cn(
