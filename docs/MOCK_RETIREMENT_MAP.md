@@ -42,6 +42,14 @@ Large local-only member, analytics, social, scheduling, checkout, CPS, IM, and p
 - Both paths use the formal schema, transactions, uniqueness constraints, password hashing, public-ID allocator, and rollback behavior.
 - Production rejects these flags. There is no production fallback account.
 
+## Future schedule and booking prerequisite — 2026-08-28
+
+- The formal local database prerequisite is complete only when `npm run check:future-operations` returns `status: "ok"`. The accepted `needo_dev` run reuses the existing 100 customer and 100 technician test accounts and 10 shops for the complete 2026-09-01 through 2027-02-28 JST window; it creates no account, profile, shop, service, or public identifier.
+- The checker reconciles 41,193 Availability rows, 41,193 ScheduleSlot rows, 18,513 BookingOrder rows, 32,719 status-history rows, and 18,513 notifications against the deterministic plan. It also requires zero overlap, duplicate order number, invalid relationship, future terminal status, order-financial, wallet-hold, and review records. A repeated apply must return `noop`.
+- The original June-August historical baseline remains 210 accounts, 10 shops, 100 technicians, 100 customers, 2,600 schedule slots, and 1,957 bookings. The existing historical checker remains mandatory because it also verifies finance, payroll, contacts, conversations, and messages.
+- Frontend retirement is still pending for `src/pages/user/UserSchedulePage.tsx`, `src/pages/user/UserTechnicianScheduleDetailPage.tsx`, the technician schedule routes and `src/state/technicianScheduleStore.ts`, and the merchant schedule/dispatch views including `src/state/shiftPlanningStore.ts`. These paths must stay marked pending until their formal `/api/v1/` contracts, RBAC, browser refresh/restart persistence, and user/technician/merchant browser acceptance pass in separate micro-steps.
+- No frontend localStorage or generated schedule path is considered retired merely because the database prerequisite now exists. Each owning slice must remove its own browser business store only after its formal API replacement is verified.
+
 ## Identity acceptance
 
 - A normal account owns one ten-digit `accountNo`; enabled login identities use `u/s/b/o` plus those digits.

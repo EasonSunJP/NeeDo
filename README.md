@@ -87,7 +87,9 @@ The shared Apifox login/register/captcha endpoints are legacy pre-login routes, 
 
 Passwordless test-login shortcuts are not part of the formal login chain. Verified formal accounts sign in through `POST /api/v1/auth/login` with `email-or-NeeDoID + password`; seeded local/staging accounts must use their seeded email or NeeDoID. Their password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. Login pages do not bundle `VITE_TEST_LOGIN_*` credentials and do not expose test-account autofill or one-click login controls.
 
-## Local Three-Month Simulation Data
+## Local Operations Simulation Data
+
+### Historical June-August Dataset
 
 The local-only simulation seed creates an isolated, deterministic cohort for real API and portal acceptance: 10 published shops, 100 published technicians (exactly 10 per shop), 100 customers, 30 services, 2,600 schedule slots, and three calendar months of completed, cancelled, in-service, confirmed, and pending bookings. Completed bookings include confirmed onsite payments and order-finance records; customers receive wallet seed-credit ledger entries, and every simulated booking creates a recipient notification. The same seed also writes 210 direct conversations, 860 dated messages, and 420 bidirectional contacts to the formal Prisma/MySQL IM tables. Every simulated customer receives one technician conversation and one shop-owner conversation; `sim.customer.100@needo.local` is expanded to 12 real linked contacts/conversations and 68 cross-month messages for focused IM acceptance. The shared `customer@example.com` preview account is kept as an active formal customer with a profile, wallet, and two real preview conversations.
 
@@ -100,6 +102,25 @@ cd backend
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:simulation
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:simulation-data
 ```
+
+### Future Six-Month Local Operations Dataset
+
+The historical June-August dataset remains unchanged. The future dataset reuses the existing 100 technician and 100 customer test accounts and covers 2026-09-01 through 2027-02-28 JST. It persists deterministic Availability, ScheduleSlot, BookingOrder, status-history, and notification records in the formal local MySQL database. Future bookings are limited to pending, confirmed, or cancelled and do not create completed finance, payroll, wallet-hold, or review records.
+
+```bash
+cd backend
+
+# Read-only plan
+npm run plan:future-operations
+
+# Explicit local apply
+npm run seed:future-operations
+
+# Independent database reconciliation
+npm run check:future-operations
+```
+
+The workflow rejects production or remote databases, does not create accounts, and refuses to overwrite non-matching schedule or booking data in the target window. Repeating an exact successful apply returns `noop` without adding rows. Passing the database checker establishes only the real-data prerequisite; the user, technician, and merchant schedule UI mock-retirement slices remain separate acceptance work.
 
 The isolated formal Social seed updates the 210 simulation accounts plus the six fixed role-entry accounts without replacing booking/order data. It assigns realistic shop and person names, persists 15 posts per account (text, single image, multi-image, video, and quote), and creates exactly 36 mutual friends per account across shop service accounts, technicians, and general users.
 
