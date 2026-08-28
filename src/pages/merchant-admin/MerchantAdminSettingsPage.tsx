@@ -5,8 +5,14 @@ import {
   type BackofficeShopPayload,
   type MerchantShopUpdateInput
 } from "../../api/backofficeRealData";
+import {
+  payrollSchedulePolicyApi,
+  type PayrollSchedulePolicyResult,
+  type ShopPayrollSchedulePolicyInput,
+} from "../../api/payrollSchedulePolicy";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
+import { PayrollSchedulePolicyEditor } from "../../components/merchant-admin/PayrollSchedulePolicyEditor";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
@@ -41,8 +47,8 @@ const unavailableCapabilities = [
     description: "需要带时区的 OpeningHours 数据模型、例外日期和店铺范围写 API 后才能开放。"
   },
   {
-    title: "证照与展示装修尚未启用",
-    description: "需要文件审核状态、版本记录以及店铺展示配置表，当前不会保存到浏览器。"
+    title: "证照管理尚未启用",
+    description: "需要文件审核状态、版本记录和店铺范围写 API，当前不会保存到浏览器。"
   },
   {
     title: "地图、导航与 eKYC 尚未启用",
@@ -79,6 +85,11 @@ export function MerchantAdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [payrollPolicy, setPayrollPolicy] =
+    useState<PayrollSchedulePolicyResult | null>(null);
+  const [payrollPolicyLoading, setPayrollPolicyLoading] = useState(true);
+  const [payrollPolicySaving, setPayrollPolicySaving] = useState(false);
+  const [payrollPolicyError, setPayrollPolicyError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,9 +110,29 @@ export function MerchantAdminSettingsPage() {
     }
   }, [language]);
 
+  const loadPayrollPolicy = useCallback(async () => {
+    setPayrollPolicyLoading(true);
+    setPayrollPolicyError("");
+    try {
+      const result = await loadCoreReadWithTransientRetry(() =>
+        payrollSchedulePolicyApi.getShop()
+      );
+      setPayrollPolicy(result);
+    } catch (loadError) {
+      setPayrollPolicy(null);
+      setPayrollPolicyError(describeMerchantReadError(loadError, language));
+    } finally {
+      setPayrollPolicyLoading(false);
+    }
+  }, [language]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadPayrollPolicy();
+  }, [loadPayrollPolicy]);
 
   const hasRequiredFields = useMemo(
     () => Boolean(draft.name.trim() && draft.city.trim() && draft.address.trim()),
@@ -134,6 +165,22 @@ export function MerchantAdminSettingsPage() {
     setDraft(createDraft(shop));
     setError("");
     setSaved(false);
+  };
+
+  const savePayrollPolicy = async (
+    input: ShopPayrollSchedulePolicyInput,
+  ) => {
+    setPayrollPolicySaving(true);
+    setPayrollPolicyError("");
+    try {
+      const updated = await payrollSchedulePolicyApi.updateShop(input);
+      setPayrollPolicy(updated);
+    } catch (saveError) {
+      setPayrollPolicyError(describeMerchantReadError(saveError, language));
+      throw saveError;
+    } finally {
+      setPayrollPolicySaving(false);
+    }
   };
 
   return (
@@ -238,6 +285,20 @@ export function MerchantAdminSettingsPage() {
             </aside>
           </div>
         ) : null}
+
+        <div className="mt-5">
+          <PayrollSchedulePolicyEditor
+            description="设置每日、每周或每月结算，并由后端计算计划支付日。财务人员仍需在财务结算页手动登记实际支付结果。"
+            error={payrollPolicyError}
+            loading={payrollPolicyLoading}
+            mode="shop"
+            onRetry={() => void loadPayrollPolicy()}
+            onSave={savePayrollPolicy}
+            policy={payrollPolicy}
+            saving={payrollPolicySaving}
+            title="工资结算周期"
+          />
+        </div>
 
         <section className="mt-5 rounded-lg border border-line bg-white p-5 shadow-panel">
           <div className="flex flex-wrap items-center justify-between gap-3">

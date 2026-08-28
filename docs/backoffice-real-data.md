@@ -18,7 +18,8 @@
 - 商户后台工资单闭环：生成 Pay Run 草稿、重算草稿、发布、审批、记录支付、锁定归档，并查看 Payslip 行项目。
 - 技师端工资单：读取个人 Payslip，查看 Money Timeline/行项目，确认或申诉。
 - 运营后台工资汇总：只读查看 Pay Run 总额、未支付、申诉和周期状态。
-- 商户后台员工列表：读取 `/api/v1/merchant-admin/technicians`。
+- 商户后台员工列表与详细信息卡：按 canonical 技师 NeeDoID 读取 `/api/v1/merchant-admin/employees`，维护本店员工基础资料、从属关系和工资结算周期。
+- 商户后台门店设置：维护店铺默认工资结算周期，并由后端计算本期自然结算日与计划支付日。
 
 调度中心后端接口已提供：
 
@@ -81,6 +82,10 @@
 - `GET /api/v1/merchant-admin/technicians`
 - `GET /api/v1/merchant-admin/shop`
 - `PATCH /api/v1/merchant-admin/shop`
+- `GET /api/v1/merchant-admin/payroll-schedule-policy`
+- `PUT /api/v1/merchant-admin/payroll-schedule-policy`
+- `GET /api/v1/merchant-admin/employees/:needoId/payroll-schedule-policy`
+- `PUT /api/v1/merchant-admin/employees/:needoId/payroll-schedule-policy`
 
 真实测试账号登录：
 
@@ -117,6 +122,8 @@
 - `merchant-admin:compensation-profile:preview`
 - `merchant-admin:technicians:list`
 - `merchant-admin:shop:read`
+- `merchant-admin:payroll:read`
+- `merchant-admin:payroll:write`
 
 每个 Step 12 后台接口都会通过 JWT + RBAC middleware。商户后台接口会从当前身份读取 `scopeType=shop` 与 `scopeId`，只返回该店铺范围内的数据。
 
@@ -145,7 +152,27 @@
 - `merchant_admin.compensation_profile.preview`
 - `merchant_admin.technicians.list`
 - `merchant_admin.shop.read`
+- `merchant_admin.payroll_schedule_policy.update`
+- `merchant_admin.employee_payroll_schedule_override.update`
 - `auth.test_login`
+
+## 商户工资结算周期
+
+工资结算周期与现有财务规则、收入模式、Pay Run 和 Payslip 分离：本模块只负责店铺默认周期、员工个人覆盖和计划支付日。正式支付是否完成仍由财务人员在财务结算页手工登记，本模块不触发资金转账，也不改变工资单支付状态。
+
+持久化使用版本化 `shop_payroll_schedule_policies` 与 `technician_payroll_schedule_overrides`。员工覆盖绑定当前店铺的 `TechnicianShopAffiliation`；默认继承店铺规则，关闭继承后才保存完整员工规则。所有范围来自 JWT 当前店铺，接口不接受客户端 `shopId`。
+
+结算频率支持每日、每周和每月。日期计算固定使用 `Asia/Tokyo`；月结算日 29–31 在短月落到当月最后一天。遇周末或日本法定节假日时按规则提前至前一个营业日，或顺延至下一个营业日。2025–2027 日本官方节假日固定导入 `business_calendar_dates`，来源版本为 `cabinet-office-2026-08-29`，官方源为 <https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv>。
+
+前端在“门店设置”显示店铺默认规则，在员工详细信息卡显示继承来源或个人规则，并只使用后端返回的本期范围、自然结算日和计划支付日。保存失败保留草稿；切换员工或关闭详情会使上一请求失效，不能串用其他员工的规则。
+
+Migration：
+
+```text
+backend/prisma/migrations/20260829123000_employee_payroll_schedule_policy/migration.sql
+```
+
+2026-08-29 本地正式开发库在完整 SQL 备份后部署，专项 checker 结果为 `ready=true`、`officialJapanHolidayRows=54`、`issues=[]`。部署不会创建任何店铺或员工默认规则行。
 
 ## 财务口径
 

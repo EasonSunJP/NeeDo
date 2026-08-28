@@ -2329,6 +2329,74 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           csv: { type: "string" }
         }
       },
+      PayrollScheduleRule: {
+        type: "object",
+        required: [
+          "id",
+          "version",
+          "cadence",
+          "weeklySettlementWeekday",
+          "monthlySettlementDay",
+          "holidayAdjustment",
+          "timezone",
+          "effectiveFrom",
+          "effectiveTo"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          version: { type: "integer", minimum: 1 },
+          cadence: { type: "string", enum: ["daily", "weekly", "monthly"] },
+          weeklySettlementWeekday: { type: ["integer", "null"], minimum: 1, maximum: 7 },
+          monthlySettlementDay: { type: ["integer", "null"], minimum: 1, maximum: 31 },
+          holidayAdjustment: {
+            type: "string",
+            enum: ["previous_business_day", "next_business_day"]
+          },
+          timezone: { type: "string", enum: ["Asia/Tokyo"] },
+          effectiveFrom: { type: "string", format: "date" },
+          effectiveTo: { type: ["string", "null"], format: "date" }
+        }
+      },
+      PayrollSchedulePreview: {
+        type: "object",
+        required: [
+          "periodStart",
+          "periodEnd",
+          "naturalSettlementDate",
+          "plannedPaymentDate",
+          "adjustmentReason"
+        ],
+        properties: {
+          periodStart: { type: "string", format: "date" },
+          periodEnd: { type: "string", format: "date" },
+          naturalSettlementDate: { type: "string", format: "date" },
+          plannedPaymentDate: { type: "string", format: "date" },
+          adjustmentReason: {
+            type: ["string", "null"],
+            enum: ["weekend", "public_holiday", null]
+          }
+        }
+      },
+      PayrollSchedulePolicyResult: {
+        type: "object",
+        required: ["configured", "source", "effectivePolicy", "preview"],
+        properties: {
+          configured: { type: "boolean" },
+          source: {
+            type: "string",
+            enum: ["shop", "employee_override", "shop_unconfigured"]
+          },
+          inheritShopPolicy: { type: "boolean" },
+          shopPolicy: { type: ["object", "null"], additionalProperties: true },
+          employeeOverride: { type: ["object", "null"], additionalProperties: true },
+          effectivePolicy: {
+            oneOf: [{ $ref: "#/components/schemas/PayrollScheduleRule" }, { type: "null" }]
+          },
+          preview: {
+            oneOf: [{ $ref: "#/components/schemas/PayrollSchedulePreview" }, { type: "null" }]
+          }
+        }
+      },
       FeeCalculationResult: {
         type: "object",
         required: [
@@ -7827,6 +7895,177 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+    [`${config.API_PREFIX}/merchant-admin/payroll-schedule-policy`]: {
+      get: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Read the authenticated shop payroll schedule policy and payment preview",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "referenceDate",
+            in: "query",
+            required: false,
+            schema: { type: "string", format: "date" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Shop payroll schedule policy", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid reference date" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "error.forbidden or error.identity.forbidden" }
+        }
+      },
+      put: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Create a new version of the authenticated shop payroll schedule policy",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "cadence",
+                  "weeklySettlementWeekday",
+                  "monthlySettlementDay",
+                  "holidayAdjustment",
+                  "timezone",
+                  "effectiveFrom"
+                ],
+                properties: {
+                  cadence: { type: "string", enum: ["daily", "weekly", "monthly"] },
+                  weeklySettlementWeekday: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 7
+                  },
+                  monthlySettlementDay: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 31
+                  },
+                  holidayAdjustment: {
+                    type: "string",
+                    enum: ["previous_business_day", "next_business_day"]
+                  },
+                  timezone: { type: "string", enum: ["Asia/Tokyo"] },
+                  effectiveFrom: { type: "string", format: "date" },
+                  effectiveTo: { type: ["string", "null"], format: "date" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Versioned shop payroll schedule policy", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid cadence or effective date" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant payroll write permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/payroll-schedule-policy`]: {
+      get: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Read an affiliated employee effective payroll schedule policy",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s[0-9]{10}$" }
+          },
+          {
+            name: "referenceDate",
+            in: "query",
+            required: false,
+            schema: { type: "string", format: "date" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Employee effective payroll schedule policy", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid technician NeeDoID" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant payroll read permission" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      },
+      put: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Create a versioned employee payroll schedule override",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s[0-9]{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "inheritShopPolicy",
+                  "cadence",
+                  "weeklySettlementWeekday",
+                  "monthlySettlementDay",
+                  "holidayAdjustment",
+                  "timezone",
+                  "effectiveFrom"
+                ],
+                properties: {
+                  inheritShopPolicy: { type: "boolean" },
+                  cadence: {
+                    type: ["string", "null"],
+                    enum: ["daily", "weekly", "monthly", null]
+                  },
+                  weeklySettlementWeekday: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 7
+                  },
+                  monthlySettlementDay: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 31
+                  },
+                  holidayAdjustment: {
+                    type: ["string", "null"],
+                    enum: ["previous_business_day", "next_business_day", null]
+                  },
+                  timezone: { type: ["string", "null"], enum: ["Asia/Tokyo", null] },
+                  effectiveFrom: { type: "string", format: "date" },
+                  effectiveTo: { type: ["string", "null"], format: "date" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Versioned employee payroll schedule override", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid override or technician NeeDoID" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant payroll write permission" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/pay-runs`]: {
       get: {
         tags: ["Payroll Center"],

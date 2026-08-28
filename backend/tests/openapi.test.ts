@@ -419,6 +419,42 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/approve");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/lock");
     expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/payroll-schedule-policy"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/employees/{needoId}/payroll-schedule-policy"
+    );
+    const payrollSchedulePolicyPath =
+      response.body.paths["/api/v1/merchant-admin/payroll-schedule-policy"];
+    expect(payrollSchedulePolicyPath.get.security).toEqual([{ bearerAuth: [] }]);
+    expect(payrollSchedulePolicyPath.put.requestBody.content["application/json"].schema).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        required: expect.arrayContaining([
+          "cadence",
+          "weeklySettlementWeekday",
+          "monthlySettlementDay",
+          "holidayAdjustment",
+          "timezone",
+          "effectiveFrom"
+        ])
+      })
+    );
+    expect(
+      response.body.paths[
+        "/api/v1/merchant-admin/employees/{needoId}/payroll-schedule-policy"
+      ].get.parameters
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          in: "path",
+          name: "needoId",
+          schema: expect.objectContaining({ pattern: "^s[0-9]{10}$" })
+        })
+      ])
+    );
+    expect(response.body.components.schemas).toHaveProperty("PayrollSchedulePolicyResult");
+    expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/payslips/{id}/payout-records"
     );
     expect(response.body.paths).toHaveProperty(

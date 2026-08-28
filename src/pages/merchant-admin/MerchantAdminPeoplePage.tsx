@@ -13,6 +13,11 @@ import {
   type BackofficeCustomerPayload,
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
+import {
+  payrollSchedulePolicyApi,
+  type EmployeePayrollSchedulePolicyInput,
+  type PayrollSchedulePolicyResult,
+} from "../../api/payrollSchedulePolicy";
 import { FormalCustomerDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { EmployeeDetailCard } from "../../components/merchant-admin/EmployeeDetailCard";
@@ -133,6 +138,14 @@ export function MerchantAdminPeoplePage() {
   const [employeeMutationError, setEmployeeMutationError] = useState("");
   const [employeeSaving, setEmployeeSaving] =
     useState<EmployeeSavingSection>(null);
+  const [employeePayrollPolicy, setEmployeePayrollPolicy] =
+    useState<PayrollSchedulePolicyResult | null>(null);
+  const [employeePayrollPolicyLoading, setEmployeePayrollPolicyLoading] =
+    useState(false);
+  const [employeePayrollPolicySaving, setEmployeePayrollPolicySaving] =
+    useState(false);
+  const [employeePayrollPolicyError, setEmployeePayrollPolicyError] =
+    useState("");
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -180,6 +193,33 @@ export function MerchantAdminPeoplePage() {
     [keyword, module, page],
   );
 
+  const employeePayrollPolicyRequest = useMemo(
+    () =>
+      createFormalDetailRequestCoordinator<
+        PayrollSchedulePolicyResult,
+        string
+      >({
+        onError: (policyError) => {
+          setEmployeePayrollPolicyError(
+            describeDetailError(
+              policyError,
+              languageRef.current,
+              "工资结算周期读取失败",
+            ),
+          );
+        },
+        onFinally: () => setEmployeePayrollPolicyLoading(false),
+        onStart: () => {
+          setEmployeePayrollPolicy(null);
+          setEmployeePayrollPolicyLoading(true);
+          setEmployeePayrollPolicyError("");
+        },
+        onSuccess: setEmployeePayrollPolicy,
+        request: (needoId) => payrollSchedulePolicyApi.getEmployee(needoId),
+      }),
+    [],
+  );
+
   const employeeDetailRequest = useMemo(
     () =>
       createFormalDetailRequestCoordinator<MerchantEmployee, string>({
@@ -199,10 +239,13 @@ export function MerchantAdminPeoplePage() {
           setEmployeeDetailError("");
           setEmployeeMutationError("");
         },
-        onSuccess: setEmployeeDetail,
+        onSuccess: (employee) => {
+          setEmployeeDetail(employee);
+          void employeePayrollPolicyRequest.load(employee.needoId);
+        },
         request: (needoId) => merchantEmployeeApi.detail(needoId),
       }),
-    [],
+    [employeePayrollPolicyRequest],
   );
 
   const customerDetailRequest = useMemo(
@@ -231,15 +274,18 @@ export function MerchantAdminPeoplePage() {
   );
 
   useEffect(() => {
+    employeePayrollPolicyRequest.activate();
     employeeDetailRequest.activate();
     customerDetailRequest.activate();
     return () => {
+      employeePayrollPolicyRequest.dispose();
       employeeDetailRequest.dispose();
       customerDetailRequest.dispose();
     };
-  }, [customerDetailRequest, employeeDetailRequest]);
+  }, [customerDetailRequest, employeeDetailRequest, employeePayrollPolicyRequest]);
 
   const closeEmployee = useCallback(() => {
+    employeePayrollPolicyRequest.invalidate();
     employeeDetailRequest.invalidate();
     setSelectedEmployeeNeedoId(null);
     setEmployeeDetail(null);
@@ -247,7 +293,11 @@ export function MerchantAdminPeoplePage() {
     setEmployeeDetailError("");
     setEmployeeMutationError("");
     setEmployeeSaving(null);
-  }, [employeeDetailRequest]);
+    setEmployeePayrollPolicy(null);
+    setEmployeePayrollPolicyLoading(false);
+    setEmployeePayrollPolicySaving(false);
+    setEmployeePayrollPolicyError("");
+  }, [employeeDetailRequest, employeePayrollPolicyRequest]);
 
   const closeCustomer = useCallback(() => {
     customerDetailRequest.invalidate();
@@ -336,6 +386,35 @@ export function MerchantAdminPeoplePage() {
     return runEmployeeMutation(needoId, "affiliation", () =>
       merchantEmployeeApi.updateAffiliation(needoId, input),
     );
+  };
+
+  const saveEmployeePayrollPolicy = async (
+    input: EmployeePayrollSchedulePolicyInput,
+  ): Promise<void> => {
+    if (!selectedEmployeeNeedoId) return;
+    const needoId = selectedEmployeeNeedoId;
+    setEmployeePayrollPolicySaving(true);
+    setEmployeePayrollPolicyError("");
+    try {
+      const updated = await payrollSchedulePolicyApi.updateEmployee(
+        needoId,
+        input,
+      );
+      if (employeePayrollPolicyRequest.getSelectedId() === needoId) {
+        setEmployeePayrollPolicy(updated);
+      }
+    } catch (policyError) {
+      setEmployeePayrollPolicyError(
+        describeDetailError(
+          policyError,
+          language,
+          "工资结算周期保存失败，请重试",
+        ),
+      );
+      throw policyError;
+    } finally {
+      setEmployeePayrollPolicySaving(false);
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -608,8 +687,16 @@ export function MerchantAdminPeoplePage() {
             <EmployeeDetailCard
               employee={employeeDetail}
               error={employeeMutationError}
+              onRetryPayrollPolicy={() =>
+                void employeePayrollPolicyRequest.retry()
+              }
+              onSavePayrollPolicy={saveEmployeePayrollPolicy}
               onSaveAffiliation={saveEmployeeAffiliation}
               onSaveProfile={saveEmployeeProfile}
+              payrollPolicy={employeePayrollPolicy}
+              payrollPolicyError={employeePayrollPolicyError}
+              payrollPolicyLoading={employeePayrollPolicyLoading}
+              payrollPolicySaving={employeePayrollPolicySaving}
               saving={employeeSaving}
             />
           ) : null}

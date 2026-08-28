@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MerchantEmployee } from "../../features/merchant-admin/employeeApi";
+import type { PayrollSchedulePolicyResult } from "../../api/payrollSchedulePolicy";
 import { translateText } from "../../i18n/translations";
 import { EmployeeDetailCard } from "./EmployeeDetailCard";
 
@@ -48,6 +49,48 @@ const employee: MerchantEmployee = {
   },
 };
 
+const payrollPolicy: PayrollSchedulePolicyResult = {
+  configured: true,
+  source: "shop",
+  inheritShopPolicy: true,
+  shopPolicy: {
+    id: 3,
+    shopId: 654,
+    cadence: "monthly",
+    weeklySettlementWeekday: null,
+    monthlySettlementDay: 25,
+    holidayAdjustment: "next_business_day",
+    timezone: "Asia/Tokyo",
+    effectiveFrom: "2026-08-01",
+    effectiveTo: null,
+    status: "active",
+    version: 3,
+    createdById: null,
+    updatedById: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+  },
+  employeeOverride: null,
+  effectivePolicy: {
+    id: 3,
+    version: 3,
+    cadence: "monthly",
+    weeklySettlementWeekday: null,
+    monthlySettlementDay: 25,
+    holidayAdjustment: "next_business_day",
+    timezone: "Asia/Tokyo",
+    effectiveFrom: "2026-08-01",
+    effectiveTo: null,
+  },
+  preview: {
+    periodStart: "2026-07-26",
+    periodEnd: "2026-08-25",
+    naturalSettlementDate: "2026-08-25",
+    plannedPaymentDate: "2026-08-25",
+    adjustmentReason: null,
+  },
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -59,6 +102,12 @@ async function renderCard(
       <EmployeeDetailCard
         employee={employee}
         error=""
+        payrollPolicy={payrollPolicy}
+        payrollPolicyError=""
+        payrollPolicyLoading={false}
+        payrollPolicySaving={false}
+        onRetryPayrollPolicy={vi.fn()}
+        onSavePayrollPolicy={vi.fn(async () => undefined)}
         onSaveAffiliation={vi.fn(async () => undefined)}
         onSaveProfile={vi.fn(async () => undefined)}
         saving={null}
@@ -193,10 +242,46 @@ describe("EmployeeDetailCard", () => {
     });
   });
 
+  it("shows the inherited payroll schedule and can save a real employee override", async () => {
+    const onSavePayrollPolicy = vi.fn(async () => undefined);
+    await renderCard({ onSavePayrollPolicy });
+
+    expect(container.textContent).toContain("工资结算周期");
+    expect(container.textContent).toContain("继承店铺规则");
+    expect(container.textContent).toContain("2026/08/25");
+    await act(async () => button("编辑结算周期").click());
+    const inheritance = container.querySelector<HTMLInputElement>(
+      '[data-testid="employee-payroll-inherit"]',
+    )!;
+    await act(async () => inheritance.click());
+    const cadence = container.querySelector<HTMLSelectElement>(
+      '[data-testid="payroll-cadence"]',
+    )!;
+    await act(async () => {
+      cadence.value = "weekly";
+      cadence.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => button("保存结算周期").click());
+
+    expect(onSavePayrollPolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inheritShopPolicy: false,
+        cadence: "weekly",
+        weeklySettlementWeekday: expect.any(Number),
+        monthlySettlementDay: null,
+        timezone: "Asia/Tokyo",
+      }),
+    );
+  });
+
   it("provides exact merchant-card copy in every supported non-source language", () => {
     expect(translateText("专属技师", "zh-Hant")).toBe("專屬技師");
     expect(translateText("合作技师", "ja")).toBe("パートナースタッフ");
     expect(translateText("工作状态", "en")).toBe("Work Status");
     expect(translateText("保存从属关系", "ko")).toBe("소속 관계 저장");
+    expect(translateText("工资结算周期", "ja")).toBe("給与締めサイクル");
+    expect(translateText("计划支付日", "en")).toBe(
+      "Planned payment date",
+    );
   });
 });
