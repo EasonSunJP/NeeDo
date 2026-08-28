@@ -954,6 +954,41 @@ export const SYSTEM_PERMISSIONS = [
     "创建本人拥有的联盟"
   ),
   createPermission(
+    "affiliate-alliance:members:list",
+    "查看联盟成员",
+    "api",
+    "affiliate",
+    "查看本人负责联盟的成员列表"
+  ),
+  createPermission(
+    "affiliate-alliance:candidates:list",
+    "查看联盟邀请候选",
+    "api",
+    "affiliate",
+    "查看本人负责联盟的双向好友候选"
+  ),
+  createPermission(
+    "affiliate-alliance:invitations:list",
+    "查看联盟邀请",
+    "api",
+    "affiliate",
+    "查看本人负责联盟发出的邀请或本人收到的邀请"
+  ),
+  createPermission(
+    "button:affiliate-alliance-invite",
+    "邀请联盟成员",
+    "button",
+    "affiliate",
+    "向符合条件的双向好友发送联盟邀请"
+  ),
+  createPermission(
+    "button:affiliate-alliance-invitation-respond",
+    "响应联盟邀请",
+    "button",
+    "affiliate",
+    "接受或拒绝本人收到的联盟邀请"
+  ),
+  createPermission(
     "menu:merchant-affiliate",
     "商户联盟营销",
     "menu",
@@ -1247,7 +1282,12 @@ const ACTIVATED_AFFILIATE_PERMISSION_CODES = [
   "page:affiliate-profile",
   "button:affiliate-profile-edit",
   "page:affiliate-alliance",
-  "button:affiliate-alliance-create"
+  "button:affiliate-alliance-create",
+  "affiliate-alliance:members:list",
+  "affiliate-alliance:candidates:list",
+  "affiliate-alliance:invitations:list",
+  "button:affiliate-alliance-invite",
+  "button:affiliate-alliance-invitation-respond"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const MERCHANT_AFFILIATE_PERMISSION_CODES = [
