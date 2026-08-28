@@ -2,10 +2,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
-import type {
-  AuditLogRecordInput,
-  AuditLogService
-} from "./audit-log.service";
+import type { AuditLogRecordInput, AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
 export type ShopPlatformFeePayer = "shop" | "technician";
@@ -47,7 +44,8 @@ export interface ShopPolicyRecord extends ShopPolicyIdentity {
 export type PolicyMutationResult<T> =
   | { kind: "updated"; value: T }
   | { kind: "version_conflict" }
-  | { kind: "config_conflict" };
+  | { kind: "config_conflict" }
+  | { kind: "scope_forbidden" };
 
 interface PolicyMutationBase {
   actorUserId: number;
@@ -229,8 +227,7 @@ export class PlatformFeePolicyService {
   ): Promise<void> {
     if (
       allowOperations &&
-      (actor.currentIdentityScopeType === "global" ||
-        actor.currentIdentityScopeType === "platform")
+      (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform")
     ) {
       return;
     }
@@ -276,6 +273,9 @@ export class PlatformFeePolicyService {
         message: "error.platform_fee_policy.version_conflict",
         statusCode: 409
       });
+    }
+    if (result.kind === "scope_forbidden") {
+      throw this.identityForbiddenError();
     }
     throw new AppError({
       code: ERROR_CODES.PLATFORM_FEE_POLICY_CONFIG_CONFLICT,

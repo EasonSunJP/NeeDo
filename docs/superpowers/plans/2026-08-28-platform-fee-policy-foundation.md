@@ -435,7 +435,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/src/constants/error-codes.ts backend/src/services/fee-calculation.service.ts backend/src/repositories/fee-rule.repository.ts backend/src/services/platform-fee-policy.service.ts backend/tests/fee-calculation-service.test.ts backend/tests/fee-rule-api.test.ts backend/tests/platform-fee-policy-service.test.ts
@@ -454,7 +454,7 @@ git commit -m "feat: define versioned platform fee policy"
 - Consumes: `PlatformFeePolicyRepositoryPort`, `AuditLogCreateInput`, Prisma client/transaction client.
 - Produces: real MySQL reads, paginated shop projections, effective-dated rule cloning, optimistic policy mutation, and scoped membership checks.
 
-- [ ] **Step 1: Write failing repository tests**
+- [x] **Step 1: Write failing repository tests**
 
 Cover these exact database behaviors:
 
@@ -469,7 +469,7 @@ Cover these exact database behaviors:
 
 Use the existing mock-Prisma transaction style from `affiliate-profile.repository.test.ts`.
 
-- [ ] **Step 2: Run the repository test and verify RED**
+- [x] **Step 2: Run the repository test and verify RED**
 
 Run:
 
@@ -480,7 +480,7 @@ npm test -- platform-fee-policy-repository.test.ts
 
 Expected: FAIL because the repository is absent.
 
-- [ ] **Step 3: Implement history-safe global amount updates**
+- [x] **Step 3: Implement history-safe global amount updates**
 
 The update algorithm must be one transaction:
 
@@ -510,7 +510,7 @@ Then:
 
 Never overwrite the old rule or reuse old child IDs.
 
-- [ ] **Step 4: Implement default-aware shop reads and optimistic writes**
+- [x] **Step 4: Implement default-aware shop reads and optimistic writes**
 
 The list query must page `Shop`, not policy rows, so shops without overrides remain visible. Map absent policies to `version=0`, `feeEnabled=true`, `payerType=shop` in the service.
 
@@ -533,7 +533,7 @@ if (input.expectedVersion === 0) {
 
 For update, use `updateMany` with `shopId`, `version`, and `deletedAt:null`; increment `version`. Treat a unique-create race or zero update count as a version conflict, never as a retry that overwrites another actor.
 
-- [ ] **Step 5: Run focused verification**
+- [x] **Step 5: Run focused verification**
 
 Run:
 
@@ -545,7 +545,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/src/repositories/platform-fee-policy.repository.ts backend/tests/platform-fee-policy-repository.test.ts

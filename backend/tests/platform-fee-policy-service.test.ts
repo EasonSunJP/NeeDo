@@ -183,7 +183,11 @@ describe("PlatformFeePolicyService", () => {
 
     await expect(
       service.updateShopPayerType(
-        { ...merchantActor, currentIdentityScopeType: "customer_profile", currentIdentityScopeId: 8 },
+        {
+          ...merchantActor,
+          currentIdentityScopeType: "customer_profile",
+          currentIdentityScopeId: 8
+        },
         context,
         11,
         { payerType: "shop", expectedVersion: 0 }
