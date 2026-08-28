@@ -31,13 +31,10 @@ const createRepository = (): jest.Mocked<AffiliateIdentityActivationRepositoryPo
       acceptedAt: input.acceptedAt,
       receiptId: "receipt-91"
     },
-    identity: {
-      identityId: 81,
-      userId: input.userId,
-      identityType: "scout",
-      roleCode: "scout",
-      scopeType: "global",
-      scopeId: null
+    affiliate: {
+      affiliateStatus: "active" as const,
+      needoId: "u0000000007",
+      profileId: 101
     }
   }))
 });
@@ -81,18 +78,27 @@ describe("AffiliateIdentityActivationService", () => {
     await expect(
       service.activate({ ...validInput, contractVersion: "affiliate-old" })
     ).rejects.toMatchObject({ message: "error.contract.version_conflict", statusCode: 409 });
-    await expect(service.activate({ ...validInput, contentHash: "b".repeat(64) })).rejects.toMatchObject(
-      { message: "error.contract.version_conflict", statusCode: 409 }
-    );
+    await expect(
+      service.activate({ ...validInput, contentHash: "b".repeat(64) })
+    ).rejects.toMatchObject({ message: "error.contract.version_conflict", statusCode: 409 });
   });
 
   it("passes the immutable contract snapshot into one atomic activation and no IP", async () => {
     const repository = createRepository();
     const service = new AffiliateIdentityActivationService(createCatalog(), repository);
-    await expect(service.activate(validInput)).resolves.toMatchObject({
-      identity: { identityType: "scout", roleCode: "scout" },
+    const result = await service.activate(validInput);
+    expect(result).toMatchObject({
+      affiliate: {
+        affiliateStatus: "active",
+        needoId: "u0000000007",
+        profileId: 101
+      },
       contractAcceptance: { contractVersion: current.version }
     });
+    expect(result).not.toHaveProperty("identity");
+    expect(JSON.stringify(result)).not.toContain("scout");
+    expect(JSON.stringify(result)).not.toContain("identityId");
+    expect(JSON.stringify(result)).not.toContain("userId");
     const atomicInput = repository.activateWithContractInTransaction.mock.calls[0]?.[0];
     expect(atomicInput).toMatchObject({
       userId: 7,

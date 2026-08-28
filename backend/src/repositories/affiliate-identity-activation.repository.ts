@@ -11,9 +11,7 @@ import { buildIdentityActivationTransactionInput } from "../services/identity-ac
 import { AppError } from "../utils/app-error";
 import { IdentityActivationRepository } from "./identity-activation.repository";
 
-export class AffiliateIdentityActivationRepository
-  implements AffiliateIdentityActivationRepositoryPort
-{
+export class AffiliateIdentityActivationRepository implements AffiliateIdentityActivationRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
 
   public constructor(private readonly client: PrismaClient = prisma) {
@@ -26,7 +24,7 @@ export class AffiliateIdentityActivationRepository
     return this.client.$transaction(async (transaction) => {
       const user = await transaction.user.findFirst({
         where: { id: input.userId, isActive: true, deletedAt: null },
-        select: { id: true, username: true }
+        select: { id: true, needoId: true, username: true }
       });
       if (!user) {
         throw new AppError({
@@ -92,36 +90,35 @@ export class AffiliateIdentityActivationRepository
         where: { userId: input.userId, type: "scout", isActive: true, deletedAt: null },
         select: { id: true, userId: true, type: true, scopeType: true, scopeId: true }
       });
-      if (existingIdentity) {
-        return {
-          contractAcceptance: this.mapAcceptance(acceptance),
-          identity: {
-            identityId: existingIdentity.id,
-            userId: existingIdentity.userId,
-            identityType: existingIdentity.type,
-            roleCode: "scout",
-            scopeType: existingIdentity.scopeType ?? "global",
-            scopeId: existingIdentity.scopeId
-          }
-        };
+      if (!existingIdentity) {
+        await this.identityActivation.activateWithTransaction(
+          transaction,
+          buildIdentityActivationTransactionInput({
+            kind: "affiliate",
+            userId: input.userId,
+            actorUserId: input.userId,
+            displayName: user.username,
+            scopeId: null,
+            applicationId: null,
+            contractAcceptanceId: acceptance.id,
+            activatedAt: input.acceptedAt
+          })
+        );
       }
 
-      const identity = await this.identityActivation.activateWithTransaction(
-        transaction,
-        buildIdentityActivationTransactionInput({
-          kind: "affiliate",
-          userId: input.userId,
-          actorUserId: input.userId,
-          displayName: user.username,
-          scopeId: null,
-          applicationId: null,
-          contractAcceptanceId: acceptance.id,
-          activatedAt: input.acceptedAt
-        })
-      );
+      const profile = await transaction.affiliateProfile.upsert({
+        where: { userId: input.userId },
+        create: { userId: input.userId },
+        update: {},
+        select: { id: true, status: true }
+      });
       return {
         contractAcceptance: this.mapAcceptance(acceptance),
-        identity
+        affiliate: {
+          affiliateStatus: profile.status.toLowerCase() as "active" | "suspended" | "closed",
+          needoId: user.needoId,
+          profileId: profile.id
+        }
       };
     });
   }

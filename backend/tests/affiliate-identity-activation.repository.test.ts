@@ -20,7 +20,11 @@ const input = {
 describe("AffiliateIdentityActivationRepository", () => {
   it("persists immutable contract evidence and activates the role in one transaction", async () => {
     const tx = {
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 7, username: "山本太郎" }) },
+      user: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 7, needoId: "u0000000007", username: "山本太郎" })
+      },
       contractAcceptance: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({
@@ -49,6 +53,9 @@ describe("AffiliateIdentityActivationRepository", () => {
         create: jest.fn().mockResolvedValue({ id: 71 })
       },
       notification: { create: jest.fn().mockResolvedValue({ id: 61 }) },
+      affiliateProfile: {
+        upsert: jest.fn().mockResolvedValue({ id: 101, status: "ACTIVE" })
+      },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 51 }) }
     };
     const client = {
@@ -58,7 +65,11 @@ describe("AffiliateIdentityActivationRepository", () => {
 
     await expect(repository.activateWithContractInTransaction(input)).resolves.toMatchObject({
       contractAcceptance: { id: 91, receiptId: "receipt-91" },
-      identity: { identityId: 81, identityType: "scout", roleCode: "scout" }
+      affiliate: {
+        affiliateStatus: "active",
+        needoId: "u0000000007",
+        profileId: 101
+      }
     });
     expect(client.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.contractAcceptance.create).toHaveBeenCalledWith({
@@ -86,6 +97,12 @@ describe("AffiliateIdentityActivationRepository", () => {
     });
     expect(tx.notification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ recipientUserId: 7, type: "SYSTEM" })
+    });
+    expect(tx.affiliateProfile.upsert).toHaveBeenCalledWith({
+      where: { userId: 7 },
+      create: { userId: 7 },
+      update: {},
+      select: { id: true, status: true }
     });
     const contractAudit = tx.auditLog.create.mock.calls.find(
       ([call]) => call.data.action === "contract.acceptance.created"
@@ -119,7 +136,11 @@ describe("AffiliateIdentityActivationRepository", () => {
       receiptId: "receipt-existing"
     };
     const tx = {
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 7, username: "山本太郎" }) },
+      user: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 7, needoId: "u0000000007", username: "山本太郎" })
+      },
       contractAcceptance: {
         findUnique: jest.fn().mockResolvedValue(existingAcceptance),
         create: jest.fn()
@@ -137,6 +158,9 @@ describe("AffiliateIdentityActivationRepository", () => {
       role: { findFirst: jest.fn() },
       userRole: { findFirst: jest.fn(), create: jest.fn() },
       notification: { create: jest.fn() },
+      affiliateProfile: {
+        upsert: jest.fn().mockResolvedValue({ id: 101, status: "ACTIVE" })
+      },
       auditLog: { create: jest.fn() }
     };
     const client = {
@@ -146,11 +170,16 @@ describe("AffiliateIdentityActivationRepository", () => {
 
     await expect(repository.activateWithContractInTransaction(input)).resolves.toMatchObject({
       contractAcceptance: { receiptId: "receipt-existing" },
-      identity: { identityId: 81 }
+      affiliate: {
+        affiliateStatus: "active",
+        needoId: "u0000000007",
+        profileId: 101
+      }
     });
     expect(tx.contractAcceptance.create).not.toHaveBeenCalled();
     expect(tx.userIdentity.create).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.affiliateProfile.upsert).toHaveBeenCalledTimes(1);
   });
 });
