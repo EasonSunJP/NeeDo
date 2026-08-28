@@ -194,6 +194,95 @@ describe("TechnicianShopAffiliationRepository", () => {
     );
   });
 
+  it("allows a partner relationship to coexist across affiliated shops", async () => {
+    const tx = transactionClient();
+    tx.technicianShopAffiliation.findMany.mockResolvedValue([
+      { id: 72, shopId: 20, relationshipType: "PARTNER" }
+    ]);
+    const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
+
+    await expect(
+      repository.upsertCurrentAffiliation({
+        shopId: 16,
+        technicianIdentityId: 86,
+        actorUserId: 7,
+        relationshipType: "partner",
+        workStatus: "active",
+        startsAt,
+        endsAt: null
+      })
+    ).resolves.toMatchObject({ affiliation: { relationshipType: "partner" } });
+    expect(tx.technicianShopAffiliation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          technicianProfileId: 47,
+          shopId: 16,
+          relationshipType: "PARTNER",
+          activeKey: "technician:47:shop:16"
+        })
+      })
+    );
+  });
+
+  it("ends the current relationship without deleting its history", async () => {
+    const endsAt = new Date("2026-08-29T00:00:00.000Z");
+    const tx = transactionClient();
+    tx.technicianShopAffiliation.findMany.mockResolvedValue([
+      { id: 91, shopId: 16, relationshipType: "PARTNER" }
+    ]);
+    tx.technicianShopAffiliation.update.mockResolvedValue(
+      employeeRecord({ workStatus: "ENDED", endsAt })
+    );
+    const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
+
+    await expect(
+      repository.upsertCurrentAffiliation({
+        shopId: 16,
+        technicianIdentityId: 86,
+        actorUserId: 7,
+        relationshipType: "partner",
+        workStatus: "ended",
+        startsAt,
+        endsAt
+      })
+    ).resolves.toMatchObject({ affiliation: { workStatus: "ended" } });
+    expect(tx.technicianShopAffiliation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 91 },
+        data: {
+          workStatus: "ENDED",
+          endsAt,
+          activeKey: null,
+          updatedById: 7
+        }
+      })
+    );
+  });
+
+  it("creates a new current row when an earlier relationship has already ended", async () => {
+    const tx = transactionClient();
+    const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
+
+    await repository.upsertCurrentAffiliation({
+      shopId: 16,
+      technicianIdentityId: 86,
+      actorUserId: 7,
+      relationshipType: "partner",
+      workStatus: "active",
+      startsAt,
+      endsAt: null
+    });
+
+    expect(tx.technicianShopAffiliation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          activeKey: "technician:47:shop:16",
+          createdById: 7
+        })
+      })
+    );
+  });
+
   it("does not manufacture an ended history row when no current relationship exists", async () => {
     const tx = transactionClient();
     const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
