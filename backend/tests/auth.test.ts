@@ -1663,13 +1663,26 @@ describe("verified email registration and formal password authentication", () =>
       menus: expect.arrayContaining(["menu:dashboard", "menu:user-management"])
     });
     expect(JSON.stringify(meResponse.body)).not.toContain("passwordHash");
-    expect(meResponse.body.data.identities).toHaveLength(1);
-    expect(meResponse.body.data.identities[0].publicId).toBe("needo1234567890");
+    expect(meResponse.body.data.identities).toHaveLength(2);
+    expect(meResponse.body.data.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 10,
+          type: "platform",
+          publicId: "needo1234567890"
+        }),
+        expect.objectContaining({
+          id: 11,
+          type: "scout",
+          publicId: "needo1234567890"
+        })
+      ])
+    );
 
     await request(fixture.app)
       .post("/api/v1/auth/switch-identity")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ refreshToken, identityId: 11 })
+      .send({ refreshToken, identityId: 999 })
       .expect(404)
       .expect((response) => {
         expect(response.body.message).toBe("error.auth.identity_not_found");
