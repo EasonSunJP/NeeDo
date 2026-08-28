@@ -5,6 +5,8 @@ import { requireCustomerProfileRepositoryIntegrationDatabaseUrl } from "./custom
 
 const runCustomerProfileRepositoryIntegration =
   process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
+const runCarouselPublicationIntegration =
+  process.env.RUN_CAROUSEL_PUBLICATION_INTEGRATION === "true";
 
 if (runCustomerProfileRepositoryIntegration) {
   const envFile = process.env.ENV_FILE?.trim();
@@ -27,8 +29,20 @@ if (runCustomerProfileRepositoryIntegration) {
   });
 }
 
-process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
-process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
+if (runCarouselPublicationIntegration) {
+  const envFile = process.env.ENV_FILE?.trim();
+  if (!envFile) throw new Error("Carousel publication integration tests require ENV_FILE");
+  const loadedEnvironment = loadDotenv({ path: envFile });
+  if (loadedEnvironment.error || !loadedEnvironment.parsed?.DATABASE_URL) {
+    throw new Error(`Unable to load carousel publication integration ENV_FILE: ${envFile}`);
+  }
+  process.env.DATABASE_URL = loadedEnvironment.parsed.DATABASE_URL;
+}
+
+if (!runCarouselPublicationIntegration) {
+  process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
+  process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
+}
 process.env.ALLOW_TEST_LOGIN = "true";
 process.env.ALLOW_FORMAL_TEST_SEED = "true";
 process.env.ALLOW_SIMULATION_SEED = "true";
@@ -47,7 +61,7 @@ process.env.METRICS_BEARER_TOKEN = "";
 process.env.TRACING_ENABLED = "true";
 process.env.CACHE_PUBLIC_MAX_AGE_SECONDS = "30";
 process.env.CACHE_STALE_WHILE_REVALIDATE_SECONDS = "120";
-if (!runCustomerProfileRepositoryIntegration) {
+if (!runCustomerProfileRepositoryIntegration && !runCarouselPublicationIntegration) {
   process.env.DATABASE_URL =
     process.env.CUSTOMER_PROFILE_REPOSITORY_TEST_DATABASE_URL ??
     "mysql://needo_test:needo_test_password@localhost:3307/needo_test";

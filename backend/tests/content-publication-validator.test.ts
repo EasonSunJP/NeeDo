@@ -6,6 +6,7 @@ import {
   announcementDraftMutationBodySchema,
   announcementDraftUpdateBodySchema,
   carouselSceneParamSchema,
+  carouselLocaleMutationBodySchema,
   carouselTargetSearchQuerySchemaByScene,
   contentHistoryQuerySchema,
   disableBodySchema,
@@ -21,6 +22,8 @@ const idempotencyKey = "c44f6308-7265-41b6-a938-b6615746b996";
 const announcementPublicId = "3896f672-1e5a-4a88-a8b7-7a8ba38f13b8";
 const slidePublicId = "558a67d2-65c9-49a4-a946-2bb2b9383dce";
 const mediaAssetPublicId = "a".repeat(64);
+const shopPublicId = "shop0000000007";
+const servicePublicId = "558a67d2-65c9-49a4-a946-2bb2b9383dcf";
 
 const translation = {
   locale: "ja",
@@ -118,7 +121,12 @@ describe("strict scene-specific carousel draft validators", () => {
     ).toBe(false);
   });
 
-  it("allows update drafts to retain independent multi-locale edits", () => {
+  it("requires replacement drafts to contain all five unique locales", () => {
+    const allTranslations = ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
+      ...translation,
+      locale,
+      title: `Title ${locale}`
+    }));
     expect(
       userHomeCarouselDraftUpdateBodySchema.safeParse({
         expectedLockVersion: 2,
@@ -126,11 +134,30 @@ describe("strict scene-specific carousel draft validators", () => {
         slides: [
           {
             ...userSlide,
-            translations: [translation, { ...translation, locale: "en", title: "Notice" }]
+            translations: allTranslations
           }
         ]
       }).success
     ).toBe(true);
+    expect(
+      userHomeCarouselDraftUpdateBodySchema.safeParse({
+        expectedLockVersion: 2,
+        sourceLocale: "ja",
+        slides: [{ ...userSlide, translations: allTranslations.slice(0, 4) }]
+      }).success
+    ).toBe(false);
+    expect(
+      userHomeCarouselDraftUpdateBodySchema.safeParse({
+        expectedLockVersion: 2,
+        sourceLocale: "ja",
+        slides: [
+          {
+            ...userSlide,
+            translations: [...allTranslations.slice(0, 4), allTranslations[0]]
+          }
+        ]
+      }).success
+    ).toBe(false);
   });
 
   it.each([
@@ -138,6 +165,20 @@ describe("strict scene-specific carousel draft validators", () => {
     { type: "technician", technicianProfileId: 8 },
     { type: "service", serviceId: 9 }
   ])("accepts the supported user-home target %#", (target) => {
+    expect(
+      userHomeCarouselDraftCreateBodySchema.safeParse({
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [{ ...userSlide, target }]
+      }).success
+    ).toBe(true);
+  });
+
+  it.each([
+    { type: "shop", publicId: shopPublicId },
+    { type: "technician", publicId: "s0000000007" },
+    { type: "service", publicId: servicePublicId }
+  ])("accepts a public-safe picker target %#", (target) => {
     expect(
       userHomeCarouselDraftCreateBodySchema.safeParse({
         idempotencyKey,
@@ -194,6 +235,42 @@ describe("strict scene-specific carousel draft validators", () => {
     });
   });
 
+  it("accepts a safe Affiliate task code but rejects mixed numeric and safe task references", () => {
+    expect(
+      affiliateNoticeCarouselDraftCreateBodySchema.safeParse({
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [
+          {
+            ...affiliateSlide,
+            target: {
+              type: "affiliate_announcement",
+              announcementPublicId,
+              taskCode: "AFF-PUBLIC-29"
+            }
+          }
+        ]
+      }).success
+    ).toBe(true);
+    expect(
+      affiliateNoticeCarouselDraftCreateBodySchema.safeParse({
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [
+          {
+            ...affiliateSlide,
+            target: {
+              type: "affiliate_announcement",
+              announcementPublicId,
+              affiliateTaskId: 29,
+              taskCode: "AFF-PUBLIC-29"
+            }
+          }
+        ]
+      }).success
+    ).toBe(false);
+  });
+
   it("separates create idempotency from existing-draft optimistic locking", () => {
     expect(
       userHomeCarouselDraftCreateBodySchema.safeParse({
@@ -207,7 +284,15 @@ describe("strict scene-specific carousel draft validators", () => {
       userHomeCarouselDraftUpdateBodySchema.safeParse({
         expectedLockVersion: 2,
         sourceLocale: "ja",
-        slides: [userSlide]
+        slides: [
+          {
+            ...userSlide,
+            translations: ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
+              ...translation,
+              locale
+            }))
+          }
+        ]
       }).success
     ).toBe(true);
     expect(
@@ -378,6 +463,36 @@ describe("announcement and lifecycle validators", () => {
         idempotencyKey,
         expectedCurrentVersion: 0,
         reason: "restore"
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("carousel locale mutation union", () => {
+  it("accepts exactly an update or explicit copy-to-all command", () => {
+    expect(
+      carouselLocaleMutationBodySchema.safeParse({
+        expectedLockVersion: 2,
+        badge: null,
+        title: "Updated",
+        caption: null,
+        ctaLabel: null,
+        imageAltText: "Updated image"
+      }).success
+    ).toBe(true);
+    expect(
+      carouselLocaleMutationBodySchema.safeParse({
+        operation: "copy_to_all",
+        expectedLockVersion: 3,
+        sourceLocale: "en"
+      }).success
+    ).toBe(true);
+    expect(
+      carouselLocaleMutationBodySchema.safeParse({
+        operation: "copy_to_all",
+        expectedLockVersion: 3,
+        sourceLocale: "en",
+        title: "must be rejected"
       }).success
     ).toBe(false);
   });

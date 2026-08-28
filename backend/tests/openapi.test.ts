@@ -1281,6 +1281,25 @@ describe("GET /api/v1/openapi.json", () => {
       expect(document.paths[base + "/targets"].get.parameters.map((value) => value.name)).toEqual(
         expect.arrayContaining(["type", "q", "page", "pageSize"])
       );
+      const expectedPrefix = slug === "user-home" ? "CarouselUserHome" : "CarouselAffiliateNotice";
+      type RequestBodyOperation = {
+        requestBody: { content: Record<string, { schema: { $ref: string } }> };
+      };
+      expect(
+        (document.paths[base + "/releases"].post as unknown as RequestBodyOperation).requestBody
+          .content["application/json"].schema.$ref
+      ).toBe(`#/components/schemas/${expectedPrefix}DraftCreate`);
+      expect(
+        (document.paths[release].patch as unknown as RequestBodyOperation).requestBody.content[
+          "application/json"
+        ].schema.$ref
+      ).toBe(`#/components/schemas/${expectedPrefix}DraftReplace`);
+      expect(
+        (
+          document.paths[release + "/slides/{slidePublicId}/locales/{locale}"]
+            .patch as unknown as RequestBodyOperation
+        ).requestBody.content["application/json"].schema.$ref
+      ).toBe("#/components/schemas/CarouselLocaleMutation");
     }
     expect(document.paths["/api/v1/content/carousels/user-home"].get).toBeDefined();
     expect(document.paths["/api/v1/affiliate/content/carousel"].get["x-permission"]).toBe(
@@ -1301,8 +1320,39 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(targetSearch).toContain("publicId");
     expect(targetSearch).toContain("taskCode");
+    expect(targetSearch).toContain("target");
     expect(targetSearch).not.toMatch(
       /shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId/
     );
+    const userCreate = JSON.stringify(document.components.schemas.CarouselUserHomeCreateSlideInput);
+    const affiliateCreate = JSON.stringify(
+      document.components.schemas.CarouselAffiliateNoticeCreateSlideInput
+    );
+    const userReplace = JSON.stringify(
+      document.components.schemas.CarouselUserHomeReplaceSlideInput
+    );
+    expect(userCreate).toContain("CarouselUserHomeTargetInput");
+    expect(JSON.stringify(document.components.schemas.CarouselUserHomeTargetInput)).not.toContain(
+      "affiliate_announcement"
+    );
+    expect(affiliateCreate).toContain("CarouselAffiliateNoticeTargetInput");
+    expect(
+      JSON.stringify(document.components.schemas.CarouselAffiliateNoticeTargetInput)
+    ).not.toContain("technicianProfileId");
+    expect(userCreate).toContain('"minItems":1');
+    expect(userCreate).toContain('"maxItems":1');
+    expect(userReplace).toContain("CarouselFiveTranslations");
+    expect(JSON.stringify(document.components.schemas.CarouselFiveTranslations)).toContain(
+      '"minItems":5'
+    );
+    expect(JSON.stringify(document.components.schemas.CarouselFiveTranslations)).toContain(
+      '"maxItems":5'
+    );
+    expect(document.components.schemas.CarouselLocaleMutation).toEqual({
+      oneOf: [
+        { $ref: "#/components/schemas/CarouselLocaleUpdate" },
+        { $ref: "#/components/schemas/CarouselLocaleCopyCommand" }
+      ]
+    });
   });
 });

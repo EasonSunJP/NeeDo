@@ -194,17 +194,15 @@ describe("formal carousel publication HTTP API", () => {
             isEnabled: true,
             visibleFrom: null,
             visibleUntil: null,
-            target: { type: "shop", shopId: 7 },
-            translations: [
-              {
-                locale: "ja",
-                badge: null,
-                title: "Title",
-                caption: null,
-                ctaLabel: null,
-                imageAltText: "Image"
-              }
-            ]
+            target: { type: "shop", publicId: "shop0000000007" },
+            translations: ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
+              locale,
+              badge: null,
+              title: `Title ${locale}`,
+              caption: null,
+              ctaLabel: null,
+              imageAltText: `Image ${locale}`
+            }))
           }
         ]
       })
@@ -220,6 +218,11 @@ describe("formal carousel publication HTTP API", () => {
         ctaLabel: null,
         imageAltText: "Image"
       })
+      .expect(200);
+    await request(f.app)
+      .patch(`${base}/releases/71/slides/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/locales/en`)
+      .set("Authorization", auth)
+      .send({ operation: "copy_to_all", expectedLockVersion: 2, sourceLocale: "en" })
       .expect(200);
     await request(f.app)
       .post(`${base}/releases/71/slides/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/copy-to-all`)
@@ -255,6 +258,7 @@ describe("formal carousel publication HTTP API", () => {
       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       { expectedLockVersion: 2, sourceLocale: "en" }
     );
+    expect(f.service.copyLocaleToAll).toHaveBeenCalledTimes(2);
   });
 
   it("requires publish permission for rollback and isolates the two permission domains", async () => {

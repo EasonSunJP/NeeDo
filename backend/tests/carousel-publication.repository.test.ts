@@ -202,6 +202,7 @@ describe("CarouselPublicationRepository", () => {
             purgedAt: null,
             deletedAt: null,
             entityType: "content_publication_upload",
+            usageType: "content_publication_public",
             url: "/media/content/a.png",
             checksumSha256: "a".repeat(64)
           },
@@ -249,6 +250,62 @@ describe("CarouselPublicationRepository", () => {
     expect(transaction.carouselRelease.updateMany).toHaveBeenCalled();
   });
 
+  it("resolves same-checksum media to the acting uploader and carries that exact asset ID", async () => {
+    const mediaFindFirst = jest.fn(async () => ({ id: 222 }));
+    const transaction = {
+      mediaAsset: { findFirst: mediaFindFirst },
+      shop: { findFirst: jest.fn(async () => ({ id: 7 })) }
+    };
+    const repository = new CarouselPublicationRepository({} as never);
+    const resolver = repository as unknown as {
+      resolveSlides: (
+        tx: unknown,
+        scene: "USER_HOME",
+        slides: CreateCarouselDraftMutation["slides"],
+        actorUserId: number,
+        effectiveAt: Date,
+        validateAffiliateTask: (taskId: number) => Promise<void>
+      ) => Promise<Array<{ mediaAssetId: number; target: { type: "shop"; shopId: number } }>>;
+    };
+    const result = await resolver.resolveSlides(
+      transaction,
+      "USER_HOME",
+      [
+        {
+          publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          mediaAssetPublicId: "c".repeat(64),
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "shop", publicId: "shop0000000007" },
+          translations: {} as CreateCarouselDraftMutation["slides"][number]["translations"]
+        }
+      ],
+      41,
+      now,
+      jest.fn(async () => undefined)
+    );
+    expect(mediaFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          checksumSha256: "c".repeat(64),
+          entityType: "content_publication_upload",
+          usageType: "content_publication_public",
+          ownerUserId: 41,
+          isActive: true,
+          purgedAt: null,
+          deletedAt: null
+        }),
+        orderBy: { id: "desc" }
+      })
+    );
+    expect(result[0]).toMatchObject({
+      mediaAssetId: 222,
+      target: { type: "shop", shopId: 7 }
+    });
+  });
+
   it("searches paginated user-home targets with text, scope, live status, soft-delete, and public IDs", async () => {
     const findMany = jest.fn(async () => [
       {
@@ -278,7 +335,8 @@ describe("CarouselPublicationRepository", () => {
           type: "shop",
           publicId: "shop0000000007",
           label: "Scoped Shibuya Shop",
-          status: "published"
+          status: "published",
+          target: { type: "shop", publicId: "shop0000000007" }
         }
       ],
       total: 1
@@ -301,7 +359,10 @@ describe("CarouselPublicationRepository", () => {
   it("searches only current published announcements inside shop scope", async () => {
     const findMany = jest.fn(async () => [
       {
-        announcement: { publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+        announcement: {
+          publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          affiliateTask: { taskCode: "AFF-PUBLIC-29" }
+        },
         translations: [{ title: "Current notice" }]
       }
     ]);
@@ -324,7 +385,12 @@ describe("CarouselPublicationRepository", () => {
       type: "affiliate_announcement",
       publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       label: "Current notice",
-      status: "published"
+      status: "published",
+      target: {
+        type: "affiliate_announcement",
+        announcementPublicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        taskCode: "AFF-PUBLIC-29"
+      }
     });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -369,5 +435,142 @@ describe("CarouselPublicationRepository", () => {
     });
     expect(validateAffiliateTask).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(result)).not.toMatch(/"id"|taskId|affiliateTaskId/);
+  });
+
+  it("keeps mixed user-home pagination stable with one merge comparator", async () => {
+    const shops = [
+      [1, "Zulu", "shop0000000001"],
+      [2, "Echo", "shop0000000002"],
+      [3, "Alpha", "shop0000000003"]
+    ] as const;
+    const technicians = [
+      [4, "Yankee", "s0000000004"],
+      [5, "Foxtrot", "s0000000005"],
+      [6, "Bravo", "s0000000006"]
+    ] as const;
+    const services = [
+      [7, "Xray", "77777777-7777-4777-8777-777777777777"],
+      [8, "Golf", "88888888-8888-4888-8888-888888888888"],
+      [9, "Charlie", "99999999-9999-4999-8999-999999999999"]
+    ] as const;
+    const prefix = <T extends readonly [number, string, string]>(
+      rows: readonly T[],
+      args: { orderBy?: unknown; take?: number }
+    ) => {
+      const ordered =
+        JSON.stringify(args.orderBy).includes("name") ||
+        JSON.stringify(args.orderBy).includes("displayName")
+          ? [...rows].sort(
+              (left, right) => left[1].localeCompare(right[1]) || left[2].localeCompare(right[2])
+            )
+          : [...rows];
+      return ordered.slice(0, args.take);
+    };
+    const client = {
+      shop: {
+        findMany: jest.fn(async (args: { orderBy?: unknown; take?: number }) =>
+          prefix(shops, args).map(([id, name, publicId]) => ({
+            id,
+            name,
+            status: "published",
+            publicIdentifier: { publicId }
+          }))
+        ),
+        count: jest.fn(async () => shops.length)
+      },
+      technicianProfile: {
+        findMany: jest.fn(async (args: { orderBy?: unknown; take?: number }) =>
+          prefix(technicians, args).map(([id, displayName, publicId]) => ({
+            id,
+            displayName,
+            status: "published",
+            user: { identities: [{ publicIdentifier: { publicId } }] }
+          }))
+        ),
+        count: jest.fn(async () => technicians.length)
+      },
+      service: {
+        findMany: jest.fn(async (args: { orderBy?: unknown; take?: number }) =>
+          prefix(services, args).map(([id, name, publicId]) => ({
+            id,
+            publicId,
+            name,
+            status: "published"
+          }))
+        ),
+        count: jest.fn(async () => services.length)
+      }
+    };
+    const repository = new CarouselPublicationRepository(client as never);
+    const pages = await Promise.all(
+      [1, 2, 3].map((page) =>
+        repository.searchTargets({
+          scene: "USER_HOME",
+          page,
+          pageSize: 3,
+          scopeShopId: null,
+          actor: createInput.actor,
+          now,
+          validateAffiliateTask: jest.fn(async () => undefined)
+        })
+      )
+    );
+    expect(pages.map((page) => page.total)).toEqual([9, 9, 9]);
+    const flattened = pages.flatMap((page) => page.list);
+    expect(flattened.map((item) => item.label)).toEqual([
+      "Alpha",
+      "Bravo",
+      "Charlie",
+      "Echo",
+      "Foxtrot",
+      "Golf",
+      "Xray",
+      "Yankee",
+      "Zulu"
+    ]);
+    expect(new Set(flattened.map((item) => `${item.type}:${item.label}`)).size).toBe(9);
+    expect(JSON.stringify(flattened)).not.toMatch(/shopId|technicianProfileId|serviceId/);
+  });
+
+  it("fills three Affiliate task pages across interleaved policy-hidden rows with truthful totals", async () => {
+    const rows = Array.from({ length: 10 }, (_, index) => ({
+      id: index + 1,
+      taskCode: `AFF-${String(index + 1).padStart(2, "0")}`,
+      name: `Task ${String(index + 1).padStart(2, "0")}`,
+      status: "ACTIVE"
+    }));
+    const hidden = new Set([2, 4, 6, 8]);
+    const findMany = jest.fn(async (args: { skip?: number; take?: number }) =>
+      rows.slice(args.skip ?? 0, (args.skip ?? 0) + (args.take ?? rows.length))
+    );
+    const validateAffiliateTask = jest.fn(async (taskId: number) => {
+      if (hidden.has(taskId)) throw new Error("policy hidden");
+    });
+    const repository = new CarouselPublicationRepository({ affiliateTask: { findMany } } as never);
+    const pages = [];
+    for (const page of [1, 2, 3]) {
+      pages.push(
+        await repository.searchTargets({
+          scene: "AFFILIATE_HOME_NOTICE",
+          type: "affiliate_task",
+          page,
+          pageSize: 2,
+          scopeShopId: null,
+          actor: createInput.actor,
+          now,
+          validateAffiliateTask
+        })
+      );
+    }
+    expect(pages.map((page) => page.total)).toEqual([6, 6, 6]);
+    expect(pages.flatMap((page) => page.list.map((item) => item.label))).toEqual([
+      "Task 01",
+      "Task 03",
+      "Task 05",
+      "Task 07",
+      "Task 09",
+      "Task 10"
+    ]);
+    expect(validateAffiliateTask).toHaveBeenCalledTimes(30);
   });
 });

@@ -10,6 +10,7 @@ import { getRequestContext } from "../utils/request-context";
 import type {
   CarouselCopyAllBody,
   CarouselLocaleUpdateBody,
+  CarouselLocaleMutationBody,
   CarouselTargetSearchQuery,
   ContentHistoryQuery,
   DisableBody,
@@ -106,19 +107,32 @@ export class CarouselPublicationController {
   });
 
   public updateLocale = this.handle(async (request, response) => {
+    const input = request.body as CarouselLocaleMutationBody;
     response.status(200).json(
       successResponse(
-        await this.service.updateLocale(
-          this.scene,
-          this.actor(response),
-          getRequestContext(request),
-          Number(request.params.releaseId),
-          request.params.slidePublicId,
-          {
-            ...(request.body as CarouselLocaleUpdateBody),
-            locale: request.params.locale as ContentLocaleCode
-          }
-        )
+        "operation" in input
+          ? await this.service.copyLocaleToAll(
+              this.scene,
+              this.actor(response),
+              getRequestContext(request),
+              Number(request.params.releaseId),
+              request.params.slidePublicId,
+              {
+                expectedLockVersion: input.expectedLockVersion,
+                sourceLocale: input.sourceLocale
+              }
+            )
+          : await this.service.updateLocale(
+              this.scene,
+              this.actor(response),
+              getRequestContext(request),
+              Number(request.params.releaseId),
+              request.params.slidePublicId,
+              {
+                ...(input as CarouselLocaleUpdateBody),
+                locale: request.params.locale as ContentLocaleCode
+              }
+            )
       )
     );
   });

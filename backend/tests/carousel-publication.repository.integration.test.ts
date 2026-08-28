@@ -12,13 +12,19 @@ const enabled = process.env.RUN_CAROUSEL_PUBLICATION_INTEGRATION === "true";
 const describeIntegration = enabled ? describe : describe.skip;
 const marker = `carousel-it-${randomUUID()}`;
 const context = { ip: "127.0.0.1", userAgent: marker };
+const nodeEnvAtSuiteLoad = process.env.NODE_ENV;
+const deployEnvAtSuiteLoad = process.env.DEPLOY_ENV;
 let actorUserId = 0;
 let shopId = 0;
+let shopPublicId = "";
 let mediaAssetId = 0;
 const extraMediaAssetIds: number[] = [];
+const extraUserIds: number[] = [];
 let prisma: PrismaClient;
 let repository: CarouselPublicationRepository;
 let disconnectPrisma: () => Promise<void>;
+let preTestSceneSnapshot: unknown[] = [];
+let sceneSnapshotCaptured = false;
 
 const fingerprint = (value: string): string =>
   createHash("sha256").update(`${marker}:${value}`).digest("hex");
@@ -45,7 +51,14 @@ const actor = () => ({
   permissions: []
 });
 
-const createDraft = async (label: string): Promise<CarouselPublicationPayload> => {
+const createDraft = async (
+  label: string,
+  mediaPublicId = fingerprint("media"),
+  target: { type: "shop"; shopId: number } | { type: "shop"; publicId: string } = {
+    type: "shop",
+    shopId
+  }
+): Promise<CarouselPublicationPayload> => {
   const translation = (locale: "zh-CN" | "zh-TW" | "en" | "ja" | "ko") => ({
     badge: null,
     title: `${label}-${locale}`,
@@ -63,12 +76,12 @@ const createDraft = async (label: string): Promise<CarouselPublicationPayload> =
     slides: [
       {
         publicId: randomUUID(),
-        mediaAssetPublicId: fingerprint("media"),
+        mediaAssetPublicId: mediaPublicId,
         sortOrder: 0,
         isEnabled: true,
         visibleFrom: null,
         visibleUntil: null,
-        target: { type: "shop", shopId },
+        target,
         translations: {
           "zh-CN": translation("zh-CN"),
           "zh-TW": translation("zh-TW"),
@@ -86,6 +99,18 @@ const createDraft = async (label: string): Promise<CarouselPublicationPayload> =
   };
   return repository.createDraft(input);
 };
+
+const sceneSnapshot = (client: PrismaClient): Promise<unknown[]> =>
+  client.carouselRelease.findMany({
+    where: { scene: "USER_HOME" },
+    orderBy: { id: "asc" },
+    include: {
+      slides: {
+        orderBy: { id: "asc" },
+        include: { translations: { orderBy: { id: "asc" } } }
+      }
+    }
+  });
 
 const publishInput = (draft: CarouselPublicationPayload, suffix: string) => ({
   scene: "USER_HOME" as const,
@@ -105,11 +130,14 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
   beforeAll(async () => {
     const envFile = process.env.ENV_FILE?.trim();
     if (!envFile) throw new Error("Carousel integration requires ENV_FILE");
-    const loaded = loadDotenv({ path: envFile, override: true });
+    const loaded = loadDotenv({ path: envFile });
     if (loaded.error) throw new Error("Unable to load carousel integration ENV_FILE");
-    assertSafeDatabase(loaded.parsed?.DATABASE_URL);
-    process.env.NODE_ENV = "development";
-    process.env.DEPLOY_ENV = "local";
+    expect(process.env.NODE_ENV).toBe(nodeEnvAtSuiteLoad);
+    expect(process.env.DEPLOY_ENV).toBe(deployEnvAtSuiteLoad);
+    assertSafeDatabase(process.env.DATABASE_URL ?? loaded.parsed?.DATABASE_URL);
+    if (process.env.NODE_ENV === "production" || process.env.DEPLOY_ENV === "prod") {
+      throw new Error("Carousel integration refuses production runtime environments");
+    }
     const [repositoryModule, prismaModule] = await Promise.all([
       import("../src/repositories/carousel-publication.repository"),
       import("../src/prisma/client")
@@ -117,6 +145,13 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
     prisma = prismaModule.prisma;
     disconnectPrisma = prismaModule.disconnectPrisma;
     repository = new repositoryModule.CarouselPublicationRepository(prisma);
+    preTestSceneSnapshot = await sceneSnapshot(prisma);
+    sceneSnapshotCaptured = true;
+    if (preTestSceneSnapshot.length > 0) {
+      throw new Error(
+        "Carousel integration refuses a populated USER_HOME scene; use an empty local scene"
+      );
+    }
     const numberPart = String(randomInt(1_000_000_000, 10_000_000_000));
     const user = await prisma.user.create({
       data: { needoId: `u${numberPart}`, email: `${marker}@needo.local`, username: marker }
@@ -126,8 +161,9 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       data: { name: marker, city: "Tokyo", address: marker, status: "published" }
     });
     shopId = shop.id;
+    shopPublicId = `shop${numberPart}`;
     await prisma.publicIdentifier.create({
-      data: { publicId: `shop${numberPart}`, numberPart, kind: "SHOP", shopId, status: "ACTIVE" }
+      data: { publicId: shopPublicId, numberPart, kind: "SHOP", shopId, status: "ACTIVE" }
     });
     const media = await prisma.mediaAsset.create({
       data: {
@@ -136,7 +172,7 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
         ownerUserId: actorUserId,
         url: `/media/content/${fingerprint("media")}.png`,
         mimeType: "image/png",
-        usageType: "content_publication",
+        usageType: "content_publication_public",
         isActive: true,
         checksumSha256: fingerprint("media")
       }
@@ -172,6 +208,19 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       await prisma.publicIdentifier.deleteMany({ where: { shopId } });
       await prisma.shop.deleteMany({ where: { id: shopId } });
       await prisma.user.deleteMany({ where: { id: actorUserId } });
+      await prisma.user.deleteMany({ where: { id: { in: extraUserIds } } });
+    }
+    if (prisma && sceneSnapshotCaptured) {
+      const residue = await Promise.all([
+        prisma.carouselRelease.count({ where: { createdById: actorUserId || -1 } }),
+        prisma.contentPublicationCommand.count({ where: { actorUserId: actorUserId || -1 } }),
+        prisma.auditLog.count({ where: { actorId: actorUserId || -1 } }),
+        prisma.mediaAsset.count({ where: { ownerUserId: { in: [actorUserId, ...extraUserIds] } } }),
+        prisma.shop.count({ where: { name: marker } }),
+        prisma.user.count({ where: { email: { contains: marker } } })
+      ]);
+      expect(residue).toEqual([0, 0, 0, 0, 0, 0]);
+      await expect(sceneSnapshot(prisma)).resolves.toEqual(preTestSceneSnapshot);
     }
     await disconnectPrisma?.();
   }, 30_000);
@@ -186,7 +235,7 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
         ownerUserId: actorUserId,
         url: `/media/content/${checksum}.png`,
         mimeType: "image/png",
-        usageType: "content_publication",
+        usageType: "content_publication_public",
         isActive: true,
         checksumSha256: checksum
       }
@@ -221,6 +270,107 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
     const published = await repository.publish(publishInput(replaced, "replace-cleanup"));
     await repository.disable({
       ...publishInput(published, "replace-disable"),
+      expectedLockVersion: published.lockVersion,
+      reason: "cleanup"
+    });
+  }, 30_000);
+
+  it("replaces after a deletion twice without colliding with soft-deleted sort orders", async () => {
+    const draft = await createDraft("repeat-replace");
+    const replacement = (current: CarouselPublicationPayload, suffix: string) => ({
+      scene: "USER_HOME" as const,
+      releaseId: current.releaseId,
+      expectedLockVersion: current.lockVersion,
+      sourceLocale: "ja" as const,
+      slides: [
+        {
+          publicId: randomUUID(),
+          mediaAssetPublicId: fingerprint("media"),
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "shop" as const, publicId: shopPublicId },
+          translations: Object.fromEntries(
+            Object.entries(current.slides[0].translations).map(([locale, value]) => [
+              locale,
+              { ...value, title: `${suffix}-${locale}` }
+            ])
+          ) as CarouselPublicationPayload["slides"][number]["translations"]
+        }
+      ],
+      actorUserId,
+      actor: actor(),
+      context,
+      validateAffiliateTask: async () => undefined,
+      now: new Date()
+    });
+    const first = await repository.replaceDraft(replacement(draft, "first"));
+    const second = await repository.replaceDraft(replacement(first, "second"));
+    expect(second.slides).toHaveLength(1);
+    expect(second.slides[0].sortOrder).toBe(0);
+    const allRows = await prisma.carouselSlide.findMany({
+      where: { releaseId: draft.releaseId },
+      orderBy: { sortOrder: "asc" }
+    });
+    expect(new Set(allRows.map((row) => row.sortOrder)).size).toBe(allRows.length);
+    const published = await repository.publish(publishInput(second, "repeat-replace"));
+    await repository.disable({
+      ...publishInput(published, "repeat-replace-disable"),
+      expectedLockVersion: published.lockVersion,
+      reason: "cleanup"
+    });
+  }, 30_000);
+
+  it("binds same-checksum media to the acting uploader and accepts the picker public target", async () => {
+    const checksum = fingerprint("same-checksum-two-owners");
+    const otherNumber = String(randomInt(1_000_000_000, 10_000_000_000));
+    const otherUser = await prisma.user.create({
+      data: {
+        needoId: `u${otherNumber}`,
+        email: `${marker}-other@needo.local`,
+        username: `${marker}-other`
+      }
+    });
+    extraUserIds.push(otherUser.id);
+    const foreign = await prisma.mediaAsset.create({
+      data: {
+        entityType: "content_publication_upload",
+        entityId: otherUser.id,
+        ownerUserId: otherUser.id,
+        url: `/media/content/${checksum}-foreign.png`,
+        mimeType: "image/png",
+        usageType: "content_publication_public",
+        isActive: true,
+        checksumSha256: checksum
+      }
+    });
+    extraMediaAssetIds.push(foreign.id);
+    const owned = await prisma.mediaAsset.create({
+      data: {
+        entityType: "content_publication_upload",
+        entityId: actorUserId,
+        ownerUserId: actorUserId,
+        url: `/media/content/${checksum}-owned.png`,
+        mimeType: "image/png",
+        usageType: "content_publication_public",
+        isActive: true,
+        checksumSha256: checksum
+      }
+    });
+    extraMediaAssetIds.push(owned.id);
+    const draft = await createDraft("owned-media", checksum, {
+      type: "shop",
+      publicId: shopPublicId
+    });
+    const stored = await prisma.carouselSlide.findFirstOrThrow({
+      where: { releaseId: draft.releaseId, deletedAt: null }
+    });
+    expect(stored.mediaAssetId).toBe(owned.id);
+    expect(draft.slides[0].target).toEqual({ type: "shop", shopId });
+    const published = await repository.publish(publishInput(draft, "owned-media"));
+    await repository.disable({
+      ...publishInput(published, "owned-media-disable"),
       expectedLockVersion: published.lockVersion,
       reason: "cleanup"
     });

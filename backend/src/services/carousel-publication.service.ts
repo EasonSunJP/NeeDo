@@ -18,6 +18,17 @@ export type CarouselTarget =
       affiliateTaskId: number | null;
     };
 
+export type CarouselTargetInput =
+  | CarouselTarget
+  | { type: "shop"; publicId: string }
+  | { type: "technician"; publicId: string }
+  | { type: "service"; publicId: string }
+  | {
+      type: "affiliate_announcement";
+      announcementPublicId: string;
+      taskCode: string | null;
+    };
+
 export type PublishedCarouselTarget =
   | { type: "shop"; publicId: string }
   | { type: "technician"; publicId: string }
@@ -85,8 +96,27 @@ export interface PublishedCarouselPayload {
 }
 
 export type CarouselTargetSearchItem =
-  | { type: "shop" | "technician" | "service"; publicId: string; label: string; status: string }
-  | { type: "affiliate_announcement"; publicId: string; label: string; status: string }
+  | {
+      type: "shop" | "technician" | "service";
+      publicId: string;
+      label: string;
+      status: string;
+      target:
+        | { type: "shop"; publicId: string }
+        | { type: "technician"; publicId: string }
+        | { type: "service"; publicId: string };
+    }
+  | {
+      type: "affiliate_announcement";
+      publicId: string;
+      label: string;
+      status: string;
+      target: {
+        type: "affiliate_announcement";
+        announcementPublicId: string;
+        taskCode: string | null;
+      };
+    }
   | { type: "affiliate_task"; taskCode: string; label: string; status: string };
 
 interface MutationBase {
@@ -104,7 +134,7 @@ export interface StoredCarouselSlide {
   isEnabled: boolean;
   visibleFrom: Date | null;
   visibleUntil: Date | null;
-  target: CarouselTarget;
+  target: CarouselTargetInput;
   translations: Record<ContentLocaleCode, CarouselTranslationPayload>;
 }
 
@@ -225,7 +255,7 @@ interface DraftSlideBody {
   isEnabled: boolean;
   visibleFrom: string | null;
   visibleUntil: string | null;
-  target: CarouselTarget;
+  target: CarouselTargetInput;
   translations: DraftTranslationBody[];
 }
 
@@ -274,7 +304,7 @@ export class CarouselPublicationService {
     this.createPublicId = options.createPublicId ?? randomUUID;
   }
 
-  public assertTarget(scene: CarouselSceneCode, target: CarouselTarget): void {
+  public assertTarget(scene: CarouselSceneCode, target: CarouselTargetInput): void {
     const valid =
       (scene === "USER_HOME" && ["shop", "technician", "service"].includes(target.type)) ||
       (scene === "AFFILIATE_HOME_NOTICE" && target.type === "affiliate_announcement");

@@ -18,7 +18,7 @@ import {
 import {
   carouselCopyAllBodySchema,
   carouselDraftBodySchemaByScene,
-  carouselLocaleUpdateBodySchema,
+  carouselLocaleMutationBodySchema,
   carouselSlideLocaleParamSchema,
   carouselSlideParamSchema,
   carouselTargetSearchQuerySchemaByScene,
@@ -119,7 +119,7 @@ export const createCarouselPublicationRoutes = (
       `${base}/releases/:releaseId/slides/:slidePublicId/locales/:locale`,
       authenticate(),
       edit,
-      validate({ params: carouselSlideLocaleParamSchema, body: carouselLocaleUpdateBodySchema }),
+      validate({ params: carouselSlideLocaleParamSchema, body: carouselLocaleMutationBodySchema }),
       controller.updateLocale
     );
     router.post(

@@ -142,7 +142,8 @@ describe("CarouselPublicationService", () => {
         slides: input.slides.map((slide) => ({
           ...slide,
           id: slide.publicId,
-          imageUrl: "/media/content/a.png"
+          imageUrl: "/media/content/a.png",
+          target: { type: "shop", shopId: 7 }
         }))
       })
     );
@@ -308,7 +309,15 @@ describe("CarouselPublicationService", () => {
   it("returns standard pagination for protected target search without changing allowed types", async () => {
     const repo = repository();
     repo.searchTargets.mockResolvedValue({
-      list: [{ type: "shop", publicId: "shop0000000001", label: "Shibuya", status: "published" }],
+      list: [
+        {
+          type: "shop",
+          publicId: "shop0000000001",
+          label: "Shibuya",
+          status: "published",
+          target: { type: "shop", publicId: "shop0000000001" }
+        }
+      ],
       total: 1
     });
     const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
@@ -324,6 +333,41 @@ describe("CarouselPublicationService", () => {
     );
     expect(repo.searchTargets).toHaveBeenCalledWith(
       expect.objectContaining({ scene: "USER_HOME", type: "shop", q: "Shibu", scopeShopId: null })
+    );
+  });
+
+  it("accepts a public-safe picker target without a hidden numeric lookup in the controller", async () => {
+    const repo = repository();
+    repo.createDraft.mockResolvedValue(payload());
+    const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
+    await service.createDraft("USER_HOME", actor, context, {
+      idempotencyKey,
+      sourceLocale: "ja",
+      slides: [
+        {
+          mediaAssetPublicId: mediaPublicId,
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "shop", publicId: "shop0000000007" },
+          translations: [
+            {
+              locale: "ja",
+              badge: null,
+              title: "ホーム",
+              caption: null,
+              ctaLabel: null,
+              imageAltText: "ホーム画像"
+            }
+          ]
+        }
+      ]
+    });
+    expect(repo.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slides: [expect.objectContaining({ target: { type: "shop", publicId: "shop0000000007" } })]
+      })
     );
   });
 

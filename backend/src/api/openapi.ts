@@ -376,6 +376,56 @@ const carouselPublicLocaleParameter = {
   schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
 };
 
+const carouselSlideInputSchema = (targetSchema: string, replace: boolean) => ({
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "mediaAssetPublicId",
+    "sortOrder",
+    "isEnabled",
+    "visibleFrom",
+    "visibleUntil",
+    "target",
+    "translations"
+  ],
+  properties: {
+    publicId: { type: "string", format: "uuid" },
+    mediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    sortOrder: { type: "integer", minimum: 0 },
+    isEnabled: { type: "boolean" },
+    visibleFrom: { type: ["string", "null"], format: "date-time" },
+    visibleUntil: { type: ["string", "null"], format: "date-time" },
+    target: { $ref: `#/components/schemas/${targetSchema}` },
+    translations: replace
+      ? { $ref: "#/components/schemas/CarouselFiveTranslations" }
+      : {
+          type: "array",
+          minItems: 1,
+          maxItems: 1,
+          description: "Exactly the translation matching the draft sourceLocale",
+          items: { $ref: "#/components/schemas/CarouselTranslationInput" }
+        }
+  }
+});
+
+const carouselDraftInputSchema = (slideSchema: string, create: boolean) => ({
+  type: "object",
+  additionalProperties: false,
+  required: [create ? "idempotencyKey" : "expectedLockVersion", "sourceLocale", "slides"],
+  properties: {
+    ...(create
+      ? { idempotencyKey: { type: "string", format: "uuid" } }
+      : { expectedLockVersion: { type: "integer", minimum: 1 } }),
+    sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+    slides: {
+      type: "array",
+      minItems: 1,
+      maxItems: 50,
+      items: { $ref: `#/components/schemas/${slideSchema}` }
+    }
+  }
+});
+
 const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
   const paths: Record<string, unknown> = {};
   const scenes = [
@@ -384,6 +434,7 @@ const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> 
       read: "page:backoffice-user-home-carousel",
       edit: "button:backoffice-user-home-carousel-edit",
       publish: "button:backoffice-user-home-carousel-publish",
+      schemaPrefix: "CarouselUserHome",
       targetTypes: ["shop", "technician", "service"]
     },
     {
@@ -391,6 +442,7 @@ const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> 
       read: "page:backoffice-affiliate-notice-carousel",
       edit: "button:backoffice-affiliate-notice-carousel-edit",
       publish: "button:backoffice-affiliate-notice-carousel-publish",
+      schemaPrefix: "CarouselAffiliateNotice",
       targetTypes: ["announcement", "affiliate_task"]
     }
   ] as const;
@@ -415,7 +467,7 @@ const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> 
     };
     paths[`${base}/releases`] = {
       post: carouselOperation("Create one current fixed-scene carousel draft", scene.edit, {
-        requestBody: jsonBody("CarouselDraftCreate"),
+        requestBody: jsonBody(`${scene.schemaPrefix}DraftCreate`),
         responses: {
           "201": jsonDataResponse("Carousel draft created", {
             $ref: "#/components/schemas/CarouselProtectedPayload"
@@ -454,7 +506,7 @@ const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> 
       }),
       patch: carouselOperation("Atomically replace one draft slide set", scene.edit, {
         parameters: [carouselReleaseIdParameter],
-        requestBody: jsonBody("CarouselDraftReplace"),
+        requestBody: jsonBody(`${scene.schemaPrefix}DraftReplace`),
         responses: protectedResponse("Carousel draft replaced")
       })
     };
@@ -465,7 +517,7 @@ const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> 
           carouselSlidePublicIdParameter,
           carouselLocaleParameter
         ],
-        requestBody: jsonBody("CarouselLocaleUpdate"),
+        requestBody: jsonBody("CarouselLocaleMutation"),
         responses: protectedResponse("Carousel locale updated")
       })
     };
@@ -4098,64 +4150,126 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
-      CarouselSlideInput: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "mediaAssetPublicId",
-          "sortOrder",
-          "isEnabled",
-          "visibleFrom",
-          "visibleUntil",
-          "target",
-          "translations"
-        ],
-        properties: {
-          publicId: { type: "string", format: "uuid" },
-          mediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
-          sortOrder: { type: "integer", minimum: 0 },
-          isEnabled: { type: "boolean" },
-          visibleFrom: { type: ["string", "null"], format: "date-time" },
-          visibleUntil: { type: ["string", "null"], format: "date-time" },
-          target: { $ref: "#/components/schemas/CarouselProtectedTarget" },
-          translations: {
-            type: "array",
-            minItems: 1,
-            maxItems: 5,
-            items: { $ref: "#/components/schemas/CarouselTranslationInput" }
+      CarouselUserHomeTargetInput: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "shopId"],
+            properties: { type: { const: "shop" }, shopId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { const: "shop" },
+              publicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "technicianProfileId"],
+            properties: {
+              type: { const: "technician" },
+              technicianProfileId: { type: "integer", minimum: 1 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { const: "technician" },
+              publicId: { type: "string", pattern: "^s[0-9]{10}$" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "serviceId"],
+            properties: { type: { const: "service" }, serviceId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: { type: { const: "service" }, publicId: { type: "string", format: "uuid" } }
           }
-        }
+        ]
       },
-      CarouselDraftCreate: {
-        type: "object",
-        additionalProperties: false,
-        required: ["idempotencyKey", "sourceLocale", "slides"],
-        properties: {
-          idempotencyKey: { type: "string", format: "uuid" },
-          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
-          slides: {
-            type: "array",
-            minItems: 1,
-            maxItems: 50,
-            items: { $ref: "#/components/schemas/CarouselSlideInput" }
+      CarouselAffiliateNoticeTargetInput: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "affiliateTaskId"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              affiliateTaskId: { type: ["integer", "null"], minimum: 1 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "taskCode"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              taskCode: { type: ["string", "null"], minLength: 1, maxLength: 80 }
+            }
           }
-        }
+        ]
       },
-      CarouselDraftReplace: {
-        type: "object",
-        additionalProperties: false,
-        required: ["expectedLockVersion", "sourceLocale", "slides"],
-        properties: {
-          expectedLockVersion: { type: "integer", minimum: 1 },
-          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
-          slides: {
-            type: "array",
-            minItems: 1,
-            maxItems: 50,
-            items: { $ref: "#/components/schemas/CarouselSlideInput" }
-          }
-        }
+      CarouselFiveTranslations: {
+        type: "array",
+        minItems: 5,
+        maxItems: 5,
+        items: { $ref: "#/components/schemas/CarouselTranslationInput" },
+        allOf: ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
+          contains: {
+            type: "object",
+            required: ["locale"],
+            properties: { locale: { const: locale } }
+          },
+          minContains: 1,
+          maxContains: 1
+        }))
       },
+      CarouselUserHomeCreateSlideInput: carouselSlideInputSchema(
+        "CarouselUserHomeTargetInput",
+        false
+      ),
+      CarouselUserHomeReplaceSlideInput: carouselSlideInputSchema(
+        "CarouselUserHomeTargetInput",
+        true
+      ),
+      CarouselAffiliateNoticeCreateSlideInput: carouselSlideInputSchema(
+        "CarouselAffiliateNoticeTargetInput",
+        false
+      ),
+      CarouselAffiliateNoticeReplaceSlideInput: carouselSlideInputSchema(
+        "CarouselAffiliateNoticeTargetInput",
+        true
+      ),
+      CarouselUserHomeDraftCreate: carouselDraftInputSchema(
+        "CarouselUserHomeCreateSlideInput",
+        true
+      ),
+      CarouselUserHomeDraftReplace: carouselDraftInputSchema(
+        "CarouselUserHomeReplaceSlideInput",
+        false
+      ),
+      CarouselAffiliateNoticeDraftCreate: carouselDraftInputSchema(
+        "CarouselAffiliateNoticeCreateSlideInput",
+        true
+      ),
+      CarouselAffiliateNoticeDraftReplace: carouselDraftInputSchema(
+        "CarouselAffiliateNoticeReplaceSlideInput",
+        false
+      ),
       CarouselLocaleUpdate: {
         type: "object",
         additionalProperties: false,
@@ -4168,6 +4282,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ctaLabel: { type: ["string", "null"], maxLength: 60 },
           imageAltText: { type: "string", minLength: 1, maxLength: 255 }
         }
+      },
+      CarouselLocaleCopyCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["operation", "expectedLockVersion", "sourceLocale"],
+        properties: {
+          operation: { const: "copy_to_all" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+        }
+      },
+      CarouselLocaleMutation: {
+        oneOf: [
+          { $ref: "#/components/schemas/CarouselLocaleUpdate" },
+          { $ref: "#/components/schemas/CarouselLocaleCopyCommand" }
+        ]
       },
       CarouselCopyAll: {
         type: "object",
@@ -4243,12 +4373,35 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      CarouselPickerTarget: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { type: "string", enum: ["shop", "technician", "service"] },
+              publicId: { type: "string" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "taskCode"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              taskCode: { type: ["string", "null"], maxLength: 80 }
+            }
+          }
+        ]
+      },
       CarouselTargetSearchItem: {
         oneOf: [
           {
             type: "object",
             additionalProperties: false,
-            required: ["type", "publicId", "label", "status"],
+            required: ["type", "publicId", "label", "status", "target"],
             properties: {
               type: {
                 type: "string",
@@ -4256,7 +4409,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               },
               publicId: { type: "string" },
               label: { type: "string" },
-              status: { type: "string" }
+              status: { type: "string" },
+              target: { $ref: "#/components/schemas/CarouselPickerTarget" }
             }
           },
           {

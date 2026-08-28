@@ -19,6 +19,7 @@ import type {
   CarouselSlidePayload,
   CarouselStatus,
   CarouselTarget,
+  CarouselTargetInput,
   CarouselTargetSearchItem,
   CreateCarouselDraftMutation,
   DisableCarouselMutation,
@@ -94,6 +95,10 @@ const releaseInclude = {
 } satisfies Prisma.CarouselReleaseInclude;
 
 type ReleaseRecord = Prisma.CarouselReleaseGetPayload<{ include: typeof releaseInclude }>;
+type ResolvedCarouselSlide = Omit<StoredCarouselSlide, "target"> & {
+  mediaAssetId: number;
+  target: CarouselTarget;
+};
 
 interface MutationAuditInput {
   actorUserId: number;
@@ -141,6 +146,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           transaction,
           input.scene,
           input.slides,
+          input.actorUserId,
           input.now,
           input.validateAffiliateTask
         );
@@ -185,91 +191,101 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   public async replaceDraft(
     input: ReplaceCarouselDraftMutation
   ): Promise<CarouselPublicationPayload> {
-    return this.transaction(async (transaction) => {
-      const release = await this.findReleaseForMutation(transaction, input.scene, input.releaseId);
-      this.assertDraftAndLock(release, input.expectedLockVersion);
-      const resolved = await this.resolveSlides(
-        transaction,
-        input.scene,
-        input.slides,
-        input.now,
-        input.validateAffiliateTask
-      );
-      const bumped = await transaction.carouselRelease.updateMany({
-        where: {
-          id: release.id,
-          status: ContentReleaseStatus.DRAFT,
-          lockVersion: input.expectedLockVersion
-        },
-        data: {
-          lockVersion: { increment: 1 },
-          updatedById: input.actorUserId,
-          updatedAt: input.now
-        }
-      });
-      if (bumped.count !== 1) throw this.contentError("error.content.lock_conflict", 409);
-
-      const incomingIds = new Set(resolved.map((slide) => slide.publicId));
-      await transaction.carouselSlide.updateMany({
-        where: { releaseId: release.id, deletedAt: null },
-        data: { sortOrder: { increment: 1000 }, updatedAt: input.now }
-      });
-      for (const slide of release.slides) {
-        if (incomingIds.has(slide.publicId)) continue;
-        await transaction.carouselSlideTranslation.updateMany({
-          where: { slideId: slide.id, deletedAt: null },
-          data: { deletedAt: input.now, updatedAt: input.now }
-        });
-        await transaction.carouselSlide.updateMany({
-          where: { id: slide.id, deletedAt: null },
-          data: { deletedAt: input.now, updatedAt: input.now }
-        });
-      }
-      for (const slide of resolved) {
-        const existing = release.slides.find((candidate) => candidate.publicId === slide.publicId);
-        if (!existing) {
-          await this.createSlide(transaction, release.id, slide, input.now);
-          continue;
-        }
-        const media = await transaction.mediaAsset.findFirstOrThrow({
+    try {
+      return await this.transaction(async (transaction) => {
+        const release = await this.findReleaseForMutation(
+          transaction,
+          input.scene,
+          input.releaseId
+        );
+        this.assertDraftAndLock(release, input.expectedLockVersion);
+        const resolved = await this.resolveSlides(
+          transaction,
+          input.scene,
+          input.slides,
+          input.actorUserId,
+          input.now,
+          input.validateAffiliateTask
+        );
+        const bumped = await transaction.carouselRelease.updateMany({
           where: {
-            checksumSha256: slide.mediaAssetPublicId,
-            entityType: "content_publication_upload",
-            isActive: true,
-            purgedAt: null,
-            deletedAt: null
+            id: release.id,
+            status: ContentReleaseStatus.DRAFT,
+            lockVersion: input.expectedLockVersion
           },
-          select: { id: true }
-        });
-        await transaction.carouselSlide.update({
-          where: { id: existing.id },
           data: {
-            ...this.slideScalarData(slide),
-            mediaAssetId: media.id,
-            deletedAt: null,
+            lockVersion: { increment: 1 },
+            updatedById: input.actorUserId,
             updatedAt: input.now
           }
         });
-        for (const locale of CONTENT_LOCALES) {
-          await transaction.carouselSlideTranslation.upsert({
-            where: { slideId_locale: { slideId: existing.id, locale: localeToDb[locale] } },
-            create: this.translationData(existing.id, locale, slide, input.now),
-            update: {
-              ...this.translationValues(locale, slide),
+        if (bumped.count !== 1) throw this.contentError("error.content.lock_conflict", 409);
+
+        const incomingIds = new Set(resolved.map((slide) => slide.publicId));
+        const maximumOrder = await transaction.carouselSlide.aggregate({
+          where: { releaseId: release.id },
+          _max: { sortOrder: true }
+        });
+        const stagingBase = (maximumOrder._max.sortOrder ?? -1) + 1;
+        for (const [index, slide] of release.slides.entries()) {
+          await transaction.carouselSlide.update({
+            where: { id: slide.id },
+            data: { sortOrder: stagingBase + index, updatedAt: input.now }
+          });
+        }
+        for (const slide of release.slides) {
+          if (incomingIds.has(slide.publicId)) continue;
+          await transaction.carouselSlideTranslation.updateMany({
+            where: { slideId: slide.id, deletedAt: null },
+            data: { deletedAt: input.now, updatedAt: input.now }
+          });
+          await transaction.carouselSlide.updateMany({
+            where: { id: slide.id, deletedAt: null },
+            data: { deletedAt: input.now, updatedAt: input.now }
+          });
+        }
+        for (const slide of resolved) {
+          const existing = release.slides.find(
+            (candidate) => candidate.publicId === slide.publicId
+          );
+          if (!existing) {
+            await this.createSlide(transaction, release.id, slide, input.now);
+            continue;
+          }
+          await transaction.carouselSlide.update({
+            where: { id: existing.id },
+            data: {
+              ...this.slideScalarData(slide),
+              mediaAssetId: slide.mediaAssetId,
               deletedAt: null,
               updatedAt: input.now
             }
           });
+          for (const locale of CONTENT_LOCALES) {
+            await transaction.carouselSlideTranslation.upsert({
+              where: { slideId_locale: { slideId: existing.id, locale: localeToDb[locale] } },
+              create: this.translationData(existing.id, locale, slide, input.now),
+              update: {
+                ...this.translationValues(locale, slide),
+                deletedAt: null,
+                updatedAt: input.now
+              }
+            });
+          }
         }
-      }
-      const result = await this.loadRelease(transaction, input.scene, release.id);
-      await this.audit(transaction, input, "content.carousel.draft_replaced", release.id, {
-        scene: input.scene,
-        releaseId: release.id,
-        slideCount: resolved.length
+        const result = await this.loadRelease(transaction, input.scene, release.id);
+        await this.audit(transaction, input, "content.carousel.draft_replaced", release.id, {
+          scene: input.scene,
+          releaseId: release.id,
+          slideCount: resolved.length
+        });
+        return result;
       });
-      return result;
-    });
+    } catch (error) {
+      if (this.isUniqueConflict(error) || this.isPrismaWriteRace(error))
+        throw this.contentError("error.content.lock_conflict", 409);
+      throw error;
+    }
   }
 
   public async updateLocale(
@@ -507,8 +523,10 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           transaction,
           input.scene,
           slides,
+          input.actorUserId,
           input.now,
-          input.validateAffiliateTask
+          input.validateAffiliateTask,
+          new Set(source.slides.map((slide) => slide.mediaAssetId))
         );
         await this.createSlides(transaction, clone.id, resolved, input.now);
         const result = await this.loadRelease(transaction, input.scene, clone.id);
@@ -636,6 +654,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         : ["announcement", "affiliate_task"];
     const items: CarouselTargetSearchItem[] = [];
     let total = 0;
+    const prefixSize = input.page * input.pageSize;
     const q = input.q?.trim();
     const contains = q ? { contains: q } : undefined;
     if (types.includes("shop")) {
@@ -650,8 +669,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         this.client.shop.findMany({
           where,
           include: { publicIdentifier: true },
-          orderBy: { id: "asc" },
-          take: input.page * input.pageSize
+          orderBy: [{ name: "asc" }, { id: "asc" }],
+          take: prefixSize
         }),
         this.client.shop.count({ where })
       ]);
@@ -664,7 +683,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
                   type: "shop" as const,
                   publicId: row.publicIdentifier.publicId,
                   label: row.name,
-                  status: row.status
+                  status: row.status,
+                  target: { type: "shop" as const, publicId: row.publicIdentifier.publicId }
                 }
               ]
             : []
@@ -715,8 +735,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
               }
             }
           },
-          orderBy: { id: "asc" },
-          take: input.page * input.pageSize
+          orderBy: [{ displayName: "asc" }, { id: "asc" }],
+          take: prefixSize
         }),
         this.client.technicianProfile.count({ where })
       ]);
@@ -730,7 +750,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
                   type: "technician" as const,
                   publicId: identifier.publicId,
                   label: row.displayName,
-                  status: row.status
+                  status: row.status,
+                  target: { type: "technician" as const, publicId: identifier.publicId }
                 }
               ]
             : [];
@@ -747,8 +768,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       const [rows, count] = await Promise.all([
         this.client.service.findMany({
           where,
-          orderBy: { id: "asc" },
-          take: input.page * input.pageSize
+          orderBy: [{ name: "asc" }, { publicId: "asc" }],
+          take: prefixSize
         }),
         this.client.service.count({ where })
       ]);
@@ -758,7 +779,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           type: "service" as const,
           publicId: row.publicId,
           label: row.name,
-          status: row.status
+          status: row.status,
+          target: { type: "service" as const, publicId: row.publicId }
         }))
       );
     }
@@ -783,11 +805,10 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         this.client.officialAnnouncementRelease.findMany({
           where,
           include: {
-            announcement: true,
+            announcement: { include: { affiliateTask: { select: { taskCode: true } } } },
             translations: { where: { deletedAt: null }, orderBy: { locale: "asc" }, take: 1 }
           },
-          orderBy: { id: "asc" },
-          take: input.page * input.pageSize
+          orderBy: [{ announcement: { publicId: "asc" } }, { id: "asc" }]
         }),
         this.client.officialAnnouncementRelease.count({ where })
       ]);
@@ -797,40 +818,54 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           type: "affiliate_announcement" as const,
           publicId: row.announcement.publicId,
           label: row.translations[0]?.title ?? row.announcement.publicId,
-          status: "published"
+          status: "published",
+          target: {
+            type: "affiliate_announcement" as const,
+            announcementPublicId: row.announcement.publicId,
+            taskCode: row.announcement.affiliateTask?.taskCode ?? null
+          }
         }))
       );
     }
     if (types.includes("affiliate_task")) {
-      const rows = await this.client.affiliateTask.findMany({
-        where: {
-          deletedAt: null,
-          status: { in: ["SCHEDULED", "ACTIVE"] },
-          claimStartsAt: { lte: input.now },
-          claimEndsAt: { gt: input.now },
-          taskEndsAt: { gt: input.now },
-          ...(input.scopeShopId ? { publisherShopId: input.scopeShopId } : {}),
-          ...(contains ? { OR: [{ name: contains }, { taskCode: contains }] } : {})
-        },
-        orderBy: { id: "asc" },
-        take: input.page * input.pageSize
-      });
-      for (const row of rows) {
-        try {
-          await input.validateAffiliateTask(row.id);
-        } catch {
-          continue;
-        }
-        items.push({
-          type: "affiliate_task",
-          taskCode: row.taskCode,
-          label: row.name,
-          status: String(row.status).toLowerCase()
+      const visibleTasks: CarouselTargetSearchItem[] = [];
+      const batchSize = 100;
+      let skip = 0;
+      while (true) {
+        const rows = await this.client.affiliateTask.findMany({
+          where: {
+            deletedAt: null,
+            status: { in: ["SCHEDULED", "ACTIVE"] },
+            claimStartsAt: { lte: input.now },
+            claimEndsAt: { gt: input.now },
+            taskEndsAt: { gt: input.now },
+            ...(input.scopeShopId ? { publisherShopId: input.scopeShopId } : {}),
+            ...(contains ? { OR: [{ name: contains }, { taskCode: contains }] } : {})
+          },
+          orderBy: [{ name: "asc" }, { taskCode: "asc" }, { id: "asc" }],
+          skip,
+          take: batchSize
         });
+        for (const row of rows) {
+          try {
+            await input.validateAffiliateTask(row.id);
+          } catch {
+            continue;
+          }
+          visibleTasks.push({
+            type: "affiliate_task",
+            taskCode: row.taskCode,
+            label: row.name,
+            status: String(row.status).toLowerCase()
+          });
+        }
+        skip += rows.length;
+        if (rows.length < batchSize) break;
       }
-      total += items.filter((item) => item.type === "affiliate_task").length;
+      total += visibleTasks.length;
+      items.push(...visibleTasks);
     }
-    items.sort((left, right) => left.label.localeCompare(right.label));
+    items.sort((left, right) => this.compareSearchTargets(left, right));
     const start = (input.page - 1) * input.pageSize;
     return { list: items.slice(start, start + input.pageSize), total };
   }
@@ -880,26 +915,35 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
     transaction: Prisma.TransactionClient,
     scene: CarouselSceneCode,
     slides: StoredCarouselSlide[],
+    actorUserId: number,
     effectiveAt: Date,
-    validateAffiliateTask: (taskId: number) => Promise<void>
-  ) {
-    const result: StoredCarouselSlide[] = [];
+    validateAffiliateTask: (taskId: number) => Promise<void>,
+    authorizedMediaAssetIds: ReadonlySet<number> = new Set()
+  ): Promise<ResolvedCarouselSlide[]> {
+    const result: ResolvedCarouselSlide[] = [];
     for (const slide of slides) {
       const media = await transaction.mediaAsset.findFirst({
         where: {
           checksumSha256: slide.mediaAssetPublicId,
           entityType: "content_publication_upload",
+          usageType: "content_publication_public",
           isActive: true,
           purgedAt: null,
-          deletedAt: null
+          deletedAt: null,
+          ...(authorizedMediaAssetIds.size > 0
+            ? {
+                OR: [{ ownerUserId: actorUserId }, { id: { in: [...authorizedMediaAssetIds] } }]
+              }
+            : { ownerUserId: actorUserId })
         },
-        select: { id: true }
+        select: { id: true },
+        orderBy: { id: "desc" }
       });
       if (!media) throw this.contentError("error.content.media_invalid", 409);
-      await this.resolveTargetIds(transaction, scene, slide.target);
-      if (scene === "AFFILIATE_HOME_NOTICE" && slide.target.type === "affiliate_announcement") {
+      const target = await this.resolveTarget(transaction, scene, slide.target);
+      if (scene === "AFFILIATE_HOME_NOTICE" && target.type === "affiliate_announcement") {
         const announcement = await transaction.officialAnnouncement.findUniqueOrThrow({
-          where: { publicId: slide.target.announcementPublicId },
+          where: { publicId: target.announcementPublicId },
           select: { id: true }
         });
         const published = await transaction.officialAnnouncementRelease.findFirst({
@@ -918,37 +962,43 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           (published.visibleUntil === null ||
             (slide.visibleUntil !== null && published.visibleUntil >= slide.visibleUntil));
         if (!covers) throw this.contentError("error.content.target_unavailable", 409);
-        if (slide.target.affiliateTaskId !== null) {
-          await validateAffiliateTask(slide.target.affiliateTaskId);
+        if (target.affiliateTaskId !== null) {
+          await validateAffiliateTask(target.affiliateTaskId);
         }
       }
-      result.push(slide);
+      result.push({ ...slide, mediaAssetId: media.id, target });
     }
     return result;
   }
 
-  private async resolveTargetIds(
+  private async resolveTarget(
     transaction: Prisma.TransactionClient,
     scene: CarouselSceneCode,
-    target: CarouselTarget
-  ) {
+    target: CarouselTargetInput
+  ): Promise<CarouselTarget> {
     if (scene === "USER_HOME" && target.type === "shop") {
       const row = await transaction.shop.findFirst({
         where: {
-          id: target.shopId,
+          ...("shopId" in target ? { id: target.shopId } : {}),
           status: "published",
           deletedAt: null,
-          publicIdentifier: { is: { status: PublicIdentifierStatus.ACTIVE, deletedAt: null } }
+          publicIdentifier: {
+            is: {
+              ...("publicId" in target ? { publicId: target.publicId } : {}),
+              status: PublicIdentifierStatus.ACTIVE,
+              deletedAt: null
+            }
+          }
         },
         select: { id: true }
       });
       if (!row) throw this.contentError("error.content.target_unavailable", 409);
-      return;
+      return { type: "shop", shopId: row.id };
     }
     if (scene === "USER_HOME" && target.type === "technician") {
       const row = await transaction.technicianProfile.findFirst({
         where: {
-          id: target.technicianProfileId,
+          ...("technicianProfileId" in target ? { id: target.technicianProfileId } : {}),
           status: "published",
           deletedAt: null,
           user: {
@@ -959,7 +1009,13 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
                 type: "technician",
                 isActive: true,
                 deletedAt: null,
-                publicIdentifier: { is: { status: PublicIdentifierStatus.ACTIVE, deletedAt: null } }
+                publicIdentifier: {
+                  is: {
+                    ...("publicId" in target ? { publicId: target.publicId } : {}),
+                    status: PublicIdentifierStatus.ACTIVE,
+                    deletedAt: null
+                  }
+                }
               }
             }
           }
@@ -967,12 +1023,12 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         select: { id: true }
       });
       if (!row) throw this.contentError("error.content.target_unavailable", 409);
-      return;
+      return { type: "technician", technicianProfileId: row.id };
     }
     if (scene === "USER_HOME" && target.type === "service") {
       const row = await transaction.service.findFirst({
         where: {
-          id: target.serviceId,
+          ...("serviceId" in target ? { id: target.serviceId } : { publicId: target.publicId }),
           status: "published",
           deletedAt: null,
           shop: { status: "published", deletedAt: null }
@@ -980,16 +1036,25 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         select: { id: true }
       });
       if (!row) throw this.contentError("error.content.target_unavailable", 409);
-      return;
+      return { type: "service", serviceId: row.id };
     }
     if (scene === "AFFILIATE_HOME_NOTICE" && target.type === "affiliate_announcement") {
       const row = await transaction.officialAnnouncement.findFirst({
         where: { publicId: target.announcementPublicId, deletedAt: null },
-        select: { id: true, affiliateTaskId: true }
+        select: { id: true, affiliateTaskId: true, affiliateTask: { select: { taskCode: true } } }
       });
-      if (!row || row.affiliateTaskId !== target.affiliateTaskId)
-        throw this.contentError("error.content.target_unavailable", 409);
-      return;
+      const matches =
+        row !== null &&
+        ("affiliateTaskId" in target
+          ? row.affiliateTaskId === target.affiliateTaskId
+          : row.affiliateTask?.taskCode === target.taskCode ||
+            (row.affiliateTaskId === null && target.taskCode === null));
+      if (!row || !matches) throw this.contentError("error.content.target_unavailable", 409);
+      return {
+        type: "affiliate_announcement",
+        announcementPublicId: target.announcementPublicId,
+        affiliateTaskId: row.affiliateTaskId
+      };
     }
     throw this.contentError("error.carousel.target_invalid", 409);
   }
@@ -1099,6 +1164,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   private mediaAvailable(media: ReleaseRecord["slides"][number]["mediaAsset"]): boolean {
     return (
       media.entityType === "content_publication_upload" &&
+      media.usageType === "content_publication_public" &&
       media.isActive &&
       media.purgedAt === null &&
       media.deletedAt === null &&
@@ -1125,7 +1191,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   private async createSlides(
     transaction: Prisma.TransactionClient,
     releaseId: number,
-    slides: StoredCarouselSlide[],
+    slides: ResolvedCarouselSlide[],
     now: Date
   ) {
     for (const slide of slides) await this.createSlide(transaction, releaseId, slide, now);
@@ -1134,19 +1200,9 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   private async createSlide(
     transaction: Prisma.TransactionClient,
     releaseId: number,
-    slide: StoredCarouselSlide,
+    slide: ResolvedCarouselSlide,
     now: Date
   ) {
-    const media = await transaction.mediaAsset.findFirstOrThrow({
-      where: {
-        checksumSha256: slide.mediaAssetPublicId,
-        entityType: "content_publication_upload",
-        isActive: true,
-        purgedAt: null,
-        deletedAt: null
-      },
-      select: { id: true }
-    });
     let announcementId: number | null = null;
     if (slide.target.type === "affiliate_announcement") {
       announcementId = (
@@ -1159,7 +1215,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
     const created = await transaction.carouselSlide.create({
       data: {
         releaseId,
-        mediaAssetId: media.id,
+        mediaAssetId: slide.mediaAssetId,
         ...this.slideScalarData(slide, announcementId),
         createdAt: now
       }
@@ -1169,7 +1225,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
     });
   }
 
-  private slideScalarData(slide: StoredCarouselSlide, announcementId?: number | null) {
+  private slideScalarData(slide: ResolvedCarouselSlide, announcementId?: number | null) {
     const targetType =
       slide.target.type === "shop"
         ? CarouselTargetType.SHOP
@@ -1428,6 +1484,23 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
 
   private slotKey(scene: CarouselSceneCode, slot: "draft" | "published" | "scheduled") {
     return `carousel:${scene}:${slot}`;
+  }
+  private compareSearchTargets(
+    left: CarouselTargetSearchItem,
+    right: CarouselTargetSearchItem
+  ): number {
+    const labelOrder = left.label.localeCompare(right.label);
+    if (labelOrder !== 0) return labelOrder;
+    const ranks: Record<CarouselTargetSearchItem["type"], number> = {
+      shop: 0,
+      technician: 1,
+      service: 2,
+      affiliate_announcement: 3,
+      affiliate_task: 4
+    };
+    const typeOrder = ranks[left.type] - ranks[right.type];
+    if (typeOrder !== 0) return typeOrder;
+    return 0;
   }
   private isUniqueConflict(error: unknown) {
     return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";

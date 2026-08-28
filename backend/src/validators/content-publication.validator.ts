@@ -85,24 +85,36 @@ export const carouselSceneParamSchema = z
   .object({ scene: z.enum(["user-home", "affiliate-home-notice"]) })
   .strict();
 
-const userTargetSchema = z.discriminatedUnion("type", [
+const userTargetSchema = z.union([
   z.object({ type: z.literal("shop"), shopId: z.number().int().positive() }).strict(),
+  z.object({ type: z.literal("shop"), publicId: z.string().regex(/^shop[0-9]{10}$/u) }).strict(),
   z
     .object({
       type: z.literal("technician"),
       technicianProfileId: z.number().int().positive()
     })
     .strict(),
-  z.object({ type: z.literal("service"), serviceId: z.number().int().positive() }).strict()
+  z.object({ type: z.literal("technician"), publicId: z.string().regex(/^s[0-9]{10}$/u) }).strict(),
+  z.object({ type: z.literal("service"), serviceId: z.number().int().positive() }).strict(),
+  z.object({ type: z.literal("service"), publicId: z.string().uuid() }).strict()
 ]);
 
-const affiliateTargetSchema = z
-  .object({
-    type: z.literal("affiliate_announcement"),
-    announcementPublicId: z.string().uuid(),
-    affiliateTaskId: z.number().int().positive().nullable().default(null)
-  })
-  .strict();
+const affiliateTargetSchema = z.union([
+  z
+    .object({
+      type: z.literal("affiliate_announcement"),
+      announcementPublicId: z.string().uuid(),
+      affiliateTaskId: z.number().int().positive().nullable().default(null)
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("affiliate_announcement"),
+      announcementPublicId: z.string().uuid(),
+      taskCode: z.string().trim().min(1).max(80).nullable()
+    })
+    .strict()
+]);
 
 export const translationBodySchema = z
   .object({
@@ -115,10 +127,9 @@ export const translationBodySchema = z
   })
   .strict();
 
-const translationsSchema = z
+const replacementTranslationsSchema = z
   .array(translationBodySchema)
-  .min(1)
-  .max(5)
+  .length(5)
   .superRefine((translations, context) => {
     const seenLocales = new Set<string>();
     translations.forEach((translation, index) => {
@@ -154,7 +165,11 @@ const userHomeCreateSlideSchema = z
   .superRefine(addOrderedWindowIssue);
 
 const userHomeUpdateSlideSchema = z
-  .object({ ...slideBaseShape, target: userTargetSchema, translations: translationsSchema })
+  .object({
+    ...slideBaseShape,
+    target: userTargetSchema,
+    translations: replacementTranslationsSchema
+  })
   .strict()
   .superRefine(addOrderedWindowIssue);
 
@@ -168,7 +183,11 @@ const affiliateNoticeCreateSlideSchema = z
   .superRefine(addOrderedWindowIssue);
 
 const affiliateNoticeUpdateSlideSchema = z
-  .object({ ...slideBaseShape, target: affiliateTargetSchema, translations: translationsSchema })
+  .object({
+    ...slideBaseShape,
+    target: affiliateTargetSchema,
+    translations: replacementTranslationsSchema
+  })
   .strict()
   .superRefine(addOrderedWindowIssue);
 
@@ -383,6 +402,15 @@ export const carouselCopyAllBodySchema = z
   })
   .strict();
 
+export const carouselLocaleCopyCommandBodySchema = carouselCopyAllBodySchema
+  .extend({ operation: z.literal("copy_to_all") })
+  .strict();
+
+export const carouselLocaleMutationBodySchema = z.union([
+  carouselLocaleUpdateBodySchema,
+  carouselLocaleCopyCommandBodySchema
+]);
+
 export type CarouselSceneParam = z.infer<typeof carouselSceneParamSchema>;
 export type CarouselDraftBody = z.infer<typeof carouselDraftBodySchema>;
 export type AnnouncementDraftBody = z.infer<typeof announcementDraftBodySchema>;
@@ -399,3 +427,4 @@ export type CarouselTargetSearchQuery =
   | z.infer<typeof affiliateNoticeCarouselTargetSearchQuerySchema>;
 export type CarouselLocaleUpdateBody = z.infer<typeof carouselLocaleUpdateBodySchema>;
 export type CarouselCopyAllBody = z.infer<typeof carouselCopyAllBodySchema>;
+export type CarouselLocaleMutationBody = z.infer<typeof carouselLocaleMutationBodySchema>;
