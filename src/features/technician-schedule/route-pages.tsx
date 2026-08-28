@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
+import { FormalScheduleInventoryPanel } from "../../components/scheduling/FormalScheduleInventoryPanel";
+import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
 import { Button } from "../../components/ui/Button";
 import {
   bookingApi,
@@ -93,6 +95,56 @@ function ErrorPanel({
       <p className="mt-2 break-words text-xs font-bold leading-5 text-[color:var(--client-muted)]">{error}</p>
       <Button className="mt-4" onClick={onRetry}>重新加载</Button>
     </section>
+  );
+}
+
+export function TechnicianScheduleIndexRoutePage() {
+  const { session } = useAuth();
+  const resource = useFormalTechnicianScheduleResource(session, null);
+
+  if (resource.loading) {
+    return <FormalRoutePage backTo="/technician" title="正式排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></FormalRoutePage>;
+  }
+  if (resource.error || !resource.data) {
+    return (
+      <FormalRoutePage backTo="/technician" title="正式排班与预约">
+        <ErrorPanel
+          error={resource.error ?? "error.schedule.profile_not_found"}
+          onRetry={resource.retry}
+          title="正式排班资源加载失败"
+        />
+      </FormalRoutePage>
+    );
+  }
+
+  return (
+    <FormalRoutePage
+      backTo="/technician"
+      subtitle={`${resource.data.profile.displayName} · ${resource.data.profile.shop?.name ?? "--"}`}
+      title="正式排班与预约"
+    >
+      <div className="space-y-5">
+        <section className={panelClass}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-black">我的正式排班</h2>
+              <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">所有时段和状态均来自当前技师身份的正式数据库记录。</p>
+            </div>
+            <Button to="/technician/schedule/new">新建正式排班</Button>
+          </div>
+        </section>
+
+        <FormalScheduleInventoryPanel scope="technician" shopId={resource.data.shopId} />
+
+        <section className={panelClass}>
+          <h2 className="text-base font-black">我的正式预约</h2>
+          <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">订单详情、支付状态和状态记录均由服务端返回。</p>
+          <div className="mt-4">
+            <FormalTechnicianOrdersPanel />
+          </div>
+        </section>
+      </div>
+    </FormalRoutePage>
   );
 }
 

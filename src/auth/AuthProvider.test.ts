@@ -10,12 +10,24 @@ import type { AuthMePayload } from "./rbac";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocked = vi.hoisted(() => {
+  class MockApiClientError extends Error {
+    public constructor(
+      message: string,
+      public readonly code: number,
+      public readonly status: number
+    ) {
+      super(message);
+      this.name = "ApiClientError";
+    }
+  }
+
   const tokenState = {
     accessToken: null as string | null,
     refreshToken: null as string | null
   };
 
   return {
+    ApiClientError: MockApiClientError,
     tokenState,
     authApi: {
       login: vi.fn(),
@@ -41,6 +53,7 @@ const mocked = vi.hoisted(() => {
 
 vi.mock("../api/auth", () => ({ authApi: mocked.authApi }));
 vi.mock("../api/httpClient", () => ({
+  ApiClientError: mocked.ApiClientError,
   clearAuthTokens: mocked.clearAuthTokens,
   getAccessToken: vi.fn(() => mocked.tokenState.accessToken),
   getStoredRefreshToken: vi.fn(() => mocked.tokenState.refreshToken),
@@ -525,6 +538,61 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
     expect(observedAuthenticatedStates[0]).toBe(false);
     expect(auth.session).toBeNull();
+  });
+
+  it("keeps a refresh-backed session private and retryable during a transient restore outage", async () => {
+    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    mocked.tokenState.refreshToken = "stored-retry-refresh";
+    mocked.authApi.refresh.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await renderProvider();
+    await waitFor(() => expect(auth.isRestoring).toBe(false));
+
+    expect(auth.session).toBeNull();
+    expect(auth.restoreError).toBe("error.auth.service_unavailable");
+    expect(mocked.tokenState.refreshToken).toBe("stored-retry-refresh");
+    expect(mocked.clearAuthTokens).not.toHaveBeenCalled();
+
+    mocked.authApi.refresh.mockImplementationOnce(async () => {
+      mocked.tokenState.accessToken = "restored-after-retry-access";
+      return { accessToken: "restored-after-retry-access", expiresIn: 900 };
+    });
+    mocked.authApi.me.mockResolvedValue(customerMe);
+
+    await act(async () => auth.retrySessionRestore());
+    await waitFor(() => expect(auth.session?.id).toBe(customerMe.id));
+
+    expect(auth.restoreError).toBeNull();
+    expect(auth.isAuthenticated).toBe(true);
+  });
+
+  it("treats a missing refresh route during deployment recovery as retryable instead of expiring the session", async () => {
+    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    mocked.tokenState.refreshToken = "stored-deployment-refresh";
+    mocked.authApi.refresh.mockRejectedValueOnce(
+      new mocked.ApiClientError("error.resource_not_found", 404, 404)
+    );
+
+    await renderProvider();
+    await waitFor(() => expect(auth.isRestoring).toBe(false));
+
+    expect(auth.restoreError).toBe("error.auth.service_unavailable");
+    expect(mocked.tokenState.refreshToken).toBe("stored-deployment-refresh");
+    expect(mocked.clearAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("fails closed with retry for an unclassified restore error", async () => {
+    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    mocked.tokenState.refreshToken = "stored-unknown-error-refresh";
+    mocked.authApi.refresh.mockRejectedValueOnce(new Error("proxy response unavailable"));
+
+    await renderProvider();
+    await waitFor(() => expect(auth.isRestoring).toBe(false));
+
+    expect(auth.session).toBeNull();
+    expect(auth.restoreError).toBe("error.auth.service_unavailable");
+    expect(mocked.tokenState.refreshToken).toBe("stored-unknown-error-refresh");
+    expect(mocked.clearAuthTokens).not.toHaveBeenCalled();
   });
 
   it("preserves Google as the login method while restoring a refresh-backed session", async () => {

@@ -72,11 +72,20 @@ vi.mock("./FormalScheduleRangeEditor", () => ({
     </button>
   )
 }));
+vi.mock("../../components/scheduling/FormalScheduleInventoryPanel", () => ({
+  FormalScheduleInventoryPanel: ({ scope, shopId }: { scope: string; shopId: number }) => (
+    <section data-testid="formal-schedule-index-inventory">{scope}:{shopId}</section>
+  )
+}));
+vi.mock("../../components/technician/FormalTechnicianOrdersPanel", () => ({
+  FormalTechnicianOrdersPanel: () => <section data-testid="formal-schedule-index-orders">正式订单库存</section>
+}));
 
 import {
   TechnicianOrderDetailRoutePage,
   TechnicianScheduleDetailRoutePage,
   TechnicianScheduleEditorRoutePage,
+  TechnicianScheduleIndexRoutePage,
   TechnicianScheduleTransferRoutePage
 } from "./route-pages";
 
@@ -229,12 +238,12 @@ function TestRoutes() {
     <>
       <LocationProbe />
       <Routes>
+        <Route path="/technician/schedule" element={<TechnicianScheduleIndexRoutePage />} />
         <Route path="/technician/schedule/new" element={<TechnicianScheduleEditorRoutePage />} />
         <Route path="/technician/schedule/events/:eventId/edit" element={<TechnicianScheduleEditorRoutePage />} />
         <Route path="/technician/schedule/events/:eventId" element={<TechnicianScheduleDetailRoutePage />} />
         <Route path="/technician/schedule/shifts/:shiftId/transfer" element={<TechnicianScheduleTransferRoutePage />} />
         <Route path="/technician/orders/:orderId" element={<TechnicianOrderDetailRoutePage />} />
-        <Route path="/technician/schedule" element={<div>正式排班首页</div>} />
       </Routes>
     </>
   );
@@ -296,6 +305,24 @@ describe("formal technician schedule routes", () => {
       </MemoryRouter>
     ));
   }
+
+  it("renders the main technician schedule route from formal resources only", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: { profile, services: [service], shopId: 11, slot: null },
+      error: null,
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+
+    await render("/technician/schedule");
+
+    expect(container.textContent).toContain("正式排班与预约");
+    expect(container.textContent).toContain("正式技师");
+    expect(container.textContent).toContain("正式店铺");
+    expect(container.querySelector('[data-testid="formal-schedule-index-inventory"]')?.textContent).toBe("technician:11");
+    expect(container.querySelector('[data-testid="formal-schedule-index-orders"]')).not.toBeNull();
+    expect(mocks.scheduleResource).toHaveBeenCalledWith(technicianSession, null);
+  });
 
   it("renders a numeric formal schedule detail", async () => {
     await render("/technician/schedule/events/17");

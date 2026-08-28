@@ -81,6 +81,7 @@ import {
 import {
   TechnicianScheduleDetailRoutePage,
   TechnicianScheduleEditorRoutePage,
+  TechnicianScheduleIndexRoutePage,
   TechnicianOrderDetailRoutePage,
   TechnicianScheduleTransferRoutePage
 } from "./features/technician-schedule/route-pages";
@@ -818,7 +819,17 @@ function RequirePortalAuth({
   portal: PortalScope;
   children: ReactElement;
 }) {
-  const { session, isAuthenticated, isRestoring, canAccess, canEnterPortal, hasRememberedPortalAuthorization, switchPortal } = useAuth();
+  const {
+    session,
+    isAuthenticated,
+    isRestoring,
+    restoreError,
+    retrySessionRestore,
+    canAccess,
+    canEnterPortal,
+    hasRememberedPortalAuthorization,
+    switchPortal
+  } = useAuth();
   const location = useLocation();
   const [isPortalRestorePending, setIsPortalRestorePending] = useState(false);
   const [failedPortalAlignmentKey, setFailedPortalAlignmentKey] = useState<string | null>(null);
@@ -849,7 +860,7 @@ function RequirePortalAuth({
   const shouldSwitchPortal = (!hasAccess && canRestoreRememberedPortal) || needsPortalAlignment;
 
   useEffect(() => {
-    if (isRestoring || !shouldSwitchPortal || isPortalRestorePending || portalAlignmentFailed) {
+    if (restoreError || isRestoring || !shouldSwitchPortal || isPortalRestorePending || portalAlignmentFailed) {
       return;
     }
 
@@ -877,9 +888,28 @@ function RequirePortalAuth({
     portal,
     portalAlignmentFailed,
     portalAlignmentKey,
+    restoreError,
     shouldSwitchPortal,
     switchPortal
   ]);
+
+  if (restoreError && !isAuthenticated) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-paper px-6 text-center text-ink">
+        <section className="max-w-md rounded-lg border border-line bg-white p-6 shadow-panel">
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-ink/45">503</p>
+          <h1 className="mt-3 text-2xl font-black">身份服务暂时不可用，请稍后重试。</h1>
+          <button
+            className="mt-5 rounded-full bg-ink px-5 py-3 text-sm font-black text-white"
+            onClick={retrySessionRestore}
+            type="button"
+          >
+            重新加载
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   if (isRestoring || isPortalRestorePending || (shouldSwitchPortal && !portalAlignmentFailed)) {
     return null;
@@ -1280,6 +1310,7 @@ export default function App() {
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
 
               <Route path="/technician" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
+              <Route path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)} />
               <Route path="/technician/schedule/new" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
               <Route path="/technician/schedule/events/:eventId/edit" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
               <Route path="/technician/schedule/events/:eventId" element={protect("technician", <TechnicianScheduleDetailRoutePage />)} />
