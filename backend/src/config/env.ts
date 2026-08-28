@@ -1,5 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
+import { assertContentMediaStorageIsolationSync } from "../services/content-media.storage";
 
 if (process.env.ENV_FILE) {
   loadDotenv({ path: process.env.ENV_FILE });
@@ -159,6 +160,19 @@ const envSchema = z
     AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
   })
   .superRefine((value, context) => {
+    try {
+      assertContentMediaStorageIsolationSync(
+        value.CONTENT_MEDIA_STORAGE_DIR,
+        value.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
+      );
+    } catch (error) {
+      addProductionIssue(
+        context,
+        "CONTENT_MEDIA_STORAGE_DIR",
+        error instanceof Error ? error.message : "Content media storage isolation is invalid"
+      );
+    }
+
     if (value.NODE_ENV !== "production") {
       return;
     }

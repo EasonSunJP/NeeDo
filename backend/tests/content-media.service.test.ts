@@ -1,8 +1,13 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ContentMediaRepository } from "../src/repositories/content-media.repository";
-import { ContentMediaFileStorage } from "../src/services/content-media.storage";
+import { logger } from "../src/config/logger";
+import {
+  ContentMediaFileStorage,
+  type ContentMediaMimeType,
+  type StoredContentMedia
+} from "../src/services/content-media.storage";
 import { ContentMediaService } from "../src/services/content-media.service";
 
 const validPng = Buffer.concat([
@@ -30,6 +35,8 @@ const actor = {
 };
 const context = { ip: "127.0.0.1", userAgent: "content-media-test" };
 const now = new Date("2026-08-29T05:00:00.000Z");
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 describe("ContentMediaFileStorage", () => {
   it.each([
@@ -94,6 +101,24 @@ describe("ContentMediaFileStorage", () => {
     });
     expect(first.created).toBe(true);
   });
+
+  it("fails closed when the content root canonically overlaps protected identity media", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "needo-content-media-isolation-"));
+    const identityDirectory = join(parent, "identity");
+    const contentAlias = join(parent, "content-alias");
+    await new ContentMediaFileStorage(identityDirectory).save({
+      bytes: validPng,
+      mimeType: "image/png"
+    });
+    await symlink(identityDirectory, contentAlias);
+
+    expect(
+      () =>
+        new ContentMediaFileStorage(contentAlias, {
+          identityStorageDirectory: identityDirectory
+        })
+    ).toThrow(/must not overlap/u);
+  });
 });
 
 describe("ContentMediaService", () => {
@@ -109,13 +134,18 @@ describe("ContentMediaService", () => {
         checksumSha256: input.checksumSha256
       }))
     };
+    const stored = {
+      fileKey: `${"a".repeat(64)}.png`,
+      checksumSha256: "a".repeat(64),
+      mimeType: "image/png" as const,
+      created: true
+    };
     const storage = {
-      save: jest.fn(async () => ({
-        fileKey: `${"a".repeat(64)}.png`,
-        checksumSha256: "a".repeat(64),
-        mimeType: "image/png" as const,
-        created: true
-      })),
+      save: jest.fn(async () => stored),
+      withChecksumLock: async <T>(
+        _input: { bytes: Buffer; mimeType: ContentMediaMimeType },
+        operation: (locked: StoredContentMedia) => Promise<T>
+      ): Promise<T> => operation(stored),
       read: jest.fn(),
       delete: jest.fn()
     };
@@ -152,13 +182,18 @@ describe("ContentMediaService", () => {
         throw new Error("database unavailable");
       })
     };
+    const stored = {
+      fileKey: `${"b".repeat(64)}.webp`,
+      checksumSha256: "b".repeat(64),
+      mimeType: "image/webp" as const,
+      created: true
+    };
     const storage = {
-      save: jest.fn(async () => ({
-        fileKey: `${"b".repeat(64)}.webp`,
-        checksumSha256: "b".repeat(64),
-        mimeType: "image/webp" as const,
-        created: true
-      })),
+      save: jest.fn(async () => stored),
+      withChecksumLock: async <T>(
+        _input: { bytes: Buffer; mimeType: ContentMediaMimeType },
+        operation: (locked: StoredContentMedia) => Promise<T>
+      ): Promise<T> => operation(stored),
       read: jest.fn(),
       delete: jest.fn(async () => undefined)
     };
@@ -181,13 +216,18 @@ describe("ContentMediaService", () => {
         throw new Error("database unavailable");
       })
     };
+    const stored = {
+      fileKey: `${"c".repeat(64)}.jpg`,
+      checksumSha256: "c".repeat(64),
+      mimeType: "image/jpeg" as const,
+      created: false
+    };
     const storage = {
-      save: jest.fn(async () => ({
-        fileKey: `${"c".repeat(64)}.jpg`,
-        checksumSha256: "c".repeat(64),
-        mimeType: "image/jpeg" as const,
-        created: false
-      })),
+      save: jest.fn(async () => stored),
+      withChecksumLock: async <T>(
+        _input: { bytes: Buffer; mimeType: ContentMediaMimeType },
+        operation: (locked: StoredContentMedia) => Promise<T>
+      ): Promise<T> => operation(stored),
       read: jest.fn(),
       delete: jest.fn()
     };
@@ -202,6 +242,93 @@ describe("ContentMediaService", () => {
       })
     ).rejects.toThrow("database unavailable");
     expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("serializes same-checksum persistence across storage instances so a failure cannot delete a committed blob", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "needo-content-media-race-"));
+    const firstStorage = new ContentMediaFileStorage(directory, {
+      lockRetryMs: 5,
+      lockTimeoutMs: 2_000
+    });
+    const secondStorage = new ContentMediaFileStorage(directory, {
+      lockRetryMs: 5,
+      lockTimeoutMs: 2_000
+    });
+    const persistenceError = new Error("first persistence failed");
+    const firstRepository = {
+      create: jest.fn(async () => {
+        await wait(250);
+        throw persistenceError;
+      })
+    };
+    const secondRepository = {
+      create: jest.fn(async (input) => ({
+        publicId: input.checksumSha256,
+        mediaAssetId: 202,
+        url: input.url,
+        mimeType: input.mimeType,
+        width: null,
+        height: null,
+        checksumSha256: input.checksumSha256
+      }))
+    };
+    const firstService = new ContentMediaService(firstRepository, firstStorage);
+    const secondService = new ContentMediaService(secondRepository, secondStorage);
+
+    const firstOutcome = firstService
+      .upload(actor, context, {
+        bytes: validPng,
+        mimeType: "image/png",
+        altText: null,
+        now
+      })
+      .catch((error: unknown) => error);
+    await wait(25);
+    const secondResult = await secondService.upload({ ...actor, userId: 8 }, context, {
+      bytes: validPng,
+      mimeType: "image/png",
+      altText: null,
+      now
+    });
+
+    await expect(firstOutcome).resolves.toBe(persistenceError);
+    await expect(secondStorage.read(secondResult.url.split("/").at(-1)!)).resolves.toEqual(
+      validPng
+    );
+    expect(firstRepository.create).toHaveBeenCalledTimes(1);
+    expect(secondRepository.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the persistence error when compensating file cleanup also fails", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "needo-content-media-cleanup-"));
+    const persistenceError = new Error("database transaction failed");
+    const storage = new ContentMediaFileStorage(directory);
+    jest.spyOn(storage, "delete").mockRejectedValueOnce(new Error("private path cleanup failed"));
+    const repository = {
+      create: jest.fn(async () => {
+        throw persistenceError;
+      })
+    };
+    const service = new ContentMediaService(repository, storage);
+    const warning = jest.spyOn(logger, "warn").mockImplementation(() => undefined);
+
+    await expect(
+      service.upload(actor, context, {
+        bytes: validPng,
+        mimeType: "image/png",
+        altText: null,
+        now
+      })
+    ).rejects.toBe(persistenceError);
+    expect(warning).toHaveBeenCalledWith(
+      {
+        cleanupErrorName: "Error",
+        publicId: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      },
+      "Content media compensation cleanup failed"
+    );
+    expect(JSON.stringify(warning.mock.calls)).not.toContain("private path cleanup failed");
+    warning.mockRestore();
   });
 });
 

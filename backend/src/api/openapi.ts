@@ -8697,6 +8697,62 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         )
       })
     },
+    [`${config.API_PREFIX}/backoffice/content/media`]: {
+      post: {
+        tags: ["Content Publication"],
+        summary: "Upload immutable public publication media",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "alt_text",
+            in: "query",
+            required: false,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
+            "image/png": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
+            "image/webp": { schema: { type: "string", format: "binary", maxLength: 8388608 } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Public content media created", {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "publicId",
+              "mediaAssetId",
+              "url",
+              "mimeType",
+              "width",
+              "height",
+              "checksumSha256"
+            ],
+            properties: {
+              publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              mediaAssetId: { type: "integer", minimum: 1 },
+              url: {
+                type: "string",
+                pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$"
+              },
+              mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+              width: { type: "null" },
+              height: { type: "null" },
+              checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
+            }
+          }),
+          "400": { description: "error.content.media_invalid — invalid query or media bytes" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "error.forbidden — missing content media upload permission" },
+          "409": { description: "error.content.lock_conflict — checksum lock acquisition timed out" },
+          "413": { description: "error.content.media_too_large — upload exceeds 8 MiB" },
+          "415": { description: "error.content.media_invalid — unsupported media or encoding" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/identity-applications/{id}/media`]: {
       post: identityWorkflowOperation("Upload protected application JPEG or PNG media", {
         parameters: [

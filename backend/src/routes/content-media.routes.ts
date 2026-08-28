@@ -27,17 +27,33 @@ const uploadQuerySchema = z
   .strict("error.content.media_invalid");
 
 const mapRawBodyError: ErrorRequestHandler = (error, _request, _response, next): void => {
+  const status =
+    typeof error === "object" && error !== null
+      ? Number("statusCode" in error ? error.statusCode : "status" in error ? error.status : NaN)
+      : NaN;
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "type" in error &&
-    error.type === "entity.too.large"
+    status === 413 ||
+    (typeof error === "object" &&
+      error !== null &&
+      "type" in error &&
+      error.type === "entity.too.large")
   ) {
     next(
       new AppError({
         code: ERROR_CODES.VALIDATION,
         message: "error.content.media_too_large",
         statusCode: 413,
+        cause: error
+      })
+    );
+    return;
+  }
+  if (!(error instanceof AppError) && status >= 400 && status < 500) {
+    next(
+      new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.content.media_invalid",
+        statusCode: status,
         cause: error
       })
     );
@@ -56,7 +72,9 @@ export const createContentMediaRoutes = (
   );
   const storage =
     dependencies.contentMediaStorage ??
-    new ContentMediaFileStorage(config.CONTENT_MEDIA_STORAGE_DIR);
+    new ContentMediaFileStorage(config.CONTENT_MEDIA_STORAGE_DIR, {
+      identityStorageDirectory: config.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
+    });
   const service =
     dependencies.contentMediaService ??
     new ContentMediaService(

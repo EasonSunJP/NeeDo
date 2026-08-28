@@ -1,3 +1,4 @@
+import { logger } from "../config/logger";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { ContentMediaMimeType, ContentMediaStoragePort } from "./content-media.storage";
 
@@ -45,24 +46,39 @@ export class ContentMediaService {
     context: AuthRequestContext,
     input: UploadContentMediaInput
   ): Promise<ContentMediaProjection> {
-    const stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
-    try {
-      return await this.repository.create({
-        entityType: "content_publication_upload",
-        entityId: actor.userId,
-        ownerUserId: actor.userId,
-        url: `/media/content/${stored.fileKey}`,
-        mimeType: stored.mimeType,
-        altText: input.altText,
-        checksumSha256: stored.checksumSha256,
-        createdAt: input.now,
-        context
-      });
-    } catch (error) {
-      if (stored.created) {
-        await this.storage.delete(stored.fileKey);
+    return this.storage.withChecksumLock(
+      { bytes: input.bytes, mimeType: input.mimeType },
+      async (stored) => {
+        try {
+          return await this.repository.create({
+            entityType: "content_publication_upload",
+            entityId: actor.userId,
+            ownerUserId: actor.userId,
+            url: `/media/content/${stored.fileKey}`,
+            mimeType: stored.mimeType,
+            altText: input.altText,
+            checksumSha256: stored.checksumSha256,
+            createdAt: input.now,
+            context
+          });
+        } catch (persistenceError) {
+          if (stored.created) {
+            try {
+              await this.storage.delete(stored.fileKey);
+            } catch (cleanupError) {
+              logger.warn(
+                {
+                  cleanupErrorName:
+                    cleanupError instanceof Error ? cleanupError.name : typeof cleanupError,
+                  publicId: stored.checksumSha256
+                },
+                "Content media compensation cleanup failed"
+              );
+            }
+          }
+          throw persistenceError;
+        }
       }
-      throw error;
-    }
+    );
   }
 }

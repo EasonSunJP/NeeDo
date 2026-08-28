@@ -46,7 +46,10 @@ import type { IdentityApplicationMediaService } from "./services/identity-applic
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
 import type { ContentMediaRepositoryPort } from "./services/content-media.service";
 import type { ContentMediaService } from "./services/content-media.service";
-import type { ContentMediaStoragePort } from "./services/content-media.storage";
+import {
+  assertContentMediaStorageIsolationSync,
+  type ContentMediaStoragePort
+} from "./services/content-media.storage";
 import type { AffiliateIdentityActivationRepositoryPort } from "./services/affiliate-identity-activation.service";
 import type { AffiliateIdentityActivationService } from "./services/affiliate-identity-activation.service";
 import type { AffiliateWithdrawalEligibilityRepositoryPort } from "./services/affiliate-withdrawal-eligibility.service";
@@ -208,6 +211,10 @@ export const createApp = (
   config: AppConfig = env,
   dependencies: AppDependencies = createDefaultAppDependencies()
 ): Express => {
+  assertContentMediaStorageIsolationSync(
+    config.CONTENT_MEDIA_STORAGE_DIR,
+    config.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
+  );
   const app = express();
   const apiRouter = Router();
   const metricsService = dependencies.metricsService ?? new ObservabilityMetricsService(config);

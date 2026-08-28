@@ -80,6 +80,17 @@ const createFixture = async (hasPermission = true) => {
 };
 
 describe("content media HTTP API", () => {
+  it("fails app composition when public and protected media roots overlap", async () => {
+    const fixture = await createFixture();
+    expect(() =>
+      createApp({
+        ...env,
+        CONTENT_MEDIA_STORAGE_DIR: fixture.directory,
+        IDENTITY_APPLICATION_MEDIA_STORAGE_DIR: fixture.directory
+      })
+    ).toThrow(/must not overlap/u);
+  });
+
   it("authenticates and authorizes before parsing raw upload bytes", async () => {
     const fixture = await createFixture(false);
     const response = await request(fixture.app)
@@ -161,6 +172,21 @@ describe("content media HTTP API", () => {
       .send(Buffer.alloc(8 * 1024 * 1024 + 1))
       .expect(413)
       .expect((response) => expect(response.body.message).toBe("error.content.media_too_large"));
+  });
+
+  it.each([
+    ["unsupported content encoding", "compress", validPng, 415],
+    ["invalid compressed bytes", "gzip", validPng, 400]
+  ])("normalizes %s as invalid content media", async (_name, encoding, bytes, status) => {
+    const fixture = await createFixture();
+    await request(fixture.app)
+      .post("/api/v1/backoffice/content/media")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .set("Content-Type", "image/png")
+      .set("Content-Encoding", encoding)
+      .send(bytes)
+      .expect(status)
+      .expect((response) => expect(response.body.message).toBe("error.content.media_invalid"));
   });
 
   it("delivers only strict public hash paths with immutable headers", async () => {

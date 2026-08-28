@@ -146,6 +146,7 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/identity-applications/{id}/merchant-contract-acceptance",
       "/api/v1/identity-applications/{id}/media",
       "/api/v1/identity-applications/{id}/media/{mediaId}",
+      "/api/v1/backoffice/content/media",
       "/api/v1/identity-applications/{id}/submit",
       "/api/v1/identity-applications/{id}/withdraw",
       "/api/v1/contracts/affiliate/current",
@@ -167,6 +168,57 @@ describe("GET /api/v1/openapi.json", () => {
     expect(
       response.body.paths["/api/v1/identity-applications/{id}/media"].post.requestBody.content
     ).toHaveProperty("image/jpeg");
+    const contentMediaUpload = response.body.paths["/api/v1/backoffice/content/media"].post;
+    expect(contentMediaUpload.security).toEqual([{ bearerAuth: [] }]);
+    expect(contentMediaUpload.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "alt_text",
+          in: "query",
+          required: false,
+          schema: expect.objectContaining({ minLength: 1, maxLength: 255 })
+        })
+      ])
+    );
+    expect(contentMediaUpload.requestBody.required).toBe(true);
+    expect(Object.keys(contentMediaUpload.requestBody.content).sort()).toEqual([
+      "image/jpeg",
+      "image/png",
+      "image/webp"
+    ]);
+    expect(contentMediaUpload.responses["201"].content["application/json"].schema.properties.data)
+      .toMatchObject({
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "mediaAssetId",
+          "url",
+          "mimeType",
+          "width",
+          "height",
+          "checksumSha256"
+        ],
+        properties: {
+          publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          mediaAssetId: { type: "integer", minimum: 1 },
+          url: { type: "string", pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$" },
+          mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+          width: { type: "null" },
+          height: { type: "null" },
+          checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
+        }
+      });
+    expect(contentMediaUpload.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.objectContaining({ description: expect.stringContaining("media_invalid") }),
+        "401": expect.objectContaining({ description: expect.stringContaining("token_invalid") }),
+        "403": expect.objectContaining({ description: expect.stringContaining("forbidden") }),
+        "409": expect.objectContaining({ description: expect.stringContaining("lock_conflict") }),
+        "413": expect.objectContaining({ description: expect.stringContaining("media_too_large") }),
+        "415": expect.objectContaining({ description: expect.stringContaining("media_invalid") })
+      })
+    );
     expect(
       response.body.paths["/api/v1/contracts/acceptances/{receiptId}/receipt"].get.security
     ).toEqual([{ bearerAuth: [] }]);
