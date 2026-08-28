@@ -42,7 +42,13 @@ const payRunInclude = {
     orderBy: [{ id: "asc" }],
     include: {
       shop: { select: { name: true } },
-      technicianProfile: { select: { displayName: true, userId: true } },
+      technicianProfile: {
+        select: {
+          displayName: true,
+          userId: true,
+          user: { select: { needoId: true } }
+        }
+      },
       lines: {
         where: { deletedAt: null },
         orderBy: [{ id: "asc" }]
@@ -57,7 +63,13 @@ const payRunInclude = {
 
 const payslipInclude = {
   shop: { select: { name: true } },
-  technicianProfile: { select: { displayName: true, userId: true } },
+  technicianProfile: {
+    select: {
+      displayName: true,
+      userId: true,
+      user: { select: { needoId: true } }
+    }
+  },
   lines: {
     where: { deletedAt: null },
     orderBy: [{ id: "asc" }]
@@ -782,6 +794,7 @@ export class PayrollRepository implements PayrollRepositoryPort {
       technicianProfileId: record.technicianProfileId,
       technicianName: record.technicianProfile.displayName,
       technicianUserId: record.technicianUserId ?? record.technicianProfile.userId,
+      technicianNeedoId: record.technicianProfile.user.needoId,
       compensationProfileId: record.compensationProfileId,
       periodStart: record.periodStart.toISOString(),
       periodEnd: record.periodEnd.toISOString(),

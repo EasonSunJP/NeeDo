@@ -2985,6 +2985,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "payRunId",
           "shopId",
           "technicianProfileId",
+          "technicianNeedoId",
           "status",
           "netPayJpy",
           "lines",
@@ -2998,6 +2999,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           technicianProfileId: { type: "integer" },
           technicianName: { type: "string" },
           technicianUserId: { type: ["integer", "null"] },
+          technicianNeedoId: {
+            type: "string",
+            pattern: "^(u|s|b|o)\\d{10}$",
+            description: "Public NeeDoID for the employee linked to this payslip"
+          },
           compensationProfileId: { type: ["integer", "null"] },
           periodStart: { type: "string", format: "date-time" },
           periodEnd: { type: "string", format: "date-time" },

@@ -134,6 +134,7 @@ export interface PayslipPayload {
   technicianProfileId: number;
   technicianName: string;
   technicianUserId: number | null;
+  technicianNeedoId?: string | null;
   compensationProfileId: number | null;
   periodStart: string;
   periodEnd: string;
@@ -1314,6 +1315,7 @@ export class PayrollService {
       technicianProfileId: group.technicianProfileId,
       technicianName: group.technicianName,
       technicianUserId: group.technicianUserId,
+      technicianNeedoId: null,
       compensationProfileId: group.compensationProfileId,
       periodStart,
       periodEnd,

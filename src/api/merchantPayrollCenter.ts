@@ -85,6 +85,7 @@ export interface PayslipPayload {
   technicianProfileId: number;
   technicianName: string;
   technicianUserId: number | null;
+  technicianNeedoId?: string | null;
   compensationProfileId: number | null;
   periodStart: string;
   periodEnd: string;
