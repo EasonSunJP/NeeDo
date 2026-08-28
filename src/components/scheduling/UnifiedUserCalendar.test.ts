@@ -83,6 +83,15 @@ describe("UnifiedUserCalendar event editor page", () => {
 });
 
 describe("UnifiedUserCalendar multi-day interactions", () => {
+  it("has an explicit formal-only user boundary", () => {
+    expect(source).toContain("formalOnly = false");
+    expect(source).toContain("loadCustomerOrderWindow");
+    expect(source).toContain("formalOnly ? [] : loadLocalCalendarEvents");
+    expect(source).toContain("formalOnly ? [] : getLocalCalendarEvents");
+    expect(source).toContain("if (!formalOnly) {");
+    expect(source).toContain("onCreate={formalOnly ? undefined : openCreate}");
+  });
+
   it("loads persisted orders and schedule slots without the order mock", () => {
     expect(source).not.toContain('import { orders } from "../../data/mock"');
     expect(source).toContain("bookingApi.listOrders");
@@ -95,7 +104,7 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(source).toContain("onCreate(draftRange.date, minutesToTime(draftRange.start), minutesToTime(draftRange.end));");
     expect(source).toContain('title="新建行程"');
     expect(source).toContain("compact={useCompactDraftAction}");
-    expect(source).toContain("onCreate={openCreate}");
+    expect(source).toContain("onCreate={formalOnly ? undefined : openCreate}");
     expect(source).not.toContain("onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}");
   });
 
@@ -113,7 +122,7 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
       source.indexOf("</UnifiedCalendarSurface>")
     );
 
-    expect(allEventsSource).toContain("const localCalendarEvents = getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);");
+    expect(allEventsSource).toContain("const localCalendarEvents = formalOnly ? [] : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);");
     expect(allEventsSource).toContain("return [");
     expect(allEventsSource).toContain("...localCalendarEvents,");
     expect(allEventsSource).toContain("...neeDoEvents");
