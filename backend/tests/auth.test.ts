@@ -1703,7 +1703,7 @@ describe("verified email registration and formal password authentication", () =>
       });
   });
 
-  it("keeps the default platform identity when a non-default customer identity has no public identifier", async () => {
+  it("exposes and switches to a platform account customer identity with the shared NeeDo ID", async () => {
     const fixture = await createAuthFixture();
     (fixture.user.identities as Array<Record<string, unknown>>).push({
       id: 12,
@@ -1721,10 +1721,11 @@ describe("verified email registration and formal password authentication", () =>
       .post("/api/v1/auth/login")
       .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
       .expect(200);
+    const { accessToken, refreshToken } = loginResponse.body.data;
 
     await request(fixture.app)
       .get("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .set("Authorization", `Bearer ${accessToken}`)
       .expect(200)
       .expect((response) => {
         expect(response.body.data.currentIdentity).toMatchObject({
@@ -1734,9 +1735,23 @@ describe("verified email registration and formal password authentication", () =>
         });
         expect(response.body.data.identities).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ id: 10, type: "platform", publicId: "needo1234567890" })
+            expect.objectContaining({ id: 10, type: "platform", publicId: "needo1234567890" }),
+            expect.objectContaining({ id: 12, type: "customer", publicId: "needo1234567890" })
           ])
         );
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/switch-identity")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ refreshToken, identityId: 12 })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.me.currentIdentity).toMatchObject({
+          id: 12,
+          type: "customer",
+          publicId: "needo1234567890"
+        });
       });
   });
 
