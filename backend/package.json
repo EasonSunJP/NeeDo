@@ -65,6 +65,7 @@
     "express-rate-limit": "^7.4.1",
     "google-auth-library": "^11.0.2",
     "helmet": "^8.0.0",
+    "mariadb": "3.4.5",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",
     "redis": "^5.12.1",
