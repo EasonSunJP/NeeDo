@@ -1,10 +1,7 @@
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 
-const assert: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
     throw new Error(message);
   }
@@ -17,14 +14,11 @@ const main = async (): Promise<void> => {
   loadDotenv({ path: envFile });
 
   const apply = process.argv.includes("--apply");
-  if (apply) {
-    throw new Error("Dry-run safety gate refused database writes.");
-  }
 
   const [
     { getSimulationSeedConfig },
     { prisma, disconnectPrisma },
-    { loadFutureOperationsCohort, inspectFutureOperationsWindow },
+    { applyFutureOperationsPlan, loadFutureOperationsCohort, inspectFutureOperationsWindow },
     {
       buildFutureSixMonthOperationsPlan,
       summarizeFutureOperationsPlan,
@@ -43,7 +37,10 @@ const main = async (): Promise<void> => {
     const plan = buildFutureSixMonthOperationsPlan(cohort);
     const validation = validateFutureOperationsPlan(plan);
     const inspection = await inspectFutureOperationsWindow(prisma, plan);
-    const mode = apply ? "apply" : "dry-run";
+    const summary = summarizeFutureOperationsPlan(plan);
+    const result = apply
+      ? await applyFutureOperationsPlan(prisma, plan)
+      : { mode: "dry-run" as const, summary };
     console.log(
       JSON.stringify(
         {
@@ -55,20 +52,20 @@ const main = async (): Promise<void> => {
             shops: new Set(cohort.technicians.map((technician) => technician.shopId)).size
           },
           inspection,
-          summary: summarizeFutureOperationsPlan(plan),
+          result,
+          summary,
           validation
         },
         null,
         2
       )
     );
-    assert(mode === "dry-run", "Unexpected future operations command mode.");
   } finally {
     await disconnectPrisma();
   }
 };
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "Future operations dry-run failed.");
+  console.error(error instanceof Error ? error.message : "Future operations command failed.");
   process.exitCode = 1;
 });

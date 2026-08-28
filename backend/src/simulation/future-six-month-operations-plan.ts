@@ -184,11 +184,10 @@ const buildHistories = (booking: FutureBookingPlan): FutureHistoryPlan[] => {
     orderNo: booking.orderNo,
     fromStatus: "PENDING",
     toStatus: booking.status,
-    actorUserId:
-      booking.status === "CANCELLED" ? booking.customerUserId : booking.shopOwnerUserId,
+    actorUserId: booking.status === "CANCELLED" ? booking.customerUserId : booking.shopOwnerUserId,
     reason:
       booking.status === "CANCELLED"
-        ? booking.cancelReason ?? "お客様の予定変更によりキャンセルしました。"
+        ? (booking.cancelReason ?? "お客様の予定変更によりキャンセルしました。")
         : "店舗が予約内容を確認しました。",
     createdAt: new Date(new Date(booking.createdAt).getTime() + 30 * 60_000).toISOString()
   });
@@ -201,7 +200,9 @@ export const buildFutureSixMonthOperationsPlan = (
   if (cohort.technicians.length !== 100 || cohort.customers.length !== 100) {
     throw new Error("Future operations require exactly 100 technicians and 100 customers.");
   }
-  if (new Set(cohort.technicians.map((technician) => technician.technicianProfileId)).size !== 100) {
+  if (
+    new Set(cohort.technicians.map((technician) => technician.technicianProfileId)).size !== 100
+  ) {
     throw new Error("Future operations require 100 unique technician profiles.");
   }
   if (new Set(cohort.customers.map((customer) => customer.userId)).size !== 100) {
@@ -240,9 +241,7 @@ export const buildFutureSixMonthOperationsPlan = (
       for (const [slotIndex, hour] of hours.entries()) {
         slotSequence += 1;
         const startsAtDate = atTokyoHour(dateKey, hour);
-        const endsAtDate = new Date(
-          startsAtDate.getTime() + technician.durationMinutes * 60_000
-        );
+        const endsAtDate = new Date(startsAtDate.getTime() + technician.durationMinutes * 60_000);
         const startsAt = startsAtDate.toISOString();
         const endsAt = endsAtDate.toISOString();
         const slotKey = `future-slot-${String(slotSequence).padStart(6, "0")}`;
@@ -339,9 +338,7 @@ export const buildFutureSixMonthOperationsPlan = (
           endsAt,
           createdAt,
           cancelReason:
-            bookingStatus === "CANCELLED"
-              ? "お客様の予定変更によりキャンセルしました。"
-              : null
+            bookingStatus === "CANCELLED" ? "お客様の予定変更によりキャンセルしました。" : null
         };
         bookings.push(booking);
       }
@@ -372,8 +369,7 @@ export const validateFutureOperationsPlan = (
       slot.serviceId !== booking.serviceId ||
       slot.startsAt !== booking.startsAt ||
       slot.endsAt !== booking.endsAt ||
-      (booking.status === "CANCELLED" &&
-        (slot.status !== "AVAILABLE" || slot.bookedCount !== 0)) ||
+      (booking.status === "CANCELLED" && (slot.status !== "AVAILABLE" || slot.bookedCount !== 0)) ||
       (booking.status !== "CANCELLED" && (slot.status !== "BOOKED" || slot.bookedCount !== 1))
     );
   }).length;

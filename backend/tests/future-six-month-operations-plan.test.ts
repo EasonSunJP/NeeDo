@@ -67,7 +67,11 @@ describe("future six-month operations plan", () => {
     expect(new Set(first.bookings.map((booking) => booking.status))).toEqual(
       new Set(["PENDING", "CONFIRMED", "CANCELLED"])
     );
-    expect(first.bookings.every((booking) => new Date(booking.createdAt) <= new Date("2026-08-28T00:00:00.000Z"))).toBe(true);
+    expect(
+      first.bookings.every(
+        (booking) => new Date(booking.createdAt) <= new Date("2026-08-28T00:00:00.000Z")
+      )
+    ).toBe(true);
   });
 
   it("restores cancelled slots to available while active bookings occupy their slots", () => {
