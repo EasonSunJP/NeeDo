@@ -3502,7 +3502,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           shopPublicId: {
             type: ["string", "null"],
-            pattern: "^b[0-9]{10}$",
+            pattern: "^shop[0-9]{10}$",
             description: "Public shop NeeDo ID"
           },
           shopName: { type: "string" },

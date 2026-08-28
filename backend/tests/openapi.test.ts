@@ -972,7 +972,7 @@ describe("GET /api/v1/openapi.json", () => {
       "integer"
     );
     expect(document.components.schemas.ShopPlatformFeePolicy.properties.shopPublicId.pattern).toBe(
-      "^b[0-9]{10}$"
+      "^shop[0-9]{10}$"
     );
     expect(document.components.schemas).toEqual(
       expect.objectContaining({
