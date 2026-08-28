@@ -114,7 +114,7 @@ function ServiceDetailStatus({
 function ServiceDetailContent() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const apiId = coreReadIdFromRoute(id);
+  const apiId = coreReadIdFromRoute(id, { allowUuid: true });
   const serviceQuery = useCoreReadQuery(
     () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
     [apiId]
