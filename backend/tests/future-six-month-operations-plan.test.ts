@@ -81,7 +81,8 @@ describe("future six-month operations plan", () => {
   });
 
   it("reports all six approved calendar months", () => {
-    expect(Object.keys(summarizeFutureOperationsPlan(first).months)).toEqual([
+    const months = summarizeFutureOperationsPlan(first).months;
+    expect(Object.keys(months)).toEqual([
       "2026-09",
       "2026-10",
       "2026-11",
@@ -89,5 +90,10 @@ describe("future six-month operations plan", () => {
       "2027-01",
       "2027-02"
     ]);
+    for (const month of Object.values(months)) {
+      expect(month.statuses.PENDING).toBeGreaterThan(0);
+      expect(month.statuses.CONFIRMED).toBeGreaterThan(0);
+      expect(month.statuses.CANCELLED).toBeGreaterThan(0);
+    }
   });
 });

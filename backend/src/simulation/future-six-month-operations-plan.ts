@@ -254,7 +254,8 @@ export const buildFutureSixMonthOperationsPlan = (
         const selected =
           !blocked && stableNumber(technicianIndex, dayIndex, slotIndex, 43) % 100 < occupancy;
         const cancelled =
-          selected && stableNumber(technicianIndex, dayIndex, slotIndex, 61) % 100 < 8;
+          selected &&
+          stableNumber(dayIndex * 97, technicianIndex * 53, (slotIndex + 1) * 29, 61) % 100 < 8;
 
         const customerOffset =
           stableNumber(technicianIndex, dayIndex, slotIndex, 73) % cohort.customers.length;
