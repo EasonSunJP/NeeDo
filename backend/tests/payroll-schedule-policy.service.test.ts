@@ -150,7 +150,9 @@ describe("PayrollSchedulePolicyService", () => {
   it("versions a shop policy and records only policy metadata in audit", async () => {
     const repository = createRepository();
     const audit = {
-      record: jest.fn(async (_input: AuditLogRecordInput) => undefined)
+      record: jest.fn(async (input: AuditLogRecordInput) => {
+        void input;
+      })
     };
     const service = new PayrollSchedulePolicyService(repository, audit, () => "2026-08-29");
     const body = {
