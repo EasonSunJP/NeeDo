@@ -446,6 +446,20 @@ export const SYSTEM_PERMISSIONS = [
     "读取运营后台真实指标"
   ),
   createPermission(
+    "backoffice:platform-fee-policy:read",
+    "运营后台平台费策略读取",
+    "api",
+    "backoffice",
+    "读取全局平台费与店铺收费策略"
+  ),
+  createPermission(
+    "backoffice:platform-fee-policy:write",
+    "运营后台平台费策略管理",
+    "api",
+    "backoffice",
+    "修改全局平台费金额与店铺收费状态"
+  ),
+  createPermission(
     "backoffice:orders:list",
     "运营后台订单列表",
     "api",
@@ -605,6 +619,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "merchant-admin",
     "读取商户后台真实指标"
+  ),
+  createPermission(
+    "merchant-admin:platform-fee-policy:read",
+    "商户平台费策略读取",
+    "api",
+    "merchant-admin",
+    "读取当前商户身份可管理店铺的平台费策略"
+  ),
+  createPermission(
+    "merchant-admin:platform-fee-policy:write",
+    "商户平台费承担者管理",
+    "api",
+    "merchant-admin",
+    "设置当前商户身份可管理店铺的平台费承担者"
   ),
   createPermission(
     "merchant-admin:orders:list",
@@ -926,6 +954,34 @@ export const SYSTEM_PERMISSIONS = [
     "显示领取有效联盟任务的操作"
   ),
   createPermission(
+    "page:affiliate-profile",
+    "联盟营销资料",
+    "page",
+    "affiliate",
+    "访问本人联盟营销公开资料"
+  ),
+  createPermission(
+    "button:affiliate-profile-edit",
+    "编辑联盟营销资料",
+    "button",
+    "affiliate",
+    "编辑本人联盟营销资料和外部平台主页链接"
+  ),
+  createPermission(
+    "page:affiliate-alliance",
+    "联盟",
+    "page",
+    "affiliate",
+    "访问本人当前联盟"
+  ),
+  createPermission(
+    "button:affiliate-alliance-create",
+    "创建联盟",
+    "button",
+    "affiliate",
+    "创建本人拥有的联盟"
+  ),
+  createPermission(
     "menu:merchant-affiliate",
     "商户联盟营销",
     "menu",
@@ -1129,6 +1185,7 @@ const FINANCE_PERMISSION_CODES = [
   "finance:fee-rule:list",
   "finance:fee-rule:preview",
   "finance:calculation-log:list",
+  "backoffice:platform-fee-policy:read",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -1137,6 +1194,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:admin-console",
   "backoffice:dashboard:read",
+  "backoffice:platform-fee-policy:read",
+  "backoffice:platform-fee-policy:write",
   "backoffice:orders:list",
   "backoffice:schedule:list",
   "backoffice:finance:list",
@@ -1172,6 +1231,8 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "menu:merchant-app",
   "menu:merchant-admin",
   "merchant-admin:dashboard:read",
+  "merchant-admin:platform-fee-policy:read",
+  "merchant-admin:platform-fee-policy:write",
   "merchant-admin:orders:list",
   "merchant-admin:schedule:list",
   "merchant-admin:finance:list",
@@ -1208,10 +1269,18 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
 
-const AFFILIATE_MARKETPLACE_PERMISSION_CODES = [
+const AFFILIATE_ENTRY_PERMISSION_CODES = [
+  "menu:affiliate"
+] as const satisfies readonly SystemPermissionCode[];
+
+const ACTIVATED_AFFILIATE_PERMISSION_CODES = [
   "menu:affiliate",
   "page:affiliate-marketplace",
-  "button:affiliate-claim"
+  "button:affiliate-claim",
+  "page:affiliate-profile",
+  "button:affiliate-profile-edit",
+  "page:affiliate-alliance",
+  "button:affiliate-alliance-create"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const MERCHANT_AFFILIATE_PERMISSION_CODES = [
@@ -1248,7 +1317,7 @@ export const buildRolePermissionAssignments = (): Record<
   operator: [
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES,
     ...OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES,
     "finance:fee-rule:list",
@@ -1267,7 +1336,7 @@ export const buildRolePermissionAssignments = (): Record<
   ],
   finance: [
     ...FINANCE_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FINANCE_PERMISSION_CODES,
     "backoffice:finance:list",
     "backoffice:finance:export",
@@ -1279,7 +1348,7 @@ export const buildRolePermissionAssignments = (): Record<
   ],
   support: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     "ops:merchant-application:read",
     "identity-application-media:sensitive-read",
     "menu:user-management",
@@ -1293,7 +1362,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
@@ -1302,7 +1371,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
@@ -1312,7 +1381,7 @@ export const buildRolePermissionAssignments = (): Record<
     "menu:technician-schedule",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",
     "technician:services:write",
@@ -1324,22 +1393,22 @@ export const buildRolePermissionAssignments = (): Record<
   customer: [
     ...CUSTOMER_BOOKING_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
   ],
   broker: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
   ],
   scout: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...ACTIVATED_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
   ],
   viewer: [
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES
   ]
 });

@@ -10,10 +10,12 @@ import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { PlatformFeePolicyRepository } from "../repositories/platform-fee-policy.repository";
 import { BookingService } from "../services/booking.service";
 import { AuditLogService } from "../services/audit-log.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
+import { PlatformFeePolicyService } from "../services/platform-fee-policy.service";
 import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../services/affiliate-link-token.service";
 import {
@@ -22,6 +24,7 @@ import {
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
+  orderConfirmBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
   scheduleSlotCreateBodySchema,
@@ -52,18 +55,28 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
   const feeCalculationService = new FeeCalculationService(
     dependencies.feeRuleRepository ?? new FeeRuleRepository()
   );
+  const auditLogService = new AuditLogService(
+    dependencies.auditLogRepository ?? new AuditLogRepository()
+  );
+  const platformFeePolicyService = new PlatformFeePolicyService(
+    dependencies.platformFeePolicyRepository ?? new PlatformFeePolicyRepository(),
+    auditLogService
+  );
   const ledgerService =
     dependencies.ledgerRepository || !dependencies.bookingRepository
       ? new LedgerService(
           dependencies.ledgerRepository ?? new LedgerRepository(),
-          feeCalculationService
+          feeCalculationService,
+          undefined,
+          undefined,
+          platformFeePolicyService
         )
       : undefined;
   const bookingService = new BookingService(
     dependencies.bookingRepository ?? new BookingRepository(),
     ledgerService,
     dependencies.realtimeService,
-    new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository()),
+    auditLogService,
     dependencies.affiliateCheckoutService ??
       new AffiliateCheckoutService(
         new AffiliateCheckoutRepository(),
@@ -106,7 +119,7 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     "/orders/:id/confirm",
     authenticate(),
     authorize(BOOKING_ROUTE_PERMISSIONS.confirm),
-    validateRequest({ params: orderIdParamSchema }),
+    validateRequest({ params: orderIdParamSchema, body: orderConfirmBodySchema }),
     controller.confirmOrder
   );
   router.post(
@@ -157,6 +170,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.backofficePaymentWrite),
     validateRequest({ params: orderIdParamSchema, body: manualPaymentRefundBodySchema }),
     controller.refundManualPayment
+  );
+  router.get(
+    "/technician/schedule/slots/:id",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList),
+    validateRequest({ params: orderIdParamSchema }),
+    controller.getScheduleSlot
   );
   ["/merchant-admin/schedule/slots", "/technician/schedule/slots"].forEach((path) => {
     router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: scheduleSlotListQuerySchema }), controller.listScheduleSlots);

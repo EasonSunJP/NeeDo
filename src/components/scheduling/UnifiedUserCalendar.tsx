@@ -9,6 +9,7 @@ import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./Sc
 import { AvatarImage } from "../ui/AvatarImage";
 import { ConversationListItem } from "../ui/ConversationListItem";
 import { bookingApi, mapBookingOrderToDomainOrder, type BookingScheduleSlot } from "../../features/booking/api";
+import { loadCustomerOrderWindow } from "../../features/booking/window-loaders";
 import { mapScheduleSlotToCalendarItem, schedulingApi } from "../../features/scheduling/api";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
@@ -177,11 +178,12 @@ type BirthdaySourceFilters = {
   tags: string[];
 };
 
-type UnifiedUserCalendarProps = {
+export type UnifiedUserCalendarProps = {
   currentCustomer?: Customer;
   currentTechnician?: Technician;
   currentStore?: Store;
   displayMode?: UnifiedCalendarDisplayMode;
+  formalOnly?: boolean;
   merchantLaneMode?: MerchantCalendarLaneMode;
   searchQuery?: string;
   scope?: UnifiedCalendarScope;
@@ -532,9 +534,15 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
   }));
 }
 
-function getOrderEvents(currentCustomer: Customer, orderRows: Order[]): UnifiedCalendarEvent[] {
+function getOrderEvents(
+  currentCustomer: Customer,
+  orderRows: Order[],
+  ordersAreServerScoped = false
+): UnifiedCalendarEvent[] {
   return orderRows
-    .filter((order) => order.customerId === currentCustomer.id && order.status !== "cancelled" && order.status !== "refunded")
+    .filter((order) => (
+      ordersAreServerScoped || order.customerId === currentCustomer.id
+    ) && order.status !== "cancelled" && order.status !== "refunded")
     .map((order): UnifiedCalendarEvent | null => {
       const schedule = normalizeDateTimeFromOrder(order);
       if (!schedule) {
@@ -1940,6 +1948,20 @@ function loadLocalCalendarEvents() {
   return parseBrowserStorageJson<Array<Partial<LocalCalendarEvent> & { visibility?: string }>>(localCalendarStorageKey, [], { removeOnError: true, silent: true })
     .map(normalizeLocalCalendarEvent)
     .filter((event): event is LocalCalendarEvent => Boolean(event));
+}
+
+async function loadFormalCustomerOrderPeriod(from: Date, to: Date) {
+  const maxWindowMs = 93 * 24 * 60 * 60 * 1000;
+  const orders = [];
+  let cursor = from;
+
+  while (cursor.getTime() < to.getTime()) {
+    const next = new Date(Math.min(cursor.getTime() + maxWindowMs, to.getTime()));
+    orders.push(...await loadCustomerOrderWindow(cursor, next));
+    cursor = next;
+  }
+
+  return orders;
 }
 
 function SourceToggle({
@@ -4802,6 +4824,7 @@ export function UnifiedUserCalendar({
   currentTechnician,
   currentStore,
   displayMode,
+  formalOnly = false,
   merchantLaneMode = "technician",
   searchQuery = "",
   scope = "user"
@@ -4827,7 +4850,7 @@ export function UnifiedUserCalendar({
   const [birthdayExpanded, setBirthdayExpanded] = useState(false);
   const [birthdayFilters, setBirthdayFilters] = useState<BirthdaySourceFilters>(defaultBirthdaySourceFilters);
   const [birthdayContactQuery, setBirthdayContactQuery] = useState("");
-  const [localEvents, setLocalEvents] = useState<LocalCalendarEvent[]>(loadLocalCalendarEvents);
+  const [localEvents, setLocalEvents] = useState<LocalCalendarEvent[]>(() => formalOnly ? [] : loadLocalCalendarEvents());
   const [editorDraft, setEditorDraft] = useState<CalendarEditorDraft | null>(null);
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
@@ -4836,6 +4859,8 @@ export function UnifiedUserCalendar({
   const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>([]);
   const [formalDataLoading, setFormalDataLoading] = useState(false);
   const [formalDataError, setFormalDataError] = useState("");
+  const [formalDataReloadKey, setFormalDataReloadKey] = useState(0);
+  const formalDataRequestId = useRef(0);
   const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
   const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
   const appointmentStatusFilterLabel =
@@ -4847,14 +4872,27 @@ export function UnifiedUserCalendar({
   const imConfig = getImRoleConfig(imScope);
 
   useEffect(() => {
+    const requestId = formalDataRequestId.current + 1;
+    formalDataRequestId.current = requestId;
     let alive = true;
+    const isCurrentRequest = () => alive && formalDataRequestId.current === requestId;
     const loadFormalData = async () => {
       setFormalDataLoading(true);
       setFormalDataError("");
       try {
         if (activeScope === "user") {
+          if (formalOnly) {
+            const from = parseDateKey(period.startDate);
+            const to = parseDateKey(addDays(period.endDate, 1));
+            const orders = await loadFormalCustomerOrderPeriod(from, to);
+            if (isCurrentRequest()) {
+              setFormalOrders(orders.map(mapBookingOrderToDomainOrder));
+              setFormalScheduleSlots([]);
+            }
+            return;
+          }
           const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
-          if (alive) {
+          if (isCurrentRequest()) {
             setFormalOrders(response.list.map(mapBookingOrderToDomainOrder));
             setFormalScheduleSlots([]);
           }
@@ -4864,27 +4902,29 @@ export function UnifiedUserCalendar({
         const to = parseDateKey(period.endDate);
         to.setDate(to.getDate() + 1);
         const response = await schedulingApi.listSlots(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to, page: 1, pageSize: 100 });
-        if (alive) {
+        if (isCurrentRequest()) {
           setFormalScheduleSlots(response.list);
           setFormalOrders([]);
         }
       } catch (error) {
-        if (alive) {
+        if (isCurrentRequest()) {
           setFormalDataError(error instanceof Error ? error.message : String(error));
           setFormalOrders([]);
           setFormalScheduleSlots([]);
         }
       } finally {
-        if (alive) setFormalDataLoading(false);
+        if (isCurrentRequest()) setFormalDataLoading(false);
       }
     };
     void loadFormalData();
     return () => { alive = false; };
-  }, [activeScope, period.endDate, period.startDate]);
+  }, [activeScope, formalDataReloadKey, formalOnly, period.endDate, period.startDate]);
 
   useEffect(() => {
-    writeBrowserStorage(localCalendarStorageKey, JSON.stringify(localEvents), { silent: true });
-  }, [localEvents]);
+    if (!formalOnly) {
+      writeBrowserStorage(localCalendarStorageKey, JSON.stringify(localEvents), { silent: true });
+    }
+  }, [formalOnly, localEvents]);
 
   const visibleImContacts = useMemo(
     () => getVisibleCalendarContacts(imStore.contacts, imStore.usersById, imScope),
@@ -4954,10 +4994,10 @@ export function UnifiedUserCalendar({
   );
 
   const allEvents = useMemo(() => {
-    const birthdayEvents = getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
-    const localCalendarEvents = getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
+    const birthdayEvents = formalOnly ? [] : getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
+    const localCalendarEvents = formalOnly ? [] : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
     const neeDoEvents = activeScope === "user" && currentCustomer
-      ? getOrderEvents(currentCustomer, formalOrders)
+      ? getOrderEvents(currentCustomer, formalOrders, formalOnly)
       : activeScope === "merchant" || activeScope === "technician"
         ? getFormalScheduleEvents(formalScheduleSlots, activeScope)
         : [];
@@ -4986,6 +5026,7 @@ export function UnifiedUserCalendar({
     effectiveMerchantLaneMode,
     formalOrders,
     formalScheduleSlots,
+    formalOnly,
     imStore.users,
     isMerchantAppointmentStatusMode,
     localEvents,
@@ -5368,14 +5409,14 @@ export function UnifiedUserCalendar({
     <UnifiedCalendarSurface data-unified-user-calendar="true">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <button
+          {!formalOnly ? <button
             aria-label="打开日历来源"
             className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-text)]"
             onClick={() => setSourceDrawerOpen((current) => !current)}
             type="button"
           >
             <AppIcon name="menu" />
-          </button>
+          </button> : null}
           <div className="min-w-0">
             <strong className="block truncate text-lg font-black text-[color:var(--client-text)]">{period.label}</strong>
             <span className="mt-0.5 block text-[11px] font-black text-[color:var(--client-muted)]">
@@ -5434,7 +5475,18 @@ export function UnifiedUserCalendar({
       ) : null}
 
       {formalDataLoading ? <div className="mt-2 rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-3 py-2 text-[11px] font-black text-[color:var(--client-muted)]">正在读取正式日程...</div> : null}
-      {formalDataError ? <div className="mt-2 rounded-[16px] border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-black text-red-700">正式日程读取失败：{formalDataError}</div> : null}
+      {formalDataError ? (
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-[16px] border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-black text-red-700" role="alert">
+          <span>正式日程读取失败：{formalDataError}</span>
+          <button
+            className="focus-ring shrink-0 rounded-full border border-red-300 px-3 py-1.5"
+            onClick={() => setFormalDataReloadKey((current) => current + 1)}
+            type="button"
+          >
+            重试
+          </button>
+        </div>
+      ) : null}
 
       {isMerchantAppointmentStatusMode ? (
         <div className="mt-3 grid grid-cols-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1">
@@ -5463,7 +5515,7 @@ export function UnifiedUserCalendar({
             date={selectedDate}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={selectedDateEvents}
-            onCreate={openCreate}
+            onCreate={formalOnly ? undefined : openCreate}
             onOpen={openCalendarEvent}
           />
         </div>
@@ -5473,7 +5525,7 @@ export function UnifiedUserCalendar({
             dates={view === "threeDay" ? getThreeDayDates(anchorDate) : getWeekDates(anchorDate)}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={searchedVisiblePeriodEvents}
-            onCreate={openCreate}
+            onCreate={formalOnly ? undefined : openCreate}
             onOpen={openCalendarEvent}
             onSelectDate={openDateInDayView}
             selectedDate={selectedDate}
@@ -5494,7 +5546,7 @@ export function UnifiedUserCalendar({
         <UnifiedCalendarAgendaView
           dates={period.dates}
           events={searchedVisiblePeriodEvents}
-          onCreate={(date) => openCreate(date)}
+          onCreate={formalOnly ? undefined : (date) => openCreate(date)}
           onExtendFuture={() => extendAgendaDateWindow(1)}
           onExtendPast={() => extendAgendaDateWindow(-1)}
           onOpen={openCalendarEvent}
@@ -5504,7 +5556,7 @@ export function UnifiedUserCalendar({
         />
       )}
 
-      {editorDraft ? (
+      {!formalOnly && editorDraft ? (
         <CalendarEventEditorPage draft={editorDraft} onChange={setEditorDraft} onClose={() => setEditorDraft(null)} onSave={saveDraft} syncContactOptions={syncContactOptions} />
       ) : null}
       {displayActiveEvent ? (
@@ -5512,8 +5564,8 @@ export function UnifiedUserCalendar({
           event={displayActiveEvent}
           onBack={() => setActiveEvent(null)}
           onContactCreator={displayActiveEvent.creatorUserId && displayActiveEvent.creatorUserId !== imStore.currentUserId ? openCreatorChat : undefined}
-          onDelete={displayActiveEvent.readOnly ? undefined : deleteEvent}
-          onEdit={displayActiveEvent.readOnly ? undefined : openEdit}
+          onDelete={formalOnly || displayActiveEvent.readOnly ? undefined : deleteEvent}
+          onEdit={formalOnly || displayActiveEvent.readOnly ? undefined : openEdit}
           onOpenAppointmentDetail={(event) => {
             const appointmentDetailId = getCalendarAppointmentDetailId(event);
 
@@ -5524,14 +5576,14 @@ export function UnifiedUserCalendar({
             setActiveEvent(null);
             navigate(getScheduleOrderDetailRoute(appointmentDetailId, activeScope));
           }}
-          onSync={(event) => {
+          onSync={formalOnly ? undefined : (event) => {
             setActiveEvent(null);
             setSourceDrawerOpen(true);
             void event;
           }}
         />
       ) : null}
-      <CalendarSourceDrawer
+      {!formalOnly ? <CalendarSourceDrawer
         birthdayContactOptions={birthdayContactOptions}
         birthdayContactQuery={birthdayContactQuery}
         birthdayExpanded={birthdayExpanded}
@@ -5553,15 +5605,15 @@ export function UnifiedUserCalendar({
         open={sourceDrawerOpen}
         sourceCounts={sourceCounts}
         sourceVisibility={sourceVisibility}
-      />
-      <FloatingActionButton
+      /> : null}
+      {!formalOnly ? <FloatingActionButton
         ariaLabel="新增行程"
         onClick={() => openCreate(selectedDate)}
         storageKey={`needo.fab.schedule-create.${activeScope}`}
         title="新增行程"
       >
         <AppIcon name="plus" />
-      </FloatingActionButton>
+      </FloatingActionButton> : null}
     </UnifiedCalendarSurface>
   );
 }

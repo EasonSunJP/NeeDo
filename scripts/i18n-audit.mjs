@@ -13,6 +13,10 @@ const identityTranslationsPath = path.join(
   workspaceRoot,
   "src/features/identity-applications/i18n.ts",
 );
+const affiliateProfileTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/affiliate-profile/i18n.ts",
+);
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
   path.join(workspaceRoot, "scripts"),
@@ -108,6 +112,7 @@ async function readCodeFiles(directory) {
 }
 
 let identityTranslationsPromise;
+let affiliateProfileTranslationsPromise;
 
 async function loadIdentityTranslations() {
   identityTranslationsPromise ??= (async () => {
@@ -126,11 +131,32 @@ async function loadIdentityTranslations() {
   return identityTranslationsPromise;
 }
 
+async function loadAffiliateProfileTranslations() {
+  affiliateProfileTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(affiliateProfileTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.affiliateProfileTranslations ?? {};
+  })();
+
+  return affiliateProfileTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
   const identityTranslations = await loadIdentityTranslations();
+  const affiliateProfileTranslations = await loadAffiliateProfileTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const identityApplicationTranslations = ${JSON.stringify(identityTranslations)};`,
+  ).replace(
+    /import\s+\{\s*affiliateProfileTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const affiliateProfileTranslations = ${JSON.stringify(affiliateProfileTranslations)};`,
   );
   const tempFile = path.join(
     workspaceRoot,

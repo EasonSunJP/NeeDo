@@ -132,6 +132,17 @@ const envSchema = z
     IDENTITY_APPLICATION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
     AFFILIATE_TASK_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
     AFFILIATE_TASK_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
+    BOOKING_USER_REWARD_EXPIRY_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(60_000)
+      .default(300_000),
+    BOOKING_USER_REWARD_EXPIRY_BATCH_SIZE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100),
     CUSTOMER_AVATAR_PUBLIC_BASE_URL: z.string().url(),
     AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
     AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),

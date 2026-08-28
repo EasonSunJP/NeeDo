@@ -148,7 +148,31 @@ describe("IM pages", () => {
     );
     expect(recallSource).toContain("发送超过3分钟后无法撤回");
     expect(recallSource).toContain("撤回失败，请稍后重试");
+    const recallFailureStart = recallSource.indexOf(".catch((error: unknown) => {");
+    const recallFailureEnd = recallSource.indexOf(".finally(", recallFailureStart);
+    const recallFailureSource = recallSource.slice(recallFailureStart, recallFailureEnd);
+    expect(recallFailureStart).toBeGreaterThan(-1);
+    expect(recallFailureEnd).toBeGreaterThan(recallFailureStart);
+    expect(recallFailureSource).toContain("closeMessageMenu();");
     expect(componentSource).toContain('aria-live="assertive"');
+  });
+
+  it("renders recall failures as a prominent alert above the composer", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const noticeStart = componentSource.indexOf("{actionNotice ? (");
+    const menuStart = componentSource.indexOf("{menuState ? (", noticeStart);
+    const noticeSource = componentSource.slice(noticeStart, menuStart);
+
+    expect(noticeStart).toBeGreaterThan(-1);
+    expect(menuStart).toBeGreaterThan(noticeStart);
+    expect(noticeSource).toContain('role="alert"');
+    expect(noticeSource).toContain('data-testid="im-conversation-action-notice"');
+    expect(noticeSource).toContain("pointer-events-none absolute inset-x-0");
+    expect(noticeSource).toContain("z-40");
+    expect(noticeSource).toContain("text-sm");
+    expect(noticeSource).not.toContain("recordingHintClass");
   });
 
   it("keeps the hide member profiles switch independent from privacy mode in group creation", () => {

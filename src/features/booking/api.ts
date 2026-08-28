@@ -94,6 +94,14 @@ export type AvailabilityQuery = {
   to: string;
 };
 
+export type OrderListQuery = {
+  from?: string;
+  page?: number;
+  pageSize?: number;
+  status?: BookingOrderStatus;
+  to?: string;
+};
+
 export type ManagedScheduleScope = "merchant-admin" | "technician";
 
 export type ManagedScheduleSlotQuery = {
@@ -204,8 +212,16 @@ export const bookingApi = {
       }
     });
   },
-  listOrders(query: { page?: number; pageSize?: number; status?: BookingOrderStatus } = {}) {
-    return httpClient.request<PaginatedBookingData<BookingOrder>>("/orders", { query });
+  listOrders(query: OrderListQuery = {}) {
+    return httpClient.request<PaginatedBookingData<BookingOrder>>("/orders", {
+      query: {
+        from: query.from,
+        page: query.page,
+        pageSize: query.pageSize,
+        status: query.status,
+        to: query.to
+      }
+    });
   },
   getOrder(id: number) {
     return httpClient.request<BookingOrder>(`/orders/${id}`);

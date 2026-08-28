@@ -7,6 +7,7 @@ import {
   type VerificationChallengePayload
 } from "../api/auth";
 import {
+  ApiClientError,
   clearAuthTokens,
   getAccessToken,
   getStoredRefreshToken,
@@ -76,6 +77,8 @@ type AuthContextValue = {
   session: AuthSession | null;
   isAuthenticated: boolean;
   isRestoring: boolean;
+  restoreError: string | null;
+  retrySessionRestore: () => void;
   login: (portal: PortalScope, email: string, password: string, captchaCode?: string) => Promise<AuthActionResult>;
   loginWithFormalPassword: (portal: PortalScope, username: string, password: string) => Promise<AuthActionResult>;
   startRegistration: (input: RegistrationStartInput) => Promise<AuthChallengeActionResult>;
@@ -172,6 +175,18 @@ function normalizeApiError(error: unknown, fallback = "error.api") {
         : null;
 
   return typeof candidate === "string" && /^error(?:\.[a-z0-9_-]+)+$/i.test(candidate) ? candidate : fallback;
+}
+
+function isTransientAuthRestoreError(error: unknown) {
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  if (error instanceof ApiClientError) {
+    return ![400, 401, 403, 422].includes(error.status);
+  }
+
+  return error instanceof Error;
 }
 
 function isVerificationChallenge(value: unknown): value is VerificationChallengePayload {
@@ -276,10 +291,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [storedSessionForInitialRestore] = useState(() => readStoredAuthSession());
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isRestoring, setIsRestoring] = useState(() => Boolean(getStoredRefreshToken()) && !getAccessToken());
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreRevision, setRestoreRevision] = useState(0);
 
   const clearSession = useCallback(() => {
     clearAuthTokens();
     setSession(null);
+    setRestoreError(null);
     removeBrowserStorage(portalStorageKey, { silent: true });
     removeBrowserStorage(legacySessionStorageKey, { silent: true });
   }, []);
@@ -360,7 +378,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestedPortal: PortalScope,
       loginMethod: LoginMethod,
       providedMe?: AuthMePayload,
-      errorFallback = "error.api"
+      errorFallback = "error.api",
+      preserveTransientFailure = false
     ): Promise<AuthActionResult> => {
       try {
         let me = requireFormalAuthMePayload(providedMe ?? (await authApi.me()), errorFallback);
@@ -376,9 +395,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         return { ok: true, session: nextSession };
       } catch (error) {
-        clearSession();
+        const transientRestoreFailure =
+          preserveTransientFailure && isTransientAuthRestoreError(error);
 
-        return { ok: false, message: normalizeApiError(error, errorFallback) };
+        if (!transientRestoreFailure) {
+          clearSession();
+        }
+
+        return {
+          ok: false,
+          message: transientRestoreFailure
+            ? "error.auth.service_unavailable"
+            : normalizeApiError(error, errorFallback)
+        };
       }
     },
     [clearSession, persistSession]
@@ -398,6 +427,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();
 
       if (session && !shouldRefreshAccessToken) {
+        setRestoreError(null);
         setIsRestoring(false);
         return;
       }
@@ -406,6 +436,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session && !getAccessToken()) {
           clearSession();
         }
+        setRestoreError(null);
         setIsRestoring(false);
         return;
       }
@@ -415,13 +446,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await authApi.refresh();
         const restorePortal = session?.portal ?? storedSessionForInitialRestore?.portal ?? readStoredPortal();
         const restoreLoginMethod = session?.loginMethod ?? storedSessionForInitialRestore?.loginMethod ?? "password";
-        const restored = await completeAuthenticatedSession(restorePortal, restoreLoginMethod);
-        if (!active || !restored.ok) {
+        const restored = await completeAuthenticatedSession(
+          restorePortal,
+          restoreLoginMethod,
+          undefined,
+          "error.api",
+          true
+        );
+        if (!active) {
           return;
         }
-      } catch {
+
+        if (!restored.ok) {
+          if (getStoredRefreshToken()) {
+            setRestoreError(restored.message);
+          }
+          return;
+        }
+
+        setRestoreError(null);
+      } catch (error) {
         if (active) {
-          clearSession();
+          if (isTransientAuthRestoreError(error) && getStoredRefreshToken()) {
+            setRestoreError("error.auth.service_unavailable");
+          } else {
+            clearSession();
+          }
         }
       } finally {
         if (active) {
@@ -435,7 +485,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [clearSession, completeAuthenticatedSession, session, storedSessionForInitialRestore]);
+  }, [clearSession, completeAuthenticatedSession, restoreRevision, session, storedSessionForInitialRestore]);
+
+  const retrySessionRestore = useCallback(() => {
+    if (!getStoredRefreshToken()) {
+      clearSession();
+      return;
+    }
+
+    setRestoreError(null);
+    setIsRestoring(true);
+    setRestoreRevision((current) => current + 1);
+  }, [clearSession]);
 
   const login = useCallback(
     async (portal: PortalScope, email: string, password: string, captchaCode?: string): Promise<AuthActionResult> => {
@@ -702,6 +763,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       isAuthenticated: Boolean(session),
       isRestoring,
+      restoreError,
+      retrySessionRestore,
       login,
       loginWithFormalPassword,
       startRegistration,
@@ -738,6 +801,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithVerificationCode,
       logout,
       refreshSession,
+      restoreError,
+      retrySessionRestore,
       sendVerificationCode,
       session,
       startRegistration,

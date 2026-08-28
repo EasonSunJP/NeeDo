@@ -64,6 +64,7 @@ export interface PlatformFeeRulePayload {
 
 export interface PlatformFeeRuleSetPayload {
   id: number;
+  familyCode: string | null;
   name: string;
   description: string | null;
   scopeType: string;
@@ -141,6 +142,8 @@ export interface FeeCalculationInput {
   serviceAmountJpy?: number;
   paymentChannel?: string;
   timezone?: string;
+  payerOverride?: { payerType: "shop" | "cast"; payerId: number };
+  waiveReason?: "shop_policy_disabled";
 }
 
 export interface FeeCalculationResult {
@@ -228,6 +231,7 @@ export interface FeeRuleRepositoryPort {
   createRuleSet: (
     input: FeeRuleMutationInput & { actorUserId: number | null }
   ) => Promise<PlatformFeeRuleSetPayload>;
+  findRuleSetById: (id: number) => Promise<PlatformFeeRuleSetPayload | null>;
   updateRuleSet: (
     id: number,
     input: Partial<FeeRuleMutationInput> & { actorUserId: number | null }
@@ -280,6 +284,7 @@ export class FeeCalculationService {
     input: Partial<FeeRuleMutationInput>,
     actorUserId: number | null
   ): Promise<PlatformFeeRuleSetPayload> {
+    await this.assertRuleSetIsNotManaged(id);
     const updated = await this.repository.updateRuleSet(id, { ...input, actorUserId });
 
     if (!updated) {
@@ -294,6 +299,7 @@ export class FeeCalculationService {
     status: "active" | "paused",
     actorUserId: number | null
   ): Promise<PlatformFeeRuleSetPayload> {
+    await this.assertRuleSetIsNotManaged(id);
     const updated = await this.repository.setRuleSetStatus(id, status, actorUserId);
 
     if (!updated) {
@@ -335,8 +341,11 @@ export class FeeCalculationService {
         return left.rule.priority - right.rule.priority || left.rule.id - right.rule.id;
       });
     const primary = matchedRules[0];
-    const payerType = primary?.rule.payerType ?? this.defaultPayerType(input.feeType);
-    const payerId = this.resolvePayerId(payerType, input);
+    const payerType =
+      input.payerOverride?.payerType ??
+      primary?.rule.payerType ??
+      this.defaultPayerType(input.feeType);
+    const payerId = input.payerOverride?.payerId ?? this.resolvePayerId(payerType, input);
     const completedOrderOrdinalInPeriod = await this.resolveCompletedOrderOrdinal(
       repository,
       input,
@@ -360,15 +369,18 @@ export class FeeCalculationService {
       timeAdjustmentNdp,
       grossBeforeCampaign
     });
-    const finalFeeNdp = Math.max(0, grossBeforeCampaign - campaignDiscountNdp);
-    const holdAmountNdp = this.calculateHoldAmount(primary?.rule, {
+    const calculatedFinalFeeNdp = Math.max(0, grossBeforeCampaign - campaignDiscountNdp);
+    const calculatedHoldAmountNdp = this.calculateHoldAmount(primary?.rule, {
       baseFeeNdp,
       timeAdjustmentNdp,
       campaignDiscountNdp,
-      finalFeeNdp,
+      finalFeeNdp: calculatedFinalFeeNdp,
       tierCandidates: tierResult.candidates,
       campaigns
     });
+    const waivedByShopPolicy = input.waiveReason === "shop_policy_disabled";
+    const finalFeeNdp = waivedByShopPolicy ? 0 : calculatedFinalFeeNdp;
+    const holdAmountNdp = waivedByShopPolicy ? 0 : calculatedHoldAmountNdp;
     const appliedRuleIds = [
       ...matchedRules.map(({ ruleSet, rule }) => `rule_set:${ruleSet.id}:rule:${rule.id}`),
       ...tierResult.appliedIds,
@@ -389,6 +401,9 @@ export class FeeCalculationService {
       completedOrderOrdinalInPeriod,
       matchedRuleName: primary?.ruleSet.name ?? null
     });
+    if (waivedByShopPolicy) {
+      explanation.push("Waived by shop platform-fee policy");
+    }
     const log = await repository.createCalculationLog({
       bookingOrderId: input.bookingOrderId ?? null,
       calculationStage: input.stage,
@@ -435,6 +450,13 @@ export class FeeCalculationService {
   }
 
   private resolveCalculationTime(input: FeeCalculationInput): Date {
+    if (
+      input.stage === "capture" &&
+      input.feeType === "b_platform_fee" &&
+      input.acceptedAt
+    ) {
+      return input.acceptedAt;
+    }
     if (input.stage === "capture" && input.completedAt) {
       return input.completedAt;
     }
@@ -443,6 +465,20 @@ export class FeeCalculationService {
     }
 
     return input.scheduledStartAt ?? input.completedAt ?? input.acceptedAt ?? new Date();
+  }
+
+  private async assertRuleSetIsNotManaged(id: number): Promise<void> {
+    const ruleSet = await this.repository.findRuleSetById(id);
+    if (!ruleSet) {
+      throw this.notFoundError();
+    }
+    if (ruleSet.familyCode === "booking_default") {
+      throw new AppError({
+        code: ERROR_CODES.PLATFORM_FEE_MANAGED_RULE_CONFLICT,
+        message: "error.platform_fee_policy.managed_rule",
+        statusCode: 409
+      });
+    }
   }
 
   private ruleMatches(rule: PlatformFeeRulePayload, input: FeeCalculationInput, at: Date): boolean {

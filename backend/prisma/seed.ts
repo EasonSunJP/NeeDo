@@ -3377,61 +3377,49 @@ const upsertDefaultFinanceRules = async (
   tx: Prisma.TransactionClient,
   actorUserId: number
 ): Promise<void> => {
-  const existing = await tx.platformFeeRuleSet.findFirst({
-    where: { name: "Default Booking NDP Rules" },
+  const existingFamily = await tx.platformFeeRuleSet.findFirst({
+    where: { familyCode: "booking_default", deletedAt: null },
+    orderBy: { version: "desc" },
     select: { id: true }
   });
-  const ruleSet = existing
-    ? await tx.platformFeeRuleSet.update({
-        where: { id: existing.id },
-        data: {
-          description: "Default Booking platform fee, customer reward, and merchant cancellation compensation.",
-          scopeType: "platform",
-          priority: 100,
-          status: "active",
-          version: 1,
-          effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
-          effectiveTo: null,
-          updatedById: actorUserId,
-          deletedAt: null
-        }
-      })
-    : await tx.platformFeeRuleSet.create({
-        data: {
-          name: "Default Booking NDP Rules",
-          description: "Default Booking platform fee, customer reward, and merchant cancellation compensation.",
-          scopeType: "platform",
-          priority: 100,
-          status: "active",
-          version: 1,
-          effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
-          createdById: actorUserId,
-          updatedById: actorUserId
-        }
-      });
-  const previousRules = await tx.platformFeeRule.findMany({
-    where: { ruleSetId: ruleSet.id, deletedAt: null },
-    select: { id: true }
-  });
-  const previousRuleIds = previousRules.map((rule) => rule.id);
-  const deletedAt = new Date();
 
-  if (previousRuleIds.length > 0) {
-    await Promise.all([
-      tx.platformFeeTier.updateMany({
-        where: { ruleId: { in: previousRuleIds }, deletedAt: null },
-        data: { deletedAt }
-      }),
-      tx.platformFeeTimeWindow.updateMany({
-        where: { ruleId: { in: previousRuleIds }, deletedAt: null },
-        data: { deletedAt }
-      })
-    ]);
-    await tx.platformFeeRule.updateMany({
-      where: { id: { in: previousRuleIds }, deletedAt: null },
-      data: { deletedAt }
-    });
+  if (existingFamily) {
+    return;
   }
+
+  const legacyRuleSet = await tx.platformFeeRuleSet.findFirst({
+    where: {
+      name: "Default Booking NDP Rules",
+      familyCode: null,
+      deletedAt: null
+    },
+    orderBy: { id: "asc" },
+    select: { id: true }
+  });
+
+  if (legacyRuleSet) {
+    await tx.platformFeeRuleSet.update({
+      where: { id: legacyRuleSet.id },
+      data: { familyCode: "booking_default" }
+    });
+    return;
+  }
+
+  const ruleSet = await tx.platformFeeRuleSet.create({
+    data: {
+      name: "Default Booking NDP Rules",
+      description:
+        "Default Booking platform fee, customer reward, and merchant cancellation compensation.",
+      scopeType: "platform",
+      familyCode: "booking_default",
+      priority: 100,
+      status: "active",
+      version: 1,
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      createdById: actorUserId,
+      updatedById: actorUserId
+    }
+  });
 
   await tx.platformFeeRule.createMany({
     data: [

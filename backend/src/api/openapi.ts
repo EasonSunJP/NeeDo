@@ -71,6 +71,17 @@ const authActionErrorResponses = {
   }
 };
 
+const platformFeePolicyErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or scope" },
+  "404": { description: "error.shop.not_found — shop does not exist" },
+  "409": {
+    description:
+      "error.platform_fee_policy.version_conflict or error.platform_fee_policy.config_conflict"
+  }
+};
+
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -209,6 +220,23 @@ const affiliateMarketplaceErrorResponses = {
   "403": { description: "Missing affiliate marketplace permission" },
   "404": { description: "Affiliate task, claim, or signed link not found" },
   "409": { description: "Task eligibility or claim uniqueness conflict" }
+};
+
+const affiliateProfileErrorResponses = {
+  "400": { description: "Invalid affiliate profile or channel contract" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing affiliate profile permission or active affiliate identity" },
+  "404": { description: "Affiliate profile or owned channel not found" },
+  "409": { description: "Profile version, channel limit, or channel uniqueness conflict" }
+};
+
+const affiliateAllianceErrorResponses = {
+  "400": { description: "Invalid strict affiliate alliance create contract" },
+  "401": { description: "Missing or invalid access token" },
+  "403": {
+    description: "Missing alliance permission, Affiliate identity, or active Affiliate profile"
+  },
+  "409": { description: "The current user already has an active alliance membership" }
 };
 
 const customerProfileErrorResponses = {
@@ -2832,6 +2860,294 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           updatedAt: { type: "string", format: "date-time" }
         }
       },
+      AffiliateProfileChannel: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "channelId",
+          "platform",
+          "customLabel",
+          "homepageUrl",
+          "sortOrder",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          channelId: { type: "integer", minimum: 1 },
+          platform: {
+            type: "string",
+            enum: ["x", "instagram", "youtube", "tiktok", "custom"]
+          },
+          customLabel: { type: ["string", "null"], minLength: 1, maxLength: 60 },
+          homepageUrl: { type: "string", format: "uri", maxLength: 500 },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "profileId",
+          "needoId",
+          "displayName",
+          "avatarUrl",
+          "affiliateStatus",
+          "cooperationStatus",
+          "version",
+          "bio",
+          "strengths",
+          "serviceAreas",
+          "channels",
+          "updatedAt"
+        ],
+        properties: {
+          profileId: { type: "integer", minimum: 1 },
+          needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1 },
+          avatarUrl: { type: ["string", "null"], format: "uri" },
+          affiliateStatus: { type: "string", enum: ["active", "suspended", "closed"] },
+          cooperationStatus: {
+            type: "string",
+            enum: ["available", "selective", "unavailable"]
+          },
+          version: { type: "integer", minimum: 1 },
+          bio: { type: ["string", "null"], maxLength: 1000 },
+          strengths: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          serviceAreas: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 80 }
+          },
+          channels: {
+            type: "array",
+            maxItems: 10,
+            items: { $ref: "#/components/schemas/AffiliateProfileChannel" }
+          },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateProfileUpdate: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 2,
+        required: ["expectedVersion"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          bio: { type: ["string", "null"], maxLength: 1000 },
+          strengths: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          serviceAreas: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 80 }
+          },
+          cooperationStatus: {
+            type: "string",
+            enum: ["available", "selective", "unavailable"]
+          }
+        }
+      },
+      AffiliateAlliancePermissions: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "canClaimTasks",
+          "canViewAllianceOverview",
+          "canViewMemberDetails",
+          "canManageOwnSubordinates",
+          "canViewAllianceWallet"
+        ],
+        properties: {
+          canClaimTasks: { type: "boolean" },
+          canViewAllianceOverview: { type: "boolean" },
+          canViewMemberDetails: { type: "boolean" },
+          canManageOwnSubordinates: { type: "boolean" },
+          canViewAllianceWallet: { type: "boolean" }
+        }
+      },
+      AffiliateAllianceOwner: {
+        type: "object",
+        additionalProperties: false,
+        required: ["needoId", "displayName", "avatarUrl"],
+        properties: {
+          needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1 },
+          avatarUrl: { type: ["string", "null"], format: "uri" }
+        }
+      },
+      AffiliateAllianceMembership: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "memberId",
+          "role",
+          "managerNeedoId",
+          "promoterShareBpsOverride",
+          "permissions"
+        ],
+        properties: {
+          memberId: { type: "integer", minimum: 1 },
+          role: { type: "string", enum: ["owner", "partner", "subordinate"] },
+          managerNeedoId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|needo)[0-9]{10}$"
+          },
+          promoterShareBpsOverride: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 10000
+          },
+          permissions: { $ref: "#/components/schemas/AffiliateAlliancePermissions" }
+        }
+      },
+      AffiliateAllianceWallet: {
+        type: "object",
+        additionalProperties: false,
+        required: ["currency", "availableBalance", "frozenBalance"],
+        properties: {
+          currency: { type: "string", enum: ["NDP"] },
+          availableBalance: { type: "integer", minimum: 0 },
+          frozenBalance: { type: "integer", minimum: 0 }
+        }
+      },
+      AffiliateAlliance: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "allianceId",
+          "name",
+          "description",
+          "status",
+          "version",
+          "defaultPromoterShareBps",
+          "owner",
+          "membership",
+          "wallet",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          allianceId: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 2, maxLength: 120 },
+          description: { type: ["string", "null"], minLength: 1, maxLength: 500 },
+          status: { type: "string", enum: ["active", "suspended", "closed"] },
+          version: { type: "integer", minimum: 1 },
+          defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 },
+          owner: { $ref: "#/components/schemas/AffiliateAllianceOwner" },
+          membership: { $ref: "#/components/schemas/AffiliateAllianceMembership" },
+          wallet: { $ref: "#/components/schemas/AffiliateAllianceWallet" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateAllianceMine: {
+        type: "object",
+        additionalProperties: false,
+        required: ["alliance"],
+        properties: {
+          alliance: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliateAlliance" },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      AffiliateAllianceCreated: {
+        type: "object",
+        additionalProperties: false,
+        required: ["alliance"],
+        properties: {
+          alliance: { $ref: "#/components/schemas/AffiliateAlliance" }
+        }
+      },
+      AffiliateAllianceCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "defaultPromoterShareBps"],
+        properties: {
+          name: { type: "string", minLength: 2, maxLength: 120 },
+          description: { type: ["string", "null"], minLength: 1, maxLength: 500 },
+          defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 }
+        }
+      },
+      AffiliateChannelCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedProfileVersion", "platform", "homepageUrl"],
+        properties: {
+          expectedProfileVersion: { type: "integer", minimum: 1 },
+          platform: {
+            type: "string",
+            enum: ["x", "instagram", "youtube", "tiktok", "custom"]
+          },
+          customLabel: { type: ["string", "null"], minLength: 1, maxLength: 60 },
+          homepageUrl: { type: "string", format: "uri", maxLength: 500 },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000, default: 0 }
+        }
+      },
+      AffiliateChannelUpdate: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 2,
+        required: ["expectedProfileVersion"],
+        properties: {
+          expectedProfileVersion: { type: "integer", minimum: 1 },
+          platform: {
+            type: "string",
+            enum: ["x", "instagram", "youtube", "tiktok", "custom"]
+          },
+          customLabel: { type: ["string", "null"], minLength: 1, maxLength: 60 },
+          homepageUrl: { type: "string", format: "uri", maxLength: 500 },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000 }
+        }
+      },
+      AffiliateIdentityActivation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["contractAcceptance", "affiliate"],
+        properties: {
+          contractAcceptance: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "id",
+              "contractType",
+              "contractVersion",
+              "contentHash",
+              "acceptedAt",
+              "receiptId"
+            ],
+            properties: {
+              id: { type: "integer", minimum: 1 },
+              contractType: { type: "string", enum: ["affiliate"] },
+              contractVersion: { type: "string", minLength: 1, maxLength: 80 },
+              contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              acceptedAt: { type: "string", format: "date-time" },
+              receiptId: { type: "string", minLength: 1, maxLength: 191 }
+            }
+          },
+          affiliate: {
+            type: "object",
+            additionalProperties: false,
+            required: ["affiliateStatus", "needoId", "profileId"],
+            properties: {
+              affiliateStatus: { type: "string", enum: ["active", "suspended", "closed"] },
+              needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+              profileId: { type: "integer", minimum: 1 }
+            }
+          }
+        }
+      },
       AffiliateTaskShopSnapshot: {
         type: "object",
         required: ["id", "shopId", "shopNameSnapshot"],
@@ -3322,6 +3638,94 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           yearsExperience: { type: "integer", minimum: 0, maximum: 80 }
         }
       },
+      GlobalBookingPlatformFee: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountNdp", "version", "effectiveFrom", "source"],
+        properties: {
+          amountNdp: { type: "integer", minimum: 0 },
+          version: { type: "integer", minimum: 0 },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          source: { type: "string", enum: ["persisted", "default"] }
+        }
+      },
+      ShopPlatformFeePolicy: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "shopId",
+          "shopPublicId",
+          "shopName",
+          "globalAmountNdp",
+          "globalVersion",
+          "feeEnabled",
+          "payerType",
+          "policyVersion",
+          "policySource",
+          "updatedAt"
+        ],
+        properties: {
+          shopId: {
+            type: "integer",
+            minimum: 1,
+            description: "Internal numeric shop key; this is not a NeeDo ID"
+          },
+          shopPublicId: {
+            type: ["string", "null"],
+            pattern: "^shop[0-9]{10}$",
+            description: "Public shop NeeDo ID"
+          },
+          shopName: { type: "string" },
+          globalAmountNdp: { type: "integer", minimum: 0 },
+          globalVersion: { type: "integer", minimum: 0 },
+          feeEnabled: { type: "boolean" },
+          payerType: { type: "string", enum: ["shop", "technician"] },
+          policyVersion: { type: "integer", minimum: 0 },
+          policySource: { type: "string", enum: ["persisted", "default"] },
+          updatedAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ShopPlatformFeePolicyPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopPlatformFeePolicy" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      GlobalPlatformFeeUpdateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountNdp", "expectedVersion"],
+        properties: {
+          amountNdp: { type: "integer", minimum: 0, maximum: 10000000 },
+          expectedVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      ShopFeeEnabledUpdateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["feeEnabled", "expectedVersion"],
+        properties: {
+          feeEnabled: { type: "boolean" },
+          expectedVersion: { type: "integer", minimum: 0 }
+        }
+      },
+      ShopFeePayerUpdateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["payerType", "expectedVersion"],
+        properties: {
+          payerType: { type: "string", enum: ["shop", "technician"] },
+          expectedVersion: { type: "integer", minimum: 0 }
+        }
+      },
       AffiliateClaimPage: {
         type: "object",
         required: ["list", "total", "page", "page_size"],
@@ -3338,6 +3742,119 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    [`${config.API_PREFIX}/backoffice/platform-fee-policy`]: {
+      get: {
+        tags: ["Platform Fee Policy"],
+        summary: "Read the current global Booking platform fee",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current global Booking platform fee", {
+            $ref: "#/components/schemas/GlobalBookingPlatformFee"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Platform Fee Policy"],
+        summary: "Create the next effective global Booking platform fee version",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/GlobalPlatformFeeUpdateRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated global Booking platform fee", {
+            $ref: "#/components/schemas/GlobalBookingPlatformFee"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shop-platform-fee-policies`]: {
+      get: {
+        tags: ["Platform Fee Policy"],
+        summary: "List effective platform fee policies for shops",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 160 } },
+          { name: "feeEnabled", in: "query", schema: { type: "boolean" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated effective shop platform fee policies", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicyPage"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{shopId}/platform-fee-policy`]: {
+      patch: {
+        tags: ["Platform Fee Policy"],
+        summary: "Enable or disable platform fee collection for one shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("shopId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopFeeEnabledUpdateRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated shop platform fee collection state", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicy"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/platform-fee-policy`]: {
+      get: {
+        tags: ["Platform Fee Policy"],
+        summary: "Read a shop platform fee policy in the active merchant identity scope",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("shopId")],
+        responses: {
+          "200": jsonDataResponse("Effective shop platform fee policy", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicy"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/platform-fee-policy/payer`]: {
+      patch: {
+        tags: ["Platform Fee Policy"],
+        summary: "Set the shop or technician as platform fee payer",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("shopId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopFeePayerUpdateRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated shop platform fee payer", {
+            $ref: "#/components/schemas/ShopPlatformFeePolicy"
+          }),
+          ...platformFeePolicyErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/employees`]: {
       get: {
         tags: ["Merchant Employees"],
@@ -3437,6 +3954,137 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/MerchantEmployee"
           }),
           ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/profile`]: {
+      get: {
+        tags: ["Affiliate Profile"],
+        summary: "Get the authenticated affiliate's public profile",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Authenticated affiliate profile", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Affiliate Profile"],
+        summary: "Update the authenticated affiliate's public profile using optimistic lock",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateProfileUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated affiliate profile", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/profile/channels`]: {
+      post: {
+        tags: ["Affiliate Profile"],
+        summary: "Add a validated external social homepage to the authenticated affiliate profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateChannelCreate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Affiliate profile with the created channel", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/profile/channels/{channelId}`]: {
+      patch: {
+        tags: ["Affiliate Profile"],
+        summary: "Update an owned external social homepage using optimistic lock",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("channelId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateChannelUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Affiliate profile with the updated channel", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      },
+      delete: {
+        tags: ["Affiliate Profile"],
+        summary: "Soft-delete an owned external social homepage using optimistic lock",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter("channelId"),
+          {
+            name: "expected_profile_version",
+            in: "query",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Affiliate profile without the deleted channel", {
+            $ref: "#/components/schemas/AffiliateProfile"
+          }),
+          ...affiliateProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances/me`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "Get the authenticated Affiliate's current alliance",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current Affiliate alliance or null", {
+            $ref: "#/components/schemas/AffiliateAllianceMine"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances`]: {
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Create the authenticated Affiliate's owned alliance",
+        description:
+          "Creates an owner membership, all owner permissions, and a separate zero-balance NDP alliance wallet. eKYC and bank details are not required for creation.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateAllianceCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created Affiliate alliance", {
+            $ref: "#/components/schemas/AffiliateAllianceCreated"
+          }),
+          ...affiliateAllianceErrorResponses
         }
       }
     },
@@ -5553,6 +6201,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Booking"],
         summary: "Paginated available schedule slots",
+        description: "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. Results are limited to published, unsuspended shops and available slots with remaining capacity.",
         parameters: [
           {
             name: "serviceId",
@@ -5675,6 +6324,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
+            name: "from",
+            in: "query",
+            description: "Inclusive ISO 8601 booking start timestamp; requires to",
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            description: "Exclusive ISO 8601 booking start timestamp; requires from; maximum window is 93 days",
+            schema: { type: "string", format: "date-time" }
+          },
+          {
             name: "status",
             in: "query",
             schema: {
@@ -5737,9 +6398,72 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
         ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  insufficientBalanceConfirmation: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["confirmed", "idempotencyKey", "previewVersion"],
+                    properties: {
+                      confirmed: { type: "boolean", const: true },
+                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 },
+                      previewVersion: {
+                        type: "string",
+                        pattern: "^sha256:[a-f0-9]{64}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         responses: {
           "200": { description: "Order confirmed" },
-          "409": { description: "Invalid state transition" }
+          "409": {
+            description: "Invalid state transition or platform-fee balance confirmation required",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer" },
+                    message: {
+                      type: "string",
+                      enum: [
+                        "error.order.invalid_transition",
+                        "error.platform_fee.insufficient_balance_confirmation_required",
+                        "error.platform_fee.preview_stale",
+                        "error.platform_fee.technician_required",
+                        "error.platform_fee.confirmation_conflict"
+                      ]
+                    },
+                    data: {
+                      type: ["object", "null"],
+                      properties: {
+                        feeAmountNdp: { type: "integer", minimum: 0 },
+                        availableBalanceNdp: { type: "integer" },
+                        shortfallNdp: { type: "integer", minimum: 0 },
+                        payerType: { type: "string", enum: ["shop", "technician"] },
+                        walletOwnerType: { type: "string", enum: ["shop", "user"] },
+                        previewVersion: {
+                          type: "string",
+                          pattern: "^sha256:[a-f0-9]{64}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -8055,21 +8779,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       })
     },
     [`${config.API_PREFIX}/identity-activations/affiliate`]: {
-      post: identityWorkflowOperation(
-        "Accept the affiliate contract and activate the affiliate identity",
-        {
-          requestBody: identityJsonBody(
-            {
-              contractVersion: { type: "string", minLength: 1, maxLength: 80 },
-              contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
-              language: { type: "string", enum: ["zh-CN", "ja", "en"] },
-              hasRead: { type: "boolean", enum: [true] },
-              hasAgreed: { type: "boolean", enum: [true] }
-            },
-            ["contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
-          )
+      post: {
+        ...identityWorkflowOperation(
+          "Accept the affiliate contract and activate the affiliate identity",
+          {
+            requestBody: identityJsonBody(
+              {
+                contractVersion: { type: "string", minLength: 1, maxLength: 80 },
+                contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+                language: { type: "string", enum: ["zh-CN", "ja", "en"] },
+                hasRead: { type: "boolean", enum: [true] },
+                hasAgreed: { type: "boolean", enum: [true] }
+              },
+              ["contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
+            )
+          }
+        ),
+        responses: {
+          "200": jsonDataResponse("Activated affiliate identity and profile", {
+            $ref: "#/components/schemas/AffiliateIdentityActivation"
+          }),
+          "400": { description: "Invalid contract acknowledgements" },
+          "401": { description: "Missing or invalid access token" },
+          "403": { description: "Missing contract acceptance permission" },
+          "404": { description: "Current affiliate contract not found" },
+          "409": { description: "Contract version or activation state conflict" }
         }
-      )
+      }
     },
     [`${config.API_PREFIX}/bank-accounts/affiliate-withdrawal`]: {
       put: identityWorkflowOperation("Bind an eKYC-matched affiliate withdrawal bank account", {
@@ -8321,6 +9057,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/technician/schedule/slots/{id}`]: {
+      get: {
+        tags: ["Schedule"],
+        summary: "Read a schedule slot owned by the authenticated technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Technician-owned schedule slot", {
+            $ref: "#/components/schemas/ScheduleSlot"
+          }),
+          "400": { description: "Invalid schedule slot identifier" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Technician schedule read permission required" },
+          "404": { description: "Slot not found for current technician" }
+        }
+      },
       patch: {
         tags: ["Schedule"],
         summary: "Update a schedule slot owned by the authenticated technician",

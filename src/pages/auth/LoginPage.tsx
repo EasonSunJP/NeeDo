@@ -18,6 +18,7 @@ import {
 } from "../../auth/browserPasswordSave";
 import { requestGoogleCredential } from "../../auth/googleIdentity";
 import { type AuthSession } from "../../auth/rbac";
+import { openPortalEntry } from "../../auth/portalEntry";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
@@ -61,14 +62,6 @@ const portalEntryRoute: Record<PortalScope, string> = {
   merchant: "/merchant",
   technician: "/technician",
   user: "/",
-};
-
-const portalEntryFile: Record<PortalScope, string> = {
-  admin: "/pf-admin.html",
-  business: "/afirieito.html",
-  merchant: "/merchant.html",
-  technician: "/technician.html",
-  user: "/user.html",
 };
 
 function formatLocalized(
@@ -289,12 +282,6 @@ export function requiresFormalFrontendLogin(
   _redirectPath: string | null,
 ) {
   return true;
-}
-
-function openPortalEntry(portal: PortalScope, route: string) {
-  const target = new URL(portalEntryFile[portal], window.location.href);
-  target.hash = route;
-  window.location.assign(target.href);
 }
 
 function AppMark() {

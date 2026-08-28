@@ -1,11 +1,13 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import type {
   BookingOrderPayload,
-  BookingRepositoryPort
+  BookingRepositoryPort,
+  ScheduleSlotPayload
 } from "../src/repositories/booking.repository";
 import type { BookingLedgerSettlementPort } from "../src/services/ledger.service";
 import type { OrderStatusNotificationPort } from "../src/services/realtime.service";
 import { BookingService } from "../src/services/booking.service";
+import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import type {
   AffiliateCheckoutPrepared,
   AffiliateCheckoutService
@@ -13,6 +15,35 @@ import type {
 
 const now = new Date("2026-05-25T00:00:00.000Z");
 const actor = { userId: 1, roles: ["customer"] };
+const technicianActor: AuthenticatedAccessContext = {
+  userId: 3,
+  email: "technician@example.com",
+  accessTokenJti: "technician-access-jti",
+  accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 300,
+  roles: ["technician"],
+  permissions: ["schedule:slots:list"],
+  currentIdentityScopeType: "technician_profile",
+  currentIdentityScopeId: 31
+};
+
+const scheduleSlot: ScheduleSlotPayload = {
+  id: 10,
+  serviceId: null,
+  technicianServiceId: 20,
+  shopId: 11,
+  technicianProfileId: 31,
+  startsAt: new Date("2026-08-26T01:00:00.000Z"),
+  endsAt: new Date("2026-08-26T02:00:00.000Z"),
+  capacity: 1,
+  bookedCount: 0,
+  status: "available",
+  serviceName: "Aroma 60",
+  shopName: "Aoyama Studio",
+  technicianName: "Mika",
+  priceAmount: "12000.00",
+  currency: "JPY",
+  durationMinutes: 60
+};
 
 const makeOrder = (
   status: BookingOrderPayload["status"],
@@ -78,6 +109,7 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
     createBooking: jest.fn(async () => order),
     listOrders: jest.fn(),
     findOrderById: jest.fn(async () => order),
+    findScheduleSlotById: jest.fn(async () => scheduleSlot),
     transitionOrder: jest.fn(async (input, options) => {
       if (!order) {
         return null;
@@ -107,6 +139,30 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("derives technician scope for a single schedule slot", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+
+    await expect(service.getScheduleSlot(technicianActor, 10)).resolves.toEqual(scheduleSlot);
+    expect(repository.findScheduleSlotById).toHaveBeenCalledWith({
+      scope: "technician",
+      technicianProfileId: 31,
+      id: 10
+    });
+  });
+
+  it("returns safe not-found for a schedule slot outside the technician scope", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.findScheduleSlotById.mockResolvedValue(null);
+    const service = new BookingService(repository);
+
+    await expect(service.getScheduleSlot(technicianActor, 99)).rejects.toMatchObject({
+      code: ERROR_CODES.NOT_FOUND,
+      statusCode: 404,
+      message: "error.schedule.slot_not_found"
+    });
+  });
+
   it("rejects booking creation when the repository reports an unavailable slot", async () => {
     const repository = createRepository(null);
     const service = new BookingService(repository);
@@ -308,15 +364,21 @@ describe("BookingService state machine", () => {
   it("forces customer order lists to the authenticated user scope", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);
+    const from = new Date("2026-09-01T00:00:00.000Z");
+    const to = new Date("2026-12-01T00:00:00.000Z");
 
     await service.listOrders(actor, {
       customerUserId: 999,
+      from,
+      to,
       page: 1,
       pageSize: 20
     });
 
     expect(repository.listOrders).toHaveBeenCalledWith({
       customerUserId: actor.userId,
+      from,
+      to,
       page: 1,
       pageSize: 20
     });
@@ -556,17 +618,25 @@ describe("BookingService state machine", () => {
       currentIdentityScopeType: "shop",
       currentIdentityScopeId: 1
     };
+    const insufficientBalanceConfirmation = {
+      confirmed: true as const,
+      idempotencyKey: "fee-confirm-1234567890",
+      previewVersion: `sha256:${"a".repeat(64)}`
+    };
 
     await new BookingService(createRepository(makeOrder("pending")), ledgerService).transitionOrder(
       providerActor,
       1,
-      "confirm"
+      "confirm",
+      undefined,
+      { insufficientBalanceConfirmation }
     );
     expect(ledgerService.freezeBookingAcceptance).toHaveBeenCalledWith(
       expect.objectContaining({
         bookingOrderId: 1,
         shopId: 1,
-        actorUserId: 2
+        actorUserId: 2,
+        insufficientBalanceConfirmation
       }),
       expect.anything()
     );
@@ -580,7 +650,8 @@ describe("BookingService state machine", () => {
         bookingOrderId: 1,
         orderType: "request",
         customerUserId: 1,
-        actorUserId: 2
+        actorUserId: 2,
+        insufficientBalanceConfirmation: undefined
       }),
       expect.anything()
     );

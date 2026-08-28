@@ -66,6 +66,22 @@ export type ContractAcceptanceInput = {
   hasAgreed: true;
 };
 
+export type AffiliateIdentityActivationResult = {
+  contractAcceptance: {
+    id: number;
+    contractType: "affiliate";
+    contractVersion: string;
+    contentHash: string;
+    acceptedAt: string;
+    receiptId: string;
+  };
+  affiliate: {
+    affiliateStatus: "active" | "suspended" | "closed";
+    needoId: string;
+    profileId: number;
+  };
+};
+
 export type TechnicianReview = {
   applicationId: number;
   applicantUserId: number;
@@ -156,7 +172,10 @@ export const identityApplicationsApi = {
     return httpClient.request<{ applicationVersion: number; receiptId: string }>(`/identity-applications/${id}/merchant-contract-acceptance`, { body, method: "POST" });
   },
   activateAffiliate(body: ContractAcceptanceInput) {
-    return httpClient.request<{ identity: { identityId: number }; contractAcceptance: { receiptId: string } }>("/identity-activations/affiliate", { body, method: "POST" });
+    return httpClient.request<AffiliateIdentityActivationResult>("/identity-activations/affiliate", {
+      body,
+      method: "POST"
+    });
   },
   bindAffiliateBankAccount(body: BankAccountInput) {
     return httpClient.request<{ holderMatched: boolean; accountNumberMasked: string }>("/bank-accounts/affiliate-withdrawal", { body, method: "PUT" });

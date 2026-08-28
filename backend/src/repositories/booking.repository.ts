@@ -95,6 +95,8 @@ export interface OrderListInput extends PaginationInput {
   shopId?: number;
   technicianProfileId?: number;
   status?: BookingOrderStatusPayload;
+  from?: Date;
+  to?: Date;
 }
 
 export type ScheduleScope =
@@ -128,6 +130,8 @@ export type ScheduleSlotUpdateInput = ScheduleScope & {
 };
 
 export type ScheduleSlotDeleteInput = ScheduleScope & { id: number };
+
+export type ScheduleSlotReadInput = ScheduleScope & { id: number };
 
 export type ScheduleMutationResult =
   | { outcome: "ok"; slot: ScheduleSlotPayload }
@@ -245,6 +249,7 @@ export interface BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
   ) => Promise<BookingOrderPayload | null>;
+  findScheduleSlotById: (input: ScheduleSlotReadInput) => Promise<ScheduleSlotPayload | null>;
   listScheduleSlots: (input: ScheduleListInput) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   createScheduleSlot: (input: ScheduleSlotCreateInput) => Promise<ScheduleMutationResult>;
   updateScheduleSlot: (input: ScheduleSlotUpdateInput) => Promise<ScheduleMutationResult>;
@@ -374,6 +379,21 @@ export class BookingRepository implements BookingRepositoryPort {
 
   public async isShopSuspended(shopId: number): Promise<boolean> {
     return this.isShopSuspendedInTransaction(this.client, shopId);
+  }
+
+  public async findScheduleSlotById(
+    input: ScheduleSlotReadInput
+  ): Promise<ScheduleSlotPayload | null> {
+    const slot = await this.client.scheduleSlot.findFirst({
+      where: {
+        id: input.id,
+        deletedAt: null,
+        ...this.scheduleScopeWhere(input)
+      },
+      include: this.slotInclude()
+    });
+
+    return slot ? this.mapSlot(slot) : null;
   }
 
   public async listScheduleSlots(
@@ -718,7 +738,8 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.customerUserId ? { customerUserId: input.customerUserId } : {}),
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}),
-      ...(input.status ? { status: this.statusToDb(input.status) } : {})
+      ...(input.status ? { status: this.statusToDb(input.status) } : {}),
+      ...(input.from && input.to ? { startsAt: { gte: input.from, lt: input.to } } : {})
     };
     const [list, total] = await Promise.all([
       this.client.bookingOrder.findMany({

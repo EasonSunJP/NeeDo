@@ -7,5 +7,5 @@ export interface ApiSuccessResponse<TData> {
 export interface ApiErrorResponse {
   code: number;
   message: string;
-  data: null;
+  data: unknown | null;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import appSource from "./App.tsx?raw";
+import affiliateActivationSource from "./features/identity-applications/AffiliateActivationPage.tsx?raw";
 import settingsSource from "./features/settings/UnifiedSettingsPages.tsx?raw";
 
 function sliceBetween(source: string, startToken: string, endToken: string) {
@@ -18,6 +19,17 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).toContain("hasRememberedPortalAuthorization(portal)");
     expect(requirePortalAuthSource).toContain("switchPortal(portal)");
     expect(requirePortalAuthSource).not.toContain("needsPortalSync");
+  });
+
+  it("shows a retryable identity-service outage without rendering protected portal data", () => {
+    expect(requirePortalAuthSource).toContain("restoreError");
+    expect(requirePortalAuthSource).toContain("retrySessionRestore");
+    expect(requirePortalAuthSource).toContain("身份服务暂时不可用，请稍后重试。");
+    expect(requirePortalAuthSource).toContain("重新加载");
+    expect(requirePortalAuthSource).toContain("if (restoreError || isRestoring");
+    expect(requirePortalAuthSource.indexOf("if (restoreError && !isAuthenticated)")).toBeLessThan(
+      requirePortalAuthSource.indexOf("if (isRestoring || isPortalRestorePending")
+    );
   });
 
   it("aligns the active backend identity before rendering an already-authorized portal", () => {
@@ -56,6 +68,23 @@ describe("portal identity switching boundaries", () => {
     expect(appSource).toContain('path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)}');
     expect(appSource).toContain('path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)}');
   });
+
+  it("routes activated affiliates to the formal profile instead of the capability gate", () => {
+    expect(appSource).toContain(
+      'import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/me" element={protect("business", <AffiliateProfilePage />)}'
+    );
+    expect(
+      affiliateActivationSource.match(
+        /openPortalEntry\("business", "\/afirieito\/me"\)/g,
+      ),
+    ).toHaveLength(2);
+    expect(affiliateActivationSource).not.toContain(
+      'window.location.assign("/afirieito',
+    );
+  });
 });
 
 describe("production route chunk boundaries", () => {
@@ -63,6 +92,12 @@ describe("production route chunk boundaries", () => {
     expect(appSource).not.toContain('import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";');
     expect(appSource).toContain('lazy(() => import("./pages/mobile/TechnicianPortalPage")');
     expect(appSource.match(/<Suspense fallback=\{null\}><TechnicianPortalPage \/><\/Suspense>/g)).toHaveLength(2);
+  });
+
+  it("routes the accepted technician schedule index directly to the formal-only page", () => {
+    expect(appSource).toContain(
+      'path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)}'
+    );
   });
 
   it("exposes the same account social page in user, merchant, and technician portals", () => {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
@@ -8,8 +9,17 @@ import type {
   FeeType,
   FinanceOrderType
 } from "./fee-calculation.service";
+import type {
+  BookingPlatformFeePolicySnapshot,
+  PlatformFeePolicyService
+} from "./platform-fee-policy.service";
 
-export type WalletOwnerType = "user" | "shop" | "platform" | "merchant_account";
+export type WalletOwnerType =
+  | "user"
+  | "shop"
+  | "platform"
+  | "merchant_account"
+  | "alliance";
 export type LedgerCurrency = "NDP";
 export type WalletLedgerDirection =
   | "available_credit"
@@ -42,6 +52,8 @@ export type OrderFinancialSettlementStatus =
   | "released"
   | "cancelled"
   | "compensated";
+export type PlatformFeeDebtStatus = "none" | "outstanding" | "settled";
+export type UserRewardStatus = "disabled" | "immediate" | "pending" | "paid" | "expired";
 
 export interface WalletPayload {
   id: number;
@@ -195,10 +207,63 @@ export interface OrderFinancialUpsertInput {
   releasedNdp?: number;
   platformFeePayerType?: string | null;
   platformFeePayerId?: number | null;
+  platformFeeEnabledSnapshot?: boolean | null;
+  platformFeeGlobalVersion?: number | null;
+  platformFeePolicyVersion?: number | null;
+  platformFeeAmountNdpSnapshot?: number;
+  platformFeeWalletOwnerType?: WalletOwnerType | null;
+  platformFeeWalletOwnerId?: number | null;
+  platformFeeWalletId?: number | null;
+  platformFeeShortfallNdp?: number;
+  platformFeeOutstandingNdp?: number;
+  platformFeeDebtStatus?: PlatformFeeDebtStatus;
+  platformFeeAcceptedAt?: Date | null;
+  platformFeeOverdraftConfirmationKey?: string | null;
+  platformFeePreviewVersion?: string | null;
+  userRewardEligibleNdp?: number;
+  userRewardStatus?: UserRewardStatus;
+  userRewardDeadlineAt?: Date | null;
+  userRewardGrantedAt?: Date | null;
   completedOrderOrdinalInPeriod?: number | null;
   appliedFeeRuleIds?: string[];
   timelineEvent?: unknown;
   settlementStatus?: OrderFinancialSettlementStatus;
+}
+
+export interface OrderFinancialPlatformFeeSnapshot {
+  bookingOrderId: number;
+  customerUserId: number;
+  shopId: number;
+  technicianProfileId: number | null;
+  platformFeeEnabledSnapshot: boolean;
+  platformFeeAmountNdpSnapshot: number;
+  platformFeeWalletOwnerType: WalletOwnerType | null;
+  platformFeeWalletOwnerId: number | null;
+  platformFeeWalletId: number | null;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: PlatformFeeDebtStatus;
+  platformFeeAcceptedAt: Date | null;
+  userRewardEligibleNdp: number;
+  userRewardStatus: UserRewardStatus;
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  settlementStatus: OrderFinancialSettlementStatus;
+}
+
+export interface PlatformFeeDebtAllocationRecord {
+  id: number;
+  bookingOrderId: number;
+  customerUserId: number;
+  platformFeeWalletId: number;
+  platformFeeAcceptedAt: Date;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: Extract<PlatformFeeDebtStatus, "outstanding" | "settled">;
+  userRewardEligibleNdp: number;
+  userRewardStatus: UserRewardStatus;
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  userRewardNdp: number;
+  settlementStatus: OrderFinancialSettlementStatus;
 }
 
 export interface WalletLookupInput {
@@ -243,6 +308,35 @@ export interface LedgerRepositoryPort {
     ownerId: number;
     currency: LedgerCurrency;
   }) => Promise<WalletPayload>;
+  findTechnicianUserId?: (technicianProfileId: number) => Promise<number | null>;
+  findOrderFinancialByOverdraftConfirmationKey?: (
+    idempotencyKey: string
+  ) => Promise<{ bookingOrderId: number; previewVersion: string } | null>;
+  findOrderFinancialPlatformFeeSnapshot?: (
+    bookingOrderId: number
+  ) => Promise<OrderFinancialPlatformFeeSnapshot | null>;
+  lockOrderFinancialPlatformFeeSnapshot?: (
+    bookingOrderId: number
+  ) => Promise<OrderFinancialPlatformFeeSnapshot | null>;
+  lockWalletById?: (walletId: number) => Promise<WalletPayload | null>;
+  getDatabaseNow?: () => Promise<Date>;
+  findPlatformFeeHoldByBookingOrderId?: (
+    bookingOrderId: number
+  ) => Promise<WalletHoldPayload | null>;
+  listOutstandingPlatformFeeDebtIds?: (input: {
+    walletId: number;
+    limit: number;
+  }) => Promise<number[]>;
+  lockPlatformFeeDebt?: (id: number) => Promise<PlatformFeeDebtAllocationRecord | null>;
+  updatePlatformFeeDebt?: (input: {
+    id: number;
+    expectedOutstandingNdp: number;
+    platformFeeOutstandingNdp: number;
+    platformFeeDebtStatus: Extract<PlatformFeeDebtStatus, "outstanding" | "settled">;
+    userRewardStatus?: UserRewardStatus;
+    userRewardNdp?: number;
+    userRewardGrantedAt?: Date | null;
+  }) => Promise<boolean>;
   applyWalletDelta: (input: {
     walletId: number;
     availableDelta: number;
@@ -368,6 +462,11 @@ export interface BookingLedgerSettlementInput {
   completedAt?: Date;
   customerUserId?: number;
   actorUserId: number | null;
+  insufficientBalanceConfirmation?: {
+    confirmed: true;
+    idempotencyKey: string;
+    previewVersion: string;
+  };
 }
 
 export interface LedgerMutationContext {
@@ -439,15 +538,18 @@ export interface BookingLedgerSettlementPort {
 }
 
 const CURRENCY: LedgerCurrency = "NDP";
+const PLATFORM_FEE_DEBT_ALLOCATION_BATCH_SIZE = 100;
 
-export class LedgerService
-  implements BookingLedgerSettlementPort, AffiliateRewardSettlementPort
-{
+export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewardSettlementPort {
   public constructor(
     private readonly repository: LedgerRepositoryPort,
     private readonly feeCalculationService?: Pick<FeeCalculationService, "calculateFee">,
     private readonly affiliateWithdrawalEligibility?: AffiliateWithdrawalEligibilityPort,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly platformFeePolicyService?: Pick<
+      PlatformFeePolicyService,
+      "resolveForBookingSettlement"
+    >
   ) {}
 
   public freezeAffiliateTaskBudget(
@@ -455,9 +557,7 @@ export class LedgerService
     context: LedgerMutationContext = {}
   ): Promise<AffiliateBudgetLedgerResult> {
     return this.repository.runInTransaction(async (repository) => {
-      const existing = await repository.findTransactionByIdempotencyKey(
-        input.idempotencyKey
-      );
+      const existing = await repository.findTransactionByIdempotencyKey(input.idempotencyKey);
 
       if (existing) {
         return {
@@ -520,8 +620,7 @@ export class LedgerService
 
       return {
         transaction:
-          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ??
-          transaction,
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
         walletId: wallet.id
       };
     }, context.transactionClient);
@@ -536,9 +635,7 @@ export class LedgerService
     }
 
     return this.repository.runInTransaction(async (repository) => {
-      const existing = await repository.findTransactionByIdempotencyKey(
-        input.idempotencyKey
-      );
+      const existing = await repository.findTransactionByIdempotencyKey(input.idempotencyKey);
 
       if (existing) {
         return this.resolveExistingAffiliateTaskBudgetRelease(existing, input);
@@ -601,8 +698,7 @@ export class LedgerService
 
       return {
         transaction:
-          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ??
-          transaction,
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
         walletId: wallet.id
       };
     }, context.transactionClient);
@@ -617,9 +713,7 @@ export class LedgerService
     }
 
     return this.repository.runInTransaction(async (repository) => {
-      const existing = await repository.findTransactionByIdempotencyKey(
-        input.idempotencyKey
-      );
+      const existing = await repository.findTransactionByIdempotencyKey(input.idempotencyKey);
 
       if (existing) {
         return this.resolveAffiliateRewardLedgerResult(repository, existing, input);
@@ -712,8 +806,7 @@ export class LedgerService
 
       return {
         transaction:
-          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ??
-          transaction,
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
         publisherWalletId: publisherWallet.id,
         claimantWalletId: claimantWallet.id
       };
@@ -724,112 +817,316 @@ export class LedgerService
     input: BookingLedgerSettlementInput,
     context: LedgerMutationContext = {}
   ): Promise<LedgerTransactionPayload | void> {
-    return this.repository.runInTransaction(async (repository) => {
-      const idempotencyKey = `booking:${input.bookingOrderId}:accept:freeze`;
-      const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
+    return this.repository
+      .runInTransaction(async (repository, transactionClient) => {
+        const idempotencyKey = `booking:${input.bookingOrderId}:accept:freeze`;
+        const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
 
-      if (existing) {
-        return existing;
-      }
-      const existingHold = await repository.findWalletHoldByIdempotencyKey?.(idempotencyKey);
+        if (existing) {
+          return existing;
+        }
+        const existingHold = await repository.findWalletHoldByIdempotencyKey?.(idempotencyKey);
 
-      if (existingHold) {
-        return undefined;
-      }
+        if (existingHold) {
+          return undefined;
+        }
 
-      this.assertFinanceMutationRepository(repository);
-      const feeType = this.acceptanceFeeType(input);
-      const fee = await this.calculateFee(feeType, "hold", input, context);
-      const holdOwner = this.acceptanceHoldOwner(input, feeType);
-      const holdAmount = fee.holdAmountNdp;
+        this.assertFinanceMutationRepository(repository);
+        const feeType = this.acceptanceFeeType(input);
+        const transactionContext = { transactionClient };
+        if (feeType === "b_platform_fee" && this.platformFeePolicyService) {
+          return this.freezeBookingPlatformFeeAcceptance(
+            repository,
+            input,
+            idempotencyKey,
+            transactionContext
+          );
+        }
+        const fee = await this.calculateFee(feeType, "hold", input, transactionContext);
+        const holdOwner = this.acceptanceHoldOwner(input, feeType);
+        const holdAmount = fee.holdAmountNdp;
 
-      const wallet = await repository.getOrCreateWallet({
-        ownerType: holdOwner.ownerType,
-        ownerId: holdOwner.ownerId,
-        currency: CURRENCY
-      });
+        const wallet = await repository.getOrCreateWallet({
+          ownerType: holdOwner.ownerType,
+          ownerId: holdOwner.ownerId,
+          currency: CURRENCY
+        });
 
-      if (wallet.availableBalance < holdAmount) {
-        throw this.insufficientAvailableError();
-      }
+        if (wallet.availableBalance < holdAmount) {
+          throw this.insufficientAvailableError();
+        }
 
-      const updatedWallet =
-        holdAmount > 0
-          ? await repository.applyWalletDelta({
-              walletId: wallet.id,
-              availableDelta: -holdAmount,
-              frozenDelta: holdAmount,
-              requireAvailableAtLeast: holdAmount
-            })
-          : wallet;
+        const updatedWallet =
+          holdAmount > 0
+            ? await repository.applyWalletDelta({
+                walletId: wallet.id,
+                availableDelta: -holdAmount,
+                frozenDelta: holdAmount,
+                requireAvailableAtLeast: holdAmount
+              })
+            : wallet;
 
-      if (!updatedWallet) {
-        throw this.insufficientAvailableError();
-      }
+        if (!updatedWallet) {
+          throw this.insufficientAvailableError();
+        }
 
-      await repository.createWalletHold!({
-        ownerType: holdOwner.ownerType,
-        ownerId: holdOwner.ownerId,
-        bookingOrderId: input.bookingOrderId,
-        feeType,
-        holdAmountNdp: holdAmount,
-        status: "active",
-        idempotencyKey,
-        calculationLogId: fee.calculationLogId,
-        metadata: this.feeMetadata(fee)
-      });
-      await this.upsertOrderFinancial(repository, input, {
-        ...this.holdFinancialFields(feeType, holdAmount),
-        campaignDiscountNdp: fee.campaignDiscountNdp,
-        platformFeePayerType: fee.payerType,
-        platformFeePayerId: fee.payerId,
-        appliedFeeRuleIds: fee.appliedRuleIds,
-        settlementStatus: holdAmount > 0 ? "holding" : "pending",
-        timelineEvent: {
-          action:
+        await repository.createWalletHold!({
+          ownerType: holdOwner.ownerType,
+          ownerId: holdOwner.ownerId,
+          bookingOrderId: input.bookingOrderId,
+          feeType,
+          holdAmountNdp: holdAmount,
+          status: "active",
+          idempotencyKey,
+          calculationLogId: fee.calculationLogId,
+          metadata: this.feeMetadata(fee)
+        });
+        await this.upsertOrderFinancial(repository, input, {
+          ...this.holdFinancialFields(feeType, holdAmount),
+          campaignDiscountNdp: fee.campaignDiscountNdp,
+          platformFeePayerType: fee.payerType,
+          platformFeePayerId: fee.payerId,
+          appliedFeeRuleIds: fee.appliedRuleIds,
+          settlementStatus: holdAmount > 0 ? "holding" : "pending",
+          timelineEvent: {
+            action:
+              feeType === "c_request_dispatch_fee"
+                ? "request_accept_dispatch_fee_hold"
+                : "booking_accept_hold",
+            amountNdp: holdAmount,
+            fee
+          }
+        });
+
+        if (holdAmount === 0) {
+          return undefined;
+        }
+
+        const transaction = await repository.createTransaction({
+          idempotencyKey,
+          type: "booking_accept_freeze",
+          referenceType: "booking_order",
+          referenceId: input.bookingOrderId,
+          actorUserId: input.actorUserId,
+          amount: holdAmount,
+          metadata: { shopId: input.shopId, holdOwner, fee }
+        });
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: wallet.id,
+          direction: "freeze",
+          amount: holdAmount,
+          availableDelta: -holdAmount,
+          frozenDelta: holdAmount,
+          availableBalanceAfter: updatedWallet.availableBalance,
+          frozenBalanceAfter: updatedWallet.frozenBalance,
+          reason:
             feeType === "c_request_dispatch_fee"
-              ? "request_accept_dispatch_fee_hold"
-              : "booking_accept_hold",
-          amountNdp: holdAmount,
-          fee
+              ? "request_accept_dispatch_fee_freeze"
+              : "booking_accept_freeze"
+        });
+        await this.recordFinanceAndAudit(repository, transaction, {
+          action: "ledger.booking_accept.freeze",
+          expectedAmount: holdAmount,
+          actualAmount: holdAmount
+        });
+
+        return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+      }, context.transactionClient)
+      .catch((error: unknown) => {
+        if (this.isPlatformFeeConfirmationKeyConflict(error)) {
+          throw this.platformFeeConfirmationConflictError();
+        }
+
+        throw error;
+      });
+  }
+
+  private async freezeBookingPlatformFeeAcceptance(
+    repository: LedgerRepositoryPort,
+    input: BookingLedgerSettlementInput,
+    idempotencyKey: string,
+    context: LedgerMutationContext
+  ): Promise<LedgerTransactionPayload | void> {
+    const acceptedAt = input.acceptedAt ?? this.now();
+    const policy = await this.platformFeePolicyService!.resolveForBookingSettlement(
+      input.shopId,
+      acceptedAt,
+      context.transactionClient
+    );
+    const owner = await this.resolveBookingPlatformFeeOwner(repository, input, policy);
+    const payerOverride =
+      owner.payerType === "shop"
+        ? { payerType: "shop" as const, payerId: owner.payerId }
+        : { payerType: "cast" as const, payerId: owner.payerId };
+    const fee = await this.calculateFee("b_platform_fee", "hold", input, context, {
+      payerOverride,
+      ...(policy.feeEnabled ? {} : { waiveReason: "shop_policy_disabled" as const })
+    });
+
+    if (!policy.feeEnabled) {
+      await this.upsertOrderFinancial(repository, input, {
+        bPlatformFeeHoldNdp: 0,
+        campaignDiscountNdp: fee.campaignDiscountNdp,
+        platformFeePayerType: owner.payerType,
+        platformFeePayerId: owner.payerId,
+        appliedFeeRuleIds: fee.appliedRuleIds,
+        settlementStatus: "pending",
+        ...this.platformFeeSnapshotFields({
+          policy,
+          acceptedAt,
+          amountNdp: 0,
+          wallet: null,
+          shortfallNdp: 0,
+          confirmationKey: null,
+          previewVersion: null
+        }),
+        userRewardEligibleNdp: 0,
+        userRewardStatus: "disabled",
+        timelineEvent: {
+          action: "booking_accept_platform_fee_disabled",
+          amountNdp: 0,
+          policy,
+          fee: this.feeMetadata(fee)
         }
       });
 
-      if (holdAmount === 0) {
-        return undefined;
+      return undefined;
+    }
+
+    const holdAmount = fee.holdAmountNdp;
+    const wallet = await repository.getOrCreateWallet({
+      ownerType: owner.ownerType,
+      ownerId: owner.ownerId,
+      currency: CURRENCY
+    });
+    const deficitBeforeNdp = Math.max(0, -wallet.availableBalance);
+    const deficitAfterNdp = Math.max(0, -(wallet.availableBalance - holdAmount));
+    const shortfallNdp = deficitAfterNdp - deficitBeforeNdp;
+    const previewVersion = this.bookingPlatformFeePreviewVersion({
+      input,
+      policy,
+      owner,
+      wallet,
+      fee
+    });
+    const confirmation = input.insufficientBalanceConfirmation;
+
+    if (shortfallNdp > 0) {
+      if (!confirmation) {
+        throw this.platformFeeConfirmationRequiredError({
+          feeAmountNdp: holdAmount,
+          availableBalanceNdp: wallet.availableBalance,
+          shortfallNdp,
+          payerType: policy.payerType,
+          walletOwnerType: owner.ownerType,
+          previewVersion
+        });
       }
+      if (!repository.findOrderFinancialByOverdraftConfirmationKey) {
+        throw this.repositoryUnavailableError();
+      }
+      const usedConfirmation = await repository.findOrderFinancialByOverdraftConfirmationKey(
+        confirmation.idempotencyKey
+      );
+      if (usedConfirmation && usedConfirmation.bookingOrderId !== input.bookingOrderId) {
+        throw this.platformFeeConfirmationConflictError();
+      }
+      if (confirmation.previewVersion !== previewVersion) {
+        throw this.platformFeePreviewStaleError();
+      }
+    }
 
-      const transaction = await repository.createTransaction({
-        idempotencyKey,
-        type: "booking_accept_freeze",
-        referenceType: "booking_order",
-        referenceId: input.bookingOrderId,
-        actorUserId: input.actorUserId,
-        amount: holdAmount,
-        metadata: { shopId: input.shopId, holdOwner, fee }
-      });
-      await repository.createLedgerEntry({
-        transactionId: transaction.id,
-        walletId: wallet.id,
-        direction: "freeze",
-        amount: holdAmount,
-        availableDelta: -holdAmount,
-        frozenDelta: holdAmount,
-        availableBalanceAfter: updatedWallet.availableBalance,
-        frozenBalanceAfter: updatedWallet.frozenBalance,
-        reason:
-          feeType === "c_request_dispatch_fee"
-            ? "request_accept_dispatch_fee_freeze"
-            : "booking_accept_freeze"
-      });
-      await this.recordFinanceAndAudit(repository, transaction, {
-        action: "ledger.booking_accept.freeze",
-        expectedAmount: holdAmount,
-        actualAmount: holdAmount
-      });
+    const updatedWallet =
+      holdAmount > 0
+        ? await repository.applyWalletDelta({
+            walletId: wallet.id,
+            availableDelta: -holdAmount,
+            frozenDelta: holdAmount,
+            ...(shortfallNdp > 0 ? {} : { requireAvailableAtLeast: holdAmount })
+          })
+        : wallet;
+    if (!updatedWallet) {
+      throw this.insufficientAvailableError();
+    }
 
-      return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
-    }, context.transactionClient);
+    await repository.createWalletHold!({
+      ownerType: owner.ownerType,
+      ownerId: owner.ownerId,
+      bookingOrderId: input.bookingOrderId,
+      feeType: "b_platform_fee",
+      holdAmountNdp: holdAmount,
+      status: "active",
+      idempotencyKey,
+      calculationLogId: fee.calculationLogId,
+      metadata: { policy, owner, previewVersion, fee: this.feeMetadata(fee) }
+    });
+    await this.upsertOrderFinancial(repository, input, {
+      bPlatformFeeHoldNdp: holdAmount,
+      campaignDiscountNdp: fee.campaignDiscountNdp,
+      platformFeePayerType: owner.payerType,
+      platformFeePayerId: owner.payerId,
+      appliedFeeRuleIds: fee.appliedRuleIds,
+      settlementStatus: holdAmount > 0 ? "holding" : "pending",
+      ...this.platformFeeSnapshotFields({
+        policy,
+        acceptedAt,
+        amountNdp: holdAmount,
+        wallet,
+        shortfallNdp,
+        confirmationKey: shortfallNdp > 0 ? (confirmation?.idempotencyKey ?? null) : null,
+        previewVersion
+      }),
+      userRewardEligibleNdp: 100,
+      userRewardStatus: shortfallNdp > 0 ? "pending" : "immediate",
+      timelineEvent: {
+        action: "booking_accept_hold",
+        amountNdp: holdAmount,
+        shortfallNdp,
+        policy,
+        owner,
+        previewVersion,
+        fee: this.feeMetadata(fee)
+      }
+    });
+
+    if (holdAmount === 0) {
+      return undefined;
+    }
+
+    const transaction = await repository.createTransaction({
+      idempotencyKey,
+      type: "booking_accept_freeze",
+      referenceType: "booking_order",
+      referenceId: input.bookingOrderId,
+      actorUserId: input.actorUserId,
+      amount: holdAmount,
+      metadata: { shopId: input.shopId, policy, owner, shortfallNdp, previewVersion }
+    });
+    await repository.createLedgerEntry({
+      transactionId: transaction.id,
+      walletId: wallet.id,
+      direction: "freeze",
+      amount: holdAmount,
+      availableDelta: -holdAmount,
+      frozenDelta: holdAmount,
+      availableBalanceAfter: updatedWallet.availableBalance,
+      frozenBalanceAfter: updatedWallet.frozenBalance,
+      reason: "booking_accept_freeze"
+    });
+    await this.recordFinanceAndAudit(repository, transaction, {
+      action: "ledger.booking_accept.freeze",
+      expectedAmount: holdAmount,
+      actualAmount: holdAmount,
+      metadata: {
+        insufficientBalanceConfirmed: shortfallNdp > 0,
+        shortfallNdp,
+        confirmationKey: confirmation?.idempotencyKey ?? null,
+        previewVersion
+      }
+    });
+
+    return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
   }
 
   public releaseBookingHold(
@@ -844,7 +1141,34 @@ export class LedgerService
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
-      const hold = await this.requireAcceptanceHold(repository, input);
+      const lockedSettlement =
+        input.orderType === "booking"
+          ? await this.lockOrderFinancialPlatformFeeSnapshot(repository, input.bookingOrderId)
+          : null;
+      const snapshot = lockedSettlement?.snapshot ?? null;
+      if (snapshot && !snapshot.platformFeeEnabledSnapshot) {
+        if (snapshot.settlementStatus === "cancelled") {
+          return undefined;
+        }
+        await this.upsertOrderFinancial(repository, input, {
+          platformFeeOutstandingNdp: 0,
+          platformFeeDebtStatus: "none",
+          userRewardEligibleNdp: 0,
+          userRewardStatus: "disabled",
+          userRewardDeadlineAt: null,
+          userRewardGrantedAt: null,
+          settlementStatus: "cancelled",
+          timelineEvent: {
+            action: "booking_cancel_platform_fee_disabled",
+            amountNdp: 0
+          }
+        });
+
+        return undefined;
+      }
+      const hold = snapshot
+        ? await this.requireSnapshotPlatformFeeHold(repository, input.bookingOrderId)
+        : await this.requireAcceptanceHold(repository, input);
       const releaseAmount = this.remainingHoldAmount(hold);
 
       if (releaseAmount <= 0) {
@@ -854,6 +1178,16 @@ export class LedgerService
           releasedAt: new Date()
         });
         await this.upsertOrderFinancial(repository, input, {
+          ...(snapshot
+            ? {
+                platformFeeOutstandingNdp: 0,
+                platformFeeDebtStatus: "none" as const,
+                userRewardEligibleNdp: 0,
+                userRewardStatus: "disabled" as const,
+                userRewardDeadlineAt: null,
+                userRewardGrantedAt: null
+              }
+            : {}),
           settlementStatus: "cancelled",
           timelineEvent: {
             action: "booking_cancel_no_remaining_hold",
@@ -864,11 +1198,13 @@ export class LedgerService
         return undefined;
       }
 
-      const wallet = await repository.getOrCreateWallet({
-        ownerType: hold.ownerType,
-        ownerId: hold.ownerId,
-        currency: CURRENCY
-      });
+      const wallet =
+        lockedSettlement?.payerWallet ??
+        (await repository.getOrCreateWallet({
+          ownerType: hold.ownerType,
+          ownerId: hold.ownerId,
+          currency: CURRENCY
+        }));
 
       if (wallet.frozenBalance < releaseAmount) {
         throw this.insufficientFrozenError();
@@ -916,6 +1252,16 @@ export class LedgerService
       });
       await this.upsertOrderFinancial(repository, input, {
         releasedNdp: releaseAmount,
+        ...(snapshot
+          ? {
+              platformFeeOutstandingNdp: 0,
+              platformFeeDebtStatus: "none" as const,
+              userRewardEligibleNdp: 0,
+              userRewardStatus: "disabled" as const,
+              userRewardDeadlineAt: null,
+              userRewardGrantedAt: null
+            }
+          : {}),
         settlementStatus: "cancelled",
         timelineEvent: {
           action: "booking_cancel_release",
@@ -940,7 +1286,7 @@ export class LedgerService
       return this.settleRequestCompletion(input, context);
     }
 
-    return this.repository.runInTransaction(async (repository) => {
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
       const idempotencyKey = `booking:${input.bookingOrderId}:complete:settlement`;
       const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
 
@@ -948,6 +1294,20 @@ export class LedgerService
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
+      const lockedSettlement = await this.lockOrderFinancialPlatformFeeSnapshot(
+        repository,
+        input.bookingOrderId
+      );
+      if (lockedSettlement) {
+        return this.settleBookingCompletionFromSnapshot(
+          repository,
+          input,
+          lockedSettlement.snapshot,
+          lockedSettlement.payerWallet,
+          idempotencyKey,
+          { transactionClient }
+        );
+      }
       const hold = await this.requireAcceptanceHold(repository, input);
       const fee = await this.calculateFee("b_platform_fee", "capture", input, context);
       const reward = await this.calculateFee("user_reward", "capture", input, context);
@@ -1102,6 +1462,200 @@ export class LedgerService
     }, context.transactionClient);
   }
 
+  private async settleBookingCompletionFromSnapshot(
+    repository: LedgerRepositoryPort,
+    input: BookingLedgerSettlementInput & { customerUserId: number },
+    snapshot: OrderFinancialPlatformFeeSnapshot,
+    lockedPayerWallet: WalletPayload | null,
+    idempotencyKey: string,
+    context: LedgerMutationContext
+  ): Promise<LedgerTransactionPayload | void> {
+    const completedAt = input.completedAt ?? this.now();
+    if (!snapshot.platformFeeEnabledSnapshot) {
+      if (snapshot.settlementStatus === "settled") {
+        return undefined;
+      }
+      await this.upsertOrderFinancial(repository, input, {
+        bPlatformFeeActualNdp: 0,
+        userRewardNdp: 0,
+        platformFeeOutstandingNdp: 0,
+        platformFeeDebtStatus: "none",
+        userRewardEligibleNdp: 0,
+        userRewardStatus: "disabled",
+        userRewardDeadlineAt: null,
+        userRewardGrantedAt: null,
+        settlementStatus: "settled",
+        timelineEvent: {
+          action: "booking_complete_platform_fee_disabled",
+          platformFeeNdp: 0,
+          userRewardNdp: 0
+        }
+      });
+
+      return undefined;
+    }
+
+    const hold = await this.requireSnapshotPlatformFeeHold(repository, input.bookingOrderId);
+    const holdRemaining = this.remainingHoldAmount(hold);
+    const captureAmount = Math.min(snapshot.platformFeeAmountNdpSnapshot, holdRemaining);
+    const releaseAmount = Math.max(0, holdRemaining - captureAmount);
+    const reward = await this.calculateFee("user_reward", "capture", input, context);
+    const eligibleRewardNdp = reward.finalFeeNdp;
+    const rewardPending = snapshot.platformFeeOutstandingNdp > 0;
+    const rewardAmount = rewardPending ? 0 : eligibleRewardNdp;
+    const rewardDeadlineAt = rewardPending
+      ? new Date(completedAt.getTime() + 7 * 24 * 60 * 60 * 1000)
+      : null;
+    const transactionAmount = captureAmount + releaseAmount + rewardAmount;
+    if (!lockedPayerWallet) {
+      throw this.walletMutationError();
+    }
+    const payerWallet = lockedPayerWallet;
+    if (snapshot.platformFeeWalletId && payerWallet.id !== snapshot.platformFeeWalletId) {
+      throw this.walletMutationError();
+    }
+    if (payerWallet.frozenBalance < captureAmount + releaseAmount) {
+      throw this.insufficientFrozenError();
+    }
+
+    const updatedPayerWallet =
+      captureAmount + releaseAmount > 0
+        ? await repository.applyWalletDelta({
+            walletId: payerWallet.id,
+            availableDelta: releaseAmount,
+            frozenDelta: -(captureAmount + releaseAmount),
+            requireFrozenAtLeast: captureAmount + releaseAmount
+          })
+        : payerWallet;
+    if (!updatedPayerWallet) {
+      throw this.insufficientFrozenError();
+    }
+
+    const customerWallet =
+      rewardAmount > 0
+        ? await repository.getOrCreateWallet({
+            ownerType: "user",
+            ownerId: input.customerUserId,
+            currency: CURRENCY
+          })
+        : null;
+    const updatedCustomerWallet = customerWallet
+      ? await repository.applyWalletDelta({
+          walletId: customerWallet.id,
+          availableDelta: rewardAmount,
+          frozenDelta: 0
+        })
+      : null;
+    if (customerWallet && !updatedCustomerWallet) {
+      throw this.walletMutationError();
+    }
+
+    await repository.updateWalletHold!({
+      id: hold.id,
+      capturedAmountNdp: hold.capturedAmountNdp + captureAmount,
+      releasedAmountNdp: hold.releasedAmountNdp + releaseAmount,
+      status:
+        captureAmount === 0 ? "released" : releaseAmount > 0 ? "partially_captured" : "captured",
+      capturedAt: captureAmount > 0 ? completedAt : null,
+      releasedAt: releaseAmount > 0 ? completedAt : null,
+      metadata: {
+        holdMetadata: hold.metadata,
+        snapshottedPlatformFeeNdp: snapshot.platformFeeAmountNdpSnapshot,
+        rewardFee: this.feeMetadata(reward)
+      }
+    });
+    await this.upsertOrderFinancial(repository, input, {
+      bPlatformFeeActualNdp: captureAmount,
+      userRewardNdp: rewardAmount,
+      releasedNdp: releaseAmount,
+      platformFeeOutstandingNdp: snapshot.platformFeeOutstandingNdp,
+      platformFeeDebtStatus: snapshot.platformFeeDebtStatus,
+      userRewardEligibleNdp: eligibleRewardNdp,
+      userRewardStatus: rewardPending ? "pending" : "immediate",
+      userRewardDeadlineAt: rewardDeadlineAt,
+      userRewardGrantedAt: rewardPending ? null : completedAt,
+      appliedFeeRuleIds: reward.appliedRuleIds,
+      settlementStatus: "settled",
+      timelineEvent: {
+        action: "booking_complete_snapshot_settlement",
+        platformFeeNdp: captureAmount,
+        releasedNdp: releaseAmount,
+        userRewardNdp: rewardAmount,
+        userRewardEligibleNdp: eligibleRewardNdp,
+        rewardStatus: rewardPending ? "pending" : "immediate",
+        rewardDeadlineAt: rewardDeadlineAt?.toISOString() ?? null
+      }
+    });
+
+    if (transactionAmount === 0) {
+      return undefined;
+    }
+
+    const transaction = await repository.createTransaction({
+      idempotencyKey,
+      type: "booking_complete_settlement",
+      referenceType: "booking_order",
+      referenceId: input.bookingOrderId,
+      actorUserId: input.actorUserId,
+      amount: transactionAmount,
+      metadata: {
+        shopId: input.shopId,
+        customerUserId: input.customerUserId,
+        platformFeeWalletId: payerWallet.id,
+        platformFeeAmount: captureAmount,
+        platformFeeReleaseAmount: releaseAmount,
+        customerRewardAmount: rewardAmount,
+        rewardStatus: rewardPending ? "pending" : "immediate"
+      }
+    });
+    if (captureAmount > 0) {
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: payerWallet.id,
+        direction: "frozen_debit",
+        amount: captureAmount,
+        availableDelta: 0,
+        frozenDelta: -captureAmount,
+        availableBalanceAfter: updatedPayerWallet.availableBalance,
+        frozenBalanceAfter: updatedPayerWallet.frozenBalance,
+        reason: "booking_complete_platform_fee_debit"
+      });
+    }
+    if (releaseAmount > 0) {
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: payerWallet.id,
+        direction: "unfreeze",
+        amount: releaseAmount,
+        availableDelta: releaseAmount,
+        frozenDelta: -releaseAmount,
+        availableBalanceAfter: updatedPayerWallet.availableBalance,
+        frozenBalanceAfter: updatedPayerWallet.frozenBalance,
+        reason: "booking_complete_hold_difference_release"
+      });
+    }
+    if (rewardAmount > 0 && updatedCustomerWallet) {
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: updatedCustomerWallet.id,
+        direction: "available_credit",
+        amount: rewardAmount,
+        availableDelta: rewardAmount,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedCustomerWallet.availableBalance,
+        frozenBalanceAfter: updatedCustomerWallet.frozenBalance,
+        reason: "booking_complete_customer_reward"
+      });
+    }
+    await this.recordFinanceAndAudit(repository, transaction, {
+      action: "ledger.booking_complete.snapshot_settlement",
+      expectedAmount: transactionAmount,
+      actualAmount: transactionAmount
+    });
+
+    return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+  }
+
   private settleRequestCompletion(
     input: BookingLedgerSettlementInput & { customerUserId: number },
     context: LedgerMutationContext
@@ -1235,7 +1789,7 @@ export class LedgerService
       return this.releaseBookingHold(input, context);
     }
 
-    return this.repository.runInTransaction(async (repository) => {
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
       const idempotencyKey = `booking:${input.bookingOrderId}:merchant-cancel:compensation`;
       const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
 
@@ -1243,10 +1797,11 @@ export class LedgerService
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
-      const hold = await this.requireAcceptanceHold(repository, input);
-      const penaltyFee = await this.calculateFee("penalty", "capture", input, context);
-      const holdRemaining = this.remainingHoldAmount(hold);
-      const penaltyAmount = Math.min(penaltyFee.finalFeeNdp || holdRemaining, holdRemaining);
+      await this.releaseBookingHold(input, { transactionClient });
+      const penaltyFee = await this.calculateFee("penalty", "capture", input, {
+        transactionClient
+      });
+      const penaltyAmount = penaltyFee.finalFeeNdp;
 
       const merchantWallet = await repository.getOrCreateWallet({
         ownerType: "shop",
@@ -1254,8 +1809,8 @@ export class LedgerService
         currency: CURRENCY
       });
 
-      if (merchantWallet.frozenBalance < penaltyAmount) {
-        throw this.insufficientFrozenError();
+      if (merchantWallet.availableBalance < penaltyAmount) {
+        throw this.insufficientAvailableError();
       }
 
       const customerWallet = await repository.getOrCreateWallet({
@@ -1267,14 +1822,14 @@ export class LedgerService
         penaltyAmount > 0
           ? await repository.applyWalletDelta({
               walletId: merchantWallet.id,
-              availableDelta: 0,
-              frozenDelta: -penaltyAmount,
-              requireFrozenAtLeast: penaltyAmount
+              availableDelta: -penaltyAmount,
+              frozenDelta: 0,
+              requireAvailableAtLeast: penaltyAmount
             })
           : merchantWallet;
 
       if (!updatedMerchantWallet) {
-        throw this.insufficientFrozenError();
+        throw this.insufficientAvailableError();
       }
 
       const updatedCustomerWallet =
@@ -1290,16 +1845,6 @@ export class LedgerService
         throw this.walletMutationError();
       }
 
-      await repository.updateWalletHold!({
-        id: hold.id,
-        capturedAmountNdp: hold.capturedAmountNdp + penaltyAmount,
-        status: "captured",
-        capturedAt: new Date(),
-        metadata: {
-          holdMetadata: hold.metadata,
-          penaltyFee: this.feeMetadata(penaltyFee)
-        }
-      });
       await this.upsertOrderFinancial(repository, input, {
         penaltyNdp: penaltyAmount,
         compensationToUserNdp: penaltyAmount,
@@ -1334,10 +1879,10 @@ export class LedgerService
       await repository.createLedgerEntry({
         transactionId: transaction.id,
         walletId: merchantWallet.id,
-        direction: "frozen_debit",
+        direction: "available_debit",
         amount: penaltyAmount,
-        availableDelta: 0,
-        frozenDelta: -penaltyAmount,
+        availableDelta: -penaltyAmount,
+        frozenDelta: 0,
         availableBalanceAfter: updatedMerchantWallet.availableBalance,
         frozenBalanceAfter: updatedMerchantWallet.frozenBalance,
         reason: "booking_merchant_cancel_penalty"
@@ -1367,7 +1912,11 @@ export class LedgerService
     feeType: FeeType,
     stage: "hold" | "capture" | "release" | "reversal" | "preview",
     input: BookingLedgerSettlementInput,
-    context: LedgerMutationContext
+    context: LedgerMutationContext,
+    override: Pick<
+      Parameters<FeeCalculationService["calculateFee"]>[0],
+      "payerOverride" | "waiveReason"
+    > = {}
   ): Promise<FeeCalculationResult> {
     if (!this.feeCalculationService) {
       throw new AppError({
@@ -1391,10 +1940,117 @@ export class LedgerService
         acceptedAt: input.acceptedAt,
         completedAt: input.completedAt,
         serviceAmountJpy: input.serviceAmountJpy,
-        timezone: "Asia/Tokyo"
+        timezone: "Asia/Tokyo",
+        ...override
       },
       { transactionClient: context.transactionClient }
     );
+  }
+
+  private async resolveBookingPlatformFeeOwner(
+    repository: LedgerRepositoryPort,
+    input: BookingLedgerSettlementInput,
+    policy: BookingPlatformFeePolicySnapshot
+  ): Promise<{
+    payerType: "shop" | "technician";
+    payerId: number;
+    ownerType: "shop" | "user";
+    ownerId: number;
+  }> {
+    if (policy.payerType === "shop") {
+      return {
+        payerType: "shop",
+        payerId: input.shopId,
+        ownerType: "shop",
+        ownerId: input.shopId
+      };
+    }
+
+    if (typeof input.technicianProfileId !== "number" || !repository.findTechnicianUserId) {
+      throw this.platformFeeTechnicianRequiredError();
+    }
+    const technicianUserId = await repository.findTechnicianUserId(input.technicianProfileId);
+    if (!technicianUserId) {
+      throw this.platformFeeTechnicianRequiredError();
+    }
+
+    return {
+      payerType: "technician",
+      payerId: input.technicianProfileId,
+      ownerType: "user",
+      ownerId: technicianUserId
+    };
+  }
+
+  private platformFeeSnapshotFields(input: {
+    policy: BookingPlatformFeePolicySnapshot;
+    acceptedAt: Date;
+    amountNdp: number;
+    wallet: WalletPayload | null;
+    shortfallNdp: number;
+    confirmationKey: string | null;
+    previewVersion: string | null;
+  }): Pick<
+    OrderFinancialUpsertInput,
+    | "platformFeeEnabledSnapshot"
+    | "platformFeeGlobalVersion"
+    | "platformFeePolicyVersion"
+    | "platformFeeAmountNdpSnapshot"
+    | "platformFeeWalletOwnerType"
+    | "platformFeeWalletOwnerId"
+    | "platformFeeWalletId"
+    | "platformFeeShortfallNdp"
+    | "platformFeeOutstandingNdp"
+    | "platformFeeDebtStatus"
+    | "platformFeeAcceptedAt"
+    | "platformFeeOverdraftConfirmationKey"
+    | "platformFeePreviewVersion"
+  > {
+    return {
+      platformFeeEnabledSnapshot: input.policy.feeEnabled,
+      platformFeeGlobalVersion: input.policy.globalVersion,
+      platformFeePolicyVersion: input.policy.policyVersion,
+      platformFeeAmountNdpSnapshot: input.amountNdp,
+      platformFeeWalletOwnerType: input.wallet?.ownerType ?? null,
+      platformFeeWalletOwnerId: input.wallet?.ownerId ?? null,
+      platformFeeWalletId: input.wallet?.id ?? null,
+      platformFeeShortfallNdp: input.shortfallNdp,
+      platformFeeOutstandingNdp: input.shortfallNdp,
+      platformFeeDebtStatus: input.shortfallNdp > 0 ? "outstanding" : "none",
+      platformFeeAcceptedAt: input.acceptedAt,
+      platformFeeOverdraftConfirmationKey: input.confirmationKey,
+      platformFeePreviewVersion: input.previewVersion
+    };
+  }
+
+  private bookingPlatformFeePreviewVersion(input: {
+    input: BookingLedgerSettlementInput;
+    policy: BookingPlatformFeePolicySnapshot;
+    owner: {
+      payerType: "shop" | "technician";
+      payerId: number;
+      ownerType: "shop" | "user";
+      ownerId: number;
+    };
+    wallet: WalletPayload;
+    fee: FeeCalculationResult;
+  }): string {
+    const stableTuple = [
+      input.input.bookingOrderId,
+      input.policy.globalVersion,
+      input.policy.policyVersion,
+      input.policy.feeEnabled,
+      input.owner.payerType,
+      input.owner.payerId,
+      input.owner.ownerType,
+      input.owner.ownerId,
+      input.wallet.id,
+      input.fee.holdAmountNdp,
+      input.wallet.availableBalance,
+      input.fee.appliedRuleIds
+    ];
+
+    return `sha256:${createHash("sha256").update(JSON.stringify(stableTuple)).digest("hex")}`;
   }
 
   private assertFinanceMutationRepository(repository: LedgerRepositoryPort): void {
@@ -1406,6 +2062,38 @@ export class LedgerService
     ) {
       throw this.repositoryUnavailableError();
     }
+  }
+
+  private async lockOrderFinancialPlatformFeeSnapshot(
+    repository: LedgerRepositoryPort,
+    bookingOrderId: number
+  ): Promise<{
+    snapshot: OrderFinancialPlatformFeeSnapshot;
+    payerWallet: WalletPayload | null;
+  } | null> {
+    if (
+      !repository.findOrderFinancialPlatformFeeSnapshot ||
+      !repository.lockOrderFinancialPlatformFeeSnapshot ||
+      !repository.lockWalletById
+    ) {
+      throw this.repositoryUnavailableError();
+    }
+    const preliminary = await repository.findOrderFinancialPlatformFeeSnapshot(bookingOrderId);
+    if (!preliminary) {
+      return null;
+    }
+    const payerWallet =
+      preliminary.platformFeeWalletId === null
+        ? null
+        : await repository.lockWalletById(preliminary.platformFeeWalletId);
+    if (preliminary.platformFeeWalletId !== null && !payerWallet) {
+      throw this.walletMutationError();
+    }
+    const locked = await repository.lockOrderFinancialPlatformFeeSnapshot(bookingOrderId);
+    if (!locked || locked.platformFeeWalletId !== preliminary.platformFeeWalletId) {
+      throw this.walletMutationError();
+    }
+    return { snapshot: locked, payerWallet };
   }
 
   private async requireAcceptanceHold(
@@ -1421,6 +2109,18 @@ export class LedgerService
       feeType
     });
 
+    if (!hold) {
+      throw this.insufficientFrozenError();
+    }
+
+    return hold;
+  }
+
+  private async requireSnapshotPlatformFeeHold(
+    repository: LedgerRepositoryPort,
+    bookingOrderId: number
+  ): Promise<WalletHoldPayload> {
+    const hold = await repository.findPlatformFeeHoldByBookingOrderId?.(bookingOrderId);
     if (!hold) {
       throw this.insufficientFrozenError();
     }
@@ -1519,9 +2219,7 @@ export class LedgerService
     return this.repository.runInTransaction(async (repository) => {
       this.assertWalletAdjustmentRepository(repository);
       const owner = this.walletOwnerForActor(actor);
-      const existing = await repository.findWalletAdjustmentByIdempotencyKey!(
-        input.idempotencyKey
-      );
+      const existing = await repository.findWalletAdjustmentByIdempotencyKey!(input.idempotencyKey);
 
       if (existing) {
         if (
@@ -1652,9 +2350,7 @@ export class LedgerService
         walletId: wallet.id,
         availableDelta,
         frozenDelta: 0,
-        ...(request.type === "withdrawal"
-          ? { requireAvailableAtLeast: request.amountNdp }
-          : {})
+        ...(request.type === "withdrawal" ? { requireAvailableAtLeast: request.amountNdp } : {})
       });
 
       if (!updatedWallet) {
@@ -1666,10 +2362,7 @@ export class LedgerService
 
       const transaction = await repository.createTransaction({
         idempotencyKey: `wallet-adjustment:${request.id}:approved`,
-        type:
-          request.type === "topup"
-            ? "manual_topup_approved"
-            : "manual_withdrawal_approved",
+        type: request.type === "topup" ? "manual_topup_approved" : "manual_withdrawal_approved",
         referenceType: "wallet_adjustment_request",
         referenceId: request.id,
         actorUserId: actor.userId,
@@ -1690,16 +2383,21 @@ export class LedgerService
         frozenDelta: 0,
         availableBalanceAfter: updatedWallet.availableBalance,
         frozenBalanceAfter: updatedWallet.frozenBalance,
-        reason:
-          request.type === "topup"
-            ? "manual_topup_approved"
-            : "manual_withdrawal_approved"
+        reason: request.type === "topup" ? "manual_topup_approved" : "manual_withdrawal_approved"
       });
       await this.recordFinanceAndAudit(repository, transaction, {
         action: `ledger.wallet_adjustment.${request.type}.approved`,
         expectedAmount: request.amountNdp,
         actualAmount: request.amountNdp
       });
+      if (request.type === "topup") {
+        await this.allocateApprovedTopupToPlatformFeeDebt(
+          repository,
+          wallet.id,
+          request.amountNdp,
+          actor.userId
+        );
+      }
 
       return repository.approveWalletAdjustmentRequest!({
         id: request.id,
@@ -1708,6 +2406,175 @@ export class LedgerService
         ledgerTransactionId: transaction.id
       });
     });
+  }
+
+  private async allocateApprovedTopupToPlatformFeeDebt(
+    repository: LedgerRepositoryPort,
+    walletId: number,
+    amountNdp: number,
+    actorUserId: number
+  ): Promise<void> {
+    this.assertPlatformFeeDebtAllocationRepository(repository);
+    let remainingBudgetNdp = amountNdp;
+
+    while (remainingBudgetNdp > 0) {
+      const candidateIds = await repository.listOutstandingPlatformFeeDebtIds!({
+        walletId,
+        limit: PLATFORM_FEE_DEBT_ALLOCATION_BATCH_SIZE
+      });
+      if (candidateIds.length === 0) {
+        return;
+      }
+      let progressed = false;
+
+      for (const id of candidateIds) {
+        if (remainingBudgetNdp <= 0) {
+          break;
+        }
+        const debt = await repository.lockPlatformFeeDebt!(id);
+        if (
+          !debt ||
+          debt.platformFeeWalletId !== walletId ||
+          debt.platformFeeDebtStatus !== "outstanding" ||
+          debt.platformFeeOutstandingNdp <= 0
+        ) {
+          continue;
+        }
+
+        const allocatedNdp = Math.min(remainingBudgetNdp, debt.platformFeeOutstandingNdp);
+        const outstandingNdp = debt.platformFeeOutstandingNdp - allocatedNdp;
+        const settled = outstandingNdp === 0;
+        const rewardUpdate = settled
+          ? await this.resolveSettledDebtReward(repository, debt, actorUserId)
+          : {};
+        const updated = await repository.updatePlatformFeeDebt!({
+          id: debt.id,
+          expectedOutstandingNdp: debt.platformFeeOutstandingNdp,
+          platformFeeOutstandingNdp: outstandingNdp,
+          platformFeeDebtStatus: settled ? "settled" : "outstanding",
+          ...rewardUpdate
+        });
+        if (!updated) {
+          throw this.walletMutationError();
+        }
+
+        remainingBudgetNdp -= allocatedNdp;
+        progressed = true;
+        await repository.createAuditLog({
+          actorUserId,
+          action: "booking.platform_fee.debt.allocated",
+          targetType: "order_financial",
+          targetId: debt.id,
+          metadata: {
+            bookingOrderId: debt.bookingOrderId,
+            walletId,
+            allocatedNdp,
+            outstandingNdp,
+            debtStatus: settled ? "settled" : "outstanding"
+          }
+        });
+      }
+
+      if (!progressed) {
+        return;
+      }
+    }
+  }
+
+  private async resolveSettledDebtReward(
+    repository: LedgerRepositoryPort,
+    debt: PlatformFeeDebtAllocationRecord,
+    actorUserId: number
+  ): Promise<{
+    userRewardStatus?: UserRewardStatus;
+    userRewardNdp?: number;
+    userRewardGrantedAt?: Date | null;
+  }> {
+    if (debt.settlementStatus !== "settled") {
+      return {
+        userRewardStatus: "immediate",
+        userRewardNdp: 0,
+        userRewardGrantedAt: null
+      };
+    }
+    if (debt.userRewardStatus !== "pending") {
+      return {};
+    }
+    const resolvedAt = await repository.getDatabaseNow!();
+    if (!debt.userRewardDeadlineAt || resolvedAt >= debt.userRewardDeadlineAt) {
+      await repository.createAuditLog({
+        actorUserId,
+        action: "booking.user_reward.expired",
+        targetType: "order_financial",
+        targetId: debt.id,
+        metadata: {
+          bookingOrderId: debt.bookingOrderId,
+          deadlineAt: debt.userRewardDeadlineAt?.toISOString() ?? null,
+          resolvedAt: resolvedAt.toISOString()
+        }
+      });
+
+      return {
+        userRewardStatus: "expired",
+        userRewardNdp: 0,
+        userRewardGrantedAt: null
+      };
+    }
+
+    const idempotencyKey = `booking:${debt.bookingOrderId}:reward:settlement`;
+    const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
+    if (!existing) {
+      const customerWallet = await repository.getOrCreateWallet({
+        ownerType: "user",
+        ownerId: debt.customerUserId,
+        currency: CURRENCY
+      });
+      const updatedCustomerWallet = await repository.applyWalletDelta({
+        walletId: customerWallet.id,
+        availableDelta: debt.userRewardEligibleNdp,
+        frozenDelta: 0
+      });
+      if (!updatedCustomerWallet) {
+        throw this.walletMutationError();
+      }
+      const transaction = await repository.createTransaction({
+        idempotencyKey,
+        type: "booking_complete_settlement",
+        referenceType: "booking_order",
+        referenceId: debt.bookingOrderId,
+        actorUserId,
+        amount: debt.userRewardEligibleNdp,
+        metadata: {
+          delayedUserReward: true,
+          orderFinancialId: debt.id,
+          customerUserId: debt.customerUserId
+        }
+      });
+      if (debt.userRewardEligibleNdp > 0) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: customerWallet.id,
+          direction: "available_credit",
+          amount: debt.userRewardEligibleNdp,
+          availableDelta: debt.userRewardEligibleNdp,
+          frozenDelta: 0,
+          availableBalanceAfter: updatedCustomerWallet.availableBalance,
+          frozenBalanceAfter: updatedCustomerWallet.frozenBalance,
+          reason: "booking_delayed_customer_reward"
+        });
+      }
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.booking_user_reward.delayed_settlement",
+        expectedAmount: debt.userRewardEligibleNdp,
+        actualAmount: debt.userRewardEligibleNdp
+      });
+    }
+
+    return {
+      userRewardStatus: "paid",
+      userRewardNdp: debt.userRewardEligibleNdp,
+      userRewardGrantedAt: resolvedAt
+    };
   }
 
   public async getMyWallet(actor: AuthenticatedAccessContext): Promise<WalletPayload> {
@@ -1815,7 +2682,12 @@ export class LedgerService
   private async recordFinanceAndAudit(
     repository: LedgerRepositoryPort,
     transaction: LedgerTransactionPayload,
-    input: { action: string; expectedAmount: number; actualAmount: number }
+    input: {
+      action: string;
+      expectedAmount: number;
+      actualAmount: number;
+      metadata?: Record<string, unknown>;
+    }
   ): Promise<void> {
     await repository.createFinanceReconciliation({
       transactionId: transaction.id,
@@ -1832,7 +2704,8 @@ export class LedgerService
         referenceType: transaction.referenceType,
         referenceId: transaction.referenceId,
         amount: transaction.amount,
-        currency: transaction.currency
+        currency: transaction.currency,
+        ...input.metadata
       }
     });
   }
@@ -1930,9 +2803,7 @@ export class LedgerService
       throw this.walletMutationError();
     }
 
-    const publisherEntry = transaction.entries.find(
-      (entry) => entry.direction === "frozen_debit"
-    );
+    const publisherEntry = transaction.entries.find((entry) => entry.direction === "frozen_debit");
     const claimantEntry = transaction.entries.find(
       (entry) => entry.direction === "available_credit"
     );
@@ -1975,9 +2846,21 @@ export class LedgerService
     }
   }
 
-  private walletOwnerForActor(
-    actor: AuthenticatedAccessContext
-  ): { ownerType: WalletOwnerType; ownerId: number } {
+  private assertPlatformFeeDebtAllocationRepository(repository: LedgerRepositoryPort): void {
+    if (
+      !repository.listOutstandingPlatformFeeDebtIds ||
+      !repository.lockPlatformFeeDebt ||
+      !repository.updatePlatformFeeDebt ||
+      !repository.getDatabaseNow
+    ) {
+      throw this.repositoryUnavailableError();
+    }
+  }
+
+  private walletOwnerForActor(actor: AuthenticatedAccessContext): {
+    ownerType: WalletOwnerType;
+    ownerId: number;
+  } {
     if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
       return { ownerType: "shop", ownerId: actor.currentIdentityScopeId };
     }
@@ -1996,9 +2879,10 @@ export class LedgerService
     return { ownerType: "user", ownerId: actor.userId };
   }
 
-  private walletOwnerForReadActor(
-    actor: AuthenticatedAccessContext
-  ): { ownerType: WalletOwnerType; ownerId: number } {
+  private walletOwnerForReadActor(actor: AuthenticatedAccessContext): {
+    ownerType: WalletOwnerType;
+    ownerId: number;
+  } {
     if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
       return { ownerType: "shop", ownerId: actor.currentIdentityScopeId };
     }
@@ -2025,6 +2909,61 @@ export class LedgerService
       message: "error.wallet.insufficient_available",
       statusCode: 409
     });
+  }
+
+  private platformFeeConfirmationRequiredError(data: {
+    feeAmountNdp: number;
+    availableBalanceNdp: number;
+    shortfallNdp: number;
+    payerType: "shop" | "technician";
+    walletOwnerType: "shop" | "user";
+    previewVersion: string;
+  }): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_INSUFFICIENT_CONFIRMATION_REQUIRED,
+      message: "error.platform_fee.insufficient_balance_confirmation_required",
+      statusCode: 409,
+      data
+    });
+  }
+
+  private platformFeePreviewStaleError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_PREVIEW_STALE,
+      message: "error.platform_fee.preview_stale",
+      statusCode: 409
+    });
+  }
+
+  private platformFeeTechnicianRequiredError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_TECHNICIAN_REQUIRED,
+      message: "error.platform_fee.technician_required",
+      statusCode: 409
+    });
+  }
+
+  private platformFeeConfirmationConflictError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_CONFIRMATION_CONFLICT,
+      message: "error.platform_fee.confirmation_conflict",
+      statusCode: 409
+    });
+  }
+
+  private isPlatformFeeConfirmationKeyConflict(error: unknown): boolean {
+    if (!error || typeof error !== "object") {
+      return false;
+    }
+    const candidate = error as { code?: unknown; meta?: { target?: unknown } };
+    if (candidate.code !== "P2002") {
+      return false;
+    }
+    const target = Array.isArray(candidate.meta?.target)
+      ? candidate.meta.target.join(",")
+      : String(candidate.meta?.target ?? "");
+
+    return /overdraft_confirmation_key|platformFeeOverdraftConfirmationKey/i.test(target);
   }
 
   private insufficientFrozenError(): AppError {

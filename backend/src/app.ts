@@ -16,6 +16,7 @@ import {
 } from "./middlewares/security.middleware";
 import { createTracingMiddleware } from "./middlewares/tracing.middleware";
 import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
+import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
 import type { AuthRepositoryPort } from "./repositories/auth.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
 import type {
@@ -27,11 +28,17 @@ import type {
   AffiliateMarketplaceService
 } from "./services/affiliate-marketplace.service";
 import type { AffiliateCheckoutService } from "./services/affiliate-checkout.service";
+import type { AffiliateProfileService } from "./services/affiliate-profile.service";
+import type {
+  AffiliateAllianceRepositoryPort,
+  AffiliateAllianceService
+} from "./services/affiliate-alliance.service";
 import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
+import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
 import type { LedgerRepositoryPort } from "./services/ledger.service";
 import type { IdentityApplicationRepositoryPort } from "./services/identity-application.service";
 import type { IdentityApplicationService } from "./services/identity-application.service";
@@ -78,12 +85,15 @@ import type { UserRepositoryPort } from "./repositories/user.repository";
 import { createAuthRoutes } from "./routes/auth.routes";
 import { createAffiliateTaskRoutes } from "./routes/affiliate-task.routes";
 import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace.routes";
+import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
+import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
 import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
+import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
 import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
@@ -138,6 +148,7 @@ export interface AppDependencies {
   customerProfileRepository?: CustomerProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
+  platformFeePolicyRepository?: PlatformFeePolicyRepositoryPort;
   merchantFinanceRulesRepository?: MerchantFinanceRulesRepositoryPort;
   merchantSaasBillingRepository?: MerchantSaasBillingRepositoryPort;
   paymentProvider?: PaymentProvider;
@@ -153,6 +164,10 @@ export interface AppDependencies {
   identityApplicationMediaStorage?: IdentityApplicationMediaStoragePort;
   affiliateIdentityActivationRepository?: AffiliateIdentityActivationRepositoryPort;
   affiliateIdentityActivationService?: AffiliateIdentityActivationService;
+  affiliateProfileRepository?: AffiliateProfileRepositoryPort;
+  affiliateProfileService?: AffiliateProfileService;
+  affiliateAllianceRepository?: AffiliateAllianceRepositoryPort;
+  affiliateAllianceService?: AffiliateAllianceService;
   affiliateWithdrawalEligibilityRepository?: AffiliateWithdrawalEligibilityRepositoryPort;
   affiliateWithdrawalEligibilityService?: AffiliateWithdrawalEligibilityService;
   affiliateBankAccountRepository?: AffiliateBankAccountRepositoryPort;
@@ -231,6 +246,7 @@ export const createApp = (
   apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
+  apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderFinanceRoutes(config, resolvedDependencies));
   apiRouter.use(createPayrollRoutes(config, resolvedDependencies));
@@ -239,6 +255,8 @@ export const createApp = (
   apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityActivationRoutes(config, resolvedDependencies));
+  apiRouter.use(createAffiliateProfileRoutes(config, resolvedDependencies));
+  apiRouter.use(createAffiliateAllianceRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));

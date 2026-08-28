@@ -190,10 +190,49 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/profiles/customers/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/schedule/availability");
+    expect(response.body.paths["/api/v1/schedule/availability"].get.description).toEqual(
+      expect.stringMatching(/technicianId.*without a service filter/i)
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/bookings");
     expect(response.body.paths).toHaveProperty("/api/v1/orders");
+    expect(response.body.paths["/api/v1/orders"].get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "from",
+          in: "query",
+          description: expect.stringMatching(/inclusive/i)
+        }),
+        expect.objectContaining({
+          name: "to",
+          in: "query",
+          description: expect.stringMatching(/exclusive/i)
+        })
+      ])
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/confirm");
+    const confirmOperation = response.body.paths["/api/v1/orders/{id}/confirm"].post;
+    const confirmBodySchema = confirmOperation.requestBody.content["application/json"].schema;
+    expect(confirmBodySchema.additionalProperties).toBe(false);
+    expect(confirmBodySchema.properties.insufficientBalanceConfirmation).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["confirmed", "idempotencyKey", "previewVersion"]
+      })
+    );
+    const insufficientBalanceSchema =
+      confirmOperation.responses["409"].content["application/json"].schema.properties.data;
+    expect(insufficientBalanceSchema.properties).toEqual(
+      expect.objectContaining({
+        feeAmountNdp: expect.any(Object),
+        availableBalanceNdp: expect.any(Object),
+        shortfallNdp: expect.any(Object),
+        payerType: expect.any(Object),
+        walletOwnerType: expect.any(Object),
+        previewVersion: expect.any(Object)
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/cancel");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/start");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/complete");
@@ -418,6 +457,17 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule/slots/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots");
     expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots/{id}");
+    expect(response.body.paths["/api/v1/technician/schedule/slots/{id}"].get).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      parameters: [expect.objectContaining({ name: "id", in: "path", required: true })],
+      responses: expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      })
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations");
     expect(response.body.paths).toHaveProperty(
       "/api/v1/im/conversations/{conversationId}/messages"
@@ -429,9 +479,7 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"
     );
     expect(
-      response.body.paths[
-        "/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"
-      ]
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"]
     ).toMatchObject({
       post: expect.objectContaining({
         security: [{ bearerAuth: [] }],
@@ -799,6 +847,212 @@ describe("GET /api/v1/openapi.json", () => {
             })
           })
         ])
+      })
+    );
+  });
+
+  it("documents the authenticated affiliate profile and redacted activation contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<
+        string,
+        {
+          content: {
+            "application/json": {
+              schema: { properties: { data: unknown } };
+            };
+          };
+        }
+      >;
+      requestBody: {
+        content: Record<string, { schema: Record<string, string> }>;
+      };
+      parameters: unknown[];
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      properties: Record<string, { pattern?: string }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "patch" | "post" | "delete", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const profilePath = document.paths["/api/v1/affiliate/profile"];
+    const channelCollectionPath = document.paths["/api/v1/affiliate/profile/channels"];
+    const channelPath = document.paths["/api/v1/affiliate/profile/channels/{channelId}"];
+
+    expect(profilePath.get.security).toEqual([{ bearerAuth: [] }]);
+    expect(profilePath.patch.security).toEqual([{ bearerAuth: [] }]);
+    expect(channelCollectionPath.post.security).toEqual([{ bearerAuth: [] }]);
+    expect(channelPath.patch.security).toEqual([{ bearerAuth: [] }]);
+    expect(channelPath.delete.security).toEqual([{ bearerAuth: [] }]);
+
+    for (const operation of [
+      profilePath.get,
+      profilePath.patch,
+      channelCollectionPath.post,
+      channelPath.patch,
+      channelPath.delete
+    ]) {
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+
+    expect(document.components.schemas.AffiliateProfile.properties.needoId.pattern).toBe(
+      "^(?:u|needo)[0-9]{10}$"
+    );
+    for (const schemaName of [
+      "AffiliateProfileUpdate",
+      "AffiliateChannelCreate",
+      "AffiliateChannelUpdate"
+    ]) {
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    expect(profilePath.patch.requestBody.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/AffiliateProfileUpdate"
+    });
+    expect(channelPath.delete.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "channelId", in: "path", required: true }),
+        expect.objectContaining({
+          name: "expected_profile_version",
+          in: "query",
+          required: true
+        })
+      ])
+    );
+
+    const activation = document.paths["/api/v1/identity-activations/affiliate"].post;
+    expect(activation.responses["200"].content["application/json"].schema.properties.data).toEqual({
+      $ref: "#/components/schemas/AffiliateIdentityActivation"
+    });
+    const publicContract = JSON.stringify({
+      response: activation.responses["200"],
+      schema: document.components.schemas.AffiliateIdentityActivation
+    });
+    expect(publicContract).not.toMatch(/"(?:userId|identityId|identityType|roleCode)"/);
+    expect(publicContract).not.toContain("scout");
+  });
+
+  it("documents strict authenticated affiliate alliance read and create contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      requestBody?: { content: Record<string, { schema: Record<string, string> }> };
+      responses: Record<string, unknown>;
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties: Record<string, unknown>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "post", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const mine = document.paths["/api/v1/affiliate/alliances/me"].get;
+    const create = document.paths["/api/v1/affiliate/alliances"].post;
+
+    expect(mine.security).toEqual([{ bearerAuth: [] }]);
+    expect(create.security).toEqual([{ bearerAuth: [] }]);
+    for (const operation of [mine, create]) {
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+    expect(create.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/AffiliateAllianceCreate"
+    });
+    expect(document.components.schemas.AffiliateAllianceCreate.additionalProperties).toBe(false);
+    expect(document.components.schemas.AffiliateAllianceCreate.required).toEqual([
+      "name",
+      "defaultPromoterShareBps"
+    ]);
+    const publicContract = JSON.stringify({
+      mine,
+      create,
+      schemas: Object.fromEntries(
+        Object.entries(document.components.schemas).filter(([name]) =>
+          name.startsWith("AffiliateAlliance")
+        )
+      )
+    });
+    expect(publicContract).toContain("needoId");
+    expect(publicContract).toContain("canViewAllianceWallet");
+    expect(publicContract).not.toMatch(/userId|identityId|scout/);
+  });
+
+  it("documents the formal platform fee policy contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<string, unknown>;
+      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
+      parameters?: Array<{ name: string; in: string }>;
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties: Record<string, { type?: string; pattern?: string }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "patch", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const operations = [
+      document.paths["/api/v1/backoffice/platform-fee-policy"].get,
+      document.paths["/api/v1/backoffice/platform-fee-policy"].patch,
+      document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get,
+      document.paths["/api/v1/backoffice/shops/{shopId}/platform-fee-policy"].patch,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy"].get,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy/payer"].patch
+    ];
+
+    for (const operation of operations) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+    expect(document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "pageSize", in: "query" })
+      ])
+    );
+    for (const schemaName of [
+      "GlobalPlatformFeeUpdateRequest",
+      "ShopFeeEnabledUpdateRequest",
+      "ShopFeePayerUpdateRequest"
+    ]) {
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    expect(document.components.schemas.ShopPlatformFeePolicy.properties.shopId.type).toBe(
+      "integer"
+    );
+    expect(document.components.schemas.ShopPlatformFeePolicy.properties.shopPublicId.pattern).toBe(
+      "^shop[0-9]{10}$"
+    );
+    expect(document.components.schemas).toEqual(
+      expect.objectContaining({
+        GlobalBookingPlatformFee: expect.any(Object),
+        ShopPlatformFeePolicy: expect.any(Object),
+        ShopPlatformFeePolicyPage: expect.any(Object)
       })
     );
   });
