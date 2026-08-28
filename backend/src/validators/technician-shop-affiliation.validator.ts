@@ -53,7 +53,21 @@ export const merchantEmployeeAffiliationBodySchema = z
     }
   });
 
+export const merchantEmployeeProfileBodySchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120).optional(),
+    bio: z.string().trim().max(5000).nullable().optional(),
+    city: z.string().trim().min(1).max(100).optional(),
+    serviceArea: z.string().trim().max(255).nullable().optional(),
+    yearsExperience: z.coerce.number().int().min(0).max(80).optional()
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one employee profile field is required"
+  });
+
 export type ParsedMerchantEmployeeListQuery = z.output<typeof merchantEmployeeListQuerySchema>;
 export type ParsedMerchantEmployeeAffiliationBody = z.output<
   typeof merchantEmployeeAffiliationBodySchema
 >;
+export type ParsedMerchantEmployeeProfileBody = z.output<typeof merchantEmployeeProfileBodySchema>;

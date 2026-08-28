@@ -17,6 +17,17 @@ export interface MerchantEmployeePayload {
   phone: string | null;
   profileStatus: string;
   verifiedAt: string | null;
+  profile: {
+    bio: string | null;
+    city: string;
+    serviceArea: string | null;
+    yearsExperience: number;
+    updatedAt: string;
+  };
+  account: {
+    isActive: boolean;
+    lastLoginAt: string | null;
+  };
   affiliation: {
     id: number;
     relationshipType: EmployeeRelationshipType;
@@ -29,6 +40,21 @@ export interface MerchantEmployeePayload {
       name: string;
     };
   };
+}
+
+export interface EmployeeProfileUpdateInput {
+  displayName?: string;
+  bio?: string | null;
+  city?: string;
+  serviceArea?: string | null;
+  yearsExperience?: number;
+}
+
+export interface EmployeeProfileUpdateRepositoryInput {
+  shopId: number;
+  technicianIdentityId: number;
+  actorUserId: number;
+  profile: EmployeeProfileUpdateInput;
 }
 
 export interface MerchantEmployeeListInput extends PaginationInput {
@@ -66,6 +92,9 @@ export interface TechnicianShopAffiliationRepositoryPort {
   findCurrentShopEmployee(
     shopId: number,
     technicianIdentityId: number
+  ): Promise<MerchantEmployeePayload | null>;
+  updateCurrentShopEmployeeProfile(
+    input: EmployeeProfileUpdateRepositoryInput
   ): Promise<MerchantEmployeePayload | null>;
   upsertCurrentAffiliation(
     input: AffiliationMutationRepositoryInput
@@ -154,6 +183,39 @@ export class TechnicianShopAffiliationService {
       }
     });
     return result;
+  }
+
+  public async updateCurrentShopEmployeeProfile(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: EmployeeProfileUpdateInput
+  ): Promise<MerchantEmployeePayload> {
+    const shopId = this.requireMerchantShopScope(actor);
+    if (actor.isReadOnlyMerchantPreview) {
+      throw this.forbidden();
+    }
+    const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
+    const employee = await this.repository.updateCurrentShopEmployeeProfile({
+      shopId,
+      technicianIdentityId,
+      actorUserId: actor.userId,
+      profile: input
+    });
+    if (!employee) throw this.notFound();
+
+    await this.auditLogService.record({
+      actor,
+      action: "merchant_admin.employee_profile.update",
+      targetType: "technician_shop_affiliation",
+      targetId: employee.affiliation.id,
+      context,
+      metadata: {
+        shopId,
+        changedFields: Object.keys(input).sort()
+      }
+    });
+    return employee;
   }
 
   private async resolveTechnicianIdentityId(publicId: string): Promise<number> {

@@ -39,6 +39,8 @@ describe("formal profile detail OpenAPI contract", () => {
     const detail = response.body.paths["/api/v1/merchant-admin/employees/{needoId}"].get;
     const update =
       response.body.paths["/api/v1/merchant-admin/employees/{needoId}/affiliation"].put;
+    const profileUpdate =
+      response.body.paths["/api/v1/merchant-admin/employees/{needoId}/profile"].patch;
 
     expect(list.security).toEqual([{ bearerAuth: [] }]);
     expect(list.parameters.map((parameter: { name: string }) => parameter.name)).toEqual(
@@ -55,6 +57,9 @@ describe("formal profile detail OpenAPI contract", () => {
     expect(update.requestBody.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/MerchantEmployeeAffiliationInput"
     });
+    expect(profileUpdate.requestBody.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/MerchantEmployeeProfileInput"
+    });
     expect(response.body.components.schemas.MerchantEmployeeAffiliationInput).toMatchObject({
       additionalProperties: false,
       required: ["relationshipType", "workStatus", "startsAt", "endsAt"]
@@ -69,7 +74,37 @@ describe("formal profile detail OpenAPI contract", () => {
       })
     );
     expect(response.body.components.schemas.MerchantEmployee.required).toEqual(
-      expect.arrayContaining(["needoId", "displayName", "affiliation"])
+      expect.arrayContaining(["needoId", "displayName", "profile", "account", "affiliation"])
+    );
+    expect(response.body.components.schemas.MerchantEmployeeProfile).toMatchObject({
+      additionalProperties: false,
+      required: ["bio", "city", "serviceArea", "yearsExperience", "updatedAt"],
+      properties: {
+        yearsExperience: { type: "integer", minimum: 0, maximum: 80 }
+      }
+    });
+    expect(response.body.components.schemas.MerchantEmployeeAccount).toMatchObject({
+      additionalProperties: false,
+      required: ["isActive", "lastLoginAt"]
+    });
+    expect(response.body.components.schemas.MerchantEmployeeProfileInput).toMatchObject({
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        displayName: { type: "string", minLength: 1, maxLength: 120 },
+        bio: { type: ["string", "null"], maxLength: 5000 },
+        city: { type: "string", minLength: 1, maxLength: 100 },
+        serviceArea: { type: ["string", "null"], maxLength: 255 },
+        yearsExperience: { type: "integer", minimum: 0, maximum: 80 }
+      }
+    });
+    expect(profileUpdate.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      })
     );
     expect(response.body.components.schemas.MerchantEmployee.properties.needoId.pattern).toBe(
       "^s[0-9]{10}$"

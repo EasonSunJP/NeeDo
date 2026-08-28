@@ -11,12 +11,19 @@ const employeeRecord = (overrides: Record<string, unknown> = {}) => ({
   endsAt: null,
   technicianProfile: {
     displayName: "斋藤 健太",
+    bio: "整体与放松护理",
+    city: "东京都涩谷区",
+    serviceArea: "涩谷区、新宿区",
+    yearsExperience: 9,
     status: "published",
     verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
+    updatedAt: new Date("2026-08-28T00:00:00.000Z"),
     user: {
       avatarUrl: "/avatar.png",
       email: "staff@example.com",
       phone: "+81-90-0000-0000",
+      isActive: true,
+      lastLoginAt: new Date("2026-08-27T12:00:00.000Z"),
       identities: [
         {
           publicIdentifier: {
@@ -49,8 +56,12 @@ const transactionClient = (overrides: Record<string, unknown> = {}) => ({
   shop: { findFirst: jest.fn().mockResolvedValue({ id: 16 }) },
   technicianShopAffiliation: {
     findMany: jest.fn().mockResolvedValue([]),
+    findFirst: jest.fn().mockResolvedValue(employeeRecord()),
     create: jest.fn().mockResolvedValue(employeeRecord()),
     update: jest.fn().mockResolvedValue(employeeRecord())
+  },
+  technicianProfile: {
+    update: jest.fn().mockResolvedValue({ id: 47 })
   },
   $queryRaw: jest.fn().mockResolvedValue([{ id: 47 }]),
   ...overrides
@@ -115,7 +126,18 @@ describe("TechnicianShopAffiliationRepository", () => {
     } as unknown as PrismaClient);
 
     await expect(repository.findCurrentShopEmployee(16, 86)).resolves.toMatchObject({
-      needoId: "s0000000086"
+      needoId: "s0000000086",
+      profile: {
+        bio: "整体与放松护理",
+        city: "东京都涩谷区",
+        serviceArea: "涩谷区、新宿区",
+        yearsExperience: 9,
+        updatedAt: "2026-08-28T00:00:00.000Z"
+      },
+      account: {
+        isActive: true,
+        lastLoginAt: "2026-08-27T12:00:00.000Z"
+      }
     });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -130,6 +152,65 @@ describe("TechnicianShopAffiliationRepository", () => {
         })
       })
     );
+  });
+
+  it("updates only a profile with a current affiliation in the requested shop", async () => {
+    const tx = transactionClient();
+    const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
+
+    await expect(
+      repository.updateCurrentShopEmployeeProfile({
+        shopId: 16,
+        technicianIdentityId: 86,
+        actorUserId: 7,
+        profile: {
+          displayName: "斋藤 健太",
+          bio: "整体与放松护理",
+          city: "东京都涩谷区",
+          serviceArea: "涩谷区、新宿区",
+          yearsExperience: 9
+        }
+      })
+    ).resolves.toMatchObject({
+      needoId: "s0000000086",
+      profile: { city: "东京都涩谷区", yearsExperience: 9 }
+    });
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.technicianProfile.update).toHaveBeenCalledWith({
+      where: { id: 47 },
+      data: {
+        displayName: "斋藤 健太",
+        bio: "整体与放松护理",
+        city: "东京都涩谷区",
+        serviceArea: "涩谷区、新宿区",
+        yearsExperience: 9
+      }
+    });
+    expect(tx.technicianShopAffiliation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ shopId: 16 }),
+        select: expect.any(Object)
+      })
+    );
+  });
+
+  it("refuses a profile update when the employee is not currently affiliated to the shop", async () => {
+    const tx = transactionClient();
+    tx.technicianShopAffiliation.findFirst.mockResolvedValue(null);
+    const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
+
+    await expect(
+      repository.updateCurrentShopEmployeeProfile({
+        shopId: 20,
+        technicianIdentityId: 86,
+        actorUserId: 7,
+        profile: { city: "东京都港区" }
+      })
+    ).resolves.toBeNull();
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.technicianProfile.update).not.toHaveBeenCalled();
   });
 
   it("locks the global technician profile and rejects an exclusive relationship when another shop is current", async () => {

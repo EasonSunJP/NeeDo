@@ -4,6 +4,7 @@ import type {
   AffiliationMutationRepositoryInput,
   AffiliationMutationRepositoryResult,
   EmployeeListRepositoryInput,
+  EmployeeProfileUpdateRepositoryInput,
   EmployeeRelationshipType,
   EmployeeWorkStatus,
   MerchantEmployeePayload,
@@ -22,13 +23,20 @@ const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliat
   technicianProfile: {
     select: {
       displayName: true,
+      bio: true,
+      city: true,
+      serviceArea: true,
+      yearsExperience: true,
       status: true,
       verifiedAt: true,
+      updatedAt: true,
       user: {
         select: {
           avatarUrl: true,
           email: true,
           phone: true,
+          isActive: true,
+          lastLoginAt: true,
           identities: {
             where: {
               type: "technician",
@@ -175,6 +183,64 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       select: employeeAffiliationSelect
     });
     return record ? this.mapEmployee(record) : null;
+  }
+
+  public async updateCurrentShopEmployeeProfile(
+    input: EmployeeProfileUpdateRepositoryInput
+  ): Promise<MerchantEmployeePayload | null> {
+    return this.client.$transaction(async (transaction) => {
+      const identity = await transaction.userIdentity.findFirst({
+        where: {
+          id: input.technicianIdentityId,
+          type: "technician",
+          isActive: true,
+          deletedAt: null,
+          publicIdentifier: {
+            is: { kind: "S", status: "ACTIVE", deletedAt: null }
+          },
+          user: { isActive: true, deletedAt: null }
+        },
+        select: {
+          user: {
+            select: {
+              technicianProfile: {
+                select: { id: true }
+              }
+            }
+          }
+        }
+      });
+      const technicianProfileId = identity?.user.technicianProfile?.id;
+      if (!technicianProfileId) return null;
+
+      const lockedProfiles = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM technician_profiles WHERE id = ${technicianProfileId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      if (lockedProfiles.length !== 1) return null;
+
+      const affiliation = await transaction.technicianShopAffiliation.findFirst({
+        where: {
+          shopId: input.shopId,
+          technicianProfileId,
+          activeKey: { not: null },
+          workStatus: { in: [...CURRENT_WORK_STATUSES] },
+          endsAt: null,
+          deletedAt: null
+        },
+        select: { id: true }
+      });
+      if (!affiliation) return null;
+
+      await transaction.technicianProfile.update({
+        where: { id: technicianProfileId },
+        data: input.profile
+      });
+      const record = await transaction.technicianShopAffiliation.findFirst({
+        where: { id: affiliation.id, ...this.currentEmployeeWhere(input.shopId) },
+        select: employeeAffiliationSelect
+      });
+      return record ? this.mapEmployee(record) : null;
+    });
   }
 
   public async upsertCurrentAffiliation(
@@ -346,6 +412,17 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       phone: record.technicianProfile.user.phone,
       profileStatus: record.technicianProfile.status,
       verifiedAt: record.technicianProfile.verifiedAt?.toISOString() ?? null,
+      profile: {
+        bio: record.technicianProfile.bio,
+        city: record.technicianProfile.city,
+        serviceArea: record.technicianProfile.serviceArea,
+        yearsExperience: record.technicianProfile.yearsExperience,
+        updatedAt: record.technicianProfile.updatedAt.toISOString()
+      },
+      account: {
+        isActive: record.technicianProfile.user.isActive,
+        lastLoginAt: record.technicianProfile.user.lastLoginAt?.toISOString() ?? null
+      },
       affiliation: {
         id: record.id,
         relationshipType: record.relationshipType.toLowerCase() as EmployeeRelationshipType,

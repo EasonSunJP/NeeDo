@@ -50,6 +50,17 @@ const employee = (overrides: Partial<MerchantEmployeePayload> = {}): MerchantEmp
   phone: "+81-90-0000-0047",
   profileStatus: "published",
   verifiedAt: "2026-08-01T00:00:00.000Z",
+  profile: {
+    bio: "整体与放松护理",
+    city: "东京都涩谷区",
+    serviceArea: "涩谷区、新宿区",
+    yearsExperience: 9,
+    updatedAt: "2026-08-28T00:00:00.000Z"
+  },
+  account: {
+    isActive: true,
+    lastLoginAt: "2026-08-27T12:00:00.000Z"
+  },
   affiliation: {
     id: 31,
     relationshipType: "partner",
@@ -70,6 +81,7 @@ const setup = () => {
       page_size: 20
     }),
     findCurrentShopEmployee: jest.fn().mockResolvedValue(employee()),
+    updateCurrentShopEmployeeProfile: jest.fn().mockResolvedValue(employee()),
     upsertCurrentAffiliation: jest.fn().mockResolvedValue(employee())
   };
   const identifierResolver = { resolve: jest.fn().mockResolvedValue(identifier()) };
@@ -197,6 +209,55 @@ describe("TechnicianShopAffiliationService", () => {
     expect(JSON.stringify(auditInput.metadata)).not.toContain("山本");
   });
 
+  it("updates the scoped employee profile and audits only changed field names", async () => {
+    const { service, repository, audit, identifierResolver } = setup();
+    const input = {
+      displayName: "斋藤 健太",
+      bio: "整体与放松护理",
+      city: "东京都涩谷区",
+      serviceArea: "涩谷区、新宿区",
+      yearsExperience: 9
+    };
+
+    await expect(
+      service.updateCurrentShopEmployeeProfile(actorForShop(16), context, "s0000000047", input)
+    ).resolves.toMatchObject({ needoId: "s0000000047" });
+
+    expect(identifierResolver.resolve).toHaveBeenCalledWith("s0000000047");
+    expect(repository.updateCurrentShopEmployeeProfile).toHaveBeenCalledWith({
+      shopId: 16,
+      technicianIdentityId: 77,
+      actorUserId: 86,
+      profile: input
+    });
+    const auditInput = audit.record.mock.calls[0][0];
+    expect(auditInput).toMatchObject({
+      action: "merchant_admin.employee_profile.update",
+      targetType: "technician_shop_affiliation",
+      targetId: 31,
+      metadata: {
+        shopId: 16,
+        changedFields: ["bio", "city", "displayName", "serviceArea", "yearsExperience"]
+      }
+    });
+    expect(JSON.stringify(auditInput.metadata)).not.toContain("斋藤");
+    expect(JSON.stringify(auditInput.metadata)).not.toContain("涩谷");
+  });
+
+  it("returns the safe employee 404 when a scoped profile update cannot find the affiliation", async () => {
+    const { service, repository } = setup();
+    repository.updateCurrentShopEmployeeProfile.mockResolvedValue(null);
+
+    await expect(
+      service.updateCurrentShopEmployeeProfile(actorForShop(16), context, "s0000000047", {
+        city: "东京都港区"
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.TECHNICIAN_AFFILIATION_NOT_FOUND,
+      statusCode: 404
+    });
+  });
+
   it("maps repository conflicts to one non-leaking 409", async () => {
     const { service, repository } = setup();
     repository.upsertCurrentAffiliation.mockResolvedValue("exclusive_conflict");
@@ -235,5 +296,18 @@ describe("TechnicianShopAffiliationService", () => {
       )
     ).rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
     expect(repository.upsertCurrentAffiliation).not.toHaveBeenCalled();
+
+    await expect(
+      service.updateCurrentShopEmployeeProfile(
+        actorForShop(16, {
+          isReadOnlyMerchantPreview: true,
+          merchantPreviewShopId: 16
+        }),
+        context,
+        "s0000000047",
+        { city: "东京都港区" }
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
+    expect(repository.updateCurrentShopEmployeeProfile).not.toHaveBeenCalled();
   });
 });
