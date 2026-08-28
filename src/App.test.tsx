@@ -65,10 +65,14 @@ describe("portal identity switching boundaries", () => {
     expect(appSource).toContain(
       'path="/afirieito/me" element={protect("business", <AffiliateProfilePage />)}'
     );
-    expect(affiliateActivationSource.match(/window\.location\.assign\("\/afirieito\/me"\)/g)).toHaveLength(
-      2
+    expect(
+      affiliateActivationSource.match(
+        /openPortalEntry\("business", "\/afirieito\/me"\)/g,
+      ),
+    ).toHaveLength(2);
+    expect(affiliateActivationSource).not.toContain(
+      'window.location.assign("/afirieito',
     );
-    expect(affiliateActivationSource).not.toContain('window.location.assign("/afirieito")');
   });
 });
 

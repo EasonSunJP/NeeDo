@@ -176,6 +176,11 @@ describe("AffiliateProfilePage", () => {
     await renderPage();
     await waitFor(() => expect(container.textContent).toContain("u0000000007"));
 
+    expect(container.querySelector('main[data-no-i18n="true"]')).not.toBeNull();
+    expect(
+      container.querySelector('button[aria-label="查看联盟营销资料说明"]'),
+    ).not.toBeNull();
+
     const needoId = container.querySelector<HTMLInputElement>('input[name="needoId"]');
     expect(needoId?.readOnly).toBe(true);
 

@@ -241,12 +241,15 @@ export function AffiliateProfilePage() {
       navItems={businessNavItems}
       showTopEdgeMask={false}
     >
-      <MobileFullscreenHeader
-        dark={isNight}
-        info={t("管理联盟营销公开资料和用户填写的外部社交平台主页。")}
-        title={t("联盟营销个人资料")}
-      />
-      <main className="space-y-4 px-4 pb-32 pt-4">
+      <div data-no-i18n="true">
+        <MobileFullscreenHeader
+          dark={isNight}
+          info={t("管理联盟营销公开资料和用户填写的外部社交平台主页。")}
+          infoLabel={t("查看联盟营销资料说明")}
+          title={t("联盟营销个人资料")}
+        />
+      </div>
+      <main className="space-y-4 px-4 pb-32 pt-4" data-no-i18n="true">
         {loading ? (
           <StatusPanel>{t("正在读取联盟营销资料")}</StatusPanel>
         ) : error && !profile ? (

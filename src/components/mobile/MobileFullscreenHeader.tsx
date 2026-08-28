@@ -74,6 +74,7 @@ export function MobileFullscreenBackButton({
 export function MobileFullscreenHeader({
   title,
   info,
+  infoLabel,
   subtitle,
   onBack,
   onClose,
@@ -88,6 +89,7 @@ export function MobileFullscreenHeader({
 }: {
   title: ReactNode;
   info?: ReactNode;
+  infoLabel?: string;
   subtitle?: ReactNode;
   onBack?: () => void;
   onClose?: () => void;
@@ -140,7 +142,10 @@ export function MobileFullscreenHeader({
               <TitleWithInfo
                 as="h1"
                 info={headerInfo}
-                label={typeof title === "string" ? `${title} 说明` : "查看页面说明"}
+                label={
+                  infoLabel ??
+                  (typeof title === "string" ? `${title} 说明` : "查看页面说明")
+                }
                 title={title}
                 titleClassName={cn("truncate text-[18px] font-black leading-none", dark ? "text-white" : "text-current")}
                 variant={dark ? "dark" : "client"}

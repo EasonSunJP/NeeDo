@@ -13,6 +13,12 @@ export const affiliateProfileTranslations: Record<string, AffiliateTranslationEn
     en: "Manage your public affiliate details and user-provided external social profiles.",
     ko: "공개 제휴 마케팅 정보와 사용자가 입력한 외부 소셜 프로필을 관리합니다."
   },
+  "查看联盟营销资料说明": {
+    "zh-Hant": "查看聯盟行銷資料說明",
+    ja: "アフィリエイトプロフィールの説明を表示",
+    en: "View affiliate profile information",
+    ko: "제휴 마케팅 프로필 안내 보기"
+  },
   "NeeDo用户ID": {
     "zh-Hant": "NeeDo用戶ID",
     ja: "NeeDoユーザーID",
