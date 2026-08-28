@@ -111,6 +111,26 @@ describe("bookingApi", () => {
     });
   });
 
+  it("serializes the bounded customer order window", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { list: [], total: 0, page: 1, page_size: 100 }
+    }));
+
+    await bookingApi.listOrders({
+      from: "2026-08-31T15:00:00.000Z",
+      to: "2026-10-01T15:00:00.000Z",
+      page: 1,
+      pageSize: 100
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/orders?from=2026-08-31T15%3A00%3A00.000Z&page=1&pageSize=100&to=2026-10-01T15%3A00%3A00.000Z",
+      expect.anything()
+    );
+  });
+
   it("calls the scoped manual-payment confirmation and refund endpoints", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")))
