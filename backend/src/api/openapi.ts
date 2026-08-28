@@ -513,7 +513,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             pattern: "^(?:u|s|b|o|needo)[0-9]{10}$"
           },
           username: { type: "string" },
-          avatarUrl: { type: ["string", "null"] }
+          avatarUrl: { type: ["string", "null"] },
+          role: { type: "string", enum: ["owner", "admin", "member"] }
         }
       },
       RealtimeMessage: {
@@ -581,6 +582,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "participants",
           "lastMessage",
           "unreadCount",
+          "privacyModeEnabled",
+          "hideMemberProfiles",
+          "disappearingTtlSeconds",
+          "disappearingStartMode",
+          "privacyPolicyVersion",
           "createdAt",
           "updatedAt"
         ],
@@ -596,6 +602,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             anyOf: [{ $ref: "#/components/schemas/RealtimeMessage" }, { type: "null" }]
           },
           unreadCount: { type: "integer" },
+          privacyModeEnabled: { type: "boolean" },
+          hideMemberProfiles: { type: "boolean" },
+          disappearingTtlSeconds: { type: ["integer", "null"], minimum: 60 },
+          disappearingStartMode: { type: "string", enum: ["sent", "read_by_all"] },
+          privacyPolicyVersion: { type: "integer", minimum: 0 },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
         }
@@ -9541,6 +9552,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     minItems: 1,
                     maxItems: 50,
                     items: { type: "integer", minimum: 1 }
+                  },
+                  privacyModeEnabled: { type: "boolean" },
+                  hideMemberProfiles: { type: "boolean" },
+                  disappearingTtlSeconds: {
+                    type: ["integer", "null"],
+                    minimum: 60,
+                    maximum: 34560000
+                  },
+                  disappearingStartMode: {
+                    type: "string",
+                    enum: ["sent", "read_by_all"]
                   }
                 }
               }
@@ -9603,6 +9625,68 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Updated participant preferences" },
           "404": { description: "Conversation not found for current participant" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/privacy`]: {
+      patch: {
+        tags: ["Step 13 Realtime"],
+        summary: "Update group privacy as the current group owner",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["privacyModeEnabled"],
+                properties: {
+                  privacyModeEnabled: { type: "boolean" },
+                  hideMemberProfiles: { type: "boolean" },
+                  disappearingTtlSeconds: {
+                    type: ["integer", "null"],
+                    minimum: 60,
+                    maximum: 34560000
+                  },
+                  disappearingStartMode: {
+                    type: "string",
+                    enum: ["sent", "read_by_all"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated group privacy settings" },
+          "404": { description: "Group not found or current account is not the owner" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/leave`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Leave a group and transfer ownership to the earliest remaining member",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Current participant left the group" },
+          "404": { description: "Group not found for current participant" }
         }
       }
     },

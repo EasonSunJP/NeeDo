@@ -231,3 +231,120 @@ describe("RealtimeService blocked-recipient delivery guard", () => {
     expect(repository.createMessage).not.toHaveBeenCalled();
   });
 });
+
+describe("RealtimeService group privacy and membership", () => {
+  it("persists owner-managed privacy settings and publishes one conversation update per member", async () => {
+    const conversation = {
+      id: 91,
+      privacyModeEnabled: true,
+      disappearingTtlSeconds: 3_600,
+      hideMemberProfiles: true,
+      disappearingStartMode: "sent" as const,
+      participants: [{ userId: 1 }, { userId: 2 }]
+    };
+    const repository = {
+      updateConversationPrivacy: jest.fn(async () => conversation)
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.updateConversationPrivacy(
+        { userId: 1 } as never,
+        {
+          conversationId: 91,
+          privacyModeEnabled: true,
+          disappearingTtlSeconds: 3_600,
+          hideMemberProfiles: true,
+          disappearingStartMode: "sent"
+        }
+      )
+    ).resolves.toBe(conversation);
+
+    expect(repository.updateConversationPrivacy).toHaveBeenCalledWith({
+      actorUserId: 1,
+      conversationId: 91,
+      privacyModeEnabled: true,
+      disappearingTtlSeconds: 3_600,
+      hideMemberProfiles: true,
+      disappearingStartMode: "sent"
+    });
+    expect(eventGateway.publish).toHaveBeenCalledTimes(2);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "conversation.privacy.updated",
+        recipientUserId: 2,
+        payload: conversation
+      })
+    );
+  });
+
+  it("leaves a group only after the owner selects a successor and notifies every affected account", async () => {
+    const result = {
+      conversationId: 91,
+      removedUserId: 1,
+      newOwnerUserId: 2,
+      dissolved: false,
+      recipientUserIds: [1, 2, 3]
+    };
+    const repository = {
+      leaveConversation: jest.fn(async () => ({ status: "left" as const, result }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(service.leaveConversation({ userId: 1 } as never, 91, 2)).resolves.toBe(result);
+    expect(repository.leaveConversation).toHaveBeenCalledWith({
+      conversationId: 91,
+      userId: 1,
+      transferOwnerUserId: 2
+    });
+    expect(eventGateway.publish).toHaveBeenCalledTimes(3);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "conversation.member.left",
+        recipientUserId: 1,
+        payload: result
+      })
+    );
+  });
+
+  it("requires a group owner to choose a valid successor before leaving", async () => {
+    const repository = {
+      leaveConversation: jest.fn(async () => ({ status: "transfer_required" as const }))
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(service.leaveConversation({ userId: 1 } as never, 91)).rejects.toMatchObject({
+      message: "error.realtime.group_owner_transfer_required",
+      statusCode: 400
+    });
+  });
+
+  it("allows only the owner to dissolve the group for every member", async () => {
+    const result = {
+      conversationId: 91,
+      removedUserId: 1,
+      newOwnerUserId: null,
+      dissolved: true,
+      recipientUserIds: [1, 2, 3]
+    };
+    const repository = {
+      dissolveConversation: jest.fn(async () => result)
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(service.dissolveConversation({ userId: 1 } as never, 91)).resolves.toBe(result);
+    expect(repository.dissolveConversation).toHaveBeenCalledWith({
+      conversationId: 91,
+      ownerUserId: 1
+    });
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "conversation.dissolved", recipientUserId: 3 })
+    );
+  });
+});

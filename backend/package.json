@@ -34,6 +34,8 @@
     "seed:future-operations": "ALLOW_SIMULATION_SEED=true ENV_FILE=.env.dev tsx scripts/seed-future-six-month-operations.ts --apply",
     "check:future-operations": "ALLOW_SIMULATION_SEED=true ENV_FILE=.env.dev tsx scripts/check-future-six-month-operations.ts",
     "check:lifedance-admin-ownership": "tsx scripts/check-lifedance-admin-ownership.ts",
+    "provision:lifedance-admin2": "ENV_FILE=.env.dev tsx scripts/provision-lifedance-admin2.ts",
+    "check:lifedance-admin2": "ENV_FILE=.env.dev tsx scripts/check-lifedance-admin2.ts",
     "check:formal-social-test": "tsx scripts/check-formal-social-test.ts",
     "audit:database-indexes": "tsx scripts/audit-database-indexes.ts",
     "audit:unified-identity": "ENV_FILE=.env.dev tsx scripts/audit-unified-identity-cutover.ts",

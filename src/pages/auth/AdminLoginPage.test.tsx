@@ -99,15 +99,15 @@ describe("AdminLoginPage formal password surface", () => {
     setter?.call(input, value);
   }
 
-  it("keeps browser password saving opt-in", () => {
+  it("defaults browser password saving on with native autofill metadata", () => {
     const account = container.querySelector<HTMLInputElement>('input[placeholder="admin@example.com"]');
     const password = container.querySelector<HTMLInputElement>('input[type="password"]');
 
     expect(account?.value).toBe("");
-    expect(account?.autocomplete).toBe("off");
+    expect(account?.autocomplete).toBe("username");
     expect(password?.value).toBe("");
-    expect(password?.autocomplete).toBe("off");
-    expect(container.querySelector('[role="switch"]')?.getAttribute("aria-checked")).toBe("false");
+    expect(password?.autocomplete).toBe("current-password");
+    expect(container.querySelector('[role="switch"]')?.getAttribute("aria-checked")).toBe("true");
     expect(container.textContent).not.toContain("Remember account and password");
   });
 
@@ -142,13 +142,13 @@ describe("AdminLoginPage formal password surface", () => {
     expect(mocked.setLanguage).toHaveBeenCalledWith("ja");
   });
 
-  it("persists only the backend portal preference and enables password-manager semantics", async () => {
+  it("persists an explicit opt-out without disabling native autofill metadata", async () => {
     const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
 
     await act(async () => toggle.click());
 
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-    expect(window.localStorage.getItem("needo.auth.browser-password-save.backend:admin")).toBe("true");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(window.localStorage.getItem("needo.auth.browser-password-save.backend:admin")).toBe("false");
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="username"]')?.value).toBe("");
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')?.value).toBe("");
   });
@@ -156,6 +156,8 @@ describe("AdminLoginPage formal password surface", () => {
   it("exposes standard credential field names to the browser password manager", () => {
     expect(container.querySelector<HTMLInputElement>('input[name="username"]')?.name).toBe("username");
     expect(container.querySelector<HTMLInputElement>('input[type="password"]')?.name).toBe("password");
+    expect(container.querySelector<HTMLFormElement>("form")?.method).toBe("post");
+    expect(container.querySelector<HTMLFormElement>("form")?.getAttribute("action")).toBe("/api/v1/auth/login");
   });
 
   it("submits credentials filled by the browser without React input events", async () => {
@@ -184,8 +186,6 @@ describe("AdminLoginPage formal password surface", () => {
       ok: true,
       session: { portal: "admin" }
     });
-    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
-    await act(async () => toggle.click());
     const account = container.querySelector<HTMLInputElement>('input[autocomplete="username"]')!;
     const password = container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')!;
     setInput(account, "admin@lifedance.com");

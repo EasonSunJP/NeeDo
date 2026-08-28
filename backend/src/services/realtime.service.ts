@@ -15,6 +15,7 @@ import type {
   NotificationListInput,
   RealtimeRepositoryPort,
   SocialPostListInput,
+  UpdateConversationPrivacyInput,
   UpdateConversationPreferencesInput
 } from "../repositories/realtime.repository";
 import type { AuthenticatedAccessContext } from "./auth.service";
@@ -64,8 +65,64 @@ export class RealtimeService implements OrderStatusNotificationPort {
       creatorUserId: auth.userId,
       type: input.type,
       title: input.title,
-      participantUserIds: input.participantUserIds
+      participantUserIds: input.participantUserIds,
+      privacyModeEnabled: input.privacyModeEnabled,
+      hideMemberProfiles: input.hideMemberProfiles,
+      disappearingTtlSeconds: input.disappearingTtlSeconds,
+      disappearingStartMode: input.disappearingStartMode
     });
+  }
+
+  public async updateConversationPrivacy(
+    auth: AuthenticatedAccessContext,
+    input: Omit<UpdateConversationPrivacyInput, "actorUserId">
+  ) {
+    const conversation = await this.repository.updateConversationPrivacy({
+      ...input,
+      actorUserId: auth.userId
+    });
+
+    if (!conversation) {
+      throw this.notFoundError("error.realtime.group_conversation_not_found");
+    }
+
+    for (const participant of conversation.participants) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "conversation.privacy.updated",
+        recipientUserId: participant.userId,
+        payload: conversation,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return conversation;
+  }
+
+  public async leaveConversation(
+    auth: AuthenticatedAccessContext,
+    conversationId: number
+  ) {
+    const result = await this.repository.leaveConversation({
+      conversationId,
+      userId: auth.userId
+    });
+
+    if (!result) {
+      throw this.notFoundError("error.realtime.group_conversation_not_found");
+    }
+
+    for (const recipientUserId of result.recipientUserIds) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "conversation.member.left",
+        recipientUserId,
+        payload: result,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return result;
   }
 
   public listConversations(auth: AuthenticatedAccessContext, input: PaginationInput) {

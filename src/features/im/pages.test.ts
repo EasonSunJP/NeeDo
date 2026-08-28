@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ImContactActivityEntry, getConversationInfoStartChatTarget, imConversationQuickSearchItems } from "./pages";
 import { getImRoleConfig } from "./role-config";
 import pagesSource from "./pages.tsx?raw";
+import componentsSource from "./components.tsx?raw";
 
 describe("IM pages", () => {
   it("renders the recent friend activity state as a text-only link", () => {
@@ -138,6 +139,9 @@ describe("IM pages", () => {
       'store.recallMessage(message.conversationId, message.id, "standard")',
     );
     expect(recallSource).toContain(".then(() => {");
+    expect(recallSource).toContain("message.type === \"text\" ? message.content : \"\"");
+    expect(recallSource).toContain("if (mediaPreview?.id === message.id)");
+    expect(recallSource).toContain("setMediaPreview(null)");
     expect(recallSource.indexOf("setDraft(originalContent)")).toBeGreaterThan(
       recallSource.indexOf(".then(() => {"),
     );
@@ -155,6 +159,60 @@ describe("IM pages", () => {
     expect(recallFailureEnd).toBeGreaterThan(recallFailureStart);
     expect(recallFailureSource).toContain("closeMessageMenu();");
     expect(componentSource).toContain('aria-live="assertive"');
+  });
+
+  it("opens media in a full-screen zoomable viewer with download and forwarding", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentSource).toContain('data-testid="im-media-viewer"');
+    expect(componentSource).toContain('role="dialog"');
+    expect(componentSource).toContain('aria-modal="true"');
+    expect(componentSource).toContain("object-contain");
+    expect(componentSource).toContain("mediaPreviewScale");
+    expect(componentSource).toContain("Math.min(4");
+    expect(componentSource).toContain("Math.max(1");
+    expect(componentSource).toContain("download={mediaPreview.ext?.fileName");
+    expect(componentSource).toContain('mode: "forward"');
+    expect(componentSource).toContain("messageId: mediaPreview.id");
+    expect(componentSource).toContain("<video");
+  });
+
+  it("routes quick reactions through the store and suppresses duplicate in-flight taps", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentSource).toContain("const reactionPendingKeysRef = useRef(new Set<string>());");
+    expect(componentSource).toContain("if (reactionPendingKeysRef.current.has(pendingKey))");
+    expect(componentSource).toContain(".setMessageReaction(conversationId, message.id, reaction, !reactedByMe)");
+    expect(componentSource).not.toContain("void api\n      .setMessageReaction");
+  });
+
+  it("handles privacy-save and leave failures inside the settings page instead of crashing the app", () => {
+    expect(pagesSource).toContain('showInfoToast("隐私模式设置已保存")');
+    expect(pagesSource).toContain('showInfoToast("隐私模式设置失败，请稍后重试")');
+    expect(pagesSource).toContain('showInfoToast("退出群聊失败，请稍后重试")');
+  });
+
+  it("requires an owner successor, offers dissolution, and lets ordinary members leave directly", () => {
+    expect(pagesSource).toContain("转让群主并退出");
+    expect(pagesSource).toContain("选择新群主");
+    expect(pagesSource).toContain("解散群聊");
+    expect(pagesSource).toContain("store.dissolveConversation(conversation.id)");
+    expect(pagesSource).toContain("store.removeConversationMember(conversation.id, store.currentUserId, transferOwnerUserId)");
+    expect(pagesSource).toContain("群成员不足 2 人时将自动解散");
+  });
+
+  it("renders eight recent emojis before a scrollable complete emoji catalog", () => {
+    expect(componentsSource).toContain("loadRecentImEmojis");
+    expect(componentsSource).toContain("recordRecentImEmoji");
+    expect(componentsSource).toContain("saveRecentImEmojis");
+    expect(componentsSource).toContain("最近使用");
+    expect(componentsSource).toContain("所有表情");
+    expect(componentsSource).toContain("recentEmojis.map");
+    expect(componentsSource).toContain("IM_COMMON_EMOJIS.map");
   });
 
   it("renders recall failures as a prominent alert above the composer", () => {

@@ -22,6 +22,12 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
+import {
+  IM_COMMON_EMOJIS,
+  loadRecentImEmojis,
+  recordRecentImEmoji,
+  saveRecentImEmojis,
+} from "./emoji";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
 
 export function ImIcon({
@@ -420,8 +426,6 @@ export type ImChatComposerRecordingState = {
   durationSeconds: number;
 };
 
-const imChatComposerEmojis = ["😀", "😄", "🥹", "👌", "👍", "🙏", "😭", "🔥", "🎉", "💬", "❤️", "🤝", "✅", "📍", "😴", "🥳"];
-
 export function ImChatComposer({
   actions = [],
   blocked = false,
@@ -461,6 +465,15 @@ export function ImChatComposer({
   textareaRef?: Ref<HTMLTextAreaElement>;
   voiceMode?: boolean;
 }) {
+  const [recentEmojis, setRecentEmojis] = useState(loadRecentImEmojis);
+  const selectEmoji = (emoji: string) => {
+    onDraftChange(`${draft}${emoji}`);
+    setRecentEmojis((current) => {
+      const next = recordRecentImEmoji(current, emoji);
+      saveRecentImEmojis(next);
+      return next;
+    });
+  };
   const composerShellClass = isNight
     ? "border-t border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] backdrop-blur-md"
     : "border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] backdrop-blur-md";
@@ -549,14 +562,30 @@ export function ImChatComposer({
       </div>
 
       {panel === "emoji" ? (
-        <div className={composerPanelClass}>
-          <p className="mb-3 text-xs text-[color:var(--client-muted)]">最近使用和常用表情</p>
+        <div className={cn(composerPanelClass, "max-h-[42dvh] overflow-y-auto overscroll-contain")}>
+          <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">最近使用</p>
           <div className="grid grid-cols-8 gap-2 text-center text-[24px]">
-            {imChatComposerEmojis.map((emoji) => (
+            {recentEmojis.map((emoji) => (
               <button
+                aria-label={`输入表情 ${emoji}`}
                 className={composerEmojiButtonClass}
                 key={emoji}
-                onClick={() => onDraftChange(`${draft}${emoji}`)}
+                onClick={() => selectEmoji(emoji)}
+                type="button"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+          <div className="my-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]" />
+          <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">所有表情</p>
+          <div className="grid grid-cols-8 gap-1 text-center text-[24px]">
+            {IM_COMMON_EMOJIS.map((emoji) => (
+              <button
+                aria-label={`输入表情 ${emoji}`}
+                className={composerEmojiButtonClass}
+                key={emoji}
+                onClick={() => selectEmoji(emoji)}
                 type="button"
               >
                 {emoji}

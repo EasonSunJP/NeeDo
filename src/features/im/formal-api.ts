@@ -23,6 +23,7 @@ import type {
   Conversation,
   ConversationMember,
   ConversationMessage,
+  CreateConversationPrivacyOptions,
   FriendRequest,
   ImBootstrapPayload,
   ImMessageType,
@@ -86,6 +87,40 @@ function readMetadata(metadata: unknown) {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>)
     : {};
+}
+
+const secondsPerMinute = 60;
+const secondsPerHour = 60 * secondsPerMinute;
+const secondsPerDay = 24 * secondsPerHour;
+const secondsPerMonth = 30 * secondsPerDay;
+
+function countdownToSeconds(countdown?: {
+  months?: number;
+  days?: number;
+  hours?: number;
+  minutes?: number;
+}) {
+  if (!countdown) return undefined;
+  const seconds =
+    Math.max(0, Math.floor(countdown.months ?? 0)) * secondsPerMonth +
+    Math.max(0, Math.floor(countdown.days ?? 0)) * secondsPerDay +
+    Math.max(0, Math.floor(countdown.hours ?? 0)) * secondsPerHour +
+    Math.max(0, Math.floor(countdown.minutes ?? 0)) * secondsPerMinute;
+  return seconds > 0 ? seconds : undefined;
+}
+
+function secondsToCountdown(totalSeconds?: number | null) {
+  let remaining = Math.max(0, Math.floor(totalSeconds ?? 0));
+  const months = Math.floor(remaining / secondsPerMonth);
+  remaining -= months * secondsPerMonth;
+  const days = Math.floor(remaining / secondsPerDay);
+  remaining -= days * secondsPerDay;
+  const hours = Math.floor(remaining / secondsPerHour);
+  remaining -= hours * secondsPerHour;
+  const minutes = Math.floor(remaining / secondsPerMinute);
+  return totalSeconds
+    ? { months, days, hours, minutes }
+    : undefined;
 }
 
 function inferProfileKind(username: string): ImProfileKind {
@@ -322,7 +357,12 @@ function isRealtimeMessagePayload(payload: unknown): payload is RealtimeMessage 
 
 export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate {
   if (
-    !["message.created", "message.updated", "message.recalled"].includes(event.type) ||
+    ![
+      "message.created",
+      "message.updated",
+      "message.reaction.updated",
+      "message.recalled",
+    ].includes(event.type) ||
     !isRealtimeMessagePayload(event.payload)
   ) {
     return { type: "refresh" };
@@ -336,9 +376,19 @@ export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate
   }
 
   return {
-    type: event.type as "message.created" | "message.updated",
+    type:
+      event.type === "message.created" ? "message.created" : "message.updated",
     message,
   };
+}
+
+export function shouldForwardFormalImEvent(event: FormalRealtimeEvent) {
+  return event.type !== "connected" && (
+    event.type.startsWith("message.") ||
+    event.type.startsWith("conversation.") ||
+    event.type.startsWith("friend_request.") ||
+    event.type.startsWith("contact.")
+  );
 }
 
 function getOtherParticipant(
@@ -383,6 +433,12 @@ function toConversation(
     isPinned: conversation.isPinned ?? false,
     isMuted: conversation.isMuted ?? false,
     isDeleted: conversation.isHidden || undefined,
+    privacyModeEnabled: conversation.privacyModeEnabled || undefined,
+    hideMemberProfiles: conversation.hideMemberProfiles || undefined,
+    disappearingCountdown: secondsToCountdown(conversation.disappearingTtlSeconds),
+    disappearingStartMode: conversation.privacyModeEnabled
+      ? (conversation.disappearingStartMode ?? "sent")
+      : undefined,
     updatedAt: conversation.updatedAt,
   };
 }
@@ -394,7 +450,7 @@ function toConversationMembers(
     id: `${conversation.id}-${participant.userId}`,
     conversationId: String(conversation.id),
     userId: String(participant.userId),
-    role: index === 0 ? "owner" : "member",
+    role: participant.role ?? (index === 0 ? "owner" : "member"),
     joinedAt: conversation.createdAt,
   }));
 }
@@ -693,7 +749,7 @@ export function createFormalImApi({
     async createConversation(
       memberIds: string[],
       title?: string,
-      privacyOptions?: { forceGroup?: boolean },
+      privacyOptions?: CreateConversationPrivacyOptions,
     ) {
       const type =
         privacyOptions?.forceGroup || memberIds.length > 1 ? "group" : "direct";
@@ -701,14 +757,48 @@ export function createFormalImApi({
         participantUserIds: memberIds.map(toNumericId),
         ...(title?.trim() ? { title: title.trim() } : {}),
         type,
+        ...(type === "group"
+          ? {
+              privacyModeEnabled: Boolean(privacyOptions?.privacyModeEnabled),
+              hideMemberProfiles: Boolean(privacyOptions?.hideMemberProfiles),
+              disappearingTtlSeconds: countdownToSeconds(
+                privacyOptions?.disappearingCountdown,
+              ),
+              disappearingStartMode:
+                privacyOptions?.disappearingStartMode ?? "sent",
+            }
+          : {}),
       });
       return { conversation: toConversation(conversation, currentUser.id) };
     },
-    updateConversationPrivacy: featureUnavailable,
+    async updateConversationPrivacy(conversationId, privacyOptions) {
+      const conversation = await realtimeApi.updateConversationPrivacy(
+        toNumericId(conversationId),
+        {
+          privacyModeEnabled: privacyOptions.privacyModeEnabled,
+          hideMemberProfiles: privacyOptions.hideMemberProfiles,
+          disappearingTtlSeconds: privacyOptions.privacyModeEnabled
+            ? countdownToSeconds(privacyOptions.disappearingCountdown)
+            : null,
+          disappearingStartMode:
+            privacyOptions.disappearingStartMode ?? "sent",
+        },
+      );
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
     updateConversationGroupInfo: featureUnavailable,
     updateConversationTags: featureUnavailable,
     addConversationMembers: featureUnavailable,
-    removeConversationMember: featureUnavailable,
+    async removeConversationMember(conversationId, userId) {
+      if (toNumericId(userId) !== currentUser.id) {
+        throw new Error("error.feature_unavailable");
+      }
+      const result = await realtimeApi.leaveConversation(toNumericId(conversationId));
+      return {
+        conversationId: String(result.conversationId),
+        removedUserId: String(result.removedUserId),
+      };
+    },
     async pinConversation(conversationId: string, isPinned: boolean) {
       const conversation = await realtimeApi.updateConversationPreferences(
         toNumericId(conversationId),
@@ -825,13 +915,7 @@ export function createFormalImApi({
 export function subscribeFormalImUpdates(onUpdate: (update: ImStoreUpdate) => void) {
   return subscribeRealtimeEvents({
     onEvent(event) {
-      if (
-        event.type === "connected" ||
-        event.type.startsWith("message.") ||
-        event.type.startsWith("conversation.") ||
-        event.type.startsWith("friend_request.") ||
-        event.type.startsWith("contact.")
-      ) {
+      if (shouldForwardFormalImEvent(event)) {
         onUpdate(toFormalImStoreUpdate(event));
       }
     },

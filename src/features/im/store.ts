@@ -119,6 +119,36 @@ export function getMessageFailureReason(error: unknown): ConversationMessage["fa
     : "send_failed";
 }
 
+export function getForwardableMessagePayload(
+  messagesByConversation: Record<string, ConversationMessage[]>,
+  messageId: string,
+): { type: ImMessageType; content: string; ext?: MessageExt } {
+  const source = Object.values(messagesByConversation)
+    .flat()
+    .find((message) => message.id === messageId);
+
+  if (
+    !source ||
+    source.type === "recalled" ||
+    source.type === "system" ||
+    source.serverState === "recalled"
+  ) {
+    throw new Error("error.im.forward_source_unavailable");
+  }
+
+  return {
+    type: source.type,
+    content: source.content,
+    ext: source.ext
+      ? {
+          ...source.ext,
+          mentions: undefined,
+          mentionAll: undefined,
+        }
+      : undefined,
+  };
+}
+
 type ImSnapshot = {
   status: StoreStatus;
   error?: string;
@@ -699,6 +729,24 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
   }
 
+  async function setMessageReaction(
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+    reacted: boolean,
+  ) {
+    await hydrateStore();
+    const response = await api.setMessageReaction(
+      conversationId,
+      messageId,
+      emoji,
+      reacted,
+    );
+    upsertMessage(response.message);
+    emit();
+    return response;
+  }
+
   async function recallMessage(conversationId: string, messageId: string, mode: "standard") {
     await hydrateStore();
     const response = await api.recallMessage(conversationId, messageId, mode);
@@ -709,11 +757,13 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function forwardMessage(messageId: string, conversationId: string) {
     await hydrateStore();
-    const response = await api.forwardMessage(messageId, conversationId);
-    upsertConversation(response.conversation);
-    upsertMessage(response.message);
-    emit();
-    return response.message;
+    const source = getForwardableMessagePayload(
+      snapshot.messagesByConversation,
+      messageId,
+    );
+    return sendMessage(conversationId, source.type, source.content, {
+      ext: source.ext,
+    });
   }
 
   async function pinConversation(conversationId: string, isPinned: boolean) {
@@ -811,7 +861,32 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   async function removeConversationMember(conversationId: string, userId: string) {
     await hydrateStore();
     const response = await api.removeConversationMember(conversationId, userId);
-    upsertConversation(response.conversation);
+    if (response.conversation) {
+      upsertConversation(response.conversation);
+    }
+    if (userId === snapshot.currentUserId) {
+      const nextMessagesByConversation = { ...snapshot.messagesByConversation };
+      const nextPaginationByConversation = { ...snapshot.paginationByConversation };
+      delete nextMessagesByConversation[conversationId];
+      delete nextPaginationByConversation[conversationId];
+      snapshot = {
+        ...snapshot,
+        conversations: snapshot.conversations.filter(
+          (conversation) => conversation.id !== conversationId,
+        ),
+        members: snapshot.members.filter(
+          (member) => member.conversationId !== conversationId,
+        ),
+        messagesByConversation: nextMessagesByConversation,
+        paginationByConversation: nextPaginationByConversation,
+        activeConversationId:
+          snapshot.activeConversationId === conversationId
+            ? undefined
+            : snapshot.activeConversationId,
+      };
+      emit();
+      return;
+    }
     snapshot = {
       ...snapshot,
       members: snapshot.members.filter((member) => !(member.conversationId === conversationId && member.userId === userId))
@@ -1010,6 +1085,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       estimateTagMessageCampaign,
       sendTagMessageCampaign,
       resendMessage,
+      setMessageReaction,
       recallMessage,
       forwardMessage,
       pinConversation,

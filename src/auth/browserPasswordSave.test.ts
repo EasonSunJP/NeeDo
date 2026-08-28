@@ -2,7 +2,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  readBrowserSavedPassword,
   readBrowserPasswordSavePreference,
   requestBrowserPasswordSave,
   writeBrowserPasswordSavePreference
@@ -25,9 +24,9 @@ describe("browser password save", () => {
     Reflect.deleteProperty(navigator, "credentials");
   });
 
-  it("defaults off and isolates frontend and backend portal preferences", () => {
-    expect(readBrowserPasswordSavePreference("backend:admin")).toBe(false);
-    expect(readBrowserPasswordSavePreference("frontend:user")).toBe(false);
+  it("defaults on, respects an explicit opt-out, and isolates portal preferences", () => {
+    expect(readBrowserPasswordSavePreference("backend:admin")).toBe(true);
+    expect(readBrowserPasswordSavePreference("frontend:user")).toBe(true);
 
     writeBrowserPasswordSavePreference("backend:admin", true);
     writeBrowserPasswordSavePreference("frontend:user", false);
@@ -90,27 +89,6 @@ describe("browser password save", () => {
     });
     expect(store).toHaveBeenCalledWith(credential);
     expect(localStorageValues()).not.toContain("password-value");
-  });
-
-  it("reads a saved password credential from the browser manager", async () => {
-    const get = vi.fn(async () => ({
-      id: "saved@example.com",
-      password: "Saved.Password.2026",
-      type: "password"
-    }) as Credential);
-    Object.defineProperty(navigator, "credentials", {
-      configurable: true,
-      value: { get }
-    });
-
-    await expect(readBrowserSavedPassword()).resolves.toEqual({
-      id: "saved@example.com",
-      password: "Saved.Password.2026"
-    });
-    expect(get).toHaveBeenCalledWith({
-      mediation: "optional",
-      password: true
-    });
   });
 
   it("silently degrades when browser credential storage is unavailable or rejected", async () => {
