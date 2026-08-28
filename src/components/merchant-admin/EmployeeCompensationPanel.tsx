@@ -138,7 +138,7 @@ export function EmployeeCompensationPanel({
       ? "员工单独规则"
       : "继承店铺规则";
   const financeHref = result
-    ? `/merchant-admin/finance?employee=${encodeURIComponent(result.employee.needoId)}`
+    ? `#/merchant-admin/finance?employee=${encodeURIComponent(result.employee.needoId)}`
     : "/merchant-admin/finance";
   const payrollMetrics = useMemo(
     () => [

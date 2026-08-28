@@ -125,7 +125,7 @@ describe("EmployeeCompensationPanel", () => {
     expect(container.textContent).toContain("173,500");
     expect(container.textContent).toContain("财务人员手动登记");
     const financeLink = container.querySelector<HTMLAnchorElement>(
-      'a[href="/merchant-admin/finance?employee=s0000000047"]',
+      'a[href="#/merchant-admin/finance?employee=s0000000047"]',
     );
     expect(financeLink?.textContent).toContain("前往财务结算");
   });
