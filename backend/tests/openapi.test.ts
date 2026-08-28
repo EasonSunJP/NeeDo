@@ -941,25 +941,15 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).not.toContain("scout");
   });
 
-<<<<<<< HEAD
   it("documents strict authenticated affiliate alliance read and create contracts", () => {
     type Operation = {
       security: Array<Record<string, unknown>>;
       requestBody?: { content: Record<string, { schema: Record<string, string> }> };
       responses: Record<string, unknown>;
-=======
-  it("documents the formal platform fee policy contracts", () => {
-    type Operation = {
-      security: Array<Record<string, unknown>>;
-      responses: Record<string, unknown>;
-      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
-      parameters?: Array<{ name: string; in: string }>;
->>>>>>> codex/technician-schedule-formal-cutover
     };
     type Schema = {
       additionalProperties?: boolean;
       required?: string[];
-<<<<<<< HEAD
       properties: Record<string, unknown>;
     };
     const document = createOpenApiDocument(env) as unknown as {
@@ -972,25 +962,6 @@ describe("GET /api/v1/openapi.json", () => {
     expect(mine.security).toEqual([{ bearerAuth: [] }]);
     expect(create.security).toEqual([{ bearerAuth: [] }]);
     for (const operation of [mine, create]) {
-=======
-      properties: Record<string, { type?: string; pattern?: string }>;
-    };
-    const document = createOpenApiDocument(env) as unknown as {
-      paths: Record<string, Record<"get" | "patch", Operation>>;
-      components: { schemas: Record<string, Schema> };
-    };
-    const operations = [
-      document.paths["/api/v1/backoffice/platform-fee-policy"].get,
-      document.paths["/api/v1/backoffice/platform-fee-policy"].patch,
-      document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get,
-      document.paths["/api/v1/backoffice/shops/{shopId}/platform-fee-policy"].patch,
-      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy"].get,
-      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy/payer"].patch
-    ];
-
-    for (const operation of operations) {
-      expect(operation.security).toEqual([{ bearerAuth: [] }]);
->>>>>>> codex/technician-schedule-formal-cutover
       expect(operation.responses).toEqual(
         expect.objectContaining({
           "400": expect.any(Object),
@@ -1000,7 +971,6 @@ describe("GET /api/v1/openapi.json", () => {
         })
       );
     }
-<<<<<<< HEAD
     expect(create.requestBody?.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/AffiliateAllianceCreate"
     });
@@ -1021,7 +991,44 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).toContain("needoId");
     expect(publicContract).toContain("canViewAllianceWallet");
     expect(publicContract).not.toMatch(/userId|identityId|scout/);
-=======
+  });
+
+  it("documents the formal platform fee policy contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<string, unknown>;
+      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
+      parameters?: Array<{ name: string; in: string }>;
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties: Record<string, { type?: string; pattern?: string }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "patch", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const operations = [
+      document.paths["/api/v1/backoffice/platform-fee-policy"].get,
+      document.paths["/api/v1/backoffice/platform-fee-policy"].patch,
+      document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get,
+      document.paths["/api/v1/backoffice/shops/{shopId}/platform-fee-policy"].patch,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy"].get,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy/payer"].patch
+    ];
+
+    for (const operation of operations) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
     expect(document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "page", in: "query" }),
@@ -1048,6 +1055,5 @@ describe("GET /api/v1/openapi.json", () => {
         ShopPlatformFeePolicyPage: expect.any(Object)
       })
     );
->>>>>>> codex/technician-schedule-formal-cutover
   });
 });
