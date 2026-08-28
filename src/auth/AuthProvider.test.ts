@@ -326,6 +326,39 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(auth.session?.loginMethod).toBe("google");
   });
 
+  it("keeps an already aligned portal switch idempotent", async () => {
+    mocked.authApi.me.mockResolvedValue(customerMe);
+    await renderProvider();
+    persistTokens("google-access-token", "google-refresh-token");
+    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    const alignedSession = auth.session;
+
+    const switched = await invoke(() => auth.switchPortal("user"));
+
+    expect(switched).toEqual({ ok: true, session: alignedSession });
+    expect(switched.ok && switched.session).toBe(alignedSession);
+    expect(auth.session).toBe(alignedSession);
+    expect(mocked.authApi.switchIdentity).not.toHaveBeenCalled();
+  });
+
+  it("does not persist a portal whose backend identity cannot be aligned", async () => {
+    mocked.authApi.me.mockResolvedValue(multiPortalMe);
+    await renderProvider();
+    persistTokens("google-access-token", "google-refresh-token");
+    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    const customerSession = auth.session;
+    mocked.tokenState.accessToken = null;
+    mocked.tokenState.refreshToken = null;
+
+    const switched = await invoke(() => auth.switchPortal("technician"));
+
+    expect(switched.ok).toBe(false);
+    expect(auth.session).toBe(customerSession);
+    expect(auth.session?.portal).toBe("user");
+    expect(auth.session?.currentIdentity).toEqual(customerIdentity);
+    expect(mocked.authApi.switchIdentity).not.toHaveBeenCalled();
+  });
+
   it("fails closed when /auth/me omits a required formal account field", async () => {
     const incompleteMe = { ...customerMe } as Partial<AuthMePayload>;
     delete incompleteMe.hasPassword;

@@ -20,7 +20,18 @@ describe("formal social provider gate", () => {
 
   it("waits for access-token restoration before loading protected social data", () => {
     expect(source).toContain("const { isRestoring, session } = useAuth();");
-    expect(source).toContain("if (!session || isRestoring) return;");
+    expect(source).toContain("if (sessionUserId === null || isRestoring) return;");
+  });
+
+  it("does not reload social and notification data for an equivalent session object", () => {
+    const loadSource = source.slice(
+      source.indexOf("const loadFormalSocial = useCallback"),
+      source.indexOf("const value = useMemo")
+    );
+
+    expect(loadSource).toContain("sessionUserId");
+    expect(loadSource).not.toContain("session.");
+    expect(loadSource).not.toContain("[isRestoring, session]");
   });
 
   it("loads a selected account only after its profile page asks for it and deduplicates concurrent requests", () => {
