@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import type { PrismaClient } from "@prisma/client";
+import { ERROR_CODES } from "../src/constants/error-codes";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import type {
   BookingUserRewardExpiryRecord,
@@ -860,7 +861,7 @@ const main = async (): Promise<void> => {
       typeof warning === "object" &&
         warning !== null &&
         "code" in warning &&
-        warning.code === 40935,
+        warning.code === ERROR_CODES.PLATFORM_FEE_INSUFFICIENT_CONFIRMATION_REQUIRED,
       "insufficient first-attempt rollback: confirmation warning was not returned"
     );
     const warningData = (warning as { data?: { previewVersion?: string } }).data;
