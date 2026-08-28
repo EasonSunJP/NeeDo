@@ -623,8 +623,10 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
 
                 {!hasAccess && mode === "account" ? (
                   <form
-                    autoComplete={savePassword ? "on" : "off"}
+                    action="/api/v1/auth/login"
+                    autoComplete="on"
                     className="space-y-5"
+                    method="post"
                     onSubmit={submitAccountLogin}
                   >
                     <label className="block">
@@ -632,7 +634,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       <div className="admin-login-field">
                         <span className="admin-login-field-icon">@</span>
                         <input
-                          autoComplete={savePassword ? "username" : "off"}
+                          autoComplete="username"
                           name="username"
                           onChange={(event) => setAccount(event.target.value)}
                           placeholder={copy.accountPlaceholder}
@@ -654,7 +656,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                         </span>
                       </span>
                       <PasswordInput
-                        autoComplete={savePassword ? "current-password" : "off"}
+                        autoComplete="current-password"
                         inputClassName="pr-10"
                         name="password"
                         onChange={(event) => setPassword(event.target.value)}

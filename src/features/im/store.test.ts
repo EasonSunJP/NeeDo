@@ -4,6 +4,7 @@ import type { ConversationMessage } from "./model";
 import {
   buildCachedImSearchResults,
   getMessageFailureReason,
+  getForwardableMessagePayload,
   mergeConversationMessageHistory,
   preferTerminalMessage,
   upsertConversationMessage,
@@ -62,6 +63,59 @@ describe("formal IM recall terminal precedence", () => {
       "const response = await api.recallMessage(conversationId, messageId, mode);",
     );
     expect(source).toContain("upsertMessage(response.message);");
+  });
+});
+
+describe("formal IM forwarding", () => {
+  it("copies a loaded media message into a new persisted send without mention metadata", () => {
+    expect(
+      getForwardableMessagePayload(
+        {
+          "91": [
+            message({
+              type: "image",
+              content: "/media/im/source.jpg",
+              ext: {
+                url: "/media/im/source.jpg",
+                fileName: "source.jpg",
+                mentions: ["201"],
+                mentionAll: true,
+              },
+            }),
+          ],
+        },
+        "700",
+      ),
+    ).toEqual({
+      type: "image",
+      content: "/media/im/source.jpg",
+      ext: {
+        url: "/media/im/source.jpg",
+        fileName: "source.jpg",
+        mentions: undefined,
+        mentionAll: undefined,
+      },
+    });
+  });
+
+  it("refuses to forward missing or recalled messages", () => {
+    expect(() => getForwardableMessagePayload({}, "missing")).toThrow(
+      "error.im.forward_source_unavailable",
+    );
+    expect(() =>
+      getForwardableMessagePayload({ "91": [recalled] }, recalled.id),
+    ).toThrow("error.im.forward_source_unavailable");
+  });
+
+  it("uses the normal formal send path instead of the unavailable forward stub", () => {
+    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const start = source.indexOf("async function forwardMessage");
+    const end = source.indexOf("async function pinConversation", start);
+    const forwardSource = source.slice(start, end);
+
+    expect(forwardSource).toContain("getForwardableMessagePayload");
+    expect(forwardSource).toContain("return sendMessage(");
+    expect(forwardSource).not.toContain("api.forwardMessage");
   });
 });
 
@@ -132,5 +186,19 @@ describe("formal IM send failure reason", () => {
   it("keeps the recipient-blocked reason on the optimistic failed message", () => {
     expect(getMessageFailureReason(new Error("error.im.recipient_blocked"))).toBe("recipient_blocked");
     expect(getMessageFailureReason(new Error("error.network.timeout"))).toBe("send_failed");
+  });
+});
+
+describe("formal IM quick reactions", () => {
+  it("upserts the authoritative reaction response into the shared message store", () => {
+    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const start = source.indexOf("async function setMessageReaction");
+    const end = source.indexOf("async function recallMessage", start);
+    const reactionSource = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(reactionSource).toContain("await api.setMessageReaction");
+    expect(reactionSource).toContain("upsertMessage(response.message)");
+    expect(source).toContain("setMessageReaction,");
   });
 });

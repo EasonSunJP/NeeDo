@@ -286,6 +286,11 @@ const createFixture = async () => {
     type: "direct" | "group";
     title: string | null;
     participantUserIds: number[];
+    privacyModeEnabled: boolean;
+    hideMemberProfiles: boolean;
+    disappearingTtlSeconds: number | null;
+    disappearingStartMode: "sent" | "read_by_all";
+    privacyPolicyVersion: number;
     unreadByUserId: Map<number, number>;
     preferencesByUserId: Map<
       number,
@@ -392,8 +397,10 @@ const createFixture = async () => {
       title: conversation.title,
       participants: conversation.participantUserIds.map((participantUserId) => ({
         userId: participantUserId,
+        needoId: `u${String(participantUserId).padStart(10, "0")}`,
         username: users.find((user) => user.id === participantUserId)?.username ?? "Unknown",
-        avatarUrl: null
+        avatarUrl: null,
+        role: participantUserId === conversation.participantUserIds[0] ? "owner" : "member"
       })),
       lastMessage: lastMessage ? mapMessage(lastMessage, userId) : null,
       unreadCount: conversation.unreadByUserId.get(userId) ?? 0,
@@ -402,6 +409,11 @@ const createFixture = async () => {
         isMuted: false,
         isPinned: false
       }),
+      privacyModeEnabled: conversation.privacyModeEnabled,
+      hideMemberProfiles: conversation.hideMemberProfiles,
+      disappearingTtlSeconds: conversation.disappearingTtlSeconds,
+      disappearingStartMode: conversation.disappearingStartMode,
+      privacyPolicyVersion: conversation.privacyPolicyVersion,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
     };
@@ -424,6 +436,10 @@ const createFixture = async () => {
         type: "direct" | "group";
         title?: string | null;
         participantUserIds: number[];
+        privacyModeEnabled?: boolean;
+        hideMemberProfiles?: boolean;
+        disappearingTtlSeconds?: number | null;
+        disappearingStartMode?: "sent" | "read_by_all";
       }) => {
         const participantUserIds = Array.from(
           new Set([input.creatorUserId, ...input.participantUserIds])
@@ -433,6 +449,17 @@ const createFixture = async () => {
           type: input.type,
           title: input.title ?? null,
           participantUserIds,
+          privacyModeEnabled: input.type === "group" && Boolean(input.privacyModeEnabled),
+          hideMemberProfiles: input.type === "group" && Boolean(input.hideMemberProfiles),
+          disappearingTtlSeconds:
+            input.type === "group" && input.privacyModeEnabled
+              ? (input.disappearingTtlSeconds ?? null)
+              : null,
+          disappearingStartMode:
+            input.type === "group" && input.privacyModeEnabled
+              ? (input.disappearingStartMode ?? "sent")
+              : "sent",
+          privacyPolicyVersion: input.type === "group" && input.privacyModeEnabled ? 1 : 0,
           unreadByUserId: new Map(participantUserIds.map((userId) => [userId, 0])),
           preferencesByUserId: new Map(
             participantUserIds.map((userId) => [
@@ -446,6 +473,97 @@ const createFixture = async () => {
         conversations.push(conversation);
 
         return mapConversation(conversation, input.creatorUserId);
+      }
+    ),
+    updateConversationPrivacy: jest.fn(
+      async (input: {
+        actorUserId: number;
+        conversationId: number;
+        privacyModeEnabled: boolean;
+        hideMemberProfiles?: boolean;
+        disappearingTtlSeconds?: number | null;
+        disappearingStartMode?: "sent" | "read_by_all";
+      }) => {
+        const conversation = conversations.find(
+          (item) =>
+            item.id === input.conversationId &&
+            item.type === "group" &&
+            item.participantUserIds[0] === input.actorUserId
+        );
+        if (!conversation) return null;
+        conversation.privacyModeEnabled = input.privacyModeEnabled;
+        conversation.hideMemberProfiles = input.hideMemberProfiles ?? false;
+        conversation.disappearingTtlSeconds = input.privacyModeEnabled
+          ? (input.disappearingTtlSeconds ?? null)
+          : null;
+        conversation.disappearingStartMode = input.privacyModeEnabled
+          ? (input.disappearingStartMode ?? "sent")
+          : "sent";
+        conversation.privacyPolicyVersion += 1;
+        return mapConversation(conversation, input.actorUserId);
+      }
+    ),
+    leaveConversation: jest.fn(
+      async (input: { conversationId: number; userId: number; transferOwnerUserId?: number }) => {
+        const conversation = conversations.find(
+          (item) =>
+            item.id === input.conversationId &&
+            item.type === "group" &&
+            item.participantUserIds.includes(input.userId)
+        );
+        if (!conversation) return { status: "not_found" as const };
+        if (conversation.participantUserIds[0] === input.userId && !input.transferOwnerUserId) {
+          return { status: "transfer_required" as const };
+        }
+        if (
+          input.transferOwnerUserId &&
+          !conversation.participantUserIds.includes(input.transferOwnerUserId)
+        ) {
+          return { status: "invalid_transfer" as const };
+        }
+        const recipientUserIds = [...conversation.participantUserIds];
+        conversation.participantUserIds = conversation.participantUserIds.filter(
+          (userId) => userId !== input.userId
+        );
+        if (input.transferOwnerUserId) {
+          conversation.participantUserIds = [
+            input.transferOwnerUserId,
+            ...conversation.participantUserIds.filter(
+              (userId) => userId !== input.transferOwnerUserId
+            )
+          ];
+        }
+        const dissolved = conversation.participantUserIds.length < 2;
+        return {
+          status: "left" as const,
+          result: {
+            conversationId: input.conversationId,
+            removedUserId: input.userId,
+            newOwnerUserId: dissolved ? null : (conversation.participantUserIds[0] ?? null),
+            dissolved,
+            recipientUserIds
+          }
+        };
+      }
+    ),
+    dissolveConversation: jest.fn(
+      async (input: { conversationId: number; ownerUserId: number }) => {
+        const conversation = conversations.find(
+          (item) =>
+            item.id === input.conversationId &&
+            item.type === "group" &&
+            item.participantUserIds[0] === input.ownerUserId
+        );
+        if (!conversation) return null;
+        const recipientUserIds = [...conversation.participantUserIds];
+        conversation.participantUserIds = [];
+        return {
+          conversationId: input.conversationId,
+          removedUserId: input.ownerUserId,
+          newOwnerUserId: null,
+          dissolved: true,
+          recipientUserIds
+        };
       }
     ),
     getConversationForUser: jest.fn(async (conversationIdToFind: number, userId: number) => {
@@ -1134,6 +1252,80 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .set("Authorization", `Bearer ${mikaToken}`)
       .expect(200);
     expect(unreadAfterRead.body.data.total).toBe(0);
+  });
+
+  it("creates and updates a formal private group, then lets the owner leave safely", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        type: "group",
+        title: "Private group",
+        participantUserIds: [2],
+        privacyModeEnabled: true,
+        hideMemberProfiles: true,
+        disappearingTtlSeconds: 3_600,
+        disappearingStartMode: "sent"
+      })
+      .expect(201)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          id: 1,
+          privacyModeEnabled: true,
+          hideMemberProfiles: true,
+          disappearingTtlSeconds: 3_600,
+          disappearingStartMode: "sent"
+        });
+      });
+
+    await request(fixture.app)
+      .patch("/api/v1/im/conversations/1/privacy")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        privacyModeEnabled: true,
+        hideMemberProfiles: false,
+        disappearingTtlSeconds: 7_200,
+        disappearingStartMode: "read_by_all"
+      })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          privacyModeEnabled: true,
+          hideMemberProfiles: false,
+          disappearingTtlSeconds: 7_200,
+          disappearingStartMode: "read_by_all"
+        });
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/1/leave")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ transferOwnerUserId: 2 })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          conversationId: 1,
+          removedUserId: 1,
+          newOwnerUserId: null,
+          dissolved: true
+        });
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "group", title: "Dissolve group", participantUserIds: [2] })
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/2/dissolve")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ conversationId: 2, dissolved: true });
+      });
   });
 
   it("recalls an owned message through the protected formal endpoint", async () => {

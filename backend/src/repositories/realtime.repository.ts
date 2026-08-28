@@ -26,6 +26,7 @@ export interface ParticipantPayload {
   needoId: string;
   username: string;
   avatarUrl: string | null;
+  role?: "owner" | "admin" | "member";
 }
 
 export interface ConversationPayload {
@@ -38,6 +39,11 @@ export interface ConversationPayload {
   isPinned: boolean;
   isMuted: boolean;
   isHidden: boolean;
+  privacyModeEnabled: boolean;
+  hideMemberProfiles: boolean;
+  disappearingTtlSeconds: number | null;
+  disappearingStartMode: "sent" | "read_by_all";
+  privacyPolicyVersion: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -172,6 +178,31 @@ export interface CreateConversationInput {
   type: ConversationTypePayload;
   title?: string | null;
   participantUserIds: number[];
+  privacyModeEnabled?: boolean;
+  hideMemberProfiles?: boolean;
+  disappearingTtlSeconds?: number | null;
+  disappearingStartMode?: "sent" | "read_by_all";
+}
+
+export interface UpdateConversationPrivacyInput {
+  actorUserId: number;
+  conversationId: number;
+  privacyModeEnabled: boolean;
+  hideMemberProfiles?: boolean;
+  disappearingTtlSeconds?: number | null;
+  disappearingStartMode?: "sent" | "read_by_all";
+}
+
+export interface LeaveConversationInput {
+  conversationId: number;
+  userId: number;
+}
+
+export interface LeaveConversationPayload {
+  conversationId: number;
+  removedUserId: number;
+  newOwnerUserId: number | null;
+  recipientUserIds: number[];
 }
 
 export interface ListMessagesInput {
@@ -270,6 +301,12 @@ export interface CreateOrderStatusNotificationInput {
 export interface RealtimeRepositoryPort {
   findActiveUserIds: (ids: number[]) => Promise<number[]>;
   createConversation: (input: CreateConversationInput) => Promise<ConversationPayload>;
+  updateConversationPrivacy: (
+    input: UpdateConversationPrivacyInput
+  ) => Promise<ConversationPayload | null>;
+  leaveConversation: (
+    input: LeaveConversationInput
+  ) => Promise<LeaveConversationPayload | null>;
   getConversationForUser: (
     conversationId: number,
     userId: number
@@ -466,6 +503,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         type: this.conversationTypeToDb(input.type),
         title: input.title?.trim() || null,
         createdByUserId: input.creatorUserId,
+        privacyModeEnabled: input.type === "group" && Boolean(input.privacyModeEnabled),
+        hideMemberProfiles: input.type === "group" && Boolean(input.hideMemberProfiles),
+        disappearingTtlSeconds:
+          input.type === "group" && input.privacyModeEnabled
+            ? (input.disappearingTtlSeconds ?? null)
+            : null,
+        disappearingStartMode:
+          input.type === "group" && input.privacyModeEnabled
+            ? (input.disappearingStartMode ?? "sent")
+            : "sent",
+        privacyPolicyVersion: input.type === "group" && input.privacyModeEnabled ? 1 : 0,
+        privacyUpdatedAt: input.type === "group" && input.privacyModeEnabled ? new Date() : null,
+        privacyUpdatedByUserId:
+          input.type === "group" && input.privacyModeEnabled ? input.creatorUserId : null,
         participants: {
           create: participantUserIds.map((userId) => ({
             userId,
@@ -477,6 +528,160 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
 
     return this.mapConversation(conversation, input.creatorUserId);
+  }
+
+  public async updateConversationPrivacy(
+    input: UpdateConversationPrivacyInput
+  ): Promise<ConversationPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const actor = await tx.conversationParticipant.findFirst({
+        where: {
+          conversationId: input.conversationId,
+          userId: input.actorUserId,
+          role: "owner",
+          deletedAt: null,
+          conversation: {
+            type: ConversationType.GROUP,
+            deletedAt: null
+          }
+        },
+        select: { id: true }
+      });
+
+      if (!actor) {
+        return null;
+      }
+
+      const updated = await tx.conversation.update({
+        where: { id: input.conversationId },
+        data: {
+          privacyModeEnabled: input.privacyModeEnabled,
+          hideMemberProfiles: input.hideMemberProfiles ?? false,
+          disappearingTtlSeconds: input.privacyModeEnabled
+            ? (input.disappearingTtlSeconds ?? null)
+            : null,
+          disappearingStartMode: input.privacyModeEnabled
+            ? (input.disappearingStartMode ?? "sent")
+            : "sent",
+          privacyPolicyVersion: { increment: 1 },
+          privacyUpdatedAt: new Date(),
+          privacyUpdatedByUserId: input.actorUserId
+        },
+        include: this.conversationInclude()
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: input.actorUserId,
+          action: "im.conversation.privacy_updated",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: {
+            privacyModeEnabled: input.privacyModeEnabled,
+            hideMemberProfiles: input.hideMemberProfiles ?? false,
+            disappearingTtlSeconds: input.privacyModeEnabled
+              ? (input.disappearingTtlSeconds ?? null)
+              : null,
+            disappearingStartMode: input.privacyModeEnabled
+              ? (input.disappearingStartMode ?? "sent")
+              : "sent"
+          }
+        }
+      });
+
+      return this.mapConversation(updated, input.actorUserId);
+    });
+  }
+
+  public async leaveConversation(
+    input: LeaveConversationInput
+  ): Promise<LeaveConversationPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const conversation = await tx.conversation.findFirst({
+        where: {
+          id: input.conversationId,
+          type: ConversationType.GROUP,
+          deletedAt: null,
+          participants: {
+            some: { userId: input.userId, deletedAt: null }
+          }
+        },
+        include: {
+          participants: {
+            where: { deletedAt: null },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { id: true, userId: true, role: true }
+          }
+        }
+      });
+
+      if (!conversation) {
+        return null;
+      }
+
+      const leaving = conversation.participants.find(
+        (participant) => participant.userId === input.userId
+      );
+      if (!leaving) {
+        return null;
+      }
+
+      const remaining = conversation.participants.filter(
+        (participant) => participant.userId !== input.userId
+      );
+      const nextOwner = leaving.role === "owner" ? (remaining[0] ?? null) : null;
+      const now = new Date();
+
+      if (nextOwner) {
+        await tx.conversationParticipant.update({
+          where: { id: nextOwner.id },
+          data: { role: "owner" }
+        });
+      }
+
+      await tx.conversationParticipant.update({
+        where: { id: leaving.id },
+        data: {
+          deletedAt: now,
+          hiddenAt: now,
+          unreadCount: 0,
+          isPinned: false
+        }
+      });
+
+      if (remaining.length === 0) {
+        await tx.conversation.update({
+          where: { id: input.conversationId },
+          data: { deletedAt: now }
+        });
+      } else {
+        await tx.conversation.update({
+          where: { id: input.conversationId },
+          data: { updatedAt: now }
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: input.userId,
+          action: "im.conversation.member_left",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: { newOwnerUserId: nextOwner?.userId ?? null }
+        }
+      });
+
+      return {
+        conversationId: input.conversationId,
+        removedUserId: input.userId,
+        newOwnerUserId: nextOwner?.userId ?? null,
+        recipientUserIds: conversation.participants.map((participant) => participant.userId)
+      };
+    });
   }
 
   public async getConversationForUser(
@@ -1717,7 +1922,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       type: this.conversationTypeFromDb(conversation.type),
       title: conversation.title,
       participants: conversation.participants.map((participant) =>
-        this.mapParticipant(participant.user)
+        this.mapParticipant(participant.user, participant.role)
       ),
       lastMessage: conversation.messages[0]
         ? this.mapMessage(conversation.messages[0], viewerUserId)
@@ -1726,6 +1931,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       isPinned: viewer?.isPinned ?? false,
       isMuted: viewer?.isMuted ?? false,
       isHidden: viewer?.hiddenAt !== null && viewer?.hiddenAt !== undefined,
+      privacyModeEnabled: conversation.privacyModeEnabled,
+      hideMemberProfiles: conversation.hideMemberProfiles,
+      disappearingTtlSeconds: conversation.disappearingTtlSeconds,
+      disappearingStartMode:
+        conversation.disappearingStartMode === "read_by_all" ? "read_by_all" : "sent",
+      privacyPolicyVersion: conversation.privacyPolicyVersion,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
     };
@@ -1801,12 +2012,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     needoId: string;
     username: string;
     avatarUrl: string | null;
-  }): ParticipantPayload {
+  }, role?: string): ParticipantPayload {
     return {
       userId: user.id,
       needoId: user.needoId,
       username: user.username,
-      avatarUrl: user.avatarUrl
+      avatarUrl: user.avatarUrl,
+      ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
   }
 

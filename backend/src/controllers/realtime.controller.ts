@@ -9,6 +9,7 @@ import {
   conversationCreateBodySchema,
   conversationIdParamSchema,
   conversationListQuerySchema,
+  conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
   directorySearchQuerySchema,
   followCreateBodySchema,
@@ -130,6 +131,23 @@ export class RealtimeController {
       conversationId: params.conversationId,
       ...body
     });
+  });
+
+  public updateConversationPrivacy = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    const body = conversationPrivacyBodySchema.parse(request.body);
+    return this.service.updateConversationPrivacy(getAuthenticatedAccess(response), {
+      conversationId: params.conversationId,
+      ...body
+    });
+  });
+
+  public leaveConversation = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.leaveConversation(
+      getAuthenticatedAccess(response),
+      params.conversationId
+    );
   });
 
   public hideConversation = this.createHandler((request, response) => {

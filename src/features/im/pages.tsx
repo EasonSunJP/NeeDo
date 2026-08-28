@@ -4116,6 +4116,7 @@ export function ImConversationRoomPage({
   const [messageMenuExpanded, setMessageMenuExpanded] = useState(false);
   const [messageReactions, setMessageReactions] = useState<ImMessageReactionState>({});
   const [mediaPreview, setMediaPreview] = useState<ConversationMessage | null>(null);
+  const [mediaPreviewScale, setMediaPreviewScale] = useState(1);
   const [contactCardPickerOpen, setContactCardPickerOpen] = useState(false);
   const [contactCardQuery, setContactCardQuery] = useState("");
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
@@ -4139,6 +4140,7 @@ export function ImConversationRoomPage({
   const listWasNearBottomRef = useRef(true);
   const listStateRef = useRef({ conversationId: "", messageCount: 0 });
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const reactionPendingKeysRef = useRef(new Set<string>());
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const recordingRef = useRef<VoiceRecordingState>(idleVoiceRecordingState);
   const recordingGestureStartYRef = useRef<number | null>(null);
@@ -4202,6 +4204,38 @@ export function ImConversationRoomPage({
     });
     setMessageReactions(next);
   }, [messages]);
+
+  useEffect(() => {
+    if (!mediaPreview) {
+      return;
+    }
+
+    const current = messages.find((message) => message.id === mediaPreview.id);
+    if (!current || current.type === "recalled" || current.serverState === "recalled") {
+      setMediaPreview(null);
+      setMediaPreviewScale(1);
+      return;
+    }
+
+    if (current !== mediaPreview) {
+      setMediaPreview(current);
+    }
+  }, [mediaPreview?.id, messages]);
+
+  useEffect(() => {
+    if (!mediaPreview) {
+      return undefined;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMediaPreview(null);
+        setMediaPreviewScale(1);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mediaPreview]);
 
   useEffect(() => {
     if (!textareaRef.current) {
@@ -5157,6 +5191,11 @@ export function ImConversationRoomPage({
   };
 
   const toggleMessageReaction = (message: ConversationMessage, reaction: string, closeAfter = true) => {
+    const pendingKey = `${message.id}:${reaction}`;
+    if (reactionPendingKeysRef.current.has(pendingKey)) {
+      return;
+    }
+    reactionPendingKeysRef.current.add(pendingKey);
     const previousState = messageReactions;
     const currentPeople = messageReactions[message.id]?.[reaction] ?? [];
     const reactedByMe = currentPeople.some((person) => person.id === currentReactionPerson.id);
@@ -5188,7 +5227,7 @@ export function ImConversationRoomPage({
       closeMessageMenu();
     }
 
-    void api
+    void store
       .setMessageReaction(conversationId, message.id, reaction, !reactedByMe)
       .then(({ message: savedMessage }) => {
         setMessageReactions((current) => {
@@ -5201,7 +5240,8 @@ export function ImConversationRoomPage({
           return next;
         });
       })
-      .catch(() => setMessageReactions(previousState));
+      .catch(() => setMessageReactions(previousState))
+      .finally(() => reactionPendingKeysRef.current.delete(pendingKey));
   };
 
   const getMessageReactionSummaries = (messageId: string): ImMessageReactionSummary[] =>
@@ -5275,6 +5315,11 @@ export function ImConversationRoomPage({
         setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
         closeMessageMenu();
 
+        if (mediaPreview?.id === message.id) {
+          setMediaPreview(null);
+          setMediaPreviewScale(1);
+        }
+
         if (!originalContent) {
           return;
         }
@@ -5295,6 +5340,16 @@ export function ImConversationRoomPage({
         );
       })
       .finally(() => setRecallPending(false));
+  };
+
+  const openMediaPreview = (message: ConversationMessage) => {
+    setMediaPreviewScale(1);
+    setMediaPreview(message);
+  };
+
+  const closeMediaPreview = () => {
+    setMediaPreview(null);
+    setMediaPreviewScale(1);
   };
 
   const createMessageActions = (message: ConversationMessage) => {
@@ -5598,7 +5653,7 @@ export function ImConversationRoomPage({
                           navigate(config.routes.contactDetail(targetContact.id));
                         }
                       }}
-                      onPreviewMedia={setMediaPreview}
+                      onPreviewMedia={openMediaPreview}
                       quotedMessage={quoted}
                       quotedSenderAvatar={quotedSenderAvatar}
                       quotedSenderName={quotedSenderName}
@@ -6053,19 +6108,107 @@ export function ImConversationRoomPage({
         )}
       </ImBottomSheet>
 
-      <ImBottomSheet onClose={() => setMediaPreview(null)} open={Boolean(mediaPreview)}>
-        {mediaPreview ? (
-          <div className="pb-3">
+      {mediaPreview ? (
+        <div
+          aria-label="媒体查看器"
+          aria-modal="true"
+          className="fixed inset-0 z-[120] flex h-[100dvh] w-full flex-col bg-black/96 text-white"
+          data-testid="im-media-viewer"
+          onClick={closeMediaPreview}
+          role="dialog"
+        >
+          <header className="flex min-h-16 items-center justify-between gap-3 px-3 pt-[max(8px,env(safe-area-inset-top))] sm:px-5">
+            <button
+              aria-label="关闭大图"
+              className="grid h-11 w-11 place-items-center rounded-full bg-white/12 text-2xl"
+              onClick={closeMediaPreview}
+              type="button"
+            >
+              ×
+            </button>
+            <p className="min-w-0 flex-1 truncate text-center text-sm font-bold">
+              {mediaPreview.ext?.fileName ?? (mediaPreview.type === "video" ? "视频" : "图片")}
+            </p>
+            <span className="w-11 text-center text-xs font-bold text-white/70">
+              {Math.round(mediaPreviewScale * 100)}%
+            </span>
+          </header>
+
+          <div
+            className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={() => setMediaPreviewScale((scale) => (scale > 1 ? 1 : 2))}
+          >
             {mediaPreview.type === "image" ? (
-              <img alt={mediaPreview.ext?.fileName ?? "图片"} className="w-full rounded-[24px]" src={mediaPreview.ext?.url ?? mediaPreview.content} />
+              <img
+                alt={mediaPreview.ext?.fileName ?? "图片"}
+                className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
+                draggable={false}
+                src={mediaPreview.ext?.url ?? mediaPreview.content}
+                style={{ transform: `scale(${mediaPreviewScale})` }}
+              />
             ) : mediaPreview.type === "video" ? (
-              <div className="overflow-hidden rounded-[24px] bg-black/90">
-                <img alt={mediaPreview.ext?.fileName ?? "视频"} className="w-full opacity-85" src={mediaPreview.ext?.thumbnailUrl ?? mediaPreview.content} />
-              </div>
+              <video
+                className="max-h-full max-w-full object-contain transition-transform duration-150"
+                controls
+                playsInline
+                poster={mediaPreview.ext?.thumbnailUrl}
+                src={mediaPreview.ext?.url ?? mediaPreview.content}
+                style={{ transform: `scale(${mediaPreviewScale})` }}
+              />
             ) : null}
           </div>
-        ) : null}
-      </ImBottomSheet>
+
+          <footer
+            className="grid grid-cols-5 gap-2 border-t border-white/12 bg-black/82 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 sm:px-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              aria-label="缩小"
+              className="min-h-11 rounded-full bg-white/12 text-lg font-black disabled:opacity-35"
+              disabled={mediaPreviewScale <= 1}
+              onClick={() => setMediaPreviewScale((scale) => Math.max(1, Number((scale - 0.25).toFixed(2))))}
+              type="button"
+            >
+              −
+            </button>
+            <button
+              aria-label="恢复适合屏幕"
+              className="min-h-11 rounded-full bg-white/12 text-xs font-black"
+              onClick={() => setMediaPreviewScale(1)}
+              type="button"
+            >
+              适屏
+            </button>
+            <button
+              aria-label="放大"
+              className="min-h-11 rounded-full bg-white/12 text-lg font-black disabled:opacity-35"
+              disabled={mediaPreviewScale >= 4}
+              onClick={() => setMediaPreviewScale((scale) => Math.min(4, Number((scale + 0.25).toFixed(2))))}
+              type="button"
+            >
+              +
+            </button>
+            <a
+              className="grid min-h-11 place-items-center rounded-full bg-white/12 text-xs font-black"
+              download={mediaPreview.ext?.fileName ?? (mediaPreview.type === "video" ? "needo-video" : "needo-image")}
+              href={mediaPreview.ext?.url ?? mediaPreview.content}
+            >
+              下载
+            </a>
+            <button
+              className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-2 text-xs font-black text-[color:var(--client-primary-contrast)]"
+              onClick={() => {
+                closeMediaPreview();
+                navigate(appendQuery(config.routes.newConversation, { mode: "forward", messageId: mediaPreview.id }));
+              }}
+              type="button"
+            >
+              转发
+            </button>
+          </footer>
+        </div>
+      ) : null}
     </ImStandaloneShell>
   );
 }
@@ -6096,6 +6239,7 @@ export function ImConversationInfoPage() {
   const [conversationTagUiState, setConversationTagUiState] = useState<ImTagListUiState>(() => readImTagListUiState(scope));
   const toastIdRef = useRef(0);
   const [infoToast, setInfoToast] = useState<{ id: number; message: string } | null>(null);
+  const [leavingGroup, setLeavingGroup] = useState(false);
   const infoRoleTagSet = useMemo(() => new Set(scope === "merchant" ? getMerchantOrganizationRoleTagNames() : []), [scope]);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
@@ -6154,7 +6298,7 @@ export function ImConversationInfoPage() {
           return;
         }
 
-        throw error;
+        showInfoToast("聊天信息加载失败，请稍后重试");
       });
     }
   }, [config.routes.messages, conversationId, navigate]);
@@ -6249,21 +6393,41 @@ export function ImConversationInfoPage() {
       return;
     }
 
-    await store.updateConversationPrivacy(
-      conversation.id,
-      privacyModeEnabled
-        ? {
-            privacyModeEnabled: true,
-            hideMemberProfiles: hideMemberProfilesEnabled,
-            disappearingCountdown: privacyCountdown,
-            disappearingStartMode: privacyStartMode
-          }
-        : {
-            privacyModeEnabled: false,
-            hideMemberProfiles: hideMemberProfilesEnabled
-          }
-    );
-    showInfoToast("隐私模式设置已保存");
+    try {
+      await store.updateConversationPrivacy(
+        conversation.id,
+        privacyModeEnabled
+          ? {
+              privacyModeEnabled: true,
+              hideMemberProfiles: hideMemberProfilesEnabled,
+              disappearingCountdown: privacyCountdown,
+              disappearingStartMode: privacyStartMode
+            }
+          : {
+              privacyModeEnabled: false,
+              hideMemberProfiles: hideMemberProfilesEnabled
+            }
+      );
+      showInfoToast("隐私模式设置已保存");
+    } catch {
+      showInfoToast("隐私模式设置失败，请稍后重试");
+    }
+  };
+
+  const leaveGroupConversation = async () => {
+    if (!conversation || conversation.type !== "group" || !store.currentUserId || leavingGroup) {
+      return;
+    }
+
+    setLeavingGroup(true);
+    try {
+      await store.removeConversationMember(conversation.id, store.currentUserId);
+      navigate(config.routes.messages, { replace: true });
+    } catch {
+      showInfoToast("退出群聊失败，请稍后重试");
+    } finally {
+      setLeavingGroup(false);
+    }
   };
 
   const saveGroupInfoSettings = async () => {
@@ -6719,8 +6883,8 @@ export function ImConversationInfoPage() {
           <Link className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-[15px] text-[color:var(--client-text)]" to={appendQuery(config.routes.search, { conversationId: conversation.id })}>查找聊天内容</Link>
           <button className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[color:var(--client-text)]" onClick={() => void store.clearConversation(conversation.id)} type="button">清空聊天记录</button>
           {conversation.type === "group" ? (
-            <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f]" onClick={() => void store.removeConversationMember(conversation.id, store.currentUserId ?? "")} type="button">
-              退出群聊
+            <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup} onClick={() => void leaveGroupConversation()} type="button">
+              {leavingGroup ? "正在退出…" : "退出群聊"}
             </button>
           ) : (
             <>

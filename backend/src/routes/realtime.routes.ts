@@ -15,6 +15,7 @@ import {
   conversationCreateBodySchema,
   conversationIdParamSchema,
   conversationListQuerySchema,
+  conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
   directorySearchQuerySchema,
   followCreateBodySchema,
@@ -47,6 +48,8 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   markConversationRead: "message:read",
   markConversationUnread: "message:read",
   updateConversationPreferences: "conversation:list",
+  updateConversationPrivacy: "conversation:create",
+  leaveConversation: "conversation:list",
   hideConversation: "conversation:list",
   listContacts: "contact:list",
   searchDirectory: "contact:list",
@@ -150,6 +153,23 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
       body: conversationPreferencesBodySchema
     }),
     controller.updateConversationPreferences
+  );
+  router.patch(
+    "/im/conversations/:conversationId/privacy",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.updateConversationPrivacy),
+    validateRequest({
+      params: conversationIdParamSchema,
+      body: conversationPrivacyBodySchema
+    }),
+    controller.updateConversationPrivacy
+  );
+  router.post(
+    "/im/conversations/:conversationId/leave",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.leaveConversation),
+    validateRequest({ params: conversationIdParamSchema }),
+    controller.leaveConversation
   );
   router.delete(
     "/im/conversations/:conversationId",
