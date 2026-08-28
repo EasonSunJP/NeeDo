@@ -71,6 +71,10 @@ export interface AffiliateAllianceMineResponse {
   alliance: AffiliateAlliancePayload | null;
 }
 
+export interface AffiliateAllianceCreatedResponse {
+  alliance: AffiliateAlliancePayload;
+}
+
 export class AffiliateAllianceService {
   public constructor(
     private readonly repository: AffiliateAllianceRepositoryPort,
@@ -88,7 +92,7 @@ export class AffiliateAllianceService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
     input: AffiliateAllianceCreateBody
-  ): Promise<AffiliateAllianceMineResponse> {
+  ): Promise<AffiliateAllianceCreatedResponse> {
     this.requireAffiliateIdentity(actor);
     const eligibility = await this.repository.findCreationEligibility(actor.userId);
 

@@ -138,6 +138,7 @@ import { TechnicianApplicationPage } from "./features/identity-applications/Tech
 import { MerchantApplicationPage } from "./features/identity-applications/MerchantApplicationPage";
 import { AffiliateActivationPage } from "./features/identity-applications/AffiliateActivationPage";
 import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";
+import { AffiliateAlliancePage } from "./features/affiliate-alliance/AffiliateAlliancePage";
 import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
@@ -1099,7 +1100,7 @@ export default function App() {
               <Route path="/afirieito/more" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/plan" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/data" element={protect("business", <BusinessCpsPage />)} />
-              <Route path="/afirieito/organization" element={protect("business", <BusinessCpsPage />)} />
+              <Route path="/afirieito/organization" element={protect("business", <AffiliateAlliancePage />)} />
               <Route path="/afirieito/promotions" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/links" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/materials" element={protect("business", <BusinessCpsPage />)} />

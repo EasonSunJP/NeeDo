@@ -147,6 +147,52 @@ describe("translations", () => {
     });
   });
 
+  it("localizes the complete affiliate alliance foundation experience", () => {
+    expect(translateText("联盟", "en")).toBe("Alliance");
+    expect(translateText("联盟", "ja")).toBe("アライアンス");
+    expect(translateText("创建联盟", "en")).toBe("Create alliance");
+    expect(translateText("创建联盟", "ja")).toBe("アライアンスを作成");
+
+    const completeKeys = [
+      "管理当前联盟、成员权限与独立联盟钱包。",
+      "查看联盟说明",
+      "正在读取联盟",
+      "没有权限查看联盟",
+      "联盟读取失败",
+      "建立你的第一个联盟",
+      "联盟名称",
+      "联盟介绍",
+      "实际推广者比例",
+      "推广者",
+      "联盟",
+      "创建联盟",
+      "联盟创建失败，请稍后重试",
+      "联盟已创建",
+      "联盟章程",
+      "联盟所有者",
+      "NeeDo用户ID",
+      "所有者权限",
+      "领取任务",
+      "查看联盟概览",
+      "查看成员详情",
+      "管理自己的下级",
+      "查看联盟钱包",
+      "联盟钱包",
+      "可用余额",
+      "冻结余额",
+      "最后更新"
+    ] as const;
+
+    completeKeys.forEach((key) => {
+      expect(translations[key]).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+    });
+  });
+
   it("localizes every standard recall residue and failure message", () => {
     const keys = [
       "你撤回了一条消息",

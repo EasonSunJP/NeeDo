@@ -1,5 +1,6 @@
 import { identityApplicationTranslations } from "../features/identity-applications/i18n";
 import { affiliateProfileTranslations } from "../features/affiliate-profile/i18n";
+import { affiliateAllianceTranslations } from "../features/affiliate-alliance/i18n";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -14696,7 +14697,8 @@ export const translations: TranslationMap = {
   "한국어": { "zh-Hant": "한국어", ja: "한국어", en: "Korean", ko: "한국어" },
   "プライベート 群情報隠れた": { "zh-Hant": "プライベート 群情報隠れた", ja: "プライベートグループのメッセージは非表示", en: "Private group messages are hidden", ko: "비공개 그룹 메시지가 숨겨졌습니다" },
   ...authTrustGatewayTranslations,
-  ...affiliateProfileTranslations
+  ...affiliateProfileTranslations,
+  ...affiliateAllianceTranslations
 };
 
 export function getTranslationLookupCandidates(language: Language): TargetLanguage[] {

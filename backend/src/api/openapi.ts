@@ -3051,6 +3051,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      AffiliateAllianceCreated: {
+        type: "object",
+        additionalProperties: false,
+        required: ["alliance"],
+        properties: {
+          alliance: { $ref: "#/components/schemas/AffiliateAlliance" }
+        }
+      },
       AffiliateAllianceCreate: {
         type: "object",
         additionalProperties: false,
@@ -3801,7 +3809,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": jsonDataResponse("Created Affiliate alliance", {
-            $ref: "#/components/schemas/AffiliateAllianceMine"
+            $ref: "#/components/schemas/AffiliateAllianceCreated"
           }),
           ...affiliateAllianceErrorResponses
         }
