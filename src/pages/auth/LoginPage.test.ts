@@ -796,6 +796,12 @@ describe("LoginPage formal flow guardrails", () => {
       resolveLoginErrorMessage("error.auth.invalid_credentials", "zh"),
     ).toContain("邮箱、NeeDo ID 或密码");
     expect(
+      resolveLoginErrorMessage("error.auth.portal_forbidden", "zh"),
+    ).toBe("当前账号没有此入口所需的身份，请切换账号后重试。");
+    expect(
+      resolveLoginErrorMessage("error.auth.portal_forbidden", "ja"),
+    ).toContain("アカウントを切り替えて");
+    expect(
       resolveLoginErrorMessage(
         "error.auth.verification_challenge_expired",
         "ja",

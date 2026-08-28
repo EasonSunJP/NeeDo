@@ -567,7 +567,7 @@ function getThemePreviewClasses(themeId: ClientThemeDefinition["id"]) {
   }
 }
 
-function summarizeUserProfileStatus(customer: Customer, technician?: Technician) {
+export function summarizeUserProfileStatus(customer: Customer, technician?: Technician) {
   let completedCount = 0;
 
   if ((customer.nickname?.trim() || customer.name.trim()).length > 0) {
@@ -601,7 +601,7 @@ function summarizeUserProfileStatus(customer: Customer, technician?: Technician)
   return "未完善";
 }
 
-function summarizeTechnicianProfileStatus(technician: Technician) {
+export function summarizeTechnicianProfileStatus(technician: Technician) {
   let completedCount = 0;
 
   if ((technician.nickname?.trim() || technician.name.trim()).length > 0) {
@@ -639,7 +639,7 @@ function summarizeTechnicianProfileStatus(technician: Technician) {
   return "未完善";
 }
 
-function summarizeStoreProfileStatus(store: Store) {
+export function summarizeStoreProfileStatus(store: Store) {
   let completedCount = 0;
 
   if (store.name.trim()) {
@@ -677,7 +677,7 @@ function summarizeStoreProfileStatus(store: Store) {
   return "未完善";
 }
 
-function summarizeProfileStatus(
+export function summarizeProfileStatus(
   portal: UnifiedSettingsPortal,
   {
     customer,
@@ -716,7 +716,7 @@ function summarizeServiceRange(areas: string[]) {
   return `${areas.slice(0, 2).join(" / ")} +${areas.length - 2}`;
 }
 
-function summarizeAccountStatus(portal: UnifiedSettingsPortal, customer: Customer, store: Store) {
+export function summarizeAccountStatus(portal: UnifiedSettingsPortal, customer: Customer, store: Store) {
   if (portal === "business") {
     return "Afirieito 账号";
   }

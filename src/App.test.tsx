@@ -21,12 +21,22 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).not.toContain("needsPortalSync");
   });
 
+  it("always settles remembered portal restoration after StrictMode effect replay", () => {
+    expect(requirePortalAuthSource).toContain("portalRestoreInFlightRef.current");
+    expect(requirePortalAuthSource).toContain("const restoreRequest = switchPortal(portal);");
+    expect(requirePortalAuthSource).toContain("portalRestoreInFlightRef.current = restoreRequest;");
+    expect(requirePortalAuthSource).toContain(".finally(() => {");
+    expect(requirePortalAuthSource).toContain("setIsPortalRestorePending(false);");
+    expect(requirePortalAuthSource).not.toContain("let active = true");
+    expect(requirePortalAuthSource).not.toContain("if (active)");
+  });
+
   it("shows a retryable identity-service outage without rendering protected portal data", () => {
     expect(requirePortalAuthSource).toContain("restoreError");
     expect(requirePortalAuthSource).toContain("retrySessionRestore");
     expect(requirePortalAuthSource).toContain("身份服务暂时不可用，请稍后重试。");
     expect(requirePortalAuthSource).toContain("重新加载");
-    expect(requirePortalAuthSource).toContain("if (restoreError || isRestoring");
+    expect(requirePortalAuthSource).toMatch(/if\s*\(\s*restoreError\s*\|\|\s*isRestoring/u);
     expect(requirePortalAuthSource.indexOf("if (restoreError && !isAuthenticated)")).toBeLessThan(
       requirePortalAuthSource.indexOf("if (isRestoring || isPortalRestorePending")
     );

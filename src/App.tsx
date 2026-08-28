@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
@@ -832,6 +832,7 @@ function RequirePortalAuth({
   const location = useLocation();
   const [isPortalRestorePending, setIsPortalRestorePending] = useState(false);
   const [failedPortalAlignmentKey, setFailedPortalAlignmentKey] = useState<string | null>(null);
+  const portalRestoreInFlightRef = useRef<ReturnType<typeof switchPortal> | null>(null);
   const hasDirectAccess = canAccess(portal);
   const isOperationsMerchantPreview = Boolean(
     portal === "merchant" &&
@@ -859,28 +860,33 @@ function RequirePortalAuth({
   const shouldSwitchPortal = (!hasAccess && canRestoreRememberedPortal) || needsPortalAlignment;
 
   useEffect(() => {
-    if (restoreError || isRestoring || !shouldSwitchPortal || isPortalRestorePending || portalAlignmentFailed) {
+    if (
+      restoreError ||
+      isRestoring ||
+      !shouldSwitchPortal ||
+      isPortalRestorePending ||
+      portalAlignmentFailed ||
+      portalRestoreInFlightRef.current
+    ) {
       return;
     }
 
-    let active = true;
+    const restoreRequest = switchPortal(portal);
+    portalRestoreInFlightRef.current = restoreRequest;
     setIsPortalRestorePending(true);
 
-    void switchPortal(portal)
+    void restoreRequest
       .then((result) => {
-        if (active && (!result.ok || !isSessionAlignedWithPortal(result.session, portal))) {
+        if (!result.ok || !isSessionAlignedWithPortal(result.session, portal)) {
           setFailedPortalAlignmentKey(portalAlignmentKey);
         }
       })
       .finally(() => {
-        if (active) {
+        if (portalRestoreInFlightRef.current === restoreRequest) {
+          portalRestoreInFlightRef.current = null;
           setIsPortalRestorePending(false);
         }
       });
-
-    return () => {
-      active = false;
-    };
   }, [
     isPortalRestorePending,
     isRestoring,

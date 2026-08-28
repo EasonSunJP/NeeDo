@@ -89,6 +89,8 @@ describe("httpClient auth tokens", () => {
     expect(getAccessToken()).toBe("access-token");
     expect(getStoredRefreshToken()).toBe("refresh-token");
     expect(window.localStorage.getItem("needo.auth.access-token")).toBeNull();
+    expect(window.sessionStorage.getItem("needo.auth.refresh-token")).toBe("refresh-token");
+    expect(window.localStorage.getItem("needo.auth.refresh-token")).toBeNull();
   });
 
   it("refreshes once after a 401 response and retries the original request", async () => {
