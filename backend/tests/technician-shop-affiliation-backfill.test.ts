@@ -19,9 +19,11 @@ const snapshot = (
   employmentType: "FULL_TIME",
   employmentStartedAt: startsAt,
   createdAt,
+  profileStatus: "published",
   shopActive: true,
   technicianPublicIds: ["s0000000047"],
   hasBusinessEvidence: true,
+  hasMerchantIdentityAtShop: false,
   currentAffiliations: [],
   ...overrides
 });
@@ -96,6 +98,23 @@ describe("technician shop affiliation backfill planner", () => {
         code: "INDEPENDENT_RELATION_UNVERIFIED"
       }
     ]);
+  });
+
+  it("skips a private merchant identity-switch profile that has no service evidence", () => {
+    const plan = planTechnicianShopAffiliationBackfill(
+      batch([
+        snapshot({
+          employmentType: "INDEPENDENT",
+          profileStatus: "private",
+          hasBusinessEvidence: false,
+          hasMerchantIdentityAtShop: true
+        })
+      ])
+    );
+
+    expect(plan.operations).toEqual([]);
+    expect(plan.issues).toEqual([]);
+    expect(plan.skippedNonEmployeeProfiles).toBe(1);
   });
 
   it("skips unassigned profiles and reports identity or shop blockers", () => {
@@ -225,6 +244,23 @@ describe("technician shop affiliation backfill runner", () => {
       issues: []
     });
     expect(source.applyOperations).not.toHaveBeenCalled();
+  });
+
+  it("reports each dry-run issue once", async () => {
+    const source = runtime([
+      batch([snapshot({ employmentType: "INDEPENDENT", hasBusinessEvidence: false })])
+    ]);
+
+    await expect(
+      runTechnicianShopAffiliationBackfill(source, { mode: "dry-run", batchSize: 100 })
+    ).resolves.toMatchObject({
+      issues: [
+        {
+          technicianProfileId: 47,
+          code: "INDEPENDENT_RELATION_UNVERIFIED"
+        }
+      ]
+    });
   });
 
   it("applies a clean plan then proves the rerun has no pending work", async () => {

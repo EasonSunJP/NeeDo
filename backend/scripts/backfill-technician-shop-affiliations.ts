@@ -19,9 +19,11 @@ export interface TechnicianShopAffiliationBackfillSnapshot {
   employmentType: "INDEPENDENT" | "FULL_TIME" | "TEMPORARY";
   employmentStartedAt: Date | null;
   createdAt: Date;
+  profileStatus: string;
   shopActive: boolean;
   technicianPublicIds: string[];
   hasBusinessEvidence: boolean;
+  hasMerchantIdentityAtShop: boolean;
   currentAffiliations: TechnicianShopAffiliationBackfillCurrentAffiliation[];
 }
 
@@ -54,6 +56,7 @@ export interface TechnicianShopAffiliationBackfillPlan {
   operations: TechnicianShopAffiliationBackfillOperation[];
   issues: TechnicianShopAffiliationBackfillIssue[];
   skippedUnassigned: number;
+  skippedNonEmployeeProfiles: number;
   alreadyCovered: number;
 }
 
@@ -73,6 +76,7 @@ export interface TechnicianShopAffiliationBackfillCounts {
   batches: number;
   scannedTechnicians: number;
   skippedUnassigned: number;
+  skippedNonEmployeeProfiles: number;
   alreadyCovered: number;
   pendingOperations: number;
 }
@@ -123,6 +127,7 @@ export const planTechnicianShopAffiliationBackfill = (
   const operations: TechnicianShopAffiliationBackfillOperation[] = [];
   const issues: TechnicianShopAffiliationBackfillIssue[] = [];
   let skippedUnassigned = 0;
+  let skippedNonEmployeeProfiles = 0;
   let alreadyCovered = 0;
 
   for (const technician of batch.technicians) {
@@ -140,6 +145,15 @@ export const planTechnicianShopAffiliationBackfill = (
     }
     if (!technician.shopActive) {
       issues.push(issue(technician.technicianProfileId, "SHOP_NOT_ACTIVE"));
+      continue;
+    }
+    if (
+      technician.employmentType === "INDEPENDENT" &&
+      !technician.hasBusinessEvidence &&
+      technician.profileStatus === "private" &&
+      technician.hasMerchantIdentityAtShop
+    ) {
+      skippedNonEmployeeProfiles += 1;
       continue;
     }
 
@@ -191,7 +205,13 @@ export const planTechnicianShopAffiliationBackfill = (
     });
   }
 
-  return { operations, issues, skippedUnassigned, alreadyCovered };
+  return {
+    operations,
+    issues,
+    skippedUnassigned,
+    skippedNonEmployeeProfiles,
+    alreadyCovered
+  };
 };
 
 const summarize = async (
@@ -203,6 +223,7 @@ const summarize = async (
       batches: 0,
       scannedTechnicians: 0,
       skippedUnassigned: 0,
+      skippedNonEmployeeProfiles: 0,
       alreadyCovered: 0,
       pendingOperations: 0
     },
@@ -215,6 +236,7 @@ const summarize = async (
     summary.counts.batches += 1;
     summary.counts.scannedTechnicians += batch.technicians.length;
     summary.counts.skippedUnassigned += plan.skippedUnassigned;
+    summary.counts.skippedNonEmployeeProfiles += plan.skippedNonEmployeeProfiles;
     summary.counts.alreadyCovered += plan.alreadyCovered;
     summary.operations.push(...plan.operations);
     summary.issues.push(...plan.issues);
@@ -236,7 +258,7 @@ const createReport = (
   mutatedRows,
   before: before.counts,
   after: after.counts,
-  issues: [...before.issues, ...after.issues]
+  issues: after.issues
 });
 
 export const runTechnicianShopAffiliationBackfill = async (
@@ -289,6 +311,7 @@ export class PrismaTechnicianShopAffiliationBackfillRuntime implements Technicia
           employmentType: true,
           employmentStartedAt: true,
           createdAt: true,
+          status: true,
           shop: { select: { status: true, deletedAt: true } },
           user: {
             select: {
@@ -296,14 +319,17 @@ export class PrismaTechnicianShopAffiliationBackfillRuntime implements Technicia
               deletedAt: true,
               identities: {
                 where: {
-                  type: "technician",
                   isActive: true,
-                  deletedAt: null,
-                  publicIdentifier: {
-                    is: { kind: "S", status: "ACTIVE", deletedAt: null }
-                  }
+                  deletedAt: null
                 },
-                select: { publicIdentifier: { select: { publicId: true } } }
+                select: {
+                  type: true,
+                  scopeType: true,
+                  scopeId: true,
+                  publicIdentifier: {
+                    select: { publicId: true, kind: true, status: true, deletedAt: true }
+                  }
+                }
               }
             }
           },
@@ -373,18 +399,33 @@ export class PrismaTechnicianShopAffiliationBackfillRuntime implements Technicia
           employmentType: profile.employmentType,
           employmentStartedAt: profile.employmentStartedAt,
           createdAt: profile.createdAt,
+          profileStatus: profile.status,
           shopActive:
             profile.shop !== null &&
             profile.shop.deletedAt === null &&
             profile.shop.status !== "archived",
           technicianPublicIds:
             profile.user.isActive && profile.user.deletedAt === null
-              ? profile.user.identities.flatMap((identity) =>
-                  identity.publicIdentifier ? [identity.publicIdentifier.publicId] : []
-                )
+              ? profile.user.identities.flatMap((identity) => {
+                  const identifier = identity.publicIdentifier;
+                  return identity.type === "technician" &&
+                    identifier?.kind === "S" &&
+                    identifier.status === "ACTIVE" &&
+                    identifier.deletedAt === null
+                    ? [identifier.publicId]
+                    : [];
+                })
               : [],
           hasBusinessEvidence:
             profile.shopId !== null && evidence.has(evidenceKey(profile.id, profile.shopId)),
+          hasMerchantIdentityAtShop:
+            profile.shopId !== null &&
+            profile.user.identities.some(
+              (identity) =>
+                ["merchant", "merchant_owner", "merchant_staff"].includes(identity.type) &&
+                identity.scopeType === "shop" &&
+                identity.scopeId === profile.shopId
+            ),
           currentAffiliations: profile.technicianShopAffiliations.flatMap((affiliation) =>
             affiliation.workStatus === "ENDED"
               ? []
