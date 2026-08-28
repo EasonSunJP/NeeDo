@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GoogleCredentialResult, RegistrationStartInput, VerificationChallengeInput, VerificationChallengePayload } from "../api/auth";
@@ -132,6 +132,14 @@ const merchantOrganizationIdentity = {
   type: "merchant_organization"
 };
 
+const platformIdentity = {
+  id: 99,
+  publicId: null,
+  scopeId: null,
+  scopeType: "global",
+  type: "platform"
+};
+
 const customerMe: AuthMePayload = {
   id: 7,
   needoId: "u0000000007",
@@ -159,6 +167,17 @@ const multiPortalMe: AuthMePayload = {
   menus: ["menu:client-app", "menu:technician-app"]
 };
 
+const inconsistentAdminMe: AuthMePayload = {
+  ...customerMe,
+  activeIdentityId: platformIdentity.id,
+  activePublicId: platformIdentity.publicId,
+  currentIdentity: platformIdentity,
+  identities: [platformIdentity],
+  roles: ["admin", "customer"],
+  permissions: ["page:dashboard", "page:client-app"],
+  menus: ["menu:dashboard", "menu:client-app"]
+};
+
 let container: HTMLDivElement;
 let root: Root;
 let auth: Task10AuthContext;
@@ -173,6 +192,18 @@ function Consumer() {
 async function renderProvider() {
   await act(async () => {
     root.render(createElement(AuthProvider, null, createElement(Consumer)));
+  });
+}
+
+async function renderProviderInStrictMode() {
+  await act(async () => {
+    root.render(
+      createElement(
+        StrictMode,
+        null,
+        createElement(AuthProvider, null, createElement(Consumer))
+      )
+    );
   });
 }
 
@@ -326,6 +357,19 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(auth.session?.loginMethod).toBe("google");
   });
 
+  it("keeps the active portal and session isolated to the current browser tab", async () => {
+    mocked.authApi.me.mockResolvedValue(customerMe);
+    await renderProvider();
+    persistTokens("google-access-token", "google-refresh-token");
+
+    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+
+    expect(window.sessionStorage.getItem("needo.auth.portal")).toBe("user");
+    expect(window.sessionStorage.getItem("needo.auth.session")).toContain('"needoId":"u0000000007"');
+    expect(window.localStorage.getItem("needo.auth.portal")).toBeNull();
+    expect(window.localStorage.getItem("needo.auth.session")).toBeNull();
+  });
+
   it("keeps an already aligned portal switch idempotent", async () => {
     mocked.authApi.me.mockResolvedValue(customerMe);
     await renderProvider();
@@ -357,6 +401,46 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(auth.session?.portal).toBe("user");
     expect(auth.session?.currentIdentity).toEqual(customerIdentity);
     expect(mocked.authApi.switchIdentity).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a role grants portal access without a matching target identity", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue({ me: inconsistentAdminMe });
+    await renderProvider();
+    persistTokens("admin-access", "admin-refresh");
+    await invoke(() => auth.loginWithFormalPassword("admin", "admin@example.com", "secret"));
+
+    const switched = await invoke(() => auth.switchPortal("user"));
+
+    expect(switched).toEqual({ ok: false, message: "error.auth.portal_forbidden" });
+    expect(auth.session).toMatchObject({
+      currentIdentity: platformIdentity,
+      portal: "admin"
+    });
+    expect(mocked.authApi.switchIdentity).not.toHaveBeenCalled();
+  });
+
+  it("rejects remembered portal restoration when the account has no matching identity", async () => {
+    rememberPortalAuthorization(
+      storedCustomerSession({
+        activeIdentityId: platformIdentity.id,
+        activePublicId: platformIdentity.publicId,
+        allowedPortals: ["admin", "user"],
+        currentIdentity: platformIdentity,
+        identities: [platformIdentity],
+        menus: inconsistentAdminMe.menus,
+        permissions: inconsistentAdminMe.permissions,
+        roles: inconsistentAdminMe.roles
+      }),
+      "remembered-inconsistent-refresh"
+    );
+    mocked.authApi.me.mockResolvedValue(inconsistentAdminMe);
+    await renderProvider();
+
+    const switched = await invoke(() => auth.switchPortal("user"));
+
+    expect(switched).toEqual({ ok: false, message: "error.auth.portal_forbidden" });
+    expect(auth.session).toBeNull();
+    expect(hasRememberedPortalAuthorization("user")).toBe(false);
   });
 
   it("fails closed when /auth/me omits a required formal account field", async () => {
@@ -538,7 +622,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("rejects an otherwise complete stored session from the previous auth version", async () => {
-    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession({ authVersion: 5 })));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession({ authVersion: 5 })));
 
     await renderProvider();
 
@@ -549,7 +633,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   it("rejects a current-version stored session missing a required formal account field", async () => {
     const incompleteSession = storedCustomerSession() as Partial<AuthSession>;
     delete incompleteSession.emailVerifiedAt;
-    window.localStorage.setItem("needo.auth.session", JSON.stringify(incompleteSession));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(incompleteSession));
 
     await renderProvider();
 
@@ -557,7 +641,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("rejects a current-version stored session with the retired gmail login method", async () => {
-    window.localStorage.setItem("needo.auth.session", JSON.stringify({ ...storedCustomerSession(), loginMethod: "gmail" }));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify({ ...storedCustomerSession(), loginMethod: "gmail" }));
 
     await renderProvider();
 
@@ -565,7 +649,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("never exposes a stored browser session as authenticated before server restoration", async () => {
-    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
 
     await renderProvider();
 
@@ -574,7 +658,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("keeps a refresh-backed session private and retryable during a transient restore outage", async () => {
-    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
     mocked.tokenState.refreshToken = "stored-retry-refresh";
     mocked.authApi.refresh.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
@@ -600,7 +684,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("treats a missing refresh route during deployment recovery as retryable instead of expiring the session", async () => {
-    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
     mocked.tokenState.refreshToken = "stored-deployment-refresh";
     mocked.authApi.refresh.mockRejectedValueOnce(
       new mocked.ApiClientError("error.resource_not_found", 404, 404)
@@ -615,7 +699,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("fails closed with retry for an unclassified restore error", async () => {
-    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
     mocked.tokenState.refreshToken = "stored-unknown-error-refresh";
     mocked.authApi.refresh.mockRejectedValueOnce(new Error("proxy response unavailable"));
 
@@ -630,7 +714,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
   it("preserves Google as the login method while restoring a refresh-backed session", async () => {
     const storedSession = storedCustomerSession();
-    window.localStorage.setItem("needo.auth.session", JSON.stringify(storedSession));
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedSession));
     mocked.tokenState.refreshToken = "stored-google-refresh";
     mocked.authApi.me.mockResolvedValue(customerMe);
 
@@ -639,6 +723,19 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
     expect(mocked.authApi.refresh).toHaveBeenCalledTimes(1);
     expect(auth.session?.loginMethod).toBe("google");
+  });
+
+  it("deduplicates refresh-backed restoration during StrictMode effect replay", async () => {
+    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
+    mocked.tokenState.refreshToken = "stored-strict-mode-refresh";
+    mocked.authApi.me.mockResolvedValue(customerMe);
+
+    await renderProviderInStrictMode();
+    await waitFor(() => expect(auth.isRestoring).toBe(false));
+
+    expect(mocked.authApi.refresh).toHaveBeenCalledTimes(1);
+    expect(mocked.authApi.me).toHaveBeenCalledTimes(1);
+    expect(auth.isAuthenticated).toBe(true);
   });
 
   it("keeps portal and identity switching behavior for Google sessions", async () => {

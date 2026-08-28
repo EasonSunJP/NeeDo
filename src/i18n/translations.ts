@@ -336,6 +336,12 @@ export const authTrustGatewayTranslations: TranslationMap = {
     en: "Sign-in is temporarily unavailable. Try again later.",
     ko: "로그인 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요.",
   },
+  "当前账号没有此入口所需的身份，请切换账号后重试。": {
+    "zh-Hant": "目前帳號沒有此入口所需的身分，請切換帳號後再試。",
+    ja: "現在のアカウントには、この入口に必要なユーザー種別がありません。アカウントを切り替えてください。",
+    en: "This account does not have the identity required for this portal. Switch accounts and try again.",
+    ko: "현재 계정에는 이 포털에 필요한 사용자 유형이 없습니다. 계정을 전환한 후 다시 시도하세요.",
+  },
   "Google 登录服务暂时不可用，请稍后重试。": {
     "zh-Hant": "Google 登入服務暫時無法使用，請稍後再試。",
     ja: "Google ログインを一時的に利用できません。しばらくしてからお試しください。",

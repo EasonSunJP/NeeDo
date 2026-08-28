@@ -446,16 +446,29 @@ export function getAccessToken() {
 }
 
 export function getStoredRefreshToken() {
-  return readBrowserStorage(refreshTokenStorageKey, { silent: true });
+  const refreshToken = readBrowserStorage(refreshTokenStorageKey, {
+    kind: "session",
+    silent: true
+  });
+  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
+  return refreshToken;
 }
 
 export function setStoredRefreshToken(nextRefreshToken: string | null) {
+  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
+
   if (nextRefreshToken) {
-    writeBrowserStorage(refreshTokenStorageKey, nextRefreshToken, { silent: true });
+    writeBrowserStorage(refreshTokenStorageKey, nextRefreshToken, {
+      kind: "session",
+      silent: true
+    });
     return;
   }
 
-  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
+  removeBrowserStorage(refreshTokenStorageKey, {
+    kind: "session",
+    silent: true
+  });
 }
 
 export function setAccessToken(nextAccessToken: string | null) {
@@ -475,6 +488,10 @@ export function clearAuthTokens() {
   accessToken = null;
   clearMerchantAdminPreview();
   removeBrowserStorage(refreshTokenStorageKey, { silent: true });
+  removeBrowserStorage(refreshTokenStorageKey, {
+    kind: "session",
+    silent: true
+  });
   removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
 }
 

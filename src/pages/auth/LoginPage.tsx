@@ -184,6 +184,7 @@ export function resolveLoginErrorMessage(
       "无法加载 Google 登录服务，请检查网络后重试。",
     "error.auth.invalid_credentials": "邮箱、NeeDo ID 或密码不正确。",
     "error.auth.invalid_otp": "验证码不正确，请重新输入。",
+    "error.auth.portal_forbidden": "当前账号没有此入口所需的身份，请切换账号后重试。",
     "error.auth.otp_delivery_failed": "验证码发送失败，请稍后重试。",
     "error.auth.otp_cooldown": "请稍候再重新发送验证码。",
     "error.auth.otp_expired": "验证码已过期，请重新发送。",

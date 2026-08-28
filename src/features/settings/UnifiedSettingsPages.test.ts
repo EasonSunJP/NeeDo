@@ -2,7 +2,14 @@
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FormalAccountSecurityPanel, getPortalEntry, resolveSettingsSelectedPortal, shouldKeepSettingsRoutePortal } from "./UnifiedSettingsPages";
+import {
+  FormalAccountSecurityPanel,
+  getPortalEntry,
+  resolveSettingsSelectedPortal,
+  shouldKeepSettingsRoutePortal,
+  summarizeAccountStatus,
+  summarizeProfileStatus
+} from "./UnifiedSettingsPages";
 import { translateText, type Language } from "../../i18n/translations";
 import backendPortalSource from "./TestOnlyBackendPortalEntries.tsx?raw";
 import source from "./UnifiedSettingsPages.tsx?raw";
@@ -473,6 +480,32 @@ describe("UnifiedSettingsPage Xiaobai asset gate", () => {
     expect(settingsHomeSource).toContain("petAssetReadiness.ready ? (");
     expect(settingsHomeSource).toContain("<SettingsPetAssetProgress");
     expect(settingsHomeSource).not.toContain("disabled={!petAssetReadiness.ready}");
+  });
+
+  it("renders honest empty summaries when retired entity cache has no records", () => {
+    expect(
+      summarizeProfileStatus("user", {
+        customer: undefined,
+        technician: undefined,
+        store: undefined
+      })
+    ).toBe("未完善");
+    expect(
+      summarizeProfileStatus("technician", {
+        customer: undefined,
+        technician: undefined,
+        store: undefined
+      })
+    ).toBe("未完善");
+    expect(
+      summarizeProfileStatus("merchant", {
+        customer: undefined,
+        technician: undefined,
+        store: undefined
+      })
+    ).toBe("未完善");
+    expect(summarizeAccountStatus("user", undefined, undefined)).toBe("需要完善");
+    expect(summarizeAccountStatus("merchant", undefined, undefined)).toBe("待完善");
   });
 });
 
