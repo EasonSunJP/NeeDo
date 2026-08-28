@@ -46,11 +46,20 @@ const createFixture = (
   permissions: string[] = [
     "merchant-admin:employee-affiliation:read",
     "merchant-admin:employee-affiliation:write"
-  ]
+  ],
+  options: {
+    shopId?: number;
+    userId?: number;
+    identityId?: number;
+    repository?: jest.Mocked<TechnicianShopAffiliationRepositoryPort>;
+  } = {}
 ) => {
+  const shopId = options.shopId ?? 16;
+  const userId = options.userId ?? 7;
+  const identityId = options.identityId ?? 70;
   const user = {
-    id: 7,
-    email: "merchant@example.test",
+    id: userId,
+    email: `merchant-${userId}@example.test`,
     phone: null,
     passwordHash: "unused",
     username: "LifeDance 管理员",
@@ -60,11 +69,11 @@ const createFixture = (
     deletedAt: null,
     identities: [
       {
-        id: 70,
-        userId: 7,
+        id: identityId,
+        userId,
         type: "merchant_owner",
         scopeType: "shop",
-        scopeId: 16,
+        scopeId: shopId,
         displayName: "LifeDance 管理员",
         isDefault: true,
         isActive: true,
@@ -86,19 +95,19 @@ const createFixture = (
       }
     ]
   };
-  const repository = createRepository();
+  const repository = options.repository ?? createRepository();
   const publicIdentifierRepository = {
     findActiveByPublicId: jest.fn(async (publicId: string) =>
-      publicId === "s0000000086"
+      /^s[0-9]{10}$/.test(publicId)
         ? {
-            id: 86,
+            id: Number(publicId.slice(1)),
             publicId,
             numberPart: "0000000086",
             kind: "S" as const,
             loginAllowed: false,
             searchable: true,
             status: "ACTIVE" as const,
-            userIdentityId: 86,
+            userIdentityId: Number(publicId.slice(1)),
             shopId: null,
             merchantAccountId: null,
             customerSupportAccountId: null
@@ -120,7 +129,7 @@ const createFixture = (
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,
     email: user.email,
-    currentIdentityId: 70
+    currentIdentityId: identityId
   }).token;
   return { app, token, repository, auditLogRepository, publicIdentifierRepository };
 };
@@ -289,6 +298,147 @@ describe("merchant employee affiliation HTTP API", () => {
           email: expect.anything(),
           phone: expect.anything()
         })
+      })
+    );
+  });
+
+  it("keeps two merchant scopes isolated while a partner belongs to both shops", async () => {
+    const shopA = 16;
+    const shopB = 20;
+    const sharedIdentityId = 86;
+    const shopBOnlyIdentityId = 87;
+    const affiliations = new Map<string, MerchantEmployeePayload>([
+      [`${shopA}:${sharedIdentityId}`, employee],
+      [
+        `${shopB}:${sharedIdentityId}`,
+        {
+          ...employee,
+          affiliation: {
+            ...employee.affiliation,
+            id: 92,
+            shop: { id: shopB, publicId: "shop0000000020", name: "Partner Shop" }
+          }
+        }
+      ],
+      [
+        `${shopB}:${shopBOnlyIdentityId}`,
+        {
+          ...employee,
+          needoId: "s0000000087",
+          displayName: "B 店专属员工",
+          affiliation: {
+            ...employee.affiliation,
+            id: 93,
+            relationshipType: "exclusive",
+            shop: { id: shopB, publicId: "shop0000000020", name: "Partner Shop" }
+          }
+        }
+      ]
+    ]);
+    const repository = {
+      listCurrentShopEmployees: jest.fn(async (input) => {
+        const list = [...affiliations.entries()]
+          .filter(([key]) => key.startsWith(`${input.shopId}:`))
+          .map(([, value]) => value);
+        return { list, total: list.length, page: 1, page_size: 20 };
+      }),
+      findCurrentShopEmployee: jest.fn(
+        async (shopId, technicianIdentityId) =>
+          affiliations.get(`${shopId}:${technicianIdentityId}`) ?? null
+      ),
+      upsertCurrentAffiliation: jest.fn(async (input) => {
+        const key = `${input.shopId}:${input.technicianIdentityId}`;
+        const current = affiliations.get(key);
+        if (!current) return "not_found" as const;
+        if (
+          input.relationshipType === "exclusive" &&
+          [...affiliations.keys()].some(
+            (candidate) => candidate.endsWith(`:${input.technicianIdentityId}`) && candidate !== key
+          )
+        ) {
+          return "exclusive_conflict" as const;
+        }
+        if (input.workStatus === "ended") {
+          affiliations.delete(key);
+          return {
+            ...current,
+            affiliation: {
+              ...current.affiliation,
+              workStatus: "ended" as const,
+              endsAt: input.endsAt?.toISOString() ?? null
+            }
+          };
+        }
+        return current;
+      })
+    } as unknown as jest.Mocked<TechnicianShopAffiliationRepositoryPort>;
+    const fixtureA = createFixture(undefined, {
+      shopId: shopA,
+      userId: 7,
+      identityId: 70,
+      repository
+    });
+    const fixtureB = createFixture(undefined, {
+      shopId: shopB,
+      userId: 8,
+      identityId: 80,
+      repository
+    });
+    const authA = `Bearer ${fixtureA.token}`;
+    const authB = `Bearer ${fixtureB.token}`;
+
+    await request(fixtureA.app)
+      .get("/api/v1/merchant-admin/employees")
+      .set("Authorization", authA)
+      .expect(200)
+      .expect((response) => expect(response.body.data.total).toBe(1));
+    await request(fixtureB.app)
+      .get("/api/v1/merchant-admin/employees")
+      .set("Authorization", authB)
+      .expect(200)
+      .expect((response) => expect(response.body.data.total).toBe(2));
+    await request(fixtureA.app)
+      .get("/api/v1/merchant-admin/employees/s0000000087")
+      .set("Authorization", authA)
+      .expect(404);
+    await request(fixtureB.app)
+      .get("/api/v1/merchant-admin/employees/s0000000087")
+      .set("Authorization", authB)
+      .expect(200);
+
+    await request(fixtureA.app)
+      .put("/api/v1/merchant-admin/employees/s0000000086/affiliation")
+      .set("Authorization", authA)
+      .send({
+        relationshipType: "exclusive",
+        workStatus: "active",
+        startsAt: "2026-08-01T00:00:00.000Z",
+        endsAt: null
+      })
+      .expect(409);
+    await request(fixtureB.app)
+      .put("/api/v1/merchant-admin/employees/s0000000086/affiliation")
+      .set("Authorization", authB)
+      .send({
+        relationshipType: "partner",
+        workStatus: "ended",
+        startsAt: "2026-08-01T00:00:00.000Z",
+        endsAt: "2026-08-28T00:00:00.000Z"
+      })
+      .expect(200);
+    await request(fixtureB.app)
+      .get("/api/v1/merchant-admin/employees")
+      .set("Authorization", authB)
+      .expect(200)
+      .expect((response) => expect(response.body.data.total).toBe(1));
+    await request(fixtureA.app)
+      .get("/api/v1/merchant-admin/employees/s0000000086")
+      .set("Authorization", authA)
+      .expect(200);
+    expect(fixtureB.auditLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "merchant_admin.employee_affiliation.update",
+        metadata: expect.objectContaining({ shopId: shopB })
       })
     );
   });
