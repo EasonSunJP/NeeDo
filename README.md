@@ -137,6 +137,12 @@ capacity tier.
 
 All portals require a formal authenticated session. Local preview, acceptance, and production use the same authorization path.
 
+## Formal Merchant Employee Affiliations
+
+Merchant employee identity is now founded on one global technician profile, its canonical `s##########` NeeDoID, and shop-scoped `TechnicianShopAffiliation` rows. The protected `/api/v1/merchant-admin/employees` list/detail routes derive the shop only from the active authenticated identity; the affiliation write route enforces exclusive-versus-partner rules inside a locked database transaction and preserves ended relationships as history.
+
+The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The existing merchant technician UI remains a compatibility page until the separate employee-detail-card microstep is implemented and browser-accepted.
+
 ## Operations Technician Ranking
 
 The operations technician ranking is available at
