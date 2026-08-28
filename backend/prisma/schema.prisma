@@ -2943,10 +2943,10 @@ model AffiliateAllianceInvitation {
   alliance             AffiliateAlliance        @relation(fields: [allianceId], references: [id], onDelete: Restrict)
   inviterMember        AffiliateAllianceMember  @relation("AllianceInvitationInviter", fields: [inviterMemberId], references: [id], onDelete: Restrict)
   invitee              User                     @relation("AffiliateAllianceInvitationInvitee", fields: [inviteeUserId], references: [id], onDelete: Restrict)
-  proposedParentMember AffiliateAllianceMember? @relation("AllianceInvitationParent", fields: [proposedParentMemberId], references: [id], onDelete: Restrict)
+  proposedParentMember AffiliateAllianceMember? @relation("AllianceInvitationParent", fields: [proposedParentMemberId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([allianceId, status, createdAt])
-  @@index([inviteeUserId, status, createdAt])
+  @@index([inviteeUserId, status, createdAt], map: "affiliate_alliance_invitee_status_created_idx")
   @@index([status, expiresAt, id])
   @@index([inviterMemberId])
   @@index([proposedParentMemberId])

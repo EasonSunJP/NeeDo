@@ -254,6 +254,10 @@ The operations demand and information routes are explicit production exchange ca
 
 The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks; the formal affiliate marketplace can issue one stable promotion code and signed URL per task/user; Booking Checkout persists validated attribution, allocation, and customer-discount price snapshots; service completion settles fixed NDP rewards; and the backend automatically ends due tasks and releases only their unallocated frozen budget. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires completed-order reversal, fraud, aggregate, export, and UI microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
+### Formal Affiliate Alliance Invitations
+
+The user Affiliate alliance page now uses real APIs for reciprocal-contact candidate discovery, owner member lists, sent/received invitations, partner/subordinate hierarchy assignment, accept/reject, exact 72-hour expiry, least-privilege membership, and conditional wallet visibility. All transitions are persisted and audited; cross-alliance acceptance is protected by the single-active-membership constraint. See [the alliance foundation](docs/affiliate-alliance-foundation.md) and [the invitation workflow](docs/affiliate-alliance-invitations.md). This is one formal slice, not the completed Affiliate platform.
+
 ### Formal Affiliate Task Publishing and Review
 
 The formal alliance-marketing foundation persists tasks, explicit shop/service scope snapshots, claims, hashed signed-link tokens, touches, one-attribution-per-order records, fixed-NDP rewards, task budget reservations, ledger links, and risk events. It extends wallets to support merchant-account ownership and seeds role-specific affiliate menu/page/button permissions.

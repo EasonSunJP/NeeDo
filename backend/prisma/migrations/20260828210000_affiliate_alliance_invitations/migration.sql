@@ -18,7 +18,7 @@ CREATE TABLE `affiliate_alliance_invitations` (
 
     UNIQUE INDEX `affiliate_alliance_invitations_pending_key_key`(`pending_key`),
     INDEX `affiliate_alliance_invitations_alliance_id_status_created_at_idx`(`alliance_id`, `status`, `created_at`),
-    INDEX `affiliate_alliance_invitations_invitee_user_id_status_created_at_idx`(`invitee_user_id`, `status`, `created_at`),
+    INDEX `affiliate_alliance_invitee_status_created_idx`(`invitee_user_id`, `status`, `created_at`),
     INDEX `affiliate_alliance_invitations_status_expires_at_id_idx`(`status`, `expires_at`, `id`),
     INDEX `affiliate_alliance_invitations_inviter_member_id_idx`(`inviter_member_id`),
     INDEX `affiliate_alliance_invitations_proposed_parent_member_id_idx`(`proposed_parent_member_id`),
@@ -41,7 +41,7 @@ ALTER TABLE `affiliate_alliance_invitations` ADD CONSTRAINT `affiliate_alliance_
 ALTER TABLE `affiliate_alliance_invitations` ADD CONSTRAINT `affiliate_alliance_invitations_invitee_user_id_fkey` FOREIGN KEY (`invitee_user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `affiliate_alliance_invitations` ADD CONSTRAINT `affiliate_alliance_invitations_proposed_parent_member_id_fkey` FOREIGN KEY (`proposed_parent_member_id`) REFERENCES `affiliate_alliance_members`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `affiliate_alliance_invitations` ADD CONSTRAINT `affiliate_alliance_invitations_proposed_parent_member_id_fkey` FOREIGN KEY (`proposed_parent_member_id`) REFERENCES `affiliate_alliance_members`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- Keep invitation routes deployable when migrations run without a complete seed.
 INSERT INTO `permissions` (

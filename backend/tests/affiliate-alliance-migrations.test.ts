@@ -78,6 +78,21 @@ describe("affiliate alliance migrations", () => {
     expect(invitations).toContain("affiliate_alliance_invitations_status_expires_at_id_idx");
   });
 
+  it("keeps every explicit invitation database identifier within the MySQL 64-character limit", () => {
+    const identifiers = Array.from(
+      invitations.matchAll(/(?:INDEX|CONSTRAINT)\s+`([^`]+)`/g),
+      (match) => match[1]
+    );
+    expect(identifiers.length).toBeGreaterThan(0);
+    expect(identifiers.filter((identifier) => identifier.length > 64)).toEqual([]);
+  });
+
+  it("does not combine the role-parent check with a cascading update action", () => {
+    expect(invitations).toMatch(
+      /affiliate_alliance_invitations_proposed_parent_member_id_fkey[\s\S]*ON DELETE RESTRICT ON UPDATE RESTRICT/
+    );
+  });
+
   it("deploys invitation permissions only to admin and scout roles", () => {
     for (const code of [
       "affiliate-alliance:members:list",
