@@ -1,22 +1,29 @@
-export type FormalDetailRequestOptions<TDetail> = {
-  onError: (error: unknown, id: number) => void;
-  onFinally: (id: number) => void;
-  onStart: (id: number) => void;
-  onSuccess: (detail: TDetail, id: number) => void;
-  request: (id: number) => Promise<TDetail>;
+export type FormalDetailRequestOptions<
+  TDetail,
+  TId extends number | string = number,
+> = {
+  onError: (error: unknown, id: TId) => void;
+  onFinally: (id: TId) => void;
+  onStart: (id: TId) => void;
+  onSuccess: (detail: TDetail, id: TId) => void;
+  request: (id: TId) => Promise<TDetail>;
 };
 
-export function createFormalDetailRequestCoordinator<TDetail>(options: FormalDetailRequestOptions<TDetail>) {
+export function createFormalDetailRequestCoordinator<
+  TDetail,
+  TId extends number | string = number,
+>(options: FormalDetailRequestOptions<TDetail, TId>) {
   let disposed = false;
   let generation = 0;
-  let selectedId: number | null = null;
+  let selectedId: TId | null = null;
 
-  const loadRequest = async (id: number, rejectCurrentError: boolean) => {
+  const loadRequest = async (id: TId, rejectCurrentError: boolean) => {
     if (disposed) return;
     selectedId = id;
     const requestGeneration = ++generation;
     options.onStart(id);
-    const isCurrent = () => !disposed && generation === requestGeneration && selectedId === id;
+    const isCurrent = () =>
+      !disposed && generation === requestGeneration && selectedId === id;
     try {
       const detail = await options.request(id);
       if (isCurrent()) options.onSuccess(detail, id);
@@ -30,13 +37,32 @@ export function createFormalDetailRequestCoordinator<TDetail>(options: FormalDet
   };
 
   return {
-    activate() { disposed = false; },
-    dispose() { disposed = true; selectedId = null; generation += 1; },
-    getSelectedId() { return selectedId; },
-    invalidate() { selectedId = null; generation += 1; },
-    load(id: number) { return loadRequest(id, false); },
-    loadOrThrow(id: number) { return loadRequest(id, true); },
-    retry() { return disposed || selectedId === null ? Promise.resolve() : loadRequest(selectedId, false); }
+    activate() {
+      disposed = false;
+    },
+    dispose() {
+      disposed = true;
+      selectedId = null;
+      generation += 1;
+    },
+    getSelectedId() {
+      return selectedId;
+    },
+    invalidate() {
+      selectedId = null;
+      generation += 1;
+    },
+    load(id: TId) {
+      return loadRequest(id, false);
+    },
+    loadOrThrow(id: TId) {
+      return loadRequest(id, true);
+    },
+    retry() {
+      return disposed || selectedId === null
+        ? Promise.resolve()
+        : loadRequest(selectedId, false);
+    },
   };
 }
 
@@ -50,7 +76,9 @@ export type FormalDetailMutationResult = {
   refreshList: FormalDetailRefreshStatus;
 };
 
-async function settleFormalDetailRefresh(refresh: () => Promise<unknown>): Promise<FormalDetailRefreshStatus> {
+async function settleFormalDetailRefresh(
+  refresh: () => Promise<unknown>,
+): Promise<FormalDetailRefreshStatus> {
   try {
     await refresh();
     return { status: "fulfilled" };
@@ -59,8 +87,13 @@ async function settleFormalDetailRefresh(refresh: () => Promise<unknown>): Promi
   }
 }
 
-export function hasFormalDetailRefreshFailure(result: FormalDetailMutationResult) {
-  return result.refreshList.status === "rejected" || result.refreshDetail.status === "rejected";
+export function hasFormalDetailRefreshFailure(
+  result: FormalDetailMutationResult,
+) {
+  return (
+    result.refreshList.status === "rejected" ||
+    result.refreshDetail.status === "rejected"
+  );
 }
 
 export async function runFormalDetailMutationSequence(options: {
@@ -74,10 +107,13 @@ export async function runFormalDetailMutationSequence(options: {
   const refreshDetail = options.isDetailCurrent()
     ? settleFormalDetailRefresh(options.refreshDetail)
     : Promise.resolve<FormalDetailRefreshStatus>({ status: "skipped" });
-  const [refreshListStatus, refreshDetailStatus] = await Promise.all([refreshList, refreshDetail]);
+  const [refreshListStatus, refreshDetailStatus] = await Promise.all([
+    refreshList,
+    refreshDetail,
+  ]);
 
   return {
     refreshDetail: refreshDetailStatus,
-    refreshList: refreshListStatus
+    refreshList: refreshListStatus,
   };
 }
