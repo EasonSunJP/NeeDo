@@ -104,6 +104,24 @@ export class BookingService {
     return this.repository.listScheduleSlots({ ...this.getScheduleScope(actor), ...input });
   }
 
+  public async getScheduleSlot(
+    actor: AuthenticatedAccessContext,
+    id: number
+  ): Promise<ScheduleSlotPayload> {
+    const slot = await this.repository.findScheduleSlotById({
+      ...this.getScheduleScope(actor),
+      id
+    });
+    if (!slot) {
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.schedule.slot_not_found",
+        statusCode: 404
+      });
+    }
+    return slot;
+  }
+
   public async createScheduleSlot(
     actor: AuthenticatedAccessContext,
     input: Omit<ScheduleSlotCreateInput, keyof ScheduleScope>,

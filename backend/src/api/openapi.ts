@@ -8552,6 +8552,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/technician/schedule/slots/{id}`]: {
+      get: {
+        tags: ["Schedule"],
+        summary: "Read a schedule slot owned by the authenticated technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Technician-owned schedule slot", {
+            $ref: "#/components/schemas/ScheduleSlot"
+          }),
+          "400": { description: "Invalid schedule slot identifier" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Technician schedule read permission required" },
+          "404": { description: "Slot not found for current technician" }
+        }
+      },
       patch: {
         tags: ["Schedule"],
         summary: "Update a schedule slot owned by the authenticated technician",

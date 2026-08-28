@@ -1,6 +1,24 @@
 import { BookingRepository } from "../src/repositories/booking.repository";
 
 describe("BookingRepository order list scope", () => {
+  it("reads only a schedule slot owned by the active technician scope", async () => {
+    const scheduleSlot = {
+      findFirst: jest.fn(async () => null)
+    };
+    const repository = new BookingRepository({ scheduleSlot } as never);
+
+    await expect(repository.findScheduleSlotById({
+      scope: "technician",
+      technicianProfileId: 31,
+      id: 10
+    })).resolves.toBeNull();
+
+    expect(scheduleSlot.findFirst).toHaveBeenCalledWith({
+      where: { id: 10, technicianProfileId: 31, deletedAt: null },
+      include: expect.any(Object)
+    });
+  });
+
   it("keeps public availability safety predicates on technician-only queries", async () => {
     const capacityField = Symbol("capacity");
     const scheduleSlot = {

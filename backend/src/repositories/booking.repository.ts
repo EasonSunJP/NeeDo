@@ -131,6 +131,8 @@ export type ScheduleSlotUpdateInput = ScheduleScope & {
 
 export type ScheduleSlotDeleteInput = ScheduleScope & { id: number };
 
+export type ScheduleSlotReadInput = ScheduleScope & { id: number };
+
 export type ScheduleMutationResult =
   | { outcome: "ok"; slot: ScheduleSlotPayload }
   | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" };
@@ -247,6 +249,7 @@ export interface BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
   ) => Promise<BookingOrderPayload | null>;
+  findScheduleSlotById: (input: ScheduleSlotReadInput) => Promise<ScheduleSlotPayload | null>;
   listScheduleSlots: (input: ScheduleListInput) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   createScheduleSlot: (input: ScheduleSlotCreateInput) => Promise<ScheduleMutationResult>;
   updateScheduleSlot: (input: ScheduleSlotUpdateInput) => Promise<ScheduleMutationResult>;
@@ -376,6 +379,21 @@ export class BookingRepository implements BookingRepositoryPort {
 
   public async isShopSuspended(shopId: number): Promise<boolean> {
     return this.isShopSuspendedInTransaction(this.client, shopId);
+  }
+
+  public async findScheduleSlotById(
+    input: ScheduleSlotReadInput
+  ): Promise<ScheduleSlotPayload | null> {
+    const slot = await this.client.scheduleSlot.findFirst({
+      where: {
+        id: input.id,
+        deletedAt: null,
+        ...this.scheduleScopeWhere(input)
+      },
+      include: this.slotInclude()
+    });
+
+    return slot ? this.mapSlot(slot) : null;
   }
 
   public async listScheduleSlots(

@@ -24,7 +24,7 @@ class InMemorySessionStore {
 const startsAt = new Date("2026-08-26T01:00:00.000Z");
 const endsAt = new Date("2026-08-26T02:00:00.000Z");
 
-const createFixture = async () => {
+const createFixture = async (options: { technicianPermissions?: string[] } = {}) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const makeRole = (code: string, permissions: string[]) => ({
     code,
@@ -41,7 +41,7 @@ const createFixture = async () => {
     {
       id: 2, email: "technician@example.com", phone: null, passwordHash, username: "Technician", avatarUrl: null, isActive: true, lastLoginAt: null, deletedAt: null,
       identities: [{ id: 2, userId: 2, type: "technician", scopeType: "technician_profile", scopeId: 31, displayName: "Technician", isDefault: true, isActive: true, deletedAt: null }],
-      userRoles: [{ deletedAt: null, role: makeRole("technician", permissions) }]
+      userRoles: [{ deletedAt: null, role: makeRole("technician", options.technicianPermissions ?? permissions) }]
     }
   ];
   const slot = {
@@ -53,6 +53,7 @@ const createFixture = async () => {
   const auditLogs: Array<Record<string, unknown>> = [];
   const bookingRepository = {
     listAvailableSlots: jest.fn(), createBooking: jest.fn(), listOrders: jest.fn(), findOrderById: jest.fn(), transitionOrder: jest.fn(),
+    findScheduleSlotById: jest.fn(async () => slot),
     listScheduleSlots: jest.fn(async () => ({ list: [slot], total: 1, page: 1, page_size: 20 })),
     createScheduleSlot: jest.fn(async (input: { serviceId: number }) => input.serviceId === 999 ? { outcome: "not_found" } : { outcome: "ok", slot }),
     updateScheduleSlot: jest.fn(async () => ({ outcome: "ok", slot })),
@@ -80,6 +81,48 @@ const createFixture = async () => {
 };
 
 describe("schedule slot write APIs", () => {
+  it("reads only the numeric schedule slot in the authenticated technician scope", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("technician@example.com");
+    const auth = { Authorization: `Bearer ${token}` };
+
+    await request(fixture.app)
+      .get("/api/v1/technician/schedule/slots/10")
+      .set(auth)
+      .expect(200)
+      .expect((response) => expect(response.body.data.id).toBe(10));
+
+    expect(fixture.bookingRepository.findScheduleSlotById).toHaveBeenCalledWith({
+      scope: "technician",
+      technicianProfileId: 31,
+      id: 10
+    });
+
+    await request(fixture.app)
+      .get("/api/v1/technician/schedule/slots/not-a-number")
+      .set(auth)
+      .expect(400);
+
+    fixture.bookingRepository.findScheduleSlotById.mockResolvedValueOnce(null as never);
+    await request(fixture.app)
+      .get("/api/v1/technician/schedule/slots/99")
+      .set(auth)
+      .expect(404)
+      .expect((response) => expect(response.body.message).toBe("error.schedule.slot_not_found"));
+  });
+
+  it("requires schedule list permission for technician slot detail", async () => {
+    const fixture = await createFixture({ technicianPermissions: ["auth:me"] });
+    const token = await fixture.login("technician@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/technician/schedule/slots/10")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+
+    expect(fixture.bookingRepository.findScheduleSlotById).not.toHaveBeenCalled();
+  });
+
   it("lists and creates merchant slots with strict offset timestamps and authenticated shop scope", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("merchant@example.com");

@@ -237,6 +237,25 @@ export class BookingController {
     } catch (error) { next(error); }
   };
 
+  public getScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.getScheduleSlot(
+            getAuthenticatedAccess(response),
+            this.getOrderId(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
   public createScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
     try {
       response.status(201).json(successResponse(await this.bookingService.createScheduleSlot(getAuthenticatedAccess(response), scheduleSlotCreateBodySchema.parse(request.body), getRequestContext(request))));

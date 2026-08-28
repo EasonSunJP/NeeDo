@@ -435,6 +435,17 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule/slots/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots");
     expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots/{id}");
+    expect(response.body.paths["/api/v1/technician/schedule/slots/{id}"].get).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      parameters: [expect.objectContaining({ name: "id", in: "path", required: true })],
+      responses: expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      })
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations");
     expect(response.body.paths).toHaveProperty(
       "/api/v1/im/conversations/{conversationId}/messages"

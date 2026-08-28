@@ -158,6 +158,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     validateRequest({ params: orderIdParamSchema, body: manualPaymentRefundBodySchema }),
     controller.refundManualPayment
   );
+  router.get(
+    "/technician/schedule/slots/:id",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList),
+    validateRequest({ params: orderIdParamSchema }),
+    controller.getScheduleSlot
+  );
   ["/merchant-admin/schedule/slots", "/technician/schedule/slots"].forEach((path) => {
     router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: scheduleSlotListQuerySchema }), controller.listScheduleSlots);
     router.post(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ body: scheduleSlotCreateBodySchema }), controller.createScheduleSlot);
