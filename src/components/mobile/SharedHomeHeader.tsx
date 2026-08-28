@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AppIcon, IconButton } from "../client-ui/AppScaffold";
+import { AppIcon, IconButton, type IconName } from "../client-ui/AppScaffold";
 import { cn } from "../../lib/utils";
 import { AvatarImage } from "../ui/AvatarImage";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
@@ -72,6 +72,7 @@ export function SharedHomeHeader({
   onAvatarClick,
   locationLabel,
   locationCaption,
+  locationIcon = "map",
   locationTo,
   secondaryActionTo,
   secondaryActionLabel,
@@ -93,6 +94,7 @@ export function SharedHomeHeader({
   onAvatarClick?: () => void;
   locationLabel: string;
   locationCaption?: string;
+  locationIcon?: IconName;
   locationTo?: string;
   secondaryActionTo?: string;
   secondaryActionLabel?: string;
@@ -132,7 +134,7 @@ export function SharedHomeHeader({
   const locationContent = (
     <>
       <span className={cn("inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full", bubbleToneClass)}>
-        <AppIcon className="h-4 w-4" name="map" />
+        <AppIcon className="h-4 w-4" name={locationIcon} />
       </span>
       <span className="min-w-0 flex-1">
         {locationCaption ? <span className={cn("block text-[11px] font-bold", captionToneClass)}>{locationCaption}</span> : null}
