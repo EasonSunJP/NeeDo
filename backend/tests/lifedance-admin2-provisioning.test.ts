@@ -1,6 +1,7 @@
 import {
   LIFEDANCE_ADMIN2_PLAN,
   assertLocalAdmin2ProvisioningTarget,
+  resolveLifeDanceAdmin2Password,
   selectAdmin2AccountCandidate,
   selectAdmin2FriendTargets
 } from "../src/simulation/lifedance-admin2-provisioning";
@@ -79,6 +80,19 @@ describe("LifeDance admin2 provisioning plan", () => {
         }
       ])
     ).toThrow("email belongs to a different fixed account");
+  });
+
+  it("requires the dedicated admin2 password without falling back to shared test credentials", () => {
+    expect(
+      resolveLifeDanceAdmin2Password({
+        LIFEDANCE_ADMIN2_PASSWORD: " Dedicated.Admin2.Password.2026! ",
+        TEST_USER_DEFAULT_PASSWORD: "Shared.Password.2026!"
+      })
+    ).toBe("Dedicated.Admin2.Password.2026!");
+
+    expect(() =>
+      resolveLifeDanceAdmin2Password({ TEST_USER_DEFAULT_PASSWORD: "Shared.Password.2026!" })
+    ).toThrow("LIFEDANCE_ADMIN2_PASSWORD is required");
   });
 
   it("selects exactly 20 stable formal simulation accounts and excludes admin accounts", () => {

@@ -18,8 +18,7 @@ const main = async (): Promise<void> => {
       import("../src/services/auth-session.store")
     ]);
   provisioning.assertLocalAdmin2ProvisioningTarget(process.env);
-  const password = process.env.TEST_USER_DEFAULT_PASSWORD?.trim();
-  if (!password) throw new Error("TEST_USER_DEFAULT_PASSWORD is required for LifeDance admin2.");
+  const password = provisioning.resolveLifeDanceAdmin2Password(process.env);
   const passwordHash = await hash(password, BCRYPT_ROUNDS);
 
   try {

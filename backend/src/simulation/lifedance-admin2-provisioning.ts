@@ -131,6 +131,15 @@ export const selectAdmin2AccountCandidate = (
   return candidate;
 };
 
+export const resolveLifeDanceAdmin2Password = (env: {
+  LIFEDANCE_ADMIN2_PASSWORD?: string;
+  TEST_USER_DEFAULT_PASSWORD?: string;
+}): string => {
+  const password = env.LIFEDANCE_ADMIN2_PASSWORD?.trim();
+  assert(password, "LIFEDANCE_ADMIN2_PASSWORD is required for LifeDance admin2.");
+  return password;
+};
+
 const ensureIdentity = async (
   tx: Prisma.TransactionClient,
   input: {
