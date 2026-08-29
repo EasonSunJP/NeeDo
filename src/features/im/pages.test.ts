@@ -215,6 +215,21 @@ describe("IM pages", () => {
     expect(componentsSource).not.toContain('style={{ height: expanded ? "min(76dvh, 620px)" : "min(43dvh, 360px)" }}');
   });
 
+  it("does not expose legacy message actions that only close the menu", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const actionStart = componentSource.indexOf("const createMessageActions");
+    const actionEnd = componentSource.indexOf("const availableMoreActions", actionStart);
+    const actionSource = componentSource.slice(actionStart, actionEnd);
+
+    expect(actionSource).not.toContain('key: "translate"');
+    expect(actionSource).not.toContain('key: "multi-select"');
+    expect(actionSource).not.toContain("onClick: closeMessageMenu");
+    expect(componentSource).toContain('setActionNotice("已复制")');
+    expect(componentSource).toContain('setActionNotice("复制失败，请重试")');
+  });
+
   it("routes quick reactions through the store and suppresses duplicate in-flight taps", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
@@ -224,6 +239,19 @@ describe("IM pages", () => {
     expect(componentSource).toContain("if (reactionPendingKeysRef.current.has(pendingKey))");
     expect(componentSource).toContain(".setMessageReaction(conversationId, message.id, reaction, !reactedByMe)");
     expect(componentSource).not.toContain("void api\n      .setMessageReaction");
+  });
+
+  it("always suppresses the native desktop context menu before preserving a message text selection", () => {
+    const componentStart = pagesSource.indexOf("function MessagePressable");
+    const componentEnd = pagesSource.indexOf("function ImQuickMenuItem", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const contextMenuStart = componentSource.indexOf("onContextMenu={(event) => {");
+    const contextMenuEnd = componentSource.indexOf("onPointerCancel", contextMenuStart);
+    const contextMenuSource = componentSource.slice(contextMenuStart, contextMenuEnd);
+
+    expect(contextMenuStart).toBeGreaterThan(-1);
+    expect(contextMenuSource.indexOf("event.preventDefault()"))
+      .toBeLessThan(contextMenuSource.indexOf("hasActiveImMessageTextSelection"));
   });
 
   it("handles privacy-save and leave failures inside the settings page instead of crashing the app", () => {

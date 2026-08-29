@@ -121,4 +121,16 @@ describe("SocialTimelinePage", () => {
     expect(headerSource).not.toContain("<AvatarImage");
     expect(headerSource).not.toContain("<SocialMembershipStatusBadge");
   });
+
+  it("uses the same formal user-home carousel as the home page", () => {
+    expect(source).toContain(
+      'import { PublishedCarousel } from "../../content-publication/PublishedCarousel";'
+    );
+    expect(source).toContain(
+      '<PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />'
+    );
+    expect(source).not.toContain("useCarouselStore");
+    expect(source).not.toContain('getResolvedCarouselSlides("timeline"');
+    expect(source).not.toContain("carouselScenes.timeline");
+  });
 });

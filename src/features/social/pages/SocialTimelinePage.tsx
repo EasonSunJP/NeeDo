@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FeatureCarousel, type FeatureCarouselSlide } from "../../../components/client-ui/FeatureCarousel";
 import { PageScaffold, PrimaryButton } from "../../../components/client-ui/AppScaffold";
 import { FloatingHeaderSearchBar } from "../../../components/mobile/FloatingHeaderSearchBar";
 import {
@@ -11,9 +10,9 @@ import {
 import { SharedHomeHeader } from "../../../components/mobile/SharedHomeHeader";
 import { roleBasedTabConfig } from "../../../components/mobile/navItems";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
+import { PublishedCarousel } from "../../content-publication/PublishedCarousel";
 import { getLocationAreaHints } from "../../../lib/location";
 import { cn } from "../../../lib/utils";
-import { getResolvedCarouselSlides, resolveCarouselTargetPath, useCarouselStore } from "../../../state/homeCarouselStore";
 import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
 import { useHomeLocationPreference, type HomeLocationPreferenceState } from "../../../state/homeLocationStore";
 import { useSocial } from "../context";
@@ -278,7 +277,6 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   const actor = profiles[actorKey];
   const portalConfig = roleBasedTabConfig[scope];
   const { config: homeLocationConfig } = useHomeLayoutStore();
-  const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
   const { state: homeLocationPreference } = useHomeLocationPreference();
   const selectedHomeLocation =
     homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ?? homeLocationConfig.locations[0];
@@ -324,21 +322,6 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   const trendingTags = getTrendingTags().slice(0, 6);
   const notifications = getNotifications(actorKey).slice(0, 3);
   const followingKeys = useMemo(() => new Set(getFollowing(actorKey).map((profile) => profileKey(profile))), [actorKey, getFollowing]);
-  const timelineCarouselSlides = useMemo<FeatureCarouselSlide[]>(
-    () =>
-      getResolvedCarouselSlides("timeline", new Date(), carouselScenes.timeline)
-        .filter((slide) => slide.status === "active")
-        .map((slide) => ({
-          id: slide.id,
-          badge: slide.badge,
-          title: slide.title,
-          caption: slide.caption,
-          cta: slide.cta,
-          image: slide.image,
-          to: resolveCarouselTargetPath(slide.target, scope)
-        })),
-    [carouselRevision, carouselScenes.timeline, scope]
-  );
   const suggestionProfiles = useMemo(
     () =>
       profileList
@@ -549,7 +532,7 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
 
       <div className="space-y-0">
         <div className="py-1 sm:py-1.5">
-          <FeatureCarousel cardHeightClassName="h-[204px]" slides={timelineCarouselSlides} />
+          <PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />
         </div>
 
         <div className="pb-1">

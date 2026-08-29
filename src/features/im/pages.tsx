@@ -1335,10 +1335,10 @@ function MessagePressable({
   return (
     <div
       onContextMenu={(event) => {
+        event.preventDefault();
         if (hasActiveImMessageTextSelection(event.currentTarget)) {
           return;
         }
-        event.preventDefault();
         onOpenMenu();
       }}
       onPointerCancel={clearPress}
@@ -5252,15 +5252,25 @@ export function ImConversationRoomPage({
       reactedByMe: people.some((person) => person.id === currentReactionPerson.id)
     }));
 
-  const copyMessageContent = (message: ConversationMessage) => {
+  const copyMessageContent = async (message: ConversationMessage) => {
     const root = messageRefs.current[message.id];
     const selection = window.getSelection();
     const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
       ? selection.toString().trim()
       : "";
     const content = selectedContent || message.content || message.ext?.previewText || "媒体消息";
-    navigator.clipboard?.writeText(content).catch(() => undefined);
     closeMessageMenu();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("error.clipboard_unavailable");
+      }
+
+      await navigator.clipboard.writeText(content);
+      setActionNotice("已复制");
+    } catch {
+      setActionNotice("复制失败，请重试");
+    }
   };
 
   const scrollToMessage = (messageId: string) => {
@@ -5366,22 +5376,10 @@ export function ImConversationRoomPage({
         }
       },
       {
-        key: "translate",
-        label: "翻译",
-        icon: "translate",
-        onClick: closeMessageMenu
-      },
-      {
         key: "copy",
         label: "复制",
         icon: "copy",
-        onClick: () => copyMessageContent(message)
-      },
-      {
-        key: "multi-select",
-        label: "多选",
-        icon: "select",
-        onClick: closeMessageMenu
+        onClick: () => void copyMessageContent(message)
       },
       {
         key: "pin-message",
@@ -5619,6 +5617,7 @@ export function ImConversationRoomPage({
                 <div
                   className={cn("relative rounded-3xl transition", menuState ? "z-20" : "z-10", flashMessageId === message.id && "bg-[#fff7d4]", menuState?.message.id === message.id && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]")}
                   data-im-message-selected={menuState?.message.id === message.id ? "true" : undefined}
+                  data-im-message-side={isMine ? "right" : "left"}
                   key={message.id}
                   ref={(element) => {
                     messageRefs.current[message.id] = element;

@@ -60,12 +60,37 @@ export const apiRequestTimeoutMs = Number.isFinite(configuredApiRequestTimeoutMs
 const refreshTokenStorageKey = "needo.auth.refresh-token";
 const legacyAccessTokenStorageKey = "needo.auth.access-token";
 let accessToken: string | null = null;
+let expectedAuthUserId: number | null = null;
 type RefreshedAccessToken = {
   accessToken: string;
   expiresIn: number;
 };
 let refreshRequest: Promise<RefreshedAccessToken> | null = null;
 let authExpiredHandler: (() => void) | null = null;
+
+function readAccessTokenSubject(token: string | null) {
+  if (!token) {
+    return null;
+  }
+
+  const payloadSegment = token.split(".")[1];
+  if (!payloadSegment) {
+    return null;
+  }
+
+  try {
+    const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const payload = JSON.parse(globalThis.atob(padded)) as { sub?: unknown };
+    const subject = typeof payload.sub === "number" || typeof payload.sub === "string"
+      ? Number(payload.sub)
+      : Number.NaN;
+
+    return Number.isInteger(subject) && subject > 0 ? subject : null;
+  } catch {
+    return null;
+  }
+}
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
@@ -295,11 +320,36 @@ export async function refreshStoredAccessToken(): Promise<RefreshedAccessToken> 
   }
 }
 
+async function alignAccessTokenWithExpectedUser(options: HttpClientRequestOptions) {
+  if (options.auth === false || !accessToken || expectedAuthUserId === null) {
+    return;
+  }
+
+  const accessTokenSubject = readAccessTokenSubject(accessToken);
+  if (accessTokenSubject === null || accessTokenSubject === expectedAuthUserId) {
+    return;
+  }
+
+  accessToken = null;
+
+  try {
+    const refreshed = await refreshStoredAccessToken();
+    if (readAccessTokenSubject(refreshed.accessToken) !== expectedAuthUserId) {
+      throw new ApiClientError("error.auth.session_mismatch", 401, 401);
+    }
+  } catch (error) {
+    clearAuthTokens();
+    authExpiredHandler?.();
+    throw error;
+  }
+}
+
 async function sendRequest<TData>(
   path: string,
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<TData> {
+  await alignAccessTokenWithExpectedUser(options);
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
@@ -362,6 +412,7 @@ async function sendCsvExportRequest(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<HttpClientCsvExportPayload> {
+  await alignAccessTokenWithExpectedUser(options);
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
@@ -429,6 +480,7 @@ async function sendDataUrlRequest(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<string> {
+  await alignAccessTokenWithExpectedUser(options);
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
@@ -509,6 +561,10 @@ export function setAccessToken(nextAccessToken: string | null) {
   removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
 }
 
+export function setExpectedAuthUserId(userId: number | null) {
+  expectedAuthUserId = Number.isInteger(userId) && (userId ?? 0) > 0 ? userId : null;
+}
+
 export function setAuthTokens(tokens: { accessToken: string; refreshToken?: string | null }) {
   setAccessToken(tokens.accessToken);
 
@@ -519,6 +575,7 @@ export function setAuthTokens(tokens: { accessToken: string; refreshToken?: stri
 
 export function clearAuthTokens() {
   accessToken = null;
+  expectedAuthUserId = null;
   clearMerchantAdminPreview();
   removeBrowserStorage(refreshTokenStorageKey, { silent: true });
   removeBrowserStorage(refreshTokenStorageKey, {

@@ -2000,17 +2000,20 @@ const imDefaultReactions = [
 function ImReactionButton({
   emoji,
   onClick,
-  compact = false
+  compact = false,
+  className
 }: {
   emoji: string;
   onClick: () => void;
   compact?: boolean;
+  className?: string;
 }) {
   return (
     <button
       className={cn(
         "focus-ring grid place-items-center rounded-2xl text-center font-black transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
-        compact ? "h-12 min-w-12 px-1 text-[24px]" : "h-11 px-1 text-[25px]"
+        compact ? "h-11 min-w-11 px-1 text-[22px]" : "h-11 px-1 text-[25px]",
+        className
       )}
       onClick={onClick}
       type="button"
@@ -2032,19 +2035,20 @@ function ImMessageActionButton({
   return (
     <button
       className={cn(
-        "focus-ring min-w-0 rounded-[18px] px-2 py-3 text-center transition",
+        "focus-ring min-h-11 min-w-0 rounded-[14px] px-1 py-2 text-center transition",
         "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] text-[color:var(--client-text)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_13%,var(--client-surface)_87%)]",
         danger && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
         item.disabled && "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]"
       )}
+      data-im-message-action-item="true"
       disabled={item.disabled}
       onClick={item.onClick}
       type="button"
     >
-      <span className={cn("mx-auto grid h-10 w-10 place-items-center rounded-2xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
+      <span className={cn("mx-auto grid h-8 w-8 place-items-center rounded-xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
         <ImIcon name={item.icon === "pin" ? "top" : item.icon} />
       </span>
-      <span className="mt-2 block truncate text-xs font-black">{item.label}</span>
+      <span className="mt-1 block truncate text-[11px] font-black leading-4">{item.label}</span>
     </button>
   );
 }
@@ -2116,11 +2120,24 @@ export function ImMessageActionSheet({
         Math.max(unclampedTop, viewportTop + viewportMargin),
         viewportBottom - viewportMargin - renderedHeight
       );
-      const anchorCenter = anchorRect.left + anchorRect.width / 2;
+      const messageSide = anchorElement.dataset.imMessageSide;
+      const alignedLeft = messageSide === "left"
+        ? anchorRect.left + 12
+        : messageSide === "right"
+          ? anchorRect.right - 12 - menuRect.width
+          : anchorRect.left + anchorRect.width / 2 - menuRect.width / 2;
       const left = Math.min(
-        Math.max(anchorCenter - menuRect.width / 2, viewportLeft + viewportMargin),
+        Math.max(alignedLeft, viewportLeft + viewportMargin),
         viewportRight - viewportMargin - menuRect.width
       );
+      const bubbleRect = anchorElement.querySelector<HTMLElement>("[data-im-message-bubble='true']")?.getBoundingClientRect();
+      const anchorCenter = bubbleRect
+        ? bubbleRect.left + bubbleRect.width / 2
+        : messageSide === "left"
+          ? anchorRect.left + 52
+          : messageSide === "right"
+            ? anchorRect.right - 52
+            : anchorRect.left + anchorRect.width / 2;
       const arrowLeft = Math.min(Math.max(anchorCenter - left, 24), menuRect.width - 24);
 
       setMenuPosition({ arrowLeft, left, maxHeight, placement, ready: true, top });
@@ -2150,8 +2167,81 @@ export function ImMessageActionSheet({
     opacity: menuPosition.ready ? 1 : 0,
     position: "fixed",
     top: menuPosition.top,
-    width: "min(560px, calc(100vw - 24px))"
+    width: "min(520px, calc(100vw - 32px))"
   };
+
+  const quickReactionRow = (
+    <div className="grid grid-cols-5 items-center gap-0.5 px-1 py-1.5 min-[480px]:grid-cols-7" data-im-message-reaction-row="quick">
+      {imQuickReactions.map((emoji, index) => (
+        <ImReactionButton className={index >= 4 ? "hidden min-[480px]:grid" : undefined} emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
+      ))}
+      <button
+        aria-label={expanded ? "收起默认表情" : "展开默认表情"}
+        className={cn(
+          "focus-ring grid h-11 place-items-center rounded-full transition",
+          "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
+        )}
+        onClick={() => onExpandedChange(!expanded)}
+        type="button"
+      >
+        <ImIcon name="more" />
+      </button>
+    </div>
+  );
+
+  const expandedReactionCatalog = expanded ? (
+    <div className="space-y-2 px-1 pb-2 pt-1">
+      <section>
+        <p className="mb-1 text-[11px] font-black text-[color:var(--client-muted)]">默认表情</p>
+        <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-9">
+          {imDefaultReactions.map((emoji) => (
+            <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
+          ))}
+        </div>
+      </section>
+    </div>
+  ) : null;
+
+  const reactionSection = (
+    <section
+      className={menuPosition.placement === "above" ? "pt-1" : "pb-1"}
+      data-im-message-action-section="reactions"
+      key="reactions"
+    >
+      {menuPosition.placement === "above" ? expandedReactionCatalog : quickReactionRow}
+      {menuPosition.placement === "above" ? quickReactionRow : expandedReactionCatalog}
+    </section>
+  );
+
+  const actionSection = actions.length > 0 ? (
+    <div className="grid grid-cols-3 gap-1 min-[480px]:grid-cols-6" data-im-message-action-section="actions" key="actions">
+      {actions.map((item) => (
+        <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
+      ))}
+    </div>
+  ) : null;
+
+  const listActionSection = listActions.length > 0 ? (
+    <div className={cn("mt-2 overflow-hidden rounded-[16px]", listShellClass)} key="list-actions">
+      {listActions.map((item) => (
+        <button
+          className={cn(
+            "focus-ring flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-black transition",
+            "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+            item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
+            item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
+          )}
+          disabled={item.disabled}
+          key={item.key}
+          onClick={item.onClick}
+          type="button"
+        >
+          <ImIcon className="h-[18px] w-[18px] shrink-0" name={item.icon} />
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   const actionMenu = (
     <div className="fixed inset-0 z-[200]" data-im-message-action-layer="true">
@@ -2172,79 +2262,16 @@ export function ImMessageActionSheet({
         />
 
         <section
-          className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[24px] border backdrop-blur-xl", sheetClass)}
+          className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[20px] border backdrop-blur-xl", sheetClass)}
           data-im-message-action-sheet="true"
           ref={menuRef}
           style={{ maxHeight: menuPosition.maxHeight }}
         >
-          <div className="touch-pan-y px-4 py-3 [-webkit-overflow-scrolling:touch]">
-            <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-1 py-2">
-              {imQuickReactions.map((emoji) => (
-                <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
-              ))}
-              <button
-                aria-label={expanded ? "收起默认表情" : "展开默认表情"}
-                className={cn(
-                  "focus-ring grid h-11 place-items-center rounded-full transition",
-                  "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-                )}
-                onClick={() => onExpandedChange(!expanded)}
-                type="button"
-              >
-                <ImIcon name="more" />
-              </button>
-            </div>
-
-            {expanded ? (
-              <div className="space-y-4 pb-4 pt-1">
-                <section>
-                  <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">默认表情</p>
-                  <div className="grid grid-cols-7 gap-2 sm:grid-cols-9">
-                    {imDefaultReactions.map((emoji) => (
-                      <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
-                    ))}
-                  </div>
-                </section>
-              </div>
-            ) : null}
-
-            {actions.length > 0 ? (
-              <div className="grid grid-cols-5 gap-2">
-                {actions.map((item) => (
-                  <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
-                ))}
-              </div>
-            ) : null}
-
-            {listActions.length > 0 ? (
-              <div className={cn("mt-4 overflow-hidden rounded-[22px]", listShellClass)}>
-                {listActions.map((item) => (
-                  <button
-                    className={cn(
-                      "focus-ring flex w-full items-center gap-3 px-4 py-4 text-left text-[15px] font-black transition",
-                      "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
-                      item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-                      item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
-                    )}
-                    disabled={item.disabled}
-                    key={item.key}
-                    onClick={item.onClick}
-                    type="button"
-                  >
-                    <ImIcon className="h-5 w-5 shrink-0" name={item.icon} />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <button
-              className="focus-ring mt-3 w-full rounded-2xl px-4 py-2 text-sm font-black text-[color:var(--client-muted)] transition hover:bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]"
-              onClick={onClose}
-              type="button"
-            >
-              收起
-            </button>
+          <div className="touch-pan-y p-2 [-webkit-overflow-scrolling:touch]">
+            {menuPosition.placement === "below" ? reactionSection : null}
+            {actionSection}
+            {listActionSection}
+            {menuPosition.placement === "above" ? reactionSection : null}
           </div>
         </section>
       </div>
@@ -2462,7 +2489,6 @@ export function MessageBubble({
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const disappearing = message.ext?.disappearing;
-  const [expandedReactionEmoji, setExpandedReactionEmoji] = useState<string | null>(null);
   const quotedPreview = quotedMessage?.content || (quotedMessage ? previewLabel(quotedMessage.type) : "");
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
@@ -2673,8 +2699,7 @@ export function MessageBubble({
     <div className="mt-2 flex max-w-full flex-wrap gap-1.5">
       {reactions.map((reaction) => {
         const names = reaction.people.map((person) => person.name).filter(Boolean);
-        const nameLabel = names.length > 2 ? `${names[0]}等${names.length}人` : names.join("、");
-        const expanded = expandedReactionEmoji === reaction.emoji;
+        const nameLabel = names.join("、");
 
         return (
           <span className={cn("relative inline-flex min-w-0 items-center overflow-visible rounded-full px-1.5 py-1", isMine ? "bg-black/[0.08]" : "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")} key={`${message.id}-${reaction.emoji}`}>
@@ -2693,27 +2718,12 @@ export function MessageBubble({
             >
               {reaction.emoji}
             </button>
-            <button
-              className="min-w-0 max-w-[9rem] truncate px-2 text-left text-[12px] font-black opacity-78"
+            <span
+              className="min-w-0 max-w-[12rem] truncate px-2 text-left text-[12px] font-black opacity-78"
               key={`${message.id}-${reaction.emoji}-names`}
-              onClick={(event) => {
-                event.stopPropagation();
-                setExpandedReactionEmoji(expanded ? null : reaction.emoji);
-              }}
-              type="button"
             >
               {nameLabel || `${reaction.people.length}人`}
-            </button>
-            {expanded ? (
-              <span className={cn("absolute bottom-[calc(100%+6px)] left-0 z-20 min-w-[160px] rounded-[14px] px-3 py-2 text-left text-[12px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.22)]", isMine ? "bg-[#18231e] text-white" : "bg-[color:var(--client-elevated)] text-[color:var(--client-text)]")}>
-                {reaction.people.map((person) => (
-                  <span className="flex min-w-0 items-center gap-2 py-1" key={person.id}>
-                    {person.avatar ? <AvatarImage alt={person.name} className="h-6 w-6 shrink-0" src={person.avatar} /> : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-black/[0.08]">{person.name.slice(0, 1)}</span>}
-                    <span className="truncate">{person.name}</span>
-                  </span>
-                ))}
-              </span>
-            ) : null}
+            </span>
           </span>
         );
       })}

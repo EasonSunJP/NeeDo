@@ -47,6 +47,7 @@ const mocked = vi.hoisted(() => {
       tokenState.accessToken = null;
       tokenState.refreshToken = null;
     }),
+    setExpectedAuthUserId: vi.fn(),
     setAuthExpiredHandler: vi.fn()
   };
 });
@@ -60,6 +61,7 @@ vi.mock("../api/httpClient", () => ({
   setAccessToken: vi.fn((token: string | null) => {
     mocked.tokenState.accessToken = token;
   }),
+  setExpectedAuthUserId: mocked.setExpectedAuthUserId,
   setAuthExpiredHandler: mocked.setAuthExpiredHandler,
   setStoredRefreshToken: vi.fn((token: string | null) => {
     mocked.tokenState.refreshToken = token;
@@ -354,6 +356,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
       }
     });
     expect(mocked.authApi.me).toHaveBeenCalledTimes(1);
+    expect(mocked.setExpectedAuthUserId).toHaveBeenCalledWith(customerMe.id);
     expect(auth.session?.loginMethod).toBe("google");
   });
 
