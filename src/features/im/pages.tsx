@@ -5138,11 +5138,16 @@ export function ImConversationRoomPage({
   };
 
   const handleConversationPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) {
+    const interactiveSelector = "[data-im-composer-root='true'], [data-im-message-action-sheet='true']";
+    const pathContainsInteractiveSurface = event.nativeEvent.composedPath().some((target) => (
+      target instanceof Element && Boolean(target.closest(interactiveSelector))
+    ));
+
+    if (pathContainsInteractiveSurface) {
       return;
     }
 
-    if (event.target.closest("[data-im-composer-root='true'], [data-im-message-action-sheet='true']")) {
+    if (!(event.target instanceof Element)) {
       return;
     }
 
