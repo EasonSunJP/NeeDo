@@ -595,7 +595,7 @@ export function ImChatComposer({
     "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
   const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
   const composerTextareaClass =
-    "max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
+    "block max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
   const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
   const composerEmojiButtonClass =
     "rounded-xl py-2 transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]";
@@ -618,7 +618,7 @@ export function ImChatComposer({
         >
           <button
             aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
-            className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+            className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
             data-im-composer-control="voice-input"
             onClick={() => {
               onToggleVoice?.();
@@ -677,7 +677,7 @@ export function ImChatComposer({
           </div>
           <button
             aria-label={panel === "emoji" ? "关闭表情面板" : "打开表情面板"}
-            className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+            className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
             data-im-composer-control="emoji-chat"
             onClick={() => onPanelChange((value) => (value === "emoji" ? null : "emoji"))}
             type="button"
@@ -691,7 +691,7 @@ export function ImChatComposer({
           ) : (
             <button
               aria-label={panel === "more" ? "关闭更多功能" : "打开更多功能"}
-              className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+              className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
               onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
               type="button"
             >

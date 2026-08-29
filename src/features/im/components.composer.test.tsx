@@ -107,6 +107,7 @@ describe("ImChatComposer", () => {
 
     expect(inputShell?.classList.contains("items-end")).toBe(true);
     expect(textarea?.parentElement?.classList.contains("min-h-[40px]")).toBe(true);
+    expect(textarea?.classList.contains("block")).toBe(true);
     for (const control of controls) {
       expect(control).not.toBeNull();
       expect(control?.classList.contains("h-10")).toBe(true);
