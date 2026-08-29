@@ -4,7 +4,7 @@ import { InteractiveAvatar } from "../../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
-import type { SocialCommentPermission, SocialMediaItem, SocialProfile, SocialVisibility } from "../types";
+import type { SocialCommentPermission, SocialMediaItem, SocialMentionCandidate, SocialProfile, SocialVisibility } from "../types";
 import {
   extractCompletedHashtags,
   formatHashtagLabel,
@@ -251,13 +251,17 @@ export function ComposerTextArea({
 export function ComposerMediaGrid({
   media,
   maxMediaCount = socialImageUploadLimit,
+  uploadStateById,
   onOpenPicker,
-  onRemove
+  onRemove,
+  onRetry
 }: {
   media: SocialMediaItem[];
   maxMediaCount?: number;
+  uploadStateById?: Record<string, "uploading" | "failed">;
   onOpenPicker: () => void;
   onRemove: (mediaId: string) => void;
+  onRetry?: (mediaId: string) => void;
 }) {
   const hasVideo = media.some((item) => item.type === "video");
   const canAdd = !hasVideo && media.length < maxMediaCount;
@@ -288,6 +292,23 @@ export function ComposerMediaGrid({
           >
             <TrashIcon />
           </button>
+          {uploadStateById?.[item.id] ? (
+            <div className="pointer-events-none absolute inset-0 flex items-end bg-[color:color-mix(in_srgb,var(--client-bg)_28%,transparent)] p-2">
+              {uploadStateById[item.id] === "uploading" ? (
+                <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-text)] backdrop-blur">
+                  上传中...
+                </span>
+              ) : (
+                <button
+                  className="pointer-events-auto rounded-full bg-[color:var(--client-warm)] px-2.5 py-1 text-[11px] font-black text-white"
+                  onClick={() => onRetry?.(item.id)}
+                  type="button"
+                >
+                  重试上传
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
       ))}
 
@@ -308,26 +329,29 @@ export function ComposerMediaPicker({
   media,
   maxMediaCount = socialImageUploadLimit,
   error,
+  uploadStateById,
   onFileChange,
   onOpenPicker,
-  onRemove
+  onRemove,
+  onRetry
 }: {
   media: SocialMediaItem[];
   maxMediaCount?: number;
   error?: string;
+  uploadStateById?: Record<string, "uploading" | "failed">;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenPicker: () => void;
   onRemove: (mediaId: string) => void;
+  onRetry?: (mediaId: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const hasVideo = media.some((item) => item.type === "video");
 
   return (
     <section className="space-y-3">
       <input
-        accept="image/*,video/*"
+        accept="image/jpeg,image/png,image/webp"
         className="hidden"
-        multiple={!hasVideo}
+        multiple
         onChange={onFileChange}
         ref={inputRef}
         type="file"
@@ -335,15 +359,17 @@ export function ComposerMediaPicker({
       <ComposerMediaGrid
         maxMediaCount={maxMediaCount}
         media={media}
+        uploadStateById={uploadStateById}
         onOpenPicker={() => {
           inputRef.current?.click();
           onOpenPicker();
         }}
         onRemove={onRemove}
+        onRetry={onRetry}
       />
       <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[color:var(--client-muted)]">
-        <span className={cn(error ? "text-[color:var(--client-warm)]" : undefined)}>{error || "最多 9 张图片，或 1 个视频。"}</span>
-        <span>{hasVideo ? "1/1" : `${media.length}/${maxMediaCount}`}</span>
+        <span className={cn(error ? "text-[color:var(--client-warm)]" : undefined)}>{error || "最多 9 张图片；单张不超过 8 MiB。"}</span>
+        <span>{`${media.length}/${maxMediaCount}`}</span>
       </div>
     </section>
   );
@@ -604,18 +630,22 @@ export function ComposerCommentPermissionSelector({
 }
 
 export function ComposerMentionSelector({
-  profiles,
+  candidates,
+  status,
   query,
-  selectedKeys,
+  selectedUserIds,
   onQueryChange,
   onToggle,
+  onRetry,
   onBack
 }: {
-  profiles: SocialProfile[];
+  candidates: SocialMentionCandidate[];
+  status: "loading" | "ready" | "error";
   query: string;
-  selectedKeys: string[];
+  selectedUserIds: number[];
   onQueryChange: (value: string) => void;
-  onToggle: (profileKeyValue: string) => void;
+  onToggle: (userId: number) => void;
+  onRetry: () => void;
   onBack: () => void;
 }) {
   return (
@@ -631,16 +661,30 @@ export function ComposerMentionSelector({
           <input
             className="w-full rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] px-4 py-3 text-sm text-[color:var(--client-text)] outline-none placeholder:text-[color:color-mix(in_srgb,var(--client-muted)_72%,var(--client-bg))]"
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="搜索用户、技师或店铺"
+            placeholder="搜索联系人昵称、用户名或 NeeDoID"
             value={query}
           />
         </label>
 
         <div className="space-y-2">
-          {profiles.length > 0 ? (
-            profiles.map((profile) => {
-              const key = profileKey(profile);
-              const active = selectedKeys.includes(key);
+          {status === "loading" ? (
+            <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-4 py-5 text-sm text-[color:var(--client-muted)]">
+              正在加载联系人...
+            </div>
+          ) : status === "error" ? (
+            <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-4 py-5 text-sm text-[color:var(--client-muted)]">
+              <p>联系人加载失败，请重试。</p>
+              <button
+                className="mt-3 rounded-full bg-[color:var(--client-primary)] px-4 py-2 text-xs font-black text-[#090806]"
+                onClick={onRetry}
+                type="button"
+              >
+                重新加载
+              </button>
+            </div>
+          ) : candidates.length > 0 ? (
+            candidates.map((candidate) => {
+              const active = selectedUserIds.includes(candidate.userId);
 
               return (
                 <button
@@ -650,13 +694,16 @@ export function ComposerMentionSelector({
                       ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)]"
                       : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)]"
                   )}
-                  key={profile.id}
-                  onClick={() => onToggle(key)}
+                  key={candidate.userId}
+                  onClick={() => onToggle(candidate.userId)}
                   type="button"
                 >
-                  <AvatarImage alt={profile.displayName} className="h-12 w-12" src={profile.avatar} />
+                  <AvatarImage alt={candidate.displayName} className="h-12 w-12" src={candidate.avatarUrl} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-black text-[color:var(--client-text)]">{profile.displayName}</p>
+                    <p className="truncate text-sm font-black text-[color:var(--client-text)]">{candidate.displayName}</p>
+                    <p className="mt-1 truncate text-xs font-semibold text-[color:var(--client-muted)]">
+                      @{candidate.username} · {candidate.needoId}
+                    </p>
                   </div>
                   <span
                     className={cn(
@@ -673,7 +720,7 @@ export function ComposerMentionSelector({
             })
           ) : (
             <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-4 py-5 text-sm text-[color:var(--client-muted)]">
-              没有匹配的提醒对象。
+              {query.trim() ? "没有匹配的联系人。" : "当前没有可提醒的联系人。"}
             </div>
           )}
         </div>
@@ -790,6 +837,22 @@ export function summarizeAudience(profiles: SocialProfile[], selectedKeys: strin
   }
 
   return `${selectedProfiles[0].displayName} 等 ${selectedProfiles.length} 人`;
+}
+
+export function summarizeMentionCandidates(candidates: SocialMentionCandidate[], selectedUserIds: number[]) {
+  if (selectedUserIds.length === 0) {
+    return "";
+  }
+
+  const firstSelected = candidates.find((candidate) => selectedUserIds.includes(candidate.userId));
+
+  if (!firstSelected) {
+    return `${selectedUserIds.length} 人`;
+  }
+
+  return selectedUserIds.length === 1
+    ? firstSelected.displayName
+    : `${firstSelected.displayName} 等 ${selectedUserIds.length} 人`;
 }
 
 export function summarizeVisibility(value: SocialVisibility, options?: { tags?: string[]; profileCount?: number; includeRelatedPeople?: boolean }) {

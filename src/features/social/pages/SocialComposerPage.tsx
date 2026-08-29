@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { MobileShell } from "../../../components/mobile/MobileShell";
 import { cn } from "../../../lib/utils";
@@ -13,17 +13,24 @@ import {
   ComposerTextArea,
   ComposerTopBar,
   ComposerVisibilitySelector,
-  summarizeAudience,
   summarizeCommentPermission,
+  summarizeMentionCandidates,
   summarizeVisibility
 } from "../components/UnifiedComposerUi";
+import {
+  getSocialComposerErrorMessage,
+  getSocialImageValidationError,
+  isSocialComposerPublishReady
+} from "../composer-media";
 import { SocialPostItem } from "../components/SocialUi";
 import { useSocial } from "../context";
+import { loadFormalSocialMentionCandidates } from "../formal-contacts";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
-import type { SocialCommentPermission, SocialComposerDraft, SocialPost, SocialPostType, SocialProfile, SocialVisibility } from "../types";
+import { realtimeApi } from "../../realtime/api";
+import type { SocialCommentPermission, SocialComposerDraft, SocialMentionCandidate, SocialPost, SocialPostType, SocialProfile, SocialVisibility } from "../types";
 import {
-  createMediaFromFile,
   isValidSocialPostMediaSet,
+  nextId,
   profileMentionLabel,
   profileKey,
   socialImageUploadLimit,
@@ -113,12 +120,24 @@ export function SocialComposerPage() {
   const [includeRelatedPeople, setIncludeRelatedPeople] = useState(initialComposerState.includeRelatedPeople);
   const [commentPermission, setCommentPermission] = useState<SocialCommentPermission>(initialComposerState.commentPermission);
   const [locationLabel, setLocationLabel] = useState(initialComposerState.locationLabel);
-  const [audienceProfileKeys, setAudienceProfileKeys] = useState<string[]>(initialComposerState.audienceProfileKeys);
+  const [mentionUserIds, setMentionUserIds] = useState<number[]>(initialComposerState.mentionUserIds);
+  const [allMentionCandidates, setAllMentionCandidates] = useState<SocialMentionCandidate[]>([]);
+  const [mentionStatus, setMentionStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [mentionQuery, setMentionQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [postType, setPostType] = useState<SocialPostType>(initialComposerState.postType);
   const [mediaError, setMediaError] = useState("");
+  const [mediaUploadStateById, setMediaUploadStateById] = useState<Record<string, "uploading" | "failed">>({});
+  const mediaFileByIdRef = useRef(new Map<string, File>());
+  const mediaPreviewUrlByIdRef = useRef(new Map<string, string>());
+
+  const clearTransientMedia = useCallback(() => {
+    mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+    mediaPreviewUrlByIdRef.current.clear();
+    mediaFileByIdRef.current.clear();
+    setMediaUploadStateById({});
+  }, []);
 
   useEffect(() => {
     const nextSnapshot = clampComposerSnapshotText(
@@ -131,6 +150,7 @@ export function SocialComposerPage() {
     );
 
     setInitialSnapshot(nextSnapshot);
+    clearTransientMedia();
     setView("composer");
     setText(nextSnapshot.text);
     setMedia(nextSnapshot.media);
@@ -140,12 +160,18 @@ export function SocialComposerPage() {
     setIncludeRelatedPeople(nextSnapshot.includeRelatedPeople);
     setCommentPermission(nextSnapshot.commentPermission);
     setLocationLabel(nextSnapshot.locationLabel);
-    setAudienceProfileKeys(nextSnapshot.audienceProfileKeys);
+    setMentionUserIds(nextSnapshot.mentionUserIds);
+    setAllMentionCandidates([]);
+    setMentionStatus("idle");
     setPostType(nextSnapshot.postType);
     setMediaError("");
     setMentionQuery("");
     setLocationQuery("");
-  }, [draftKey, editPost?.id, initialAuthorKey, postTypeOptions, quotePostId, replyToPostId, selectedAuthorFromQuery, textLimit]);
+  }, [clearTransientMedia, draftKey, editPost?.id, initialAuthorKey, postTypeOptions, quotePostId, replyToPostId, selectedAuthorFromQuery, textLimit]);
+
+  useEffect(() => () => {
+    mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+  }, []);
 
   useEffect(() => {
     if (!postTypeOptions.some((option) => option.value === postType)) {
@@ -164,7 +190,7 @@ export function SocialComposerPage() {
         includeRelatedPeople: initialSnapshot.includeRelatedPeople,
         commentPermission: initialSnapshot.commentPermission,
         locationLabel: initialSnapshot.locationLabel,
-        audienceProfileKeys: initialSnapshot.audienceProfileKeys,
+        mentionUserIds: initialSnapshot.mentionUserIds,
         postType: initialSnapshot.postType
       }),
     [initialSnapshot]
@@ -180,14 +206,14 @@ export function SocialComposerPage() {
         includeRelatedPeople,
         commentPermission,
         locationLabel,
-        audienceProfileKeys,
+        mentionUserIds,
         postType
       }),
-    [audienceProfileKeys, commentPermission, includeRelatedPeople, locationLabel, media, postType, text, visibility, visibilityProfileKeys, visibilityTagIds]
+    [commentPermission, includeRelatedPeople, locationLabel, media, mentionUserIds, postType, text, visibility, visibilityProfileKeys, visibilityTagIds]
   );
   const isDirty = currentSignature !== initialSignature;
   const hasValidMediaSet = isValidSocialPostMediaSet(media);
-  const canPublish = (text.trim().length > 0 || media.length > 0) && hasValidMediaSet;
+  const canPublish = hasValidMediaSet && isSocialComposerPublishReady({ text, media });
   const detectedLink = useMemo(() => text.match(linkPattern)?.[1], [text]);
   const handleTextChange = (value: string) => {
     setText(value.slice(0, textLimit));
@@ -207,7 +233,7 @@ export function SocialComposerPage() {
       includeRelatedPeople ||
       commentPermission !== "everyone" ||
       Boolean(locationLabel) ||
-      audienceProfileKeys.length > 0 ||
+      mentionUserIds.length > 0 ||
       postType !== (postTypeOptions[0]?.value ?? "post");
 
     if (!hasDraftContent) {
@@ -218,7 +244,7 @@ export function SocialComposerPage() {
     saveDraft(draftKey, {
       authorKey: initialAuthorKey,
       text,
-      media,
+      media: media.filter((item) => Boolean(item.mediaAssetPublicId)),
       quotePostId,
       replyToPostId,
       editPostId,
@@ -229,11 +255,10 @@ export function SocialComposerPage() {
       includeRelatedPeople,
       commentPermission,
       locationLabel,
-      audienceProfileKeys,
+      mentionUserIds,
       updatedAt: new Date().toISOString()
     });
   }, [
-    audienceProfileKeys,
     clearDraft,
     commentPermission,
     draftKey,
@@ -242,6 +267,7 @@ export function SocialComposerPage() {
     initialAuthorKey,
     locationLabel,
     media,
+    mentionUserIds,
     postType,
     postTypeOptions,
     quotePostId,
@@ -267,23 +293,31 @@ export function SocialComposerPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isDirty]);
 
+  const loadMentionCandidates = useCallback(async () => {
+    setMentionStatus("loading");
+
+    try {
+      const candidates = await loadFormalSocialMentionCandidates();
+      setAllMentionCandidates(candidates);
+      setMentionStatus("ready");
+    } catch {
+      setMentionStatus("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === "mentions" && mentionStatus === "idle") {
+      void loadMentionCandidates();
+    }
+  }, [loadMentionCandidates, mentionStatus, view]);
+
   const mentionCandidates = useMemo(() => {
     const normalized = mentionQuery.trim().toLowerCase();
 
-    return profileList
-      .filter((profile) => profileKey(profile) !== initialAuthorKey)
-      .filter((profile) => {
-        if (!normalized) {
-          return true;
-        }
-
-        return (
-          profile.displayName.toLowerCase().includes(normalized) ||
-          profile.bio.toLowerCase().includes(normalized)
-        );
-      })
-      .slice(0, 18);
-  }, [initialAuthorKey, mentionQuery, profileList]);
+    return allMentionCandidates.filter(
+      (candidate) => !normalized || candidate.searchText.toLowerCase().includes(normalized)
+    );
+  }, [allMentionCandidates, mentionQuery]);
 
   const locationOptions = useMemo(() => {
     const normalized = locationQuery.trim().toLowerCase();
@@ -307,6 +341,114 @@ export function SocialComposerPage() {
 
     return filtered.slice(0, 8);
   }, [author?.location, locationQuery]);
+
+  const uploadMediaFile = useCallback(async (mediaId: string, file: File) => {
+    setMediaUploadStateById((current) => ({ ...current, [mediaId]: "uploading" }));
+
+    try {
+      const uploaded = await realtimeApi.uploadSocialMedia(file);
+
+      if (mediaFileByIdRef.current.get(mediaId) !== file) {
+        return;
+      }
+
+      setMedia((current) => current.map((item) =>
+        item.id === mediaId
+          ? { ...item, mediaAssetPublicId: uploaded.publicId, url: uploaded.url }
+          : item
+      ));
+      const previewUrl = mediaPreviewUrlByIdRef.current.get(mediaId);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      mediaPreviewUrlByIdRef.current.delete(mediaId);
+      mediaFileByIdRef.current.delete(mediaId);
+      setMediaUploadStateById((current) => {
+        const next = { ...current };
+        delete next[mediaId];
+        return next;
+      });
+    } catch (error) {
+      if (mediaFileByIdRef.current.get(mediaId) !== file) {
+        return;
+      }
+
+      setMediaUploadStateById((current) => ({ ...current, [mediaId]: "failed" }));
+      setMediaError(getSocialComposerErrorMessage(error));
+    }
+  }, []);
+
+  const handleMediaFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    const validFiles: File[] = [];
+    let validationError = "";
+
+    files.forEach((file) => {
+      const error = getSocialImageValidationError(file);
+      if (error) {
+        validationError ||= error;
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    const remainingSlots = Math.max(0, socialImageUploadLimit - media.length);
+    const selectedFiles = validFiles.slice(0, remainingSlots);
+    const pendingItems = selectedFiles.map((file) => {
+      const id = nextId("media");
+      const previewUrl = URL.createObjectURL(file);
+      mediaFileByIdRef.current.set(id, file);
+      mediaPreviewUrlByIdRef.current.set(id, previewUrl);
+      return {
+        file,
+        item: {
+          id,
+          type: "image" as const,
+          url: previewUrl,
+          alt: file.name
+        }
+      };
+    });
+
+    if (pendingItems.length > 0) {
+      setMedia((current) => [...current, ...pendingItems.map(({ item }) => item)]);
+      pendingItems.forEach(({ file, item }) => void uploadMediaFile(item.id, file));
+    }
+
+    setMediaError(
+      validationError ||
+      (validFiles.length > remainingSlots ? "已达到 9 张图片上限，超出的图片没有加入。" : "")
+    );
+    input.value = "";
+  };
+
+  const handleRetryMediaUpload = (mediaId: string) => {
+    const file = mediaFileByIdRef.current.get(mediaId);
+    if (!file) {
+      setMediaError("图片上传失败，请重新选择图片。");
+      return;
+    }
+
+    setMediaError("");
+    void uploadMediaFile(mediaId, file);
+  };
+
+  const handleRemoveMedia = (mediaId: string) => {
+    const previewUrl = mediaPreviewUrlByIdRef.current.get(mediaId);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    mediaPreviewUrlByIdRef.current.delete(mediaId);
+    mediaFileByIdRef.current.delete(mediaId);
+    setMediaUploadStateById((current) => {
+      const next = { ...current };
+      delete next[mediaId];
+      return next;
+    });
+    setMedia((current) => current.filter((item) => item.id !== mediaId));
+    setMediaError("");
+  };
 
   const handleCancel = () => {
     if (!isDirty) {
@@ -336,7 +478,9 @@ export function SocialComposerPage() {
   const handlePublish = async () => {
     if (!canPublish || !author) {
       if (!hasValidMediaSet) {
-        setMediaError("一条动态最多发布 9 张图片，或 1 个视频。");
+        setMediaError("一条动态最多发布 9 张图片。");
+      } else if (media.some((item) => !item.mediaAssetPublicId)) {
+        setMediaError("图片正在上传，请稍候。失败的图片可以点击重试。");
       }
 
       return;
@@ -357,7 +501,6 @@ export function SocialComposerPage() {
           includeRelatedPeople,
           commentPermission,
           locationLabel: locationLabel || undefined,
-          audienceProfileKeys,
           postType: editPost?.postType ?? postType
           })
         : createPost({
@@ -372,7 +515,7 @@ export function SocialComposerPage() {
           includeRelatedPeople,
           commentPermission,
           locationLabel: locationLabel || undefined,
-          audienceProfileKeys,
+          mentionUserIds,
           postType
           }));
 
@@ -381,7 +524,7 @@ export function SocialComposerPage() {
         navigate(socialPaths.timeline(scope), { replace: true });
       }
     } catch (error) {
-      setMediaError(error instanceof Error ? error.message : String(error));
+      setMediaError(getSocialComposerErrorMessage(error));
     } finally {
       setIsPublishing(false);
     }
@@ -414,14 +557,16 @@ export function SocialComposerPage() {
       <MobileShell className="!pb-0" navItems={[]}>
         <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,color-mix(in_srgb,var(--client-primary)_16%,transparent),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg-soft)_84%,var(--client-bg))_0%,var(--client-bg)_100%)] text-[color:var(--client-text)]">
           <ComposerMentionSelector
+            candidates={mentionCandidates}
             onBack={() => setView("composer")}
             onQueryChange={setMentionQuery}
+            onRetry={() => void loadMentionCandidates()}
             onToggle={(value) =>
-              setAudienceProfileKeys((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]))
+              setMentionUserIds((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]))
             }
-            profiles={mentionCandidates}
             query={mentionQuery}
-            selectedKeys={audienceProfileKeys}
+            selectedUserIds={mentionUserIds}
+            status={mentionStatus === "idle" ? "loading" : mentionStatus}
           />
         </div>
       </MobileShell>
@@ -520,35 +665,11 @@ export function SocialComposerPage() {
                   error={mediaError}
                   maxMediaCount={socialImageUploadLimit}
                   media={media}
-                  onFileChange={(event) => {
-                    const input = event.currentTarget;
-                    const files = Array.from(event.target.files ?? []);
-                    const selectedVideo = files.find((file) => file.type.startsWith("video/"));
-
-                    if (selectedVideo) {
-                      if (media.length > 0) {
-                        setMediaError("视频动态不能同时上传图片，请先移除已有媒体。");
-                        input.value = "";
-                        return;
-                      }
-
-                      setMedia([createMediaFromFile(selectedVideo)]);
-                      setMediaError(files.length > 1 ? "已保留 1 个视频，视频动态不能同时上传图片。" : "");
-                      input.value = "";
-                      return;
-                    }
-
-                    const remainingSlots = Math.max(0, socialImageUploadLimit - media.length);
-                    const nextMedia = files.slice(0, remainingSlots).map((file) => createMediaFromFile(file));
-                    setMedia((current) => [...current.filter((item) => item.type === "image"), ...nextMedia]);
-                    setMediaError(files.length > remainingSlots ? "已达到 9 张图片上限，超出的图片没有加入。" : "");
-                    input.value = "";
-                  }}
+                  onFileChange={handleMediaFileChange}
                   onOpenPicker={() => undefined}
-                  onRemove={(mediaId) => {
-                    setMedia((current) => current.filter((item) => item.id !== mediaId));
-                    setMediaError("");
-                  }}
+                  onRemove={handleRemoveMedia}
+                  onRetry={handleRetryMediaUpload}
+                  uploadStateById={mediaUploadStateById}
                 />
               </div>
             </div>
@@ -562,7 +683,7 @@ export function SocialComposerPage() {
                   icon="mention"
                   label="提醒谁看"
                   onClick={() => setView("mentions")}
-                  value={summarizeAudience(profileList, audienceProfileKeys)}
+                  value={summarizeMentionCandidates(allMentionCandidates, mentionUserIds)}
                 />
                 <ComposerSettingItem
                   icon="visibility"
@@ -607,7 +728,7 @@ function createComposerSnapshot({
     includeRelatedPeople: editPost?.includeRelatedPeople ?? draft?.includeRelatedPeople ?? false,
     commentPermission: editPost?.commentPermission ?? draft?.commentPermission ?? "everyone",
     locationLabel: editPost?.locationLabel ?? draft?.locationLabel ?? "",
-    audienceProfileKeys: editPost?.audienceProfileKeys ?? draft?.audienceProfileKeys ?? [],
+    mentionUserIds: draft?.mentionUserIds ?? [],
     postType: editPost?.postType ?? draft?.postType ?? fallbackPostType
   };
 }
