@@ -53,10 +53,7 @@ import {
 import { ShopMemberCenterPage } from "./features/shop-member/ShopMemberCenterPage";
 import { MomentsPage } from "./pages/mobile/MomentsPage";
 import { NeedoExchangePage } from "./pages/mobile/NeedoExchangePage";
-import {
-  NeedoPostCustomerRoutePage,
-  NeedoPostDetailRoutePage
-} from "./pages/mobile/NeedoRoutePages";
+import { NeedoPostDetailRoutePage } from "./pages/mobile/NeedoRoutePages";
 import { TechnicianPayrollPage } from "./pages/mobile/TechnicianPayrollPage";
 import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";
 import { MerchantAdminAnalyticsPage } from "./pages/merchant-admin/MerchantAdminAnalyticsPage";
@@ -1131,7 +1128,6 @@ export default function App() {
               <Route path="/moments/posts/:postId/media/:mediaId" element={protect("user", <SocialMediaViewerPage />)} />
               <Route path="/moments/posts/:postId" element={protect("user", <SocialPostDetailPage />)} />
               <Route path="/moments" element={protect("user", <MomentsPage />)} />
-              <Route path="/needo/posts/:postId/customer" element={protect("user", <NeedoPostCustomerRoutePage />)} />
               <Route path="/needo/posts/:postId" element={protect("user", <NeedoPostDetailRoutePage />)} />
               <Route path="/needo" element={protect("user", <NeedoExchangePage />)} />
               <Route path="/afirieito" element={protect("business", <BusinessCpsPage />)} />
@@ -1211,7 +1207,6 @@ export default function App() {
               <Route path="/merchant/contacts/service-accounts" element={protect("merchant", <ImScopeProvider scope="merchant"><ImServiceAccountsPage /></ImScopeProvider>)} />
               <Route path="/merchant/contacts/:contactId" element={protect("merchant", <ImScopeProvider scope="merchant"><ImContactDetailPage /></ImScopeProvider>)} />
               <Route path="/merchant/im/search" element={protect("merchant", <ImScopeProvider scope="merchant"><ImSearchPage /></ImScopeProvider>)} />
-              <Route path="/merchant/needo/posts/:postId/customer" element={protect("merchant", <NeedoPostCustomerRoutePage context="merchant" />)} />
               <Route path="/merchant/needo/posts/:postId" element={protect("merchant", <NeedoPostDetailRoutePage context="merchant" />)} />
               <Route path="/merchant/needo" element={protect("merchant", <NeedoExchangePage context="merchant" />)} />
               <Route path="/merchant/moments/compose" element={protect("merchant", <SocialComposerPage />)} />
@@ -1340,7 +1335,6 @@ export default function App() {
               <Route path="/technician/contacts/service-accounts" element={protect("technician", <ImScopeProvider scope="technician"><ImServiceAccountsPage /></ImScopeProvider>)} />
               <Route path="/technician/contacts/:contactId" element={protect("technician", <ImScopeProvider scope="technician"><ImContactDetailPage /></ImScopeProvider>)} />
               <Route path="/technician/im/search" element={protect("technician", <ImScopeProvider scope="technician"><ImSearchPage /></ImScopeProvider>)} />
-              <Route path="/technician/needo/posts/:postId/customer" element={protect("technician", <NeedoPostCustomerRoutePage context="technician" />)} />
               <Route path="/technician/needo/posts/:postId" element={protect("technician", <NeedoPostDetailRoutePage context="technician" />)} />
               <Route path="/technician/needo" element={protect("technician", <NeedoExchangePage context="technician" />)} />
               <Route path="/technician/moments/compose" element={protect("technician", <SocialComposerPage />)} />
