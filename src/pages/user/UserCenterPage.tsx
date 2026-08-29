@@ -801,6 +801,17 @@ function CompleteUserCenterPage({
     const timer = window.setTimeout(() => setProfileToastMessage(""), 2400);
     return () => window.clearTimeout(timer);
   }, [profileToastMessage]);
+  const copyNeedoId = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("clipboard_unavailable");
+      }
+      await navigator.clipboard.writeText(currentCustomer.systemId);
+      setProfileToastMessage("已复制");
+    } catch {
+      setProfileToastMessage("复制失败，请手动复制");
+    }
+  };
   const saveProfileEdit = async () => {
     if (!profileDraft || isSavingProfile) {
       return;
@@ -964,7 +975,17 @@ function CompleteUserCenterPage({
                         {levelLabel}
                       </span>
                     </div>
-                    <p className={cn("truncate text-xs font-bold", membershipSurface.muted)}>ID {currentCustomer.systemId}</p>
+                    <button
+                      aria-label="复制 NeeDo ID"
+                      className={cn(
+                        "w-full cursor-copy truncate text-left text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]",
+                        membershipSurface.muted
+                      )}
+                      onClick={() => void copyNeedoId()}
+                      type="button"
+                    >
+                      ID {currentCustomer.systemId}
+                    </button>
                     <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", membershipSurface.panel)} data-testid="user-profile-privacy-control">
                       <div className="flex items-center justify-between gap-3">
                         <button
