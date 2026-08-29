@@ -3,6 +3,7 @@ import type { MessageCenterContext } from "../../lib/messageCenter";
 import type { Language } from "../../i18n/translations";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { merchantNavItems, technicianNavItems, userNavItems } from "../../components/mobile/navItems";
+import { ExchangeFeedPage } from "../../features/exchange/ExchangeFeedPage";
 
 export type ExchangePost = {
   id: string;
@@ -210,15 +211,7 @@ function getNavItems(context: MessageCenterContext) {
 export function NeedoExchangePage({ context = "user" }: { context?: MessageCenterContext }) {
   return (
     <MobileShell navItems={getNavItems(context)}>
-      <main className="mx-auto flex min-h-[calc(100dvh-96px)] w-full max-w-3xl items-center justify-center px-5 py-24 text-center">
-        <section className="w-full rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-6 shadow-panel">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[color:var(--client-primary)]">NeeDo Exchange</p>
-          <h1 className="mt-3 text-2xl font-black text-[color:var(--client-text)]">正式需求与情报功能尚未启用</h1>
-          <p className="mt-3 text-sm font-semibold leading-7 text-[color:var(--client-muted)]">
-            当前不会展示或创建模拟需求、情报、发布者、身份 ID、评分、订单、互动或支付数据。完成正式数据库、身份权限、状态机和审计接口后再开放。
-          </p>
-        </section>
-      </main>
+      <ExchangeFeedPage context={context} />
     </MobileShell>
   );
 }

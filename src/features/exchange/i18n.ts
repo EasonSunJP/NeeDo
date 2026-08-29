@@ -1,0 +1,61 @@
+import type { Language } from "../../i18n/translations";
+
+const translations = {
+  demand: { zh: "需求", "zh-Hant": "需求", ja: "依頼", en: "Requests", ko: "요청" },
+  intelligence: { zh: "情报", "zh-Hant": "情報", ja: "サービス情報", en: "Service posts", ko: "서비스 정보" },
+  exchangeTitle: { zh: "需求与情报", "zh-Hant": "需求與情報", ja: "依頼とサービス情報", en: "Requests & service posts", ko: "요청 및 서비스 정보" },
+  exchangeCaption: { zh: "真实身份发布 · 正式数据保存", "zh-Hant": "真實身份發布 · 正式資料保存", ja: "実在するテストIDで投稿・正式データとして保存", en: "Verified test identities · persisted records", ko: "검증된 테스트 신원 · 정식 데이터 저장" },
+  refresh: { zh: "刷新", "zh-Hant": "重新整理", ja: "更新", en: "Refresh", ko: "새로고침" },
+  publishDemand: { zh: "发布需求", "zh-Hant": "發布需求", ja: "依頼を投稿", en: "Post request", ko: "요청 게시" },
+  publishIntelligence: { zh: "发布情报", "zh-Hant": "發布情報", ja: "サービス情報を投稿", en: "Post service", ko: "서비스 게시" },
+  loadingDemand: { zh: "正在读取正式需求", "zh-Hant": "正在讀取正式需求", ja: "正式な依頼を読み込んでいます", en: "Loading persisted requests", ko: "정식 요청을 불러오는 중" },
+  loadingIntelligence: { zh: "正在读取正式情报", "zh-Hant": "正在讀取正式情報", ja: "正式なサービス情報を読み込んでいます", en: "Loading persisted service posts", ko: "정식 서비스 정보를 불러오는 중" },
+  emptyDemand: { zh: "还没有正式需求", "zh-Hant": "目前還沒有正式需求", ja: "正式な依頼はまだありません", en: "No persisted requests yet", ko: "아직 정식 요청이 없습니다" },
+  emptyIntelligence: { zh: "还没有正式情报", "zh-Hant": "目前還沒有正式情報", ja: "正式なサービス情報はまだありません", en: "No persisted service posts yet", ko: "아직 정식 서비스 정보가 없습니다" },
+  emptyHint: { zh: "新发布的内容会保存在正式数据库并显示在这里。", "zh-Hant": "新發布的內容會儲存在正式資料庫並顯示於此。", ja: "新しい投稿は正式データベースに保存され、ここに表示されます。", en: "New posts are saved to the formal database and appear here.", ko: "새 게시물은 정식 데이터베이스에 저장되어 여기에 표시됩니다." },
+  unauthorized: { zh: "请重新登录后查看", "zh-Hant": "請重新登入後查看", ja: "再ログインして表示してください", en: "Sign in again to continue", ko: "다시 로그인해 주세요" },
+  forbidden: { zh: "当前身份没有查看权限", "zh-Hant": "目前身份沒有查看權限", ja: "現在のIDには閲覧権限がありません", en: "This identity cannot view Exchange", ko: "현재 신원에는 조회 권한이 없습니다" },
+  unavailable: { zh: "正式服务暂时无法连接", "zh-Hant": "正式服務暫時無法連線", ja: "正式サービスに接続できません", en: "The formal service is unavailable", ko: "정식 서비스에 연결할 수 없습니다" },
+  readFailed: { zh: "正式数据读取失败", "zh-Hant": "正式資料讀取失敗", ja: "正式データを読み込めませんでした", en: "Couldn't load persisted data", ko: "정식 데이터를 불러오지 못했습니다" },
+  retry: { zh: "重试", "zh-Hant": "重試", ja: "再試行", en: "Retry", ko: "다시 시도" },
+  loadMore: { zh: "加载更多", "zh-Hant": "載入更多", ja: "さらに読み込む", en: "Load more", ko: "더 불러오기" },
+  loadingMore: { zh: "正在加载…", "zh-Hant": "正在載入…", ja: "読み込み中…", en: "Loading…", ko: "불러오는 중…" },
+  budget: { zh: "预算", "zh-Hant": "預算", ja: "予算", en: "Budget", ko: "예산" },
+  campaignPrice: { zh: "服务价格", "zh-Hant": "服務價格", ja: "サービス価格", en: "Service price", ko: "서비스 가격" },
+  comments: { zh: "评论", "zh-Hant": "留言", ja: "コメント", en: "Comments", ko: "댓글" },
+  likes: { zh: "点赞", "zh-Hant": "讚", ja: "いいね", en: "Likes", ko: "좋아요" },
+  shares: { zh: "转发", "zh-Hant": "分享", ja: "シェア", en: "Shares", ko: "공유" },
+  serviceWindow: { zh: "服务时段", "zh-Hant": "服務時段", ja: "サービス時間", en: "Service window", ko: "서비스 시간" },
+  expires: { zh: "有效至", "zh-Hant": "有效至", ja: "掲載期限", en: "Expires", ko: "게시 기한" },
+  originalLanguage: { zh: "原文", "zh-Hant": "原文", ja: "原文", en: "Original", ko: "원문" },
+  close: { zh: "关闭", "zh-Hant": "關閉", ja: "閉じる", en: "Close", ko: "닫기" },
+  title: { zh: "标题", "zh-Hant": "標題", ja: "タイトル", en: "Title", ko: "제목" },
+  detail: { zh: "详细说明", "zh-Hant": "詳細說明", ja: "詳細", en: "Details", ko: "상세 설명" },
+  authoredLanguage: { zh: "正文语言", "zh-Hant": "正文語言", ja: "本文の言語", en: "Content language", ko: "본문 언어" },
+  area: { zh: "地区", "zh-Hant": "地區", ja: "エリア", en: "Area", ko: "지역" },
+  serviceStart: { zh: "开始时间", "zh-Hant": "開始時間", ja: "開始日時", en: "Start", ko: "시작 시간" },
+  serviceEnd: { zh: "结束时间", "zh-Hant": "結束時間", ja: "終了日時", en: "End", ko: "종료 시간" },
+  expiry: { zh: "发布有效期", "zh-Hant": "發布有效期", ja: "掲載期限", en: "Post expiry", ko: "게시 만료" },
+  minBudget: { zh: "最低预算（JPY）", "zh-Hant": "最低預算（JPY）", ja: "最低予算（JPY）", en: "Minimum budget (JPY)", ko: "최소 예산(JPY)" },
+  maxBudget: { zh: "最高预算（JPY）", "zh-Hant": "最高預算（JPY）", ja: "最高予算（JPY）", en: "Maximum budget (JPY)", ko: "최대 예산(JPY)" },
+  serviceMode: { zh: "服务方式", "zh-Hant": "服務方式", ja: "サービス形式", en: "Service mode", ko: "서비스 방식" },
+  store: { zh: "到店", "zh-Hant": "到店", ja: "店舗", en: "In store", ko: "매장 방문" },
+  onsite: { zh: "上门", "zh-Hant": "上門", ja: "訪問", en: "On site", ko: "방문 서비스" },
+  flexible: { zh: "均可", "zh-Hant": "均可", ja: "どちらも可", en: "Flexible", ko: "모두 가능" },
+  publicAddress: { zh: "公开地址（可选）", "zh-Hant": "公開地址（選填）", ja: "公開住所（任意）", en: "Public address (optional)", ko: "공개 주소(선택)" },
+  serviceAreas: { zh: "服务地区（用逗号分隔）", "zh-Hant": "服務地區（以逗號分隔）", ja: "対応エリア（カンマ区切り）", en: "Service areas (comma separated)", ko: "서비스 지역(쉼표로 구분)" },
+  originalPrice: { zh: "原价（JPY，可选）", "zh-Hant": "原價（JPY，選填）", ja: "通常価格（JPY、任意）", en: "Original price (JPY, optional)", ko: "정상가(JPY, 선택)" },
+  submitPublish: { zh: "确认发布", "zh-Hant": "確認發布", ja: "投稿する", en: "Publish", ko: "게시하기" },
+  publishing: { zh: "正在发布…", "zh-Hant": "正在發布…", ja: "投稿中…", en: "Publishing…", ko: "게시 중…" },
+  required: { zh: "请填写所有必填字段", "zh-Hant": "請填寫所有必填欄位", ja: "必須項目をすべて入力してください", en: "Complete every required field", ko: "필수 항목을 모두 입력해 주세요" },
+  invalidWindow: { zh: "请确认服务开始、结束和有效期的先后顺序", "zh-Hant": "請確認服務開始、結束與有效期的先後順序", ja: "開始・終了・掲載期限の順序を確認してください", en: "Check the start, end, and expiry order", ko: "시작, 종료, 게시 기한 순서를 확인해 주세요" },
+  invalidBudget: { zh: "最低预算不能高于最高预算", "zh-Hant": "最低預算不能高於最高預算", ja: "最低予算は最高予算以下にしてください", en: "Minimum budget must not exceed maximum", ko: "최소 예산은 최대 예산보다 클 수 없습니다" },
+  invalidPrice: { zh: "服务价格不能高于原价", "zh-Hant": "服務價格不能高於原價", ja: "サービス価格は通常価格以下にしてください", en: "Service price must not exceed original price", ko: "서비스 가격은 정상가보다 클 수 없습니다" },
+  publishFailed: { zh: "发布失败，请保留表单并重试", "zh-Hant": "發布失敗，請保留表單並重試", ja: "投稿できませんでした。内容を保持したまま再試行してください", en: "Publication failed. Your form is preserved for retry.", ko: "게시하지 못했습니다. 입력 내용을 유지한 채 다시 시도해 주세요" }
+} as const satisfies Record<string, Record<Language, string>>;
+
+export type ExchangeTextKey = keyof typeof translations;
+
+export function exchangeText(key: ExchangeTextKey, language: Language) {
+  return translations[key][language];
+}

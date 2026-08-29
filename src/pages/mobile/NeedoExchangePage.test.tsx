@@ -9,7 +9,7 @@ import {
 } from "./NeedoExchangePage";
 import source from "./NeedoExchangePage.tsx?raw";
 
-describe("NeedoExchangePage formal capability gate", () => {
+describe("NeedoExchangePage formal entry", () => {
   it("does not expose locally generated exchange records", () => {
     expect(getNeedoFeedPosts("user")).toEqual([]);
     expect(getNeedoFeedPosts("merchant")).toEqual([]);
@@ -20,9 +20,10 @@ describe("NeedoExchangePage formal capability gate", () => {
     expect(() => submitNeedoDemandApplication("user", "unknown")).toThrow("error.feature_unavailable");
   });
 
-  it("shows an explicit formal capability gate and contains no mock identity generation", () => {
-    expect(source).toContain("正式需求与情报功能尚未启用");
-    expect(source).toContain("当前不会展示或创建模拟需求");
+  it("mounts the formal Exchange feed and contains no disabled-gate copy or mock identity generation", () => {
+    expect(source).toContain("<ExchangeFeedPage context={context} />");
+    expect(source).not.toContain("正式需求与情报功能尚未启用");
+    expect(source).not.toContain("当前不会展示或创建模拟需求");
     expect(source).not.toContain("localStorage");
     expect(source).not.toContain("hashSystemId");
     expect(source).not.toContain("getSeedPosts");

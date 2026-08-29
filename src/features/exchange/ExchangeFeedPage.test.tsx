@@ -1,0 +1,102 @@
+import { readFileSync } from "node:fs";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExchangePost } from "./types";
+import { useExchangeFeed } from "./useExchangeFeed";
+import { ExchangeFeedPage, getDefaultExchangePostType } from "./ExchangeFeedPage";
+
+vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
+vi.mock("./useExchangeFeed", () => ({ useExchangeFeed: vi.fn() }));
+
+const demandPost: ExchangePost = {
+  id: 41,
+  type: "demand",
+  status: "published",
+  title: "東京駅附近寻找中文口译",
+  detail: "这段正文由测试账号用简体中文发布，不应自动翻译。",
+  contentLocale: "zh-CN",
+  areaLabel: "東京都千代田区",
+  serviceStartAt: "2026-08-31T04:00:00.000Z",
+  serviceEndAt: "2026-08-31T06:00:00.000Z",
+  expiresAt: "2026-08-31T06:00:00.000Z",
+  publishedAt: "2026-08-30T04:00:00.000Z",
+  publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
+  counts: { comments: 4, likes: 21, shares: 6 },
+  viewer: { liked: false, canWithdraw: true },
+  demand: { budgetMinJpy: 8000, budgetMaxJpy: 12000 },
+  intelligence: null
+};
+
+const baseResource: ReturnType<typeof useExchangeFeed> = {
+  activeType: "demand" as const,
+  posts: [demandPost],
+  total: 1,
+  page: 1,
+  hasMore: false,
+  loading: false,
+  loadingMore: false,
+  error: null,
+  setActiveType: vi.fn(),
+  refresh: vi.fn(),
+  loadMore: vi.fn(),
+  upsertPost: vi.fn(),
+  replaceCounts: vi.fn(),
+  removePost: vi.fn()
+};
+
+function renderFeed(overrides: Partial<typeof baseResource> = {}, context: "user" | "merchant" | "technician" = "user") {
+  vi.mocked(useExchangeFeed).mockReturnValue({ ...baseResource, ...overrides });
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <ExchangeFeedPage context={context} />
+    </MemoryRouter>
+  );
+}
+
+describe("ExchangeFeedPage", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("keeps exactly two formal tabs and uses identity-specific route defaults", () => {
+    expect(getDefaultExchangePostType("user")).toBe("demand");
+    expect(getDefaultExchangePostType("merchant")).toBe("intelligence");
+    expect(getDefaultExchangePostType("technician")).toBe("intelligence");
+
+    const markup = renderFeed();
+    expect(markup).toContain("需求");
+    expect(markup).toContain("情报");
+    expect(markup).not.toContain(">全部<");
+    expect(useExchangeFeed).toHaveBeenCalledWith("demand", 10);
+  });
+
+  it("renders only server fields and preserves authored language", () => {
+    const markup = renderFeed();
+    expect(markup).toContain("测试客户 41");
+    expect(markup).toContain("u0000000041");
+    expect(markup).toContain("東京駅附近寻找中文口译");
+    expect(markup).toContain("这段正文由测试账号用简体中文发布，不应自动翻译。");
+    expect(markup).toContain("東京都千代田区");
+    expect(markup).toContain("¥8,000–¥12,000");
+    expect(markup).toContain("4");
+    expect(markup).toContain("21");
+    expect(markup).toContain("6");
+    expect(markup).toContain('data-no-i18n="true"');
+    expect(markup).toContain('href="/needo/posts/41"');
+  });
+
+  it("shows distinct loading, empty, permission, authentication, and unavailable states", () => {
+    expect(renderFeed({ loading: true, posts: [] })).toContain("正在读取正式需求");
+    expect(renderFeed({ posts: [], total: 0 })).toContain("还没有正式需求");
+    expect(renderFeed({ posts: [], error: { kind: "unauthorized", message: "error.auth.required" } })).toContain("请重新登录后查看");
+    expect(renderFeed({ posts: [], error: { kind: "forbidden", message: "error.permission.denied" } })).toContain("当前身份没有查看权限");
+    expect(renderFeed({ posts: [], error: { kind: "unavailable", message: "error.network" } })).toContain("正式服务暂时无法连接");
+    expect(renderFeed({ posts: [], error: { kind: "unknown", message: "error.api" } })).toContain("正式数据读取失败");
+  });
+
+  it("contains no deferred transaction controls or capability-gate copy", () => {
+    const source = readFileSync(new URL("./ExchangeFeedPage.tsx", import.meta.url), "utf8");
+    expect(source).not.toMatch(/抢单|报价|匹配|预约|支付/u);
+    expect(source).not.toContain("正式需求与情报功能尚未启用");
+    expect(source).not.toContain("localStorage");
+  });
+});
