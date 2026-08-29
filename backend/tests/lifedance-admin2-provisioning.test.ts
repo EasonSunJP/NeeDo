@@ -1,6 +1,7 @@
 import {
   LIFEDANCE_ADMIN2_PLAN,
   assertLocalAdmin2ProvisioningTarget,
+  selectAdmin2AccountCandidate,
   selectAdmin2FriendTargets
 } from "../src/simulation/lifedance-admin2-provisioning";
 
@@ -23,6 +24,61 @@ describe("LifeDance admin2 provisioning plan", () => {
       ],
       roleCodes: ["admin", "customer", "technician", "merchant_owner", "scout"]
     });
+  });
+
+  it("selects the legacy email account for an in-place canonical rename", () => {
+    expect(
+      selectAdmin2AccountCandidate([
+        {
+          id: 787,
+          email: "admin2@lifedance.com",
+          needoId: "needo0000000002",
+          accountNo: "0000000002",
+          sessionGeneration: 0
+        }
+      ])
+    ).toEqual({
+      id: 787,
+      email: "admin2@lifedance.com",
+      needoId: "needo0000000002",
+      accountNo: "0000000002",
+      sessionGeneration: 0
+    });
+  });
+
+  it("fails closed when canonical and legacy emails belong to different users", () => {
+    expect(() =>
+      selectAdmin2AccountCandidate([
+        {
+          id: 787,
+          email: "admin2@lifedance.com",
+          needoId: "needo0000000002",
+          accountNo: "0000000002",
+          sessionGeneration: 0
+        },
+        {
+          id: 900,
+          email: "admina@lifedance.com",
+          needoId: "needo0000000900",
+          accountNo: "0000000900",
+          sessionGeneration: 0
+        }
+      ])
+    ).toThrow("canonical and legacy emails belong to different users");
+  });
+
+  it("fails closed when the canonical email belongs to a different fixed account", () => {
+    expect(() =>
+      selectAdmin2AccountCandidate([
+        {
+          id: 900,
+          email: "admina@lifedance.com",
+          needoId: "needo0000000900",
+          accountNo: "0000000900",
+          sessionGeneration: 0
+        }
+      ])
+    ).toThrow("email belongs to a different fixed account");
   });
 
   it("selects exactly 20 stable formal simulation accounts and excludes admin accounts", () => {

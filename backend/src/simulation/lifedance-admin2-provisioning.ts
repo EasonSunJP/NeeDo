@@ -30,6 +30,14 @@ export interface Admin2FriendCandidate {
   needoId: string;
 }
 
+export interface Admin2AccountCandidate {
+  id: number;
+  email: string;
+  needoId: string;
+  accountNo: string | null;
+  sessionGeneration: number;
+}
+
 export interface LifeDanceAdmin2ProvisioningResult {
   userId: number;
   shopId: number;
@@ -102,6 +110,25 @@ const assert: (condition: unknown, message: string) => asserts condition = (
   message
 ) => {
   if (!condition) throw new Error(message);
+};
+
+export const selectAdmin2AccountCandidate = (
+  candidates: readonly Admin2AccountCandidate[]
+): Admin2AccountCandidate | null => {
+  const uniqueCandidates = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  assert(
+    uniqueCandidates.size <= 1,
+    "LifeDance admin2 canonical and legacy emails belong to different users."
+  );
+  const candidate = [...uniqueCandidates.values()][0] ?? null;
+  if (candidate) {
+    assert(
+      candidate.needoId === LIFEDANCE_ADMIN2_PLAN.needoId &&
+        candidate.accountNo === LIFEDANCE_ADMIN2_PLAN.numberPart,
+      "LifeDance admin2 email belongs to a different fixed account."
+    );
+  }
+  return candidate;
 };
 
 const ensureIdentity = async (
@@ -255,27 +282,40 @@ export const provisionLifeDanceAdmin2 = async (
   });
   assert(admin?.isActive && !admin.deletedAt, "Active LifeDance administrator is required.");
 
+  const accountCandidates = await tx.user.findMany({
+    where: {
+      email: {
+        in: [LIFEDANCE_ADMIN2_PLAN.email, ...LIFEDANCE_ADMIN2_PLAN.legacyEmails]
+      }
+    },
+    select: {
+      id: true,
+      email: true,
+      needoId: true,
+      accountNo: true,
+      sessionGeneration: true
+    }
+  });
+  const existingUser = selectAdmin2AccountCandidate(accountCandidates);
+
   const conflictingUser = await tx.user.findFirst({
     where: {
       OR: [
         { needoId: LIFEDANCE_ADMIN2_PLAN.needoId },
         { accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart }
       ],
-      email: { not: LIFEDANCE_ADMIN2_PLAN.email }
+      ...(existingUser ? { id: { not: existingUser.id } } : {})
     },
     select: { id: true }
   });
   assert(!conflictingUser, "The requested LifeDance admin2 NeeDo ID is already assigned.");
 
-  const existingUser = await tx.user.findUnique({
-    where: { email: LIFEDANCE_ADMIN2_PLAN.email },
-    select: { id: true, sessionGeneration: true }
-  });
   const sessionGeneration = existingUser ? existingUser.sessionGeneration + 1 : 0;
   const user = existingUser
     ? await tx.user.update({
         where: { id: existingUser.id },
         data: {
+          email: LIFEDANCE_ADMIN2_PLAN.email,
           needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
           accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart,
           primaryIdentityType: PrimaryIdentityType.NEEDO,
