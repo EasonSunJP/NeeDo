@@ -606,7 +606,8 @@ const main = async (): Promise<void> => {
         title: `${marker} ${title}`,
         caption: `${marker} caption`,
         ctaLabel: "詳細",
-        imageAltText: `${marker} image`
+        imageAltText: `${marker} image`,
+        mediaAssetPublicId: null
       }
     ];
     const userDraft = await carouselService.createDraft(
@@ -618,7 +619,7 @@ const main = async (): Promise<void> => {
         sourceLocale: "ja",
         slides: [
           {
-            mediaAssetPublicId: media.checksumSha256,
+            defaultMediaAssetPublicId: media.checksumSha256,
             sortOrder: 0,
             isEnabled: true,
             visibleFrom: null,
@@ -627,7 +628,7 @@ const main = async (): Promise<void> => {
             translations: slideTranslation("shop")
           },
           {
-            mediaAssetPublicId: media.checksumSha256,
+            defaultMediaAssetPublicId: media.checksumSha256,
             sortOrder: 1,
             isEnabled: true,
             visibleFrom: null,
@@ -636,7 +637,7 @@ const main = async (): Promise<void> => {
             translations: slideTranslation("technician")
           },
           {
-            mediaAssetPublicId: media.checksumSha256,
+            defaultMediaAssetPublicId: media.checksumSha256,
             sortOrder: 2,
             isEnabled: true,
             visibleFrom: null,
@@ -669,7 +670,7 @@ const main = async (): Promise<void> => {
         sourceLocale: "ja",
         slides: [
           {
-            mediaAssetPublicId: media.checksumSha256,
+            defaultMediaAssetPublicId: media.checksumSha256,
             sortOrder: 0,
             isEnabled: true,
             visibleFrom: null,

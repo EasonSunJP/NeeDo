@@ -17,7 +17,8 @@ const validTranslation = {
   title: "お知らせ",
   caption: null,
   ctaLabel: null,
-  imageAltText: "お知らせ画像"
+  imageAltText: "お知らせ画像",
+  mediaAssetPublicId: null
 };
 
 const validDraft = {
@@ -25,7 +26,7 @@ const validDraft = {
   sourceLocale: "ja",
   slides: [
     {
-      mediaAssetPublicId: "a".repeat(64),
+      defaultMediaAssetPublicId: "a".repeat(64),
       sortOrder: 0,
       isEnabled: true,
       visibleFrom: null,
@@ -68,7 +69,7 @@ describe("validateRequest content-publication error behavior", () => {
     expect(
       validateBody(userHomeCarouselDraftCreateBodySchema, {
         ...validDraft,
-        slides: [{ ...validDraft.slides[0], mediaAssetPublicId: "not-a-checksum" }]
+        slides: [{ ...validDraft.slides[0], defaultMediaAssetPublicId: "not-a-checksum" }]
       })?.message
     ).toBe("error.content.media_invalid");
   });
