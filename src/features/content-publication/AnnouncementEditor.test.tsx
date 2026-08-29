@@ -167,6 +167,14 @@ function button(label: string) {
   return result;
 }
 
+function localeTab(label: string) {
+  const match = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+  ).find((node) => node.textContent === label);
+  if (!match) throw new Error(`Missing locale tab: ${label}`);
+  return match;
+}
+
 async function renderEditor() {
   await act(async () => {
     root.render(
@@ -321,7 +329,7 @@ describe("AnnouncementEditor", () => {
       )!,
       "简体编辑",
     );
-    await click(Array.from(container.querySelectorAll('[role="tab"]'))[2]);
+    await click(localeTab("English"));
     await setValue(
       container.querySelector<HTMLInputElement>(
         'input[name="announcementTitle"]',

@@ -213,6 +213,14 @@ function button(label: string) {
   return result;
 }
 
+function localeTab(label: string) {
+  const match = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+  ).find((node) => node.textContent === label);
+  if (!match) throw new Error(`Missing locale tab: ${label}`);
+  return match;
+}
+
 async function renderEditor() {
   await act(async () => {
     root.render(
@@ -310,8 +318,8 @@ describe("LocalizedCarouselEditor", () => {
       Array.from(container.querySelectorAll('[role="tab"]')).map(
         (node) => node.textContent,
       ),
-    ).toEqual(["简体中文", "繁體中文", "English", "日本語", "한국어"]);
-    await click(Array.from(container.querySelectorAll('[role="tab"]'))[2]);
+    ).toEqual(["日本語", "English", "한국어", "繁體中文", "简体中文"]);
+    await click(localeTab("English"));
     expect(container.textContent).toContain(
       "来自简体中文的初始复制，尚未人工校对",
     );
@@ -320,17 +328,16 @@ describe("LocalizedCarouselEditor", () => {
   it("keeps locale edits independent and copies only after explicit confirmation", async () => {
     await renderEditor();
     await waitFor(() => expect(container.textContent).toContain("护理服务"));
-    const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
-    await click(tabs[2]);
+    await click(localeTab("English"));
     const englishTitle = container.querySelector<HTMLInputElement>(
       'input[name="title"]',
     )!;
     await setValue(englishTitle, "Edited English");
-    await click(tabs[3]);
+    await click(localeTab("日本語"));
     expect(
       container.querySelector<HTMLInputElement>('input[name="title"]')?.value,
     ).toBe("护理服务-ja");
-    await click(tabs[2]);
+    await click(localeTab("English"));
     expect(
       container.querySelector<HTMLInputElement>('input[name="title"]')?.value,
     ).toBe("Edited English");
@@ -569,7 +576,7 @@ describe("LocalizedCarouselEditor", () => {
     });
     await renderEditor();
     await waitFor(() => expect(container.textContent).toContain("护理服务"));
-    await click(Array.from(container.querySelectorAll('[role="tab"]'))[2]);
+    await click(localeTab("English"));
     await click(button("复制当前语言到其他语言"));
     await waitFor(() =>
       expect(apiMocks.copyCarouselSlideLocaleToAll).toHaveBeenCalled(),
@@ -836,7 +843,7 @@ describe("LocalizedCarouselEditor", () => {
     });
     await renderEditor();
     await waitFor(() => expect(container.textContent).toContain("护理服务"));
-    await click(Array.from(container.querySelectorAll('[role="tab"]'))[2]);
+    await click(localeTab("English"));
     await setValue(
       container.querySelector<HTMLInputElement>('input[name="title"]')!,
       "Edited English",

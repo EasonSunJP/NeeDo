@@ -63,9 +63,15 @@ Fresh verification on 2026-08-29:
 - isolated formal runtime on backend `3003` and frontend `5183`: `/health`, `/ready`, and frontend HTTP returned healthy/ready/200 with real local MySQL and Redis;
 - the existing formal `affiliate@example.com` account passed password-login, 25-permission, RBAC, and Affiliate-portal checks against the isolated backend;
 - the guarded real-database Affiliate Claim flow passed marketplace filtering, concurrent/repeated idempotency, stable credentials, signed-link tamper rejection, current-user isolation, unchanged wallet balance at Claim time, token-free audit evidence, and exact temporary-row cleanup;
-- the mobile login screen rendered at the isolated Affiliate URL without console errors or the previous recovery page.
+- authenticated browser acceptance passed for the operations dashboard, Affiliate operations task page, the independent user-home carousel editor, and the independent Affiliate announcement-carousel editor;
+- the operations header rendered the Chinese `联盟营销` label with the `TEST` badge; the Affiliate operations page loaded real database aggregates and an honest zero-task state;
+- the Affiliate identity switch rendered user, technician, store, and Affiliate foreground identities plus the three authorized backend entry points;
+- the Affiliate home rendered the authenticated avatar, NeeDo ID, current Affiliate identity, identity-switch entry, task search, the published Affiliate announcement carousel, and the real zero-task recommendation state;
+- the recommendation page and announcement-detail page loaded without browser warnings or errors;
+- both carousel administration routes exposed independent published versions and shared language tabs in the required Japanese, English, Korean, Traditional Chinese, and Simplified Chinese display order while preserving Simplified Chinese as the selected draft source; the browser emitted no warning or error logs;
+- the display-order change passed a RED/GREEN cycle: the focused regression first failed only on the old tab order, then 3 focused files / 67 tests, frontend TypeScript lint, 214 full frontend files / 1,258 tests, and the formal production build with 8-entry bundle audit all passed.
 
-The authenticated browser interaction checklist is still pending user-performed credential entry in the isolated local tab. No saved password, refresh token, browser storage, existing carousel content, or persisted user data was read or overwritten to bypass that boundary. The guarded localized-carousel publication check also refused to mutate the non-empty local carousel scenes and left its captured temporary rows/files at zero; carousel scene separation remains covered by the passing integration suites.
+No saved password, refresh token, browser storage, existing carousel content, or persisted user data was read or overwritten during browser acceptance. The guarded localized-carousel publication check also refused to mutate the non-empty local carousel scenes and left its captured temporary rows/files at zero; carousel scene separation remains covered by the passing integration suites. Because the formal database currently contains no eligible published Affiliate task, task-card, task-detail, and browser-click Claim acceptance remain data-blocked; their API, service, route, and component paths are covered by the passing automated and guarded real-database suites without seeding fake marketplace data.
 
 ## Remaining Formal Microsteps
 

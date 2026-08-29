@@ -24,11 +24,11 @@ import { Button } from "../../components/ui/Button";
 import { contentPublicationEditorText } from "./i18n";
 
 export const contentEditorLocales = [
-  "zh-CN",
-  "zh-TW",
-  "en",
   "ja",
+  "en",
   "ko",
+  "zh-TW",
+  "zh-CN",
 ] as const;
 
 export const contentEditorLocaleLabels: Record<ContentLocaleCode, string> = {
