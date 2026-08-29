@@ -9,10 +9,13 @@ import {
   SocialPostVisibility
 } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
+import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
+import type { AuthRequestContext } from "../services/auth.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
+import { AppError } from "../utils/app-error";
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -285,8 +288,31 @@ export interface RespondFriendRequestInput {
 export interface CreateSocialPostInput {
   authorUserId: number;
   content: string;
-  media?: unknown;
+  media?: CreateSocialPostMediaEnvelope;
+  mentionUserIds: number[];
   visibility: SocialPostVisibilityPayload;
+  context: AuthRequestContext;
+}
+
+export interface CreateSocialPostMediaItem {
+  id: string;
+  type: "image";
+  mediaAssetPublicId: string;
+  alt?: string;
+}
+
+export interface CreateSocialPostMediaEnvelope {
+  items: CreateSocialPostMediaItem[];
+  quotePostId?: number;
+  replyToPostId?: number;
+  repostPostId?: number;
+  postType?: "post" | "reply" | "quote" | "repost" | "announcement" | "technician-daily";
+  locationLabel?: string;
+}
+
+export interface CreateSocialPostResult {
+  post: SocialPostPayload;
+  notifications: NotificationPayload[];
 }
 
 export interface SocialPostListInput extends PaginationInput {
@@ -388,7 +414,7 @@ export interface RealtimeRepositoryPort {
   respondToFriendRequest: (
     input: RespondFriendRequestInput
   ) => Promise<FriendRequestPayload | null>;
-  createSocialPost: (input: CreateSocialPostInput) => Promise<SocialPostPayload>;
+  createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
   listSocialPosts: (
     userId: number,
     input: SocialPostListInput
@@ -1688,18 +1714,180 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
-  public async createSocialPost(input: CreateSocialPostInput): Promise<SocialPostPayload> {
-    const socialPost = await this.client.socialPost.create({
-      data: {
-        authorUserId: input.authorUserId,
-        content: input.content,
-        media: this.toJsonValue(input.media),
-        visibility: this.socialPostVisibilityToDb(input.visibility)
-      },
-      include: socialPostInclude
-    });
+  public async createSocialPost(input: CreateSocialPostInput): Promise<CreateSocialPostResult> {
+    return this.client.$transaction(async (transaction) => {
+      const mentionUserIds = Array.from(new Set(input.mentionUserIds));
+      if (
+        mentionUserIds.length !== input.mentionUserIds.length ||
+        mentionUserIds.length > 50 ||
+        mentionUserIds.includes(input.authorUserId)
+      ) {
+        throw this.socialPostConflict("error.social.invalid_mention_contact");
+      }
 
-    return this.mapSocialPost(socialPost, input.authorUserId, input.authorUserId);
+      if (mentionUserIds.length > 0) {
+        const contacts = await transaction.contact.findMany({
+          where: {
+            ownerUserId: input.authorUserId,
+            contactUserId: { in: mentionUserIds },
+            blockedAt: null,
+            deletedAt: null,
+            contactUser: { isActive: true, deletedAt: null }
+          },
+          select: { contactUserId: true }
+        });
+        const matchedContactIds = new Set(contacts.map((contact) => contact.contactUserId));
+        if (
+          matchedContactIds.size !== mentionUserIds.length ||
+          mentionUserIds.some((userId) => !matchedContactIds.has(userId))
+        ) {
+          throw this.socialPostConflict("error.social.invalid_mention_contact");
+        }
+      }
+
+      const requestedMediaItems = input.media?.items ?? [];
+      const mediaPublicIds = requestedMediaItems.map((item) => item.mediaAssetPublicId);
+      if (new Set(mediaPublicIds).size !== mediaPublicIds.length) {
+        throw this.socialPostConflict("error.social.media_not_owned");
+      }
+
+      const selectedMediaByPublicId = new Map<
+        string,
+        { id: number; checksumSha256: string | null; url: string }
+      >();
+      if (mediaPublicIds.length > 0) {
+        const mediaAssets = await transaction.mediaAsset.findMany({
+          where: {
+            ownerUserId: input.authorUserId,
+            entityType: "social_post_upload",
+            usageType: "social_post_public",
+            isActive: true,
+            deletedAt: null,
+            purgedAt: null,
+            checksumSha256: { in: mediaPublicIds }
+          },
+          select: {
+            id: true,
+            checksumSha256: true,
+            url: true,
+            createdAt: true
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        });
+        for (const mediaAsset of mediaAssets) {
+          if (
+            mediaAsset.checksumSha256 &&
+            !selectedMediaByPublicId.has(mediaAsset.checksumSha256)
+          ) {
+            selectedMediaByPublicId.set(mediaAsset.checksumSha256, mediaAsset);
+          }
+        }
+        if (
+          selectedMediaByPublicId.size !== mediaPublicIds.length ||
+          mediaPublicIds.some((publicId) => !selectedMediaByPublicId.has(publicId))
+        ) {
+          throw this.socialPostConflict("error.social.media_not_owned");
+        }
+      }
+
+      const media = input.media
+        ? {
+            ...(input.media.quotePostId !== undefined
+              ? { quotePostId: input.media.quotePostId }
+              : {}),
+            ...(input.media.replyToPostId !== undefined
+              ? { replyToPostId: input.media.replyToPostId }
+              : {}),
+            ...(input.media.repostPostId !== undefined
+              ? { repostPostId: input.media.repostPostId }
+              : {}),
+            ...(input.media.postType !== undefined ? { postType: input.media.postType } : {}),
+            ...(input.media.locationLabel !== undefined
+              ? { locationLabel: input.media.locationLabel }
+              : {}),
+            items: requestedMediaItems.map((item) => {
+              const mediaAsset = selectedMediaByPublicId.get(item.mediaAssetPublicId);
+              if (!mediaAsset) {
+                throw this.socialPostConflict("error.social.media_not_owned");
+              }
+              return {
+                id: item.id,
+                type: item.type,
+                url: mediaAsset.url,
+                ...(item.alt ? { alt: item.alt } : {})
+              };
+            }),
+            counters: { likes: 0, replies: 0, reposts: 0, views: 1, bookmarks: 0 }
+          }
+        : undefined;
+
+      const socialPost = await transaction.socialPost.create({
+        data: {
+          authorUserId: input.authorUserId,
+          content: input.content,
+          media: this.toJsonValue(media),
+          visibility: this.socialPostVisibilityToDb(input.visibility)
+        },
+        include: socialPostInclude
+      });
+
+      const selectedMediaAssetIds = mediaPublicIds.map(
+        (publicId) => selectedMediaByPublicId.get(publicId)!.id
+      );
+      if (selectedMediaAssetIds.length > 0) {
+        const updateResult = await transaction.mediaAsset.updateMany({
+          where: {
+            id: { in: selectedMediaAssetIds },
+            ownerUserId: input.authorUserId,
+            entityType: "social_post_upload",
+            usageType: "social_post_public",
+            isActive: true,
+            deletedAt: null,
+            purgedAt: null
+          },
+          data: { entityType: "social_post", entityId: socialPost.id }
+        });
+        if (updateResult.count !== selectedMediaAssetIds.length) {
+          throw this.socialPostConflict("error.social.media_not_owned");
+        }
+      }
+
+      const notifications: NotificationPayload[] = [];
+      for (const recipientUserId of mentionUserIds) {
+        const notification = await transaction.notification.create({
+          data: {
+            recipientUserId,
+            actorUserId: input.authorUserId,
+            type: NotificationType.SOCIAL,
+            title: "动态提醒",
+            body: "提醒你查看一条新动态。",
+            payload: { kind: "post_mention", postId: socialPost.id }
+          }
+        });
+        notifications.push(this.mapNotification(notification));
+      }
+
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.authorUserId,
+          action: "social.post.created",
+          targetType: "SocialPost",
+          targetId: socialPost.id,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: {
+            mentionUserIds,
+            mediaAssetPublicIds: mediaPublicIds,
+            visibility: input.visibility
+          } satisfies Prisma.InputJsonValue
+        }
+      });
+
+      return {
+        post: this.mapSocialPost(socialPost, input.authorUserId, input.authorUserId),
+        notifications
+      };
+    });
   }
 
   public async listSocialPosts(
@@ -2480,6 +2668,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return "system";
+  }
+
+  private socialPostConflict(message: string): AppError {
+    return new AppError({
+      code: ERROR_CODES.VALIDATION,
+      message,
+      statusCode: 409
+    });
   }
 
   private toJsonValue(value: unknown): Prisma.InputJsonValue | undefined {

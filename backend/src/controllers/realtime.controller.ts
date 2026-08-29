@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { RealtimeService } from "../services/realtime.service";
 import { successResponse } from "../utils/api-response";
-import { getAuthenticatedAccess } from "../utils/request-context";
+import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   contactIdParamSchema,
   contactCreateBodySchema,
@@ -271,7 +271,8 @@ export class RealtimeController {
     (request, response) =>
       this.service.createSocialPost(
         getAuthenticatedAccess(response),
-        socialPostCreateBodySchema.parse(request.body)
+        socialPostCreateBodySchema.parse(request.body),
+        getRequestContext(request)
       ),
     201
   );

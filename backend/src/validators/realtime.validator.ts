@@ -162,37 +162,38 @@ export const socialPostListQuerySchema = z.object({
   authorUserId: z.coerce.number().int().positive().optional()
 });
 
-const socialMediaItemSchema = z.object({
-  id: z.string().trim().min(1).max(160),
-  type: z.enum(["image", "video"]),
-  url: z.string().trim().min(1).max(2_000).refine((value) => !value.startsWith("blob:")),
-  thumbnailUrl: z.string().trim().min(1).max(2_000).optional(),
-  alt: z.string().trim().max(500).optional(),
-  aspectRatio: z.number().positive().max(10).optional(),
-  durationLabel: z.string().trim().max(30).optional()
-});
+const socialCreateMediaItemSchema = z
+  .object({
+    id: z.string().trim().min(1).max(120),
+    type: z.literal("image"),
+    mediaAssetPublicId: z.string().regex(/^[a-f0-9]{64}$/u),
+    alt: z.string().trim().max(255).optional()
+  })
+  .strict();
 
-const socialMediaEnvelopeSchema = z.object({
-  items: z.array(socialMediaItemSchema).max(9),
+const socialCreateMediaEnvelopeSchema = z.object({
+  items: z.array(socialCreateMediaItemSchema).max(9),
   quotePostId: z.coerce.number().int().positive().optional(),
   replyToPostId: z.coerce.number().int().positive().optional(),
   repostPostId: z.coerce.number().int().positive().optional(),
   postType: z.enum(["post", "reply", "quote", "repost", "announcement", "technician-daily"]).optional(),
-  locationLabel: z.string().trim().max(160).optional(),
-  counters: z.object({
-    likes: z.number().int().nonnegative().optional(),
-    replies: z.number().int().nonnegative().optional(),
-    reposts: z.number().int().nonnegative().optional(),
-    views: z.number().int().nonnegative().optional(),
-    bookmarks: z.number().int().nonnegative().optional()
-  }).optional()
-});
+  locationLabel: z.string().trim().max(160).optional()
+}).strict();
 
-export const socialPostCreateBodySchema = z.object({
-  content: z.string().trim().min(1).max(5000),
-  media: z.union([z.array(socialMediaItemSchema).max(9), socialMediaEnvelopeSchema]).optional(),
-  visibility: z.enum(["public", "followers"]).default("public")
-});
+export const socialPostCreateBodySchema = z
+  .object({
+    content: z.string().trim().min(1).max(5000),
+    media: socialCreateMediaEnvelopeSchema.optional(),
+    mentionUserIds: z
+      .array(z.number().int().positive())
+      .max(50)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "error.social.duplicate_mention_contact"
+      })
+      .default([]),
+    visibility: z.enum(["public", "followers"]).default("public")
+  })
+  .strict();
 
 export const followCreateBodySchema = z.object({
   targetUserId: z.coerce.number().int().positive()

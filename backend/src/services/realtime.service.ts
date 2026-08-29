@@ -18,7 +18,7 @@ import type {
   UpdateConversationPrivacyInput,
   UpdateConversationPreferencesInput
 } from "../repositories/realtime.repository";
-import type { AuthenticatedAccessContext } from "./auth.service";
+import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { RealtimeEventGatewayPort } from "./realtime-event.gateway";
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
@@ -463,29 +463,42 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async createSocialPost(
     auth: AuthenticatedAccessContext,
-    input: Omit<CreateSocialPostInput, "authorUserId">
+    input: Omit<CreateSocialPostInput, "authorUserId" | "context">,
+    context: AuthRequestContext
   ) {
-    const post = await this.repository.createSocialPost({
+    const result = await this.repository.createSocialPost({
       authorUserId: auth.userId,
       content: input.content,
       media: input.media,
-      visibility: input.visibility
+      mentionUserIds: input.mentionUserIds,
+      visibility: input.visibility,
+      context
     });
     const recipientUserIds = Array.from(
       new Set([auth.userId, ...(await this.repository.listFollowerUserIds(auth.userId))])
     );
+
+    for (const notification of result.notifications) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "notification.created",
+        recipientUserId: notification.recipientUserId,
+        payload: notification,
+        createdAt: new Date().toISOString()
+      });
+    }
 
     for (const recipientUserId of recipientUserIds) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: "social.post.created",
         recipientUserId,
-        payload: post,
+        payload: result.post,
         createdAt: new Date().toISOString()
       });
     }
 
-    return post;
+    return result.post;
   }
 
   public listSocialPosts(auth: AuthenticatedAccessContext, input: SocialPostListInput) {

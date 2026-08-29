@@ -49,7 +49,7 @@ describe("RealtimeService fuzzy search", () => {
 });
 
 describe("RealtimeService social events", () => {
-  it("publishes a created post to the author and current followers", async () => {
+  it("publishes a created post to followers and persisted reminders to their recipients", async () => {
     const post = {
       id: 44,
       authorUserId: 1,
@@ -59,7 +59,22 @@ describe("RealtimeService social events", () => {
       createdAt: new Date("2026-08-25T00:00:00.000Z")
     };
     const repository = {
-      createSocialPost: jest.fn(async () => post),
+      createSocialPost: jest.fn(async () => ({
+        post,
+        notifications: [
+          {
+            id: 501,
+            recipientUserId: 4,
+            actorUserId: 1,
+            type: "social" as const,
+            title: "动态提醒",
+            body: "提醒你查看一条新动态。",
+            payload: { kind: "post_mention", postId: 44 },
+            readAt: null,
+            createdAt: post.createdAt
+          }
+        ]
+      })),
       listFollowerUserIds: jest.fn(async () => [2, 3])
     };
     const eventGateway = {
@@ -70,11 +85,12 @@ describe("RealtimeService social events", () => {
 
     await service.createSocialPost(
       { userId: 1 } as never,
-      { content: post.content, visibility: post.visibility }
+      { content: post.content, mentionUserIds: [4], visibility: post.visibility },
+      { ip: "127.0.0.1", userAgent: "realtime-service-test" }
     );
 
     expect(repository.listFollowerUserIds).toHaveBeenCalledWith(1);
-    expect(eventGateway.publish).toHaveBeenCalledTimes(3);
+    expect(eventGateway.publish).toHaveBeenCalledTimes(4);
     expect(eventGateway.publish).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "social.post.created",
@@ -82,6 +98,34 @@ describe("RealtimeService social events", () => {
         payload: post
       })
     );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "notification.created",
+        recipientUserId: 4,
+        payload: expect.objectContaining({ id: 501, recipientUserId: 4 })
+      })
+    );
+  });
+
+  it("publishes no events when the repository transaction rejects", async () => {
+    const repository = {
+      createSocialPost: jest.fn(async () => {
+        throw new Error("transaction rolled back");
+      }),
+      listFollowerUserIds: jest.fn()
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.createSocialPost(
+        { userId: 1 } as never,
+        { content: "failed post", mentionUserIds: [4], visibility: "public" },
+        { ip: "127.0.0.1" }
+      )
+    ).rejects.toThrow("transaction rolled back");
+    expect(repository.listFollowerUserIds).not.toHaveBeenCalled();
+    expect(eventGateway.publish).not.toHaveBeenCalled();
   });
 });
 

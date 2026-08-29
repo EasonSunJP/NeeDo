@@ -961,6 +961,7 @@ const createFixture = async () => {
         authorUserId: number;
         content: string;
         media?: unknown;
+        mentionUserIds: number[];
         visibility: string;
       }) => {
         const socialPost = {
@@ -973,7 +974,7 @@ const createFixture = async () => {
         };
         socialPosts.push(socialPost);
 
-        return socialPost;
+        return { post: socialPost, notifications: [] };
       }
     ),
     listSocialPosts: jest.fn(async () => listPage(socialPosts)),
@@ -1148,6 +1149,65 @@ const createFixture = async () => {
 };
 
 describe("Step 13 realtime IM / Social / Notification API", () => {
+  it("accepts only request-owned image references and unique contact reminder IDs", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const checksum = "a".repeat(64);
+
+    await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        content: "Formal image post",
+        media: {
+          items: [{ id: "m1", type: "image", mediaAssetPublicId: checksum, alt: "Quiet room" }],
+          postType: "post",
+          locationLabel: "东京 银座"
+        },
+        mentionUserIds: [2],
+        visibility: "public"
+      })
+      .expect(201);
+
+    expect(fixture.realtimeRepository.createSocialPost).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        authorUserId: 1,
+        mentionUserIds: [2],
+        media: {
+          items: [{ id: "m1", type: "image", mediaAssetPublicId: checksum, alt: "Quiet room" }],
+          postType: "post",
+          locationLabel: "东京 银座"
+        },
+        context: expect.objectContaining({ ip: expect.any(String) })
+      })
+    );
+
+    for (const invalidBody of [
+      {
+        content: "Duplicate reminders",
+        mentionUserIds: [2, 2]
+      },
+      {
+        content: "Client URL is forbidden",
+        media: { items: [{ id: "m1", type: "image", url: "/media/content/client.png" }] }
+      },
+      {
+        content: "Video is not ready",
+        media: { items: [{ id: "m1", type: "video", mediaAssetPublicId: checksum }] }
+      },
+      {
+        content: "Counters are server owned",
+        media: { items: [], counters: { likes: 99 } }
+      }
+    ]) {
+      await request(fixture.app)
+        .post("/api/v1/social/posts")
+        .set("Authorization", `Bearer ${ayaToken}`)
+        .send(invalidBody)
+        .expect(400);
+    }
+  });
+
   it("returns a protected 30-day friend activity status without media payloads", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");

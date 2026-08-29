@@ -258,6 +258,45 @@ describe("GET /api/v1/openapi.json", () => {
         "415": expect.objectContaining({ description: expect.stringContaining("media_invalid") })
       })
     );
+    const socialPostCreate = response.body.paths["/api/v1/social/posts"].post;
+    const socialPostCreateSchema =
+      socialPostCreate.requestBody.content["application/json"].schema;
+    expect(socialPostCreateSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["content"],
+      properties: {
+        mentionUserIds: {
+          type: "array",
+          maxItems: 50,
+          uniqueItems: true,
+          items: { type: "integer", minimum: 1 }
+        },
+        media: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            items: {
+              type: "array",
+              maxItems: 9,
+              items: expect.objectContaining({
+                type: "object",
+                additionalProperties: false,
+                required: ["id", "type", "mediaAssetPublicId"]
+              })
+            }
+          }
+        }
+      }
+    });
+    expect(socialPostCreate.responses).toEqual(
+      expect.objectContaining({
+        "201": expect.any(Object),
+        "409": expect.objectContaining({
+          description: expect.stringContaining("invalid_mention_contact")
+        })
+      })
+    );
     expect(
       response.body.paths["/api/v1/contracts/acceptances/{receiptId}/receipt"].get.security
     ).toEqual([{ bearerAuth: [] }]);
