@@ -5583,7 +5583,7 @@ export function ImConversationRoomPage({
           ) : null}
 
           {pinnedMessages.length > 0 ? (
-            <section className={cn("relative z-10 border-b px-3 py-2", isNight ? "border-white/8 bg-[#1f1f20]/88" : "border-[color:color-mix(in_srgb,var(--client-line)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]")}>
+            <section className={cn("relative z-10 px-3 py-2", isNight ? "bg-[#1f1f20]/88" : "bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]")}>
               <div className="space-y-1.5">
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];

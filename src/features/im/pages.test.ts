@@ -215,6 +215,18 @@ describe("IM pages", () => {
     expect(componentsSource).not.toContain('style={{ height: expanded ? "min(76dvh, 620px)" : "min(43dvh, 360px)" }}');
   });
 
+  it("does not render a bottom divider beneath the pinned-message tray", () => {
+    const trayStart = pagesSource.indexOf("{pinnedMessages.length > 0 ? (");
+    const sectionStart = pagesSource.indexOf("<section", trayStart);
+    const sectionEnd = pagesSource.indexOf(">", sectionStart);
+    const sectionOpening = pagesSource.slice(sectionStart, sectionEnd);
+
+    expect(trayStart).toBeGreaterThan(-1);
+    expect(sectionStart).toBeGreaterThan(trayStart);
+    expect(sectionEnd).toBeGreaterThan(sectionStart);
+    expect(sectionOpening).not.toContain("border-b");
+  });
+
   it("does not expose legacy message actions that only close the menu", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
