@@ -136,6 +136,8 @@ const envSchema = z
       .default("runtime/identity-applications"),
     IM_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/im-media"),
     IM_MEDIA_PUBLIC_BASE_URL: optionalUrlSchema,
+    IM_PRIVACY_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(100).default(1_000),
+    IM_PRIVACY_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(50),
     CONTENT_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/content-media"),
     CONTENT_PUBLICATION_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
     CONTENT_PUBLICATION_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),

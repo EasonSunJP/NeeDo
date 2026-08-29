@@ -21,10 +21,12 @@ export type RealtimeMessage = {
   contentPurgedAt?: string | null;
   conversationId: number;
   createdAt: string;
+  expiresAt?: string | null;
   id: number;
   lifecycleVersion?: number;
   reactionVersion?: number;
   metadata: unknown;
+  privacyPolicyVersionAtSend?: number | null;
   reactions?: RealtimeMessageReaction[];
   recallDeadlineAt?: string | null;
   recalledAt?: string | null;

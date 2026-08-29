@@ -303,6 +303,34 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
         : "system";
   const ext = metadata.needoMessageExt;
   const quotedMessageId = metadata.needoQuotedMessageId;
+  const rawExt =
+    ext && typeof ext === "object" && !Array.isArray(ext)
+      ? (ext as MessageExt)
+      : undefined;
+  const { disappearing: _untrustedDisappearing, ...safeExt } = rawExt ?? {};
+  const privacyPolicyVersionAtSend = message.privacyPolicyVersionAtSend;
+  const createdAtMs = Date.parse(message.createdAt);
+  const expiresAtMs = message.expiresAt ? Date.parse(message.expiresAt) : Number.NaN;
+  const hasPrivacyCountdown =
+    Number.isInteger(privacyPolicyVersionAtSend) &&
+    (privacyPolicyVersionAtSend ?? -1) >= 0 &&
+    Number.isFinite(createdAtMs) &&
+    Number.isFinite(expiresAtMs) &&
+    expiresAtMs > createdAtMs;
+  const disappearingCountdown = hasPrivacyCountdown
+    ? secondsToCountdown(Math.floor((expiresAtMs - createdAtMs) / 1_000))
+    : undefined;
+  const normalizedExt: MessageExt = disappearingCountdown
+    ? {
+        ...safeExt,
+        disappearing: {
+          mode: "sent",
+          countdown: disappearingCountdown,
+          startedAt: message.createdAt,
+          expiresAt: message.expiresAt ?? undefined,
+        },
+      }
+    : safeExt;
 
   return {
     id: String(message.id),
@@ -320,6 +348,10 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
     recalledAt: message.recalledAt ?? undefined,
     recallMode: message.recallMode ?? undefined,
     contentPurgedAt: message.contentPurgedAt ?? undefined,
+    privacyPolicyVersionAtSend:
+      typeof privacyPolicyVersionAtSend === "number"
+        ? privacyPolicyVersionAtSend
+        : undefined,
     lifecycleVersion: message.lifecycleVersion,
     reactionVersion: message.reactionVersion,
     availableRecallModes: isRecalled
@@ -337,10 +369,7 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
       })),
       reactedByMe: reaction.reactedByMe,
     })),
-    ext:
-      ext && typeof ext === "object" && !Array.isArray(ext)
-        ? (ext as MessageExt)
-        : undefined,
+    ext: Object.keys(normalizedExt).length > 0 ? normalizedExt : undefined,
   };
 }
 

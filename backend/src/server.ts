@@ -10,6 +10,7 @@ import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-r
 import { ExchangePostRepository } from "./repositories/exchange.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
+import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
@@ -18,6 +19,7 @@ import { BookingUserRewardExpiryService } from "./services/booking-user-reward-e
 import { ContentPublicationSchedulerService } from "./services/content-publication-scheduler.service";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
+import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
 import { ExchangeService } from "./services/exchange.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
@@ -29,6 +31,7 @@ import { BookingUserRewardExpiryWorker } from "./workers/booking-user-reward-exp
 import { ExchangePostExpiryWorker } from "./workers/exchange-post-expiry.worker";
 import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
+import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
 
 const realtimeEventGateway = new SseRealtimeEventGateway({
   eventBus: new RedisRealtimeEventBus({
@@ -106,6 +109,12 @@ const contentPublicationWorker = new ContentPublicationWorker(
   env.CONTENT_PUBLICATION_INTERVAL_MS,
   env.CONTENT_PUBLICATION_BATCH_SIZE
 );
+const imPrivacyExpiryWorker = new ImPrivacyExpiryWorker(
+  new ImPrivacyExpiryService(new ImPrivacyExpiryRepository(), realtimeEventGateway),
+  logger,
+  env.IM_PRIVACY_EXPIRY_INTERVAL_MS,
+  env.IM_PRIVACY_EXPIRY_BATCH_SIZE
+);
 
 const server = app.listen(env.PORT, () => {
   logger.info(
@@ -124,6 +133,7 @@ const server = app.listen(env.PORT, () => {
   }
   affiliateAllianceInvitationExpiryWorker.start();
   contentPublicationWorker.start();
+  imPrivacyExpiryWorker.start();
 });
 
 const shutdown = createShutdownHandler({
@@ -143,6 +153,7 @@ const shutdown = createShutdownHandler({
     affiliateAllianceInvitationExpiryWorker.stop();
     affiliateTaskExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
+    imPrivacyExpiryWorker.stop();
   }
 });
 

@@ -1392,10 +1392,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "content",
           "metadata",
           "reactions",
+          "expiresAt",
           "recallDeadlineAt",
           "recalledAt",
           "recallMode",
           "contentPurgedAt",
+          "privacyPolicyVersionAtSend",
           "lifecycleVersion",
           "reactionVersion",
           "availableRecallModes",
@@ -1412,6 +1414,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: { $ref: "#/components/schemas/RealtimeMessageReaction" }
           },
+          expiresAt: { type: ["string", "null"], format: "date-time" },
           recallDeadlineAt: { type: ["string", "null"], format: "date-time" },
           recalledAt: { type: ["string", "null"], format: "date-time" },
           recallMode: {
@@ -1419,6 +1422,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["standard", "traceless", null]
           },
           contentPurgedAt: { type: ["string", "null"], format: "date-time" },
+          privacyPolicyVersionAtSend: { type: ["integer", "null"], minimum: 0 },
           lifecycleVersion: { type: "integer", minimum: 0 },
           reactionVersion: { type: "integer", minimum: 0 },
           availableRecallModes: {

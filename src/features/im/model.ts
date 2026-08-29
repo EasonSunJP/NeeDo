@@ -270,6 +270,7 @@ export type ConversationMessage = {
   sentAt: string;
   editedAt?: string;
   contentPurgedAt?: string;
+  privacyPolicyVersionAtSend?: number;
   lifecycleVersion?: number;
   reactionVersion?: number;
   recallDeadlineAt?: string;

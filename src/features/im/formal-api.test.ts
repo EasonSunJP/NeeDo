@@ -712,6 +712,44 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("maps server-authoritative group privacy expiry into a visible sent-time countdown", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-created-privacy-1",
+        type: "message.created",
+        payload: {
+          id: 702,
+          conversationId: 91,
+          senderUserId: 201,
+          type: "text",
+          content: "两分钟后消失",
+          metadata: {
+            needoMessageExt: {
+              disappearing: { expiresAt: "2099-01-01T00:00:00.000Z" },
+            },
+          },
+          expiresAt: "2026-08-25T10:02:00.000Z",
+          privacyPolicyVersionAtSend: 4,
+          reactions: [],
+          createdAt: now,
+        },
+      }),
+    ).toMatchObject({
+      type: "message.created",
+      message: {
+        id: "702",
+        ext: {
+          disappearing: {
+            mode: "sent",
+            countdown: { months: 0, days: 0, hours: 0, minutes: 2 },
+            startedAt: now,
+            expiresAt: "2026-08-25T10:02:00.000Z",
+          },
+        },
+      },
+    });
+  });
+
   it("turns a connected event into one bounded catch-up refresh", () => {
     expect(
       toFormalImStoreUpdate({

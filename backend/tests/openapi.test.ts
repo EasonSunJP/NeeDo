@@ -780,6 +780,8 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("LedgerTransaction");
     expect(response.body.components.schemas.RealtimeMessage.required).toEqual(
       expect.arrayContaining([
+        "expiresAt",
+        "privacyPolicyVersionAtSend",
         "recallDeadlineAt",
         "recalledAt",
         "recallMode",

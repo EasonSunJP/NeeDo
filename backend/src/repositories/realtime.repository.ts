@@ -63,11 +63,13 @@ export interface MessagePayload {
   content: string | null;
   metadata: unknown;
   reactions: MessageReactionSummaryPayload[];
+  expiresAt: Date | null;
   createdAt: Date;
   recallDeadlineAt: Date;
   recalledAt: Date | null;
   recallMode: MessageRecallModePayload | null;
   contentPurgedAt: Date | null;
+  privacyPolicyVersionAtSend: number | null;
   lifecycleVersion: number;
   reactionVersion: number;
   availableRecallModes: MessageRecallModePayload[];
@@ -938,7 +940,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           deletedAt: null,
           conversation: { deletedAt: null }
         },
-        select: { id: true }
+        select: {
+          id: true,
+          conversation: {
+            select: {
+              type: true,
+              privacyModeEnabled: true,
+              disappearingTtlSeconds: true,
+              privacyPolicyVersion: true
+            }
+          }
+        }
       });
 
       if (!participant) {
@@ -955,10 +967,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
       const createdAt = new Date();
       const recallWindowSeconds = policy?.recallWindowSeconds ?? 180;
-      const expiresAt =
+      const globalExpiresAt =
         policy?.textRetentionSeconds === null || policy?.textRetentionSeconds === undefined
           ? null
           : new Date(createdAt.getTime() + policy.textRetentionSeconds * 1_000);
+      const privacyTtlSeconds = participant.conversation.disappearingTtlSeconds;
+      const usesPrivacyExpiry =
+        participant.conversation.type === ConversationType.GROUP &&
+        participant.conversation.privacyModeEnabled &&
+        typeof privacyTtlSeconds === "number" &&
+        Number.isInteger(privacyTtlSeconds) &&
+        privacyTtlSeconds >= 60 &&
+        privacyTtlSeconds <= 34_560_000;
+      const expiresAt = usesPrivacyExpiry
+        ? new Date(createdAt.getTime() + privacyTtlSeconds * 1_000)
+        : globalExpiresAt;
       const message = await tx.message.create({
         data: {
           conversationId: input.conversationId,
@@ -969,7 +992,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           createdAt,
           expiresAt,
           recallDeadlineAt: new Date(createdAt.getTime() + recallWindowSeconds * 1_000),
-          privacyPolicyVersionAtSend: null,
+          privacyPolicyVersionAtSend: usesPrivacyExpiry
+            ? participant.conversation.privacyPolicyVersion
+            : null,
           lifecycleVersion: policy?.version ?? 1
         },
         include: messageInclude
@@ -1186,7 +1211,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const pageSize = Math.min(Math.max(input.pageSize ?? 20, 1), 100);
     const where: Prisma.MessageWhereInput = {
       conversationId: input.conversationId,
-      deletedAt: null,
+      ...this.availableMessageWhere(new Date()),
       userDeletions: {
         none: { userId: input.userId, deletedAt: null }
       },
@@ -2662,7 +2687,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       },
       messages: {
         where: {
-          deletedAt: null,
+          ...this.availableMessageWhere(new Date()),
           ...(viewerUserId
             ? {
                 userDeletions: {
@@ -2712,6 +2737,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     };
   }
 
+  private availableMessageWhere(now: Date): Prisma.MessageWhereInput {
+    return {
+      deletedAt: null,
+      expiredAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+    };
+  }
+
   private mapMessage(
     message: MessageRecord,
     viewerUserId: number,
@@ -2756,11 +2789,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           people,
           reactedByMe: people.some((person) => person.userId === viewerUserId)
         })),
+      expiresAt: message.expiresAt,
       createdAt: message.createdAt,
       recallDeadlineAt: message.recallDeadlineAt,
       recalledAt: message.recalledAt,
       recallMode,
       contentPurgedAt: message.contentPurgedAt,
+      privacyPolicyVersionAtSend: message.privacyPolicyVersionAtSend,
       lifecycleVersion: message.lifecycleVersion,
       reactionVersion: message.reactionVersion,
       availableRecallModes: canRecall ? ["standard"] : []
