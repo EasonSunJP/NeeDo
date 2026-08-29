@@ -56,8 +56,14 @@ vi.mock("../../i18n/I18nProvider", () => ({
   useOptionalI18n: () => ({ language: "zh" }),
 }));
 
-const localeValues = (title: string, isInitialCopy = false) => ({
+const localeValues = (
+  title: string,
+  isInitialCopy = false,
+  imageUrl = "/media/a.webp",
+) => ({
   "zh-CN": {
+    mediaAssetPublicId: null,
+    imageUrl,
     badge: "精选",
     title,
     caption: "说明",
@@ -67,6 +73,8 @@ const localeValues = (title: string, isInitialCopy = false) => ({
     isInitialCopy,
   },
   "zh-TW": {
+    mediaAssetPublicId: null,
+    imageUrl,
     badge: "精選",
     title: `${title} Traditional`,
     caption: "說明",
@@ -76,6 +84,8 @@ const localeValues = (title: string, isInitialCopy = false) => ({
     isInitialCopy: true,
   },
   en: {
+    mediaAssetPublicId: null,
+    imageUrl,
     badge: "Featured",
     title: `${title}-en`,
     caption: "Caption",
@@ -85,6 +95,8 @@ const localeValues = (title: string, isInitialCopy = false) => ({
     isInitialCopy: true,
   },
   ja: {
+    mediaAssetPublicId: null,
+    imageUrl,
     badge: "特集",
     title: `${title}-ja`,
     caption: "説明",
@@ -94,6 +106,8 @@ const localeValues = (title: string, isInitialCopy = false) => ({
     isInitialCopy: true,
   },
   ko: {
+    mediaAssetPublicId: null,
+    imageUrl,
     badge: "추천",
     title: `${title}-ko`,
     caption: "설명",
@@ -124,8 +138,8 @@ const draft: CarouselRelease = {
   slides: [
     {
       id: SLIDE_A,
-      mediaAssetPublicId: MEDIA_A,
-      imageUrl: "/media/a.webp",
+      defaultMediaAssetPublicId: MEDIA_A,
+      defaultImageUrl: "/media/a.webp",
       sortOrder: 0,
       isEnabled: true,
       visibleFrom: null,
@@ -135,14 +149,14 @@ const draft: CarouselRelease = {
     },
     {
       id: SLIDE_B,
-      mediaAssetPublicId: MEDIA_B,
-      imageUrl: "/media/b.webp",
+      defaultMediaAssetPublicId: MEDIA_B,
+      defaultImageUrl: "/media/b.webp",
       sortOrder: 1,
       isEnabled: true,
       visibleFrom: null,
       visibleUntil: null,
       target: { type: "shop", shopId: 21 },
-      translations: localeValues("东京店铺", true),
+      translations: localeValues("东京店铺", true, "/media/b.webp"),
     },
   ],
   createdAt: "2026-08-29T01:00:00.000Z",
@@ -219,6 +233,23 @@ function localeTab(label: string) {
   ).find((node) => node.textContent === label);
   if (!match) throw new Error(`Missing locale tab: ${label}`);
   return match;
+}
+
+async function uploadFileByLabel(label: string, file: File) {
+  const input = Array.from(container.querySelectorAll("label")).find((node) =>
+    node.textContent?.includes(label),
+  )?.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) throw new Error(`File input not found: ${label}`);
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  await act(async () =>
+    input.dispatchEvent(new Event("change", { bubbles: true })),
+  );
+}
+
+async function selectOptionByName(name: string, value: string) {
+  const select = container.querySelector<HTMLSelectElement>(`select[name="${name}"]`);
+  if (!select) throw new Error(`Select not found: ${name}`);
+  await setValue(select, value);
 }
 
 async function renderEditor() {
@@ -436,6 +467,68 @@ describe("LocalizedCarouselEditor", () => {
     ).toBe(SLIDE_B);
   });
 
+  it("uploads and clears only the selected locale image override", async () => {
+    await renderEditor();
+    await waitFor(() => expect(container.textContent).toContain("护理服务"));
+    await click(localeTab("日本語"));
+
+    const japaneseImage = new File(["ja"], "ja.png", { type: "image/png" });
+    await uploadFileByLabel("当前语言图片", japaneseImage);
+    await waitFor(() =>
+      expect(apiMocks.uploadContentImage).toHaveBeenCalledWith(
+        japaneseImage,
+        "画像説明",
+      ),
+    );
+    expect(
+      container.querySelector('img[src="/media/uploaded.webp"]'),
+    ).not.toBeNull();
+
+    await click(button("使用默认图片"));
+    expect(container.querySelector('img[src="/media/a.webp"]')).not.toBeNull();
+    await click(button("保存草稿"));
+    await waitFor(() =>
+      expect(apiMocks.updateCarouselSlideLocale).toHaveBeenCalled(),
+    );
+    expect(apiMocks.updateCarouselSlideLocale.mock.calls.at(-1)?.[4]).toEqual(
+      expect.objectContaining({ mediaAssetPublicId: null }),
+    );
+  });
+
+  it("creates a non-clickable user-home slide without target search or CTA", async () => {
+    const reviewedDraft = {
+      ...draft,
+      slides: draft.slides.map((slide) => ({
+        ...slide,
+        translations: Object.fromEntries(
+          Object.entries(slide.translations).map(([locale, value]) => [
+            locale,
+            { ...value, sourceLocale: locale, isInitialCopy: false },
+          ]),
+        ) as CarouselRelease["slides"][number]["translations"],
+      })),
+    };
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue({
+      ...scene,
+      draft: reviewedDraft,
+    });
+    apiMocks.replaceCarouselDraft.mockResolvedValue({
+      ...reviewedDraft,
+      lockVersion: 7,
+    });
+    await renderEditor();
+    await waitFor(() => expect(container.textContent).toContain("护理服务"));
+
+    await selectOptionByName("targetType", "none");
+    expect(container.querySelector('input[name="targetQuery"]')).toBeNull();
+    expect(container.querySelector('input[name="ctaLabel"]')).toBeNull();
+    await click(button("保存草稿"));
+    await waitFor(() => expect(apiMocks.replaceCarouselDraft).toHaveBeenCalled());
+    const body = apiMocks.replaceCarouselDraft.mock.calls.at(-1)?.[2] as CarouselDraftReplaceInput;
+    expect(body.slides[0].target).toEqual({ type: "none" });
+    expect(body.slides[0].translations.every((value) => value.ctaLabel === null)).toBe(true);
+  });
+
   it("previews, saves the complete structural draft, and publishes with the saved lock", async () => {
     const reviewedDraft = {
       ...draft,
@@ -604,7 +697,7 @@ describe("LocalizedCarouselEditor", () => {
       .calls[0][2] as CarouselDraftReplaceInput;
     expect(body.expectedLockVersion).toBe(7);
     expect(body.slides[0].publicId).toBe(SLIDE_B);
-    expect(body.slides[1].mediaAssetPublicId).toBe(MEDIA_UPLOADED);
+    expect(body.slides[1].defaultMediaAssetPublicId).toBe(MEDIA_UPLOADED);
     expect(body.slides[0].translations).toEqual(
       expect.arrayContaining(
         ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) =>
@@ -805,7 +898,7 @@ describe("LocalizedCarouselEditor", () => {
           sourceLocale: "zh-CN",
           slides: [
             expect.objectContaining({
-              mediaAssetPublicId: MEDIA_UPLOADED,
+              defaultMediaAssetPublicId: MEDIA_UPLOADED,
               translations: [
                 expect.objectContaining({
                   locale: "zh-CN",

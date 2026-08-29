@@ -16,6 +16,7 @@ export type ContentPublicationStatus =
   | "archived";
 
 export type PublishedCarouselTarget =
+  | { type: "none" }
   | { type: "shop"; publicId: string }
   | { type: "technician"; publicId: string }
   | { type: "service"; publicId: string }
@@ -71,6 +72,7 @@ export type ContentPageQuery = {
 
 export type CarouselTranslationInput = {
   locale: ContentLocaleCode;
+  mediaAssetPublicId: string | null;
   badge: string | null;
   title: string;
   caption: string | null;
@@ -79,6 +81,7 @@ export type CarouselTranslationInput = {
 };
 
 export type CarouselTranslation = Omit<CarouselTranslationInput, "locale"> & {
+  imageUrl: string;
   sourceLocale: ContentLocaleCode;
   isInitialCopy: boolean;
 };
@@ -89,6 +92,7 @@ export type CarouselReplacementTranslationInput = CarouselTranslationInput & {
 };
 
 export type UserHomeCarouselTargetInput =
+  | { type: "none" }
   | { type: "shop"; shopId: number }
   | { type: "shop"; publicId: string }
   | { type: "technician"; technicianProfileId: number }
@@ -119,7 +123,7 @@ export type CarouselDraftSlideInput<
   TScene extends CarouselScene = CarouselScene,
 > = {
   publicId?: string;
-  mediaAssetPublicId: string;
+  defaultMediaAssetPublicId: string;
   sortOrder: number;
   isEnabled: boolean;
   visibleFrom: string | null;
@@ -165,9 +169,10 @@ export type CarouselReleaseSlide = Omit<
   "publicId" | "target" | "translations"
 > & {
   id: string;
-  mediaAssetPublicId: string;
-  imageUrl: string;
+  defaultMediaAssetPublicId: string;
+  defaultImageUrl: string;
   target:
+    | { type: "none" }
     | { type: "shop"; shopId: number }
     | { type: "technician"; technicianProfileId: number }
     | { type: "service"; serviceId: number }

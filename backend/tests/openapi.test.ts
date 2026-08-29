@@ -1473,6 +1473,32 @@ describe("GET /api/v1/openapi.json", () => {
     expect(JSON.stringify(document.components.schemas.CarouselFiveTranslations)).toContain(
       '"maxItems":5'
     );
+    expect(document.components.schemas.CarouselTranslation).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
+          imageUrl: { type: "string", format: "uri-reference" }
+        })
+      })
+    );
+    expect(document.components.schemas.CarouselUserHomeTargetInput).toEqual(
+      expect.objectContaining({
+        oneOf: expect.arrayContaining([
+          expect.objectContaining({ properties: { type: { const: "none" } } })
+        ])
+      })
+    );
+    expect(document.components.schemas.PublishedCarouselTarget).toEqual(
+      expect.objectContaining({
+        oneOf: expect.arrayContaining([
+          expect.objectContaining({ properties: { type: { const: "none" } } })
+        ])
+      })
+    );
     expect(document.components.schemas.CarouselLocaleMutation).toEqual({
       oneOf: [
         { $ref: "#/components/schemas/CarouselLocaleUpdate" },

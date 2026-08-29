@@ -205,6 +205,23 @@ describe("PublishedCarousel", () => {
     );
   });
 
+  it("renders a none target without a card link or CTA and leaves the route unchanged", async () => {
+    const welcome = payload("USER_HOME", { type: "none" });
+    welcome.slides[0].ctaLabel = null;
+    apiMocks.getUserHomeCarousel.mockResolvedValue(welcome);
+
+    await renderCarousel("user-home");
+    await waitFor(() => expect(container.textContent).toContain("东京护理"));
+
+    expect(container.querySelector("a[href]")).toBeNull();
+    expect(
+      container.querySelector('[data-feature-carousel-cta="true"]'),
+    ).toBeNull();
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe(
+      "/",
+    );
+  });
+
   it("passes an explicit card height through to the shared carousel", async () => {
     apiMocks.getUserHomeCarousel.mockResolvedValue(
       payload("USER_HOME", {

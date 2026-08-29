@@ -162,7 +162,7 @@ function draftBody(
     sourceLocale,
     slides: draft.slides.map((slide, sortOrder) => ({
       publicId: slide.id,
-      mediaAssetPublicId: slide.mediaAssetPublicId,
+      defaultMediaAssetPublicId: slide.defaultMediaAssetPublicId,
       sortOrder,
       isEnabled: slide.isEnabled,
       visibleFrom: slide.visibleFrom,
@@ -172,6 +172,7 @@ function draftBody(
         const value = slide.translations[locale];
         return {
           locale,
+          mediaAssetPublicId: value.mediaAssetPublicId,
           badge: value.badge,
           title: value.title,
           caption: value.caption,
@@ -189,6 +190,7 @@ const translationFieldsEqual = (
   left: CarouselReleaseSlide["translations"][ContentLocaleCode],
   right: CarouselReleaseSlide["translations"][ContentLocaleCode],
 ) =>
+  left.mediaAssetPublicId === right.mediaAssetPublicId &&
   left.badge === right.badge &&
   left.title === right.title &&
   left.caption === right.caption &&
@@ -257,11 +259,13 @@ function targetLabel(
   target: CarouselReleaseSlide["target"],
   labels: {
     announcement: string;
+    none: string;
     service: string;
     shop: string;
     technician: string;
   },
 ) {
+  if (target.type === "none") return labels.none;
   const publicId =
     "publicId" in (target as object)
       ? String((target as unknown as { publicId: string }).publicId)
@@ -371,6 +375,15 @@ export function LocalizedCarouselEditor({
     draft?.slides[0] ??
     null;
   const translation = selectedSlide?.translations[state.selectedLocale] ?? null;
+
+  useEffect(() => {
+    if (!selectedSlide) return;
+    setTargetType(
+      selectedSlide.target.type === "affiliate_announcement"
+        ? "announcement"
+        : selectedSlide.target.type,
+    );
+  }, [selectedSlide?.id, selectedSlide?.target.type]);
 
   function replaceSelectedSlide(
     update: (slide: CarouselReleaseSlide) => CarouselReleaseSlide,
@@ -488,6 +501,7 @@ export function LocalizedCarouselEditor({
             locale,
             {
               expectedLockVersion: saved.lockVersion,
+              mediaAssetPublicId: value.mediaAssetPublicId,
               badge: value.badge,
               title: value.title,
               caption: value.caption,
@@ -551,7 +565,7 @@ export function LocalizedCarouselEditor({
     }
   }
 
-  async function uploadImage(event: ChangeEvent<HTMLInputElement>) {
+  async function uploadDefaultImage(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
     const file = input.files?.[0];
     if (!file || !selectedSlide) return;
@@ -562,8 +576,19 @@ export function LocalizedCarouselEditor({
       );
       replaceSelectedSlide((slide) => ({
         ...slide,
-        mediaAssetPublicId: media.publicId,
-        imageUrl: media.url,
+        defaultMediaAssetPublicId: media.publicId,
+        defaultImageUrl: media.url,
+        translations: Object.fromEntries(
+          contentEditorLocales.map((locale) => {
+            const value = slide.translations[locale];
+            return [
+              locale,
+              value.mediaAssetPublicId === null
+                ? { ...value, imageUrl: media.url }
+                : value,
+            ];
+          }),
+        ) as CarouselReleaseSlide["translations"],
       }));
       dispatch({ type: "notice", message: t("uploadSuccess") });
     } catch {
@@ -575,6 +600,62 @@ export function LocalizedCarouselEditor({
     } finally {
       input.value = "";
     }
+  }
+
+  async function uploadLocalizedImage(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file || !selectedSlide || !translation) return;
+    try {
+      const media = await contentPublicationApi.uploadContentImage(
+        file,
+        translation.imageAltText,
+      );
+      replaceSelectedSlide(
+        (slide) => ({
+          ...slide,
+          translations: {
+            ...slide.translations,
+            [state.selectedLocale]: {
+              ...slide.translations[state.selectedLocale],
+              mediaAssetPublicId: media.publicId,
+              imageUrl: media.url,
+              sourceLocale: state.selectedLocale,
+              isInitialCopy: false,
+            },
+          },
+        }),
+        "translation",
+      );
+      dispatch({ type: "notice", message: t("uploadSuccess") });
+    } catch {
+      dispatch({
+        type: "save-error",
+        conflict: false,
+        message: t("uploadFailed"),
+      });
+    } finally {
+      input.value = "";
+    }
+  }
+
+  function clearLocalizedImage() {
+    replaceSelectedSlide(
+      (slide) => ({
+        ...slide,
+        translations: {
+          ...slide.translations,
+          [state.selectedLocale]: {
+            ...slide.translations[state.selectedLocale],
+            mediaAssetPublicId: null,
+            imageUrl: slide.defaultImageUrl,
+            sourceLocale: state.selectedLocale,
+            isInitialCopy: false,
+          },
+        },
+      }),
+      "translation",
+    );
   }
 
   async function uploadBootstrapImage(event: ChangeEvent<HTMLInputElement>) {
@@ -777,7 +858,7 @@ export function LocalizedCarouselEditor({
         sourceLocale: state.selectedLocale,
         slides: [
           {
-            mediaAssetPublicId: bootstrapMedia.publicId,
+            defaultMediaAssetPublicId: bootstrapMedia.publicId,
             sortOrder: 0,
             isEnabled: true,
             visibleFrom: null,
@@ -786,6 +867,7 @@ export function LocalizedCarouselEditor({
             translations: [
               {
                 locale: state.selectedLocale,
+                mediaAssetPublicId: null,
                 badge: null,
                 title: bootstrapTitle.trim(),
                 caption: null,
@@ -809,17 +891,40 @@ export function LocalizedCarouselEditor({
     }
   }
 
+  function changeTargetType(value: string) {
+    setTargetType(value);
+    setTargetResults([]);
+    setTargetTotal(0);
+    setTargetPage(1);
+    if (value !== "none" || scene !== "user-home") return;
+    if (!selectedSlide) {
+      setBootstrapTarget({ type: "none" });
+      return;
+    }
+    replaceSelectedSlide((slide) => ({
+      ...slide,
+      target: { type: "none" },
+      translations: Object.fromEntries(
+        contentEditorLocales.map((locale) => [
+          locale,
+          { ...slide.translations[locale], ctaLabel: null },
+        ]),
+      ) as CarouselReleaseSlide["translations"],
+    }));
+  }
+
   const targetSearchPanel = (
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
       <h3 className="text-sm font-black text-ink">{t("searchTarget")}</h3>
       <select
         className={`${inputClass} mt-3`}
         name="targetType"
-        onChange={(event) => setTargetType(event.target.value)}
+        onChange={(event) => changeTargetType(event.target.value)}
         value={targetType}
       >
         {scene === "user-home" ? (
           <>
+            <option value="none">{t("noTarget")}</option>
             <option value="shop">{t("shop")}</option>
             <option value="technician">{t("technician")}</option>
             <option value="service">{t("service")}</option>
@@ -831,22 +936,26 @@ export function LocalizedCarouselEditor({
           </>
         )}
       </select>
-      <input
-        aria-label={t("targetQuery")}
-        className={`${inputClass} mt-2`}
-        name="targetQuery"
-        onChange={(event) => setTargetQuery(event.target.value)}
-        value={targetQuery}
-      />
-      <Button
-        className="mt-2 w-full"
-        onClick={() => void searchTargets(1)}
-        size="sm"
-        variant="secondary"
-      >
-        {t("searchTarget")}
-      </Button>
-      <div className="mt-3 space-y-2">
+      {targetType !== "none" ? (
+        <>
+          <input
+            aria-label={t("targetQuery")}
+            className={`${inputClass} mt-2`}
+            name="targetQuery"
+            onChange={(event) => setTargetQuery(event.target.value)}
+            value={targetQuery}
+          />
+          <Button
+            className="mt-2 w-full"
+            onClick={() => void searchTargets(1)}
+            size="sm"
+            variant="secondary"
+          >
+            {t("searchTarget")}
+          </Button>
+        </>
+      ) : null}
+      {targetType !== "none" ? <div className="mt-3 space-y-2">
         {targetResults.map((item) => (
           <button
             className="focus-ring w-full rounded-lg border border-line bg-paper p-3 text-left text-sm font-bold"
@@ -858,7 +967,7 @@ export function LocalizedCarouselEditor({
             <span className="ml-2 text-xs text-ink/45">{item.status}</span>
           </button>
         ))}
-      </div>
+      </div> : null}
       {targetTotal > targetPage * 10 ? (
         <Button
           className="mt-3 w-full"
@@ -1211,18 +1320,20 @@ export function LocalizedCarouselEditor({
               />
             </label>
             <div className="space-y-4">
-              <label className="block text-sm font-black text-ink">
-                {t("cta")}
-                <input
-                  className={`${inputClass} mt-2`}
-                  name="ctaLabel"
-                  onChange={(event) =>
-                    updateTranslation("ctaLabel", event.target.value)
-                  }
-                  readOnly={readOnly}
-                  value={translation?.ctaLabel ?? ""}
-                />
-              </label>
+              {selectedSlide?.target.type !== "none" ? (
+                <label className="block text-sm font-black text-ink">
+                  {t("cta")}
+                  <input
+                    className={`${inputClass} mt-2`}
+                    name="ctaLabel"
+                    onChange={(event) =>
+                      updateTranslation("ctaLabel", event.target.value)
+                    }
+                    readOnly={readOnly}
+                    value={translation?.ctaLabel ?? ""}
+                  />
+                </label>
+              ) : null}
               <label className="block text-sm font-black text-ink">
                 {t("imageAlt")}
                 <input
@@ -1239,7 +1350,7 @@ export function LocalizedCarouselEditor({
           </div>
 
           {!readOnly ? (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 space-y-3">
               <Button
                 onClick={() => void copyLocale()}
                 size="sm"
@@ -1251,15 +1362,50 @@ export function LocalizedCarouselEditor({
                 fallback={<Badge>{t("mediaDenied")}</Badge>}
                 permission={mediaPermission}
               >
-                <label className="focus-ring inline-flex h-8 cursor-pointer items-center rounded-full border border-line bg-white px-3 text-xs font-semibold text-ink hover:border-moss">
-                  {t("media")}
-                  <input
-                    accept="image/jpeg,image/png,image/webp"
-                    className="sr-only"
-                    onChange={(event) => void uploadImage(event)}
-                    type="file"
-                  />
-                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-line bg-paper p-3">
+                    <p className="text-xs font-black text-ink/55">
+                      {t("defaultImage")}
+                    </p>
+                    <label className="focus-ring mt-2 inline-flex h-8 cursor-pointer items-center rounded-full border border-line bg-white px-3 text-xs font-semibold text-ink hover:border-moss">
+                      {t("defaultImage")}
+                      <input
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        name="defaultMedia"
+                        onChange={(event) => void uploadDefaultImage(event)}
+                        type="file"
+                      />
+                    </label>
+                  </div>
+                  <div className="rounded-lg border border-line bg-mint/10 p-3">
+                    <p className="text-xs font-black text-ink/55">
+                      {t("localizedImage")}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <label className="focus-ring inline-flex h-8 cursor-pointer items-center rounded-full border border-moss/35 bg-white px-3 text-xs font-semibold text-ink hover:border-moss">
+                        {t("localizedImage")}
+                        <input
+                          accept="image/jpeg,image/png,image/webp"
+                          className="sr-only"
+                          name="localizedMedia"
+                          onChange={(event) =>
+                            void uploadLocalizedImage(event)
+                          }
+                          type="file"
+                        />
+                      </label>
+                      <Button
+                        disabled={translation?.mediaAssetPublicId === null}
+                        onClick={clearLocalizedImage}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        {t("useDefaultImage")}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </PermissionGate>
             </div>
           ) : null}
@@ -1268,13 +1414,14 @@ export function LocalizedCarouselEditor({
             <img
               alt={translation?.imageAltText ?? ""}
               className="aspect-[15/8] w-full object-cover"
-              src={selectedSlide?.imageUrl}
+              src={translation?.imageUrl}
             />
             <div className="p-4">
               <p className="text-xs font-black text-ink/45">
                 {selectedSlide
                   ? targetLabel(selectedSlide.target, {
                       announcement: t("announcement"),
+                      none: t("noTarget"),
                       service: t("service"),
                       shop: t("shop"),
                       technician: t("technician"),
@@ -1578,7 +1725,7 @@ export function LocalizedCarouselEditor({
                         slide.translations[state.selectedLocale].imageAltText
                       }
                       className="aspect-[15/8] w-full rounded-lg object-cover"
-                      src={slide.imageUrl}
+                      src={slide.translations[state.selectedLocale].imageUrl}
                     />
                     <h3 className="mt-3 text-lg font-black">
                       {slide.translations[state.selectedLocale].title}
