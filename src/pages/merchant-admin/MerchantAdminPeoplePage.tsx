@@ -26,6 +26,7 @@ import {
   type PayrollSchedulePolicyResult,
 } from "../../api/payrollSchedulePolicy";
 import { FormalCustomerDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
+import type { FormalTimelinePageSize } from "../../components/admin/FormalTimelinePagination";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { EmployeeDetailCard } from "../../components/merchant-admin/EmployeeDetailCard";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
@@ -170,6 +171,12 @@ export function MerchantAdminPeoplePage() {
     useState<PaginatedEmployeeTimeline | null>(null);
   const [employeeTimelineLoading, setEmployeeTimelineLoading] = useState(false);
   const [employeeTimelineError, setEmployeeTimelineError] = useState("");
+  const [employeeTimelinePage, setEmployeeTimelinePage] = useState(1);
+  const [employeeTimelinePageSize, setEmployeeTimelinePageSize] =
+    useState<FormalTimelinePageSize>(10);
+  const employeeTimelinePageSizeRef = useRef<FormalTimelinePageSize>(10);
+  const employeeTimelineGenerationRef = useRef(0);
+  const selectedEmployeeNeedoIdRef = useRef<string | null>(null);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -269,10 +276,29 @@ export function MerchantAdminPeoplePage() {
     [],
   );
 
-  const employeeTimelineRequest = useMemo(
-    () =>
-      createFormalDetailRequestCoordinator<PaginatedEmployeeTimeline, string>({
-        onError: (timelineError) => {
+  const loadEmployeeTimeline = useCallback(
+    async (needoId: string, nextPage: number, nextPageSize: number) => {
+      const generation = ++employeeTimelineGenerationRef.current;
+      setEmployeeTimelineLoading(true);
+      setEmployeeTimelineError("");
+      try {
+        const result = await merchantEmployeeApi.timeline(
+          needoId,
+          nextPage,
+          nextPageSize,
+        );
+        if (
+          generation === employeeTimelineGenerationRef.current &&
+          selectedEmployeeNeedoIdRef.current === needoId
+        ) {
+          setEmployeeTimeline(result);
+          setEmployeeTimelinePage(result.page);
+        }
+      } catch (timelineError) {
+        if (
+          generation === employeeTimelineGenerationRef.current &&
+          selectedEmployeeNeedoIdRef.current === needoId
+        ) {
           setEmployeeTimelineError(
             describeDetailError(
               timelineError,
@@ -280,16 +306,16 @@ export function MerchantAdminPeoplePage() {
               "员工动态读取失败，请重试",
             ),
           );
-        },
-        onFinally: () => setEmployeeTimelineLoading(false),
-        onStart: () => {
-          setEmployeeTimeline(null);
-          setEmployeeTimelineLoading(true);
-          setEmployeeTimelineError("");
-        },
-        onSuccess: setEmployeeTimeline,
-        request: (needoId) => merchantEmployeeApi.timeline(needoId),
-      }),
+        }
+      } finally {
+        if (
+          generation === employeeTimelineGenerationRef.current &&
+          selectedEmployeeNeedoIdRef.current === needoId
+        ) {
+          setEmployeeTimelineLoading(false);
+        }
+      }
+    },
     [],
   );
 
@@ -314,16 +340,21 @@ export function MerchantAdminPeoplePage() {
         },
         onSuccess: (employee) => {
           setEmployeeDetail(employee);
+          setEmployeeTimelinePage(1);
           void employeePayrollPolicyRequest.load(employee.needoId);
           void employeeCompensationRequest.load(employee.needoId);
-          void employeeTimelineRequest.load(employee.needoId);
+          void loadEmployeeTimeline(
+            employee.needoId,
+            1,
+            employeeTimelinePageSizeRef.current,
+          );
         },
         request: (needoId) => merchantEmployeeApi.detail(needoId),
       }),
     [
       employeeCompensationRequest,
       employeePayrollPolicyRequest,
-      employeeTimelineRequest,
+      loadEmployeeTimeline,
     ],
   );
 
@@ -355,13 +386,12 @@ export function MerchantAdminPeoplePage() {
   useEffect(() => {
     employeeCompensationRequest.activate();
     employeePayrollPolicyRequest.activate();
-    employeeTimelineRequest.activate();
     employeeDetailRequest.activate();
     customerDetailRequest.activate();
     return () => {
       employeeCompensationRequest.dispose();
       employeePayrollPolicyRequest.dispose();
-      employeeTimelineRequest.dispose();
+      employeeTimelineGenerationRef.current += 1;
       employeeDetailRequest.dispose();
       customerDetailRequest.dispose();
     };
@@ -370,13 +400,13 @@ export function MerchantAdminPeoplePage() {
     employeeCompensationRequest,
     employeeDetailRequest,
     employeePayrollPolicyRequest,
-    employeeTimelineRequest,
   ]);
 
   const closeEmployee = useCallback(() => {
     employeeCompensationRequest.invalidate();
     employeePayrollPolicyRequest.invalidate();
-    employeeTimelineRequest.invalidate();
+    employeeTimelineGenerationRef.current += 1;
+    selectedEmployeeNeedoIdRef.current = null;
     employeeDetailRequest.invalidate();
     setSelectedEmployeeNeedoId(null);
     setEmployeeDetail(null);
@@ -397,11 +427,11 @@ export function MerchantAdminPeoplePage() {
     setEmployeeTimeline(null);
     setEmployeeTimelineLoading(false);
     setEmployeeTimelineError("");
+    setEmployeeTimelinePage(1);
   }, [
     employeeCompensationRequest,
     employeeDetailRequest,
     employeePayrollPolicyRequest,
-    employeeTimelineRequest,
   ]);
 
   const closeCustomer = useCallback(() => {
@@ -430,6 +460,7 @@ export function MerchantAdminPeoplePage() {
 
   const openEmployee = (employee: MerchantEmployee) => {
     closeCustomer();
+    selectedEmployeeNeedoIdRef.current = employee.needoId;
     setSelectedEmployeeNeedoId(employee.needoId);
     setEmployeeMutationError("");
     void employeeDetailRequest.load(employee.needoId);
@@ -581,9 +612,10 @@ export function MerchantAdminPeoplePage() {
     setEmployeeTimelineError("");
     try {
       await merchantEmployeeApi.addTimelineComment(needoId, message);
-      if (employeeTimelineRequest.getSelectedId() === needoId) {
+      if (selectedEmployeeNeedoIdRef.current === needoId) {
         try {
-          await employeeTimelineRequest.loadOrThrow(needoId);
+          setEmployeeTimelinePage(1);
+          await loadEmployeeTimeline(needoId, 1, employeeTimelinePageSize);
         } catch {
           setEmployeeTimelineError(
             translateText(
@@ -603,6 +635,26 @@ export function MerchantAdminPeoplePage() {
       );
       throw timelineError;
     }
+  };
+
+  const changeEmployeeTimelinePage = (nextPage: number) => {
+    if (!selectedEmployeeNeedoId) return;
+    setEmployeeTimelinePage(nextPage);
+    void loadEmployeeTimeline(
+      selectedEmployeeNeedoId,
+      nextPage,
+      employeeTimelinePageSize,
+    );
+  };
+
+  const changeEmployeeTimelinePageSize = (
+    nextPageSize: FormalTimelinePageSize,
+  ) => {
+    if (!selectedEmployeeNeedoId) return;
+    setEmployeeTimelinePage(1);
+    setEmployeeTimelinePageSize(nextPageSize);
+    employeeTimelinePageSizeRef.current = nextPageSize;
+    void loadEmployeeTimeline(selectedEmployeeNeedoId, 1, nextPageSize);
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -892,7 +944,17 @@ export function MerchantAdminPeoplePage() {
               onSavePayrollPolicy={saveEmployeePayrollPolicy}
               onSaveAffiliation={saveEmployeeAffiliation}
               onSaveProfile={saveEmployeeProfile}
-              onRetryTimeline={() => void employeeTimelineRequest.retry()}
+              onRetryTimeline={() => {
+                if (selectedEmployeeNeedoId) {
+                  void loadEmployeeTimeline(
+                    selectedEmployeeNeedoId,
+                    employeeTimelinePage,
+                    employeeTimelinePageSize,
+                  );
+                }
+              }}
+              onTimelinePageChange={changeEmployeeTimelinePage}
+              onTimelinePageSizeChange={changeEmployeeTimelinePageSize}
               onSubmitTimelineComment={submitEmployeeTimelineComment}
               payrollPolicy={employeePayrollPolicy}
               payrollPolicyError={employeePayrollPolicyError}

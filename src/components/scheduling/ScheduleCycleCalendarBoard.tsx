@@ -6,6 +6,7 @@ import {
   UnifiedCalendarAgendaView,
   UnifiedCalendarEventDetailPage,
   UnifiedCalendarDayTimeline,
+  UnifiedCalendarMonthGrid,
   UnifiedCalendarSurface,
   type UnifiedCalendarEvent,
   type UnifiedCalendarLane,
@@ -1013,7 +1014,7 @@ export function ScheduleCycleCalendarBoard({
             onOpen={openEvent}
           />
         </div>
-      ) : view === "threeDay" || view === "week" || view === "month" ? (
+      ) : view === "threeDay" || view === "week" ? (
         <div className="mt-3">
           <ScheduleGrid
             collapsedTechnicians={periodTechniciansCollapsed}
@@ -1034,6 +1035,17 @@ export function ScheduleCycleCalendarBoard({
             stickyHeaderLabel="技师"
             stickyTop={scheduleStickyTop}
             surface={surface}
+          />
+        </div>
+      ) : view === "month" ? (
+        <div className="mt-3" data-testid="schedule-cycle-month-grid">
+          <UnifiedCalendarMonthGrid
+            anchorDate={dateKey}
+            dates={period.dates}
+            eventsByDate={groupedEvents}
+            onOpen={openEvent}
+            onSelectDate={openDateInDayView}
+            selectedDate={dateKey}
           />
         </div>
       ) : (

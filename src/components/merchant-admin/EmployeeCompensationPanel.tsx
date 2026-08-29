@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type {
   CompensationProfilePreviewInput,
   EmployeeCompensationPreviewResult,
@@ -85,28 +85,6 @@ function toPreviewInput(
   };
 }
 
-function formatPeriod(start: string | null, end: string | null) {
-  if (!start || !end) return "尚未生成工资单";
-  return `${start.slice(0, 10).replaceAll("-", "/")} – ${end
-    .slice(0, 10)
-    .replaceAll("-", "/")}`;
-}
-
-function payrollStatusLabel(status: string | null) {
-  const labels: Record<string, string> = {
-    draft: "草稿",
-    reviewing: "复核中",
-    published: "已发布",
-    confirmed: "员工已确认",
-    disputed: "有申诉",
-    approved: "已审批",
-    scheduled: "待支付",
-    paid: "已付清",
-    locked: "已归档",
-  };
-  return status ? (labels[status] ?? status) : "暂无工资单";
-}
-
 export function EmployeeCompensationPanel({
   error,
   loading,
@@ -132,35 +110,10 @@ export function EmployeeCompensationPanel({
   }, [editing, result]);
 
   const profile = result?.profile ?? null;
-  const summary = result?.payrollSummary ?? null;
   const sourceLabel =
     profile?.sourceType === "technician_override"
       ? "员工单独规则"
       : "继承店铺规则";
-  const financeHref = result
-    ? `#/merchant-admin/finance?employee=${encodeURIComponent(result.employee.needoId)}`
-    : "/merchant-admin/finance";
-  const payrollMetrics = useMemo(
-    () => [
-      ["本期完成订单", `${summary?.completedOrderCount ?? 0} ${t("单")}`],
-      ["有效工时", `${((summary?.workedMinutes ?? 0) / 60).toFixed(1)} h`],
-      ["服务收入", yen(summary?.serviceIncomeJpy ?? 0)],
-      ["基础工资", yen(summary?.basePayJpy ?? 0)],
-      ["分成", yen(summary?.commissionJpy ?? 0)],
-      ["奖金与补贴", yen((summary?.bonusJpy ?? 0) + (summary?.allowanceJpy ?? 0))],
-      [
-        "扣款与 NDP 分摊",
-        yen(
-          (summary?.deductionJpy ?? 0) +
-            (summary?.platformFeeShareDeductionJpy ?? 0),
-        ),
-      ],
-      ["净应付", yen(summary?.netPayJpy ?? 0)],
-      ["已付", yen(summary?.paidAmountJpy ?? 0)],
-      ["未付", yen(summary?.unpaidAmountJpy ?? 0)],
-    ],
-    [language, summary],
-  );
 
   const updateDraft = <TKey extends keyof TechnicianCompensationProfileInput>(
     key: TKey,
@@ -215,12 +168,6 @@ export function EmployeeCompensationPanel({
                 {t("编辑薪酬")}
               </Button>
             ) : null}
-            <a
-              className="focus-ring inline-flex h-8 items-center justify-center rounded-full border border-white/20 px-3 text-xs font-black text-white transition hover:bg-white/10"
-              href={financeHref}
-            >
-              {t("前往财务结算")}
-            </a>
           </div>
         </div>
 
@@ -364,7 +311,7 @@ export function EmployeeCompensationPanel({
               </Button>
             </div>
           </form>
-        ) : result && profile && summary ? (
+        ) : result && profile ? (
           <>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
@@ -392,33 +339,6 @@ export function EmployeeCompensationPanel({
                   <strong className="mt-1.5 block text-sm text-white">{value}</strong>
                 </div>
               ))}
-            </div>
-
-            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.045] p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-sky">
-                    {t("最近工资单统计")}
-                  </p>
-                  <h5 className="mt-1 text-base font-black">
-                    {t(formatPeriod(summary.periodStart, summary.periodEnd))}
-                  </h5>
-                </div>
-                <Badge
-                  className="border border-white/10"
-                  tone={summary.unpaidAmountJpy === 0 && summary.payslipId ? "green" : "yellow"}
-                >
-                  {t(payrollStatusLabel(summary.status))}
-                </Badge>
-              </div>
-              <dl className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-                {payrollMetrics.map(([label, value]) => (
-                  <div className="rounded-2xl bg-black/15 px-3 py-3" key={label}>
-                    <dt className="text-[11px] font-black text-white/45">{t(label)}</dt>
-                    <dd className="mt-1 text-sm font-black text-white">{value}</dd>
-                  </div>
-                ))}
-              </dl>
             </div>
 
             <div className="mt-5 rounded-3xl border border-sky/20 bg-sky/10 p-4 sm:p-5">

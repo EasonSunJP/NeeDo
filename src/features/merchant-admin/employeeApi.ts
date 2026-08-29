@@ -180,7 +180,7 @@ export const merchantEmployeeApi = {
     );
   },
 
-  timeline(needoId: string, page = 1, pageSize = 20) {
+  timeline(needoId: string, page = 1, pageSize = 10) {
     return httpClient.request<PaginatedEmployeeTimeline>(
       `${employeePath(needoId)}/timeline`,
       { query: { page, pageSize } },

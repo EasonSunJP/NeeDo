@@ -43,7 +43,7 @@ type TechnicianDetailTab =
 
 type CustomerDetailTab = "基础资料" | "预约与消费" | "权限与账号" | "时间线";
 
-type FormalLocalization = {
+export type FormalLocalization = {
   language: Language;
   locale: string;
   t: (source: string) => string;
@@ -235,7 +235,7 @@ function useFormalLocalization(): FormalLocalization {
   };
 }
 
-function FormalTabs<TTab extends string>({
+export function FormalTabs<TTab extends string>({
   active,
   idPrefix,
   items,
@@ -302,7 +302,7 @@ function FormalTabs<TTab extends string>({
   );
 }
 
-function FormalTabPanels<TTab extends string>({
+export function FormalTabPanels<TTab extends string>({
   active,
   children,
   idPrefix,

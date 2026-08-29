@@ -205,6 +205,8 @@ async function renderCard(
         timelineError=""
         timelineLoading={false}
         onRetryTimeline={vi.fn()}
+        onTimelinePageChange={vi.fn()}
+        onTimelinePageSizeChange={vi.fn()}
         onSubmitTimelineComment={vi.fn(async () => undefined)}
         {...props}
       />,
@@ -247,6 +249,37 @@ describe("EmployeeDetailCard", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+  });
+
+  it("uses six mounted detail tabs and preserves an in-progress profile draft", async () => {
+    await renderCard();
+
+    expect(button("基础资料").getAttribute("aria-selected")).toBe("true");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
+        ?.closest<HTMLElement>('[role="tabpanel"]')?.hidden,
+    ).toBe(true);
+
+    await act(async () => button("编辑").click());
+    await setInput("employee-display-name", "未提交的姓名");
+    await act(async () => button("员工日程").click());
+    expect(button("员工日程").getAttribute("aria-selected")).toBe("true");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
+        ?.closest<HTMLElement>('[role="tabpanel"]')?.hidden,
+    ).toBe(false);
+
+    await act(async () => button("基础资料").click());
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="employee-display-name"]',
+      )?.value,
+    ).toBe("未提交的姓名");
+    expect(
+      ["基础资料", "从属与账号", "员工日程", "薪酬与分成", "结算记录", "员工动态"].every(
+        (label) => button(label).getAttribute("role") === "tab",
+      ),
+    ).toBe(true);
   });
 
   it("shows the NeeDo identity, current relationship, contact and account truth without internal ids", async () => {
