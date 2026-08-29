@@ -85,9 +85,7 @@ describe("BookingRepository order list scope", () => {
     );
 
     expect(source).toContain('input.scope === "technician" ? "TECHNICIAN" : "SHOP"');
-    expect(source).toContain(
-      'input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY"'
-    );
+    expect(source).toContain('input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY"');
   });
 
   it("reads only a schedule slot owned by the active technician scope", async () => {
@@ -96,11 +94,13 @@ describe("BookingRepository order list scope", () => {
     };
     const repository = new BookingRepository({ scheduleSlot } as never);
 
-    await expect(repository.findScheduleSlotById({
-      scope: "technician",
-      technicianProfileId: 31,
-      id: 10
-    })).resolves.toBeNull();
+    await expect(
+      repository.findScheduleSlotById({
+        scope: "technician",
+        technicianProfileId: 31,
+        id: 10
+      })
+    ).resolves.toBeNull();
 
     expect(scheduleSlot.findFirst).toHaveBeenCalledWith({
       where: { id: 10, technicianProfileId: 31, deletedAt: null },
@@ -140,9 +140,11 @@ describe("BookingRepository order list scope", () => {
         }
       }
     });
-    expect(scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expectedWhere
-    }));
+    expect(scheduleSlot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expectedWhere
+      })
+    );
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
@@ -183,18 +185,20 @@ describe("BookingRepository order list scope", () => {
       pageSize: 20
     });
 
-    expect(bookingOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        deletedAt: null,
-        customerUserId: 7,
-        shopId: 11,
-        technicianProfileId: 17,
-        startsAt: {
-          gte: new Date("2026-09-01T00:00:00.000Z"),
-          lt: new Date("2026-12-01T00:00:00.000Z")
+    expect(bookingOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          customerUserId: 7,
+          shopId: 11,
+          technicianProfileId: 17,
+          startsAt: {
+            gte: new Date("2026-09-01T00:00:00.000Z"),
+            lt: new Date("2026-12-01T00:00:00.000Z")
+          }
         }
-      }
-    }));
+      })
+    );
     expect(bookingOrder.count).toHaveBeenCalledWith({
       where: {
         deletedAt: null,
@@ -243,6 +247,67 @@ describe("BookingRepository order list scope", () => {
     expect(transaction).toHaveBeenCalledTimes(1);
   });
 
+  it("returns an active acceptance pause before mutating or settling a confirmation", async () => {
+    const settle = jest.fn();
+    const updateMany = jest.fn();
+    const startsAt = new Date("2026-08-29T01:00:00.000Z");
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 16 }])
+        .mockResolvedValueOnce([]),
+      bookingOrder: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 101,
+          status: "PENDING",
+          shopId: 16,
+          technicianProfileId: 47
+        }),
+        updateMany
+      },
+      orderAcceptancePause: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            subjectType: "SHOP",
+            authorityType: "OPERATIONS",
+            reasonCode: "insufficient_ndp",
+            startsAt
+          }
+        ])
+      },
+      technicianProfile: { update: jest.fn() }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.transitionOrderWithScheduleGuard(
+        {
+          id: 101,
+          actorUserId: 7,
+          fromStatus: "pending",
+          toStatus: "confirmed"
+        },
+        { settle }
+      )
+    ).resolves.toEqual({
+      outcome: "acceptance_paused",
+      pauses: [
+        {
+          subjectType: "shop",
+          authorityType: "operations",
+          reasonCode: "insufficient_ndp",
+          startsAt
+        }
+      ]
+    });
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(tx.technicianProfile.update).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
+  });
+
   it("locks the technician and rejects a concurrent confirmed overlap before mutation", async () => {
     const settle = jest.fn();
     const updateMany = jest.fn();
@@ -260,7 +325,12 @@ describe("BookingRepository order list scope", () => {
       })
       .mockResolvedValueOnce({ id: 102 });
     const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 16 }])
+        .mockResolvedValueOnce([]),
       bookingOrder: { findFirst: bookingFindFirst, updateMany },
+      orderAcceptancePause: { findMany: jest.fn().mockResolvedValue([]) },
       technicianProfile: { update: technicianUpdate }
     };
     const repository = new BookingRepository({
@@ -279,9 +349,7 @@ describe("BookingRepository order list scope", () => {
       )
     ).resolves.toEqual({ outcome: "schedule_conflict" });
 
-    expect(technicianUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 47 } })
-    );
+    expect(technicianUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 47 } }));
     expect(bookingFindFirst).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({

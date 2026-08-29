@@ -19,11 +19,7 @@ export type BookingOrderTypePayload = "booking" | "request";
 export type ScheduleSlotStatusPayload = "available" | "booked" | "blocked";
 export type BookingFulfillmentMode = "home" | "store";
 export type ServicePaymentMethodPayload = "onsite" | "bank_transfer";
-export type ServicePaymentStatusPayload =
-  | "pending"
-  | "confirmed"
-  | "refundPending"
-  | "refunded";
+export type ServicePaymentStatusPayload = "pending" | "confirmed" | "refundPending" | "refunded";
 
 export interface AvailabilityListInput extends PaginationInput {
   serviceId?: number;
@@ -33,7 +29,6 @@ export interface AvailabilityListInput extends PaginationInput {
   from: Date;
   to: Date;
 }
-
 export interface BookingCreateRepositoryInput {
   customerUserId: number;
   orderType?: BookingOrderTypePayload;
@@ -54,25 +49,50 @@ export interface BookingCreateAffiliatePreparationContext {
   scheduledStartAt: Date;
 }
 
-export interface BookingCreateAffiliatePersistenceContext
-  extends Omit<BookingCreateAffiliatePreparationContext, "serviceId"> {
+export interface BookingCreateAffiliatePersistenceContext extends Omit<
+  BookingCreateAffiliatePreparationContext,
+  "serviceId"
+> {
   serviceId: number;
   bookingOrderId: number;
   prepared: AffiliateCheckoutPrepared;
+}
+
+export interface BookingSupersededAffiliateInvalidationContext {
+  transactionClient: LedgerTransactionClient;
+  bookingOrderId: number;
+  actorUserId: number;
 }
 
 export interface BookingCreateRepositoryOptions {
   prepareAffiliate?: (
     context: BookingCreateAffiliatePreparationContext
   ) => Promise<AffiliateCheckoutPrepared>;
-  persistAffiliate?: (
-    context: BookingCreateAffiliatePersistenceContext
+  persistAffiliate?: (context: BookingCreateAffiliatePersistenceContext) => Promise<void>;
+  invalidateSupersededAffiliate?: (
+    context: BookingSupersededAffiliateInvalidationContext
   ) => Promise<void>;
 }
 
-export type ManualPaymentScope =
-  | { scope: "merchant"; shopId: number }
-  | { scope: "backoffice" };
+class BookingPendingReplacementUnavailableError extends Error {
+  public constructor() {
+    super("error.booking.pending_replacement_unavailable");
+    this.name = "BookingPendingReplacementUnavailableError";
+  }
+}
+
+export interface BookingSupersededOrderNotification {
+  order: BookingOrderPayload;
+  recipientUserIds: number[];
+}
+
+export interface BookingCreateMutationResult {
+  order: BookingOrderPayload;
+  recipientUserIds: number[];
+  supersededOrders: BookingSupersededOrderNotification[];
+}
+
+export type ManualPaymentScope = { scope: "merchant"; shopId: number } | { scope: "backoffice" };
 
 export type ConfirmManualPaymentRepositoryInput = ManualPaymentScope & {
   orderId: number;
@@ -103,14 +123,15 @@ export type ScheduleScope =
   | { scope: "merchant"; shopId: number }
   | { scope: "technician"; technicianProfileId: number };
 
-export type ScheduleListInput = ScheduleScope & PaginationInput & {
-  from: Date;
-  to: Date;
-  serviceId?: number;
-  technicianServiceId?: number;
-  technicianProfileId?: number;
-  status?: ScheduleSlotStatusPayload;
-};
+export type ScheduleListInput = ScheduleScope &
+  PaginationInput & {
+    from: Date;
+    to: Date;
+    serviceId?: number;
+    technicianServiceId?: number;
+    technicianProfileId?: number;
+    status?: ScheduleSlotStatusPayload;
+  };
 
 export type ScheduleSlotCreateInput = ScheduleScope & {
   serviceId?: number;
@@ -153,6 +174,23 @@ export interface OrderTransitionSettlementContext {
 export interface OrderTransitionRepositoryOptions {
   settle?: (context: OrderTransitionSettlementContext) => Promise<void>;
 }
+
+export interface ActiveOrderAcceptancePauseSummary {
+  subjectType: "merchant_account" | "shop";
+  authorityType: "operations" | "merchant" | "shop";
+  reasonCode: string;
+  startsAt: Date;
+}
+
+export interface OrderAcceptancePausedResult {
+  kind: "acceptance_paused";
+  pauses: ActiveOrderAcceptancePauseSummary[];
+}
+
+export type OrderTransitionMutationResult =
+  | BookingOrderPayload
+  | OrderAcceptancePausedResult
+  | null;
 
 export interface ScheduleSlotPayload {
   id: number;
@@ -234,6 +272,7 @@ export type ManualPaymentMutationResult =
 
 export type OrderTransitionGuardedResult =
   | { outcome: "ok"; order: BookingOrderPayload }
+  | { outcome: "acceptance_paused"; pauses: ActiveOrderAcceptancePauseSummary[] }
   | { outcome: "invalid_state" | "schedule_conflict" };
 
 export interface BookingRepositoryPort {
@@ -243,7 +282,7 @@ export interface BookingRepositoryPort {
   createBooking: (
     input: BookingCreateRepositoryInput,
     options?: BookingCreateRepositoryOptions
-  ) => Promise<BookingOrderPayload | null>;
+  ) => Promise<BookingCreateMutationResult | BookingOrderPayload | null>;
   findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
   findTechnicianShopId?: (technicianProfileId: number) => Promise<number | null>;
   isShopSuspended?: (shopId: number) => Promise<boolean>;
@@ -252,7 +291,7 @@ export interface BookingRepositoryPort {
   transitionOrder: (
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
-  ) => Promise<BookingOrderPayload | null>;
+  ) => Promise<OrderTransitionMutationResult>;
   transitionOrderWithScheduleGuard?: (
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
@@ -414,7 +453,10 @@ export class BookingRepository implements BookingRepositoryPort {
       startsAt: { lt: input.to },
       endsAt: { gt: input.from },
       ...(input.scope === "merchant"
-        ? { shopId: input.shopId, ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}) }
+        ? {
+            shopId: input.shopId,
+            ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {})
+          }
         : { technicianProfileId: input.technicianProfileId }),
       ...(input.serviceId ? { serviceId: input.serviceId } : {}),
       ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
@@ -430,324 +472,554 @@ export class BookingRepository implements BookingRepositoryPort {
       }),
       this.client.scheduleSlot.count({ where })
     ]);
-    return buildPaginatedResponse(list.map((row) => this.mapSlot(row)), total, pagination);
+    return buildPaginatedResponse(
+      list.map((row) => this.mapSlot(row)),
+      total,
+      pagination
+    );
   }
 
   public createScheduleSlot(input: ScheduleSlotCreateInput): Promise<ScheduleMutationResult> {
-    return this.client.$transaction(async (transaction) => {
-      const target = await this.resolveScheduleTarget(transaction, input, input.serviceId, input.technicianServiceId, input.technicianProfileId ?? null);
-      if (!target) return { outcome: "not_found" };
-      if (await this.isShopSuspendedInTransaction(transaction, target.shopId)) return { outcome: "suspended" };
-      await this.lockScheduleOwner(transaction, target.shopId, target.technicianProfileId);
-      if (!this.matchesServiceDuration(input.startsAt, input.endsAt, target.durationMinutes)) {
-        return { outcome: "duration_mismatch" };
-      }
-      if (
-        target.technicianProfileId &&
-        await this.hasConfirmedBookingOverlap(
+    return this.client.$transaction(
+      async (transaction) => {
+        const target = await this.resolveScheduleTarget(
           transaction,
-          target.technicianProfileId,
-          input.startsAt,
-          input.endsAt
-        )
-      ) {
-        return { outcome: "conflict" };
-      }
-      if (await this.hasScheduleOverlap(transaction, target.shopId, target.technicianProfileId, target.serviceId, input.startsAt, input.endsAt)) {
-        return { outcome: "conflict" };
-      }
-      const availability = await transaction.availability.create({
-        data: {
-          shopId: target.shopId,
-          technicianProfileId: target.technicianProfileId,
-          sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
-          visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
-          startsAt: input.startsAt,
-          endsAt: input.endsAt,
-          capacity: input.capacity,
-          isActive: true
+          input,
+          input.serviceId,
+          input.technicianServiceId,
+          input.technicianProfileId ?? null
+        );
+        if (!target) return { outcome: "not_found" };
+        if (await this.isShopSuspendedInTransaction(transaction, target.shopId))
+          return { outcome: "suspended" };
+        await this.lockScheduleOwner(transaction, target.shopId, target.technicianProfileId);
+        if (!this.matchesServiceDuration(input.startsAt, input.endsAt, target.durationMinutes)) {
+          return { outcome: "duration_mismatch" };
         }
-      });
-      const created = await transaction.scheduleSlot.create({
-        data: {
-          availabilityId: availability.id,
-          serviceId: target.serviceId,
-          technicianServiceId: target.technicianServiceId,
-          shopId: target.shopId,
-          technicianProfileId: target.technicianProfileId,
-          startsAt: input.startsAt,
-          endsAt: input.endsAt,
-          capacity: input.capacity,
-          status: "AVAILABLE"
-        },
-        include: this.slotInclude()
-      });
-      return { outcome: "ok", slot: this.mapSlot(created) };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+        if (
+          target.technicianProfileId &&
+          (await this.hasConfirmedBookingOverlap(
+            transaction,
+            target.technicianProfileId,
+            input.startsAt,
+            input.endsAt
+          ))
+        ) {
+          return { outcome: "conflict" };
+        }
+        if (
+          await this.hasScheduleOverlap(
+            transaction,
+            target.shopId,
+            target.technicianProfileId,
+            target.serviceId,
+            input.startsAt,
+            input.endsAt
+          )
+        ) {
+          return { outcome: "conflict" };
+        }
+        const availability = await transaction.availability.create({
+          data: {
+            shopId: target.shopId,
+            technicianProfileId: target.technicianProfileId,
+            sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
+            visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+            capacity: input.capacity,
+            isActive: true
+          }
+        });
+        const created = await transaction.scheduleSlot.create({
+          data: {
+            availabilityId: availability.id,
+            serviceId: target.serviceId,
+            technicianServiceId: target.technicianServiceId,
+            shopId: target.shopId,
+            technicianProfileId: target.technicianProfileId,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+            capacity: input.capacity,
+            status: "AVAILABLE"
+          },
+          include: this.slotInclude()
+        });
+        return { outcome: "ok", slot: this.mapSlot(created) };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
   }
 
   public updateScheduleSlot(input: ScheduleSlotUpdateInput): Promise<ScheduleMutationResult> {
-    return this.client.$transaction(async (transaction) => {
-      const existing = await transaction.scheduleSlot.findFirst({
-        where: { id: input.id, deletedAt: null, ...this.scheduleScopeWhere(input) },
-        include: this.slotInclude()
-      });
-      if (existing && await this.isShopSuspendedInTransaction(transaction, existing.shopId)) return { outcome: "suspended" };
-      if (!existing || (!existing.serviceId && !existing.technicianServiceId)) return { outcome: "not_found" };
-      await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
-      const startsAt = input.startsAt ?? existing.startsAt;
-      const endsAt = input.endsAt ?? existing.endsAt;
-      const capacity = input.capacity ?? existing.capacity;
-      const timeChanged = startsAt.getTime() !== existing.startsAt.getTime() || endsAt.getTime() !== existing.endsAt.getTime();
-      if (existing.bookedCount > 0 && (timeChanged || input.status === "blocked" || capacity < existing.bookedCount)) {
-        return { outcome: "in_use" };
-      }
-      if (!this.matchesServiceDuration(startsAt, endsAt, existing.service?.durationMinutes ?? existing.technicianService?.durationMinutes ?? 0)) {
-        return { outcome: "duration_mismatch" };
-      }
-      if (
-        timeChanged &&
-        existing.technicianProfileId &&
-        await this.hasConfirmedBookingOverlap(
-          transaction,
-          existing.technicianProfileId,
-          startsAt,
-          endsAt,
-          existing.id
-        )
-      ) {
-        return { outcome: "conflict" };
-      }
-      if (timeChanged && await this.hasScheduleOverlap(transaction, existing.shopId, existing.technicianProfileId, existing.serviceId, startsAt, endsAt, existing.id)) {
-        return { outcome: "conflict" };
-      }
-      const requestedStatus = input.status ? this.slotStatusToDb(input.status) : existing.status;
-      const status = existing.bookedCount >= capacity ? "BOOKED" : requestedStatus === "BOOKED" ? "AVAILABLE" : requestedStatus;
-      if (existing.availabilityId) {
-        await transaction.availability.updateMany({
-          where: { id: existing.availabilityId, deletedAt: null },
-          data: { startsAt, endsAt, capacity, isActive: status !== "BLOCKED" }
+    return this.client.$transaction(
+      async (transaction) => {
+        const existing = await transaction.scheduleSlot.findFirst({
+          where: { id: input.id, deletedAt: null, ...this.scheduleScopeWhere(input) },
+          include: this.slotInclude()
         });
-      }
-      const updated = await transaction.scheduleSlot.update({
-        where: { id: existing.id },
-        data: { startsAt, endsAt, capacity, status },
-        include: this.slotInclude()
-      });
-      return { outcome: "ok", slot: this.mapSlot(updated) };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+        if (existing && (await this.isShopSuspendedInTransaction(transaction, existing.shopId)))
+          return { outcome: "suspended" };
+        if (!existing || (!existing.serviceId && !existing.technicianServiceId))
+          return { outcome: "not_found" };
+        await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
+        const startsAt = input.startsAt ?? existing.startsAt;
+        const endsAt = input.endsAt ?? existing.endsAt;
+        const capacity = input.capacity ?? existing.capacity;
+        const timeChanged =
+          startsAt.getTime() !== existing.startsAt.getTime() ||
+          endsAt.getTime() !== existing.endsAt.getTime();
+        if (
+          existing.bookedCount > 0 &&
+          (timeChanged || input.status === "blocked" || capacity < existing.bookedCount)
+        ) {
+          return { outcome: "in_use" };
+        }
+        if (
+          !this.matchesServiceDuration(
+            startsAt,
+            endsAt,
+            existing.service?.durationMinutes ?? existing.technicianService?.durationMinutes ?? 0
+          )
+        ) {
+          return { outcome: "duration_mismatch" };
+        }
+        if (
+          timeChanged &&
+          existing.technicianProfileId &&
+          (await this.hasConfirmedBookingOverlap(
+            transaction,
+            existing.technicianProfileId,
+            startsAt,
+            endsAt,
+            existing.id
+          ))
+        ) {
+          return { outcome: "conflict" };
+        }
+        if (
+          timeChanged &&
+          (await this.hasScheduleOverlap(
+            transaction,
+            existing.shopId,
+            existing.technicianProfileId,
+            existing.serviceId,
+            startsAt,
+            endsAt,
+            existing.id
+          ))
+        ) {
+          return { outcome: "conflict" };
+        }
+        const requestedStatus = input.status ? this.slotStatusToDb(input.status) : existing.status;
+        const status =
+          existing.bookedCount >= capacity
+            ? "BOOKED"
+            : requestedStatus === "BOOKED"
+              ? "AVAILABLE"
+              : requestedStatus;
+        if (existing.availabilityId) {
+          await transaction.availability.updateMany({
+            where: { id: existing.availabilityId, deletedAt: null },
+            data: { startsAt, endsAt, capacity, isActive: status !== "BLOCKED" }
+          });
+        }
+        const updated = await transaction.scheduleSlot.update({
+          where: { id: existing.id },
+          data: { startsAt, endsAt, capacity, status },
+          include: this.slotInclude()
+        });
+        return { outcome: "ok", slot: this.mapSlot(updated) };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
   }
 
   public deleteScheduleSlot(input: ScheduleSlotDeleteInput): Promise<ScheduleMutationResult> {
-    return this.client.$transaction(async (transaction) => {
-      const existing = await transaction.scheduleSlot.findFirst({
-        where: { id: input.id, deletedAt: null, ...this.scheduleScopeWhere(input) },
-        include: this.slotInclude()
-      });
-      if (!existing) return { outcome: "not_found" };
-      await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
-      const activeOrders = await transaction.bookingOrder.count({
-        where: { scheduleSlotId: existing.id, deletedAt: null, status: { in: [...ACTIVE_ORDER_DB_STATUSES] } }
-      });
-      if (existing.bookedCount > 0 || activeOrders > 0) return { outcome: "in_use" };
-      const deletedAt = new Date();
-      const deleted = await transaction.scheduleSlot.update({
-        where: { id: existing.id },
-        data: { status: "BLOCKED", deletedAt },
-        include: this.slotInclude()
-      });
-      if (existing.availabilityId) {
-        await transaction.availability.updateMany({
-          where: { id: existing.availabilityId, deletedAt: null },
-          data: { isActive: false, deletedAt }
+    return this.client.$transaction(
+      async (transaction) => {
+        const existing = await transaction.scheduleSlot.findFirst({
+          where: { id: input.id, deletedAt: null, ...this.scheduleScopeWhere(input) },
+          include: this.slotInclude()
         });
-      }
-      return { outcome: "ok", slot: this.mapSlot(deleted) };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+        if (!existing) return { outcome: "not_found" };
+        await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
+        const activeOrders = await transaction.bookingOrder.count({
+          where: {
+            scheduleSlotId: existing.id,
+            deletedAt: null,
+            status: { in: [...ACTIVE_ORDER_DB_STATUSES] }
+          }
+        });
+        if (existing.bookedCount > 0 || activeOrders > 0) return { outcome: "in_use" };
+        const deletedAt = new Date();
+        const deleted = await transaction.scheduleSlot.update({
+          where: { id: existing.id },
+          data: { status: "BLOCKED", deletedAt },
+          include: this.slotInclude()
+        });
+        if (existing.availabilityId) {
+          await transaction.availability.updateMany({
+            where: { id: existing.availabilityId, deletedAt: null },
+            data: { isActive: false, deletedAt }
+          });
+        }
+        return { outcome: "ok", slot: this.mapSlot(deleted) };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
   }
 
   public async createBooking(
     input: BookingCreateRepositoryInput,
     options: BookingCreateRepositoryOptions = {}
-  ): Promise<BookingOrderPayload | null> {
+  ): Promise<BookingCreateMutationResult | null> {
     if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
       throw new Error("error.affiliate.checkout_hook_invalid");
     }
-    return this.client.$transaction(async (tx) => {
-      const slot = await tx.scheduleSlot.findFirst({
-        where: {
-          id: input.scheduleSlotId,
-          ...(input.serviceId ? { serviceId: input.serviceId } : {}),
-          ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
-          deletedAt: null,
-          status: "AVAILABLE",
-          ...(input.serviceId
-            ? {
-                service: {
-                  deletedAt: null,
-                  status: "published"
-                }
-              }
-            : {}),
-          ...(input.technicianServiceId
-            ? {
-                technicianService: {
-                  deletedAt: null,
-                  isActive: true,
-                  isBookable: true
-                }
-              }
-            : {}),
-          shop: {
-            deletedAt: null,
-            status: "published",
-            entitySuspensions: {
-              none: { activeKey: { not: null }, status: "active", deletedAt: null }
+    try {
+      return await runWithTransactionConflictRetry(() =>
+        this.client.$transaction(
+          async (tx) => {
+            if (!(await this.lockCustomerUser(tx, input.customerUserId))) {
+              return null;
             }
-          }
-        },
-        include: this.slotInclude()
-      });
+            const customerProfile = await tx.customerProfile.findFirst({
+              where: { userId: input.customerUserId, deletedAt: null },
+              select: { membershipLevel: true }
+            });
+            const isBlackMember = customerProfile?.membershipLevel.toLowerCase() === "black";
 
-      if (!slot || slot.bookedCount >= slot.capacity) {
-        return null;
-      }
+            let slot = await tx.scheduleSlot.findFirst({
+              where: {
+                id: input.scheduleSlotId,
+                ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+                ...(input.technicianServiceId
+                  ? { technicianServiceId: input.technicianServiceId }
+                  : {}),
+                deletedAt: null,
+                status: { in: ["AVAILABLE", "BOOKED"] },
+                ...(input.serviceId
+                  ? {
+                      service: {
+                        deletedAt: null,
+                        status: "published"
+                      }
+                    }
+                  : {}),
+                ...(input.technicianServiceId
+                  ? {
+                      technicianService: {
+                        deletedAt: null,
+                        isActive: true,
+                        isBookable: true
+                      }
+                    }
+                  : {}),
+                shop: {
+                  deletedAt: null,
+                  status: "published",
+                  entitySuspensions: {
+                    none: { activeKey: { not: null }, status: "active", deletedAt: null }
+                  }
+                }
+              },
+              include: this.slotInclude()
+            });
 
-      const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
-      const serviceSource =
-        pricingMode === "technician"
-          ? this.createTechnicianServiceSource(slot, input.technicianServiceId)
-          : this.createShopServiceSource(slot, input.serviceId);
+            if (!slot) {
+              return null;
+            }
 
-      if (!serviceSource) {
-        return null;
-      }
+            await this.lockScheduleOwner(tx, slot.shopId, slot.technicianProfileId);
 
-      await this.lockScheduleOwner(tx, slot.shopId, slot.technicianProfileId);
+            const supersededPendingOrders = !isBlackMember
+              ? await tx.bookingOrder.findMany({
+                  where: {
+                    customerUserId: input.customerUserId,
+                    status: "PENDING",
+                    deletedAt: null
+                  },
+                  include: this.orderInclude(),
+                  orderBy: { id: "asc" }
+                })
+              : [];
+            const supersededOrderIds = supersededPendingOrders.map((order) => order.id);
 
-      const conflict = await tx.bookingOrder.findFirst({
-        where: {
-          deletedAt: null,
-          OR: [
-            {
-              customerUserId: input.customerUserId,
-              status: { in: [...ACTIVE_ORDER_DB_STATUSES] },
-              startsAt: { lt: slot.endsAt },
-              endsAt: { gt: slot.startsAt }
-            },
-            ...(slot.technicianProfileId
-              ? [
+            if (supersededOrderIds.length > 0) {
+              const cancelled = await tx.bookingOrder.updateMany({
+                where: {
+                  id: { in: supersededOrderIds },
+                  customerUserId: input.customerUserId,
+                  status: "PENDING",
+                  deletedAt: null
+                },
+                data: {
+                  status: "CANCELLED",
+                  cancelReason: "superseded_by_new_pending_order"
+                }
+              });
+              if (cancelled.count !== supersededOrderIds.length) {
+                throw new Error("error.booking.pending_replacement_conflict");
+              }
+
+              const slotReleaseCounts = new Map<number, number>();
+              for (const pendingOrder of supersededPendingOrders) {
+                slotReleaseCounts.set(
+                  pendingOrder.scheduleSlotId,
+                  (slotReleaseCounts.get(pendingOrder.scheduleSlotId) ?? 0) + 1
+                );
+              }
+              for (const [scheduleSlotId, releaseCount] of slotReleaseCounts) {
+                const released = await tx.scheduleSlot.updateMany({
+                  where: {
+                    id: scheduleSlotId,
+                    bookedCount: { gte: releaseCount },
+                    deletedAt: null
+                  },
+                  data: {
+                    bookedCount: { decrement: releaseCount },
+                    status: "AVAILABLE"
+                  }
+                });
+                if (released.count !== 1) {
+                  throw new BookingPendingReplacementUnavailableError();
+                }
+              }
+            }
+
+            slot = await tx.scheduleSlot.findFirst({
+              where: {
+                id: input.scheduleSlotId,
+                ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+                ...(input.technicianServiceId
+                  ? { technicianServiceId: input.technicianServiceId }
+                  : {}),
+                deletedAt: null,
+                status: "AVAILABLE",
+                ...(input.serviceId ? { service: { deletedAt: null, status: "published" } } : {}),
+                ...(input.technicianServiceId
+                  ? {
+                      technicianService: {
+                        deletedAt: null,
+                        isActive: true,
+                        isBookable: true
+                      }
+                    }
+                  : {}),
+                shop: {
+                  deletedAt: null,
+                  status: "published",
+                  entitySuspensions: {
+                    none: { activeKey: { not: null }, status: "active", deletedAt: null }
+                  }
+                }
+              },
+              include: this.slotInclude()
+            });
+            if (!slot || slot.bookedCount >= slot.capacity) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
+
+            const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
+            const serviceSource =
+              pricingMode === "technician"
+                ? this.createTechnicianServiceSource(slot, input.technicianServiceId)
+                : this.createShopServiceSource(slot, input.serviceId);
+
+            if (!serviceSource) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
+
+            const conflict = await tx.bookingOrder.findFirst({
+              where: {
+                deletedAt: null,
+                OR: [
                   {
-                    scheduleSlotId: { not: slot.id },
-                    technicianProfileId: slot.technicianProfileId,
-                    status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+                    customerUserId: input.customerUserId,
+                    status: {
+                      in: isBlackMember
+                        ? [...ACTIVE_ORDER_DB_STATUSES]
+                        : [...HARD_LOCK_ORDER_DB_STATUSES]
+                    },
                     startsAt: { lt: slot.endsAt },
                     endsAt: { gt: slot.startsAt }
-                  }
+                  },
+                  ...(slot.technicianProfileId
+                    ? [
+                        {
+                          scheduleSlotId: { not: slot.id },
+                          technicianProfileId: slot.technicianProfileId,
+                          status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+                          startsAt: { lt: slot.endsAt },
+                          endsAt: { gt: slot.startsAt }
+                        }
+                      ]
+                    : [])
                 ]
-              : [])
-          ]
-        },
-        select: { id: true }
-      });
+              },
+              select: { id: true }
+            });
 
-      if (conflict) {
-        return null;
-      }
-
-      const originalPriceJpy = Math.round(
-        Number(serviceSource.priceAmount.toString())
-      );
-      const affiliateContext: BookingCreateAffiliatePreparationContext = {
-        transactionClient: tx,
-        customerUserId: input.customerUserId,
-        shopId: slot.shopId,
-        serviceId: serviceSource.affiliateServiceId,
-        originalPriceJpy,
-        scheduledStartAt: slot.startsAt
-      };
-      const preparedAffiliate = options.prepareAffiliate
-        ? await options.prepareAffiliate(affiliateContext)
-        : null;
-      const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
-
-      const nextBookedCount = slot.bookedCount + 1;
-      const slotUpdate = await tx.scheduleSlot.updateMany({
-        where: {
-          id: slot.id,
-          deletedAt: null,
-          status: "AVAILABLE",
-          bookedCount: { lt: slot.capacity }
-        },
-        data: {
-          bookedCount: { increment: 1 },
-          status: nextBookedCount >= slot.capacity ? "BOOKED" : "AVAILABLE"
-        }
-      });
-
-      if (slotUpdate.count !== 1) {
-        return null;
-      }
-
-      const order = await tx.bookingOrder.create({
-        data: {
-          orderNo: this.createOrderNo(),
-          orderType: this.orderTypeToDb(input.orderType ?? "booking"),
-          customerUserId: input.customerUserId,
-          serviceId: serviceSource.serviceId,
-          technicianServiceId: serviceSource.technicianServiceId,
-          shopId: slot.shopId,
-          technicianProfileId: slot.technicianProfileId,
-          scheduleSlotId: slot.id,
-          status: "PENDING",
-          fulfillmentMode: input.fulfillmentMode,
-          priceAmount: finalPriceJpy,
-          currency: serviceSource.currency,
-          pricingModeSnapshot: pricingMode === "technician" ? "TECHNICIAN" : "MERCHANT",
-          serviceOwnerType: serviceSource.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
-          serviceOwnerId: serviceSource.ownerId,
-          serviceNameSnapshot: serviceSource.name,
-          servicePriceSnapshot: serviceSource.priceAmount,
-          serviceDurationSnapshot: serviceSource.durationMinutes,
-          serviceSnapshotJson: serviceSource.snapshot,
-          startsAt: slot.startsAt,
-          endsAt: slot.endsAt,
-          paymentMethod: this.paymentMethodToDb(input.paymentMethod ?? "onsite"),
-          paymentAmountJpy: finalPriceJpy,
-          note: input.note?.trim() || null,
-          statusHistory: {
-            create: {
-              fromStatus: null,
-              toStatus: "PENDING",
-              actorUserId: input.customerUserId
+            if (conflict) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
             }
-          }
-        },
-        include: this.orderInclude()
-      });
 
-      if (preparedAffiliate && options.persistAffiliate) {
-        if (!serviceSource.affiliateServiceId) {
-          throw new Error("error.affiliate.promotion_scope_mismatch");
-        }
-        await options.persistAffiliate({
-          ...affiliateContext,
-          serviceId: serviceSource.affiliateServiceId,
-          bookingOrderId: order.id,
-          prepared: preparedAffiliate
-        });
-        const attributedOrder = await tx.bookingOrder.findFirst({
-          where: { id: order.id, deletedAt: null },
-          include: this.orderInclude()
-        });
-        if (!attributedOrder) {
-          throw new Error("error.order.not_found");
-        }
-        return this.mapOrder(attributedOrder);
+            if (options.invalidateSupersededAffiliate) {
+              for (const bookingOrderId of supersededOrderIds) {
+                await options.invalidateSupersededAffiliate({
+                  transactionClient: tx,
+                  bookingOrderId,
+                  actorUserId: input.customerUserId
+                });
+              }
+            }
+
+            const originalPriceJpy = Math.round(Number(serviceSource.priceAmount.toString()));
+            const affiliateContext: BookingCreateAffiliatePreparationContext = {
+              transactionClient: tx,
+              customerUserId: input.customerUserId,
+              shopId: slot.shopId,
+              serviceId: serviceSource.affiliateServiceId,
+              originalPriceJpy,
+              scheduledStartAt: slot.startsAt
+            };
+            const preparedAffiliate = options.prepareAffiliate
+              ? await options.prepareAffiliate(affiliateContext)
+              : null;
+            const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
+
+            const nextBookedCount = slot.bookedCount + 1;
+            const slotUpdate = await tx.scheduleSlot.updateMany({
+              where: {
+                id: slot.id,
+                deletedAt: null,
+                status: "AVAILABLE",
+                bookedCount: { lt: slot.capacity }
+              },
+              data: {
+                bookedCount: { increment: 1 },
+                status: nextBookedCount >= slot.capacity ? "BOOKED" : "AVAILABLE"
+              }
+            });
+
+            if (slotUpdate.count !== 1) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
+
+            const order = await tx.bookingOrder.create({
+              data: {
+                orderNo: this.createOrderNo(),
+                orderType: this.orderTypeToDb(input.orderType ?? "booking"),
+                customerUserId: input.customerUserId,
+                serviceId: serviceSource.serviceId,
+                technicianServiceId: serviceSource.technicianServiceId,
+                shopId: slot.shopId,
+                technicianProfileId: slot.technicianProfileId,
+                scheduleSlotId: slot.id,
+                status: "PENDING",
+                fulfillmentMode: input.fulfillmentMode,
+                priceAmount: finalPriceJpy,
+                currency: serviceSource.currency,
+                pricingModeSnapshot: pricingMode === "technician" ? "TECHNICIAN" : "MERCHANT",
+                serviceOwnerType: serviceSource.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
+                serviceOwnerId: serviceSource.ownerId,
+                serviceNameSnapshot: serviceSource.name,
+                servicePriceSnapshot: serviceSource.priceAmount,
+                serviceDurationSnapshot: serviceSource.durationMinutes,
+                serviceSnapshotJson: serviceSource.snapshot,
+                startsAt: slot.startsAt,
+                endsAt: slot.endsAt,
+                paymentMethod: this.paymentMethodToDb(input.paymentMethod ?? "onsite"),
+                paymentAmountJpy: finalPriceJpy,
+                note: input.note?.trim() || null,
+                statusHistory: {
+                  create: {
+                    fromStatus: null,
+                    toStatus: "PENDING",
+                    actorUserId: input.customerUserId
+                  }
+                }
+              },
+              include: this.orderInclude()
+            });
+
+            if (supersededOrderIds.length > 0) {
+              await tx.orderStatusHistory.createMany({
+                data: supersededOrderIds.map((bookingOrderId) => ({
+                  bookingOrderId,
+                  fromStatus: "PENDING" as const,
+                  toStatus: "CANCELLED" as const,
+                  actorUserId: input.customerUserId,
+                  reason: "superseded_by_new_pending_order",
+                  metadata: {
+                    supersededByBookingOrderId: order.id
+                  }
+                }))
+              });
+            }
+
+            const cancelledOrders =
+              supersededOrderIds.length > 0
+                ? await tx.bookingOrder.findMany({
+                    where: { id: { in: supersededOrderIds }, deletedAt: null },
+                    include: this.orderInclude(),
+                    orderBy: { id: "asc" }
+                  })
+                : [];
+
+            const buildResult = (createdOrder: OrderRecord): BookingCreateMutationResult => ({
+              order: this.mapOrder(createdOrder),
+              recipientUserIds: this.providerUserIds(createdOrder),
+              supersededOrders: cancelledOrders.map((cancelledOrder) => ({
+                order: this.mapOrder(cancelledOrder),
+                recipientUserIds: this.providerUserIds(cancelledOrder)
+              }))
+            });
+
+            if (preparedAffiliate && options.persistAffiliate) {
+              if (!serviceSource.affiliateServiceId) {
+                throw new Error("error.affiliate.promotion_scope_mismatch");
+              }
+              await options.persistAffiliate({
+                ...affiliateContext,
+                serviceId: serviceSource.affiliateServiceId,
+                bookingOrderId: order.id,
+                prepared: preparedAffiliate
+              });
+              const attributedOrder = await tx.bookingOrder.findFirst({
+                where: { id: order.id, deletedAt: null },
+                include: this.orderInclude()
+              });
+              if (!attributedOrder) {
+                throw new Error("error.order.not_found");
+              }
+              return buildResult(attributedOrder);
+            }
+
+            return buildResult(order);
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+        )
+      );
+    } catch (error) {
+      if (error instanceof BookingPendingReplacementUnavailableError) {
+        return null;
       }
-
-      return this.mapOrder(order);
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+      throw error;
+    }
   }
 
   private async isShopSuspendedInTransaction(
@@ -810,108 +1082,126 @@ export class BookingRepository implements BookingRepositoryPort {
   public async transitionOrder(
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
-  ): Promise<BookingOrderPayload | null> {
+  ): Promise<OrderTransitionMutationResult> {
     const result = await this.transitionOrderWithScheduleGuard(input, options);
-    return result?.outcome === "ok" ? result.order : null;
+    if (!result) {
+      return null;
+    }
+    if (result.outcome === "ok") {
+      return result.order;
+    }
+    if (result.outcome === "acceptance_paused") {
+      return { kind: "acceptance_paused", pauses: result.pauses };
+    }
+    return null;
   }
 
   public async transitionOrderWithScheduleGuard(
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
   ): Promise<OrderTransitionGuardedResult> {
-    return runWithTransactionConflictRetry(() => this.client.$transaction(async (tx) => {
-      const current = await tx.bookingOrder.findFirst({
-        where: {
-          id: input.id,
-          deletedAt: null
-        },
-        include: this.orderInclude()
-      });
-
-      if (!current || this.statusFromDb(current.status) !== input.fromStatus) {
-        return { outcome: "invalid_state" as const };
-      }
-
-      if (input.toStatus === "confirmed" && current.technicianProfileId) {
-        await this.lockScheduleOwner(tx, current.shopId, current.technicianProfileId);
-        const conflict = await tx.bookingOrder.findFirst({
+    return runWithTransactionConflictRetry(() =>
+      this.client.$transaction(async (tx) => {
+        const current = await tx.bookingOrder.findFirst({
           where: {
-            id: { not: current.id },
-            technicianProfileId: current.technicianProfileId,
-            status: { in: ["CONFIRMED", "IN_SERVICE"] },
-            startsAt: { lt: current.endsAt },
-            endsAt: { gt: current.startsAt },
+            id: input.id,
             deletedAt: null
           },
-          select: { id: true }
+          include: this.orderInclude()
         });
-        if (conflict) {
-          return { outcome: "schedule_conflict" as const };
+
+        if (!current || this.statusFromDb(current.status) !== input.fromStatus) {
+          return { outcome: "invalid_state" as const };
         }
-      }
 
-      const update = await tx.bookingOrder.updateMany({
-        where: {
-          id: input.id,
-          deletedAt: null,
-          status: this.statusToDb(input.fromStatus)
-        },
-        data: {
-          status: this.statusToDb(input.toStatus),
-          cancelReason: input.toStatus === "cancelled" ? input.reason?.trim() || null : undefined,
-          paymentStatus:
-            input.toStatus === "cancelled" && current.paymentStatus === "CONFIRMED"
-              ? "REFUND_PENDING"
-              : undefined
+        if (input.toStatus === "confirmed") {
+          const pauses = await this.findActiveAcceptancePauses(tx, current.shopId);
+          if (pauses.length > 0) {
+            return { outcome: "acceptance_paused" as const, pauses };
+          }
+
+          if (current.technicianProfileId) {
+            await this.lockScheduleOwner(tx, current.shopId, current.technicianProfileId);
+            const conflict = await tx.bookingOrder.findFirst({
+              where: {
+                id: { not: current.id },
+                technicianProfileId: current.technicianProfileId,
+                status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+                startsAt: { lt: current.endsAt },
+                endsAt: { gt: current.startsAt },
+                deletedAt: null
+              },
+              select: { id: true }
+            });
+            if (conflict) {
+              return { outcome: "schedule_conflict" as const };
+            }
+          }
         }
-      });
 
-      if (update.count !== 1) {
-        return { outcome: "invalid_state" as const };
-      }
-
-      if (input.toStatus === "cancelled") {
-        await tx.scheduleSlot.updateMany({
+        const update = await tx.bookingOrder.updateMany({
           where: {
-            id: current.scheduleSlotId,
-            bookedCount: { gt: 0 }
+            id: input.id,
+            deletedAt: null,
+            status: this.statusToDb(input.fromStatus)
           },
           data: {
-            bookedCount: { decrement: 1 },
-            status: "AVAILABLE"
+            status: this.statusToDb(input.toStatus),
+            cancelReason: input.toStatus === "cancelled" ? input.reason?.trim() || null : undefined,
+            paymentStatus:
+              input.toStatus === "cancelled" && current.paymentStatus === "CONFIRMED"
+                ? "REFUND_PENDING"
+                : undefined
           }
         });
-      }
 
-      await tx.orderStatusHistory.create({
-        data: {
-          bookingOrderId: input.id,
-          fromStatus: this.statusToDb(input.fromStatus),
-          toStatus: this.statusToDb(input.toStatus),
-          actorUserId: input.actorUserId,
-          reason: input.reason?.trim() || null
+        if (update.count !== 1) {
+          return { outcome: "invalid_state" as const };
         }
-      });
 
-      if (options.settle) {
-        await options.settle({
-          transactionClient: tx,
-          order: this.mapOrder(current)
+        if (input.toStatus === "cancelled") {
+          await tx.scheduleSlot.updateMany({
+            where: {
+              id: current.scheduleSlotId,
+              bookedCount: { gt: 0 }
+            },
+            data: {
+              bookedCount: { decrement: 1 },
+              status: "AVAILABLE"
+            }
+          });
+        }
+
+        await tx.orderStatusHistory.create({
+          data: {
+            bookingOrderId: input.id,
+            fromStatus: this.statusToDb(input.fromStatus),
+            toStatus: this.statusToDb(input.toStatus),
+            actorUserId: input.actorUserId,
+            reason: input.reason?.trim() || null
+          }
         });
-      }
 
-      const next = await tx.bookingOrder.findFirst({
-        where: {
-          id: input.id,
-          deletedAt: null
-        },
-        include: this.orderInclude()
-      });
+        if (options.settle) {
+          await options.settle({
+            transactionClient: tx,
+            order: this.mapOrder(current)
+          });
+        }
 
-      return next
-        ? { outcome: "ok" as const, order: this.mapOrder(next) }
-        : { outcome: "invalid_state" as const };
-    }));
+        const next = await tx.bookingOrder.findFirst({
+          where: {
+            id: input.id,
+            deletedAt: null
+          },
+          include: this.orderInclude()
+        });
+
+        return next
+          ? { outcome: "ok" as const, order: this.mapOrder(next) }
+          : { outcome: "invalid_state" as const };
+      })
+    );
   }
 
   public confirmManualPayment(
@@ -1141,7 +1431,12 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   private appendMoneyTimeline(value: Prisma.JsonValue | null | undefined, event: object): object[] {
-    return [...(Array.isArray(value) ? value.filter((item): item is object => Boolean(item) && typeof item === "object") : []), event];
+    return [
+      ...(Array.isArray(value)
+        ? value.filter((item): item is object => Boolean(item) && typeof item === "object")
+        : []),
+      event
+    ];
   }
 
   private async resolveScheduleTarget(
@@ -1150,13 +1445,24 @@ export class BookingRepository implements BookingRepositoryPort {
     serviceId: number | undefined,
     technicianServiceId: number | undefined,
     requestedTechnicianProfileId: number | null
-  ): Promise<{ shopId: number; technicianProfileId: number | null; serviceId: number | null; technicianServiceId: number | null; durationMinutes: number } | null> {
+  ): Promise<{
+    shopId: number;
+    technicianProfileId: number | null;
+    serviceId: number | null;
+    technicianServiceId: number | null;
+    durationMinutes: number;
+  } | null> {
     if (Boolean(serviceId) === Boolean(technicianServiceId)) return null;
     let shopId: number;
     let technicianProfileId = requestedTechnicianProfileId;
     if (scope.scope === "technician") {
       const technician = await transaction.technicianProfile.findFirst({
-        where: { id: scope.technicianProfileId, deletedAt: null, status: "published", shopId: { not: null } },
+        where: {
+          id: scope.technicianProfileId,
+          deletedAt: null,
+          status: "published",
+          shopId: { not: null }
+        },
         select: { id: true, shopId: true }
       });
       if (!technician?.shopId) return null;
@@ -1165,26 +1471,55 @@ export class BookingRepository implements BookingRepositoryPort {
     } else {
       shopId = scope.shopId;
     }
-    const shop = await transaction.shop.findFirst({ where: { id: shopId, deletedAt: null, status: "published" }, select: { id: true } });
+    const shop = await transaction.shop.findFirst({
+      where: { id: shopId, deletedAt: null, status: "published" },
+      select: { id: true }
+    });
     if (!shop) return null;
     if (technicianServiceId) {
       const technicianService = await transaction.technicianService.findFirst({
-        where: { id: technicianServiceId, shopId, deletedAt: null, isActive: true, isBookable: true },
+        where: {
+          id: technicianServiceId,
+          shopId,
+          deletedAt: null,
+          isActive: true,
+          isBookable: true
+        },
         select: { id: true, technicianId: true, durationMinutes: true }
       });
-      if (!technicianService || (technicianProfileId && technicianProfileId !== technicianService.technicianId)) return null;
+      if (
+        !technicianService ||
+        (technicianProfileId && technicianProfileId !== technicianService.technicianId)
+      )
+        return null;
       technicianProfileId = technicianService.technicianId;
-      if (!await this.hasActiveScheduleAffiliation(transaction, shopId, technicianProfileId)) return null;
-      return { shopId, technicianProfileId, serviceId: null, technicianServiceId: technicianService.id, durationMinutes: technicianService.durationMinutes };
+      if (!(await this.hasActiveScheduleAffiliation(transaction, shopId, technicianProfileId)))
+        return null;
+      return {
+        shopId,
+        technicianProfileId,
+        serviceId: null,
+        technicianServiceId: technicianService.id,
+        durationMinutes: technicianService.durationMinutes
+      };
     }
     const [service, technician] = await Promise.all([
-      transaction.service.findFirst({ where: { id: serviceId, shopId, deletedAt: null, status: "published" }, select: { id: true, durationMinutes: true } }),
+      transaction.service.findFirst({
+        where: { id: serviceId, shopId, deletedAt: null, status: "published" },
+        select: { id: true, durationMinutes: true }
+      }),
       technicianProfileId
         ? this.hasActiveScheduleAffiliation(transaction, shopId, technicianProfileId)
         : Promise.resolve(null)
     ]);
     if (!service || (technicianProfileId && !technician)) return null;
-    return { shopId, technicianProfileId, serviceId: service.id, technicianServiceId: null, durationMinutes: service.durationMinutes };
+    return {
+      shopId,
+      technicianProfileId,
+      serviceId: service.id,
+      technicianServiceId: null,
+      durationMinutes: service.durationMinutes
+    };
   }
 
   private async lockScheduleOwner(
@@ -1194,10 +1529,100 @@ export class BookingRepository implements BookingRepositoryPort {
   ): Promise<void> {
     const updatedAt = new Date();
     if (technicianProfileId) {
-      await transaction.technicianProfile.update({ where: { id: technicianProfileId }, data: { updatedAt } });
+      await transaction.technicianProfile.update({
+        where: { id: technicianProfileId },
+        data: { updatedAt }
+      });
       return;
     }
     await transaction.shop.update({ where: { id: shopId }, data: { updatedAt } });
+  }
+
+  private async lockCustomerUser(
+    transaction: Prisma.TransactionClient,
+    userId: number
+  ): Promise<boolean> {
+    const rows = await transaction.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`SELECT \`id\` FROM \`users\` WHERE \`id\` = ${userId} AND \`deleted_at\` IS NULL FOR UPDATE`
+    );
+    return rows.length === 1;
+  }
+
+  private async findActiveAcceptancePauses(
+    transaction: Prisma.TransactionClient,
+    shopId: number
+  ): Promise<ActiveOrderAcceptancePauseSummary[]> {
+    await transaction.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`SELECT \`id\` FROM \`shops\` WHERE \`id\` = ${shopId} AND \`deleted_at\` IS NULL FOR UPDATE`
+    );
+    const at = new Date();
+    const memberships = await transaction.$queryRaw<Array<{ merchantAccountId: number }>>(
+      Prisma.sql`
+        SELECT \`merchant_account_id\` AS \`merchantAccountId\`
+        FROM \`merchant_shop_memberships\`
+        WHERE \`shop_id\` = ${shopId}
+          AND \`active_key\` IS NOT NULL
+          AND \`deleted_at\` IS NULL
+          AND \`starts_at\` <= ${at}
+          AND (\`ends_at\` IS NULL OR \`ends_at\` > ${at})
+        ORDER BY \`merchant_account_id\` ASC, \`id\` ASC
+        FOR UPDATE
+      `
+    );
+    const merchantAccountIds = Array.from(
+      new Set(memberships.map((membership) => membership.merchantAccountId))
+    );
+    if (merchantAccountIds.length > 0) {
+      await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT \`id\` FROM \`merchant_accounts\` WHERE \`id\` IN (${Prisma.join(merchantAccountIds)}) AND \`deleted_at\` IS NULL ORDER BY \`id\` FOR UPDATE`
+      );
+    }
+    const pauses = await transaction.orderAcceptancePause.findMany({
+      where: {
+        status: "ACTIVE",
+        activeKey: { not: null },
+        deletedAt: null,
+        OR: [
+          { subjectType: "SHOP", shopId },
+          ...(merchantAccountIds.length > 0
+            ? [
+                {
+                  subjectType: "MERCHANT_ACCOUNT" as const,
+                  merchantAccountId: { in: merchantAccountIds }
+                }
+              ]
+            : [])
+        ]
+      },
+      select: {
+        subjectType: true,
+        authorityType: true,
+        reasonCode: true,
+        startsAt: true
+      },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+    });
+    return pauses.map((pause) => ({
+      subjectType: pause.subjectType === "SHOP" ? "shop" : "merchant_account",
+      authorityType:
+        pause.authorityType === "OPERATIONS"
+          ? "operations"
+          : pause.authorityType === "MERCHANT"
+            ? "merchant"
+            : "shop",
+      reasonCode: pause.reasonCode,
+      startsAt: pause.startsAt
+    }));
+  }
+
+  private providerUserIds(order: OrderRecord): number[] {
+    return Array.from(
+      new Set(
+        [order.shop.ownerUserId, order.technicianProfile?.userId].filter(
+          (userId): userId is number => typeof userId === "number"
+        )
+      )
+    );
   }
 
   private matchesServiceDuration(startsAt: Date, endsAt: Date, durationMinutes: number): boolean {
@@ -1213,18 +1638,20 @@ export class BookingRepository implements BookingRepositoryPort {
     endsAt: Date,
     excludeId?: number
   ): Promise<boolean> {
-    return Boolean(await transaction.scheduleSlot.findFirst({
-      where: {
-        deletedAt: null,
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-        ...(technicianProfileId
-          ? { shopId, technicianProfileId }
-          : { shopId, serviceId, technicianProfileId: null }),
-        startsAt: { lt: endsAt },
-        endsAt: { gt: startsAt }
-      },
-      select: { id: true }
-    }));
+    return Boolean(
+      await transaction.scheduleSlot.findFirst({
+        where: {
+          deletedAt: null,
+          ...(excludeId ? { id: { not: excludeId } } : {}),
+          ...(technicianProfileId
+            ? { shopId, technicianProfileId }
+            : { shopId, serviceId, technicianProfileId: null }),
+          startsAt: { lt: endsAt },
+          endsAt: { gt: startsAt }
+        },
+        select: { id: true }
+      })
+    );
   }
 
   private async hasActiveScheduleAffiliation(
@@ -1232,18 +1659,20 @@ export class BookingRepository implements BookingRepositoryPort {
     shopId: number,
     technicianProfileId: number
   ): Promise<boolean> {
-    return Boolean(await transaction.technicianShopAffiliation.findFirst({
-      where: {
-        shopId,
-        technicianProfileId,
-        activeKey: { not: null },
-        workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
-        endsAt: null,
-        deletedAt: null,
-        technicianProfile: { deletedAt: null, status: "published" }
-      },
-      select: { id: true, relationshipType: true }
-    }));
+    return Boolean(
+      await transaction.technicianShopAffiliation.findFirst({
+        where: {
+          shopId,
+          technicianProfileId,
+          activeKey: { not: null },
+          workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
+          endsAt: null,
+          deletedAt: null,
+          technicianProfile: { deletedAt: null, status: "published" }
+        },
+        select: { id: true, relationshipType: true }
+      })
+    );
   }
 
   private async hasConfirmedBookingOverlap(
@@ -1253,19 +1682,19 @@ export class BookingRepository implements BookingRepositoryPort {
     endsAt: Date,
     excludeScheduleSlotId?: number
   ): Promise<boolean> {
-    return Boolean(await transaction.bookingOrder.findFirst({
-      where: {
-        technicianProfileId,
-        status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
-        startsAt: { lt: endsAt },
-        endsAt: { gt: startsAt },
-        deletedAt: null,
-        ...(excludeScheduleSlotId
-          ? { scheduleSlotId: { not: excludeScheduleSlotId } }
-          : {})
-      },
-      select: { id: true }
-    }));
+    return Boolean(
+      await transaction.bookingOrder.findFirst({
+        where: {
+          technicianProfileId,
+          status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+          startsAt: { lt: endsAt },
+          endsAt: { gt: startsAt },
+          deletedAt: null,
+          ...(excludeScheduleSlotId ? { scheduleSlotId: { not: excludeScheduleSlotId } } : {})
+        },
+        select: { id: true }
+      })
+    );
   }
 
   private slotInclude() {
@@ -1379,14 +1808,11 @@ export class BookingRepository implements BookingRepositoryPort {
         ? {
             taskId: order.affiliateAttributions[0].taskId,
             publicCode: order.affiliateAttributions[0].claim.publicCode,
-            source:
-              order.affiliateAttributions[0].source === "CODE" ? "code" : "url",
+            source: order.affiliateAttributions[0].source === "CODE" ? "code" : "url",
             originalPriceJpy: order.affiliateAttributions[0].originalPriceJpy,
-            customerDiscountJpy:
-              order.affiliateAttributions[0].customerDiscountJpy,
+            customerDiscountJpy: order.affiliateAttributions[0].customerDiscountJpy,
             finalPriceJpy: order.affiliateAttributions[0].finalPriceJpy,
-            rewardAllocatedNdp:
-              order.affiliateAttributions[0].rewardAllocatedNdp,
+            rewardAllocatedNdp: order.affiliateAttributions[0].rewardAllocatedNdp,
             attributionStatus:
               order.affiliateAttributions[0].status.toLowerCase() as AffiliateCheckoutSummary["attributionStatus"]
           }

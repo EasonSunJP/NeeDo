@@ -84,6 +84,36 @@ const platformFeePolicyErrorResponses = {
   }
 };
 
+const orderAcceptancePauseErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description: "error.forbidden or error.identity.forbidden — denied permission or scope"
+  },
+  "404": {
+    description: "error.order_acceptance_pause.not_found — pause or subject does not exist"
+  },
+  "409": {
+    description: "error.order_acceptance_pause.conflict — concurrent or state conflict"
+  }
+};
+
+const orderAcceptancePauseListParameters = [
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100 }
+  },
+  { name: "status", in: "query", schema: { type: "string", enum: ["active", "released"] } },
+  {
+    name: "subjectType",
+    in: "query",
+    schema: { type: "string", enum: ["merchant_account", "shop"] }
+  },
+  { name: "subjectId", in: "query", schema: { type: "integer", minimum: 1 } }
+];
+
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -5585,6 +5615,90 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           taskAction: { $ref: "#/components/schemas/OfficialAnnouncementTaskAction" }
         }
       },
+      OrderAcceptancePause: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "subjectType",
+          "subjectId",
+          "merchantAccountId",
+          "merchantAccountName",
+          "shopId",
+          "shopName",
+          "authorityType",
+          "status",
+          "reasonCode",
+          "reasonDetail",
+          "startsAt",
+          "releasedAt",
+          "releaseReason",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          subjectType: { type: "string", enum: ["merchant_account", "shop"] },
+          subjectId: { type: "integer", minimum: 1 },
+          merchantAccountId: { type: ["integer", "null"], minimum: 1 },
+          merchantAccountName: { type: ["string", "null"] },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          shopName: { type: ["string", "null"] },
+          authorityType: { type: "string", enum: ["operations", "merchant", "shop"] },
+          status: { type: "string", enum: ["active", "released"] },
+          reasonCode: { type: "string", pattern: "^[a-z0-9][a-z0-9_-]{1,79}$" },
+          reasonDetail: { type: "string", minLength: 1, maxLength: 500 },
+          startsAt: { type: "string", format: "date-time" },
+          releasedAt: { type: ["string", "null"], format: "date-time" },
+          releaseReason: { type: ["string", "null"], maxLength: 500 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      OrderAcceptancePauseSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["subjectType", "authorityType", "reasonCode", "startsAt"],
+        properties: {
+          subjectType: { type: "string", enum: ["merchant_account", "shop"] },
+          authorityType: { type: "string", enum: ["operations", "merchant", "shop"] },
+          reasonCode: { type: "string", pattern: "^[a-z0-9][a-z0-9_-]{1,79}$" },
+          startsAt: { type: "string", format: "date-time" }
+        }
+      },
+      OrderAcceptancePausePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrderAcceptancePause" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      OrderAcceptancePauseCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["subjectType", "subjectId", "reasonCode", "reasonDetail"],
+        properties: {
+          subjectType: { type: "string", enum: ["merchant_account", "shop"] },
+          subjectId: { type: "integer", minimum: 1 },
+          reasonCode: { type: "string", pattern: "^[a-z0-9][a-z0-9_-]{1,79}$" },
+          reasonDetail: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      OrderAcceptancePauseReleaseRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["releaseReason"],
+        properties: {
+          releaseReason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
       AffiliateClaimPage: {
         type: "object",
         required: ["list", "total", "page", "page_size"],
@@ -5712,6 +5826,116 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/ShopPlatformFeePolicy"
           }),
           ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/order-acceptance-pauses`]: {
+      get: {
+        tags: ["Order Acceptance Pause"],
+        summary: "List group and shop order acceptance pauses in operations scope",
+        security: [{ bearerAuth: [] }],
+        parameters: orderAcceptancePauseListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated order acceptance pauses", {
+            $ref: "#/components/schemas/OrderAcceptancePausePage"
+          }),
+          ...orderAcceptancePauseErrorResponses
+        }
+      },
+      post: {
+        tags: ["Order Acceptance Pause"],
+        summary: "Pause order acceptance for one merchant group or shop as operations",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderAcceptancePauseCreateRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created or existing active order acceptance pause", {
+            $ref: "#/components/schemas/OrderAcceptancePause"
+          }),
+          ...orderAcceptancePauseErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/order-acceptance-pauses/{id}/release`]: {
+      post: {
+        tags: ["Order Acceptance Pause"],
+        summary: "Release an order acceptance pause as operations",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderAcceptancePauseReleaseRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Released order acceptance pause", {
+            $ref: "#/components/schemas/OrderAcceptancePause"
+          }),
+          ...orderAcceptancePauseErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/order-acceptance-pauses`]: {
+      get: {
+        tags: ["Order Acceptance Pause"],
+        summary: "List order acceptance pauses in the active merchant or shop identity scope",
+        security: [{ bearerAuth: [] }],
+        parameters: orderAcceptancePauseListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated order acceptance pauses", {
+            $ref: "#/components/schemas/OrderAcceptancePausePage"
+          }),
+          ...orderAcceptancePauseErrorResponses
+        }
+      },
+      post: {
+        tags: ["Order Acceptance Pause"],
+        summary: "Pause order acceptance in the active merchant or shop identity scope",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderAcceptancePauseCreateRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created or existing active order acceptance pause", {
+            $ref: "#/components/schemas/OrderAcceptancePause"
+          }),
+          ...orderAcceptancePauseErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/order-acceptance-pauses/{id}/release`]: {
+      post: {
+        tags: ["Order Acceptance Pause"],
+        summary: "Release an order acceptance pause in the active merchant or shop identity scope",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderAcceptancePauseReleaseRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Released order acceptance pause", {
+            $ref: "#/components/schemas/OrderAcceptancePause"
+          }),
+          ...orderAcceptancePauseErrorResponses
         }
       }
     },
@@ -8569,6 +8793,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       type: "string",
                       enum: [
                         "error.order.invalid_transition",
+                        "error.order.acceptance_paused",
                         "error.platform_fee.insufficient_balance_confirmation_required",
                         "error.platform_fee.preview_stale",
                         "error.platform_fee.technician_required",
@@ -8586,6 +8811,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                         previewVersion: {
                           type: "string",
                           pattern: "^sha256:[a-f0-9]{64}$"
+                        },
+                        pauses: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/OrderAcceptancePauseSummary" }
                         }
                       }
                     }
