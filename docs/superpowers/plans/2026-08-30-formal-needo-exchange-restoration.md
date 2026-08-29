@@ -449,3 +449,158 @@ recordExchangeShare(postId: string, key: string): Promise<ExchangeInteractionCou
 ### 7.3 Commit
 
 - [ ] Commit as `feat(exchange): restore formal feed and publishing`.
+
+## Task 8: Restore formal detail, comments, likes, shares, and withdrawal
+
+**Files:**
+
+- Create: `src/features/exchange/ExchangePostDetailPage.tsx`
+- Create: `src/features/exchange/ExchangeInteractions.tsx`
+- Modify: `src/pages/mobile/NeedoRoutePages.tsx`
+- Modify: `src/App.tsx`
+- Modify: relevant files under `src/i18n/`
+- Test: `src/features/exchange/ExchangePostDetailPage.test.tsx`
+- Test: `src/features/exchange/ExchangeInteractions.test.tsx`
+
+### 8.1 RED — test persisted interaction flows
+
+- [ ] Add detail tests for direct navigation, missing post, withdrawn post, expired post, current actor ownership, and reload.
+- [ ] Add comment tests for pagination, 3–10 seeded comments displayed from the API, direct comment creation, retry idempotency, and server error behavior.
+- [ ] Add like tests proving the icon and count follow server-returned state across like, unlike, reload, and re-login.
+- [ ] Add share tests with this order: invoke the native share sheet when supported, otherwise copy the canonical URL; record the share only after the share/copy operation succeeds.
+- [ ] Prove native-share cancellation and clipboard failure do not call the share endpoint and do not increment the displayed count.
+- [ ] Add withdrawal tests proving only the author sees the action, confirmation is required, and a successful server response removes the post from the live feed.
+- [ ] Prove the obsolete `/posts/:postId/customer` route is absent and no customer-profile mock bridge is followed.
+- [ ] Run focused tests and confirm RED.
+
+### 8.2 GREEN — implement the formal detail experience
+
+- [ ] Load detail and comments independently from formal endpoints; do not derive detail from an in-memory feed item.
+- [ ] Use canonical route URLs for sharing and server-authoritative counts for every interaction result.
+- [ ] Preserve keyboard, focus, disabled, and pending states so rapid repeated taps cannot create duplicate writes.
+- [ ] Render withdrawn/expired states without exposing interaction controls.
+- [ ] Remove obsolete customer-detail route declarations and update all card links to the canonical post detail route.
+- [ ] Keep offer, match, appointment, booking, order, and payment absent.
+- [ ] Run focused tests and frontend typecheck until green.
+
+### 8.3 Commit
+
+- [ ] Commit as `feat(exchange): restore persisted social interactions`.
+
+## Task 9: Remove every old Exchange mock path and document retirement
+
+**Files:**
+
+- Modify: `src/pages/mobile/NeedoExchangePage.tsx`
+- Modify: `src/pages/mobile/NeedoRoutePages.tsx`
+- Modify: `src/App.tsx`
+- Delete: any additional Exchange-only legacy source named in the checked-in retirement inventory created in step 9.1
+- Modify: `src/data/mockRetirement.test.ts`
+- Modify: `docs/MOCK_RETIREMENT_MAP.md`
+- Modify: `README.md`
+- Test: `src/data/mockRetirement.test.ts`
+- Test: add a backend source guard test beside existing source-policy tests
+
+### 9.1 RED — make residue detectable
+
+- [ ] Inventory current source and formal entrypoints with `rg`; record each exact legacy file or symbol in the retirement map before deletion.
+- [ ] Extend the source guard so current Exchange code and production bundles reject these markers:
+
+```text
+data/mock
+localStorage
+needoExchangeBridge
+hashSystemId
+getSeedPosts
+getExtraPosts
+error.feature_unavailable
+needo.exchange.composed
+正式需求与情报功能尚未启用
+```
+
+- [ ] Add a guard that rejects old Exchange namespace rows in the formal simulation checker while allowing unrelated historical records.
+- [ ] Assert current Exchange source contains no generated identity builder, static post/comment array, random counter, or hidden fallback import.
+- [ ] Run the guard tests and confirm RED while old residue remains.
+
+### 9.2 GREEN — delete legacy runtime paths
+
+- [ ] Remove every retired Exchange mock module, localStorage migration, bridge, fallback, generated identity helper, and capability-gate branch that is no longer imported.
+- [ ] Remove stale exports and imports rather than leaving compatibility aliases.
+- [ ] Update `docs/MOCK_RETIREMENT_MAP.md` with old source, new formal endpoint/table, removal commit, and verification command.
+- [ ] Update `README.md` with the formal Exchange routes, roles, seed/check commands, and explicit deferred capabilities.
+- [ ] Build formal entrypoints and scan emitted assets for all forbidden markers.
+- [ ] Run guard tests until green.
+
+### 9.3 Commit
+
+- [ ] Commit as `chore(exchange): remove legacy mock implementation`.
+
+## Task 10: Reconcile, migrate, seed, and complete browser acceptance
+
+**Files:**
+
+- Modify only files required by failures discovered in this task
+- Record verification evidence in the implementation task summary; do not add generated credentials or database dumps to Git
+
+### 10.1 Reconcile migration state before writing to the database
+
+- [ ] Confirm the intended local services on ports 3000, 5180, 3307, and 6379 and inspect `/api/v1/health` plus `/api/v1/ready`.
+- [ ] Compare repository migration directories, Prisma schema, MySQL `_prisma_migrations`, and actual Exchange tables. Do not rely on `prisma migrate status` alone.
+- [ ] Stop and repair any missing dependency migration before applying the Exchange migration; never rewrite an applied migration.
+- [ ] Capture pre-seed counts for Exchange tables and unrelated formal tables needed to prove scoped writes.
+
+### 10.2 Apply and verify formal local data
+
+- [ ] Apply with the repository's development environment file:
+
+```bash
+cd backend
+ENV_FILE=.env.dev npx prisma migrate deploy
+npm run seed:formal-exchange-test
+npm run check:formal-exchange-test
+npm run seed:formal-exchange-test
+npm run check:formal-exchange-test
+```
+
+- [ ] Prove the second seed creates no duplicate rows.
+- [ ] Query exact formal totals: 20 live demand posts, 20 live intelligence posts, every post with 3–10 live comments, 10–66 unique live likes, and 2–15 unique live shares.
+- [ ] Join every author and interaction actor to an existing user, identity, and public NeeDo ID; prove subtype/identity rules.
+- [ ] Prove no old Exchange namespace rows remain and unrelated formal data counts/history are unchanged.
+
+### 10.3 Run automated verification
+
+- [ ] Run focused backend and frontend tests from Tasks 1–9.
+- [ ] Run the full backend unit/integration suite, full frontend suite, lint, typecheck, i18n validation, and formal production build.
+- [ ] Use the formal build command if the normal build is intentionally blocked by the project's production safety gate.
+- [ ] Scan current source and emitted assets for forbidden Exchange mock markers and for deferred feature route/control names.
+- [ ] Run `git diff --check` and inspect `git status --short`; preserve unrelated user changes.
+
+### 10.4 Perform real browser acceptance
+
+- [ ] Start the formal backend on 3000 and frontend on 5180. Use `domcontentloaded` for browser navigation because SSE may keep connections open.
+- [ ] Log in with an existing customer test account and verify `user.html#/needo`: default demand tab, publish demand, comment, like/unlike, successful share, withdraw own post, reload, and re-login persistence.
+- [ ] Log in with an existing technician test account and verify `technician.html#/technician/needo`: default intelligence tab, publish intelligence, comment, like, share, and persistence.
+- [ ] Log in with an existing merchant test account and verify `store-admin.html#/merchant/needo`: default intelligence tab, publish intelligence, comment, like, share, and persistence.
+- [ ] On every portal, inspect both tabs and a direct detail URL at 390 px, 440 px, and desktop width. Check overflow, fixed navigation, composer fields, action menus, disabled states, and focus behavior.
+- [ ] Verify network responses come only from `/api/v1/exchange/*`, actor/public IDs map to the database, and there are no console errors.
+- [ ] Stop the backend and verify the page shows a localized error without mock content; restart and confirm recovery.
+- [ ] Confirm no offer, match, booking, order, appointment, or payment control/request appeared during acceptance.
+
+### 10.5 Final commit and handoff
+
+- [ ] Fix only verified failures, rerun the smallest affected checks, then rerun the full acceptance gate.
+- [ ] Commit any acceptance-only correction with a narrowly scoped message such as `fix(exchange): resolve formal acceptance findings`.
+- [ ] Report local completion separately from push, deployment, and live acceptance. Do not push or deploy without explicit authorization.
+
+## Completion gate
+
+The implementation is complete only when all of the following are simultaneously true:
+
+- [ ] Formal schema, migration, permissions, audit, OpenAPI, and lifecycle worker are present and passing.
+- [ ] Exactly 20 demand and 20 intelligence simulation posts exist from real formal test identities.
+- [ ] Every post meets the actor-linked comment, like, and share ranges.
+- [ ] Customer, technician, and merchant browser flows persist across reload and re-login.
+- [ ] Old Exchange mocks and runtime fallback markers are absent from source, database namespace checks, and formal bundles.
+- [ ] Five-language UI strings pass validation while authored content remains unchanged.
+- [ ] Offer-taking, matching, booking, order, and payment remain deferred and absent.
+- [ ] Focused tests, full tests, lint, typecheck, formal build, database checker, and responsive browser acceptance all pass.
