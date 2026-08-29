@@ -10,6 +10,10 @@ import {
 } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
+import {
+  compareMessageReactionCategories,
+  getMessageReactionCategory
+} from "../constants/message-reaction.constants";
 import { prisma } from "../prisma/client";
 import type { AuthRequestContext } from "../services/auth.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -270,6 +274,12 @@ export interface MessageReactionMutationInput {
   emoji: string;
 }
 
+export type MessageReactionMutationOutcome =
+  | { status: "updated"; message: MessagePayload }
+  | { status: "unchanged"; message: MessagePayload }
+  | { status: "slot_occupied"; message: MessagePayload; activeEmoji: string }
+  | { status: "not_found" };
+
 export interface DeleteMessageForUserInput {
   conversationId: number;
   messageId: number;
@@ -399,8 +409,12 @@ export interface RealtimeRepositoryPort {
   deleteMessageForUser: (
     input: DeleteMessageForUserInput
   ) => Promise<DeleteMessageForUserPayload | null>;
-  setMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
-  removeMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
+  setMessageReaction: (
+    input: MessageReactionMutationInput
+  ) => Promise<MessageReactionMutationOutcome>;
+  removeMessageReaction: (
+    input: MessageReactionMutationInput
+  ) => Promise<MessageReactionMutationOutcome>;
   markConversationRead: (input: {
     conversationId: number;
     userId: number;
@@ -1262,10 +1276,43 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async setMessageReaction(
     input: MessageReactionMutationInput
-  ): Promise<MessagePayload | null> {
+  ): Promise<MessageReactionMutationOutcome> {
     return this.client.$transaction(async (tx) => {
       const messageLocked = await this.lockMessageForParticipant(tx, input);
-      if (!messageLocked) return null;
+      if (!messageLocked) return { status: "not_found" };
+
+      const activeReactions = await tx.messageReaction.findMany({
+        where: {
+          messageId: input.messageId,
+          userId: input.userId,
+          deletedAt: null
+        },
+        select: { emoji: true },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+      });
+      const category = getMessageReactionCategory(input.emoji);
+      const activeInSlot = activeReactions.find(
+        (reaction) => getMessageReactionCategory(reaction.emoji) === category
+      );
+
+      if (activeInSlot) {
+        const current = await tx.message.findUnique({
+          where: { id: input.messageId },
+          include: messageInclude
+        });
+        if (!current) return { status: "not_found" };
+
+        const message = this.mapMessage(current, input.userId);
+        if (activeInSlot.emoji === input.emoji) {
+          return { status: "unchanged", message };
+        }
+
+        return {
+          status: "slot_occupied",
+          message,
+          activeEmoji: activeInSlot.emoji
+        };
+      }
 
       await tx.messageReaction.upsert({
         where: {
@@ -1288,18 +1335,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return this.mapMessage(updated, input.userId);
+      return { status: "updated", message: this.mapMessage(updated, input.userId) };
     });
   }
 
   public async removeMessageReaction(
     input: MessageReactionMutationInput
-  ): Promise<MessagePayload | null> {
+  ): Promise<MessageReactionMutationOutcome> {
     return this.client.$transaction(async (tx) => {
       const messageLocked = await this.lockMessageForParticipant(tx, input);
-      if (!messageLocked) return null;
+      if (!messageLocked) return { status: "not_found" };
 
-      await tx.messageReaction.updateMany({
+      const removed = await tx.messageReaction.updateMany({
         where: {
           messageId: input.messageId,
           userId: input.userId,
@@ -1309,12 +1356,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         data: { deletedAt: new Date() }
       });
 
+      if (removed.count === 0) {
+        const current = await tx.message.findUnique({
+          where: { id: input.messageId },
+          include: messageInclude
+        });
+        if (!current) return { status: "not_found" };
+        return { status: "unchanged", message: this.mapMessage(current, input.userId) };
+      }
+
       const updated = await tx.message.update({
         where: { id: input.messageId },
         data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return this.mapMessage(updated, input.userId);
+      return { status: "updated", message: this.mapMessage(updated, input.userId) };
     });
   }
 
@@ -2693,11 +2749,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       type: this.messageTypeFromDb(message.type),
       content: message.content,
       metadata: message.metadata,
-      reactions: Array.from(reactions.entries()).map(([emoji, people]) => ({
-        emoji,
-        people,
-        reactedByMe: people.some((person) => person.userId === viewerUserId)
-      })),
+      reactions: Array.from(reactions.entries())
+        .sort(([left], [right]) => compareMessageReactionCategories(left, right))
+        .map(([emoji, people]) => ({
+          emoji,
+          people,
+          reactedByMe: people.some((person) => person.userId === viewerUserId)
+        })),
       createdAt: message.createdAt,
       recallDeadlineAt: message.recallDeadlineAt,
       recalledAt: message.recalledAt,
