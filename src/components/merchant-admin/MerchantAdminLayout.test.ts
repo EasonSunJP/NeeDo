@@ -64,5 +64,9 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain('to: "/merchant-admin/people?module=users"');
     expect(source).not.toContain('title: "人员与顾客"');
     expect(source).not.toContain('module=customers');
+    expect(source).toContain('children: ["预约处理", "改期", "联系用户"]');
+    expect(source.match(/placeholder="搜索订单、用户、员工/g)?.length).toBe(2);
+    expect(source).not.toContain("联系顾客");
+    expect(source).not.toContain("搜索订单、顾客");
   });
 });

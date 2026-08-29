@@ -34,4 +34,9 @@ describe("operations customer profiles resilience", () => {
     expect(source).toContain('const [draft, setDraft] = useState({ displayName: "", city: "", isPublic: true })');
     expect(source).not.toContain("{ ...draft, membershipLevel:");
   });
+
+  it("uses user terminology for formal detail failures", () => {
+    expect(source).toContain('translateText("用户正式详情读取失败"');
+    expect(source).not.toContain("客户正式详情读取失败");
+  });
 });

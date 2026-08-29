@@ -111,8 +111,8 @@ const navSections: AdminNavSection[] = [
     items: [
       { label: "账号管理", to: "/admin/users", icon: "账", permission: "menu:user-management", children: ["真实账号", "状态", "角色分配"] },
       { label: "用户资料", to: "/admin/users?view=customers", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
-      { label: "客户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["客户档案", "会员等级", "公开状态"] },
-      { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式客户", "预约次数", "创建时间"] }
+      { label: "用户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
+      { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式用户", "预约次数", "创建时间"] }
     ]
   },
   {
@@ -335,7 +335,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">全局搜索</p>
             <label className="admin-search flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm">
               <span className="text-ink/45">⌕</span>
-              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、客户、门店、技师" />
+              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、门店、技师" />
             </label>
           </section>
 

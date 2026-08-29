@@ -64,7 +64,7 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     items: [
       { label: "门店总览", to: "/merchant-admin", icon: "总", children: ["门店表现", "快捷入口", "经营提醒"] },
       { label: "数据 / 经营驾驶舱", to: "/merchant-admin/analytics", icon: "数", children: ["KPI", "订单漏斗", "NDP", "异常预警"] },
-      { label: "订单中心", to: "/merchant-admin/orders", icon: "单", children: ["预约处理", "改期", "联系顾客"] },
+      { label: "订单中心", to: "/merchant-admin/orders", icon: "单", children: ["预约处理", "改期", "联系用户"] },
       { label: "点单 / オーダー", to: "/merchant-admin/dine/orders", icon: "点", children: ["新单", "KDS", "上菜", "收银"], permission: "store.dine-in.order.view" },
       { label: "菜单 / メニュー", to: "/merchant-admin/menu", icon: "菜", children: ["商品", "售罄", "制作区", "设施限定"], permission: "store.dine-in.menu.view" },
       { label: "场控 / 店内", to: "/merchant-admin/floor", icon: "店", children: ["桌台", "包厢", "床位", "QR"], permission: "store.dine-in.floor.view" },
@@ -359,7 +359,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">店铺搜索</p>
             <label className="admin-search flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm">
               <span className="text-ink/45">⌕</span>
-              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、顾客、员工、套餐" />
+              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、员工、套餐" />
             </label>
           </section>
 
@@ -470,7 +470,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
                 </div>
                 <label className="admin-search flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm xl:max-w-[320px]">
                   <span className="text-ink/45">⌕</span>
-                  <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、顾客、员工、财务" />
+                  <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、员工、财务" />
                 </label>
               </div>
               <div className="flex items-center gap-2 text-sm">

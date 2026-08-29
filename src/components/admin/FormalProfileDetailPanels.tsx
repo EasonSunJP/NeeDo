@@ -434,7 +434,7 @@ function FormalIdentityHeader({
             {rating ? (
               <p className="mt-1 text-lg font-black tabular-nums">★ {formatDecimal(rating.ratingAverage, localization)} <span className="text-xs text-white/60">/ {formatInteger(rating.reviewCount, localization)} {localization.t("条")}</span></p>
             ) : (
-              <p className="mt-1 text-sm font-black text-white/75">{localization.t("尚未接入正式数据")}</p>
+              <p className="mt-1 text-sm font-black text-white/75">{localization.t("暂无评价")}</p>
             )}
           </div>
           {actionContent ? <div className="flex flex-wrap gap-2">{actionContent}</div> : null}
@@ -660,14 +660,14 @@ function renderCustomerTab(
         <FormalSectionCard localization={localization} title="下次预约">
           {detail.nextBooking
             ? <BookingRow booking={detail.nextBooking} localization={localization} />
-            : <UnavailableState localization={localization} />}
+            : <UnavailableState label="暂无下次预约" localization={localization} />}
         </FormalSectionCard>
         <FormalSectionCard localization={localization} title="近期预约">
           {detail.recentBookings.length > 0 ? (
             <div className="grid gap-2">
               {detail.recentBookings.map((booking) => <BookingRow booking={booking} key={booking.id} localization={localization} />)}
             </div>
-          ) : <UnavailableState localization={localization} />}
+          ) : <UnavailableState label="暂无近期预约" localization={localization} />}
         </FormalSectionCard>
         <ReviewSummaryCard localization={localization} review={detail.reviewSummary} />
       </>
@@ -730,6 +730,7 @@ function CustomerTimelinePanel({
       <AuditTimeline events={events} localization={localization} title="用户动态" />
       {timeline && onPageChange && onPageSizeChange ? (
         <FormalTimelinePagination
+          ariaLabel="用户动态翻页"
           disabled={loading}
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
@@ -786,10 +787,16 @@ function UnavailableCard({ localization, title }: { localization: FormalLocaliza
   );
 }
 
-function UnavailableState({ localization }: { localization: FormalLocalization }) {
+function UnavailableState({
+  label = "尚未接入正式数据",
+  localization,
+}: {
+  label?: string;
+  localization: FormalLocalization;
+}) {
   return (
     <div className="rounded-lg border border-dashed border-line bg-paper px-4 py-6 text-center">
-      <p className="text-sm font-black text-ink/55">{localization.t("尚未接入正式数据")}</p>
+      <p className="text-sm font-black text-ink/55">{localization.t(label)}</p>
     </div>
   );
 }
@@ -822,7 +829,7 @@ function ReviewSummaryCard({ localization, review }: { localization: FormalLocal
             <p className="mt-3 text-xs font-bold text-ink/45">{localization.t("最近评价")}：{formatDateTime(review.latestReviewAt, localization)}</p>
           </div>
         </div>
-      ) : <UnavailableState localization={localization} />}
+      ) : <UnavailableState label="暂无评价" localization={localization} />}
     </FormalSectionCard>
   );
 }
@@ -1154,7 +1161,7 @@ function scopeLabel(scopeType: string | null, scopeId: number | null, localizati
 }
 
 function identityTypeLabel(type: string, localization: FormalLocalization) {
-  const labels: Record<string, string> = { platform: "平台身份", customer: "客户身份", technician: "技师身份", merchant: "商户身份", merchant_owner: "店铺负责人", merchant_staff: "店铺员工", broker: "经纪人", scout: "介绍人" };
+  const labels: Record<string, string> = { platform: "平台身份", customer: "用户身份", technician: "技师身份", merchant: "商户身份", merchant_owner: "店铺负责人", merchant_staff: "店铺员工", broker: "经纪人", scout: "介绍人" };
   return labels[type] ? localization.t(labels[type]) : type;
 }
 

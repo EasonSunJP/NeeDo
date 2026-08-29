@@ -141,7 +141,7 @@ function CustomerProfilesWorkspace() {
   const customerDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeCustomerDetailPayload>({
     onError: (detailError) => {
       const message = detailError instanceof Error ? detailError.message : typeof detailError === "string" ? detailError : "";
-      setCustomerDetailError(message.trim() || translateText("客户正式详情读取失败", languageRef.current));
+      setCustomerDetailError(message.trim() || translateText("用户正式详情读取失败", languageRef.current));
     },
     onFinally: () => setCustomerDetailLoading(false),
     onStart: () => {

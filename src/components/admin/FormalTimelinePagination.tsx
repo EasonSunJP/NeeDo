@@ -6,6 +6,7 @@ export const formalTimelinePageSizes = [10, 30, 50, 100] as const;
 export type FormalTimelinePageSize = (typeof formalTimelinePageSizes)[number];
 
 interface FormalTimelinePaginationProps {
+  ariaLabel: string;
   page: number;
   pageSize: number;
   total: number;
@@ -15,6 +16,7 @@ interface FormalTimelinePaginationProps {
 }
 
 export function FormalTimelinePagination({
+  ariaLabel,
   disabled = false,
   onPageChange,
   onPageSizeChange,
@@ -29,7 +31,7 @@ export function FormalTimelinePagination({
 
   return (
     <nav
-      aria-label={t("员工动态翻页")}
+      aria-label={t(ariaLabel)}
       className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-paper/70 px-3 py-3"
     >
       <label className="flex items-center gap-2 text-xs font-black text-ink/55">

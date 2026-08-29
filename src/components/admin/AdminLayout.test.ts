@@ -17,7 +17,14 @@ describe("AdminLayout navigation", () => {
 
   it("uses the unified user terminology for operations profile management", () => {
     expect(source).toContain('label: "用户资料"');
+    expect(source).toContain('label: "用户 CRM"');
     expect(source).toContain('children: ["用户档案", "会员等级", "公开状态"]');
+    expect(source).toContain('children: ["正式用户", "预约次数", "创建时间"]');
+    expect(source).toContain('placeholder="搜索订单、用户、门店、技师"');
     expect(source).not.toContain('label: "客户资料"');
+    expect(source).not.toContain("客户 CRM");
+    expect(source).not.toContain("客户档案");
+    expect(source).not.toContain("正式客户");
+    expect(source).not.toContain("搜索订单、客户");
   });
 });

@@ -15950,6 +15950,19 @@ const coreReadApiSourceTranslationOverrides: Record<string, LocalizedText> = {
   "员工已确认收款": { zh: "员工已确认收款", "zh-Hant": "員工已確認收款", ja: "従業員が受取確認済み", en: "Employee confirmed receipt", ko: "직원이 수령을 확인함" },
   "等待员工确认": { zh: "等待员工确认", "zh-Hant": "等待員工確認", ja: "従業員の確認待ち", en: "Awaiting employee confirmation", ko: "직원 확인 대기" },
   "尚无支付登记记录": { zh: "尚无支付登记记录", "zh-Hant": "尚無支付登記記錄", ja: "支払登録はまだありません", en: "No payment records yet", ko: "아직 지급 등록 기록이 없습니다" },
+  "用户正式详情读取失败": { zh: "用户正式详情读取失败", "zh-Hant": "使用者正式詳情讀取失敗", ja: "ユーザーの正式詳細を読み込めませんでした", en: "Failed to load user details", ko: "사용자 상세 정보를 불러오지 못했습니다" },
+  "用户身份": { zh: "用户身份", "zh-Hant": "使用者身分", ja: "ユーザー ID", en: "User identity", ko: "사용자 신원" },
+  "用户 CRM": { zh: "用户 CRM", "zh-Hant": "使用者 CRM", ja: "ユーザー CRM", en: "User CRM", ko: "사용자 CRM" },
+  "正式用户": { zh: "正式用户", "zh-Hant": "正式使用者", ja: "正式ユーザー", en: "Production users", ko: "정식 사용자" },
+  "雇佣形式": { zh: "雇佣形式", "zh-Hant": "僱用形式", ja: "雇用形態", en: "Employment type", ko: "고용 형태" },
+  "正式员工": { zh: "正式员工", "zh-Hant": "正式員工", ja: "正社員", en: "Permanent employee", ko: "정규직" },
+  "员工动态翻页": { zh: "员工动态翻页", "zh-Hant": "員工動態分頁", ja: "スタッフアクティビティのページ切替", en: "Staff activity pagination", ko: "직원 활동 페이지 이동" },
+  "用户动态翻页": { zh: "用户动态翻页", "zh-Hant": "使用者動態分頁", ja: "ユーザーアクティビティのページ切替", en: "User activity pagination", ko: "사용자 활동 페이지 이동" },
+  "暂无下次预约": { zh: "暂无下次预约", "zh-Hant": "暫無下次預約", ja: "次回予約はありません", en: "No upcoming booking", ko: "예정된 예약이 없습니다" },
+  "暂无近期预约": { zh: "暂无近期预约", "zh-Hant": "暫無近期預約", ja: "最近の予約はありません", en: "No recent bookings", ko: "최근 예약이 없습니다" },
+  "搜索订单、用户、门店、技师": { zh: "搜索订单、用户、门店、技师", "zh-Hant": "搜尋訂單、使用者、門店、技師", ja: "注文、ユーザー、店舗、施術者を検索", en: "Search orders, users, shops, or technicians", ko: "주문, 사용자, 매장, 테라피스트 검색" },
+  "搜索订单、用户、员工、套餐": { zh: "搜索订单、用户、员工、套餐", "zh-Hant": "搜尋訂單、使用者、員工、套餐", ja: "注文、ユーザー、スタッフ、プランを検索", en: "Search orders, users, employees, or packages", ko: "주문, 사용자, 직원, 패키지 검색" },
+  "搜索订单、用户、员工、财务": { zh: "搜索订单、用户、员工、财务", "zh-Hant": "搜尋訂單、使用者、員工、財務", ja: "注文、ユーザー、スタッフ、経理を検索", en: "Search orders, users, employees, or finance", ko: "주문, 사용자, 직원, 재무 검색" },
   "wellness": { zh: "健康护理", "zh-Hant": "健康護理", ja: "ウェルネス", en: "wellness", ko: "웰니스" }
 };
 

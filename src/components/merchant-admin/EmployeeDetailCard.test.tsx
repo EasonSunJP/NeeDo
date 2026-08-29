@@ -288,6 +288,8 @@ describe("EmployeeDetailCard", () => {
     expect(container.textContent).toContain("NEEDO-S-47");
     expect(container.textContent).toContain("斉藤 健太");
     expect(container.textContent).toContain("专属技师");
+    expect(container.textContent).toContain("雇佣形式");
+    expect(container.textContent).toContain("正式员工");
     expect(container.textContent).toContain("在职");
     expect(container.textContent).toContain("LifeDance 渋谷店");
     expect(container.textContent).toContain("kenta@example.jp");

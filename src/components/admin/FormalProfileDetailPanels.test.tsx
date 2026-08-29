@@ -556,7 +556,13 @@ describe("FormalCustomerDetailPanel formal-data boundaries", () => {
     expect(markup).not.toContain("用户档案 #");
     expect(markup).not.toContain("账号 #");
     expect(markup).toContain('aria-label="正式客户编辑表单"');
-    expect(markup.match(/尚未接入正式数据/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(markup).not.toContain("尚未接入正式数据");
+    expect(markup).toContain("暂无下次预约");
+    expect(markup).toContain("暂无近期预约");
+    expect(markup).toContain("暂无评价");
+    expect(markup).toContain("用户身份");
+    expect(markup).not.toContain("客户身份");
+    expect(markup.match(/<h3[^>]*>基础资料<\/h3>/g)).toHaveLength(1);
   });
 
   it("does not emit duplicate React keys for repeated highlights or status aliases", () => {
@@ -619,6 +625,8 @@ describe("formal profile localization and dependency boundary", () => {
     expect(translateText("用户动态", "ja")).toBe("ユーザーアクティビティ");
     expect(translateText("运营免费赋予", "en")).toBe("Complimentary operations grant");
     expect(translateText("永久免费", "ko")).toBe("영구 무료");
+    expect(translateText("用户身份", "ja")).toBe("ユーザー ID");
+    expect(translateText("暂无下次预约", "en")).toBe("No upcoming booking");
     expect(formatFormalScheduleMinutes(60, "ja")).toBe("1時間");
     expect(formatFormalScheduleMinutes(59, "en")).toBe("59 min");
   });
