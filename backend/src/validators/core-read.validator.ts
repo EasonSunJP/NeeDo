@@ -13,6 +13,13 @@ export const coreReadServiceIdParamSchema = z.object({
   id: z.union([z.coerce.number().int().positive(), z.string().uuid()])
 });
 
+export const coreReadShopIdParamSchema = z.object({
+  id: z.union([
+    z.coerce.number().int().positive(),
+    z.string().regex(/^shop\d{10}$/)
+  ])
+});
+
 export const categoryListQuerySchema = z.object({
   ...paginationQuerySchema,
   parentId: z.coerce.number().int().positive().nullable().optional()
@@ -62,6 +69,7 @@ export const homeRecommendationsQuerySchema = z.object({
 
 export type CoreReadIdParams = z.infer<typeof coreReadIdParamSchema>;
 export type CoreReadServiceIdParams = z.infer<typeof coreReadServiceIdParamSchema>;
+export type CoreReadShopIdParams = z.infer<typeof coreReadShopIdParamSchema>;
 export type CategoryListQuery = z.infer<typeof categoryListQuerySchema>;
 export type ServiceListQuery = z.infer<typeof serviceListQuerySchema>;
 export type CoreSearchQuery = z.infer<typeof coreSearchQuerySchema>;

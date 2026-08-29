@@ -169,7 +169,7 @@ export interface CoreReadRepositoryPort {
   findServiceDetail: (id: number | string) => Promise<ServiceDetailPayload | null>;
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
   search: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
-  findShopDetail: (id: number) => Promise<ShopDetailPayload | null>;
+  findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (id: number) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
 }
@@ -341,10 +341,16 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return this.listServices({ ...input, sort: input.sort ?? "rating_desc" });
   }
 
-  public async findShopDetail(id: number): Promise<ShopDetailPayload | null> {
+  public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
     const shop = await this.client.shop.findFirst({
       where: {
-        id,
+        ...(typeof id === "number"
+          ? { id }
+          : {
+              publicIdentifier: {
+                is: { publicId: id, status: "ACTIVE", deletedAt: null }
+              }
+            }),
         deletedAt: null,
         status: PUBLISHED_STATUS
       },

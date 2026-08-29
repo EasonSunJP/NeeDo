@@ -229,6 +229,31 @@ describe("Step 08 core read API", () => {
     );
   });
 
+  it("resolves public Shop identifiers without exposing an internal id in navigation", async () => {
+    const fixture = createFixture();
+
+    const response = await request(fixture.app)
+      .get(`/api/v1/shops/${shopCard.publicId}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      id: 1,
+      publicId: shopCard.publicId,
+      name: "Aoyama Care Studio"
+    });
+    expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(
+      shopCard.publicId
+    );
+  });
+
+  it("rejects malformed public Shop identifiers", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/shops/shop123").expect(400);
+    await request(fixture.app).get("/api/v1/shops/not-a-shop").expect(400);
+    expect(fixture.coreReadRepository.findShopDetail).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed Service identifiers without treating numeric strings as UUIDs", async () => {
     const fixture = createFixture();
 

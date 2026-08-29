@@ -259,6 +259,16 @@ export function coreReadIdFromRoute(
   return options?.allowUuid && typeof id === "string" && coreReadUuidPattern.test(id) ? id : null;
 }
 
+export function coreReadShopIdFromRoute(
+  id: string | number | null | undefined
+): number | string | null {
+  if (isCoreReadApiId(id)) {
+    return Number(id);
+  }
+
+  return typeof id === "string" && /^shop\d{10}$/.test(id) ? id : null;
+}
+
 export function mapCoreCategoryToServiceCategory(category: CoreCategory): ServiceCategory {
   const name = categoryDisplayName(category);
 
@@ -424,7 +434,7 @@ export const coreReadApi = {
     return httpClient.request<CoreServiceDetail>(`/services/${id}`, { auth: false });
   },
 
-  getShopDetail(id: number) {
+  getShopDetail(id: number | string) {
     return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false });
   },
 

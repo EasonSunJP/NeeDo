@@ -3407,7 +3407,7 @@ export function ImSearchPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const conversationId = searchParams.get("conversationId") ?? undefined;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q")?.trim() ?? "");
   const deferredQuery = useDeferredValue(query);
   const [result, setResult] = useState<{ contacts: ContactRelation[]; conversations: Conversation[]; messages: ConversationMessage[] }>(emptySearchResult);
   const searching = deferredQuery.trim().length > 0;

@@ -247,6 +247,14 @@ describe("GET /api/v1/openapi.json", () => {
         .content
     ).toHaveProperty("image/png");
     expect(response.body.paths).toHaveProperty("/api/v1/shops/{id}");
+    expect(
+      response.body.paths["/api/v1/shops/{id}"].get.parameters[0].schema.oneOf
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "integer", minimum: 1 }),
+        expect.objectContaining({ type: "string", pattern: "^shop[0-9]{10}$" })
+      ])
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/profiles/customers/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/schedule/availability");

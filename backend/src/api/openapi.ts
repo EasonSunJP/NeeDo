@@ -7910,7 +7910,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Public shop detail",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", pattern: "^shop[0-9]{10}$" }
+              ]
+            }
+          }
+        ],
         responses: {
           "200": { description: "Shop detail" },
           "404": { description: "Shop not found" }

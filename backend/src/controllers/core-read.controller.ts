@@ -5,6 +5,7 @@ import {
   categoryListQuerySchema,
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
+  coreReadShopIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
   serviceListQuerySchema
@@ -111,7 +112,7 @@ export class CoreReadController {
     try {
       response
         .status(200)
-        .json(successResponse(await this.coreReadService.getShopDetail(this.getId(request))));
+        .json(successResponse(await this.coreReadService.getShopDetail(this.getShopId(request))));
     } catch (error) {
       next(error);
     }
@@ -151,5 +152,9 @@ export class CoreReadController {
 
   private getServiceId(request: Request): number | string {
     return coreReadServiceIdParamSchema.parse(request.params).id;
+  }
+
+  private getShopId(request: Request): number | string {
+    return coreReadShopIdParamSchema.parse(request.params).id;
   }
 }
