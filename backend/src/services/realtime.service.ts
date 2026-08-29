@@ -62,7 +62,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
     await this.assertActiveUsers(participantUserIds);
 
-    return this.repository.createConversation({
+    const outcome = await this.repository.createConversation({
       creatorUserId: auth.userId,
       type: input.type,
       title: input.title,
@@ -72,6 +72,14 @@ export class RealtimeService implements OrderStatusNotificationPort {
       disappearingTtlSeconds: input.disappearingTtlSeconds,
       disappearingStartMode: input.disappearingStartMode
     });
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    return outcome.conversation;
   }
 
   public async updateConversationPrivacy(
@@ -178,14 +186,22 @@ export class RealtimeService implements OrderStatusNotificationPort {
       });
     }
 
-    const message = await this.repository.createMessage({
+    const outcome = await this.repository.createMessage({
       ...input,
       senderUserId: auth.userId
     });
 
-    if (!message) {
+    if (outcome.status === "not_found") {
       throw this.notFoundError("error.realtime.conversation_not_found");
     }
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    const { message } = outcome;
 
     await this.publishToConversation(input.conversationId, "message.created", message, auth.userId);
 
@@ -414,13 +430,15 @@ export class RealtimeService implements OrderStatusNotificationPort {
     });
     if (!contact) throw this.notFoundError("error.realtime.contact_not_found");
 
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: "contact.updated",
-      recipientUserId: auth.userId,
-      payload: contact,
-      createdAt: new Date().toISOString()
-    });
+    for (const recipientUserId of [contact.actorUserId, contact.counterpartUserId]) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "friendship.deleted",
+        recipientUserId,
+        payload: contact,
+        createdAt: new Date().toISOString()
+      });
+    }
     return contact;
   }
 

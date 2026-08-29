@@ -177,6 +177,11 @@ describe("RealtimeRepository friend request lifecycle", () => {
       },
       contact: { upsert: jest.fn().mockResolvedValue({ id: 1 }) },
       follow: { upsert: jest.fn().mockResolvedValue({ id: 1 }) },
+      conversation: { findFirst: jest.fn().mockResolvedValue({ id: 91 }) },
+      conversationParticipant: {
+        findMany: jest.fn().mockResolvedValue([{ userId: target.id }]),
+        upsert: jest.fn().mockResolvedValue({ id: 7 })
+      },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 3 }) }
     };
 
@@ -195,6 +200,15 @@ describe("RealtimeRepository friend request lifecycle", () => {
     });
     expect(tx.contact.upsert).toHaveBeenCalledTimes(2);
     expect(tx.follow.upsert).toHaveBeenCalledTimes(2);
+    expect(tx.conversationParticipant.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          conversationId: 91,
+          userId: requester.id,
+          createdAt: dbNow
+        })
+      })
+    );
   });
 
   it("marks a due request expired instead of accepting it", async () => {

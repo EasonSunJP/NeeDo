@@ -401,6 +401,49 @@ describe("RealtimeService blocked-recipient delivery guard", () => {
   });
 });
 
+describe("RealtimeService friendship authorization", () => {
+  it("maps a removed friendship send to a 403 without publishing", async () => {
+    const repository = {
+      isMessageSenderBlocked: jest.fn().mockResolvedValue(false),
+      createMessage: jest.fn().mockResolvedValue({ status: "not_friends" })
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.createMessage(
+        { userId: 167 } as never,
+        { conversationId: 91, type: "text", content: "still there?" }
+      )
+    ).rejects.toMatchObject({
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("maps unauthorized direct conversation creation to a 403", async () => {
+    const repository = {
+      findActiveUserIds: jest.fn().mockResolvedValue([41, 167]),
+      createConversation: jest.fn().mockResolvedValue({ status: "not_friends" })
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(
+      service.createConversation(
+        { userId: 41 } as never,
+        { type: "direct", participantUserIds: [167] }
+      )
+    ).rejects.toMatchObject({
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+  });
+});
+
 describe("RealtimeService group privacy and membership", () => {
   it("persists owner-managed privacy settings and publishes one conversation update per member", async () => {
     const conversation = {
