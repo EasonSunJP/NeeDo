@@ -204,6 +204,18 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return messages;
   }
 
+  public async deleteMessageForUser(
+    auth: AuthenticatedAccessContext,
+    input: { conversationId: number; messageId: number }
+  ) {
+    const deleted = await this.repository.deleteMessageForUser({
+      ...input,
+      userId: auth.userId
+    });
+    if (!deleted) throw this.notFoundError("error.realtime.message_not_found");
+    return deleted;
+  }
+
   public async setMessageReaction(
     auth: AuthenticatedAccessContext,
     input: Omit<MessageReactionMutationInput, "userId">

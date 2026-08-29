@@ -558,6 +558,7 @@ model User {
   conversationParticipants              ConversationParticipant[]
   sentMessages                          Message[]                           @relation("MessageSender")
   messageReactions                      MessageReaction[]
+  messageUserDeletions                  MessageUserDeletion[]
   imPoliciesUpdated                     ImPolicy[]                          @relation("ImPolicyUpdater")
   conversationPrivacyUpdates            Conversation[]                      @relation("ConversationPrivacyUpdater")
   ownedContacts                         Contact[]                           @relation("ContactOwner")
@@ -1669,11 +1670,12 @@ model Conversation {
   updatedAt              DateTime         @updatedAt @map("updated_at")
   deletedAt              DateTime?        @map("deleted_at")
 
-  createdBy        User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  privacyUpdatedBy User?                     @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
-  participants     ConversationParticipant[]
-  messages         Message[]
-  deletionSync     ImDeletionSync[]
+  createdBy            User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  privacyUpdatedBy     User?                     @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
+  participants         ConversationParticipant[]
+  messages             Message[]
+  deletionSync         ImDeletionSync[]
+  messageUserDeletions MessageUserDeletion[]
 
   @@index([type])
   @@index([createdByUserId])
@@ -1685,20 +1687,20 @@ model Conversation {
 }
 
 model ConversationParticipant {
-  id                Int       @id @default(autoincrement())
-  conversationId    Int       @map("conversation_id")
-  userId            Int       @map("user_id")
-  role              String    @default("member") @db.VarChar(50)
-  unreadCount       Int       @default(0) @map("unread_count")
-  isPinned          Boolean   @default(false) @map("is_pinned")
-  isMuted           Boolean   @default(false) @map("is_muted")
-  hiddenAt          DateTime? @map("hidden_at")
-  clearedThroughMessageId Int? @map("cleared_through_message_id")
-  lastReadMessageId Int?      @map("last_read_message_id")
-  lastReadAt        DateTime? @map("last_read_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  deletedAt         DateTime? @map("deleted_at")
+  id                      Int       @id @default(autoincrement())
+  conversationId          Int       @map("conversation_id")
+  userId                  Int       @map("user_id")
+  role                    String    @default("member") @db.VarChar(50)
+  unreadCount             Int       @default(0) @map("unread_count")
+  isPinned                Boolean   @default(false) @map("is_pinned")
+  isMuted                 Boolean   @default(false) @map("is_muted")
+  hiddenAt                DateTime? @map("hidden_at")
+  clearedThroughMessageId Int?      @map("cleared_through_message_id")
+  lastReadMessageId       Int?      @map("last_read_message_id")
+  lastReadAt              DateTime? @map("last_read_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  deletedAt               DateTime? @map("deleted_at")
 
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
@@ -1733,10 +1735,11 @@ model Message {
   updatedAt                  DateTime           @updatedAt @map("updated_at")
   deletedAt                  DateTime?          @map("deleted_at")
 
-  conversation Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-  sender       User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
-  readMarkers  ConversationParticipant[] @relation("ParticipantLastReadMessage")
-  reactions    MessageReaction[]
+  conversation  Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sender        User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  readMarkers   ConversationParticipant[] @relation("ParticipantLastReadMessage")
+  reactions     MessageReaction[]
+  userDeletions MessageUserDeletion[]
 
   @@index([conversationId, id])
   @@index([senderUserId])
@@ -1747,6 +1750,26 @@ model Message {
   @@index([senderUserId, recallDeadlineAt])
   @@index([deletedAt])
   @@map("messages")
+}
+
+model MessageUserDeletion {
+  id             Int       @id @default(autoincrement())
+  conversationId Int       @map("conversation_id")
+  messageId      Int       @map("message_id")
+  userId         Int       @map("user_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, messageId])
+  @@index([conversationId, userId, deletedAt], map: "message_user_deletion_conversation_user_idx")
+  @@index([messageId, deletedAt], map: "message_user_deletion_message_idx")
+  @@index([userId, deletedAt], map: "message_user_deletion_user_idx")
+  @@map("message_user_deletions")
 }
 
 model ImPolicy {

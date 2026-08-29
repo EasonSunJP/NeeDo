@@ -10266,6 +10266,55 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}`]: {
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Delete one IM message only from the current user's history",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "messageId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Viewer-scoped message deletion persisted",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: {
+                      type: "object",
+                      required: ["conversationId", "messageId", "deleted"],
+                      properties: {
+                        conversationId: { type: "integer" },
+                        messageId: { type: "integer" },
+                        deleted: { type: "boolean", enum: [true] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing message:list permission" },
+          "404": { description: "Conversation or message not found for current participant" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}/reactions`]: {
       put: {
         tags: ["Step 13 Realtime"],

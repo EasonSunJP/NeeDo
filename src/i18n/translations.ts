@@ -9311,6 +9311,7 @@ export const translations: TranslationMap = {
   "删除类别": { "zh-Hant": "刪除類別", ja: "削除カテゴリ别", en: "Delete", ko: "삭제" },
   "删除联系人": { "zh-Hant": "刪除聯絡人", ja: "連絡先を削除", en: "Delete contact", ko: "연락처 삭제" },
   "删除权限": { "zh-Hant": "刪除權限", ja: "削除権限", en: "DeletePermissions", ko: "삭제권한" },
+  "删除失败，请稍后重试": { "zh-Hant": "刪除失敗，請稍後再試", ja: "削除できませんでした。しばらくしてからもう一度お試しください。", en: "Couldn't delete the message. Please try again later.", ko: "메시지를 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요." },
   "删除失败。": { "zh-Hant": "刪除失败。", ja: "削除に失敗しました。", en: "Delete failed.", ko: "삭제 실패" },
   "删除图片": { "zh-Hant": "刪除圖片", ja: "削除画像", en: "DeleteImage", ko: "삭제이미지" },
   "删除物件": { "zh-Hant": "刪除物件", ja: "オブジェクトを…", en: "Delete object", ko: "객체 삭제" },

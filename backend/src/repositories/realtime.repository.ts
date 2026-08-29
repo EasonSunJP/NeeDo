@@ -246,6 +246,18 @@ export interface MessageReactionMutationInput {
   emoji: string;
 }
 
+export interface DeleteMessageForUserInput {
+  conversationId: number;
+  messageId: number;
+  userId: number;
+}
+
+export interface DeleteMessageForUserPayload {
+  conversationId: number;
+  messageId: number;
+  deleted: true;
+}
+
 export interface UpdateConversationPreferencesInput {
   conversationId: number;
   userId: number;
@@ -331,6 +343,9 @@ export interface RealtimeRepositoryPort {
   isMessageSenderBlocked: (conversationId: number, senderUserId: number) => Promise<boolean>;
   recallMessage: (input: RecallMessageInput) => Promise<StandardRecallRepositoryOutcome>;
   listMessages: (input: ListMessagesInput) => Promise<MessageHistoryPayload | null>;
+  deleteMessageForUser: (
+    input: DeleteMessageForUserInput
+  ) => Promise<DeleteMessageForUserPayload | null>;
   setMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
   removeMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
   markConversationRead: (input: {
@@ -540,7 +555,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           }))
         }
       },
-      include: this.conversationInclude()
+      include: this.conversationInclude(input.creatorUserId)
     });
 
     return this.mapConversation(conversation, input.creatorUserId);
@@ -583,7 +598,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           privacyUpdatedAt: new Date(),
           privacyUpdatedByUserId: input.actorUserId
         },
-        include: this.conversationInclude()
+        include: this.conversationInclude(input.actorUserId)
       });
 
       await tx.auditLog.create({
@@ -806,7 +821,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           }
         }
       },
-      include: this.conversationInclude()
+      include: this.conversationInclude(userId)
     });
 
     return conversation ? this.mapConversation(conversation, userId) : null;
@@ -830,7 +845,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.conversation.findMany({
         where,
-        include: this.conversationInclude(),
+        include: this.conversationInclude(userId),
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
@@ -1103,6 +1118,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const where: Prisma.MessageWhereInput = {
       conversationId: input.conversationId,
       deletedAt: null,
+      userDeletions: {
+        none: { userId: input.userId, deletedAt: null }
+      },
       ...(input.beforeId || participant.clearedThroughMessageId
         ? {
             id: {
@@ -1131,6 +1149,60 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       page_size: pageSize,
       nextCursor: total > list.length ? (list[list.length - 1]?.id ?? null) : null
     };
+  }
+
+  public async deleteMessageForUser(
+    input: DeleteMessageForUserInput
+  ): Promise<DeleteMessageForUserPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const message = await tx.message.findFirst({
+        where: {
+          id: input.messageId,
+          conversationId: input.conversationId,
+          deletedAt: null,
+          conversation: {
+            deletedAt: null,
+            participants: {
+              some: { userId: input.userId, deletedAt: null }
+            }
+          }
+        },
+        select: { id: true }
+      });
+      if (!message) return null;
+
+      await tx.messageUserDeletion.upsert({
+        where: {
+          userId_messageId: {
+            userId: input.userId,
+            messageId: input.messageId
+          }
+        },
+        create: {
+          conversationId: input.conversationId,
+          messageId: input.messageId,
+          userId: input.userId
+        },
+        update: { deletedAt: null }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.userId,
+          action: "im.message.deleted_for_user",
+          targetType: "Message",
+          targetId: input.messageId,
+          ip: null,
+          userAgent: null,
+          metadata: { conversationId: input.conversationId }
+        }
+      });
+
+      return {
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        deleted: true
+      };
+    });
   }
 
   public async setMessageReaction(
@@ -1957,7 +2029,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           }
         }
       },
-      include: this.conversationInclude()
+      include: this.conversationInclude(participantUserIds[0])
     });
 
     return (
@@ -2051,7 +2123,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
-  private conversationInclude() {
+  private conversationInclude(viewerUserId?: number) {
     return {
       participants: {
         where: { deletedAt: null },
@@ -2067,7 +2139,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         }
       },
       messages: {
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          ...(viewerUserId
+            ? {
+                userDeletions: {
+                  none: { userId: viewerUserId, deletedAt: null }
+                }
+              }
+            : {})
+        },
         include: messageInclude,
         orderBy: { id: "desc" as const },
         take: 1

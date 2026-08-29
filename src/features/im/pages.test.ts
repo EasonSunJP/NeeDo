@@ -161,6 +161,20 @@ describe("IM pages", () => {
     expect(componentSource).toContain('aria-live="assertive"');
   });
 
+  it("persists single-message deletion before removing the local bubble", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const actionStart = componentSource.indexOf('key: "delete-local"');
+    const actionEnd = componentSource.indexOf("return { primaryActions", actionStart);
+    const actionSource = componentSource.slice(actionStart, actionEnd);
+
+    expect(actionStart).toBeGreaterThan(-1);
+    expect(actionSource).toContain("store.deleteMessage(message.conversationId, message.id)");
+    expect(actionSource).toContain(".then(() => {");
+    expect(actionSource).not.toContain("setHiddenMessageIds");
+  });
+
   it("opens media in a full-screen zoomable viewer with download and forwarding", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");

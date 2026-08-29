@@ -19,6 +19,7 @@ import {
   friendRequestIdParamSchema,
   friendRequestListQuerySchema,
   messageCreateBodySchema,
+  messageDeleteParamSchema,
   messageListQuerySchema,
   messageRecallBodySchema,
   messageRecallParamSchema,
@@ -106,6 +107,12 @@ export class RealtimeController {
       messageId: params.messageId,
       mode: body.mode
     });
+  });
+
+  public deleteMessageForUser = this.createHandler((request, response) => {
+    const params = messageDeleteParamSchema.parse(request.params);
+
+    return this.service.deleteMessageForUser(getAuthenticatedAccess(response), params);
   });
 
   public markConversationRead = this.createHandler((request, response) => {

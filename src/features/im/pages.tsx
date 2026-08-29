@@ -4131,7 +4131,6 @@ export function ImConversationRoomPage({
   const [scheduleInviteReminder, setScheduleInviteReminder] = useState(SCHEDULE_INVITE_DEFAULT_REMINDER);
   const [scheduleInviteExtraAttendeeIds, setScheduleInviteExtraAttendeeIds] = useState<string[]>([]);
   const [scheduleInviteAttendeePickerOpen, setScheduleInviteAttendeePickerOpen] = useState(false);
-  const [hiddenMessageIds, setHiddenMessageIds] = useState<string[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
   const [newMessageCount, setNewMessageCount] = useState(0);
@@ -4342,15 +4341,15 @@ export function ImConversationRoomPage({
   );
 
   const rows = useMemo(
-    () => buildTimeSeparatedMessages(messages.filter((message) => !hiddenMessageIds.includes(message.id)), store.config?.separatorThresholdMs ?? 300_000),
-    [hiddenMessageIds, messages, store.config?.separatorThresholdMs]
+    () => buildTimeSeparatedMessages(messages, store.config?.separatorThresholdMs ?? 300_000),
+    [messages, store.config?.separatorThresholdMs]
   );
   const pinnedMessages = useMemo(
     () =>
       pinnedMessageIds
         .map((messageId) => messages.find((message) => message.id === messageId))
-        .filter((message): message is ConversationMessage => message !== undefined && !hiddenMessageIds.includes(message.id) && message.type !== "recalled"),
-    [hiddenMessageIds, messages, pinnedMessageIds]
+        .filter((message): message is ConversationMessage => message !== undefined && message.type !== "recalled"),
+    [messages, pinnedMessageIds]
   );
   const nextDisappearingExpiresAt = useMemo(() => {
     const now = Date.now();
@@ -5416,9 +5415,16 @@ export function ImConversationRoomPage({
       icon: "delete",
       tone: "danger",
       onClick: () => {
-        setHiddenMessageIds((current) => [...current, message.id]);
-        setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
         closeMessageMenu();
+        setActionNotice(null);
+        void store.deleteMessage(message.conversationId, message.id)
+          .then(() => {
+            setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
+            if (mediaPreview?.id === message.id) {
+              closeMediaPreview();
+            }
+          })
+          .catch(() => setActionNotice("删除失败，请稍后重试"));
       }
     });
 

@@ -199,12 +199,13 @@ describe("translations", () => {
     expect(translateText("冻结余额", "ja")).toBe("保留中残高");
   });
 
-  it("localizes every standard recall residue and failure message", () => {
+  it("localizes every standard recall and message-deletion status", () => {
     const keys = [
       "你撤回了一条消息",
       "对方撤回了一条消息",
       "发送超过3分钟后无法撤回",
       "撤回失败，请稍后重试",
+      "删除失败，请稍后重试",
     ] as const;
 
     keys.forEach((key) => {

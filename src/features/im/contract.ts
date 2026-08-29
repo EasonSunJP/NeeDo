@@ -69,6 +69,10 @@ export type ImApi = {
   markConversationRead(conversationId: string, markUnread?: boolean): Promise<{ conversation: Conversation }>;
   deleteConversation(conversationId: string): Promise<{ conversation: Conversation }>;
   clearConversation(conversationId: string): Promise<{ conversation: Conversation }>;
+  deleteMessage(
+    conversationId: string,
+    messageId: string,
+  ): Promise<{ conversationId: string; messageId: string; deleted: true }>;
   sendMessage(
     type: ImMessageType,
     payload: { conversationId: string; content: string; quotedMessageId?: string; ext?: MessageExt },

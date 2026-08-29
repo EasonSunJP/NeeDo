@@ -25,6 +25,7 @@ import {
   friendRequestIdParamSchema,
   friendRequestListQuerySchema,
   messageCreateBodySchema,
+  messageDeleteParamSchema,
   messageListQuerySchema,
   messageRecallBodySchema,
   messageRecallParamSchema,
@@ -45,6 +46,7 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   listMessages: "message:list",
   createMessage: "message:create",
   recallMessage: "message:recall",
+  deleteMessageForUser: "message:list",
   reactToMessage: "message:react",
   markConversationRead: "message:read",
   markConversationUnread: "message:read",
@@ -118,6 +120,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.recallMessage),
     validateRequest({ params: messageRecallParamSchema, body: messageRecallBodySchema }),
     controller.recallMessage
+  );
+  router.delete(
+    "/im/conversations/:conversationId/messages/:messageId",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.deleteMessageForUser),
+    validateRequest({ params: messageDeleteParamSchema }),
+    controller.deleteMessageForUser
   );
   router.put(
     "/im/conversations/:conversationId/messages/:messageId/reactions",

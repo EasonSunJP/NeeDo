@@ -533,6 +533,18 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"
     );
     expect(
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages/{messageId}"]
+    ).toMatchObject({
+      delete: expect.objectContaining({
+        security: [{ bearerAuth: [] }],
+        responses: expect.objectContaining({
+          "200": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object)
+        })
+      })
+    });
+    expect(
       response.body.paths["/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"]
     ).toMatchObject({
       post: expect.objectContaining({

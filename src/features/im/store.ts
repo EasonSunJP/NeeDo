@@ -755,6 +755,40 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response;
   }
 
+  async function deleteMessage(conversationId: string, messageId: string) {
+    await hydrateStore();
+    const response = await api.deleteMessage(conversationId, messageId);
+    const remainingMessages = (snapshot.messagesByConversation[conversationId] ?? []).filter(
+      (message) => message.id !== messageId,
+    );
+    const latestMessage = remainingMessages[remainingMessages.length - 1];
+    snapshot = {
+      ...snapshot,
+      messagesByConversation: {
+        ...snapshot.messagesByConversation,
+        [conversationId]: remainingMessages,
+      },
+      conversations: snapshot.conversations.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              lastMessagePreview: latestMessage
+                ? buildMessagePreview(
+                    latestMessage,
+                    snapshot.currentUserId ?? "",
+                    snapshot.usersById,
+                  )
+                : "",
+              lastMessageId: latestMessage?.id,
+              lastMessageTime: latestMessage?.sentAt ?? conversation.updatedAt,
+            }
+          : conversation,
+      ),
+    };
+    emit();
+    return response;
+  }
+
   async function forwardMessage(messageId: string, conversationId: string) {
     await hydrateStore();
     const source = getForwardableMessagePayload(
@@ -1105,6 +1139,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       resendMessage,
       setMessageReaction,
       recallMessage,
+      deleteMessage,
       forwardMessage,
       pinConversation,
       muteConversation,

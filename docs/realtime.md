@@ -59,7 +59,7 @@ Messages use cursor pagination through `beforeId`. The first page returns newest
 
 ## Unread Counts
 
-Message unread counts are stored on `conversation_participants.unread_count`. Sending a message increments other active participants in one update and resets the sender. Marking a conversation read or unread changes only the current participant. Pin and mute are also participant preferences. Deleting a conversation sets `hidden_at` only for the current participant; it does not delete shared membership or messages, and a new message makes the conversation visible again. Notification unread counts come from `notifications.read_at IS NULL`. Friend request unread counts come from pending incoming requests.
+Message unread counts are stored on `conversation_participants.unread_count`. Sending a message increments other active participants in one update and resets the sender. Marking a conversation read or unread changes only the current participant. Pin and mute are also participant preferences. Deleting a conversation sets `hidden_at` only for the current participant; it does not delete shared membership or messages, and a new message makes the conversation visible again. Clearing a conversation advances only that participant's `cleared_through_message_id`. Deleting one message writes a viewer-scoped `message_user_deletions` tombstone; message history and conversation previews exclude that tombstone only for the deleting user while the shared message remains available to other participants. Notification unread counts come from `notifications.read_at IS NULL`. Friend request unread counts come from pending incoming requests.
 
 ## Order Status Notifications
 

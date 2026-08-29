@@ -33,6 +33,10 @@ export const messageRecallParamSchema = conversationIdParamSchema.extend({
   messageId: z.coerce.number().int().positive()
 });
 
+export const messageDeleteParamSchema = conversationIdParamSchema.extend({
+  messageId: z.coerce.number().int().positive()
+});
+
 export const friendRequestIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });

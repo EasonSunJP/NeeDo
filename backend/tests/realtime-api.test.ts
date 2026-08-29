@@ -319,8 +319,11 @@ const createFixture = async () => {
     emoji: string;
   }> = [];
   const clearedThroughMessageIdByParticipant = new Map<string, number>();
+  const deletedMessageKeys = new Set<string>();
   const participantClearKey = (conversationId: number, userId: number) =>
     `${conversationId}:${userId}`;
+  const deletedMessageKey = (conversationId: number, userId: number, messageId: number) =>
+    `${conversationId}:${userId}:${messageId}`;
   const contacts: Array<{
     id: number;
     ownerUserId: number;
@@ -395,7 +398,9 @@ const createFixture = async () => {
     const lastMessage = messages
       .filter(
         (message) =>
-          message.conversationId === conversation.id && message.id > clearedThroughMessageId
+          message.conversationId === conversation.id &&
+          message.id > clearedThroughMessageId &&
+          !deletedMessageKeys.has(deletedMessageKey(conversation.id, userId, message.id))
       )
       .sort((left, right) => right.id - left.id)[0];
 
@@ -696,6 +701,12 @@ const createFixture = async () => {
           .filter((message) => message.conversationId === input.conversationId)
           .filter(
             (message) =>
+              !deletedMessageKeys.has(
+                deletedMessageKey(input.conversationId, input.userId, message.id)
+              )
+          )
+          .filter(
+            (message) =>
               message.id >
               (clearedThroughMessageIdByParticipant.get(
                 participantClearKey(input.conversationId, input.userId)
@@ -712,6 +723,23 @@ const createFixture = async () => {
           page: 1,
           page_size: pageSize,
           nextCursor: list.length === pageSize ? list[list.length - 1].id : null
+        };
+      }
+    ),
+    deleteMessageForUser: jest.fn(
+      async (input: { conversationId: number; messageId: number; userId: number }) => {
+        const conversation = conversations.find((item) => item.id === input.conversationId);
+        const message = messages.find(
+          (item) => item.id === input.messageId && item.conversationId === input.conversationId
+        );
+        if (!conversation?.participantUserIds.includes(input.userId) || !message) return null;
+        deletedMessageKeys.add(
+          deletedMessageKey(input.conversationId, input.userId, input.messageId)
+        );
+        return {
+          conversationId: input.conversationId,
+          messageId: input.messageId,
+          deleted: true
         };
       }
     ),
@@ -1515,6 +1543,62 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect((response) => {
         expect(response.body.data.list).toHaveLength(1);
         expect(response.body.data.list[0]).toMatchObject({ content: "仅删除我方历史" });
+      });
+  });
+
+  it("deletes one message permanently for only the requesting participant", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "direct", participantUserIds: [2] })
+      .expect(201);
+    const messageResponse = await request(fixture.app)
+      .post("/api/v1/im/conversations/1/messages")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "text", content: "只从我的聊天记录删除" })
+      .expect(201);
+
+    const messageId = messageResponse.body.data.id as number;
+    await request(fixture.app)
+      .delete(`/api/v1/im/conversations/1/messages/${messageId}`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toEqual({
+          conversationId: 1,
+          messageId,
+          deleted: true
+        });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/im/conversations/1/messages?pageSize=20")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ list: [], total: 0 });
+      });
+    await request(fixture.app)
+      .get("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.list[0]).toMatchObject({ lastMessage: null });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/im/conversations/1/messages?pageSize=20")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.list[0]).toMatchObject({
+          id: messageId,
+          content: "只从我的聊天记录删除"
+        });
       });
   });
 

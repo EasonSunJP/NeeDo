@@ -846,6 +846,23 @@ describe("formal IM adapter", () => {
     expect(clearConversationMessages).toHaveBeenCalledWith(91);
   });
 
+  it("persists one viewer-only message deletion through the formal endpoint", async () => {
+    const deleteMessageForMe = vi
+      .spyOn(realtimeApi, "deleteMessageForMe")
+      .mockResolvedValue({ conversationId: 91, messageId: 501, deleted: true });
+    const api = createFormalImApi({
+      currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(api.deleteMessage("91", "501")).resolves.toEqual({
+      conversationId: "91",
+      messageId: "501",
+      deleted: true,
+    });
+    expect(deleteMessageForMe).toHaveBeenCalledWith(91, 501);
+  });
+
   it("does not turn a harmless SSE connected event into a three-request bootstrap refresh", () => {
     expect(shouldForwardFormalImEvent({ id: "1", payload: {}, type: "connected" })).toBe(false);
     const reactionEvent = {

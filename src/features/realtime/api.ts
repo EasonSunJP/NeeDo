@@ -39,6 +39,12 @@ export type RealtimeRecallResult = {
   messageId: number;
 };
 
+export type RealtimeMessageDeletionResult = {
+  conversationId: number;
+  messageId: number;
+  deleted: true;
+};
+
 export type RealtimeMessageReaction = {
   emoji: string;
   people: Array<{
@@ -246,6 +252,12 @@ export const realtimeApi = {
   clearConversationMessages(conversationId: number) {
     return httpClient.request<RealtimeConversation>(
       `/im/conversations/${conversationId}/messages`,
+      { method: "DELETE" }
+    );
+  },
+  deleteMessageForMe(conversationId: number, messageId: number) {
+    return httpClient.request<RealtimeMessageDeletionResult>(
+      `/im/conversations/${conversationId}/messages/${messageId}`,
       { method: "DELETE" }
     );
   },

@@ -845,6 +845,17 @@ export function createFormalImApi({
       );
       return { conversation: toConversation(conversation, currentUser.id) };
     },
+    async deleteMessage(conversationId: string, messageId: string) {
+      const response = await realtimeApi.deleteMessageForMe(
+        toNumericId(conversationId),
+        toNumericId(messageId),
+      );
+      return {
+        conversationId: String(response.conversationId),
+        messageId: String(response.messageId),
+        deleted: response.deleted,
+      };
+    },
     async sendMessage(
       type: ImMessageType,
       payload: {
