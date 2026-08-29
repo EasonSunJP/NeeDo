@@ -1291,7 +1291,7 @@ function useRoomBackTarget() {
   };
 }
 
-function MessagePressable({
+export function MessagePressable({
   onOpenMenu,
   children
 }: {
@@ -1299,6 +1299,8 @@ function MessagePressable({
   children: ReactNode;
 }) {
   const timerRef = useRef<number | null>(null);
+  const activationGuardTimerRef = useRef<number | null>(null);
+  const suppressNextActivationRef = useRef(false);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const clearPress = () => {
@@ -1309,15 +1311,44 @@ function MessagePressable({
     pressStartRef.current = null;
   };
 
+  const clearActivationGuard = () => {
+    if (activationGuardTimerRef.current) {
+      window.clearTimeout(activationGuardTimerRef.current);
+      activationGuardTimerRef.current = null;
+    }
+    suppressNextActivationRef.current = false;
+  };
+
+  const releaseActivationGuardAfterPointerSequence = () => {
+    if (!suppressNextActivationRef.current) {
+      return;
+    }
+
+    if (activationGuardTimerRef.current) {
+      window.clearTimeout(activationGuardTimerRef.current);
+    }
+    activationGuardTimerRef.current = window.setTimeout(clearActivationGuard, 0);
+  };
+
+  useEffect(() => () => {
+    clearPress();
+    clearActivationGuard();
+  }, []);
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearPress();
+    clearActivationGuard();
 
     if (hasActiveImMessageTextSelection(event.currentTarget)) {
       return;
     }
 
     pressStartRef.current = { x: event.clientX, y: event.clientY };
-    timerRef.current = window.setTimeout(onOpenMenu, 380);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      suppressNextActivationRef.current = true;
+      onOpenMenu();
+    }, 380);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1334,6 +1365,15 @@ function MessagePressable({
 
   return (
     <div
+      onClickCapture={(event) => {
+        if (!suppressNextActivationRef.current) {
+          return;
+        }
+
+        clearActivationGuard();
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         if (hasActiveImMessageTextSelection(event.currentTarget)) {
@@ -1341,11 +1381,20 @@ function MessagePressable({
         }
         onOpenMenu();
       }}
-      onPointerCancel={clearPress}
+      onPointerCancel={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
       onPointerDown={handlePointerDown}
-      onPointerLeave={clearPress}
+      onPointerLeave={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
       onPointerMove={handlePointerMove}
-      onPointerUp={clearPress}
+      onPointerUp={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
     >
       {children}
     </div>
