@@ -184,16 +184,18 @@ export interface OfficialAnnouncementRepositoryPort extends ContentPublicationAc
     locale: ContentLocaleCode,
     now: Date
   ): Promise<PublishedAnnouncementPayload | null>;
-  searchAffiliateTasks(input: {
-    page: number;
-    pageSize: number;
-    q?: string;
-    now: Date;
-    validateAffiliateTask: (taskId: number) => Promise<void>;
-  }): Promise<{ list: AnnouncementAffiliateTaskSearchItem[]; total: number }>;
 }
 
 interface AffiliateMarketplacePolicyPort {
+  listTasks(
+    actor: AuthenticatedAccessContext,
+    input: { page?: number; pageSize?: number; keyword?: string }
+  ): Promise<{
+    list: Array<{ id: number; taskCode: string; name: string; status: string }>;
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
   getTask(
     actor: AuthenticatedAccessContext,
     taskId: number
@@ -288,13 +290,21 @@ export class OfficialAnnouncementService {
     page_size: number;
   }> {
     const pagination = normalizePagination(input);
-    const result = await this.repository.searchAffiliateTasks({
+    const result = await this.marketplacePolicy.listTasks(actor, {
       ...pagination,
-      q: input.q,
-      now: this.now(),
-      validateAffiliateTask: (taskId) => this.assertTaskVisible(actor, taskId)
+      ...(input.q ? { keyword: input.q } : {})
     });
-    return { ...result, page: pagination.page, page_size: pagination.pageSize };
+    return {
+      list: result.list.map((task) => ({
+        id: task.id,
+        taskCode: task.taskCode,
+        label: task.name,
+        status: task.status
+      })),
+      total: result.total,
+      page: result.page,
+      page_size: result.page_size
+    };
   }
 
   public async getRelease(

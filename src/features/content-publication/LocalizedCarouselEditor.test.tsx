@@ -521,19 +521,43 @@ describe("LocalizedCarouselEditor", () => {
   });
 
   it("preserves explicit copy-to-all provenance through upload, reorder, and structural save", async () => {
-    const copiedDraft = {
+    const reviewedDraft = {
       ...draft,
-      lockVersion: 7,
-      slides: draft.slides.map((slide) => ({
-        ...slide,
-        translations: Object.fromEntries(
-          Object.entries(slide.translations).map(([locale, value]) => [
-            locale,
-            { ...value, sourceLocale: "en", isInitialCopy: false },
-          ]),
-        ) as CarouselRelease["slides"][number]["translations"],
-      })),
+      slides: draft.slides.map((slide) =>
+        slide.id === SLIDE_B
+          ? {
+              ...slide,
+              translations: Object.fromEntries(
+                Object.entries(slide.translations).map(([locale, value]) => [
+                  locale,
+                  { ...value, sourceLocale: locale, isInitialCopy: false },
+                ]),
+              ) as CarouselRelease["slides"][number]["translations"],
+            }
+          : slide,
+      ),
     };
+    const copiedDraft = {
+      ...reviewedDraft,
+      lockVersion: 7,
+      slides: reviewedDraft.slides.map((slide) =>
+        slide.id === SLIDE_A
+          ? {
+              ...slide,
+              translations: Object.fromEntries(
+                Object.entries(slide.translations).map(([locale, value]) => [
+                  locale,
+                  { ...value, sourceLocale: "en", isInitialCopy: false },
+                ]),
+              ) as CarouselRelease["slides"][number]["translations"],
+            }
+          : slide,
+      ),
+    };
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue({
+      ...scene,
+      draft: reviewedDraft,
+    });
     apiMocks.copyCarouselSlideLocaleToAll.mockResolvedValue(copiedDraft);
     apiMocks.replaceCarouselDraft.mockResolvedValue({
       ...copiedDraft,
@@ -574,14 +598,28 @@ describe("LocalizedCarouselEditor", () => {
     expect(body.expectedLockVersion).toBe(7);
     expect(body.slides[0].publicId).toBe(SLIDE_B);
     expect(body.slides[1].mediaAssetPublicId).toBe(MEDIA_UPLOADED);
-    expect(
-      body.slides.every((slide) =>
-        slide.translations.every(
-          (value) =>
-            value.sourceLocale === "en" && value.isInitialCopy === false,
+    expect(body.slides[0].translations).toEqual(
+      expect.arrayContaining(
+        ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) =>
+          expect.objectContaining({
+            locale,
+            sourceLocale: locale,
+            isInitialCopy: false,
+          }),
         ),
       ),
-    ).toBe(true);
+    );
+    expect(body.slides[1].translations).toEqual(
+      expect.arrayContaining(
+        ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) =>
+          expect.objectContaining({
+            locale,
+            sourceLocale: "en",
+            isInitialCopy: false,
+          }),
+        ),
+      ),
+    );
   });
 
   it("renders a server-backed read-only view when edit and publish permissions are absent", async () => {

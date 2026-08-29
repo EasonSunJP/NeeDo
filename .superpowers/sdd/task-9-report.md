@@ -78,6 +78,16 @@ The first follow-up's conservative non-self-provenance block is superseded. The 
 
 Fresh post-format focused verification passed at 4 frontend files / 54 tests and 6 backend suites / 104 tests. The complete verification run passed at 194 frontend files / 1,092 tests and 225 backend suites / 1,526 tests (with the repository's existing skips), plus frontend TypeScript lint, backend ESLint, five-language i18n quality, backend build, production frontend build/audit, targeted Prettier checks, and `git diff --check`.
 
+## Third review follow-up
+
+The third review found that the announcement task picker's repository path still scanned all candidate tasks in batches of 100, performed one marketplace lookup per row, sliced pages in memory, and treated every thrown error as invisibility. The new TDD contract failed at compile time because the old `OfficialAnnouncementRepositoryPort.searchAffiliateTasks` boundary still existed; the other two focused backend suites had 16 passing tests, and the corrected frontend provenance contract had 17 passing tests.
+
+The scanning implementation and repository port were removed. `OfficialAnnouncementService.searchAffiliateTasks` now forwards the exact authenticated actor and normalized `keyword`/`page`/`pageSize` to the existing formal `AffiliateMarketplaceService.listTasks` policy. Its repository already applies the complete claimability policy in SQL: live status and claim/task windows, active non-deleted budget reservation with sufficient remaining funds, and the required non-deleted shop/service scopes. It executes one eligible-ID query with `LIMIT`/`OFFSET`, one `COUNT(DISTINCT ...)`, and one batched task load, independent of total result count. Expected ineligible rows are absent from the DB result; database/infrastructure failures propagate unchanged and no per-task fallback occurs.
+
+Tests cover a 105-result set at page 11, keyword and eligibility SQL, the exact constant query count/no N+1 behavior, actor preservation, and infrastructure failure propagation. The carousel editor test now models the real server mutation: copy-to-all changes only the selected slide, while the other slide retains its own reviewed per-locale provenance through upload, reorder, and replacement save. A Service → real Repository test drives replacement through mocked Prisma transaction operations and asserts all five persisted/returned `sourceLocale` and `isInitialCopy` combinations, including explicit copies and initial-copy rows.
+
+Fresh post-format verification passed at 6 backend focused suites / 86 tests and 2 frontend focused files / 26 tests. Full suites passed at 225 backend suites / 1,530 tests and 194 frontend files / 1,092 tests, with the repository's existing 8 backend suites / 36 tests skipped.
+
 ## Concerns / deferred acceptance
 
 - Browser interaction and visual acceptance are intentionally deferred to Task 12, as required by the plan.

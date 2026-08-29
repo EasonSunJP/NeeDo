@@ -775,52 +775,6 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
     };
   }
 
-  public async searchAffiliateTasks(input: {
-    page: number;
-    pageSize: number;
-    q?: string;
-    now: Date;
-    validateAffiliateTask: (taskId: number) => Promise<void>;
-  }) {
-    const visible: Array<{ id: number; taskCode: string; label: string; status: string }> = [];
-    const contains = input.q?.trim() ? { contains: input.q.trim() } : undefined;
-    const batchSize = 100;
-    let skip = 0;
-    while (true) {
-      const rows = await this.client.affiliateTask.findMany({
-        where: {
-          deletedAt: null,
-          status: { in: ["SCHEDULED", "ACTIVE"] },
-          claimStartsAt: { lte: input.now },
-          claimEndsAt: { gt: input.now },
-          taskEndsAt: { gt: input.now },
-          ...(contains ? { OR: [{ name: contains }, { taskCode: contains }] } : {})
-        },
-        orderBy: [{ name: "asc" }, { taskCode: "asc" }, { id: "asc" }],
-        skip,
-        take: batchSize,
-        select: { id: true, taskCode: true, name: true, status: true }
-      });
-      for (const row of rows) {
-        try {
-          await input.validateAffiliateTask(row.id);
-        } catch {
-          continue;
-        }
-        visible.push({
-          id: row.id,
-          taskCode: row.taskCode,
-          label: row.name,
-          status: String(row.status).toLowerCase()
-        });
-      }
-      skip += rows.length;
-      if (rows.length < batchSize) break;
-    }
-    const start = (input.page - 1) * input.pageSize;
-    return { list: visible.slice(start, start + input.pageSize), total: visible.length };
-  }
-
   private async publicationCommand(
     input: PublishAnnouncementMutation | ScheduleAnnouncementMutation | DisableAnnouncementMutation,
     action: "publish" | "schedule" | "disable",

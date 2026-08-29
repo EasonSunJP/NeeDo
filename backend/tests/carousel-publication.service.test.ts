@@ -1,4 +1,5 @@
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
+import { CarouselPublicationRepository } from "../src/repositories/carousel-publication.repository";
 import {
   CarouselPublicationService,
   type CarouselPublicationPayload,
@@ -317,6 +318,154 @@ describe("CarouselPublicationService", () => {
         ]
       })
     );
+  });
+
+  it("round-trips explicit and initial-copy provenance through the real replacement repository", async () => {
+    const dbLocales = ["ZH_CN", "ZH_TW", "EN", "JA", "KO"] as const;
+    const localeInput = ["zh-CN", "zh-TW", "en", "ja", "ko"] as const;
+    const explicitTranslations = localeInput.map((locale, index) => ({
+      locale,
+      badge: null,
+      title: `Round trip ${locale}`,
+      caption: null,
+      ctaLabel: null,
+      imageAltText: `Round trip image ${locale}`,
+      sourceLocale: index < 3 ? ("en" as const) : ("ja" as const),
+      isInitialCopy: locale === "zh-TW" || locale === "ko"
+    }));
+    const storedTranslations = dbLocales.map((locale) => ({
+      id: dbLocales.indexOf(locale) + 1,
+      slideId: 901,
+      locale,
+      badge: null,
+      title: `Before ${locale}`,
+      caption: null,
+      ctaLabel: null,
+      imageAltText: `Before image ${locale}`,
+      sourceLocale: locale,
+      isInitialCopy: false,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now
+    }));
+    const releaseRecord = (lockVersion: number) => ({
+      id: 71,
+      scene: "USER_HOME",
+      version: 1,
+      status: "DRAFT",
+      lockVersion,
+      draftSlotKey: "carousel:USER_HOME:draft",
+      scheduledSlotKey: null,
+      publishedSlotKey: null,
+      publishAt: null,
+      activatedAt: null,
+      disabledAt: null,
+      archivedAt: null,
+      sourceReleaseId: null,
+      createdAt: now,
+      updatedAt: now,
+      slides: [
+        {
+          id: 901,
+          publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          releaseId: 71,
+          mediaAssetId: 501,
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          targetType: "SHOP",
+          shopId: 7,
+          technicianProfileId: null,
+          serviceId: null,
+          announcementId: null,
+          affiliateTaskId: null,
+          deletedAt: null,
+          createdAt: now,
+          updatedAt: now,
+          mediaAsset: {
+            id: 501,
+            entityType: "content_publication_upload",
+            usageType: "content_publication_public",
+            isActive: true,
+            purgedAt: null,
+            deletedAt: null,
+            checksumSha256: mediaPublicId,
+            url: "/media/content/a.png"
+          },
+          shop: null,
+          technicianProfile: null,
+          service: null,
+          announcement: null,
+          translations: storedTranslations.map((translation) => ({ ...translation }))
+        }
+      ]
+    });
+    let releaseRead = 0;
+    const upsert = jest.fn(
+      async (query: {
+        where: { slideId_locale: { locale: (typeof dbLocales)[number] } };
+        update: Record<string, unknown>;
+      }) => {
+        const row = storedTranslations.find(
+          (translation) => translation.locale === query.where.slideId_locale.locale
+        );
+        Object.assign(row ?? {}, query.update);
+        return row;
+      }
+    );
+    const transaction = {
+      carouselRelease: {
+        findFirst: jest.fn(async () => releaseRecord(releaseRead++ === 0 ? 2 : 3)),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      carouselSlide: {
+        aggregate: jest.fn(async () => ({ _max: { sortOrder: 0 } })),
+        update: jest.fn(async () => ({})),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      carouselSlideTranslation: {
+        upsert,
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      mediaAsset: { findFirst: jest.fn(async () => ({ id: 501 })) },
+      shop: { findFirst: jest.fn(async () => ({ id: 7 })) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const realRepository = new CarouselPublicationRepository({
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+    const service = new CarouselPublicationService(realRepository, marketplace(), {
+      now: () => now
+    });
+
+    const result = await service.replaceDraft("USER_HOME", actor, context, 71, {
+      expectedLockVersion: 2,
+      sourceLocale: "en",
+      slides: [
+        {
+          publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          mediaAssetPublicId: mediaPublicId,
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "shop", shopId: 7 },
+          translations: explicitTranslations
+        }
+      ]
+    });
+
+    expect(upsert).toHaveBeenCalledTimes(5);
+    expect(result.slides[0].translations).toMatchObject({
+      "zh-CN": { sourceLocale: "en", isInitialCopy: false },
+      "zh-TW": { sourceLocale: "en", isInitialCopy: true },
+      en: { sourceLocale: "en", isInitialCopy: false },
+      ja: { sourceLocale: "ja", isInitialCopy: false },
+      ko: { sourceLocale: "ja", isInitialCopy: true }
+    });
   });
 
   it("keeps independent scenes and passes target revalidation into publish and schedule transactions", async () => {

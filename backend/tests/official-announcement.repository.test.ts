@@ -109,7 +109,6 @@ describe("OfficialAnnouncementRepository", () => {
         cloneForRollback: expect.any(Function),
         listHistory: expect.any(Function),
         findPublished: expect.any(Function),
-        searchAffiliateTasks: expect.any(Function),
         listDueScheduledReleases: expect.any(Function),
         activateDueScheduledRelease: expect.any(Function),
         recordDueScheduledReleaseFailure: expect.any(Function)

@@ -114,13 +114,13 @@ const repository = (): jest.Mocked<OfficialAnnouncementRepositoryPort> => ({
   cloneForRollback: jest.fn(),
   listHistory: jest.fn(),
   findPublished: jest.fn(),
-  searchAffiliateTasks: jest.fn(),
   listDueScheduledReleases: jest.fn(),
   activateDueScheduledRelease: jest.fn(),
   recordDueScheduledReleaseFailure: jest.fn()
 });
 
 const marketplace = () => ({
+  listTasks: jest.fn(),
   getTask: jest.fn().mockResolvedValue({
     id: 29,
     taskCode: "AFF-PUBLIC-29",
@@ -311,29 +311,60 @@ describe("OfficialAnnouncementService", () => {
     );
   });
 
-  it("returns a standard paginated AffiliateTask search under announcement policy", async () => {
+  it("uses the actor-scoped formal marketplace query for the second page beyond 100 tasks", async () => {
     const repo = repository();
-    repo.searchAffiliateTasks.mockResolvedValue({
-      list: [{ id: 29, taskCode: "AFF-PUBLIC-29", label: "Visible task", status: "active" }],
-      total: 1
+    const tasks = marketplace();
+    tasks.listTasks.mockResolvedValue({
+      list: Array.from({ length: 5 }, (_, index) => ({
+        id: 101 + index,
+        taskCode: `AFF-PUBLIC-${101 + index}`,
+        name: `Visible task ${101 + index}`,
+        status: "active"
+      })),
+      total: 105,
+      page: 11,
+      page_size: 10
     });
-    const service = new OfficialAnnouncementService(repo, marketplace(), { now: () => now });
+    const service = new OfficialAnnouncementService(repo, tasks, { now: () => now });
 
     const result = await service.searchAffiliateTasks(actor, {
-      page: 2,
+      page: 11,
       pageSize: 10,
       q: "Visible"
     });
 
-    expect(result).toEqual({
-      list: [{ id: 29, taskCode: "AFF-PUBLIC-29", label: "Visible task", status: "active" }],
-      total: 1,
-      page: 2,
+    expect(result).toMatchObject({
+      list: [
+        { id: 101, taskCode: "AFF-PUBLIC-101", label: "Visible task 101", status: "active" },
+        { id: 102, taskCode: "AFF-PUBLIC-102", label: "Visible task 102", status: "active" },
+        { id: 103, taskCode: "AFF-PUBLIC-103", label: "Visible task 103", status: "active" },
+        { id: 104, taskCode: "AFF-PUBLIC-104", label: "Visible task 104", status: "active" },
+        { id: 105, taskCode: "AFF-PUBLIC-105", label: "Visible task 105", status: "active" }
+      ],
+      total: 105,
+      page: 11,
       page_size: 10
     });
-    expect(repo.searchAffiliateTasks).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 2, pageSize: 10, q: "Visible", now })
-    );
+    expect(tasks.listTasks).toHaveBeenCalledTimes(1);
+    expect(tasks.listTasks).toHaveBeenCalledWith(actor, {
+      page: 11,
+      pageSize: 10,
+      keyword: "Visible"
+    });
+    expect(tasks.getTask).not.toHaveBeenCalled();
+  });
+
+  it("propagates marketplace query infrastructure failures without treating them as invisible", async () => {
+    const tasks = marketplace();
+    const infrastructureFailure = new Error("database connection lost");
+    tasks.listTasks.mockRejectedValue(infrastructureFailure);
+    const service = new OfficialAnnouncementService(repository(), tasks, { now: () => now });
+
+    await expect(
+      service.searchAffiliateTasks(actor, { page: 1, pageSize: 10, q: "Visible" })
+    ).rejects.toBe(infrastructureFailure);
+    expect(tasks.listTasks).toHaveBeenCalledTimes(1);
+    expect(tasks.getTask).not.toHaveBeenCalled();
   });
 
   it("returns the standard paginated response while accepting pageSize input", async () => {
