@@ -1,7 +1,9 @@
 import type {
+  AffiliateContentLocale,
   AffiliateDiscountType,
   AffiliateMarketplaceTask
 } from "../../api/affiliateMarketplace";
+import type { Language } from "../../i18n/translations";
 
 export type AffiliateTaskTag =
   | { kind: "customer-limit"; count: number }
@@ -17,6 +19,28 @@ export type AffiliateDiscountPresentation =
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, Number.isFinite(value) ? value : minimum));
+
+const taskLocaleByLanguage: Record<Language, AffiliateContentLocale> = {
+  zh: "zh-CN",
+  "zh-Hant": "zh-TW",
+  en: "en",
+  ja: "ja",
+  ko: "ko"
+};
+
+export function getLocalizedTaskContent(
+  task: AffiliateMarketplaceTask,
+  language: Language
+): { name: string; description: string | null } {
+  const translation = task.translations?.[taskLocaleByLanguage[language]];
+  return {
+    name: translation?.name?.trim() || task.name,
+    description:
+      translation && translation.description !== null
+        ? translation.description
+        : task.description
+  };
+}
 
 export function getRemainingPercent(task: AffiliateMarketplaceTask) {
   return Math.floor(clamp(task.remainingBudgetBps, 0, 10_000) / 100);

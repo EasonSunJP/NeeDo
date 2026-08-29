@@ -433,10 +433,14 @@ describe("affiliate task publishing HTTP API", () => {
 
 describe("affiliate task OpenAPI contract", () => {
   it("documents every runtime route", () => {
-    const document = createOpenApiDocument(env) as { paths: Record<string, unknown> };
+    const document = createOpenApiDocument(env) as {
+      paths: Record<string, Record<string, unknown>>;
+      components: { schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }> };
+    };
     const paths = [
       "/api/v1/merchant-admin/affiliate/tasks",
       "/api/v1/merchant-admin/affiliate/tasks/{taskId}",
+      "/api/v1/merchant-admin/affiliate/tasks/{taskId}/locales/{locale}",
       "/api/v1/merchant-admin/affiliate/tasks/{taskId}/submit",
       "/api/v1/backoffice/affiliate/tasks",
       "/api/v1/backoffice/affiliate/tasks/{taskId}",
@@ -451,5 +455,13 @@ describe("affiliate task OpenAPI contract", () => {
     expect(document.paths[paths[1]]).toEqual(
       expect.objectContaining({ get: expect.any(Object), patch: expect.any(Object) })
     );
+    expect(document.paths[paths[2]]).toEqual(
+      expect.objectContaining({ put: expect.any(Object) })
+    );
+    expect(document.components.schemas.AffiliateTask.required).toContain("translations");
+    expect(document.components.schemas.AffiliateMarketplaceTask.required).toContain(
+      "translations"
+    );
+    expect(document.components.schemas).toHaveProperty("AffiliateTaskTranslation");
   });
 });

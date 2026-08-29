@@ -13,6 +13,7 @@ import { AffiliateTaskDetailPage } from "./AffiliateTaskDetailPage";
   true;
 
 const apiMocks = vi.hoisted(() => ({ claimTask: vi.fn(), getTask: vi.fn() }));
+const localeState = vi.hoisted(() => ({ language: "zh" }));
 
 vi.mock("../../api/affiliateMarketplace", async () => {
   const actual = await vi.importActual<typeof import("../../api/affiliateMarketplace")>(
@@ -26,7 +27,7 @@ vi.mock("../../features/realtime/useRealtimeUnreadCounts", () => ({
 }));
 
 vi.mock("../../i18n/I18nProvider", () => ({
-  useI18n: () => ({ language: "zh" })
+  useI18n: () => ({ language: localeState.language })
 }));
 
 vi.mock("../../theme/ClientThemeProvider", () => ({
@@ -37,6 +38,13 @@ vi.mock("../../theme/ClientThemeProvider", () => ({
 const task: AffiliateMarketplaceTask = {
   id: 22,
   taskCode: "AFF-PUBLIC-22",
+  translations: {
+    "zh-CN": { name: "涩谷芳香护理推广", description: "请按预约时间到店，完成服务后分享真实体验。" },
+    "zh-TW": { name: "澀谷芳香護理推廣", description: "請按預約時間到店，完成服務後分享真實體驗。" },
+    en: { name: "Shibuya aroma campaign", description: "Visit at the booked time and share your experience." },
+    ja: { name: "渋谷アロマ体験キャンペーン", description: "予約時間に来店し、施術後の実体験を紹介してください。" },
+    ko: { name: "시부야 아로마 체험", description: "예약 시간에 방문해 서비스 후 실제 경험을 공유해 주세요." }
+  },
   name: "涩谷芳香护理推广",
   description: "请按预约时间到店，完成服务后分享真实体验。",
   coverMediaAssetId: 91,
@@ -138,6 +146,7 @@ async function renderPage(taskId = "22") {
 
 describe("AffiliateTaskDetailPage", () => {
   beforeEach(() => {
+    localeState.language = "zh";
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -171,6 +180,21 @@ describe("AffiliateTaskDetailPage", () => {
           link.getAttribute("href") === "/messages/new?mode=friend&q=Shibuya+Relax"
       )
     ).toBe(true);
+  });
+
+  it("renders task title and instructions from the selected authored language", async () => {
+    localeState.language = "ja";
+    await renderPage();
+    await waitFor(() =>
+      expect(container.textContent).toContain("渋谷アロマ体験キャンペーン")
+    );
+
+    expect(container.textContent).toContain(
+      "予約時間に来店し、施術後の実体験を紹介してください。"
+    );
+    expect(container.textContent).not.toContain(
+      "请按预约时间到店，完成服务后分享真实体验。"
+    );
   });
 
   it("changes the selected public gallery image", async () => {

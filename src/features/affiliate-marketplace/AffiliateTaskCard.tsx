@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { languageLocales, translateText } from "../../i18n/translations";
 import {
   getMaximumRewardNdp,
+  getLocalizedTaskContent,
   getRemainingPercent,
   getTaskTags,
   type AffiliateTaskTag
@@ -38,14 +39,15 @@ export function AffiliateTaskCard({ task }: { task: AffiliateMarketplaceTask }) 
   });
   const remainingPercent = getRemainingPercent(task);
   const maximumRewardNdp = getMaximumRewardNdp(task);
+  const content = getLocalizedTaskContent(task, language);
   const imageUrl = task.coverImageUrl ?? task.shops[0]?.mediaAssets[0]?.url ?? null;
   const imageAlt = task.coverImageUrl
-    ? task.name
-    : task.shops[0]?.mediaAssets[0]?.altText || task.name;
+    ? content.name
+    : task.shops[0]?.mediaAssets[0]?.altText || content.name;
 
   return (
     <Link
-      aria-label={`${t("查看任务详细")}：${task.name}`}
+      aria-label={`${t("查看任务详细")}：${content.name}`}
       className="group block overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,var(--client-primary)_22%)] bg-[color:var(--client-surface)] text-[color:var(--client-text)] shadow-[0_22px_54px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)] outline-none transition duration-200 focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
       to={`/afirieito/tasks/${task.id}`}
     >
@@ -92,9 +94,9 @@ export function AffiliateTaskCard({ task }: { task: AffiliateMarketplaceTask }) 
         <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-primary)]">
           {task.shops[0]?.shopNameSnapshot ?? t("联盟营销任务")}
         </p>
-        <h2 className="mt-1 line-clamp-1 text-[19px] font-black leading-7">{task.name}</h2>
+        <h2 className="mt-1 line-clamp-1 text-[19px] font-black leading-7">{content.name}</h2>
         <p className="mt-1.5 line-clamp-2 min-h-10 text-[13px] font-semibold leading-5 text-[color:var(--client-muted)]">
-          {task.description || t("进入详细页查看任务内容与参加条件")}
+          {content.description || t("进入详细页查看任务内容与参加条件")}
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {getTaskTags(task).map((tag, index) => (

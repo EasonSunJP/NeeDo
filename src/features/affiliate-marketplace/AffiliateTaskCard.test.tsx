@@ -4,13 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 import type { AffiliateMarketplaceTask } from "../../api/affiliateMarketplace";
 import { AffiliateTaskCard } from "./AffiliateTaskCard";
 
+const localeState = vi.hoisted(() => ({ language: "zh" }));
 vi.mock("../../i18n/I18nProvider", () => ({
-  useI18n: () => ({ language: "zh" })
+  useI18n: () => ({ language: localeState.language })
 }));
 
 const task: AffiliateMarketplaceTask = {
   id: 22,
   taskCode: "AFF-PUBLIC-22",
+  translations: {
+    "zh-CN": { name: "涩谷芳香护理推广", description: "到店体验芳香护理并分享真实体验。" },
+    "zh-TW": { name: "澀谷芳香護理推廣", description: "到店體驗芳香護理並分享真實體驗。" },
+    en: { name: "Shibuya aroma campaign", description: "Share your real aroma treatment experience." },
+    ja: { name: "渋谷アロマ体験キャンペーン", description: "アロマ施術の実体験を紹介してください。" },
+    ko: { name: "시부야 아로마 체험", description: "아로마 시술의 실제 경험을 공유해 주세요." }
+  },
   name: "涩谷芳香护理推广",
   description: "到店体验芳香护理并分享真实体验。",
   coverMediaAssetId: null,
@@ -82,5 +90,19 @@ describe("AffiliateTaskCard", () => {
     expect(markup).toContain('src="https://cdn.needo.test/task-cover.jpg"');
     expect(markup).toContain('alt="涩谷芳香护理推广"');
     expect(markup).not.toContain("粉丝");
+  });
+
+  it("renders the independently authored task language selected by the user", () => {
+    localeState.language = "ja";
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <AffiliateTaskCard task={task} />
+      </MemoryRouter>
+    );
+    localeState.language = "zh";
+
+    expect(markup).toContain("渋谷アロマ体験キャンペーン");
+    expect(markup).toContain("アロマ施術の実体験を紹介してください。");
+    expect(markup).not.toContain("到店体验芳香护理并分享真实体验。");
   });
 });
