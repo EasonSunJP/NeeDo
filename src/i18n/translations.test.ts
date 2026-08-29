@@ -267,6 +267,27 @@ describe("translations", () => {
     });
   });
 
+  it("localizes the inaccessible conversation prompt in every target language", () => {
+    expect(translations["无效聊天，无法进入"]).toEqual({
+      "zh-Hant": "無效的聊天，無法進入",
+      ja: "無効なチャットのため開けません",
+      en: "This chat can’t be opened",
+      ko: "유효하지 않은 채팅이라 들어갈 수 없습니다"
+    });
+    expect(translations["该对话可能不存在、已被删除，或当前账号无权访问。"]).toEqual({
+      "zh-Hant": "該對話可能不存在、已被刪除，或目前帳號沒有存取權限。",
+      ja: "このチャットは存在しないか、削除されたか、現在のアカウントにアクセス権がない可能性があります。",
+      en: "This chat may not exist, may have been deleted, or may not be accessible to this account.",
+      ko: "이 채팅은 존재하지 않거나 삭제되었거나 현재 계정에 접근 권한이 없을 수 있습니다."
+    });
+    expect(translations["返回首页"]).toEqual({
+      "zh-Hant": "返回首頁",
+      ja: "ホームに戻る",
+      en: "Return home",
+      ko: "홈으로 돌아가기"
+    });
+  });
+
   it("uses tax-included wording for 税込 instead of after-tax wording", () => {
     expect(translateText("含税", "zh-Hant")).toBe("含稅");
     expect(translateText("含税", "ja")).toBe("税込");

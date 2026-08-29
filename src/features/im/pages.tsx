@@ -136,7 +136,7 @@ import {
   type TagMessageCampaignEstimate,
   type TagMessageCampaignResult
 } from "./model";
-import { canShareUserCard, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImProfilePath } from "./role-config";
+import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
 import {
   getBlockedContacts,
@@ -4133,8 +4133,108 @@ function useConversationData(store: ReturnType<typeof useImStore>, conversationI
   return { conversation, messages, members };
 }
 
-function isConversationNotFoundError(error: unknown) {
-  return error instanceof Error && error.message.includes("Conversation not found");
+export function isConversationNotFoundError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message === "error.realtime.conversation_not_found" || error.message === "Conversation not found")
+  );
+}
+
+export function ImConversationUnavailableState({
+  onReturnHome
+}: {
+  onReturnHome: () => void;
+}) {
+  const { isNight } = useClientTheme();
+  const wallpaperFilter = isNight ? "saturate(0.8) brightness(0.42)" : "saturate(0.76) brightness(1.08)";
+  const wallpaperOverlay = isNight
+    ? "linear-gradient(90deg, rgba(0,0,0,0.62) 0%, rgba(7,20,29,0.54) 100%), linear-gradient(180deg, rgba(4,4,4,0.12) 0%, rgba(4,4,4,0.18) 24%, rgba(4,4,4,0.52) 100%)"
+    : "linear-gradient(90deg, rgba(255,255,255,0.68) 0%, rgba(237,244,242,0.62) 100%), linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.18) 24%, rgba(255,255,255,0.46) 100%)";
+
+  return (
+    <ImStandaloneShell>
+      <div
+        className="im-conversation-room-shell fixed inset-x-0 inset-y-0 z-20 isolate mx-auto h-[100dvh] w-full min-w-0 max-w-full overflow-hidden overscroll-none [overflow-x:clip]"
+        style={{ maxWidth: "min(880px, 100%)" }}
+      >
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-0 flex min-h-0 flex-col"
+          data-im-conversation-unavailable-underlay="true"
+          inert
+        >
+          <ImTopBar
+            centerTitle
+            className="im-conversation-glass-header"
+            fixed
+            onBack={() => undefined}
+            title={<span aria-hidden="true" className="block h-6" />}
+          />
+
+          <div
+            className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]"
+            data-im-conversation-layout="true"
+          >
+            <div aria-hidden="true" className="im-conversation-wallpaper pointer-events-none absolute inset-0 overflow-hidden">
+              <img
+                alt=""
+                aria-hidden="true"
+                className={cn("absolute inset-0 h-full w-full object-cover", isNight ? "opacity-[0.96]" : "opacity-[0.48]")}
+                src={chatBgUrl}
+                style={{ filter: wallpaperFilter }}
+              />
+              <div className={cn("absolute inset-0", isNight ? "bg-black/10" : "bg-white/8")} />
+              <div className="absolute inset-0" style={{ background: wallpaperOverlay }} />
+            </div>
+
+            <div className="relative min-h-0 flex-1" />
+            <ImChatComposer
+              disabled
+              draft=""
+              isNight={isNight}
+              onDraftChange={() => undefined}
+              onPanelChange={() => undefined}
+              onSend={() => undefined}
+              panel={null}
+            />
+          </div>
+        </div>
+
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-20 bg-black/[0.42] backdrop-blur-[4px]"
+          data-im-conversation-unavailable-scrim="true"
+        />
+
+        <div className="absolute inset-0 z-30 flex items-center justify-center px-5 pb-[max(24px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))]">
+          <section
+            aria-describedby="im-conversation-unavailable-caption"
+            aria-labelledby="im-conversation-unavailable-title"
+            aria-modal="true"
+            className="client-liquid-glass-surface w-full max-w-[360px] rounded-[28px] border border-white/12 bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-6 py-7 text-center shadow-[0_24px_72px_rgba(0,0,0,0.38)]"
+            data-im-conversation-unavailable-dialog="true"
+            role="dialog"
+          >
+            <h1
+              className="text-[22px] font-black tracking-[-0.025em] text-[color:var(--client-text)]"
+              id="im-conversation-unavailable-title"
+            >
+              无效聊天，无法进入
+            </h1>
+            <p
+              className="mx-auto mt-3 max-w-[30ch] text-sm font-semibold leading-6 text-[color:var(--client-muted)]"
+              id="im-conversation-unavailable-caption"
+            >
+              该对话可能不存在、已被删除，或当前账号无权访问。
+            </p>
+            <Button autoFocus className="mt-6 min-h-12 w-full rounded-full text-[15px] font-black" onClick={onReturnHome}>
+              返回首页
+            </Button>
+          </section>
+        </div>
+      </div>
+    </ImStandaloneShell>
+  );
 }
 
 type MessageMenuState = {
@@ -4211,6 +4311,8 @@ export function ImConversationRoomPage({
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [imageSending, setImageSending] = useState(false);
+  const [conversationRouteStatus, setConversationRouteStatus] =
+    useState<"loading" | "ready" | "unavailable">("loading");
   const pendingImagePreviewUrlRef = useRef<string | null>(null);
   const [pendingImage, setPendingImage] = useState<{
     file: File;
@@ -4245,21 +4347,32 @@ export function ImConversationRoomPage({
 
   useEffect(() => {
     let disposed = false;
+    let conversationRequestUnavailable = false;
+    setConversationRouteStatus("loading");
+
     const handleConversationRequestError = (error: unknown) => {
       if (disposed) {
         return;
       }
 
       if (isConversationNotFoundError(error)) {
+        conversationRequestUnavailable = true;
         store.setActiveConversation(undefined);
-        navigate(config.routes.messages, { replace: true });
+        setConversationRouteStatus("unavailable");
         return;
       }
 
       throw error;
     };
 
-    void store.loadConversation(conversationId).catch(handleConversationRequestError);
+    void store
+      .loadConversation(conversationId)
+      .then(() => {
+        if (!disposed && !conversationRequestUnavailable) {
+          setConversationRouteStatus("ready");
+        }
+      })
+      .catch(handleConversationRequestError);
     void store.loadMessages(conversationId, { reset: true, limit: 40 }).catch(handleConversationRequestError);
     store.setActiveConversation(conversationId);
     void store.markConversationRead(conversationId)
@@ -4270,7 +4383,7 @@ export function ImConversationRoomPage({
       disposed = true;
       store.setActiveConversation(undefined);
     };
-  }, [config.routes.messages, conversationId, navigate]);
+  }, [conversationId]);
 
   useEffect(() => {
     setDraft(clampMessageText(conversation?.draftText ?? ""));
@@ -4496,7 +4609,8 @@ export function ImConversationRoomPage({
     const timer = window.setTimeout(() => {
       const handleExpirationRefreshError = (error: unknown) => {
         if (isConversationNotFoundError(error)) {
-          navigate(config.routes.messages, { replace: true });
+          store.setActiveConversation(undefined);
+          setConversationRouteStatus("unavailable");
           return;
         }
 
@@ -4508,7 +4622,7 @@ export function ImConversationRoomPage({
     }, delay);
 
     return () => window.clearTimeout(timer);
-  }, [config.routes.messages, conversationId, navigate, nextDisappearingExpiresAt]);
+  }, [conversationId, nextDisappearingExpiresAt]);
 
   const quotedMessage = getQuotedMessage(store, conversationId, quotedMessageId);
   const contact = conversation?.contactUserId ? store.contacts.find((item) => item.targetUserId === conversation.contactUserId) : undefined;
@@ -5615,6 +5729,14 @@ export function ImConversationRoomPage({
 
     return true;
   });
+
+  if (conversationRouteStatus === "unavailable") {
+    return (
+      <ImConversationUnavailableState
+        onReturnHome={() => navigate(getImHomeRoute(scope), { replace: true })}
+      />
+    );
+  }
 
   if (!conversation) {
     return (

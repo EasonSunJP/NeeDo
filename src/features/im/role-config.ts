@@ -173,6 +173,10 @@ export function getImRoleConfig(scope: ImRoleType) {
   return roleConfigMap[scope];
 }
 
+export function getImHomeRoute(scope: ImRoleType) {
+  return getImRoleConfig(scope).routes.prefix || "/";
+}
+
 export function isContactVisibleForRole(scope: ImRoleType, user?: ImUser, contact?: ContactRelation) {
   if (!user || !contact || contact.relationStatus !== "active") {
     return false;

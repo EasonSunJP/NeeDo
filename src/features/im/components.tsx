@@ -494,6 +494,7 @@ export function ImReturnToLatestButton({
 export function ImChatComposer({
   actions = [],
   blocked = false,
+  disabled = false,
   draft,
   isNight,
   maxVoiceRecordingSeconds = 60,
@@ -516,6 +517,7 @@ export function ImChatComposer({
 }: {
   actions?: ImChatComposerAction[];
   blocked?: boolean;
+  disabled?: boolean;
   draft: string;
   isNight: boolean;
   maxVoiceRecordingSeconds?: number;
@@ -606,7 +608,11 @@ export function ImChatComposer({
 
   return (
     <div
-      className="im-chat-composer-root relative z-10 max-w-full px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]"
+      className={cn(
+        "im-chat-composer-root relative z-10 max-w-full px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]",
+        disabled ? "cursor-not-allowed opacity-60" : ""
+      )}
+      data-im-composer-disabled={disabled ? "true" : undefined}
       data-im-composer-root="true"
       ref={composerRootRef}
     >
@@ -620,6 +626,7 @@ export function ImChatComposer({
             aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
             className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
             data-im-composer-control="voice-input"
+            disabled={disabled}
             onClick={() => {
               onToggleVoice?.();
               onPanelChange(null);
@@ -636,7 +643,7 @@ export function ImChatComposer({
                   <button
                     aria-label={`移除待发送图片 ${pendingImage.fileName}`}
                     className="focus-ring absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-white/20 bg-black/72 text-sm font-black leading-none text-white shadow-lg"
-                    disabled={sending}
+                    disabled={disabled || sending}
                     onClick={onRemovePendingImage}
                     type="button"
                   >
@@ -651,7 +658,7 @@ export function ImChatComposer({
                   "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
                   recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
                 )}
-                disabled={blocked}
+                disabled={disabled || blocked}
                 onPointerCancel={onCancelRecording}
                 onPointerDown={onStartRecording}
                 onPointerMove={onMoveRecording}
@@ -667,6 +674,7 @@ export function ImChatComposer({
             ) : (
               <textarea
                 className={composerTextareaClass}
+                disabled={disabled}
                 onChange={(event) => onDraftChange(event.target.value)}
                 placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
                 ref={textareaRef}
@@ -679,19 +687,21 @@ export function ImChatComposer({
             aria-label={panel === "emoji" ? "关闭表情面板" : "打开表情面板"}
             className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
             data-im-composer-control="emoji-chat"
+            disabled={disabled}
             onClick={() => onPanelChange((value) => (value === "emoji" ? null : "emoji"))}
             type="button"
           >
             <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
           </button>
           {(draft.trim() || pendingImage) && !voiceMode ? (
-            <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={blocked || sending} onClick={onSend}>
+            <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={disabled || blocked || sending} onClick={onSend}>
               {sending ? "发送中" : "发送"}
             </Button>
           ) : (
             <button
               aria-label={panel === "more" ? "关闭更多功能" : "打开更多功能"}
               className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
+              disabled={disabled}
               onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
               type="button"
             >
@@ -708,6 +718,7 @@ export function ImChatComposer({
                 <button
                   aria-label={`输入表情 ${emoji}`}
                   className={composerEmojiButtonClass}
+                  disabled={disabled}
                   key={emoji}
                   onClick={() => selectEmoji(emoji)}
                   type="button"
@@ -723,6 +734,7 @@ export function ImChatComposer({
                 <button
                   aria-label={`输入表情 ${emoji}`}
                   className={composerEmojiButtonClass}
+                  disabled={disabled}
                   key={emoji}
                   onClick={() => selectEmoji(emoji)}
                   type="button"
@@ -738,7 +750,7 @@ export function ImChatComposer({
           <div className={composerPanelClass} data-im-composer-panel="more">
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
               {actions.map((action) => (
-                <button className={composerActionButtonClass} key={action.key} onClick={action.run} type="button">
+                <button className={composerActionButtonClass} disabled={disabled} key={action.key} onClick={action.run} type="button">
                   <span className={composerActionIconClass}>
                     <ImIcon name={action.icon} />
                   </span>

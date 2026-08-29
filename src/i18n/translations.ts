@@ -4576,7 +4576,7 @@ export const translations: TranslationMap = {
   "返回分析中心": { "zh-Hant": "返回分析中心", ja: "分析センターに戻る", en: "Return to Analysis Center", ko: "분석 센터로 돌아가기" },
   "返回公告列表": { "zh-Hant": "返回公告列表", ja: "戻るお知らせリスト", en: "ReturnNoticeList", ko: "반품공지목록" },
   "返回扫码": { "zh-Hant": "返回掃碼", ja: "戻る扫码", en: "Return", ko: "반품" },
-  "返回首页": { "zh-Hant": "回首頁", ja: "ホームページに…", en: "Return to homepage", ko: "홈페이지로 돌…" },
+  "返回首页": { "zh-Hant": "返回首頁", ja: "ホームに戻る", en: "Return home", ko: "홈으로 돌아가기" },
   "返回数据大盘": { "zh-Hant": "返回數據大盤", ja: "戻るデータダッシュボード", en: "ReturnData dashboard", ko: "반품데이터 대시보드" },
   "返回数据中心": { "zh-Hant": "返回數據中心", ja: "戻るデータセンター", en: "ReturnData Center", ko: "반품데이터 센터" },
   "返回通讯录": { "zh-Hant": "返回通訊錄", ja: "戻る連絡先", en: "ReturnContacts", ko: "반품연락처" },
@@ -4988,6 +4988,12 @@ export const translations: TranslationMap = {
   "覆盖下水道周边重点污渍与收纳归位。": { "zh-Hant": "涵蓋下水道周邊重點污漬與收納復位。", ja: "排水口まわりの重点汚れと収納の片付けまで対応。", en: "Covers key stains around drain areas and putting storage back in order.", ko: "하수구 주변 주요 오염과 수납 정리까지 처리합니다." },
   "覆盖营收、订单、用户、复购、留存、来源、城市区域、商家技师排名和退款评价趋势。": { "zh-Hant": "涵蓋營收、訂單、用戶、複購、留存、來源、城市區域、商家技師排名和退款評價趨勢。", ja: "収益、注文数、ユーザー数、リピート購入数、顧客維持率、仕入先、都市／地域、業者／スタッフランキング、返金／レビューの…", en: "It covers revenue, orders, users, repeat purchases, retention, source, city/region, merchant/staff rankings, and refund/review trends.", ko: "이 보고서는 매출, 주문, 사용자, 재구매, 고객 유지율, 구매 경로, 도시/지역, 매장/스태프 순위, 환불/리뷰 추세 등을 다룹니다." },
   "该规则由商户统一设定，不可修改。": { "zh-Hant": "此規則由商戶統一設定，不可修改。", ja: "これらの規則は商人によって一律に設定されており、変更することはできません。", en: "These rules are set uniformly by the merchants and cannot be modified.", ko: "이 규칙들은 상인들이 일률적으로 정한 것이며 수정할 수 없습니다." },
+  "该对话可能不存在、已被删除，或当前账号无权访问。": {
+    "zh-Hant": "該對話可能不存在、已被刪除，或目前帳號沒有存取權限。",
+    ja: "このチャットは存在しないか、削除されたか、現在のアカウントにアクセス権がない可能性があります。",
+    en: "This chat may not exist, may have been deleted, or may not be accessible to this account.",
+    ko: "이 채팅은 존재하지 않거나 삭제되었거나 현재 계정에 접근 권한이 없을 수 있습니다."
+  },
   "该技师当日排班编辑": { "zh-Hant": "該技師當日排班編輯", ja: "その日、スタッフ勤務シフト表が…", en: "The staff's shift schedule was edited th…", ko: "그날 스태프의 근무 일정이 수정되…" },
   "该技师当天时间安排": { "zh-Hant": "該技師當天時間安排", ja: "该スタッフ当天時間安排", en: "Staff Time", ko: "스태프 시간" },
   "该客人历史履约稳定，平台建议接单前确认到达方式、服务人数和酒店登记规则。": { "zh-Hant": "該客人歷史履約穩定，平台建議接單前確認抵達方式、服務人數和飯店登記規則。", ja: "この顧客は予約履行において安定した実績を持っています平台では、注文を受ける前に、到着方法、サービス担当者の人数、ホテル…", en: "The customer has a stable track record of fulfilling bookings The platform recommends confirming the arrival method, number of service personnel, and hotel registration rules be…", ko: "해당 고객은 예약 이행 이력이 안정적입니다 플랫폼에서는 주문 접수 전에 도착 방법, 서비스 인력 수, 호텔 체크인 규정을 확인하는 …" },
@@ -11268,6 +11274,12 @@ export const translations: TranslationMap = {
   "无冲突，可进入处理": { "zh-Hant": "無衝突，可進入處理", ja: "なし重複、可入力対応", en: "Conflict Handling Enter.", ko: "충돌 처리 입력" },
   "无法补位": { "zh-Hant": "無法補位", ja: "なし法补位", en: "Wu Fa Bu Wei", ko: "Wu Fa Bu Wei" },
   "无法打开二维码": { "zh-Hant": "無法開啟 QR 碼", ja: "QRコードを開けません", en: "Unable to open QR code", ko: "QR 코드를 열 수 없습니다" },
+  "无效聊天，无法进入": {
+    "zh-Hant": "無效的聊天，無法進入",
+    ja: "無効なチャットのため開けません",
+    en: "This chat can’t be opened",
+    ko: "유효하지 않은 채팅이라 들어갈 수 없습니다"
+  },
   "无法回到模式选择。": { "zh-Hant": "無法回到模式選擇。", ja: "なし法回到モード選ぶ。", en: "Mode Choose.", ko: "모드 선택" },
   "无规格": { "zh-Hant": "無規格", ja: "なし规格", en: "No Specification", ko: "규격 없음" },
   "无截止": { "zh-Hant": "無截止", ja: "終わりがない", en: "No end", ko: "끝이 없다" },

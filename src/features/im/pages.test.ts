@@ -4,13 +4,106 @@ import { MemoryRouter } from "react-router-dom";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ImContactActivityEntry, getConversationInfoStartChatTarget, imConversationQuickSearchItems } from "./pages";
-import { getImRoleConfig } from "./role-config";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { ImChatComposer } from "./components";
+import {
+  ImContactActivityEntry,
+  ImConversationUnavailableState,
+  getConversationInfoStartChatTarget,
+  imConversationQuickSearchItems,
+  isConversationNotFoundError
+} from "./pages";
+import { getImHomeRoute, getImRoleConfig } from "./role-config";
 import pagesSource from "./pages.tsx?raw";
 import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("keeps the unavailable chat composer visible while natively disabling every control", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ImChatComposer, {
+        disabled: true,
+        draft: "",
+        isNight: true,
+        onDraftChange: () => undefined,
+        onPanelChange: () => undefined,
+        onSend: () => undefined,
+        panel: null
+      })
+    );
+
+    expect(markup).toContain('data-im-composer-disabled="true"');
+    expect(markup).toContain('data-im-composer-control="voice-input"');
+    expect(markup).toContain('data-im-composer-control="emoji-chat"');
+    expect(markup).toContain('placeholder="发送消息"');
+    expect(markup.match(/disabled=""/g)).toHaveLength(4);
+  });
+
+  it("recognizes only formal and legacy inaccessible-conversation errors", () => {
+    expect(isConversationNotFoundError(new Error("error.realtime.conversation_not_found"))).toBe(true);
+    expect(isConversationNotFoundError(new Error("Conversation not found"))).toBe(true);
+    expect(isConversationNotFoundError(new Error("error.network.timeout"))).toBe(false);
+    expect(isConversationNotFoundError(new Error("Conversation not found after timeout"))).toBe(false);
+    expect(isConversationNotFoundError("error.realtime.conversation_not_found")).toBe(false);
+  });
+
+  it("renders an empty inert chat underlay below one clear invalid-chat prompt", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(
+          ClientThemeProvider,
+          null,
+          createElement(ImConversationUnavailableState, { onReturnHome: () => undefined })
+        )
+      )
+    );
+
+    expect(markup).toContain('data-im-conversation-unavailable-underlay="true"');
+    expect(markup).toContain('inert=""');
+    expect(markup).toContain("im-conversation-wallpaper");
+    expect(markup).toContain('data-im-composer-disabled="true"');
+    expect(markup).toContain('data-im-conversation-unavailable-scrim="true"');
+    expect(markup).toContain("backdrop-blur-[4px]");
+    expect(markup).toContain('data-im-conversation-unavailable-dialog="true"');
+    expect(markup).toContain('role="dialog"');
+    expect(markup).toContain("无效聊天，无法进入");
+    expect(markup).toContain("该对话可能不存在、已被删除，或当前账号无权访问。");
+    expect(markup.match(/返回首页/g)).toHaveLength(1);
+    expect(markup).not.toContain("找不到会话");
+    expect(markup).not.toContain("会话可能已被删除");
+    expect(markup).not.toContain('aria-label="更多"');
+    expect(markup).not.toContain("im-conversation-scroll");
+  });
+
+  it("returns each IM portal to its scoped home route", () => {
+    expect(getImHomeRoute("user")).toBe("/");
+    expect(getImHomeRoute("merchant")).toBe("/merchant");
+    expect(getImHomeRoute("technician")).toBe("/technician");
+  });
+
+  it("keeps an inaccessible conversation in a monotonic route-local state", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("export function ImConversationInfoPage", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const unavailableStateIndex = componentSource.indexOf('conversationRouteStatus === "unavailable"');
+    const missingConversationIndex = componentSource.indexOf("if (!conversation)");
+
+    expect(componentSource).toContain(
+      'useState<"loading" | "ready" | "unavailable">("loading")'
+    );
+    expect(componentSource).toContain("let conversationRequestUnavailable = false");
+    expect(componentSource).toContain("conversationRequestUnavailable = true");
+    expect(componentSource).toContain('setConversationRouteStatus("unavailable")');
+    expect(componentSource).toContain("!conversationRequestUnavailable");
+    expect(componentSource).toContain("<ImConversationUnavailableState");
+    expect(componentSource).toContain("navigate(getImHomeRoute(scope), { replace: true })");
+    expect(componentSource).not.toContain("navigate(config.routes.messages, { replace: true });");
+    expect(unavailableStateIndex).toBeGreaterThan(-1);
+    expect(missingConversationIndex).toBeGreaterThan(unavailableStateIndex);
+  });
+
   it("renders the recent friend activity state as a text-only link", () => {
     const markup = renderToStaticMarkup(
       createElement(
