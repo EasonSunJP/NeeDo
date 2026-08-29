@@ -433,20 +433,28 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     await this.assertActiveUsers([input.targetUserId]);
-    const friendRequest = await this.repository.createFriendRequest({
+    const outcome = await this.repository.createFriendRequest({
       requesterUserId: auth.userId,
       targetUserId: input.targetUserId,
       message: input.message
     });
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: "friend_request.created",
-      recipientUserId: input.targetUserId,
-      payload: friendRequest,
-      createdAt: new Date().toISOString()
-    });
+    if (outcome.status === "target_unavailable") {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    if (outcome.status === "already_friends") {
+      throw this.validationError("error.realtime.already_friends");
+    }
+    if (outcome.result.created) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "friend_request.created",
+        recipientUserId: input.targetUserId,
+        payload: outcome.result.friendRequest,
+        createdAt: new Date().toISOString()
+      });
+    }
 
-    return friendRequest;
+    return outcome.result.friendRequest;
   }
 
   public listFriendRequests(auth: AuthenticatedAccessContext, input: FriendRequestListInput) {
@@ -458,25 +466,30 @@ export class RealtimeService implements OrderStatusNotificationPort {
     id: number,
     action: "accept" | "reject"
   ) {
-    const friendRequest = await this.repository.respondToFriendRequest({
+    const outcome = await this.repository.respondToFriendRequest({
       id,
       actorUserId: auth.userId,
       action
     });
 
-    if (!friendRequest) {
+    if (outcome.status === "not_found") {
       throw this.notFoundError("error.realtime.friend_request_not_found");
     }
+    if (outcome.status === "expired") {
+      throw this.validationError("error.realtime.friend_request_expired");
+    }
 
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: `friend_request.${friendRequest.status}`,
-      recipientUserId: friendRequest.requesterUserId,
-      payload: friendRequest,
-      createdAt: new Date().toISOString()
-    });
+    for (const recipientUserId of outcome.result.recipientUserIds) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: `friend_request.${outcome.result.friendRequest.status}`,
+        recipientUserId,
+        payload: outcome.result.friendRequest,
+        createdAt: new Date().toISOString()
+      });
+    }
 
-    return friendRequest;
+    return outcome.result.friendRequest;
   }
 
   public async createSocialPost(

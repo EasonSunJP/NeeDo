@@ -48,6 +48,85 @@ describe("RealtimeService fuzzy search", () => {
   });
 });
 
+describe("RealtimeService friend request lifecycle", () => {
+  const friendRequest = {
+    id: 19,
+    requesterUserId: 41,
+    targetUserId: 167,
+    status: "pending" as const
+  };
+
+  it("publishes only when a new request was created", async () => {
+    const repository = {
+      findActiveUserIds: jest.fn(async () => [167]),
+      createFriendRequest: jest.fn(async () => ({
+        status: "ready" as const,
+        result: { friendRequest, created: false }
+      }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.createFriendRequest({ userId: 41 } as never, { targetUserId: 167 })
+    ).resolves.toBe(friendRequest);
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+
+    repository.createFriendRequest.mockResolvedValueOnce({
+      status: "ready",
+      result: { friendRequest, created: true }
+    });
+    await service.createFriendRequest({ userId: 41 } as never, { targetUserId: 167 });
+    expect(eventGateway.publish).toHaveBeenCalledTimes(1);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "friend_request.created",
+        recipientUserId: 167,
+        payload: friendRequest
+      })
+    );
+  });
+
+  it("publishes an accepted request to both accounts", async () => {
+    const accepted = { ...friendRequest, status: "accepted" as const };
+    const repository = {
+      respondToFriendRequest: jest.fn(async () => ({
+        status: "responded" as const,
+        result: { friendRequest: accepted, recipientUserIds: [41, 167] }
+      }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.respondToFriendRequest({ userId: 167 } as never, 19, "accept")
+    ).resolves.toBe(accepted);
+    expect(eventGateway.publish).toHaveBeenCalledTimes(2);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "friend_request.accepted", recipientUserId: 41 })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "friend_request.accepted", recipientUserId: 167 })
+    );
+  });
+
+  it("rejects an expired response without publishing", async () => {
+    const repository = {
+      respondToFriendRequest: jest.fn(async () => ({
+        status: "expired" as const,
+        friendRequest: { ...friendRequest, status: "expired" as const }
+      }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.respondToFriendRequest({ userId: 167 } as never, 19, "accept")
+    ).rejects.toMatchObject({ message: "error.realtime.friend_request_expired" });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+});
+
 describe("RealtimeService social events", () => {
   it("publishes a created post to followers and persisted reminders to their recipients", async () => {
     const post = {
