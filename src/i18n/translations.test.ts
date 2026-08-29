@@ -328,6 +328,10 @@ describe("translations", () => {
     expect(translateText("解除黑名单", "ja")).toBe("ブラックリストを解除");
     expect(translateText("对方将你拉黑，信息发送失败", "en")).toBe("The recipient blocked you. Message failed to send.");
     expect(translateText("图片发送失败，请重试", "ko")).toBe("이미지 전송에 실패했습니다. 다시 시도해 주세요.");
+    expect(translateText("音频", "zh-Hant")).toBe("音訊");
+    expect(translateText("音频", "ja")).toBe("オーディオ");
+    expect(translateText("音频", "en")).toBe("Audio");
+    expect(translateText("音频", "ko")).toBe("오디오");
     expect(translateText("正在搜索账号…", "zh-Hant")).toBe("正在搜尋帳號…");
     expect(translateText("搜索失败，请稍后重试", "ja")).toContain("検索に失敗");
     expect(translateText("请输入昵称或 NeeDoID 搜索", "en")).toBe("Search by nickname or NeeDoID");

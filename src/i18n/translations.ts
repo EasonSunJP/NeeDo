@@ -12423,6 +12423,7 @@ export const translations: TranslationMap = {
   "異常資訊": { "zh-Hant": "異常資訊", ja: "異常資訊", en: "Yi Chang Zi Xun", ko: "Yi Chang Zi Xun" },
   "意见反馈": { "zh-Hant": "意見回饋", ja: "フィードバック", en: "Feedback", ko: "피드백" },
   "因退款、作弊或投诉追回": { "zh-Hant": "因退款、作弊或投訴追回", ja: "因返金／作弊或苦情追回", en: "Refund / Complaint", ko: "환불하다 / 불평" },
+  "音频": { "zh-Hant": "音訊", ja: "オーディオ", en: "Audio", ko: "오디오" },
   "音乐 音频 语音": { "zh-Hant": "音樂 音頻 語音", ja: "音乐 音频 声", en: "Voice", ko: "목소리" },
   "音乐和音频": { "zh-Hant": "音樂和音訊", ja: "音楽とオーディオ", en: "Music and audio", ko: "음악 및 오디오" },
   "银卡": { "zh-Hant": "銀卡", ja: "シルバーカード", en: "Silver Card", ko: "실버 카드" },

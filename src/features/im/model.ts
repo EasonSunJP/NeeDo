@@ -969,19 +969,19 @@ export function buildMessagePreview(message: ConversationMessage, currentUserId:
   }
 
   if (message.type === "image") {
-    return message.ext?.caption ? `[图片] ${message.ext.caption}` : "[图片]";
+    return "图片";
   }
 
   if (message.type === "voice") {
-    return "[语音]";
+    return "音频";
   }
 
   if (message.type === "video") {
-    return "[视频]";
+    return "视频";
   }
 
   if (message.type === "file") {
-    return "[文件]";
+    return message.ext?.fileName?.trim() || "文件";
   }
 
   if (message.type === "location") {
