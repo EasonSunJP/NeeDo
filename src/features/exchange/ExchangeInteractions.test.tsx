@@ -162,4 +162,15 @@ describe("ExchangeInteractions", () => {
     expect(container.querySelector('[data-action="share"]')).toBeNull();
     expect(container.textContent).toContain("互动已关闭，历史评论仍可查看");
   });
+
+  it("supports the approved detail-card layout without duplicating header actions", async () => {
+    await act(async () => root.render(
+      <ExchangeInteractions onCountsChange={onCountsChange} post={post} showActionBar={false} variant="detail" />
+    ));
+    await waitFor(() => expect(container.textContent).toContain("正式评论 1"));
+
+    expect(container.querySelector('[data-action="like"]')).toBeNull();
+    expect(container.querySelector('[data-action="share"]')).toBeNull();
+    expect(container.querySelector('[data-testid="exchange-comments-card"]')?.className).toContain("rounded-[28px]");
+  });
 });

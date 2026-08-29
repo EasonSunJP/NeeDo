@@ -7,6 +7,7 @@ import { useExchangeFeed } from "./useExchangeFeed";
 import { ExchangeFeedPage, getDefaultExchangePostType } from "./ExchangeFeedPage";
 
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
+vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ theme: "dark-green" }) }));
 vi.mock("./useExchangeFeed", () => ({ useExchangeFeed: vi.fn() }));
 
 const demandPost: ExchangePost = {
@@ -57,20 +58,32 @@ function renderFeed(overrides: Partial<typeof baseResource> = {}, context: "user
 describe("ExchangeFeedPage", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("keeps exactly two formal tabs and uses identity-specific route defaults", () => {
-    expect(getDefaultExchangePostType("user")).toBe("demand");
+  it("shows a private My Requests tab to users and keeps both formal lists for merchant and technician portals", () => {
+    expect(getDefaultExchangePostType("user")).toBe("intelligence");
     expect(getDefaultExchangePostType("merchant")).toBe("intelligence");
     expect(getDefaultExchangePostType("technician")).toBe("intelligence");
 
-    const markup = renderFeed();
-    expect(markup).toContain("需求");
-    expect(markup).toContain("情报");
-    expect(markup).not.toContain(">全部<");
-    expect(useExchangeFeed).toHaveBeenCalledWith("demand", 10);
+    const userMarkup = renderFeed();
+    expect(userMarkup).toContain("我的需求");
+    expect(userMarkup).toContain("情报");
+    expect(userMarkup).toContain("client-feature-segmented-tabs--header");
+    expect(useExchangeFeed).toHaveBeenLastCalledWith("intelligence", 20);
+
+    const merchantMarkup = renderFeed({}, "merchant");
+    expect(merchantMarkup).toContain("需求");
+    expect(merchantMarkup).toContain("情报");
+    expect(merchantMarkup).toContain("client-feature-segmented-tabs--header");
+    expect(merchantMarkup).not.toContain(">全部<");
   });
 
-  it("renders only server fields and preserves authored language", () => {
+  it("restores the original high-fidelity search, tabs, offer card, and interaction bar", () => {
     const markup = renderFeed();
+    expect(markup).toContain("搜索需要的服务");
+    expect(markup).toContain("grid-cols-[90px,1fr]");
+    expect(markup).toContain("利用条件");
+    expect(markup).toContain("适用范围");
+    expect(markup).toContain("备注");
+    expect(markup).toContain("有效期限");
     expect(markup).toContain("测试客户 41");
     expect(markup).toContain("u0000000041");
     expect(markup).toContain("東京駅附近寻找中文口译");
@@ -81,7 +94,8 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain("21");
     expect(markup).toContain("6");
     expect(markup).toContain('data-no-i18n="true"');
-    expect(markup).toContain('href="/needo/posts/41"');
+    expect(markup).toContain('data-post-id="41"');
+    expect(markup).toContain("转发");
   });
 
   it("shows distinct loading, empty, permission, authentication, and unavailable states", () => {
@@ -98,5 +112,10 @@ describe("ExchangeFeedPage", () => {
     expect(source).not.toMatch(/抢单|报价|匹配|预约|支付/u);
     expect(source).not.toContain("正式需求与情报功能尚未启用");
     expect(source).not.toContain("localStorage");
+    expect(source).toContain("OfferInfoCard");
+    expect(source).toContain("FloatingHomeHeader");
+    expect(source).toContain("FloatingHeaderSearchBar");
+    expect(source).toContain("FeatureSegmentedTabs");
+    expect(source).toContain("MomentActionBar");
   });
 });

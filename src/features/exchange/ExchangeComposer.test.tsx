@@ -9,6 +9,10 @@ import { exchangeText } from "./i18n";
 import type { ExchangePost } from "./types";
 
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
+vi.mock("../../theme/ClientThemeProvider", () => ({
+  getClientThemeClassName: () => "client-theme-dark-green",
+  useClientTheme: () => ({ theme: "dark-green", isNight: true })
+}));
 vi.mock("./api", () => ({ publishExchangePost: vi.fn() }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -71,7 +75,7 @@ function setInputValue(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelec
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function fillDemandForm(container: HTMLDivElement) {
+function fillDemandForm(container: ParentNode) {
   const values: Record<string, string> = {
     title: "正式发布的需求",
     detail: "持久化正文",
@@ -129,9 +133,9 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={onPublished} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
 
-    fillDemandForm(container);
+    fillDemandForm(document.body);
 
-    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="submit-composer"]')?.click());
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-composer"]')?.click());
     await waitFor(() => expect(onPublished).toHaveBeenCalledWith(publishedPost));
 
     expect(publishExchangePost).toHaveBeenCalledWith(
@@ -144,16 +148,31 @@ describe("ExchangeComposer publication", () => {
       }),
       "123e4567-e89b-42d3-a456-426614174000"
     );
-    expect(container.querySelector('[name="identityId"]')).toBeNull();
+    expect(document.body.querySelector('[name="identityId"]')).toBeNull();
   });
 
   it("keeps the form open and shows a formal error when publication fails", async () => {
     vi.mocked(publishExchangePost).mockRejectedValue(new Error("error.network"));
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
-    fillDemandForm(container);
-    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="submit-composer"]')?.click());
-    await waitFor(() => expect(container.textContent).toContain("发布失败，请保留表单并重试"));
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    fillDemandForm(document.body);
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-composer"]')?.click());
+    await waitFor(() => expect(document.body.textContent).toContain("发布失败，请保留表单并重试"));
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it("restores the approved full-screen send-demand composition without fake media persistence", async () => {
+    await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
+
+    expect(document.body.textContent).toContain("发送需求");
+    expect(document.body.textContent).toContain("告诉平台你想要什么");
+    expect(document.body.textContent).toContain("上传参考图");
+    expect(document.body.textContent).toContain("发布前确认");
+    expect(document.body.textContent).toContain("发送到 NeeDo");
+    expect(document.body.querySelectorAll('[data-action="reference-upload-deferred"]')).toHaveLength(3);
+    expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-action="reference-upload-deferred"]')).every((button) => button.disabled)).toBe(true);
+    expect(document.body.querySelector('[data-testid="exchange-demand-composer-page"]')).not.toBeNull();
+    expect(document.body.innerHTML).not.toMatch(/localStorage|needoExchangeBridge|findNeedoPost/u);
   });
 });

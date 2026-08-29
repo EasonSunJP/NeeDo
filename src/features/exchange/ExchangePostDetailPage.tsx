@@ -1,12 +1,34 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
+import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
+import { ServiceFlowSection } from "../../components/mobile/ServiceFlowSection";
+import { AvatarImage } from "../../components/ui/AvatarImage";
+import { Badge } from "../../components/ui/Badge";
+import { TranslationIcon } from "../../components/ui/LanguageSwitcher";
+import { ShareNetworkIconPath } from "../../components/ui/ShareNetworkIcon";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
-import { getExchangePost, withdrawExchangePost } from "./api";
+import { shareContent } from "../../lib/share";
+import {
+  getExchangePost,
+  likeExchangePost,
+  recordExchangeShare,
+  unlikeExchangePost,
+  withdrawExchangePost
+} from "./api";
 import { ExchangeInteractions } from "./ExchangeInteractions";
 import { exchangeText } from "./i18n";
 import type { ExchangeInteractionCounts, ExchangePost } from "./types";
+
+const fallbackPublisherImage = "/icons/needo-nav-button-dark.png";
+const detailCardClassName =
+  "rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel";
+const detailInnerCardClassName =
+  "rounded-[18px] bg-[color:var(--client-bg-soft)] p-3";
 
 function exchangeBasePath(context: MessageCenterContext) {
   return context === "user" ? "/needo" : `/${context}/needo`;
@@ -22,9 +44,15 @@ function localeForLanguage(language: Language) {
 
 function formatDateTime(value: string, language: Language) {
   return new Intl.DateTimeFormat(localeForLanguage(language), {
-    year: "numeric",
-    month: "short",
+    month: "numeric",
     day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatTime(value: string, language: Language) {
+  return new Intl.DateTimeFormat(localeForLanguage(language), {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
@@ -34,7 +62,136 @@ function formatJpy(value: number) {
   return `¥${value.toLocaleString("ja-JP")}`;
 }
 
+function formatCountdown(expiresAt: string, nowMs: number, language: Language) {
+  const totalSeconds = Math.max(0, Math.floor((new Date(expiresAt).getTime() - nowMs) / 1000));
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const clock = [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+  const prefix = exchangeText("remaining", language);
+  return days > 0 ? `${prefix} ${days}d ${clock}` : `${prefix} ${clock}`;
+}
+
+function priceLabel(post: ExchangePost) {
+  if (post.type === "demand" && post.demand) {
+    return `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
+  }
+  return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
+}
+
+type HeaderActionName = "translate" | "favorite" | "share";
+
+function HeaderActionButton({
+  active = false,
+  disabled = false,
+  label,
+  name,
+  onClick
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  label: string;
+  name: HeaderActionName;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={name === "favorite" ? active : undefined}
+      className={`${floatingHeaderControlButtonClassName} ${active ? "border-[color:var(--client-primary)] text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]"} disabled:opacity-50`}
+      data-action={`detail-${name === "favorite" ? "like" : name}`}
+      disabled={disabled}
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {name === "translate" ? (
+        <TranslationIcon className="h-6 w-6" />
+      ) : name === "favorite" ? (
+        <svg aria-hidden="true" className="h-6 w-6" fill={active ? "currentColor" : "none"} viewBox="0 0 24 24">
+          <path d="M12 19.2s-6.8-4.3-8.6-8.3C2 7.8 4 5.2 7 5.2c1.8 0 3.2.8 5 2.9 1.8-2.1 3.2-2.9 5-2.9 3 0 5 2.6 3.6 5.7-1.8 4-8.6 8.3-8.6 8.3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+        </svg>
+      ) : (
+        <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24">
+          <ShareNetworkIconPath />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function DetailHero({ label, post }: { label: string; post: ExchangePost }) {
+  const image = post.publisher.avatarUrl || fallbackPublisherImage;
+  return (
+    <section
+      className="relative h-[238px] overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft"
+      data-no-i18n="true"
+      data-testid="exchange-detail-hero"
+    >
+      <img alt={post.publisher.displayName} className="absolute inset-0 h-full w-full object-cover" src={image} />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/32 to-black/90" />
+      <div className="relative flex h-full flex-col justify-between p-4">
+        <div>
+          <Badge tone={post.type === "demand" ? "yellow" : "green"}>{label}</Badge>
+        </div>
+        <h1 className="overflow-hidden text-[27px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
+          {post.title}
+        </h1>
+      </div>
+    </section>
+  );
+}
+
+function publisherIdentityLabel(identityType: string, language: Language) {
+  if (["merchant", "merchant_owner", "merchant_staff"].includes(identityType)) {
+    return exchangeText("merchantIdentity", language);
+  }
+  if (identityType === "technician") return exchangeText("technicianIdentity", language);
+  if (["customer", "user", "u"].includes(identityType)) {
+    return exchangeText("customerIdentity", language);
+  }
+  return identityType;
+}
+
+function PublisherCard({ post, language }: { post: ExchangePost; language: Language }) {
+  const areas = post.intelligence?.serviceAreas ?? [post.areaLabel];
+  const address = post.intelligence?.addressLabel || post.areaLabel;
+  return (
+    <section className={`${detailCardClassName} overflow-hidden p-0`} data-no-i18n="true">
+      <div className="relative overflow-hidden bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_14%,transparent),transparent_72%)] px-4 pb-4 pt-5">
+        <div className="flex items-center gap-4">
+          <AvatarImage
+            alt={post.publisher.displayName}
+            className="h-24 w-24 shrink-0 rounded-[24px] border border-[color:var(--client-line)] object-cover shadow-soft"
+            src={post.publisher.avatarUrl || fallbackPublisherImage}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xl font-black text-[color:var(--client-text)]">{post.publisher.displayName}</p>
+            <p className="mt-1 truncate font-mono text-xs font-bold text-[color:var(--client-primary)]">{post.publisher.publicId}</p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">{publisherIdentityLabel(post.publisher.identityType, language)}</span>
+              {post.intelligence ? (
+                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">
+                  {exchangeText(post.intelligence.serviceMode, language)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <p className="mt-4 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{address}</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {areas.map((area) => (
+            <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--client-muted)]" key={area}>{area}</span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function ExchangePostDetailPage({ context }: { context: MessageCenterContext }) {
+  const navigate = useNavigate();
   const { language } = useI18n();
   const { postId } = useParams();
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
@@ -45,7 +202,16 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
   const [reloadVersion, setReloadVersion] = useState(0);
   const [withdrawPending, setWithdrawPending] = useState(false);
   const [withdrawError, setWithdrawError] = useState(false);
+  const [actionPending, setActionPending] = useState<"like" | "share" | null>(null);
+  const [actionError, setActionError] = useState(false);
+  const [originalNotice, setOriginalNotice] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const withdrawKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!postId || !validPostId) return;
@@ -65,6 +231,14 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       });
     return () => controller.abort();
   }, [postId, reloadVersion, validPostId]);
+
+  function goBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate(exchangeBasePath(context), { replace: true });
+  }
 
   async function withdraw() {
     if (!post || withdrawPending || !globalThis.confirm(t("confirmWithdraw"))) return;
@@ -87,94 +261,200 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     setPost((current) => current ? { ...current, counts, viewer: { ...current.viewer, liked: viewer.liked } } : current);
   }
 
-  const backLink = <Link className="inline-flex min-h-11 items-center rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-sm font-black text-[color:var(--client-text)]" to={exchangeBasePath(context)}>← {t("backToExchange")}</Link>;
+  async function toggleLike() {
+    if (!post || actionPending || post.status !== "published") return;
+    setActionPending("like");
+    setActionError(false);
+    try {
+      const counts = post.viewer.liked
+        ? await unlikeExchangePost(String(post.id), globalThis.crypto.randomUUID())
+        : await likeExchangePost(String(post.id), globalThis.crypto.randomUUID());
+      updateCounts(counts, { liked: !post.viewer.liked });
+    } catch {
+      setActionError(true);
+    } finally {
+      setActionPending(null);
+    }
+  }
+
+  async function share() {
+    if (!post || actionPending || post.status !== "published") return;
+    setActionPending("share");
+    setActionError(false);
+    try {
+      const result = await shareContent({
+        title: post.title,
+        text: post.detail,
+        url: typeof window === "undefined" ? "" : window.location.href
+      });
+      if (result.status !== "shared" && result.status !== "copied") return;
+      const counts = await recordExchangeShare(String(post.id), globalThis.crypto.randomUUID());
+      updateCounts(counts, { liked: post.viewer.liked });
+    } catch {
+      setActionError(true);
+    } finally {
+      setActionPending(null);
+    }
+  }
+
+  const stateShell = (content: ReactNode) => (
+    <MobileFullscreenPage innerClassName="client-glass-page-surface">
+      <MobileFullscreenHeader onBack={goBack} showSpacer={false} title={t(validPostId ? "intelligenceDetail" : "requestDetail")} />
+      <main className="flex min-h-0 flex-1 items-center justify-center px-6 pt-[calc(env(safe-area-inset-top)+86px)] text-center">
+        {content}
+      </main>
+    </MobileFullscreenPage>
+  );
 
   if (!validPostId) {
-    return <main className="mx-auto min-h-[calc(100dvh-96px)] w-full max-w-3xl px-5 py-10">{backLink}<div className="mt-6 rounded-[26px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-8 text-center text-xl font-black text-[color:var(--client-text)]">{t("invalidLink")}</div></main>;
+    return stateShell(<div className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-8 text-xl font-black">{t("invalidLink")}</div>);
   }
 
   if (loading) {
-    return <main className="mx-auto min-h-[calc(100dvh-96px)] w-full max-w-3xl px-5 py-10">{backLink}<p className="mt-8 text-center text-sm font-black text-[color:var(--client-muted)]">{t("loadingDetail")}</p></main>;
+    return stateShell(<p className="text-sm font-black text-[color:var(--client-muted)]">{t("loadingDetail")}</p>);
   }
 
   if (error || !post) {
-    return (
-      <main className="mx-auto min-h-[calc(100dvh-96px)] w-full max-w-3xl px-5 py-10">
-        {backLink}
-        <div className="mt-6 rounded-[26px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-8 text-center">
-          <h1 className="text-xl font-black text-[color:var(--client-text)]">{t("missingPost")}</h1>
-          <button className="mt-5 min-h-11 rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setReloadVersion((version) => version + 1)} type="button">{t("retryDetail")}</button>
-        </div>
-      </main>
+    return stateShell(
+      <div className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-8">
+        <h1 className="text-xl font-black">{t("missingPost")}</h1>
+        <button className="mt-5 min-h-11 rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setReloadVersion((version) => version + 1)} type="button">{t("retryDetail")}</button>
+      </div>
     );
   }
 
-  const price = post.type === "demand" && post.demand
-    ? `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`
-    : post.intelligence
-      ? formatJpy(post.intelligence.campaignPriceJpy)
-      : "—";
+  const price = priceLabel(post);
+  const active = post.status === "published";
+  const serviceFlow = post.type === "intelligence"
+    ? [t("flowSelectTechnician"), t("flowConfirmTime"), t("flowPrepare"), t("flowInService"), t("flowReview")]
+    : [t("flowReviewDemand"), t("flowContact"), t("flowConfirmScope"), t("flowAwaitMatching"), t("flowReview")];
+  const requirementTags = post.intelligence
+    ? [t(post.intelligence.serviceMode), ...post.intelligence.serviceAreas, post.areaLabel, post.contentLocale]
+    : [post.areaLabel, post.contentLocale];
 
   return (
-    <main className="mx-auto min-h-[calc(100dvh-96px)] w-full max-w-3xl px-4 pb-24 pt-7 sm:px-6 sm:pt-10">
-      <header className="flex items-center justify-between gap-3">
-        {backLink}
-        {post.viewer.canWithdraw && post.status === "published" ? (
-          <button className="min-h-11 rounded-full border border-[color:var(--client-accent)] px-4 text-sm font-black text-[color:var(--client-accent)] disabled:opacity-50" data-action="withdraw" disabled={withdrawPending} onClick={() => void withdraw()} type="button">{t(withdrawPending ? "withdrawing" : "withdraw")}</button>
+    <MobileFullscreenPage innerClassName="client-glass-page-surface">
+      <MobileFullscreenHeader
+        action={(
+          <div className="flex items-center gap-1.5">
+            <HeaderActionButton label={t("showOriginal")} name="translate" onClick={() => setOriginalNotice((current) => !current)} />
+            <HeaderActionButton
+              active={post.viewer.liked}
+              disabled={!active || actionPending !== null}
+              label={t(post.viewer.liked ? "unlike" : "like")}
+              name="favorite"
+              onClick={() => void toggleLike()}
+            />
+            <HeaderActionButton
+              disabled={!active || actionPending !== null}
+              label={t("share")}
+              name="share"
+              onClick={() => void share()}
+            />
+          </div>
+        )}
+        info={`${formatTime(post.serviceStartAt, language)}–${formatTime(post.serviceEndAt, language)} · ${post.areaLabel}`}
+        onBack={goBack}
+        showSpacer={false}
+        title={t(post.type === "demand" ? "requestDetail" : "intelligenceDetail")}
+      />
+
+      <main
+        className="scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+9.5rem)] pt-[calc(env(safe-area-inset-top)+86px)]"
+        data-testid="exchange-detail-page"
+      >
+        {originalNotice ? (
+          <p className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-3 text-xs font-bold text-[color:var(--client-muted)]">{t("originalContentNotice")}</p>
         ) : null}
-      </header>
-      {withdrawError ? <p className="mt-3 text-right text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("withdrawFailed")}</p> : null}
+        {actionError ? <p className="text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("interactionFailed")}</p> : null}
 
-      {post.status !== "published" ? (
-        <div className="mt-5 rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-text)]">
-          {t(post.status === "withdrawn" ? "withdrawnState" : "expiredState")}
-        </div>
-      ) : null}
+        <DetailHero label={t(post.type)} post={post} />
 
-      <article className="mt-5 overflow-hidden rounded-[30px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] shadow-panel">
-        <div className="border-b border-[color:var(--client-line)] p-5 sm:p-7">
-          <p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--client-primary)]">NeeDo Exchange · {t(post.type === "demand" ? "requestDetail" : "intelligenceDetail")}</p>
-          <div className="mt-5 flex items-center gap-3" data-no-i18n="true">
-            <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-2xl bg-[color:var(--client-primary-soft)] text-base font-black text-[color:var(--client-primary)]">{post.publisher.displayName.slice(0, 1)}</span>
+        <section className={detailCardClassName} data-no-i18n="true">
+          <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t("introduction")}</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-7 text-[color:var(--client-text)]">{post.detail}</p>
+          <div className="mt-4 rounded-[18px] bg-[color:var(--client-bg-soft)] px-3.5 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t("deadline")}</p>
+              <span className="rounded-full bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-primary)]">
+                {formatCountdown(post.expiresAt, nowMs, language)}
+              </span>
+            </div>
+            <p className="mt-2 text-[13px] font-black text-[color:var(--client-muted)]">{t(post.type === "demand" ? "demandValidUntil" : "intelligenceValidUntil")} {formatDateTime(post.expiresAt, language)}</p>
+          </div>
+          {post.viewer.canWithdraw && active ? (
+            <button className="mt-4 min-h-11 w-full rounded-2xl border border-[color:var(--client-accent)] text-sm font-black text-[color:var(--client-accent)] disabled:opacity-50" data-action="withdraw" disabled={withdrawPending} onClick={() => void withdraw()} type="button">{t(withdrawPending ? "withdrawing" : "withdraw")}</button>
+          ) : null}
+          {withdrawError ? <p className="mt-3 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("withdrawFailed")}</p> : null}
+        </section>
+
+        {!active ? (
+          <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-text)]">
+            {t(post.status === "withdrawn" ? "withdrawnState" : "expiredState")}
+          </div>
+        ) : null}
+
+        <section className={detailCardClassName} data-no-i18n="true">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-black text-[color:var(--client-text)]">{post.publisher.displayName}</p>
-              <p className="mt-0.5 font-mono text-[10px] font-bold text-[color:var(--client-muted)]">{post.publisher.publicId} · {post.publisher.identityType}</p>
+              <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("paymentInformation")}</h2>
+              <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">{t("bookingPaymentDeferred")}</p>
             </div>
+            <Badge tone="green">{t("notEnabled")}</Badge>
           </div>
-          <div className="mt-6" data-no-i18n="true">
-            <span className="rounded-full bg-[color:var(--client-primary-soft)] px-2.5 py-1 font-mono text-[10px] font-black uppercase text-[color:var(--client-primary)]">{post.contentLocale}</span>
-            <h1 className="mt-4 text-2xl font-black leading-tight text-[color:var(--client-text)] sm:text-3xl">{post.title}</h1>
-            <p className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-7 text-[color:var(--client-muted)]">{post.detail}</p>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[
+              { label: post.type === "demand" ? t("budget") : t("price"), value: price, highlight: true },
+              { label: t("prepayment"), value: "—", highlight: false },
+              { label: t("arrivalPayment"), value: "—", highlight: false }
+            ].map((row) => (
+              <div className={detailInnerCardClassName} key={row.label}>
+                <p className="text-[11px] font-bold text-[color:var(--client-muted)]">{row.label}</p>
+                <strong className={row.highlight ? "mt-1 block text-[18px] font-black leading-tight text-[color:var(--client-primary)]" : "mt-1 block text-sm text-[color:var(--client-text)]"}>{row.value}</strong>
+              </div>
+            ))}
           </div>
+        </section>
+
+        <ServiceFlowSection
+          className="border-[color:var(--client-line)] bg-[color:var(--client-surface)]"
+          dataNoI18n
+          flow={serviceFlow}
+          title={t("serviceFlow")}
+        />
+
+        <PublisherCard language={language} post={post} />
+
+        <section className={detailCardClassName} data-no-i18n="true">
+          <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("serviceRequirements")}</h2>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Array.from(new Set(requirementTags)).map((tag) => (
+              <span className="rounded-[18px] bg-[color:var(--client-bg-soft)] px-3 py-2 text-xs font-bold text-[color:var(--client-muted)]" key={tag}>{tag}</span>
+            ))}
+          </div>
+          <div className="mt-4 rounded-[18px] bg-[color:var(--client-bg-soft)] p-3 text-xs leading-6 text-[color:var(--client-muted)]">
+            <strong className="text-[color:var(--client-text)]">{t("safetyNotice")}</strong> {t("safetyNoticeDetail")}
+          </div>
+        </section>
+
+        <ExchangeInteractions onCountsChange={updateCounts} post={post} showActionBar={false} variant="detail" />
+      </main>
+
+      <ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />
+      <footer className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-[color:color-mix(in_srgb,var(--client-bg)_84%,transparent)] px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-4 backdrop-blur-xl">
+        <div data-no-i18n="true">
+          <p className="text-xs font-bold text-[color:var(--client-muted)]">{t(post.type === "demand" ? "budget" : "price")}</p>
+          <strong className="text-xl font-black text-[color:var(--client-primary)]">{price}</strong>
         </div>
-
-        <dl className="grid gap-px bg-[color:var(--client-line)] sm:grid-cols-2">
-          {[
-            [t(post.type === "demand" ? "budget" : "campaignPrice"), price],
-            [t("area"), post.areaLabel],
-            [t("serviceStart"), formatDateTime(post.serviceStartAt, language)],
-            [t("serviceEnd"), formatDateTime(post.serviceEndAt, language)],
-            [t("expires"), formatDateTime(post.expiresAt, language)],
-            [t("publishedAt"), formatDateTime(post.publishedAt, language)]
-          ].map(([label, value]) => (
-            <div className="bg-[color:var(--client-surface)] p-4" key={label}>
-              <dt className="text-[10px] font-black text-[color:var(--client-muted)]">{label}</dt>
-              <dd className="mt-1 text-sm font-black text-[color:var(--client-text)]" data-no-i18n="true">{value}</dd>
-            </div>
-          ))}
-        </dl>
-
-        {post.intelligence ? (
-          <div className="border-t border-[color:var(--client-line)] p-5">
-            <p className="text-xs font-black text-[color:var(--client-muted)]">{t("areasServed")}</p>
-            <div className="mt-3 flex flex-wrap gap-2" data-no-i18n="true">{post.intelligence.serviceAreas.map((area) => <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-xs font-bold text-[color:var(--client-text)]" key={area}>{area}</span>)}</div>
-          </div>
-        ) : null}
-      </article>
-
-      <div className="mt-5">
-        <ExchangeInteractions onCountsChange={updateCounts} post={post} />
-      </div>
-    </main>
+        <button
+          className="min-h-12 min-w-[170px] rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
+          data-action="booking-deferred"
+          disabled
+          type="button"
+        >
+          {t(post.type === "demand" ? "matchingDeferred" : "bookingDeferred")}
+        </button>
+      </footer>
+    </MobileFullscreenPage>
   );
 }

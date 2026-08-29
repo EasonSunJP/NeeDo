@@ -3,16 +3,37 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getExchangePost, withdrawExchangePost } from "./api";
+import {
+  getExchangePost,
+  likeExchangePost,
+  recordExchangeShare,
+  unlikeExchangePost,
+  withdrawExchangePost
+} from "./api";
 import { ExchangePostDetailPage } from "./ExchangePostDetailPage";
 import type { ExchangePost } from "./types";
 import appSource from "../../App.tsx?raw";
 import routeSource from "../../pages/mobile/NeedoRoutePages.tsx?raw";
 
-vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
-vi.mock("./api", () => ({ getExchangePost: vi.fn(), withdrawExchangePost: vi.fn() }));
+const mockI18n = vi.hoisted(() => ({ language: "zh" as "zh" | "zh-Hant" | "ja" | "en" | "ko" }));
+
+vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: mockI18n.language }) }));
+vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
+vi.mock("../../theme/ClientThemeProvider", () => ({
+  getClientThemeClassName: () => "client-theme-dark-green",
+  useClientTheme: () => ({ theme: "dark-green", isNight: true })
+}));
+vi.mock("./api", () => ({
+  getExchangePost: vi.fn(),
+  likeExchangePost: vi.fn(),
+  recordExchangeShare: vi.fn(),
+  unlikeExchangePost: vi.fn(),
+  withdrawExchangePost: vi.fn()
+}));
 vi.mock("./ExchangeInteractions", () => ({
-  ExchangeInteractions: ({ post }: { post: ExchangePost }) => <div data-testid="formal-interactions">{post.counts.comments}</div>
+  ExchangeInteractions: ({ post, showActionBar, variant }: { post: ExchangePost; showActionBar?: boolean; variant?: string }) => (
+    <div data-show-action-bar={String(showActionBar)} data-testid="formal-interactions" data-variant={variant}>{post.counts.comments}</div>
+  )
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,6 +55,30 @@ const demandPost: ExchangePost = {
   viewer: { liked: false, canWithdraw: true },
   demand: { budgetMinJpy: 8000, budgetMaxJpy: 12000 },
   intelligence: null
+};
+
+const intelligencePost: ExchangePost = {
+  ...demandPost,
+  id: 61,
+  type: "intelligence",
+  title: "20:30 后还有 3 个空档，会员 8 折",
+  detail: "肩颈、足部、睡眠护理都可以约，支持双人房。",
+  publisher: {
+    publicId: "m0000000061",
+    identityType: "merchant_owner",
+    displayName: "GINZA Calm Body Lab",
+    avatarUrl: "/simulation/shops/ginza-calm-body-lab.png"
+  },
+  counts: { comments: 7, likes: 42, shares: 8 },
+  viewer: { liked: false, canWithdraw: false },
+  demand: null,
+  intelligence: {
+    serviceMode: "store",
+    addressLabel: "東京都中央区銀座3-4-12",
+    serviceAreas: ["銀座", "中央区"],
+    originalPriceJpy: 12_250,
+    campaignPriceJpy: 9_800
+  }
 };
 
 async function waitFor(assertion: () => void) {
@@ -72,7 +117,11 @@ describe("ExchangePostDetailPage", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.clearAllMocks();
+    mockI18n.language = "zh";
     vi.mocked(getExchangePost).mockReset();
+    vi.mocked(likeExchangePost).mockReset();
+    vi.mocked(recordExchangeShare).mockReset();
+    vi.mocked(unlikeExchangePost).mockReset();
     vi.mocked(withdrawExchangePost).mockReset();
   });
 
@@ -85,28 +134,67 @@ describe("ExchangePostDetailPage", () => {
   it("loads direct navigation from the formal detail endpoint", async () => {
     vi.mocked(getExchangePost).mockResolvedValue(demandPost);
     await renderDetail();
-    await waitFor(() => expect(container.textContent).toContain("正式详情标题"));
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
 
     expect(getExchangePost).toHaveBeenCalledWith("41", expect.any(AbortSignal));
-    expect(container.textContent).toContain("测试客户 41");
-    expect(container.textContent).toContain("u0000000041");
-    expect(container.textContent).toContain("¥8,000–¥12,000");
-    expect(container.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
-    expect(container.innerHTML).toContain('data-no-i18n="true"');
+    expect(document.body.textContent).toContain("测试客户 41");
+    expect(document.body.textContent).toContain("u0000000041");
+    expect(document.body.textContent).toContain("¥8,000–¥12,000");
+    expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
+    expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it("restores the approved full-screen intelligence detail composition with formal fields", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
+    await renderDetail("/needo/posts/61");
+    await waitFor(() => expect(document.body.textContent).toContain(intelligencePost.title));
+
+    const page = document.body.querySelector('[data-testid="exchange-detail-page"]');
+    expect(page).not.toBeNull();
+    expect(document.body.textContent).toContain("情报详情");
+    expect(document.body.textContent).toContain("介绍");
+    expect(document.body.textContent).toContain("支付信息");
+    expect(document.body.textContent).toContain("服务流程");
+    expect(document.body.textContent).toContain("服务要求");
+    expect(document.body.textContent).toContain("GINZA Calm Body Lab");
+    expect(document.body.textContent).toContain("m0000000061");
+    expect(document.body.textContent).toContain("¥9,800");
+    expect(document.body.textContent).toContain("预约与支付后续开放");
+    expect(document.body.querySelector('[data-testid="exchange-detail-hero"] img')?.getAttribute("src")).toBe(
+      "/simulation/shops/ginza-calm-body-lab.png"
+    );
+    expect(document.body.querySelector('[data-testid="formal-interactions"]')?.getAttribute("data-show-action-bar")).toBe("false");
+    expect(document.body.querySelector('[data-testid="formal-interactions"]')?.getAttribute("data-variant")).toBe("detail");
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="booking-deferred"]')?.disabled).toBe(true);
+    expect(document.body.querySelector('[data-action="detail-like"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-action="detail-share"]')).not.toBeNull();
+  });
+
+  it("localizes the detail type and publisher identity instead of exposing raw identity codes", async () => {
+    mockI18n.language = "en";
+    vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
+    await renderDetail("/needo/posts/61");
+    await waitFor(() => expect(document.body.textContent).toContain(intelligencePost.title));
+
+    expect(document.body.textContent).toContain("Service post details");
+    expect(document.body.textContent).toContain("Service posts");
+    expect(document.body.textContent).toContain("Merchant");
+    expect(document.body.textContent).not.toContain("merchant_owner");
+    expect(document.body.textContent).not.toContain("情报");
   });
 
   it("distinguishes an invalid route, missing post, and expired status", async () => {
     await renderDetail("/needo/posts/not-a-number");
-    expect(container.textContent).toContain("链接无效");
+    expect(document.body.textContent).toContain("链接无效");
     expect(getExchangePost).not.toHaveBeenCalled();
 
     vi.mocked(getExchangePost).mockRejectedValueOnce(new Error("error.exchange.post_not_found"));
     await renderDetail();
-    await waitFor(() => expect(container.textContent).toContain("内容不存在或不可查看"));
+    await waitFor(() => expect(document.body.textContent).toContain("内容不存在或不可查看"));
 
     vi.mocked(getExchangePost).mockResolvedValueOnce({ ...demandPost, status: "expired" });
     await renderDetail();
-    await waitFor(() => expect(container.textContent).toContain("这条内容已过期"));
+    await waitFor(() => expect(document.body.textContent).toContain("这条内容已过期"));
   });
 
   it("requires confirmation and renders the server-authoritative withdrawn state", async () => {
@@ -117,14 +205,14 @@ describe("ExchangePostDetailPage", () => {
     vi.stubGlobal("crypto", { randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
 
     await renderDetail();
-    await waitFor(() => expect(container.textContent).toContain("撤回"));
-    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="withdraw"]')?.click());
+    await waitFor(() => expect(document.body.textContent).toContain("撤回"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="withdraw"]')?.click());
     expect(withdrawExchangePost).not.toHaveBeenCalled();
 
-    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="withdraw"]')?.click());
-    await waitFor(() => expect(container.textContent).toContain("这条内容已撤回"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="withdraw"]')?.click());
+    await waitFor(() => expect(document.body.textContent).toContain("这条内容已撤回"));
     expect(withdrawExchangePost).toHaveBeenCalledWith("41", "123e4567-e89b-42d3-a456-426614174000");
-    expect(container.querySelector('[data-action="withdraw"]')).toBeNull();
+    expect(document.body.querySelector('[data-action="withdraw"]')).toBeNull();
   });
 
   it("removes the obsolete customer-detail route and local profile bridge", () => {

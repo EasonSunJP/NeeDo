@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { useI18n } from "../../i18n/I18nProvider";
 import { shareContent } from "../../lib/share";
 import {
@@ -13,10 +14,14 @@ import type { ExchangeComment, ExchangeInteractionCounts, ExchangePost, Exchange
 
 export function ExchangeInteractions({
   post,
-  onCountsChange
+  onCountsChange,
+  showActionBar = true,
+  variant = "default"
 }: {
   post: ExchangePost;
   onCountsChange: (counts: ExchangeInteractionCounts, viewer: Pick<ExchangeViewerState, "liked">) => void;
+  showActionBar?: boolean;
+  variant?: "default" | "detail";
 }) {
   const { language } = useI18n();
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
@@ -137,7 +142,7 @@ export function ExchangeInteractions({
 
   return (
     <section className="space-y-4">
-      {active ? (
+      {active && showActionBar ? (
         <div className="grid grid-cols-2 gap-3">
           <button
             aria-pressed={post.viewer.liked}
@@ -159,19 +164,24 @@ export function ExchangeInteractions({
             ↗ {t("share")} · {post.counts.shares}
           </button>
         </div>
-      ) : (
+      ) : !active ? (
         <p className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]">{t("interactionClosed")}</p>
-      )}
+      ) : null}
       {actionError ? <p className="text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("interactionFailed")}</p> : null}
 
-      <section className="rounded-[26px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5">
+      <section
+        className={variant === "detail"
+          ? "flex flex-col rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel"
+          : "flex flex-col rounded-[26px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5"}
+        data-testid="exchange-comments-card"
+      >
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-[color:var(--client-text)]">{t("commentsTitle")}</h2>
           <span className="font-mono text-xs font-black text-[color:var(--client-muted)]">{commentTotal}</span>
         </div>
 
         {active ? (
-          <form className="mt-4 grid gap-3" onSubmit={submitComment}>
+          <form className={`mt-4 grid gap-3 ${variant === "detail" ? "order-3" : ""}`} onSubmit={submitComment}>
             <textarea
               className="min-h-24 w-full rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-3 text-sm font-semibold text-[color:var(--client-text)] outline-none focus:border-[color:var(--client-primary)]"
               maxLength={1000}
@@ -191,14 +201,18 @@ export function ExchangeInteractions({
           </form>
         ) : null}
 
-        <div className="mt-5 space-y-3">
+        <div className={`${variant === "detail" ? "order-1 mt-4" : "mt-5"} space-y-3`}>
           {loadingComments && comments.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-muted)]">{t("loadingComments")}</p> : null}
           {commentLoadError && comments.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-accent)]">{t("commentsFailed")}</p> : null}
           {!loadingComments && !commentLoadError && comments.length === 0 ? <p className="text-sm font-bold text-[color:var(--client-muted)]">{t("emptyComments")}</p> : null}
           {comments.map((comment) => (
             <article className="rounded-2xl bg-[color:var(--client-bg-soft)] p-4" data-no-i18n="true" key={comment.id}>
               <div className="flex items-start gap-3">
-                <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--client-primary-soft)] text-xs font-black text-[color:var(--client-primary)]">{comment.author.displayName.slice(0, 1)}</span>
+                {comment.author.avatarUrl ? (
+                  <AvatarImage alt={comment.author.displayName} className="h-9 w-9 shrink-0 rounded-xl object-cover" src={comment.author.avatarUrl} />
+                ) : (
+                  <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--client-primary-soft)] text-xs font-black text-[color:var(--client-primary)]">{comment.author.displayName.slice(0, 1)}</span>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -215,7 +229,7 @@ export function ExchangeInteractions({
         </div>
 
         {comments.length < commentTotal ? (
-          <button className="mt-4 min-h-11 w-full rounded-2xl border border-[color:var(--client-line)] text-sm font-black text-[color:var(--client-text)] disabled:opacity-50" disabled={loadingComments} onClick={() => void loadMoreComments()} type="button">{t(loadingComments ? "loadingMore" : "loadMore")}</button>
+          <button className={`${variant === "detail" ? "order-2" : ""} mt-4 min-h-11 w-full rounded-2xl border border-[color:var(--client-line)] text-sm font-black text-[color:var(--client-text)] disabled:opacity-50`} disabled={loadingComments} onClick={() => void loadMoreComments()} type="button">{t(loadingComments ? "loadingMore" : "loadMore")}</button>
         ) : null}
       </section>
     </section>
