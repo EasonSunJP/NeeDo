@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import source from "./MerchantAdminLayout.tsx?raw";
 
 describe("MerchantAdminLayout formal shop summary", () => {
+  it("does not render the obstructive bottom-left store notice", () => {
+    expect(source).not.toContain("本店经营提醒");
+    expect(source).not.toContain("高频入口只保留本店自己能处理的事务，不显示平台运营后台模块。");
+    expect(source).not.toContain("admin-sidebar-note");
+  });
+
   it("does not render the shared merchant shell from demo data", () => {
     expect(source).not.toContain("merchantAdminDemo");
     expect(source).not.toContain("store-admin@needo.jp");

@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import source from "./AdminLayout.tsx?raw";
 
 describe("AdminLayout navigation", () => {
+  it("does not render the obstructive bottom-left operations notice", () => {
+    expect(source).not.toContain("东京城市组");
+    expect(source).not.toContain("19 个待审核商家，36 个工单需要运营介入。");
+    expect(source).not.toContain("admin-sidebar-note");
+  });
+
   it("does not expose the removed operations design module", () => {
     expect(source).not.toContain('key: "design"');
     expect(source).not.toContain('title: "设计"');

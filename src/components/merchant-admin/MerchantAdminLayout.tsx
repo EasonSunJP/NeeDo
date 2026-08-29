@@ -394,13 +394,6 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
             </div>
           </nav>
 
-          <div className="admin-sidebar-note rounded-lg border border-line bg-paper p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold">本店经营提醒</p>
-              <span className="rounded-md bg-moss px-2 py-1 text-[11px] font-black text-white">实时</span>
-            </div>
-            <p className="mt-1 text-xs leading-5 text-ink/55">高频入口只保留本店自己能处理的事务，不显示平台运营后台模块。</p>
-          </div>
         </div>
       </aside>
 

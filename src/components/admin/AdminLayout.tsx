@@ -373,13 +373,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </nav>
 
-          <div className="admin-sidebar-note rounded-lg border border-line bg-paper p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold">东京城市组</p>
-              <span className="rounded-md bg-moss px-2 py-1 text-[11px] font-black text-white">实时</span>
-            </div>
-            <p className="mt-1 text-xs leading-5 text-ink/55">19 个待审核商家，36 个工单需要运营介入。</p>
-          </div>
         </div>
       </aside>
       {mobileNavOpen ? (
