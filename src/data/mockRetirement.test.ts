@@ -10,6 +10,7 @@ import technicianScheduleInventorySource from "../components/scheduling/FormalSc
 import technicianOrdersSource from "../components/technician/FormalTechnicianOrdersPanel.tsx?raw";
 
 const sourceRoot = fileURLToPath(new URL("..", import.meta.url));
+const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 function listProductionSources(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -92,5 +93,48 @@ describe("legacy mock retirement", () => {
     });
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps every formal Exchange entry free of retired mock and capability-gate paths", () => {
+    const exchangeSourcePaths = [
+      ...listProductionSources(join(sourceRoot, "features", "exchange")),
+      join(sourceRoot, "pages", "mobile", "NeedoExchangePage.tsx"),
+      join(sourceRoot, "pages", "mobile", "NeedoRoutePages.tsx")
+    ];
+    const forbiddenMarkers = [
+      "data/mock",
+      "localStorage",
+      "needoExchangeBridge",
+      "hashSystemId",
+      "getSeedPosts",
+      "getExtraPosts",
+      "error.feature_unavailable",
+      "needo.exchange.composed",
+      "正式需求与情报功能尚未启用"
+    ];
+    const offenders = exchangeSourcePaths.flatMap((path) => {
+      const source = readFileSync(path, "utf8");
+      return forbiddenMarkers
+        .filter((marker) => source.includes(marker))
+        .map((marker) => ({ marker, path: path.replace(repositoryRoot, "").replace(/^[/\\]/u, "") }));
+    });
+
+    expect(offenders).toEqual([]);
+    expect(readFileSync(join(sourceRoot, "App.tsx"), "utf8")).not.toContain("NeedoPostCustomerRoutePage");
+  });
+
+  it("does not generate Exchange identities, static business records, counters, or hidden fallbacks", () => {
+    const exchangeSources = [
+      ...listProductionSources(join(sourceRoot, "features", "exchange")),
+      join(sourceRoot, "pages", "mobile", "NeedoExchangePage.tsx"),
+      join(sourceRoot, "pages", "mobile", "NeedoRoutePages.tsx")
+    ].map((path) => readFileSync(path, "utf8")).join("\n");
+
+    expect(exchangeSources).not.toMatch(
+      /Math\.random|formalRuntimeFallbacks|generated identity|static (?:post|comment)|mock (?:post|comment)|random counter/iu
+    );
+    expect(exchangeSources).toContain('"/exchange/posts"');
+    expect(exchangeSources).toContain("listExchangeComments");
+    expect(exchangeSources).toContain("publishExchangePost");
   });
 });

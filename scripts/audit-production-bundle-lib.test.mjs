@@ -4,11 +4,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { auditProductionBundle } from "./audit-production-bundle-lib.mjs";
 
-async function createBundleFixture({ staticDemo = false, missingAsset = false } = {}) {
+async function createBundleFixture({ staticDemo = false, missingAsset = false, exchangeResidue = false } = {}) {
   const distDir = await mkdtemp(path.join(tmpdir(), "needo-bundle-audit-"));
   const assetsDir = path.join(distDir, "assets");
   await mkdir(assetsDir);
-  await writeFile(path.join(assetsDir, "main-hash.js"), "console.log('formal');");
+  await writeFile(
+    path.join(assetsDir, "main-hash.js"),
+    exchangeResidue ? "console.log('needoExchangeBridge');" : "console.log('formal');"
+  );
   await writeFile(path.join(assetsDir, "i18n-hash.js"), "export default {};");
   if (staticDemo) {
     await writeFile(path.join(assetsDir, "staticDemo-hash.js"), "needoStaticDemo");
@@ -37,5 +40,12 @@ describe("production bundle audit", () => {
         expect.stringContaining("references missing asset")
       ])
     );
+  });
+
+  it("rejects retired Exchange runtime markers", async () => {
+    const report = await auditProductionBundle(await createBundleFixture({ exchangeResidue: true }));
+    expect(report.failures).toEqual([
+      expect.stringContaining("forbidden static runtime marker needoExchangeBridge")
+    ]);
   });
 });

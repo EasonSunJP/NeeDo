@@ -1,7 +1,16 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-const forbiddenRuntimeMarkers = ["needoStaticDemo", "static_demo.local_response"];
+const forbiddenRuntimeMarkers = [
+  "needoStaticDemo",
+  "static_demo.local_response",
+  "needoExchangeBridge",
+  "hashSystemId",
+  "getSeedPosts",
+  "getExtraPosts",
+  "needo.exchange.composed",
+  "正式需求与情报功能尚未启用"
+];
 const defaultBudgets = {
   main: 4_000_000,
   i18n: 3_700_000
