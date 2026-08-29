@@ -35,7 +35,7 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
       "describeMerchantReadError(loadError, languageRef.current)",
     );
     expect(source).toContain('!loading && !error && module === "staff"');
-    expect(source).toContain('!loading && !error && module === "customers"');
+    expect(source).toContain('!loading && !error && module === "users"');
     expect(source).toMatch(
       /!loading\s*&&\s*!error\s*&&\s*module !== "reviews"\s*&&\s*total > 0/,
     );
@@ -114,9 +114,9 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain('"员工详细信息卡读取失败"');
     expect(source).toContain("translateText(fallback, language)");
     expect(source).toContain(
-      'translateText("正在读取客户正式详情...", language)',
+      'translateText("正在读取用户详细信息...", language)',
     );
-    expect(source).toContain('"客户正式详情读取失败"');
+    expect(source).toContain('"用户详细信息读取失败"');
     expect(source).toContain('translateText("重试", language)');
     expect(source).not.toContain(">重试</Button>");
   });

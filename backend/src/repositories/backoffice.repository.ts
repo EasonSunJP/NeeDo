@@ -1,4 +1,10 @@
-import { Prisma, TechnicianEmploymentType, type PrismaClient } from "@prisma/client";
+import {
+  CustomerMembershipDurationUnit,
+  CustomerMembershipGrantMode,
+  Prisma,
+  TechnicianEmploymentType,
+  type PrismaClient
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.service";
 import {
@@ -8,6 +14,7 @@ import {
 import { PublicIdentifierRepository } from "./public-identifier.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import {
   type BackofficeCsvExportPayload,
   type BackofficeAccountPayload,
@@ -15,6 +22,8 @@ import {
   type BackofficeCompensationProfilePayload,
   type BackofficeCustomerPayload,
   type BackofficeCustomerDetailPayload,
+  type BackofficeCustomerMembershipGrantData,
+  type BackofficeCustomerMembershipGrantPayload,
   type BackofficeDashboardPayload,
   type BackofficeFinanceSettlementPayload,
   type BackofficeOrderPayload,
@@ -38,6 +47,7 @@ import {
 import type {
   BackofficeCustomerUpdateBody,
   BackofficeListQuery,
+  BackofficeTimelineQuery,
   BackofficeShopUpdateBody
 } from "../validators/backoffice.validator";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -846,7 +856,20 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       displayName: profile.displayName,
       email: profile.user.email,
       city: profile.city,
-      membershipLevel: profile.membershipLevel,
+      membershipLevel: resolveEffectiveCustomerMembershipLevel(profile),
+      membershipGrantMode: profile.membershipGrantMode.toLowerCase() as BackofficeCustomerDetailPayload["membershipGrantMode"],
+      membershipDurationUnit: profile.membershipDurationUnit
+        ? profile.membershipDurationUnit.toLowerCase() as BackofficeCustomerDetailPayload["membershipDurationUnit"]
+        : null,
+      membershipDurationValue: profile.membershipDurationValue,
+      membershipStartsAt: profile.membershipStartsAt?.toISOString() ?? null,
+      membershipExpiresAt: profile.membershipExpiresAt?.toISOString() ?? null,
+      membershipGrantedBy: profile.membershipGrantedBy
+        ? {
+            needoId: profile.membershipGrantedBy.needoId,
+            username: profile.membershipGrantedBy.username
+          }
+        : null,
       isPublic: profile.isPublic,
       bookingCount: Object.values(bookingStatusTotals).reduce((total, count) => total + count, 0),
       createdAt: profile.createdAt.toISOString(),
@@ -1151,6 +1174,49 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return customer ? this.mapCustomer(customer) : null;
   }
 
+  public async listCustomerTimeline(
+    input: ScopedEntityInput & BackofficeTimelineQuery
+  ): Promise<PaginatedResponse<BackofficeAuditEventPayload> | null> {
+    const profile = await this.client.customerProfile.findFirst({
+      where: { ...this.customerWhere(input, {}), id: input.id },
+      select: { id: true, userId: true, createdAt: true },
+    });
+    if (!profile) return null;
+
+    const pagination = toPrismaPagination(input);
+    const where = this.scopedAuditWhere(input, profile.id, profile.userId, "customer");
+    const auditTotal = await this.client.auditLog.count({ where });
+    const syntheticCount = 1;
+    const auditTake =
+      pagination.skip < auditTotal
+        ? Math.min(pagination.take, auditTotal - pagination.skip)
+        : 0;
+    const rows = auditTake
+      ? await this.client.auditLog.findMany({
+          where,
+          include: { actor: { select: { username: true, avatarUrl: true } } },
+          skip: pagination.skip,
+          take: auditTake,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        })
+      : [];
+    const list = rows.map((row) => this.mapAuditEvent(row));
+    const syntheticIndex = auditTotal;
+    const pageEnd = pagination.skip + pagination.take;
+    if (pagination.skip <= syntheticIndex && pageEnd > syntheticIndex) {
+      list.push({
+        id: `profile.created:${profile.createdAt.toISOString()}`,
+        action: "profile.created",
+        actorName: "System",
+        actorAvatarUrl: null,
+        createdAt: profile.createdAt.toISOString(),
+        metadata: null,
+      });
+    }
+
+    return buildPaginatedResponse(list, auditTotal + syntheticCount, input);
+  }
+
   public async updateCustomer(
     id: number,
     input: BackofficeCustomerUpdateBody
@@ -1160,6 +1226,50 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return this.mapCustomer(await this.client.customerProfile.update({
       where: { id }, data: input, include: this.customerInclude({ scope: "platform" })
     }));
+  }
+
+  public async assignCustomerMembership(
+    input: BackofficeCustomerMembershipGrantData
+  ): Promise<BackofficeCustomerMembershipGrantPayload | null> {
+    const existing = await this.client.customerProfile.findFirst({
+      where: { id: input.customerProfileId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!existing) return null;
+
+    const customer = await this.client.customerProfile.update({
+      where: { id: input.customerProfileId },
+      data: {
+        membershipLevel: input.membershipLevel,
+        membershipGrantMode: CustomerMembershipGrantMode.OPERATOR_COMPLIMENTARY,
+        membershipDurationUnit:
+          input.durationUnit === "forever"
+            ? CustomerMembershipDurationUnit.FOREVER
+            : input.durationUnit === "day"
+              ? CustomerMembershipDurationUnit.DAY
+              : CustomerMembershipDurationUnit.MONTH,
+        membershipDurationValue: input.durationValue,
+        membershipStartsAt: input.startsAt,
+        membershipExpiresAt: input.expiresAt,
+        membershipGrantedById: input.grantedById
+      },
+      include: {
+        membershipGrantedBy: { select: { needoId: true, username: true } }
+      }
+    });
+    const membershipGrantedBy = customer.membershipGrantedBy;
+    if (!membershipGrantedBy) {
+      throw new Error("Membership grant actor is missing");
+    }
+    return {
+      membershipLevel: customer.membershipLevel,
+      membershipGrantMode: "operator_complimentary",
+      membershipDurationUnit: input.durationUnit,
+      membershipDurationValue: customer.membershipDurationValue,
+      membershipStartsAt: customer.membershipStartsAt?.toISOString() ?? input.startsAt.toISOString(),
+      membershipExpiresAt: customer.membershipExpiresAt?.toISOString() ?? null,
+      membershipGrantedBy
+    };
   }
 
   public softDeleteCustomer(id: number): Promise<BackofficeCustomerPayload | null> {
@@ -1481,6 +1591,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       user: {
         select: this.accountSelect(input, "customer")
       },
+      membershipGrantedBy: {
+        select: { needoId: true, username: true }
+      },
       reviewSummary: { where: { deletedAt: null } }
     } satisfies Prisma.CustomerProfileInclude;
   }
@@ -1543,6 +1656,20 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     userId: number,
     profileType: "technician" | "customer"
   ) {
+    return this.client.auditLog.findMany({
+      where: this.scopedAuditWhere(input, profileId, userId, profileType),
+      include: { actor: { select: { username: true, avatarUrl: true } } },
+      take: 30,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+  }
+
+  private scopedAuditWhere(
+    input: ScopedEntityInput,
+    profileId: number,
+    userId: number,
+    profileType: "technician" | "customer"
+  ): Prisma.AuditLogWhereInput {
     const targetTypes = profileType === "technician"
       ? ["TechnicianProfile", "technician_profile"]
       : ["CustomerProfile", "customer_profile"];
@@ -1550,29 +1677,24 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ? ["$.technicianProfileId", "$.technicianId"]
       : ["$.customerProfileId"];
 
-    return this.client.auditLog.findMany({
-      where: {
-        deletedAt: null,
-        AND: [
-          {
-            OR: [
-              ...targetTypes.map((targetType) => ({ targetType, targetId: profileId })),
-              { targetType: "User", targetId: userId },
-              ...metadataProfileIdPaths.map((path) => ({
-                metadata: { path, equals: profileId }
-              })),
-              { metadata: { path: "$.userId", equals: userId } }
-            ]
-          },
-          ...(input.scope === "merchant"
-            ? [{ metadata: { path: "$.shopId", equals: input.shopId } }]
-            : [])
-        ]
-      },
-      include: { actor: { select: { username: true, avatarUrl: true } } },
-      take: 30,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-    });
+    return {
+      deletedAt: null,
+      AND: [
+        {
+          OR: [
+            ...targetTypes.map((targetType) => ({ targetType, targetId: profileId })),
+            { targetType: "User", targetId: userId },
+            ...metadataProfileIdPaths.map((path) => ({
+              metadata: { path, equals: profileId },
+            })),
+            { metadata: { path: "$.userId", equals: userId } },
+          ],
+        },
+        ...(input.scope === "merchant"
+          ? [{ metadata: { path: "$.shopId", equals: input.shopId } }]
+          : []),
+      ],
+    };
   }
 
   private orderInclude() {
@@ -1779,7 +1901,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       displayName: customer.displayName,
       email: customer.user.email,
       city: customer.city,
-      membershipLevel: customer.membershipLevel,
+      membershipLevel: resolveEffectiveCustomerMembershipLevel(customer),
       isPublic: customer.isPublic,
       bookingCount: customer.user._count.bookingOrders,
       createdAt: customer.createdAt.toISOString()
@@ -1787,6 +1909,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   private mapAccount(account: {
+    needoId: string;
     username: string;
     email: string;
     phone: string | null;
@@ -1824,6 +1947,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       : account.identities;
 
     return {
+      needoId: account.needoId,
       username: account.username,
       email: account.email,
       phone: account.phone,

@@ -49,4 +49,14 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).not.toContain('to: "/merchant-admin/design"');
     expect(source).not.toContain('to: "/merchant-admin/design?module=cards"');
   });
+
+  it("uses independent employee and user management navigation sections", () => {
+    expect(source).toContain('key: "staff"');
+    expect(source).toContain('title: "员工管理"');
+    expect(source).toContain('key: "users"');
+    expect(source).toContain('title: "用户管理"');
+    expect(source).toContain('to: "/merchant-admin/people?module=users"');
+    expect(source).not.toContain('title: "人员与顾客"');
+    expect(source).not.toContain('module=customers');
+  });
 });

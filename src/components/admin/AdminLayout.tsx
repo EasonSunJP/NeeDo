@@ -110,7 +110,7 @@ const navSections: AdminNavSection[] = [
     title: "用户管理",
     items: [
       { label: "账号管理", to: "/admin/users", icon: "账", permission: "menu:user-management", children: ["真实账号", "状态", "角色分配"] },
-      { label: "客户资料", to: "/admin/users?view=customers", icon: "客", permission: "menu:user-management", children: ["客户档案", "会员等级", "公开状态"] },
+      { label: "用户资料", to: "/admin/users?view=customers", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
       { label: "客户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["客户档案", "会员等级", "公开状态"] },
       { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式客户", "预约次数", "创建时间"] }
     ]

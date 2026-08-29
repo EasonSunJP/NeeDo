@@ -11,6 +11,7 @@ import {
   backofficeRealDataApi,
   type BackofficeCustomerDetailPayload,
   type BackofficeCustomerPayload,
+  type BackofficeCustomerTimelinePayload,
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import {
@@ -53,13 +54,13 @@ import {
   runFormalDetailMutationSequence,
 } from "../admin/formalDetailRequest";
 
-type PeopleModule = "staff" | "customers" | "reviews";
+type PeopleModule = "staff" | "users" | "reviews";
 type EmployeeSavingSection = "profile" | "affiliation" | null;
 
 const pageSize = 20;
 
 function normalizeModule(value: string | null): PeopleModule {
-  return value === "customers" || value === "reviews" ? value : "staff";
+  return value === "users" || value === "reviews" ? value : "staff";
 }
 
 function relationshipLabel(value: EmployeeRelationshipType) {
@@ -144,6 +145,16 @@ export function MerchantAdminPeoplePage() {
   const [customerDetailLoading, setCustomerDetailLoading] = useState(false);
   const [employeeDetailError, setEmployeeDetailError] = useState("");
   const [customerDetailError, setCustomerDetailError] = useState("");
+  const [customerTimeline, setCustomerTimeline] =
+    useState<BackofficeCustomerTimelinePayload | null>(null);
+  const [customerTimelineLoading, setCustomerTimelineLoading] = useState(false);
+  const [customerTimelineError, setCustomerTimelineError] = useState("");
+  const [customerTimelinePage, setCustomerTimelinePage] = useState(1);
+  const [customerTimelinePageSize, setCustomerTimelinePageSize] =
+    useState<FormalTimelinePageSize>(10);
+  const customerTimelinePageSizeRef = useRef<FormalTimelinePageSize>(10);
+  const customerTimelineGenerationRef = useRef(0);
+  const selectedCustomerIdRef = useRef<number | null>(null);
   const [employeeMutationError, setEmployeeMutationError] = useState("");
   const [employeeSaving, setEmployeeSaving] =
     useState<EmployeeSavingSection>(null);
@@ -358,6 +369,50 @@ export function MerchantAdminPeoplePage() {
     ],
   );
 
+  const loadCustomerTimeline = useCallback(
+    async (customerId: number, nextPage: number, nextPageSize: number) => {
+      const generation = ++customerTimelineGenerationRef.current;
+      setCustomerTimelineLoading(true);
+      setCustomerTimelineError("");
+      try {
+        const result = await backofficeRealDataApi.customerTimeline(
+          "merchant-admin",
+          customerId,
+          nextPage,
+          nextPageSize,
+        );
+        if (
+          generation === customerTimelineGenerationRef.current &&
+          selectedCustomerIdRef.current === customerId
+        ) {
+          setCustomerTimeline(result);
+          setCustomerTimelinePage(result.page);
+        }
+      } catch (timelineError) {
+        if (
+          generation === customerTimelineGenerationRef.current &&
+          selectedCustomerIdRef.current === customerId
+        ) {
+          setCustomerTimelineError(
+            describeDetailError(
+              timelineError,
+              languageRef.current,
+              "用户动态读取失败，请重试",
+            ),
+          );
+        }
+      } finally {
+        if (
+          generation === customerTimelineGenerationRef.current &&
+          selectedCustomerIdRef.current === customerId
+        ) {
+          setCustomerTimelineLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
   const customerDetailRequest = useMemo(
     () =>
       createFormalDetailRequestCoordinator<BackofficeCustomerDetailPayload>({
@@ -366,7 +421,7 @@ export function MerchantAdminPeoplePage() {
             describeDetailError(
               detailError,
               languageRef.current,
-              "客户正式详情读取失败",
+              "用户详细信息读取失败",
             ),
           );
         },
@@ -376,11 +431,19 @@ export function MerchantAdminPeoplePage() {
           setCustomerDetailLoading(true);
           setCustomerDetailError("");
         },
-        onSuccess: setCustomerDetail,
+        onSuccess: (detail) => {
+          setCustomerDetail(detail);
+          setCustomerTimelinePage(1);
+          void loadCustomerTimeline(
+            detail.id,
+            1,
+            customerTimelinePageSizeRef.current,
+          );
+        },
         request: (customerId) =>
           backofficeRealDataApi.customer("merchant-admin", customerId),
       }),
-    [],
+    [loadCustomerTimeline],
   );
 
   useEffect(() => {
@@ -392,6 +455,7 @@ export function MerchantAdminPeoplePage() {
       employeeCompensationRequest.dispose();
       employeePayrollPolicyRequest.dispose();
       employeeTimelineGenerationRef.current += 1;
+      customerTimelineGenerationRef.current += 1;
       employeeDetailRequest.dispose();
       customerDetailRequest.dispose();
     };
@@ -436,10 +500,16 @@ export function MerchantAdminPeoplePage() {
 
   const closeCustomer = useCallback(() => {
     customerDetailRequest.invalidate();
+    customerTimelineGenerationRef.current += 1;
+    selectedCustomerIdRef.current = null;
     setSelectedCustomerId(null);
     setCustomerDetail(null);
     setCustomerDetailLoading(false);
     setCustomerDetailError("");
+    setCustomerTimeline(null);
+    setCustomerTimelineLoading(false);
+    setCustomerTimelineError("");
+    setCustomerTimelinePage(1);
   }, [customerDetailRequest]);
 
   useEffect(() => {
@@ -468,8 +538,29 @@ export function MerchantAdminPeoplePage() {
 
   const openCustomer = (customer: BackofficeCustomerPayload) => {
     closeEmployee();
+    selectedCustomerIdRef.current = customer.id;
     setSelectedCustomerId(customer.id);
     void customerDetailRequest.load(customer.id);
+  };
+
+  const changeCustomerTimelinePage = (nextPage: number) => {
+    if (!selectedCustomerId) return;
+    setCustomerTimelinePage(nextPage);
+    void loadCustomerTimeline(
+      selectedCustomerId,
+      nextPage,
+      customerTimelinePageSize,
+    );
+  };
+
+  const changeCustomerTimelinePageSize = (
+    nextPageSize: FormalTimelinePageSize,
+  ) => {
+    if (!selectedCustomerId) return;
+    setCustomerTimelinePage(1);
+    setCustomerTimelinePageSize(nextPageSize);
+    customerTimelinePageSizeRef.current = nextPageSize;
+    void loadCustomerTimeline(selectedCustomerId, 1, nextPageSize);
   };
 
   const runEmployeeMutation = async (
@@ -661,8 +752,8 @@ export function MerchantAdminPeoplePage() {
   const description =
     module === "staff"
       ? "按当前活动店铺读取员工与店铺的正式从属关系，并维护员工基础资料。"
-      : module === "customers"
-        ? "只读取与当前店铺存在真实预约关系的客户档案。"
+      : module === "users"
+        ? "只读取与当前店铺存在真实预约关系的用户资料。"
         : "Review 数据表、回复与审核 API 完成前不展示模拟评价。";
 
   return (
@@ -679,7 +770,7 @@ export function MerchantAdminPeoplePage() {
         title={
           module === "staff"
             ? "员工列表"
-            : module === "customers"
+            : module === "users"
               ? "用户管理"
               : "评价中心"
         }
@@ -805,13 +896,13 @@ export function MerchantAdminPeoplePage() {
           )
         ) : null}
 
-        {!loading && !error && module === "customers" ? (
+        {!loading && !error && module === "users" ? (
           customers.length ? (
             <DataTable<BackofficeCustomerPayload>
               columns={[
                 {
                   key: "name",
-                  title: "客户",
+                  title: "用户",
                   render: (row) => row.displayName,
                 },
                 {
@@ -852,7 +943,7 @@ export function MerchantAdminPeoplePage() {
             />
           ) : (
             <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">
-              本店当前没有符合条件的正式客户
+              本店当前没有符合条件的正式用户
             </p>
           )
         ) : null}
@@ -971,11 +1062,11 @@ export function MerchantAdminPeoplePage() {
         <Drawer
           onClose={closeCustomer}
           open={selectedCustomerId !== null}
-          title="客户正式档案"
+          title="用户详细信息"
         >
           {customerDetailLoading ? (
             <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">
-              {translateText("正在读取客户正式详情...", language)}
+              {translateText("正在读取用户详细信息...", language)}
             </p>
           ) : null}
           {!customerDetailLoading && customerDetailError ? (
@@ -991,7 +1082,23 @@ export function MerchantAdminPeoplePage() {
             </div>
           ) : null}
           {!customerDetailLoading && !customerDetailError && customerDetail ? (
-            <FormalCustomerDetailPanel detail={customerDetail} />
+            <FormalCustomerDetailPanel
+              detail={customerDetail}
+              onRetryTimeline={() => {
+                if (selectedCustomerId) {
+                  void loadCustomerTimeline(
+                    selectedCustomerId,
+                    customerTimelinePage,
+                    customerTimelinePageSize,
+                  );
+                }
+              }}
+              onTimelinePageChange={changeCustomerTimelinePage}
+              onTimelinePageSizeChange={changeCustomerTimelinePageSize}
+              timeline={customerTimeline}
+              timelineError={customerTimelineError}
+              timelineLoading={customerTimelineLoading}
+            />
           ) : null}
         </Drawer>
       </ModuleShell>

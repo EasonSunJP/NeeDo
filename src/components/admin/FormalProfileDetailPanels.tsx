@@ -10,6 +10,7 @@ import type {
   BackofficeAuditEventPayload,
   BackofficeCompensationProfilePayload,
   BackofficeCustomerDetailPayload,
+  BackofficeCustomerTimelinePayload,
   BackofficeIdentityPayload,
   BackofficeOrderPayload,
   BackofficeReviewSummaryPayload,
@@ -31,6 +32,10 @@ import {
 } from "../mobile/ContactEventTimeline";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { DetailGrid } from "./DetailGrid";
+import {
+  FormalTimelinePagination,
+  type FormalTimelinePageSize,
+} from "./FormalTimelinePagination";
 
 type TechnicianDetailTab =
   | "基础资料"
@@ -41,7 +46,7 @@ type TechnicianDetailTab =
   | "权限与账号"
   | "时间线";
 
-type CustomerDetailTab = "基础资料" | "预约与消费" | "权限与账号" | "时间线";
+type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "权限与账号" | "用户动态";
 
 export type FormalLocalization = {
   language: Language;
@@ -65,7 +70,7 @@ const technicianTabs: TechnicianDetailTab[] = [
   "时间线"
 ];
 
-const customerTabs: CustomerDetailTab[] = ["基础资料", "预约与消费", "权限与账号", "时间线"];
+const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "权限与账号", "用户动态"];
 
 export function resolveFormalTabKeyboardIndex(
   key: string,
@@ -136,7 +141,6 @@ export function FormalTechnicianDetailPanel({
     <article className="min-w-0 overflow-hidden rounded-[22px] border border-line bg-paper shadow-panel">
       <FormalIdentityHeader
         accountActive={detail.account.isActive}
-        accountId={detail.userId}
         actionContent={actionContent}
         avatarUrl={detail.account.avatarUrl}
         badges={[
@@ -146,9 +150,9 @@ export function FormalTechnicianDetailPanel({
         ]}
         city={detail.city}
         displayName={detail.displayName}
-        entityLabel={localization.t("技师档案")}
+        identityLabel={localization.t("技师账号")}
         localization={localization}
-        profileId={detail.id}
+        needoId={detail.needoId}
         rating={detail.reviewSummary}
         shopLabel={detail.shopName ?? localization.t("未绑定店铺")}
       />
@@ -172,12 +176,26 @@ export function FormalCustomerDetailPanel({
   actionContent,
   detail,
   editContent,
-  initialTab = "基础资料"
+  membershipEditContent,
+  initialTab = "基础资料",
+  onRetryTimeline,
+  onTimelinePageChange,
+  onTimelinePageSizeChange,
+  timeline,
+  timelineError = "",
+  timelineLoading = false,
 }: {
   actionContent?: ReactNode;
   detail: BackofficeCustomerDetailPayload;
   editContent?: ReactNode;
+  membershipEditContent?: ReactNode;
   initialTab?: CustomerDetailTab;
+  onRetryTimeline?: () => void;
+  onTimelinePageChange?: (page: number) => void;
+  onTimelinePageSizeChange?: (pageSize: FormalTimelinePageSize) => void;
+  timeline?: BackofficeCustomerTimelinePayload | null;
+  timelineError?: string;
+  timelineLoading?: boolean;
 }) {
   const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<CustomerDetailTab>(initialTab);
@@ -187,7 +205,6 @@ export function FormalCustomerDetailPanel({
     <article className="min-w-0 overflow-hidden rounded-[22px] border border-line bg-paper shadow-panel">
       <FormalIdentityHeader
         accountActive={detail.account.isActive}
-        accountId={detail.userId}
         actionContent={actionContent}
         avatarUrl={detail.account.avatarUrl}
         badges={[
@@ -203,11 +220,11 @@ export function FormalCustomerDetailPanel({
         ]}
         city={detail.city ?? localization.t("城市未设置")}
         displayName={detail.displayName}
-        entityLabel={localization.t("客户档案")}
+        identityLabel={localization.t("用户账号")}
         localization={localization}
-        profileId={detail.id}
+        needoId={detail.account.needoId}
         rating={detail.reviewSummary}
-        shopLabel={localization.t("平台客户")}
+        shopLabel={localization.t("平台用户")}
       />
 
       <FormalTabs
@@ -219,7 +236,26 @@ export function FormalCustomerDetailPanel({
       />
 
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
-        {(tab) => renderCustomerTab(tab, detail, editContent, localization)}
+        {(tab) =>
+          renderCustomerTab(
+            tab,
+            detail,
+            editContent,
+            membershipEditContent,
+            localization,
+            tab === "用户动态" ? (
+              <CustomerTimelinePanel
+                detail={detail}
+                error={timelineError}
+                loading={timelineLoading}
+                onPageChange={onTimelinePageChange}
+                onPageSizeChange={onTimelinePageSizeChange}
+                onRetry={onRetryTimeline}
+                timeline={timeline}
+              />
+            ) : undefined,
+          )
+        }
       </FormalTabPanels>
     </article>
   );
@@ -338,28 +374,26 @@ export function FormalTabPanels<TTab extends string>({
 
 function FormalIdentityHeader({
   accountActive,
-  accountId,
   actionContent,
   avatarUrl,
   badges,
   city,
   displayName,
-  entityLabel,
+  identityLabel,
   localization,
-  profileId,
+  needoId,
   rating,
   shopLabel
 }: {
   accountActive: boolean;
-  accountId: number;
   actionContent?: ReactNode;
   avatarUrl: string | null;
   badges: Array<{ label: string; tone: BadgeTone }>;
   city: string;
   displayName: string;
-  entityLabel: string;
+  identityLabel: string;
   localization: FormalLocalization;
-  profileId: number;
+  needoId: string;
   rating: BackofficeReviewSummaryPayload | null;
   shopLabel: string;
 }) {
@@ -388,8 +422,8 @@ function FormalIdentityHeader({
             <h2 className="mt-3 break-words text-2xl font-black tracking-[-0.025em] sm:text-3xl">{displayName}</h2>
             <p className="mt-2 break-words text-sm font-bold text-white/65">{shopLabel} · {city}</p>
             <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em] text-white/70">
-              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{entityLabel} #{String(profileId)}</span>
-              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{localization.t("账号")} #{String(accountId)}</span>
+              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">NeeDoID {needoId}</span>
+              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{identityLabel}</span>
               <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{localization.t(accountActive ? "账号启用" : "账号停用")}</span>
             </div>
           </div>
@@ -519,27 +553,90 @@ function renderCustomerTab(
   tab: CustomerDetailTab,
   detail: BackofficeCustomerDetailPayload,
   editContent: ReactNode | undefined,
-  localization: FormalLocalization
+  membershipEditContent: ReactNode | undefined,
+  localization: FormalLocalization,
+  timelineContent?: ReactNode,
 ) {
   if (tab === "基础资料") {
     return (
       <>
-        <FormalSectionCard caption="只展示正式客户档案合同中已有的字段。" localization={localization} title="身份与基础资料">
+        <FormalSectionCard caption="只展示正式用户资料合同中已有的字段。" localization={localization} title="基础资料">
           <DetailGrid items={localizeDetailItems([
             { label: "联系邮箱", value: detail.email },
             { label: "所在城市", value: detail.city ?? localization.t("未设置") },
-            { label: "会员等级", value: membershipLabel(detail.membershipLevel, localization) },
             { label: "资料可见性", value: localization.t(detail.isPublic ? "公开" : "非公开") },
             { label: "正式预约总数", value: formatInteger(detail.bookingCount, localization) },
             { label: "档案创建时间", value: formatDateTime(detail.createdAt, localization) },
             { label: "档案更新时间", value: formatDateTime(detail.updatedAt, localization) }
           ], localization)} />
           <div className="mt-4 rounded-lg border border-line bg-paper p-4">
-            <p className="text-xs font-black text-ink/45">{localization.t("客户简介")}</p>
+            <p className="text-xs font-black text-ink/45">{localization.t("用户简介")}</p>
             <p className="mt-2 whitespace-pre-wrap text-sm font-bold leading-6 text-ink">{detail.bio ?? localization.t("未填写")}</p>
           </div>
         </FormalSectionCard>
         {editContent ? <FormalSectionCard localization={localization} title="资料编辑">{editContent}</FormalSectionCard> : null}
+      </>
+    );
+  }
+
+  if (tab === "会员等级") {
+    return (
+      <>
+        <FormalSectionCard
+          caption="会员等级以正式用户资料中的当前有效状态为准。"
+          localization={localization}
+          title="会员等级"
+        >
+          <DetailGrid
+            items={localizeDetailItems(
+              [
+                { label: "当前会员等级", value: membershipLabel(detail.membershipLevel, localization) },
+                {
+                  label: "获得方式",
+                  value: detail.membershipGrantMode === "operator_complimentary"
+                    ? "运营免费赋予"
+                    : "用户自行开通"
+                },
+                {
+                  label: "免费期限",
+                  value: detail.membershipDurationUnit === "forever"
+                    ? "永久免费"
+                    : detail.membershipDurationUnit && detail.membershipDurationValue
+                      ? `${formatInteger(detail.membershipDurationValue, localization)}${localization.t(detail.membershipDurationUnit === "day" ? "天" : "个月")}`
+                      : "不适用"
+                },
+                {
+                  label: "生效时间",
+                  value: detail.membershipStartsAt
+                    ? formatDateTime(detail.membershipStartsAt, localization)
+                    : "未记录"
+                },
+                {
+                  label: "到期时间",
+                  value: detail.membershipExpiresAt
+                    ? formatDateTime(detail.membershipExpiresAt, localization)
+                    : detail.membershipDurationUnit === "forever" ? "永久有效" : "未记录"
+                },
+                {
+                  label: "赋予人员",
+                  value: detail.membershipGrantedBy
+                    ? `${detail.membershipGrantedBy.username} · NeeDoID ${detail.membershipGrantedBy.needoId}`
+                    : "系统或用户"
+                }
+              ],
+              localization,
+            )}
+          />
+        </FormalSectionCard>
+        {membershipEditContent ? (
+          <FormalSectionCard
+            caption="此操作只记录会员权益，不会触发扣款或自动续费。"
+            localization={localization}
+            title="运营赋予会员等级"
+          >
+            {membershipEditContent}
+          </FormalSectionCard>
+        ) : null}
       </>
     );
   }
@@ -581,7 +678,69 @@ function renderCustomerTab(
     return <AccountAccessCards account={detail.account} localization={localization} />;
   }
 
-  return <AuditTimeline events={detail.timeline} localization={localization} />;
+  return timelineContent ?? <AuditTimeline events={detail.timeline} localization={localization} />;
+}
+
+function CustomerTimelinePanel({
+  detail,
+  error,
+  loading,
+  onPageChange,
+  onPageSizeChange,
+  onRetry,
+  timeline,
+}: {
+  detail: BackofficeCustomerDetailPayload;
+  error: string;
+  loading: boolean;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: FormalTimelinePageSize) => void;
+  onRetry?: () => void;
+  timeline?: BackofficeCustomerTimelinePayload | null;
+}) {
+  const localization = useFormalLocalization();
+  if (loading && !timeline) {
+    return (
+      <div className="rounded-[18px] border border-line bg-white p-6 text-sm font-black text-ink/50">
+        {localization.t("正在读取用户动态...")}
+      </div>
+    );
+  }
+
+  if (error && !timeline) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-coral/35 bg-coral/10 p-4 text-sm font-black text-[#9b3f35]">
+        <span>{error}</span>
+        {onRetry ? (
+          <button
+            className="focus-ring rounded-full border border-current/25 px-3 py-1.5 text-xs font-black"
+            onClick={onRetry}
+            type="button"
+          >
+            {localization.t("重试")}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  const events = timeline?.list ?? detail.timeline;
+  return (
+    <div>
+      <AuditTimeline events={events} localization={localization} title="用户动态" />
+      {timeline && onPageChange && onPageSizeChange ? (
+        <FormalTimelinePagination
+          disabled={loading}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+          page={timeline.page}
+          pageSize={timeline.page_size}
+          total={timeline.total}
+        />
+      ) : null}
+      {error ? <p className="mt-3 text-xs font-black text-coral">{error}</p> : null}
+    </div>
+  );
 }
 
 function FormalSectionCard({
@@ -801,14 +960,14 @@ function BookingRow({ booking, localization }: { booking: BackofficeOrderPayload
   );
 }
 
-function AuditTimeline({ events, localization }: { events: BackofficeAuditEventPayload[]; localization: FormalLocalization }) {
+function AuditTimeline({ events, localization, title = "正式审计时间线" }: { events: BackofficeAuditEventPayload[]; localization: FormalLocalization; title?: string }) {
   return (
     <ContactEventTimelinePanel
       className="rounded-[18px] border-line bg-white text-ink shadow-[0_8px_24px_rgba(22,23,26,0.05)]"
       emptyLabel={localization.t("暂无正式审计记录")}
       events={events.map((event) => mapAuditEvent(event, localization))}
       showCommentComposer={false}
-      title={localization.t("正式审计时间线")}
+      title={localization.t(title)}
     />
   );
 }

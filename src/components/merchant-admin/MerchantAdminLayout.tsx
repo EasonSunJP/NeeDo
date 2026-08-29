@@ -83,11 +83,17 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     ]
   },
   {
-    key: "people",
-    title: "人员与顾客",
+    key: "staff",
+    title: "员工管理",
     items: [
-      { label: "员工列表", to: "/merchant-admin/people?module=staff", icon: "员", children: ["正式技师", "状态", "店铺范围"] },
-      { label: "用户管理", to: "/merchant-admin/people?module=customers", icon: "客", children: ["正式客户", "预约次数", "公开状态"] },
+      { label: "员工列表", to: "/merchant-admin/people?module=staff", icon: "员", children: ["正式员工", "状态", "店铺范围"] }
+    ]
+  },
+  {
+    key: "users",
+    title: "用户管理",
+    items: [
+      { label: "用户列表", to: "/merchant-admin/people?module=users", icon: "用", children: ["正式用户", "预约次数", "公开状态"] },
       { label: "评价中心", to: "/merchant-admin/people?module=reviews", icon: "评", children: ["能力门禁", "Review 表", "回复审计"] }
     ]
   },
