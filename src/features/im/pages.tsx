@@ -5187,12 +5187,12 @@ export function ImConversationRoomPage({
 
     if (card.profileKind === "person") {
       return renderActionButton("添加好友", () =>
-        store.addContact(card.userId, "聊天名片", "通过好友分享的名片添加")
+        store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
       );
     }
 
     return renderActionButton("添加", () =>
-      store.addContact(card.userId, "聊天名片", "通过好友分享的名片添加")
+      store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
     );
   };
 
@@ -7724,10 +7724,8 @@ export function ImNewConversationPage() {
     setPrivacyModeEnabled(enabled);
   };
 
-  const addFriendAndOpen = async (userId: string) => {
-    await store.addContact(userId, "聊天页添加好友", "通过聊天页手动添加为好友");
-    const conversation = await store.ensureDirectConversation(userId);
-    navigate(config.routes.conversation(conversation.id));
+  const sendFriendRequest = async (userId: string) => {
+    await store.sendFriendRequest(userId, "申请添加为好友");
   };
 
   const createCollection = async () => {
@@ -7919,7 +7917,7 @@ export function ImNewConversationPage() {
                   <ContactRow
                     caption={user.signature ?? user.region ?? user.bio ?? `${user.userIdLabel} · 添加后可直接开始聊天`}
                     key={user.id}
-                    onClick={() => void addFriendAndOpen(user.id)}
+                    onClick={() => void sendFriendRequest(user.id)}
                     user={user}
                   />
                 ))}

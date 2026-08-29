@@ -104,12 +104,15 @@ export type RealtimeContact = {
   isBlocked: boolean;
 };
 
-export type RealtimeDeletedContact = {
-  contactId: number;
-  contactUserId: number;
+export type RealtimeDeletedFriendship = {
+  actorUserId: number;
+  counterpartUserId: number;
+  contactIds: number[];
+  deletedContactCount: number;
+  deletedFollowCount: number;
+  deletedConversationId: number | null;
   deleted: true;
   deletedAt: string;
-  ownerUserId: number;
 };
 
 export type RealtimeFriendRequest = {
@@ -117,9 +120,25 @@ export type RealtimeFriendRequest = {
   id: number;
   message: string | null;
   requesterUserId: number;
+  requester: RealtimeParticipant;
   respondedAt: string | null;
-  status: "pending" | "accepted" | "rejected";
+  status: "pending" | "accepted" | "rejected" | "expired";
   targetUserId: number;
+  target: RealtimeParticipant;
+  expiresAt: string;
+  expiredAt: string | null;
+};
+
+export type RealtimeDirectoryProfile = {
+  user: RealtimeParticipant;
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  contactId: number | null;
+  friendRequest: RealtimeFriendRequest | null;
+};
+
+export type RealtimeCreateFriendRequestResult = {
+  friendRequest: RealtimeFriendRequest;
+  created: boolean;
 };
 
 export type RealtimeSocialPost = {
@@ -308,11 +327,8 @@ export const realtimeApi = {
   searchDirectory(query: PageQuery & { query: string }) {
     return httpClient.request<PaginatedRealtimeData<RealtimeParticipant>>("/im/directory", { query });
   },
-  addContact(targetUserId: number) {
-    return httpClient.request<RealtimeContact>("/im/contacts", {
-      body: { targetUserId },
-      method: "POST"
-    });
+  getDirectoryProfile(userId: number) {
+    return httpClient.request<RealtimeDirectoryProfile>(`/im/directory/${userId}`);
   },
   uploadConversationImage(conversationId: number, file: File) {
     return httpClient.request<RealtimeUploadedImage>(`/im/conversations/${conversationId}/media`, {
@@ -337,13 +353,13 @@ export const realtimeApi = {
     return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "DELETE" });
   },
   deleteContact(contactId: number) {
-    return httpClient.request<RealtimeDeletedContact>(`/im/contacts/${contactId}`, { method: "DELETE" });
+    return httpClient.request<RealtimeDeletedFriendship>(`/im/contacts/${contactId}`, { method: "DELETE" });
   },
   listFriendRequests(query: PageQuery & { direction?: "incoming" | "outgoing" | "all"; status?: RealtimeFriendRequest["status"] } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeFriendRequest>>("/im/friend-requests", { query });
   },
   createFriendRequest(input: { message?: string; targetUserId: number }) {
-    return httpClient.request<RealtimeFriendRequest>("/im/friend-requests", { body: input, method: "POST" });
+    return httpClient.request<RealtimeCreateFriendRequestResult>("/im/friend-requests", { body: input, method: "POST" });
   },
   acceptFriendRequest(id: number) {
     return httpClient.request<RealtimeFriendRequest>(`/im/friend-requests/${id}/accept`, { method: "POST" });

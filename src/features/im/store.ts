@@ -14,6 +14,7 @@ import {
   type ConversationMember,
   type ConversationMessage,
   type CreateConversationPrivacyOptions,
+  type DirectoryProfile,
   type FriendRequest,
   type ImMessageType,
   type ImDatabase,
@@ -123,9 +124,76 @@ export function mergeConversationMessageHistory(
 }
 
 export function getMessageFailureReason(error: unknown): ConversationMessage["failureReason"] {
-  return error instanceof Error && error.message === "error.im.recipient_blocked"
-    ? "recipient_blocked"
-    : "send_failed";
+  if (error instanceof Error && error.message === "error.im.recipient_blocked") {
+    return "recipient_blocked";
+  }
+
+  if (error instanceof Error && error.message === "error.im.not_friends") {
+    return "not_friends";
+  }
+
+  return "send_failed";
+}
+
+export function getFriendRequestCounterpartId(
+  request: FriendRequest,
+  currentUserId: string,
+) {
+  if (request.fromUserId === currentUserId) {
+    return request.toUserId;
+  }
+
+  if (request.toUserId === currentUserId) {
+    return request.fromUserId;
+  }
+
+  return undefined;
+}
+
+export function selectLatestFriendRequestsByCounterpart(
+  requests: FriendRequest[],
+  currentUserId: string,
+) {
+  const latestByCounterpart = new Map<string, FriendRequest>();
+
+  [...requests]
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+    )
+    .forEach((request) => {
+      const counterpartId = getFriendRequestCounterpartId(
+        request,
+        currentUserId,
+      );
+      if (counterpartId && !latestByCounterpart.has(counterpartId)) {
+        latestByCounterpart.set(counterpartId, request);
+      }
+    });
+
+  return Array.from(latestByCounterpart.values());
+}
+
+export function isIncomingPendingRequest(
+  request: FriendRequest,
+  currentUserId: string,
+  nowMs: number,
+) {
+  return (
+    request.toUserId === currentUserId &&
+    request.status === "pending" &&
+    new Date(request.expiresAt).getTime() > nowMs
+  );
+}
+
+export function getIncomingPendingFriendRequestCount(
+  requests: FriendRequest[],
+  currentUserId: string,
+  nowMs: number,
+) {
+  return selectLatestFriendRequestsByCounterpart(requests, currentUserId).filter(
+    (request) => isIncomingPendingRequest(request, currentUserId, nowMs),
+  ).length;
 }
 
 export function getForwardableMessagePayload(
@@ -984,17 +1052,40 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response.conversation;
   }
 
-  async function addContact(targetUserId: string, source?: string, description?: string) {
+  async function getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
     await hydrateStore();
-    const response = await api.addContact(targetUserId, source, description);
+    const profile = await api.getDirectoryProfile(userId);
+    mergeUsers([profile.user]);
+    if (profile.friendRequest) {
+      snapshot = {
+        ...snapshot,
+        friendRequests: [
+          profile.friendRequest,
+          ...snapshot.friendRequests.filter(
+            (request) => request.id !== profile.friendRequest?.id,
+          ),
+        ],
+      };
+    }
+    emit();
+    return profile;
+  }
+
+  async function sendFriendRequest(targetUserId: string, message?: string) {
+    await hydrateStore();
+    const response = await api.sendFriendRequest(targetUserId, message);
     snapshot = {
       ...snapshot,
-      contacts: snapshot.contacts.some((contact) => contact.id === response.contact.id)
-        ? snapshot.contacts.map((contact) => (contact.id === response.contact.id ? response.contact : contact))
-        : [response.contact, ...snapshot.contacts]
+      friendRequests: [
+        response.friendRequest,
+        ...snapshot.friendRequests.filter(
+          (request) => request.id !== response.friendRequest.id,
+        ),
+      ],
     };
     emit();
-    return response.contact;
+    await refreshBootstrap();
+    return response;
   }
 
   async function blockContact(contactId: string) {
@@ -1022,9 +1113,14 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     const response = await api.deleteContact(contactId);
     snapshot = {
       ...snapshot,
-      contacts: snapshot.contacts.map((contact) => (contact.id === contactId ? response.contact : contact))
+      contacts: snapshot.contacts.filter((contact) => contact.id !== contactId),
     };
+    if (response.deletedConversationId) {
+      removeConversationLocally(response.deletedConversationId);
+      return response;
+    }
     emit();
+    return response;
   }
 
   async function acceptFriendRequest(requestId: string) {
@@ -1036,6 +1132,8 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       contacts: response.contact ? [response.contact, ...snapshot.contacts.filter((contact) => contact.id !== response.contact?.id)] : snapshot.contacts
     };
     emit();
+    await refreshBootstrap();
+    return response;
   }
 
   async function rejectFriendRequest(requestId: string) {
@@ -1046,6 +1144,8 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       friendRequests: snapshot.friendRequests.map((request) => (request.id === requestId ? response.friendRequest : request))
     };
     emit();
+    await refreshBootstrap();
+    return response;
   }
 
   async function search(query: string, conversationId?: string) {
@@ -1162,7 +1262,8 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       addConversationMembers,
       removeConversationMember,
       dissolveConversation,
-      addContact,
+      getDirectoryProfile,
+      sendFriendRequest,
       updateRemark,
       updateContactTags,
       updateConversationTags,
@@ -1173,6 +1274,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       rejectFriendRequest,
       search,
       searchDirectory,
+      refresh: refreshBootstrap,
       rememberSearchTerm,
       clearSearchHistory
     };

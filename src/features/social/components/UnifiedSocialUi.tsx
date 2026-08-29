@@ -1086,7 +1086,7 @@ export function SocialFollowButton({
 
     autoFriendTargetRef.current = targetImUser.id;
     setPendingAction("add");
-    void imStore.addContact(targetImUser.id, "互相关注", `与 ${target.displayName} 互相关注后自动成为好友`).finally(() => {
+    void imStore.sendFriendRequest(targetImUser.id, `与 ${target.displayName} 互相关注后申请成为好友`).finally(() => {
       autoFriendTargetRef.current = null;
       setPendingAction(null);
     });

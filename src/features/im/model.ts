@@ -80,7 +80,16 @@ export type FriendRequest = {
   requestMessage: string;
   status: ImFriendRequestStatus;
   createdAt: string;
+  expiresAt: string;
+  expiredAt?: string;
   handledAt?: string;
+};
+
+export type DirectoryProfile = {
+  user: ImUser;
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  contactId?: string;
+  friendRequest?: FriendRequest;
 };
 
 const generatedContactSignaturePatterns = [
@@ -266,7 +275,7 @@ export type ConversationMessage = {
   content: string;
   quotedMessageId?: string;
   status: ImMessageStatus;
-  failureReason?: "recipient_blocked" | "send_failed";
+  failureReason?: "recipient_blocked" | "not_friends" | "send_failed";
   sentAt: string;
   editedAt?: string;
   contentPurgedAt?: string;
