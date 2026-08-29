@@ -90,6 +90,13 @@ describe("LifeDance real operations persistence contract", () => {
   });
 
   it("validates historical payslips against their persisted compensation profile version", () => {
+    const compensationProfileQuery = checkerSource.slice(
+      checkerSource.indexOf("prisma.technicianCompensationProfile.findMany"),
+      checkerSource.indexOf("prisma.payRun.findMany")
+    );
+
+    expect(compensationProfileQuery).toContain('status: { in: ["active", "archived"] }');
+    expect(compensationProfileQuery).toContain("status: true");
     expect(checkerSource).toContain("activeCompensationProfiles");
     expect(checkerSource).toContain("compensationProfileById");
     expect(checkerSource).toContain(
