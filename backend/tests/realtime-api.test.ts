@@ -977,6 +977,25 @@ const createFixture = async () => {
         return { post: socialPost, notifications: [] };
       }
     ),
+    updateSocialPost: jest.fn(
+      async (input: {
+        postId: number;
+        authorUserId: number;
+        content: string;
+        media?: unknown;
+        mentionUserIds: number[];
+        visibility: string;
+      }) => {
+        const post = socialPosts.find(
+          (candidate) => candidate.id === input.postId && candidate.authorUserId === input.authorUserId
+        );
+        if (!post) return null;
+        post.content = input.content;
+        post.media = input.media ?? null;
+        post.visibility = input.visibility;
+        return { post, notifications: [] };
+      }
+    ),
     listSocialPosts: jest.fn(async () => listPage(socialPosts)),
     getSocialPost: jest.fn(async (userId: number, postId: number) => {
       const post = socialPosts.find((item) => item.id === postId);
@@ -1240,6 +1259,48 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
         .send(invalidBody)
         .expect(400);
     }
+  });
+
+  it("updates only the authenticated author's published post through the strict PATCH contract", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    const created = await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "Before", visibility: "public" })
+      .expect(201);
+    const postId = created.body.data.id as number;
+
+    const updated = await request(fixture.app)
+      .patch(`/api/v1/social/posts/${postId}`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "After", mentionUserIds: [2], visibility: "followers" })
+      .expect(200);
+
+    expect(updated.body.data).toMatchObject({ id: postId, content: "After", visibility: "followers" });
+    expect(fixture.realtimeRepository.updateSocialPost).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        postId,
+        authorUserId: 1,
+        content: "After",
+        mentionUserIds: [2],
+        context: expect.objectContaining({ ip: expect.any(String) })
+      })
+    );
+
+    await request(fixture.app)
+      .patch(`/api/v1/social/posts/${postId}`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ content: "Hijack", visibility: "public" })
+      .expect(404);
+
+    await request(fixture.app)
+      .patch(`/api/v1/social/posts/${postId}`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "", media: { items: [] }, visibility: "public" })
+      .expect(400);
   });
 
   it("returns a protected 30-day friend activity status without media payloads", async () => {

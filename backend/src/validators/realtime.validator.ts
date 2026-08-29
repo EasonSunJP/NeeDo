@@ -199,6 +199,8 @@ export const socialPostCreateBodySchema = z
     path: ["content"]
   });
 
+export const socialPostUpdateBodySchema = socialPostCreateBodySchema;
+
 export const followCreateBodySchema = z.object({
   targetUserId: z.coerce.number().int().positive()
 });
@@ -223,6 +225,7 @@ export type ContactCreateBody = z.infer<typeof contactCreateBodySchema>;
 export type FriendRequestCreateBody = z.infer<typeof friendRequestCreateBodySchema>;
 export type FriendRequestListQuery = z.infer<typeof friendRequestListQuerySchema>;
 export type SocialPostCreateBody = z.infer<typeof socialPostCreateBodySchema>;
+export type SocialPostUpdateBody = z.infer<typeof socialPostUpdateBodySchema>;
 export type SocialPostListQuery = z.infer<typeof socialPostListQuerySchema>;
 export type FollowCreateBody = z.infer<typeof followCreateBodySchema>;
 export type NotificationListQuery = z.infer<typeof notificationListQuerySchema>;

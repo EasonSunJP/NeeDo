@@ -1243,6 +1243,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 正式发动态页只接受 JPEG、PNG、WebP 图片；单张上限 8 MiB，一条动态最多 9 张
 - 用户选择图片后立即通过 `POST /api/v1/social/media` 上传；上传完成前不可发布，失败项保留预览并支持重试或删除
 - 发布请求只提交服务端返回的 `mediaAssetPublicId`，不得提交 `blob:` 预览地址或任意媒体 URL
+- 编辑已发布动态时，原动态绑定的规范图片资产可直接复用；新增图片仍需先完成正式上传，保存通过 `PATCH /api/v1/social/posts/:id` 提交
 - 已上传媒体统一显示为圆角缩略图块
 - 媒体区始终保留一个 `+` 添加位，结构与缩略图块尺寸一致
 - 每个媒体块支持删除，点击缩略图可直接预览原图
@@ -1271,6 +1272,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
   - 有内容时提示“放弃或保留草稿后退出”
 - 再次进入同一路径时，会恢复对应草稿
 - 编辑已有动态时仍会提示是否放弃修改，但不会覆盖正式草稿列表
+- 编辑保存只允许动态作者本人；正文、图片、地点、可见范围和提醒联系人均以正式接口成功结果为准，失败时停留在编辑页
 
 ### Icon 规范
 

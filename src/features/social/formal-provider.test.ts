@@ -49,4 +49,10 @@ describe("formal social provider gate", () => {
     expect(source).toMatch(/\n\s+saveDraft,\n\s+clearDraft,/u);
     expect(source).not.toContain("saveDraft: (draftKey, draft) => setState");
   });
+
+  it("persists published post edits through the formal update API", () => {
+    expect(source).toContain("const updatePost = async");
+    expect(source).toContain("realtimeApi.updateSocialPost");
+    expect(source).not.toContain("updatePost: formalSocialMutationUnavailable");
+  });
 });

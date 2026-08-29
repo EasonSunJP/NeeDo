@@ -128,6 +128,7 @@ export type RealtimeSocialPost = {
   createdAt: string;
   id: number;
   media: unknown;
+  updatedAt?: string;
   viewerFollowsAuthor?: boolean;
   visibility: "public" | "followers";
 };
@@ -195,6 +196,8 @@ export type RealtimeSocialCreatePostInput = {
   mentionUserIds?: number[];
   visibility?: RealtimeSocialPost["visibility"];
 };
+
+export type RealtimeSocialUpdatePostInput = RealtimeSocialCreatePostInput;
 
 export const realtimeApi = {
   listConversations(query: PageQuery = {}) {
@@ -346,6 +349,9 @@ export const realtimeApi = {
   },
   createSocialPost(input: RealtimeSocialCreatePostInput) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });
+  },
+  updateSocialPost(id: number, input: RealtimeSocialUpdatePostInput) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { body: input, method: "PATCH" });
   },
   follow(targetUserId: number) {
     return httpClient.request<{ id: number }>("/social/follows", { body: { targetUserId }, method: "POST" });
