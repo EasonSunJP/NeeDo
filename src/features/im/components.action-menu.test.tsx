@@ -71,7 +71,12 @@ describe("ImMessageActionSheet", () => {
 
     await act(async () => {
       root.render(createElement(ImMessageActionSheet, {
-        actions: [],
+        actions: [{
+          icon: "reply",
+          key: "reply",
+          label: "回复",
+          onClick: vi.fn()
+        }],
         anchorElement: anchor,
         expanded: false,
         isNight: true,
@@ -84,6 +89,9 @@ describe("ImMessageActionSheet", () => {
     const menu = document.querySelector<HTMLElement>("[data-im-message-action-sheet='true']");
     const menuPositioner = menu?.parentElement;
     const arrow = menuPositioner?.querySelector<HTMLElement>("[aria-hidden='true']");
+    const reactions = menu?.querySelector<HTMLElement>('[data-im-message-action-section="reactions"]');
+    const actionGrid = menu?.querySelector<HTMLElement>('[data-im-message-action-section="actions"]');
+    const actionItem = menu?.querySelector<HTMLElement>('[data-im-message-action-item="true"]');
 
     expect(menu).not.toBeNull();
     expect(container.contains(menu)).toBe(false);
@@ -91,6 +99,12 @@ describe("ImMessageActionSheet", () => {
     expect(menuPositioner?.style.position).toBe("fixed");
     expect(menuPositioner?.style.top).toBe("210px");
     expect(arrow?.className).toContain("-bottom-2");
+    expect(actionGrid?.compareDocumentPosition(reactions!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(actionItem?.className).toContain("py-2");
+    expect(actionItem?.querySelector("span")?.className).toContain("h-8");
+    expect(
+      [...menu!.querySelectorAll("button")].some((button) => button.textContent?.trim() === "收起")
+    ).toBe(false);
 
     anchorRect = buildRect({ bottom: 84, height: 60, left: 220, top: 24, width: 200 });
     await act(async () => {
@@ -99,6 +113,7 @@ describe("ImMessageActionSheet", () => {
 
     expect(menuPositioner?.style.top).toBe("94px");
     expect(arrow?.className).toContain("-top-2");
+    expect(reactions?.compareDocumentPosition(actionGrid!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     await act(async () => root.unmount());
   });

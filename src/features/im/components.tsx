@@ -2010,7 +2010,7 @@ function ImReactionButton({
     <button
       className={cn(
         "focus-ring grid place-items-center rounded-2xl text-center font-black transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
-        compact ? "h-12 min-w-12 px-1 text-[24px]" : "h-11 px-1 text-[25px]"
+        compact ? "h-11 min-w-11 px-1 text-[22px]" : "h-11 px-1 text-[25px]"
       )}
       onClick={onClick}
       type="button"
@@ -2032,19 +2032,20 @@ function ImMessageActionButton({
   return (
     <button
       className={cn(
-        "focus-ring min-w-0 rounded-[18px] px-2 py-3 text-center transition",
+        "focus-ring min-h-11 min-w-0 rounded-[14px] px-1 py-2 text-center transition",
         "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] text-[color:var(--client-text)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_13%,var(--client-surface)_87%)]",
         danger && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
         item.disabled && "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]"
       )}
+      data-im-message-action-item="true"
       disabled={item.disabled}
       onClick={item.onClick}
       type="button"
     >
-      <span className={cn("mx-auto grid h-10 w-10 place-items-center rounded-2xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
+      <span className={cn("mx-auto grid h-8 w-8 place-items-center rounded-xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
         <ImIcon name={item.icon === "pin" ? "top" : item.icon} />
       </span>
-      <span className="mt-2 block truncate text-xs font-black">{item.label}</span>
+      <span className="mt-1 block truncate text-[11px] font-black leading-4">{item.label}</span>
     </button>
   );
 }
@@ -2150,8 +2151,81 @@ export function ImMessageActionSheet({
     opacity: menuPosition.ready ? 1 : 0,
     position: "fixed",
     top: menuPosition.top,
-    width: "min(560px, calc(100vw - 24px))"
+    width: "min(520px, calc(100vw - 32px))"
   };
+
+  const quickReactionRow = (
+    <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-0.5 px-1 py-1.5">
+      {imQuickReactions.map((emoji) => (
+        <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
+      ))}
+      <button
+        aria-label={expanded ? "收起默认表情" : "展开默认表情"}
+        className={cn(
+          "focus-ring grid h-11 place-items-center rounded-full transition",
+          "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
+        )}
+        onClick={() => onExpandedChange(!expanded)}
+        type="button"
+      >
+        <ImIcon name="more" />
+      </button>
+    </div>
+  );
+
+  const expandedReactionCatalog = expanded ? (
+    <div className="space-y-2 px-1 pb-2 pt-1">
+      <section>
+        <p className="mb-1 text-[11px] font-black text-[color:var(--client-muted)]">默认表情</p>
+        <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-9">
+          {imDefaultReactions.map((emoji) => (
+            <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
+          ))}
+        </div>
+      </section>
+    </div>
+  ) : null;
+
+  const reactionSection = (
+    <section
+      className={menuPosition.placement === "above" ? "pt-1" : "pb-1"}
+      data-im-message-action-section="reactions"
+      key="reactions"
+    >
+      {menuPosition.placement === "above" ? expandedReactionCatalog : quickReactionRow}
+      {menuPosition.placement === "above" ? quickReactionRow : expandedReactionCatalog}
+    </section>
+  );
+
+  const actionSection = actions.length > 0 ? (
+    <div className="grid grid-cols-5 gap-1.5" data-im-message-action-section="actions" key="actions">
+      {actions.map((item) => (
+        <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
+      ))}
+    </div>
+  ) : null;
+
+  const listActionSection = listActions.length > 0 ? (
+    <div className={cn("mt-2 overflow-hidden rounded-[16px]", listShellClass)} key="list-actions">
+      {listActions.map((item) => (
+        <button
+          className={cn(
+            "focus-ring flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-black transition",
+            "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+            item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
+            item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
+          )}
+          disabled={item.disabled}
+          key={item.key}
+          onClick={item.onClick}
+          type="button"
+        >
+          <ImIcon className="h-[18px] w-[18px] shrink-0" name={item.icon} />
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   const actionMenu = (
     <div className="fixed inset-0 z-[200]" data-im-message-action-layer="true">
@@ -2172,79 +2246,16 @@ export function ImMessageActionSheet({
         />
 
         <section
-          className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[24px] border backdrop-blur-xl", sheetClass)}
+          className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[20px] border backdrop-blur-xl", sheetClass)}
           data-im-message-action-sheet="true"
           ref={menuRef}
           style={{ maxHeight: menuPosition.maxHeight }}
         >
-          <div className="touch-pan-y px-4 py-3 [-webkit-overflow-scrolling:touch]">
-            <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-1 py-2">
-              {imQuickReactions.map((emoji) => (
-                <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
-              ))}
-              <button
-                aria-label={expanded ? "收起默认表情" : "展开默认表情"}
-                className={cn(
-                  "focus-ring grid h-11 place-items-center rounded-full transition",
-                  "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-                )}
-                onClick={() => onExpandedChange(!expanded)}
-                type="button"
-              >
-                <ImIcon name="more" />
-              </button>
-            </div>
-
-            {expanded ? (
-              <div className="space-y-4 pb-4 pt-1">
-                <section>
-                  <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">默认表情</p>
-                  <div className="grid grid-cols-7 gap-2 sm:grid-cols-9">
-                    {imDefaultReactions.map((emoji) => (
-                      <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
-                    ))}
-                  </div>
-                </section>
-              </div>
-            ) : null}
-
-            {actions.length > 0 ? (
-              <div className="grid grid-cols-5 gap-2">
-                {actions.map((item) => (
-                  <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
-                ))}
-              </div>
-            ) : null}
-
-            {listActions.length > 0 ? (
-              <div className={cn("mt-4 overflow-hidden rounded-[22px]", listShellClass)}>
-                {listActions.map((item) => (
-                  <button
-                    className={cn(
-                      "focus-ring flex w-full items-center gap-3 px-4 py-4 text-left text-[15px] font-black transition",
-                      "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
-                      item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-                      item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
-                    )}
-                    disabled={item.disabled}
-                    key={item.key}
-                    onClick={item.onClick}
-                    type="button"
-                  >
-                    <ImIcon className="h-5 w-5 shrink-0" name={item.icon} />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <button
-              className="focus-ring mt-3 w-full rounded-2xl px-4 py-2 text-sm font-black text-[color:var(--client-muted)] transition hover:bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]"
-              onClick={onClose}
-              type="button"
-            >
-              收起
-            </button>
+          <div className="touch-pan-y p-2 [-webkit-overflow-scrolling:touch]">
+            {menuPosition.placement === "below" ? reactionSection : null}
+            {actionSection}
+            {listActionSection}
+            {menuPosition.placement === "above" ? reactionSection : null}
           </div>
         </section>
       </div>
