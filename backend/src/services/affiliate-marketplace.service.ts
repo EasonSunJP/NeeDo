@@ -9,7 +9,11 @@ import {
 import type { AffiliateLinkTokenService } from "./affiliate-link-token.service";
 import type { AffiliateTaskStatus } from "./affiliate-state-machine.service";
 import type { AuthenticatedAccessContext } from "./auth.service";
-import type { AffiliateDiscountType, AffiliateTaskRecord } from "./affiliate-task.service";
+import type {
+  AffiliateDiscountType,
+  AffiliateTaskRecord,
+  AffiliateTaskTranslations
+} from "./affiliate-task.service";
 
 export type AffiliateClaimStatus = "active" | "expired" | "revoked";
 export type AffiliateMarketplaceTransactionClient = unknown;
@@ -74,6 +78,7 @@ export interface AffiliateClaimRecord extends AffiliateClaimPersistenceInput {
 export interface AffiliateMarketplaceTaskPublicView {
   id: number;
   taskCode: string;
+  translations: AffiliateTaskTranslations;
   name: string;
   description: string | null;
   coverMediaAssetId: number | null;
@@ -402,6 +407,7 @@ export class AffiliateMarketplaceService {
     return {
       id: task.id,
       taskCode: task.taskCode,
+      translations: task.translations,
       name: task.name,
       description: task.description,
       coverMediaAssetId: task.coverMediaAssetId,

@@ -37,6 +37,38 @@ const task = (
   publisherType: "merchant_account",
   publisherMerchantAccountId: 91,
   publisherShopId: null,
+  translations: {
+    "zh-CN": {
+      name: "涩谷服务完成奖励",
+      description: "完成服务后获得奖励。",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    "zh-TW": {
+      name: "澀谷服務完成獎勵",
+      description: "完成服務後獲得獎勵。",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    en: {
+      name: "Shibuya completed-service reward",
+      description: "Earn after the referred service is completed.",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    ja: {
+      name: "渋谷サービス完了報酬",
+      description: "紹介したサービスの完了後に報酬を獲得できます。",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    ko: {
+      name: "시부야 서비스 완료 보상",
+      description: "소개한 서비스 완료 후 보상을 받습니다.",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    }
+  },
   name: "Shibuya completed-service reward",
   description: "Earn after the referred service is completed.",
   coverMediaAssetId: null,
@@ -301,6 +333,9 @@ describe("AffiliateMarketplaceService", () => {
         expect.objectContaining({
           id: 22,
           name: "Shibuya completed-service reward",
+          translations: expect.objectContaining({
+            ja: expect.objectContaining({ name: "渋谷サービス完了報酬" })
+          }),
           rewardNdpPerCompletedOrder: 1_000,
           totalBudgetNdp: 10_000,
           remainingBudgetNdp: 7_000,

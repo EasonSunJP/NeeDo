@@ -3,6 +3,12 @@ import { httpClient } from "./httpClient";
 export type AffiliateDiscountType = "none" | "fixed_jpy" | "rate";
 export type AffiliateTaskStatus = "scheduled" | "active";
 export type AffiliateClaimStatus = "active" | "expired" | "revoked";
+export type AffiliateContentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
+
+export interface AffiliateTaskTranslation {
+  name: string;
+  description: string | null;
+}
 
 export interface AffiliateMarketplaceMediaAsset {
   url: string;
@@ -31,6 +37,7 @@ export interface AffiliateMarketplaceService {
 export interface AffiliateMarketplaceTask {
   id: number;
   taskCode: string;
+  translations: Record<AffiliateContentLocale, AffiliateTaskTranslation>;
   name: string;
   description: string | null;
   coverMediaAssetId: number | null;

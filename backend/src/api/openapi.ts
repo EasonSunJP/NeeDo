@@ -131,6 +131,7 @@ const affiliateTaskStatuses = [
   "cancelled",
   "rejected"
 ];
+const affiliateContentLocales = ["zh-CN", "zh-TW", "en", "ja", "ko"];
 
 const affiliateEditableTaskProperties = {
   name: { type: "string", minLength: 1, maxLength: 160 },
@@ -4047,6 +4048,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "version",
           "lockVersion",
           "publisherType",
+          "translations",
           "name",
           "rewardNdpPerCompletedOrder",
           "totalBudgetNdp",
@@ -4076,6 +4078,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publisherType: { type: "string", enum: ["merchant_account", "shop"] },
           publisherMerchantAccountId: { type: ["integer", "null"], minimum: 1 },
           publisherShopId: { type: ["integer", "null"], minimum: 1 },
+          translations: { $ref: "#/components/schemas/AffiliateTaskTranslations" },
           name: affiliateEditableTaskProperties.name,
           description: affiliateEditableTaskProperties.description,
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
@@ -4126,6 +4129,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             required: ["publisherType", ...affiliateEditableTaskRequired],
             properties: {
               publisherType: { type: "string", const: "shop" },
+              sourceLocale: { type: "string", enum: affiliateContentLocales },
               ...affiliateEditableTaskProperties
             }
           },
@@ -4140,6 +4144,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             ],
             properties: {
               publisherType: { type: "string", const: "merchant_account" },
+              sourceLocale: { type: "string", enum: affiliateContentLocales },
               merchantAccountId: { type: "integer", minimum: 1 },
               shopIds: {
                 type: "array",
@@ -4168,6 +4173,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { type: "integer", minimum: 1 }
           },
           ...affiliateEditableTaskProperties
+        }
+      },
+      AffiliateTaskTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "description", "sourceLocale", "isInitialCopy"],
+        properties: {
+          name: affiliateEditableTaskProperties.name,
+          description: affiliateEditableTaskProperties.description,
+          sourceLocale: { type: "string", enum: affiliateContentLocales },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      AffiliateTaskTranslations: {
+        type: "object",
+        additionalProperties: false,
+        required: affiliateContentLocales,
+        properties: Object.fromEntries(
+          affiliateContentLocales.map((locale) => [
+            locale,
+            { $ref: "#/components/schemas/AffiliateTaskTranslation" }
+          ])
+        )
+      },
+      AffiliateTaskTranslationUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["lockVersion", "name", "description"],
+        properties: {
+          lockVersion: { type: "integer", minimum: 1 },
+          name: affiliateEditableTaskProperties.name,
+          description: affiliateEditableTaskProperties.description,
+          syncToAll: { type: "boolean", default: false }
         }
       },
       AffiliateTaskPage: {
@@ -4224,6 +4262,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "taskCode",
+          "translations",
           "name",
           "description",
           "coverMediaAssetId",
@@ -4254,6 +4293,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer", minimum: 1 },
           taskCode: { type: "string", maxLength: 80 },
+          translations: { $ref: "#/components/schemas/AffiliateTaskTranslations" },
           name: affiliateEditableTaskProperties.name,
           description: affiliateEditableTaskProperties.description,
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
@@ -6060,6 +6100,36 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": jsonDataResponse("Updated affiliate task draft", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/tasks/{taskId}/locales/{locale}`]: {
+      put: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "Update one authored task language or explicitly synchronize it to all languages",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter("taskId"),
+          {
+            name: "locale",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: affiliateContentLocales }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateTaskTranslationUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated affiliate task language", {
             $ref: "#/components/schemas/AffiliateTask"
           }),
           ...affiliateTaskErrorResponses

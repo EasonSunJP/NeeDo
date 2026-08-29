@@ -11,11 +11,13 @@ import { AffiliateTaskService } from "../services/affiliate-task.service";
 import { LedgerService } from "../services/ledger.service";
 import {
   affiliateTaskIdParamSchema,
+  affiliateTaskLocaleParamSchema,
   affiliateTaskListQuerySchema,
   backofficeAffiliateTaskListQuerySchema,
   createAffiliateTaskBodySchema,
   rejectAffiliateTaskBodySchema,
-  updateAffiliateTaskBodySchema
+  updateAffiliateTaskBodySchema,
+  updateAffiliateTaskTranslationBodySchema
 } from "../validators/affiliate-task.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -75,6 +77,16 @@ export const createAffiliateTaskRoutes = (
       body: updateAffiliateTaskBodySchema
     }),
     controller.updateDraft
+  );
+  router.put(
+    "/merchant-admin/affiliate/tasks/:taskId/locales/:locale",
+    authenticate(),
+    createAuthorizeMiddleware(AFFILIATE_TASK_ROUTE_PERMISSIONS.merchantCreate),
+    validateRequest({
+      params: affiliateTaskLocaleParamSchema,
+      body: updateAffiliateTaskTranslationBodySchema
+    }),
+    controller.updateDraftLocale
   );
   router.post(
     "/merchant-admin/affiliate/tasks/:taskId/submit",

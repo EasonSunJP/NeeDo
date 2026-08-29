@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { ContentLocale, Prisma, type PrismaClient } from "@prisma/client";
+import type { ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
 import type {
   AffiliateClaimPersistenceInput,
@@ -27,6 +28,10 @@ import {
 type AffiliatePrismaClient = PrismaClient | Prisma.TransactionClient;
 
 const taskInclude = {
+  translations: {
+    where: { deletedAt: null },
+    orderBy: { id: "asc" as const }
+  },
   coverMediaAsset: true,
   shops: {
     where: { deletedAt: null },
@@ -339,7 +344,21 @@ export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepos
     }
     if (input.keyword?.trim()) {
       const keyword = `%${input.keyword.trim()}%`;
-      conditions.push(Prisma.sql`(task.name LIKE ${keyword} OR task.task_code LIKE ${keyword})`);
+      conditions.push(
+        Prisma.sql`(
+          task.name LIKE ${keyword}
+          OR task.task_code LIKE ${keyword}
+          OR EXISTS (
+            SELECT 1 FROM affiliate_task_translations AS translation
+            WHERE translation.task_id = task.id
+              AND translation.deleted_at IS NULL
+              AND (
+                translation.name LIKE ${keyword}
+                OR translation.description LIKE ${keyword}
+              )
+          )
+        )`
+      );
     }
     if (input.shopId) {
       conditions.push(
@@ -415,6 +434,17 @@ export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepos
       publisherType: task.publisherType.toLowerCase() as AffiliatePublisherType,
       publisherMerchantAccountId: task.publisherMerchantAccountId,
       publisherShopId: task.publisherShopId,
+      translations: Object.fromEntries(
+        task.translations.map((translation) => [
+          this.localeFromDb(translation.locale),
+          {
+            name: translation.name,
+            description: translation.description,
+            sourceLocale: this.localeFromDb(translation.sourceLocale),
+            isInitialCopy: translation.isInitialCopy
+          }
+        ])
+      ) as AffiliateMarketplaceTaskRecord["translations"],
       name: task.name,
       description: task.description,
       coverMediaAssetId: task.coverMediaAssetId,
@@ -515,6 +545,17 @@ export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepos
       revoked: "REVOKED"
     } as const;
     return values[status];
+  }
+
+  private localeFromDb(locale: ContentLocale): ContentLocaleCode {
+    const values: Record<ContentLocale, ContentLocaleCode> = {
+      [ContentLocale.ZH_CN]: "zh-CN",
+      [ContentLocale.ZH_TW]: "zh-TW",
+      [ContentLocale.EN]: "en",
+      [ContentLocale.JA]: "ja",
+      [ContentLocale.KO]: "ko"
+    };
+    return values[locale];
   }
 
   private canStartTransaction(client: AffiliatePrismaClient): client is PrismaClient {

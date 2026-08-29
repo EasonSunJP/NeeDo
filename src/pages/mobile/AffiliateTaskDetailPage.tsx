@@ -8,7 +8,10 @@ import {
 import { businessNavItems } from "../../components/mobile/businessNavItems";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { getRemainingPercent } from "../../features/affiliate-marketplace/model";
+import {
+  getLocalizedTaskContent,
+  getRemainingPercent
+} from "../../features/affiliate-marketplace/model";
 import { useI18n } from "../../i18n/I18nProvider";
 import { languageLocales, translateText } from "../../i18n/translations";
 
@@ -80,7 +83,14 @@ export function AffiliateTaskDetailPage() {
     return () => controller.abort();
   }, [loadVersion, numericTaskId, validTaskId]);
 
-  const gallery = useMemo(() => (task ? getGallery(task) : []), [task]);
+  const content = useMemo(
+    () => (task ? getLocalizedTaskContent(task, language) : null),
+    [language, task]
+  );
+  const gallery = useMemo(
+    () => (task ? getGallery({ ...task, name: content?.name ?? task.name }) : []),
+    [content?.name, task]
+  );
   const activeImage =
     gallery.find((image) => image.url === selectedImageUrl) ?? gallery[0] ?? null;
   const shop = task?.shops[0];
@@ -127,7 +137,7 @@ export function AffiliateTaskDetailPage() {
         backLabel={t("返回")}
         info={t("任务名称")}
         onBack={() => navigate(-1)}
-        title={task?.name ?? t("任务详细")}
+        title={content?.name ?? t("任务详细")}
       />
       <main className="space-y-5 px-4 pb-40 pt-3">
         {!validTaskId ? (
@@ -249,7 +259,7 @@ export function AffiliateTaskDetailPage() {
                     {t("注意事项")}
                   </dt>
                   <dd className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[color:var(--client-text)]">
-                    {task.description || t("请按照任务规则完成推广与订单归因。")}
+                    {content?.description || t("请按照任务规则完成推广与订单归因。")}
                   </dd>
                 </div>
                 <div className="py-4">
