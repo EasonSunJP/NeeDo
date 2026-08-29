@@ -18,6 +18,7 @@ describe("RealtimeService fuzzy search", () => {
       )
     ).resolves.toBe(directoryResult);
     expect(repository.searchDirectory).toHaveBeenCalledWith(41, {
+      ownerIdentityId: 41,
       query: "u0000000167",
       page: 1,
       pageSize: 50
@@ -37,6 +38,7 @@ describe("RealtimeService fuzzy search", () => {
 
     expect(repository.addContact).toHaveBeenCalledWith({
       contactUserId: 167,
+      ownerIdentityId: 41,
       ownerUserId: 41,
       source: "manual"
     });
@@ -234,6 +236,7 @@ describe("RealtimeService standard message recall", () => {
     expect(repository.recallMessage).toHaveBeenCalledWith({
       conversationId: 91,
       messageId: 700,
+      senderIdentityId: 1,
       senderUserId: 1,
       now: expect.any(Date)
     });
@@ -352,6 +355,7 @@ describe("RealtimeService group privacy and membership", () => {
     ).resolves.toBe(conversation);
 
     expect(repository.updateConversationPrivacy).toHaveBeenCalledWith({
+      actorIdentityId: 1,
       actorUserId: 1,
       conversationId: 91,
       privacyModeEnabled: true,
@@ -386,6 +390,7 @@ describe("RealtimeService group privacy and membership", () => {
     await expect(service.leaveConversation({ userId: 1 } as never, 91, 2)).resolves.toBe(result);
     expect(repository.leaveConversation).toHaveBeenCalledWith({
       conversationId: 91,
+      identityId: 1,
       userId: 1,
       transferOwnerUserId: 2
     });
@@ -431,6 +436,7 @@ describe("RealtimeService group privacy and membership", () => {
     await expect(service.dissolveConversation({ userId: 1 } as never, 91)).resolves.toBe(result);
     expect(repository.dissolveConversation).toHaveBeenCalledWith({
       conversationId: 91,
+      ownerIdentityId: 1,
       ownerUserId: 1
     });
     expect(eventGateway.publish).toHaveBeenCalledWith(
@@ -453,6 +459,7 @@ describe("RealtimeService group privacy and membership", () => {
     ).resolves.toBe(conversation);
     expect(repository.clearConversationMessages).toHaveBeenCalledWith({
       conversationId: 91,
+      identityId: 1,
       userId: 1
     });
   });

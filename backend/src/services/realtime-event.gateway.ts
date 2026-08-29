@@ -5,13 +5,14 @@ export interface RealtimeEvent {
   id: string;
   type: string;
   recipientUserId: number;
+  recipientIdentityId?: number;
   payload: unknown;
   createdAt: string;
 }
 
 export interface RealtimeEventGatewayPort {
   publish: (event: RealtimeEvent) => void;
-  subscribe: (userId: number, response: Response) => Promise<() => void> | (() => void);
+  subscribe: (identityId: number, response: Response) => Promise<() => void> | (() => void);
   close?: () => Promise<void>;
 }
 
@@ -82,7 +83,7 @@ export class SseRealtimeEventGateway implements RealtimeEventGatewayPort {
     }
   }
 
-  public async subscribe(userId: number, response: Response): Promise<() => void> {
+  public async subscribe(identityId: number, response: Response): Promise<() => void> {
     await this.ensureEventBusSubscription();
 
     response.status(200);
@@ -92,9 +93,9 @@ export class SseRealtimeEventGateway implements RealtimeEventGatewayPort {
     response.setHeader("X-Accel-Buffering", "no");
     response.flushHeaders?.();
 
-    const userSubscribers = this.subscribers.get(userId) ?? new Set<Response>();
+    const userSubscribers = this.subscribers.get(identityId) ?? new Set<Response>();
     userSubscribers.add(response);
-    this.subscribers.set(userId, userSubscribers);
+    this.subscribers.set(identityId, userSubscribers);
 
     const heartbeat: { timer?: ReturnType<typeof setInterval> } = {};
     let active = true;
@@ -108,7 +109,7 @@ export class SseRealtimeEventGateway implements RealtimeEventGatewayPort {
       }
       userSubscribers.delete(response);
       if (userSubscribers.size === 0) {
-        this.subscribers.delete(userId);
+        this.subscribers.delete(identityId);
       }
     };
 
@@ -124,8 +125,9 @@ export class SseRealtimeEventGateway implements RealtimeEventGatewayPort {
         this.formatEvent("connected", {
           id: this.createEventId(),
           type: "connected",
-          recipientUserId: userId,
-          payload: { userId },
+          recipientUserId: identityId,
+          recipientIdentityId: identityId,
+          payload: { identityId },
           createdAt: new Date().toISOString()
         }),
         unsubscribe
@@ -151,7 +153,8 @@ export class SseRealtimeEventGateway implements RealtimeEventGatewayPort {
   }
 
   private fanOut(event: RealtimeEvent): void {
-    const userSubscribers = this.subscribers.get(event.recipientUserId);
+    const recipientKey = event.recipientIdentityId ?? event.recipientUserId;
+    const userSubscribers = this.subscribers.get(recipientKey);
 
     if (!userSubscribers || userSubscribers.size === 0) {
       return;
@@ -161,7 +164,7 @@ export class SseRealtimeEventGateway implements RealtimeEventGatewayPort {
       this.write(response, this.formatEvent(event.type, event), () => {
         userSubscribers.delete(response);
         if (userSubscribers.size === 0) {
-          this.subscribers.delete(event.recipientUserId);
+          this.subscribers.delete(recipientKey);
         }
       });
     }

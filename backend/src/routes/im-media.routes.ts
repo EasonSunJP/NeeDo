@@ -26,7 +26,8 @@ export const createImMediaRoutes = (config: AppConfig, dependencies: AppDependen
       new ImMediaService(
         dependencies.realtimeRepository!,
         dependencies.imMediaStorage ?? new ImMediaFileStorage(config.IM_MEDIA_STORAGE_DIR),
-        publicBaseUrl
+        publicBaseUrl,
+        dependencies.personalIdentityScopeService
       )
   );
 

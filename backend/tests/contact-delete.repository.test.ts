@@ -39,7 +39,7 @@ describe("RealtimeRepository contact deletion", () => {
     expect(contactFindFirst).toHaveBeenCalledWith({
       where: {
         id: 31,
-        ownerUserId: 41,
+        ownerIdentityId: 41,
         deletedAt: null,
         contactUser: { deletedAt: null, isActive: true }
       },

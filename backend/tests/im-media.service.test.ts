@@ -24,17 +24,23 @@ describe("ImMediaService", () => {
     const service = new ImMediaService(
       repository as never,
       new ImMediaFileStorage(directory),
-      "https://media.needo.test/media/im"
+      "https://media.needo.test/media/im",
+      {
+        resolve: jest.fn(async () => ({ identityId: 71, userId: 41, identityType: "technician" }))
+      } as never
     );
 
-    const result = await service.upload({ userId: 41 } as never, {
+    const result = await service.upload(
+      { userId: 41, currentIdentityId: 71, currentIdentityType: "technician" } as never,
+      {
       bytes: pngBytes,
       conversationId: 91,
       fileName: "album.png",
       mimeType: "image/png"
-    });
+      }
+    );
 
-    expect(repository.getConversationForUser).toHaveBeenCalledWith(91, 41);
+    expect(repository.getConversationForUser).toHaveBeenCalledWith(91, 71, 41);
     expect(result).toMatchObject({
       fileName: "album.png",
       fileSize: pngBytes.length,

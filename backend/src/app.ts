@@ -17,7 +17,7 @@ import {
 import { createTracingMiddleware } from "./middlewares/tracing.middleware";
 import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
 import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
-import type { AuthRepositoryPort } from "./repositories/auth.repository";
+import { AuthRepository, type AuthRepositoryPort } from "./repositories/auth.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
 import type {
   AffiliateTaskRepositoryPort,
@@ -149,6 +149,7 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import {
   ObservabilityMetricsService,
   type ObservabilityMetricsPort
@@ -232,6 +233,7 @@ export interface AppDependencies {
   realtimeRepository?: RealtimeRepositoryPort;
   realtimeEventGateway?: RealtimeEventGatewayPort;
   realtimeService?: RealtimeService;
+  personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
   exchangeService?: ExchangeService;
@@ -271,15 +273,21 @@ export const createApp = (
 
   const realtimeRepository = dependencies.realtimeRepository ?? new RealtimeRepository();
   const realtimeEventGateway = dependencies.realtimeEventGateway ?? new SseRealtimeEventGateway();
+  const authRepository = dependencies.authRepository ?? new AuthRepository();
+  const personalIdentityScopeService =
+    dependencies.personalIdentityScopeService ?? new PersonalIdentityScopeService(authRepository);
   const realtimeService =
-    dependencies.realtimeService ?? new RealtimeService(realtimeRepository, realtimeEventGateway);
+    dependencies.realtimeService ??
+    new RealtimeService(realtimeRepository, realtimeEventGateway, personalIdentityScopeService);
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
     databaseHealthCheck: dependencies.databaseHealthCheck ?? checkDatabaseHealth,
     metricsService,
+    authRepository,
     realtimeRepository,
     realtimeEventGateway,
-    realtimeService
+    realtimeService,
+    personalIdentityScopeService
   };
 
   apiRouter.use(createHealthRoutes(config, resolvedDependencies));

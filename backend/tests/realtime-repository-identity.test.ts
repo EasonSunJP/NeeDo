@@ -175,7 +175,7 @@ describe("RealtimeRepository formal identity payloads", () => {
     expect(client.contact.findFirst).toHaveBeenCalledWith({
       where: {
         id: 4056,
-        ownerUserId: 137,
+        ownerIdentityId: 137,
         deletedAt: null,
         contactUser: { deletedAt: null, isActive: true }
       },

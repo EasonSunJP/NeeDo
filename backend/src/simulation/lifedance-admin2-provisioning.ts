@@ -263,11 +263,33 @@ const ensureBidirectionalContact = async (
     [leftUserId, rightUserId],
     [rightUserId, leftUserId]
   ] as const) {
+    const [ownerIdentity, contactIdentity] = await Promise.all([
+      tx.userIdentity.findFirst({
+        where: { userId: ownerUserId, isActive: true, deletedAt: null },
+        orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+        select: { id: true }
+      }),
+      tx.userIdentity.findFirst({
+        where: { userId: contactUserId, isActive: true, deletedAt: null },
+        orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+        select: { id: true }
+      })
+    ]);
+    if (!ownerIdentity || !contactIdentity) {
+      throw new Error("LifeDance admin contact identities are missing");
+    }
     await tx.contact.upsert({
-      where: { ownerUserId_contactUserId: { ownerUserId, contactUserId } },
+      where: {
+        ownerIdentityId_contactIdentityId: {
+          ownerIdentityId: ownerIdentity.id,
+          contactIdentityId: contactIdentity.id
+        }
+      },
       create: {
         ownerUserId,
+        ownerIdentityId: ownerIdentity.id,
         contactUserId,
+        contactIdentityId: contactIdentity.id,
         source: "lifedance_admin2_seed"
       },
       update: {

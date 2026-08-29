@@ -21,6 +21,10 @@ import type {
 } from "../repositories/realtime.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { RealtimeEventGatewayPort } from "./realtime-event.gateway";
+import type {
+  PersonalIdentityActor,
+  PersonalIdentityScope
+} from "./personal-identity-scope.service";
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 
@@ -43,12 +47,18 @@ export interface OrderStatusNotificationPort {
 export class RealtimeService implements OrderStatusNotificationPort {
   public constructor(
     private readonly repository: RealtimeRepositoryPort,
-    private readonly eventGateway: RealtimeEventGatewayPort
+    private readonly eventGateway: RealtimeEventGatewayPort,
+    private readonly personalIdentityScope?: {
+      resolve: (actor: PersonalIdentityActor) => Promise<PersonalIdentityScope>;
+    }
   ) {}
 
   public async createConversation(
     auth: AuthenticatedAccessContext,
-    input: Omit<CreateConversationInput, "creatorUserId">
+    input: Omit<
+      CreateConversationInput,
+      "creatorUserId" | "creatorIdentityId" | "participantIdentities"
+    >
   ): Promise<ConversationPayload> {
     const participantUserIds = Array.from(new Set([auth.userId, ...input.participantUserIds]));
 
@@ -61,12 +71,24 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     await this.assertActiveUsers(participantUserIds);
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const participantIdentities = await Promise.all(
+      participantUserIds.map(async (userId) => ({
+        userId,
+        identityId:
+          userId === auth.userId
+            ? scope.identityId
+            : await this.requireCanonicalTargetIdentity(userId)
+      }))
+    );
 
     return this.repository.createConversation({
       creatorUserId: auth.userId,
+      creatorIdentityId: scope.identityId,
       type: input.type,
       title: input.title,
       participantUserIds: input.participantUserIds,
+      participantIdentities,
       privacyModeEnabled: input.privacyModeEnabled,
       hideMemberProfiles: input.hideMemberProfiles,
       disappearingTtlSeconds: input.disappearingTtlSeconds,
@@ -78,20 +100,29 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<UpdateConversationPrivacyInput, "actorUserId">
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const conversation = await this.repository.updateConversationPrivacy({
       ...input,
-      actorUserId: auth.userId
+      actorUserId: auth.userId,
+      actorIdentityId: scope.identityId
     });
 
     if (!conversation) {
       throw this.notFoundError("error.realtime.group_conversation_not_found");
     }
 
-    for (const participant of conversation.participants) {
+    const recipients = this.repository.listConversationRecipients
+      ? await this.repository.listConversationRecipients(input.conversationId)
+      : conversation.participants.map((participant) => ({
+          userId: participant.userId,
+          identityId: participant.userId
+        }));
+    for (const participant of recipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: "conversation.privacy.updated",
         recipientUserId: participant.userId,
+        recipientIdentityId: participant.identityId,
         payload: conversation,
         createdAt: new Date().toISOString()
       });
@@ -105,9 +136,14 @@ export class RealtimeService implements OrderStatusNotificationPort {
     conversationId: number,
     transferOwnerUserId?: number
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const recipients = this.repository.listConversationRecipients
+      ? await this.repository.listConversationRecipients(conversationId)
+      : [];
     const outcome = await this.repository.leaveConversation({
       conversationId,
       userId: auth.userId,
+      identityId: scope.identityId,
       transferOwnerUserId
     });
 
@@ -123,11 +159,15 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
     const { result } = outcome;
 
-    for (const recipientUserId of result.recipientUserIds) {
+    const eventRecipients = recipients.length > 0
+      ? recipients
+      : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
+    for (const recipient of eventRecipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: result.dissolved ? "conversation.dissolved" : "conversation.member.left",
-        recipientUserId,
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
         payload: result,
         createdAt: new Date().toISOString()
       });
@@ -140,20 +180,29 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     conversationId: number
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const recipients = this.repository.listConversationRecipients
+      ? await this.repository.listConversationRecipients(conversationId)
+      : [];
     const result = await this.repository.dissolveConversation({
       conversationId,
-      ownerUserId: auth.userId
+      ownerUserId: auth.userId,
+      ownerIdentityId: scope.identityId
     });
 
     if (!result) {
       throw this.notFoundError("error.realtime.group_conversation_not_found");
     }
 
-    for (const recipientUserId of result.recipientUserIds) {
+    const eventRecipients = recipients.length > 0
+      ? recipients
+      : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
+    for (const recipient of eventRecipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: "conversation.dissolved",
-        recipientUserId,
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
         payload: result,
         createdAt: new Date().toISOString()
       });
@@ -162,15 +211,21 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return result;
   }
 
-  public listConversations(auth: AuthenticatedAccessContext, input: PaginationInput) {
-    return this.repository.listConversations(auth.userId, input);
+  public async listConversations(auth: AuthenticatedAccessContext, input: PaginationInput) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.listConversations(scope.identityId, input);
   }
 
   public async createMessage(
     auth: AuthenticatedAccessContext,
     input: Omit<CreateMessageInput, "senderUserId">
   ) {
-    if (await this.repository.isMessageSenderBlocked(input.conversationId, auth.userId)) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    if (await this.repository.isMessageSenderBlocked(
+      input.conversationId,
+      auth.userId,
+      scope.identityId
+    )) {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
         message: "error.im.recipient_blocked",
@@ -180,22 +235,31 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
     const message = await this.repository.createMessage({
       ...input,
-      senderUserId: auth.userId
+      senderUserId: auth.userId,
+      senderIdentityId: scope.identityId
     });
 
     if (!message) {
       throw this.notFoundError("error.realtime.conversation_not_found");
     }
 
-    await this.publishToConversation(input.conversationId, "message.created", message, auth.userId);
+    await this.publishToConversation(
+      input.conversationId,
+      "message.created",
+      message,
+      auth.userId,
+      scope.identityId
+    );
 
     return message;
   }
 
   public async listMessages(auth: AuthenticatedAccessContext, input: ListMessagesInput) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const messages = await this.repository.listMessages({
       ...input,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
 
     if (!messages) {
@@ -209,9 +273,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: { conversationId: number; messageId: number }
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const deleted = await this.repository.deleteMessageForUser({
       ...input,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
     if (!deleted) throw this.notFoundError("error.realtime.message_not_found");
     return deleted;
@@ -221,9 +287,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<MessageReactionMutationInput, "userId">
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const message = await this.repository.setMessageReaction({
       ...input,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
     if (!message) throw this.notFoundError("error.realtime.message_not_found");
 
@@ -231,7 +299,8 @@ export class RealtimeService implements OrderStatusNotificationPort {
       input.conversationId,
       "message.reaction.updated",
       message,
-      auth.userId
+      auth.userId,
+      scope.identityId
     );
     return message;
   }
@@ -240,9 +309,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<MessageReactionMutationInput, "userId">
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const message = await this.repository.removeMessageReaction({
       ...input,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
     if (!message) throw this.notFoundError("error.realtime.message_not_found");
 
@@ -250,7 +321,8 @@ export class RealtimeService implements OrderStatusNotificationPort {
       input.conversationId,
       "message.reaction.updated",
       message,
-      auth.userId
+      auth.userId,
+      scope.identityId
     );
     return message;
   }
@@ -259,10 +331,12 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: { conversationId: number; messageId: number; mode: "standard" }
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const outcome = await this.repository.recallMessage({
       conversationId: input.conversationId,
       messageId: input.messageId,
       senderUserId: auth.userId,
+      senderIdentityId: scope.identityId,
       now: new Date()
     });
 
@@ -281,7 +355,8 @@ export class RealtimeService implements OrderStatusNotificationPort {
         input.conversationId,
         "message.recalled",
         outcome.message,
-        auth.userId
+        auth.userId,
+        scope.identityId
       );
     }
 
@@ -294,9 +369,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
   }
 
   public async markConversationRead(auth: AuthenticatedAccessContext, conversationId: number) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const result = await this.repository.markConversationRead({
       conversationId,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
 
     if (!result) {
@@ -307,6 +384,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       id: this.createEventId(),
       type: "conversation.read",
       recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
       payload: result,
       createdAt: new Date().toISOString()
     });
@@ -315,9 +393,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
   }
 
   public async markConversationUnread(auth: AuthenticatedAccessContext, conversationId: number) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const conversation = await this.repository.markConversationUnread({
       conversationId,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
     if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
     return conversation;
@@ -327,18 +407,22 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<UpdateConversationPreferencesInput, "userId">
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const conversation = await this.repository.updateConversationPreferences({
       ...input,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
     if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
     return conversation;
   }
 
   public async hideConversation(auth: AuthenticatedAccessContext, conversationId: number) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const conversation = await this.repository.hideConversation({
       conversationId,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
     if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
     return conversation;
@@ -348,20 +432,27 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     conversationId: number
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const conversation = await this.repository.clearConversationMessages({
       conversationId,
-      userId: auth.userId
+      userId: auth.userId,
+      identityId: scope.identityId
     });
     if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
     return conversation;
   }
 
-  public listContacts(auth: AuthenticatedAccessContext, input: PaginationInput) {
-    return this.repository.listContacts(auth.userId, input);
+  public async listContacts(auth: AuthenticatedAccessContext, input: PaginationInput) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.listContacts(scope.identityId, input);
   }
 
-  public searchDirectory(auth: AuthenticatedAccessContext, input: DirectorySearchInput) {
-    return this.repository.searchDirectory(auth.userId, input);
+  public async searchDirectory(auth: AuthenticatedAccessContext, input: DirectorySearchInput) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.searchDirectory(auth.userId, {
+      ...input,
+      ownerIdentityId: scope.identityId
+    });
   }
 
   public async addContact(auth: AuthenticatedAccessContext, contactUserId: number) {
@@ -370,8 +461,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     await this.assertActiveUsers([contactUserId]);
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const contact = await this.repository.addContact({
       ownerUserId: auth.userId,
+      ownerIdentityId: scope.identityId,
       contactUserId,
       source: "manual"
     });
@@ -379,6 +472,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       id: this.createEventId(),
       type: "contact.updated",
       recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
       payload: contact,
       createdAt: new Date().toISOString()
     });
@@ -390,9 +484,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     contactId: number,
     isBlocked: boolean
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const contact = await this.repository.setContactBlocked({
       contactId,
       ownerUserId: auth.userId,
+      ownerIdentityId: scope.identityId,
       isBlocked
     });
     if (!contact) throw this.notFoundError("error.realtime.contact_not_found");
@@ -401,6 +497,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       id: this.createEventId(),
       type: "contact.updated",
       recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
       payload: contact,
       createdAt: new Date().toISOString()
     });
@@ -408,9 +505,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
   }
 
   public async deleteContact(auth: AuthenticatedAccessContext, contactId: number) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const contact = await this.repository.deleteContact({
       contactId,
-      ownerUserId: auth.userId
+      ownerUserId: auth.userId,
+      ownerIdentityId: scope.identityId
     });
     if (!contact) throw this.notFoundError("error.realtime.contact_not_found");
 
@@ -418,6 +517,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       id: this.createEventId(),
       type: "contact.updated",
       recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
       payload: contact,
       createdAt: new Date().toISOString()
     });
@@ -433,15 +533,20 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     await this.assertActiveUsers([input.targetUserId]);
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const targetIdentityId = await this.requireCanonicalTargetIdentity(input.targetUserId);
     const friendRequest = await this.repository.createFriendRequest({
       requesterUserId: auth.userId,
+      requesterIdentityId: scope.identityId,
       targetUserId: input.targetUserId,
+      targetIdentityId,
       message: input.message
     });
     this.eventGateway.publish({
       id: this.createEventId(),
       type: "friend_request.created",
       recipientUserId: input.targetUserId,
+      recipientIdentityId: targetIdentityId,
       payload: friendRequest,
       createdAt: new Date().toISOString()
     });
@@ -449,8 +554,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return friendRequest;
   }
 
-  public listFriendRequests(auth: AuthenticatedAccessContext, input: FriendRequestListInput) {
-    return this.repository.listFriendRequests(auth.userId, input);
+  public async listFriendRequests(auth: AuthenticatedAccessContext, input: FriendRequestListInput) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.listFriendRequests(scope.identityId, input);
   }
 
   public async respondToFriendRequest(
@@ -458,9 +564,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     id: number,
     action: "accept" | "reject"
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const friendRequest = await this.repository.respondToFriendRequest({
       id,
       actorUserId: auth.userId,
+      actorIdentityId: scope.identityId,
       action
     });
 
@@ -654,7 +762,8 @@ export class RealtimeService implements OrderStatusNotificationPort {
   }
 
   public async streamEvents(auth: AuthenticatedAccessContext, response: Response): Promise<void> {
-    await this.eventGateway.subscribe(auth.userId, response);
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    await this.eventGateway.subscribe(scope.identityId, response);
   }
 
   public async notifyOrderStatusChanged(input: OrderStatusNotificationInput): Promise<void> {
@@ -689,19 +798,52 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
   }
 
+  private resolvePersonalIdentityScope(
+    auth: AuthenticatedAccessContext
+  ): Promise<PersonalIdentityScope> {
+    if (this.personalIdentityScope) {
+      return this.personalIdentityScope.resolve(auth);
+    }
+
+    return Promise.resolve({
+      identityId: auth.currentIdentityId ?? auth.userId,
+      userId: auth.userId,
+      identityType: auth.currentIdentityType ?? "customer"
+    });
+  }
+
+  private async requireCanonicalTargetIdentity(userId: number): Promise<number> {
+    const identityId = await this.repository.findCanonicalIdentityIdForUser(userId);
+    if (!identityId) {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    return identityId;
+  }
+
   private async publishToConversation(
     conversationId: number,
     type: string,
     payload: unknown,
-    senderUserId: number
+    senderUserId: number,
+    senderIdentityId: number
   ): Promise<void> {
-    const conversation = await this.repository.getConversationForUser(conversationId, senderUserId);
+    const recipients = this.repository.listConversationRecipients
+      ? await this.repository.listConversationRecipients(conversationId)
+      : (await this.repository.getConversationForUser(
+          conversationId,
+          senderIdentityId,
+          senderUserId
+        ))?.participants.map((participant) => ({
+          userId: participant.userId,
+          identityId: participant.userId
+        })) ?? [];
 
-    for (const participant of conversation?.participants ?? []) {
+    for (const participant of recipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type,
         recipientUserId: participant.userId,
+        recipientIdentityId: participant.identityId,
         payload,
         createdAt: new Date().toISOString()
       });

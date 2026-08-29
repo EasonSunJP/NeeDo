@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 
 const createdAt = new Date("2026-08-28T00:00:00.000Z");
@@ -105,6 +105,7 @@ describe("RealtimeRepository standard recall", () => {
       where: {
         id: 41,
         conversationId: 3,
+        senderIdentityId: 7,
         senderUserId: 7,
         recalledAt: null,
         recallMode: null,
@@ -113,7 +114,7 @@ describe("RealtimeRepository standard recall", () => {
       },
       data: {
         content: null,
-        metadata: expect.anything(),
+        metadata: Prisma.DbNull,
         recalledAt,
         recallMode: "STANDARD",
         contentPurgedAt: recalledAt,

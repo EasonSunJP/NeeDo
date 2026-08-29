@@ -27,14 +27,14 @@ describe("RealtimeRepository user-only message deletion", () => {
         deletedAt: null,
         conversation: {
           deletedAt: null,
-          participants: { some: { userId: 7, deletedAt: null } }
+          participants: { some: { identityId: 7, deletedAt: null } }
         }
       },
       select: { id: true }
     });
     expect(deletionUpsert).toHaveBeenCalledWith({
-      where: { userId_messageId: { userId: 7, messageId: 41 } },
-      create: { conversationId: 3, messageId: 41, userId: 7 },
+      where: { identityId_messageId: { identityId: 7, messageId: 41 } },
+      create: { conversationId: 3, messageId: 41, userId: 7, identityId: 7 },
       update: { deletedAt: null }
     });
     expect(auditCreate).toHaveBeenCalledWith({

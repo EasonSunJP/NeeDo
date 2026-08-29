@@ -24,6 +24,7 @@ describe("RealtimeService contact deletion", () => {
 
     expect(repository.deleteContact).toHaveBeenCalledWith({
       contactId: 31,
+      ownerIdentityId: 41,
       ownerUserId: 41
     });
     expect(eventGateway.publish).toHaveBeenCalledWith(

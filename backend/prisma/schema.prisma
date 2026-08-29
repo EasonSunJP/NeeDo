@@ -1752,6 +1752,7 @@ model Conversation {
   type                   ConversationType @default(DIRECT)
   title                  String?          @db.VarChar(120)
   createdByUserId        Int?             @map("created_by_user_id")
+  createdByIdentityId    Int?             @map("created_by_identity_id")
   privacyModeEnabled     Boolean          @default(false) @map("privacy_mode_enabled")
   hideMemberProfiles     Boolean          @default(false) @map("hide_member_profiles")
   disappearingTtlSeconds Int?             @map("disappearing_ttl_seconds")
@@ -1764,6 +1765,7 @@ model Conversation {
   deletedAt              DateTime?        @map("deleted_at")
 
   createdBy            User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByIdentity    UserIdentity?             @relation("ConversationCreatorIdentity", fields: [createdByIdentityId], references: [id], onDelete: SetNull)
   privacyUpdatedBy     User?                     @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
   participants         ConversationParticipant[]
   messages             Message[]
@@ -1772,6 +1774,7 @@ model Conversation {
 
   @@index([type])
   @@index([createdByUserId])
+  @@index([createdByIdentityId])
   @@index([privacyUpdatedByUserId])
   @@index([privacyModeEnabled, deletedAt])
   @@index([updatedAt])
@@ -1783,6 +1786,7 @@ model ConversationParticipant {
   id                      Int       @id @default(autoincrement())
   conversationId          Int       @map("conversation_id")
   userId                  Int       @map("user_id")
+  identityId              Int       @map("identity_id")
   role                    String    @default("member") @db.VarChar(50)
   unreadCount             Int       @default(0) @map("unread_count")
   isPinned                Boolean   @default(false) @map("is_pinned")
@@ -1797,11 +1801,13 @@ model ConversationParticipant {
 
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  identity        UserIdentity @relation("ConversationParticipantIdentity", fields: [identityId], references: [id], onDelete: Restrict)
   lastReadMessage Message?     @relation("ParticipantLastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
 
-  @@unique([conversationId, userId])
+  @@unique([conversationId, identityId])
   @@index([conversationId])
   @@index([userId])
+  @@index([identityId])
   @@index([userId, hiddenAt])
   @@index([conversationId, clearedThroughMessageId], map: "conv_participant_clear_cutoff_idx")
   @@index([lastReadMessageId])
@@ -1813,6 +1819,7 @@ model Message {
   id                         Int                @id @default(autoincrement())
   conversationId             Int                @map("conversation_id")
   senderUserId               Int?               @map("sender_user_id")
+  senderIdentityId           Int?               @map("sender_identity_id")
   type                       MessageType        @default(TEXT)
   content                    String?            @db.Text
   metadata                   Json?
@@ -1829,14 +1836,16 @@ model Message {
   updatedAt                  DateTime           @updatedAt @map("updated_at")
   deletedAt                  DateTime?          @map("deleted_at")
 
-  conversation  Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-  sender        User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
-  readMarkers   ConversationParticipant[] @relation("ParticipantLastReadMessage")
-  reactions     MessageReaction[]
-  userDeletions MessageUserDeletion[]
+  conversation   Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sender         User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  senderIdentity UserIdentity?             @relation("MessageSenderIdentity", fields: [senderIdentityId], references: [id], onDelete: SetNull)
+  readMarkers    ConversationParticipant[] @relation("ParticipantLastReadMessage")
+  reactions      MessageReaction[]
+  userDeletions  MessageUserDeletion[]
 
   @@index([conversationId, id])
   @@index([senderUserId])
+  @@index([senderIdentityId])
   @@index([type])
   @@index([createdAt])
   @@index([expiresAt, expiredAt, deletedAt])
@@ -1851,6 +1860,7 @@ model MessageUserDeletion {
   conversationId Int       @map("conversation_id")
   messageId      Int       @map("message_id")
   userId         Int       @map("user_id")
+  identityId     Int       @map("identity_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -1858,11 +1868,13 @@ model MessageUserDeletion {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   message      Message      @relation(fields: [messageId], references: [id], onDelete: Restrict)
   user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  identity     UserIdentity @relation("MessageUserDeletionIdentity", fields: [identityId], references: [id], onDelete: Restrict)
 
-  @@unique([userId, messageId])
+  @@unique([identityId, messageId])
   @@index([conversationId, userId, deletedAt], map: "message_user_deletion_conversation_user_idx")
   @@index([messageId, deletedAt], map: "message_user_deletion_message_idx")
   @@index([userId, deletedAt], map: "message_user_deletion_user_idx")
+  @@index([identityId, deletedAt], map: "message_user_deletion_identity_idx")
   @@map("message_user_deletions")
 }
 
@@ -1908,61 +1920,76 @@ model ImDeletionSync {
 }
 
 model MessageReaction {
-  id        Int       @id @default(autoincrement())
-  messageId Int       @map("message_id")
-  userId    Int       @map("user_id")
-  emoji     String    @db.VarChar(64)
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id         Int       @id @default(autoincrement())
+  messageId  Int       @map("message_id")
+  userId     Int       @map("user_id")
+  identityId Int       @map("identity_id")
+  emoji      String    @db.VarChar(64)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
-  message Message @relation(fields: [messageId], references: [id], onDelete: Restrict)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  message  Message      @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  identity UserIdentity @relation("MessageReactionIdentity", fields: [identityId], references: [id], onDelete: Restrict)
 
-  @@unique([messageId, userId, emoji])
+  @@unique([messageId, identityId, emoji])
   @@index([messageId])
   @@index([userId])
+  @@index([identityId])
   @@index([deletedAt])
   @@map("message_reactions")
 }
 
 model Contact {
-  id            Int       @id @default(autoincrement())
-  ownerUserId   Int       @map("owner_user_id")
-  contactUserId Int       @map("contact_user_id")
-  nickname      String?   @db.VarChar(120)
-  source        String    @default("manual") @db.VarChar(50)
-  blockedAt     DateTime? @map("blocked_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  deletedAt     DateTime? @map("deleted_at")
+  id                Int       @id @default(autoincrement())
+  ownerUserId       Int       @map("owner_user_id")
+  ownerIdentityId   Int       @map("owner_identity_id")
+  contactUserId     Int       @map("contact_user_id")
+  contactIdentityId Int       @map("contact_identity_id")
+  nickname          String?   @db.VarChar(120)
+  source            String    @default("manual") @db.VarChar(50)
+  blockedAt         DateTime? @map("blocked_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
 
-  owner       User @relation("ContactOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  contactUser User @relation("ContactUser", fields: [contactUserId], references: [id], onDelete: Restrict)
+  owner           User         @relation("ContactOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  ownerIdentity   UserIdentity @relation("ContactOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
+  contactUser     User         @relation("ContactUser", fields: [contactUserId], references: [id], onDelete: Restrict)
+  contactIdentity UserIdentity @relation("ContactTargetIdentity", fields: [contactIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([ownerUserId, contactUserId])
+  @@unique([ownerIdentityId, contactIdentityId])
   @@index([ownerUserId])
+  @@index([ownerIdentityId])
   @@index([contactUserId])
+  @@index([contactIdentityId])
   @@index([deletedAt])
   @@map("contacts")
 }
 
 model FriendRequest {
-  id              Int                 @id @default(autoincrement())
-  requesterUserId Int                 @map("requester_user_id")
-  targetUserId    Int                 @map("target_user_id")
-  status          FriendRequestStatus @default(PENDING)
-  message         String?             @db.VarChar(300)
-  respondedAt     DateTime?           @map("responded_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
-  deletedAt       DateTime?           @map("deleted_at")
+  id                  Int                 @id @default(autoincrement())
+  requesterUserId     Int                 @map("requester_user_id")
+  requesterIdentityId Int                 @map("requester_identity_id")
+  targetUserId        Int                 @map("target_user_id")
+  targetIdentityId    Int                 @map("target_identity_id")
+  status              FriendRequestStatus @default(PENDING)
+  message             String?             @db.VarChar(300)
+  respondedAt         DateTime?           @map("responded_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  deletedAt           DateTime?           @map("deleted_at")
 
-  requester User @relation("FriendRequestRequester", fields: [requesterUserId], references: [id], onDelete: Restrict)
-  target    User @relation("FriendRequestTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+  requester         User         @relation("FriendRequestRequester", fields: [requesterUserId], references: [id], onDelete: Restrict)
+  requesterIdentity UserIdentity @relation("FriendRequestRequesterIdentity", fields: [requesterIdentityId], references: [id], onDelete: Restrict)
+  target            User         @relation("FriendRequestTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+  targetIdentity    UserIdentity @relation("FriendRequestTargetIdentity", fields: [targetIdentityId], references: [id], onDelete: Restrict)
 
   @@index([requesterUserId])
+  @@index([requesterIdentityId])
   @@index([targetUserId])
+  @@index([targetIdentityId])
   @@index([status])
   @@index([createdAt])
   @@index([deletedAt])
@@ -2046,12 +2073,21 @@ model UserIdentity {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  publicIdentifier PublicIdentifier?
-  exchangePosts    ExchangePost[]    @relation("ExchangePostAuthorIdentity")
-  exchangeComments ExchangeComment[] @relation("ExchangeCommentAuthorIdentity")
-  exchangeLikes    ExchangeLike[]    @relation("ExchangeLikeActorIdentity")
-  exchangeShares   ExchangeShare[]   @relation("ExchangeShareActorIdentity")
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  publicIdentifier         PublicIdentifier?
+  exchangePosts            ExchangePost[]            @relation("ExchangePostAuthorIdentity")
+  exchangeComments         ExchangeComment[]         @relation("ExchangeCommentAuthorIdentity")
+  exchangeLikes            ExchangeLike[]            @relation("ExchangeLikeActorIdentity")
+  exchangeShares           ExchangeShare[]           @relation("ExchangeShareActorIdentity")
+  createdConversations     Conversation[]            @relation("ConversationCreatorIdentity")
+  conversationParticipants ConversationParticipant[] @relation("ConversationParticipantIdentity")
+  sentMessages             Message[]                 @relation("MessageSenderIdentity")
+  messageUserDeletions     MessageUserDeletion[]     @relation("MessageUserDeletionIdentity")
+  messageReactions         MessageReaction[]         @relation("MessageReactionIdentity")
+  ownedContacts            Contact[]                 @relation("ContactOwnerIdentity")
+  contactTargets           Contact[]                 @relation("ContactTargetIdentity")
+  requestedFriendRequests  FriendRequest[]           @relation("FriendRequestRequesterIdentity")
+  targetedFriendRequests   FriendRequest[]           @relation("FriendRequestTargetIdentity")
 
   @@index([userId])
   @@index([type])

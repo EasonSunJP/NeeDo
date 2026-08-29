@@ -4,12 +4,17 @@ import { RealtimeRepository } from "../src/repositories/realtime.repository";
 describe("RealtimeRepository technician application contact", () => {
   it("upserts bilateral contacts and reuses the exact existing direct conversation", async () => {
     const tx = {
+      userIdentity: {
+        findFirst: jest.fn(async ({ where }: { where: { userId: number } }) => ({
+          id: where.userId + 100
+        }))
+      },
       contact: { upsert: jest.fn().mockResolvedValue({ id: 1 }) },
       conversation: {
         findMany: jest.fn().mockResolvedValue([
           {
             id: 91,
-            participants: [{ userId: 7 }, { userId: 30 }]
+            participants: [{ identityId: 107 }, { identityId: 130 }]
           }
         ]),
         create: jest.fn()
@@ -29,8 +34,14 @@ describe("RealtimeRepository technician application contact", () => {
     ).resolves.toEqual({ conversationId: 91 });
     expect(tx.contact.upsert).toHaveBeenCalledTimes(2);
     expect(tx.contact.upsert).toHaveBeenNthCalledWith(1, {
-      where: { ownerUserId_contactUserId: { ownerUserId: 30, contactUserId: 7 } },
-      create: { ownerUserId: 30, contactUserId: 7, source: "technician_application" },
+      where: { ownerIdentityId_contactIdentityId: { ownerIdentityId: 130, contactIdentityId: 107 } },
+      create: {
+        ownerUserId: 30,
+        ownerIdentityId: 130,
+        contactUserId: 7,
+        contactIdentityId: 107,
+        source: "technician_application"
+      },
       update: { source: "technician_application", deletedAt: null }
     });
     expect(tx.conversation.create).not.toHaveBeenCalled();
@@ -38,6 +49,11 @@ describe("RealtimeRepository technician application contact", () => {
 
   it("creates one direct conversation with both participants when no exact conversation exists", async () => {
     const tx = {
+      userIdentity: {
+        findFirst: jest.fn(async ({ where }: { where: { userId: number } }) => ({
+          id: where.userId + 100
+        }))
+      },
       contact: { upsert: jest.fn().mockResolvedValue({ id: 1 }) },
       conversation: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -60,8 +76,12 @@ describe("RealtimeRepository technician application contact", () => {
       data: {
         type: "DIRECT",
         createdByUserId: 31,
+        createdByIdentityId: 131,
         participants: {
-          create: [{ userId: 30, role: "member" }, { userId: 7, role: "member" }]
+          create: [
+            { userId: 30, identityId: 130, role: "member" },
+            { userId: 7, identityId: 107, role: "member" }
+          ]
         }
       },
       select: { id: true }

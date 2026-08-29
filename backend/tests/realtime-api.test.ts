@@ -444,6 +444,16 @@ const createFixture = async () => {
     findActiveUserIds: jest.fn(async (ids: number[]) =>
       ids.filter((id) => users.some((user) => user.id === id))
     ),
+    findCanonicalIdentityIdForUser: jest.fn(async (userId: number) =>
+      users.find((user) => user.id === userId)?.identities[0]?.id ?? null
+    ),
+    listConversationRecipients: jest.fn(async (conversationIdToFind: number) => {
+      const conversation = conversations.find((item) => item.id === conversationIdToFind);
+      return (conversation?.participantUserIds ?? []).map((userId) => ({
+        userId,
+        identityId: users.find((user) => user.id === userId)?.identities[0]?.id ?? userId
+      }));
+    }),
     createConversation: jest.fn(
       async (input: {
         creatorUserId: number;
