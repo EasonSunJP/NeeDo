@@ -193,4 +193,3 @@ Expected: PASS.
 git add src/components/scheduling/ScheduleCycleCalendarBoard.tsx src/components/scheduling/ScheduleFrameLayout.test.ts src/components/merchant-admin/EmployeeSchedulePanel.test.tsx
 git commit -m "fix: render schedule months as weekly rows"
 ```
-

@@ -215,4 +215,3 @@ git status --short
 git add <only-files-fixed-during-verification>
 git commit -m "fix: complete employee and user management acceptance"
 ```
-

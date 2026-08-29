@@ -166,4 +166,3 @@ Run the same focused commands and expect PASS.
 git add backend/src/validators/backoffice.validator.ts backend/src/repositories/backoffice.repository.ts backend/src/services/backoffice.service.ts backend/src/controllers/backoffice.controller.ts backend/src/routes/backoffice.routes.ts backend/src/api/openapi.ts backend/tests/backoffice-api.test.ts backend/tests/backoffice-profile-detail-openapi.test.ts src/api/backofficeRealData.ts src/api/backofficeRealData.test.ts src/pages/merchant-admin/MerchantAdminPeoplePage.tsx src/pages/admin/UsersPage.tsx src/components/admin/FormalProfileDetailPanels.tsx
 git commit -m "feat: add scoped user activity timelines"
 ```
-
