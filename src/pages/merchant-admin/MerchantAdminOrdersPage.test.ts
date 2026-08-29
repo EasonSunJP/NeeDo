@@ -29,4 +29,14 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
     expect(source).toContain("再次点击确认收款");
     expect(source).toContain("再次点击确认退款");
   });
+
+  it("opens real user and employee detail cards in a stacked drawer", () => {
+    expect(source).toContain('title: "用户"');
+    expect(source).not.toContain('{ key: "customer", title: "顾客"');
+    expect(source).toContain('aria-label="查看用户资料"');
+    expect(source).toContain('aria-label="查看员工资料"');
+    expect(source).toContain("MerchantOrderParticipantDetailDrawer");
+    expect(source).toContain('setParticipant("customer")');
+    expect(source).toContain('setParticipant("technician")');
+  });
 });

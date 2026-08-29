@@ -104,11 +104,33 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
       select: {
         username: true;
         email: true;
+        customerProfile: {
+          select: {
+            id: true;
+          };
+        };
       };
     };
     service: true;
     shop: true;
-    technicianProfile: true;
+    technicianProfile: {
+      select: {
+        displayName: true;
+        user: {
+          select: {
+            identities: {
+              select: {
+                publicIdentifier: {
+                  select: {
+                    publicId: true;
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
+    };
   };
 }>;
 
@@ -1679,6 +1701,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
     return {
       deletedAt: null,
+      ...(profileType === "customer"
+        ? {
+            action: {
+              notIn: ["backoffice.customer.read", "merchant_admin.customer.read"]
+            }
+          }
+        : {}),
       AND: [
         {
           OR: [
@@ -1702,12 +1731,36 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       customer: {
         select: {
           username: true,
-          email: true
+          email: true,
+          customerProfile: { select: { id: true } }
         }
       },
       service: true,
       shop: true,
-      technicianProfile: true
+      technicianProfile: {
+        select: {
+          displayName: true,
+          user: {
+            select: {
+              identities: {
+                where: {
+                  type: "technician",
+                  isActive: true,
+                  deletedAt: null,
+                  publicIdentifier: {
+                    is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                  }
+                },
+                orderBy: { id: "asc" },
+                take: 1,
+                select: {
+                  publicIdentifier: { select: { publicId: true } }
+                }
+              }
+            }
+          }
+        }
+      }
     } satisfies Prisma.BookingOrderInclude;
   }
 
@@ -1776,12 +1829,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       status: this.statusFromDb(order.status),
       paymentStatus: this.paymentStatusFromDb(order.paymentStatus),
       customerUserId: order.customerUserId,
+      customerProfileId: order.customer.customerProfile?.id ?? null,
       customerName: order.customer.username || order.customer.email,
       serviceId: order.serviceId,
       serviceName: order.serviceNameSnapshot ?? order.service?.name ?? "Unknown service",
       shopId: order.shopId,
       shopName: order.shop.name,
       technicianProfileId: order.technicianProfileId,
+      technicianNeedoId:
+        order.technicianProfile?.user.identities[0]?.publicIdentifier?.publicId ?? null,
       technicianName: order.technicianProfile?.displayName ?? null,
       fulfillmentMode: order.fulfillmentMode,
       priceAmount: this.toNumber(order.priceAmount),

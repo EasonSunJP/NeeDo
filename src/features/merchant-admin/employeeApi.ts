@@ -67,7 +67,7 @@ export interface PaginatedMerchantEmployees {
   page_size: number;
 }
 
-export type EmployeeTimelineTone = "accent" | "red" | "neutral";
+export type EmployeeTimelineTone = "accent" | "green" | "red" | "neutral";
 
 export interface EmployeeTimelineEvent {
   id: string;

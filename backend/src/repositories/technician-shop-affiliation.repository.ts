@@ -495,25 +495,63 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       deletedAt: null
     } satisfies Prisma.AuditLogWhereInput;
     const { skip, take } = toPrismaPagination(input);
-    const [rows, total] = await this.client.$transaction([
-      this.client.auditLog.findMany({
-        where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip,
-        take,
+    const [affiliation, auditTotal] = await Promise.all([
+      this.client.technicianShopAffiliation.findFirst({
+        where: { id: input.affiliationId, shopId: input.shopId, deletedAt: null },
         select: {
-          id: true,
-          action: true,
-          metadata: true,
-          createdAt: true,
-          actor: { select: { username: true, avatarUrl: true } }
+          startsAt: true,
+          technicianProfile: { select: { verifiedAt: true } },
+          shop: { select: { name: true } }
         }
       }),
       this.client.auditLog.count({ where })
     ]);
+    const lifecycleEvents: EmployeeTimelineEventPayload[] = affiliation
+      ? [
+          {
+            id: `system-affiliation-${input.affiliationId}`,
+            at: affiliation.startsAt.toISOString(),
+            actorName: "NeeDo 系统",
+            actorAvatarUrl: null,
+            actorRole: "从属关系",
+            message: `加入店铺并建立员工从属关系 · ${affiliation.shop.name}`,
+            tone: "green" as const
+          },
+          ...(affiliation.technicianProfile.verifiedAt
+            ? [{
+                id: `system-verified-${input.affiliationId}`,
+                at: affiliation.technicianProfile.verifiedAt.toISOString(),
+                actorName: "NeeDo 系统",
+                actorAvatarUrl: null,
+                actorRole: "档案验证",
+                message: "员工档案已通过验证",
+                tone: "green" as const
+              }]
+            : [])
+        ]
+      : [];
+    const auditSkip = Math.max(0, skip - lifecycleEvents.length);
+    const auditTake = Math.min(
+      Math.max(0, auditTotal - auditSkip),
+      take + lifecycleEvents.length * 2
+    );
+    const rows = auditTake > 0
+      ? await this.client.auditLog.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip: auditSkip,
+          take: auditTake,
+          select: {
+            id: true,
+            action: true,
+            metadata: true,
+            createdAt: true,
+            actor: { select: { username: true, avatarUrl: true } }
+          }
+        })
+      : [];
 
-    return buildPaginatedResponse(
-      rows.map((row): EmployeeTimelineEventPayload => {
+    const auditEvents = rows.map((row): EmployeeTimelineEventPayload => {
         const metadata = auditMetadata(row.metadata);
         const blockingStatus =
           row.action === "merchant_admin.employee_affiliation.update" &&
@@ -527,10 +565,12 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
           message: timelineMessage(row.action, metadata),
           tone: blockingStatus ? "red" : "accent"
         };
-      }),
-      total,
-      input
-    );
+      });
+    const list = [...auditEvents, ...lifecycleEvents]
+      .sort((left, right) => right.at.localeCompare(left.at) || right.id.localeCompare(left.id))
+      .slice(skip - auditSkip, skip - auditSkip + take);
+
+    return buildPaginatedResponse(list, auditTotal + lifecycleEvents.length, input);
   }
 
   public async updateCurrentShopEmployeeProfile(

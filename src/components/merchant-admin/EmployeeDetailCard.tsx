@@ -95,6 +95,7 @@ interface EmployeeDetailCardProps {
   onSaveAffiliation: (
     input: MerchantEmployeeAffiliationUpdate,
   ) => Promise<void>;
+  readOnly?: boolean;
 }
 
 type ProfileDraft = Required<
@@ -219,6 +220,7 @@ export function EmployeeDetailCard({
   onTimelinePageChange,
   onTimelinePageSizeChange,
   onSubmitTimelineComment,
+  readOnly = false,
 }: EmployeeDetailCardProps) {
   const auth = useOptionalAuth();
   const { language } = useOptionalI18n();
@@ -258,6 +260,13 @@ export function EmployeeDetailCard({
     setProfileDraft(createProfileDraft(employee));
     setAffiliationDraft(createAffiliationDraft(employee));
   }, [employee]);
+
+  useEffect(() => {
+    if (readOnly) {
+      setProfileEditing(false);
+      setAffiliationEditing(false);
+    }
+  }, [readOnly]);
 
   const resetProfile = () => {
     setProfileDraft(createProfileDraft(employee));
@@ -314,7 +323,7 @@ export function EmployeeDetailCard({
   const affiliationSaving = saving === "affiliation";
   const blocked = saving !== null || payrollPolicySaving || compensationSaving;
   const timelineEvents = useMemo<ContactEventTimelineEntry[]>(() => {
-    const auditedEvents: ContactEventTimelineEntry[] = (timeline?.list ?? []).map(
+    return (timeline?.list ?? []).map(
       (event) => ({
         actorAvatarSrc: event.actorAvatarUrl ?? undefined,
         actorName: event.actorName,
@@ -331,36 +340,7 @@ export function EmployeeDetailCard({
         tone: event.tone,
       }),
     );
-    const persistedProfileEvents: ContactEventTimelineEntry[] = [];
-
-    if ((timeline?.page ?? 1) === 1 && employee.verifiedAt) {
-      persistedProfileEvents.push({
-        actorName: t("NeeDo 系统"),
-        actorRole: t("档案验证"),
-        atLabel: employee.verifiedAt,
-        id: `verified-${employee.needoId}`,
-        message: t("员工档案已通过验证"),
-        title: t("档案验证"),
-        tone: "green",
-      });
-    }
-
-    if ((timeline?.page ?? 1) === 1) {
-      persistedProfileEvents.push({
-        actorName: t("NeeDo 系统"),
-        actorRole: t("从属关系"),
-        atLabel: employee.affiliation.startsAt,
-        id: `affiliation-${employee.needoId}-${employee.affiliation.shop.publicId}`,
-        message: `${t("加入店铺并建立员工从属关系")} · ${employee.affiliation.shop.name}`,
-        title: t("从属关系"),
-        tone: "green",
-      });
-    }
-
-    return [...auditedEvents, ...persistedProfileEvents].sort((left, right) =>
-      String(right.atLabel).localeCompare(String(left.atLabel)),
-    );
-  }, [employee, language, timeline]);
+  }, [language, timeline]);
 
   return (
     <article className="space-y-5" data-testid="employee-detail-card">
@@ -480,7 +460,7 @@ export function EmployeeDetailCard({
               {t("员工资料")}
             </h4>
           </div>
-          {!profileEditing ? (
+          {!readOnly && !profileEditing ? (
             <Button
               disabled={blocked}
               onClick={() => setProfileEditing(true)}
@@ -645,7 +625,7 @@ export function EmployeeDetailCard({
               {employee.affiliation.shop.name}
             </h4>
           </div>
-          {!affiliationEditing ? (
+          {!readOnly && !affiliationEditing ? (
             <Button
               disabled={blocked}
               onClick={() => setAffiliationEditing(true)}
@@ -805,6 +785,7 @@ export function EmployeeDetailCard({
             onCommentSubmit={(message) => {
               void onSubmitTimelineComment(message).catch(() => undefined);
             }}
+            showCommentComposer={!readOnly}
             title={t("员工动态")}
           />
         )}
@@ -827,7 +808,7 @@ export function EmployeeDetailCard({
         id={`${panelId}-panel-2`}
         role="tabpanel"
       >
-        <EmployeeSchedulePanel employee={employee} />
+        <EmployeeSchedulePanel employee={employee} readOnly={readOnly} />
       </div>
 
       <div
@@ -846,6 +827,7 @@ export function EmployeeDetailCard({
           preview={compensationPreview}
           previewing={compensationPreviewing}
           result={compensation}
+          readOnly={readOnly}
           saving={compensationSaving}
         />
       </div>
@@ -871,6 +853,7 @@ export function EmployeeDetailCard({
           onRetry={onRetryPayrollPolicy}
           onSave={onSavePayrollPolicy}
           policy={payrollPolicy}
+          readOnly={readOnly}
           saving={payrollPolicySaving}
           title="工资结算周期"
         />

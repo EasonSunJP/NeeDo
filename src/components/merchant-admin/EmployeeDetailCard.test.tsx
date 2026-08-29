@@ -326,6 +326,15 @@ describe("EmployeeDetailCard", () => {
     expect(onSubmitTimelineComment).toHaveBeenCalledWith("已确认本月结算。");
   });
 
+  it("renders only lifecycle entries returned by the paginated timeline contract", async () => {
+    await renderCard();
+    await act(async () => button("员工动态").click());
+
+    expect(container.textContent).toContain("更新了姓名、城市");
+    expect(container.textContent).not.toContain("员工档案已通过验证");
+    expect(container.textContent).not.toContain("加入店铺并建立员工从属关系");
+  });
+
   it("submits edited basic profile fields through the real mutation contract", async () => {
     const onSaveProfile = vi.fn(async () => undefined);
     await renderCard({ onSaveProfile });
@@ -426,6 +435,21 @@ describe("EmployeeDetailCard", () => {
         timezone: "Asia/Tokyo",
       }),
     );
+  });
+
+  it("keeps every information tab available but removes mutations in read-only order context", async () => {
+    await renderCard({ readOnly: true });
+
+    expect(button("基础资料").getAttribute("role")).toBe("tab");
+    expect(button("员工日程").getAttribute("role")).toBe("tab");
+    expect(container.textContent).not.toContain("编辑从属关系");
+    expect(container.textContent).not.toContain("编辑结算周期");
+    expect(container.textContent).not.toContain("写下员工档案备注");
+    expect(
+      Array.from(container.querySelectorAll("button")).some(
+        (candidate) => candidate.textContent?.trim() === "编辑",
+      ),
+    ).toBe(false);
   });
 
   it("provides exact merchant-card copy in every supported non-source language", () => {

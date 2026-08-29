@@ -10,12 +10,14 @@ export interface BackofficeOrderPayload {
   status: string;
   paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
   customerUserId: number;
+  customerProfileId: number | null;
   customerName: string;
   serviceId: number | null;
   serviceName: string;
   shopId: number;
   shopName: string;
   technicianProfileId: number | null;
+  technicianNeedoId: string | null;
   technicianName: string | null;
   fulfillmentMode: "home" | "store" | string;
   priceAmount: number;

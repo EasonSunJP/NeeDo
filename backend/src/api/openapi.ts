@@ -1148,12 +1148,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "status",
           "paymentStatus",
           "customerUserId",
+          "customerProfileId",
           "customerName",
           "serviceId",
           "serviceName",
           "shopId",
           "shopName",
           "technicianProfileId",
+          "technicianNeedoId",
           "technicianName",
           "fulfillmentMode",
           "priceAmount",
@@ -1174,12 +1176,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["pending", "confirmed", "refundPending", "refunded"]
           },
           customerUserId: { type: "integer" },
+          customerProfileId: { type: ["integer", "null"] },
           customerName: { type: "string" },
           serviceId: { type: ["integer", "null"] },
           serviceName: { type: "string" },
           shopId: { type: "integer" },
           shopName: { type: "string" },
           technicianProfileId: { type: ["integer", "null"] },
+          technicianNeedoId: { type: ["string", "null"] },
           technicianName: { type: ["string", "null"] },
           fulfillmentMode: { type: "string" },
           priceAmount: { type: "number" },
@@ -3945,7 +3949,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           actorAvatarUrl: { type: ["string", "null"], format: "uri-reference" },
           actorRole: { type: "string" },
           message: { type: "string" },
-          tone: { type: "string", enum: ["accent", "red", "neutral"] }
+          tone: { type: "string", enum: ["accent", "green", "red", "neutral"] }
         }
       },
       MerchantEmployeeTimelinePage: {

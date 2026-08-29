@@ -17,14 +17,23 @@ const booking = (id: number, status: string, shopId = 11) => ({
   status,
   paymentStatus: "CONFIRMED",
   customerUserId: 51,
-  customer: { username: "Customer", email: "customer@example.com" },
+  customer: {
+    username: "Customer",
+    email: "customer@example.com",
+    customerProfile: { id: 41 }
+  },
   serviceId: 71,
   serviceNameSnapshot: "Formal care",
   service: { name: "Formal care" },
   shopId,
   shop: { name: "Aoyama Care Studio" },
   technicianProfileId: 31,
-  technicianProfile: { displayName: "Technician" },
+  technicianProfile: {
+    displayName: "Technician",
+    user: {
+      identities: [{ publicIdentifier: { publicId: "s0000000031" } }]
+    }
+  },
   fulfillmentMode: "store",
   priceAmount: money(9000),
   currency: "JPY",

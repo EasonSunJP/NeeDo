@@ -981,20 +981,34 @@ function mapAuditEvent(event: BackofficeAuditEventPayload, localization: FormalL
     atLabel: formatDateTime(event.createdAt, localization),
     icon: event.actorAvatarUrl ? undefined : <NeutralProfileIcon />,
     id: event.id,
-    message: <AuditMetadata metadata={event.metadata} localization={localization} />,
+    message: (
+      <AuditMetadata
+        fallback={auditActionMessage(event.action, localization)}
+        metadata={event.metadata}
+        localization={localization}
+      />
+    ),
     preserveAtLabel: true,
     title: action.label,
     tone: action.tone
   };
 }
 
-function AuditMetadata({ metadata, localization }: { metadata: Record<string, unknown> | null; localization: FormalLocalization }) {
+function AuditMetadata({
+  fallback,
+  metadata,
+  localization,
+}: {
+  fallback: string | null;
+  metadata: Record<string, unknown> | null;
+  localization: FormalLocalization;
+}) {
   if (!metadata || Object.keys(metadata).length === 0) {
-    return <span>{localization.t("尚未接入正式数据")}</span>;
+    return <span>{fallback ?? localization.t("尚未接入正式数据")}</span>;
   }
 
   const message = typeof metadata.message === "string" && metadata.message.trim() ? metadata.message : null;
-  const entries = Object.entries(metadata).filter(([key]) => key !== "message");
+  const entries = visibleAuditMetadataEntries(metadata);
   return (
     <span className="grid gap-2">
       {message ? <span>{message}</span> : null}
@@ -1008,9 +1022,21 @@ function AuditMetadata({ metadata, localization }: { metadata: Record<string, un
           ))}
         </span>
       ) : null}
-      {!message && entries.length === 0 ? <span>{localization.t("尚未接入正式数据")}</span> : null}
+      {!message && entries.length === 0 ? <span>{fallback ?? localization.t("尚未接入正式数据")}</span> : null}
     </span>
   );
+}
+
+function auditActionMessage(action: string, localization: FormalLocalization) {
+  const messages: Record<string, string> = {
+    "customer.created": "用户档案已创建",
+    "profile.created": "用户档案已创建",
+    "customer.profile.updated": "用户基础资料已更新",
+    "backoffice.customer.update": "用户基础资料已更新",
+    "customer.deleted": "用户档案已停用",
+    "backoffice.customer.delete": "用户档案已停用",
+  };
+  return messages[action] ? localization.t(messages[action]) : null;
 }
 
 function renderAuditMetadataValue(value: unknown, localization: FormalLocalization): ReactNode {
@@ -1023,7 +1049,7 @@ function renderAuditMetadataValue(value: unknown, localization: FormalLocalizati
     return <span>{value.map((item, index) => <span key={index}>{index > 0 ? " · " : null}{renderAuditMetadataValue(item, localization)}</span>)}</span>;
   }
   if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
+    const entries = visibleAuditMetadataEntries(value as Record<string, unknown>);
     if (entries.length === 0) return localization.t("尚未接入正式数据");
     return (
       <span className="grid gap-1">
@@ -1138,9 +1164,13 @@ function auditAction(action: string, localization: FormalLocalization): { label:
     "technician.approved": "技师审核通过",
     "technician.profile.updated": "技师资料更新",
     "technician.deleted": "技师软删除",
-    "customer.created": "客户档案创建",
-    "customer.profile.updated": "客户资料更新",
-    "customer.deleted": "客户软删除"
+    "customer.created": "用户档案创建",
+    "profile.created": "用户档案创建",
+    "customer.profile.updated": "用户资料更新",
+    "backoffice.customer.update": "用户资料更新",
+    "backoffice.customer.membership.assign": "会员等级变更",
+    "customer.deleted": "用户软删除",
+    "backoffice.customer.delete": "用户软删除"
   };
   const danger = /deleted|disabled|rejected|cancelled|failed/i.test(action);
   return {
@@ -1150,6 +1180,26 @@ function auditAction(action: string, localization: FormalLocalization): { label:
 }
 
 function auditMetadataLabel(key: string, localization: FormalLocalization) {
-  const labels: Record<string, string> = { reason: "原因", changedFields: "变更字段", approved: "已批准", source: "来源" };
+  const labels: Record<string, string> = {
+    reason: "原因",
+    changedFields: "变更字段",
+    approved: "已批准",
+    source: "来源",
+    membershipLevel: "会员等级",
+    grantMode: "赋予方式",
+    durationUnit: "免费期限单位",
+    durationValue: "免费期限",
+    startsAt: "生效时间",
+    expiresAt: "到期时间"
+  };
   return labels[key] ? localization.t(labels[key]) : key;
+}
+
+function visibleAuditMetadataEntries(metadata: Record<string, unknown>) {
+  return Object.entries(metadata).filter(([key]) => {
+    if (key === "message") return false;
+    const normalized = key.toLowerCase();
+    if (normalized === "needoid" || normalized === "publicid") return true;
+    return normalized !== "id" && !normalized.endsWith("id");
+  });
 }

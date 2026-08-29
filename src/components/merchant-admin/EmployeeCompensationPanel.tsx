@@ -25,6 +25,7 @@ interface EmployeeCompensationPanelProps {
   onRetry: () => void;
   onSave: (input: TechnicianCompensationProfileInput) => Promise<void>;
   onPreview: (input: CompensationProfilePreviewInput) => Promise<void>;
+  readOnly?: boolean;
 }
 
 const fieldClassName =
@@ -95,6 +96,7 @@ export function EmployeeCompensationPanel({
   previewing,
   result,
   saving,
+  readOnly = false,
 }: EmployeeCompensationPanelProps) {
   const { language } = useOptionalI18n();
   const t = (source: string) => translateText(source, language);
@@ -108,6 +110,10 @@ export function EmployeeCompensationPanel({
     if (!editing) setDraft(toDraft(result));
     setPreviewInput(toPreviewInput(result));
   }, [editing, result]);
+
+  useEffect(() => {
+    if (readOnly) setEditing(false);
+  }, [readOnly]);
 
   const profile = result?.profile ?? null;
   const sourceLabel =
@@ -158,7 +164,7 @@ export function EmployeeCompensationPanel({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {!editing && !loading ? (
+            {!readOnly && !editing && !loading ? (
               <Button
                 disabled={saving}
                 onClick={() => setEditing(true)}
@@ -341,7 +347,7 @@ export function EmployeeCompensationPanel({
               ))}
             </div>
 
-            <div className="mt-5 rounded-3xl border border-sky/20 bg-sky/10 p-4 sm:p-5">
+            {!readOnly ? <div className="mt-5 rounded-3xl border border-sky/20 bg-sky/10 p-4 sm:p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-sky">
@@ -410,7 +416,7 @@ export function EmployeeCompensationPanel({
                   ))}
                 </div>
               ) : null}
-            </div>
+            </div> : null}
           </>
         ) : (
           <p className="mt-5 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-5 text-sm font-bold text-white/55">
