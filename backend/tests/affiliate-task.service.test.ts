@@ -524,7 +524,7 @@ describe("AffiliateTaskService drafts", () => {
       sourceLocale: "en",
       isInitialCopy: false
     });
-    expect(updated.translations.ja.name).toBe(taskFields.name);
+    expect(updated.translations.ja?.name).toBe(taskFields.name);
     expect(updated.lockVersion).toBe(initialLockVersion + 1);
   });
 
@@ -548,8 +548,8 @@ describe("AffiliateTaskService drafts", () => {
           translation.sourceLocale === "en"
       )
     ).toBe(true);
-    expect(updated.translations.en.isInitialCopy).toBe(false);
-    expect(updated.translations.ja.isInitialCopy).toBe(true);
+    expect(updated.translations.en?.isInitialCopy).toBe(false);
+    expect(updated.translations.ja?.isInitialCopy).toBe(true);
     expect(updated.name).toBe("Shared campaign");
   });
 
@@ -657,14 +657,31 @@ describe("AffiliateTaskService drafts", () => {
 });
 
 describe("AffiliateTaskService submission and review", () => {
-  it("rejects submission before freezing funds when any task language is missing", async () => {
+  it("submits and freezes once when task content exists in only one language", async () => {
     const { ledger, service } = createFixture();
     const draft = await createShopDraft(service);
-    Reflect.deleteProperty(draft.translations, "ko");
+    for (const locale of ["zh-CN", "zh-TW", "en", "ko"] as const) {
+      Reflect.deleteProperty(draft.translations, locale);
+    }
+
+    await expect(service.submit(shopActor, draft.id)).resolves.toMatchObject({
+      status: "pending_review",
+      reservedBudgetNdp: taskFields.totalBudgetNdp
+    });
+    expect(ledger.freezeCalls).toHaveLength(1);
+  });
+
+  it("rejects submission before freezing funds when every task language is blank", async () => {
+    const { ledger, service } = createFixture();
+    const draft = await createShopDraft(service);
+    for (const translation of Object.values(draft.translations)) {
+      translation.name = "   ";
+      translation.description = null;
+    }
 
     await expect(service.submit(shopActor, draft.id)).rejects.toMatchObject({
       code: ERROR_CODES.AFFILIATE_TASK_INVALID_STATE,
-      message: "error.affiliate.task_translations_incomplete"
+      message: "error.affiliate.task_content_required"
     });
     expect(ledger.freezeCalls).toHaveLength(0);
   });
@@ -688,9 +705,7 @@ describe("AffiliateTaskService submission and review", () => {
       status: "pending_review",
       reservedBudgetNdp: 2_000_000,
       shops: [{ shopNameSnapshot: "Shibuya Shop Updated" }],
-      services: [
-        { serviceNameSnapshot: "Aroma 60 Updated", servicePriceJpySnapshot: 9_900 }
-      ],
+      services: [{ serviceNameSnapshot: "Aroma 60 Updated", servicePriceJpySnapshot: 9_900 }],
       budgetReservation: {
         walletId: ledger.walletId,
         totalFrozenNdp: 2_000_000,
@@ -767,11 +782,7 @@ describe("AffiliateTaskService submission and review", () => {
     await service.submit(shopActor, draft.id);
 
     const rejected = await service.reject(platformActor, draft.id, "Campaign proof is incomplete");
-    const repeated = await service.reject(
-      platformActor,
-      draft.id,
-      "Campaign proof is incomplete"
-    );
+    const repeated = await service.reject(platformActor, draft.id, "Campaign proof is incomplete");
 
     expect(repeated.id).toBe(rejected.id);
     expect(rejected).toMatchObject({

@@ -355,9 +355,7 @@ describe("affiliate task publishing HTTP API", () => {
   it("enforces authentication and least-privilege RBAC before service execution", async () => {
     const fixture = createFixture();
 
-    await request(fixture.app)
-      .get("/api/v1/merchant-admin/affiliate/tasks")
-      .expect(401);
+    await request(fixture.app).get("/api/v1/merchant-admin/affiliate/tasks").expect(401);
     await request(fixture.app)
       .post("/api/v1/merchant-admin/affiliate/tasks")
       .set("Authorization", `Bearer ${fixture.tokens[9]}`)
@@ -435,7 +433,12 @@ describe("affiliate task OpenAPI contract", () => {
   it("documents every runtime route", () => {
     const document = createOpenApiDocument(env) as {
       paths: Record<string, Record<string, unknown>>;
-      components: { schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }> };
+      components: {
+        schemas: Record<
+          string,
+          { required?: string[]; minProperties?: number; properties?: Record<string, unknown> }
+        >;
+      };
     };
     const paths = [
       "/api/v1/merchant-admin/affiliate/tasks",
@@ -455,13 +458,13 @@ describe("affiliate task OpenAPI contract", () => {
     expect(document.paths[paths[1]]).toEqual(
       expect.objectContaining({ get: expect.any(Object), patch: expect.any(Object) })
     );
-    expect(document.paths[paths[2]]).toEqual(
-      expect.objectContaining({ put: expect.any(Object) })
-    );
+    expect(document.paths[paths[2]]).toEqual(expect.objectContaining({ put: expect.any(Object) }));
     expect(document.components.schemas.AffiliateTask.required).toContain("translations");
-    expect(document.components.schemas.AffiliateMarketplaceTask.required).toContain(
-      "translations"
-    );
+    expect(document.components.schemas.AffiliateMarketplaceTask.required).toContain("translations");
     expect(document.components.schemas).toHaveProperty("AffiliateTaskTranslation");
+    expect(document.components.schemas.AffiliateTaskTranslations).toMatchObject({
+      minProperties: 1
+    });
+    expect(document.components.schemas.AffiliateTaskTranslations.required).toBeUndefined();
   });
 });

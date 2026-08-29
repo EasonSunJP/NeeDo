@@ -4,7 +4,7 @@
 
 **Goal:** Persist, edit, audit, submit, review, and display every Affiliate task in independent Japanese, English, Korean, Traditional Chinese, and Simplified Chinese versions while preserving the existing real budget-freeze and review lifecycle.
 
-**Architecture:** Add one soft-deletable `AffiliateTaskTranslation` row per task and content locale, backfill all historical tasks from the existing canonical fields, and keep `AffiliateTask.name/description` as the source-locale compatibility snapshot. Draft creation copies the entered source version to all five locales; an optimistic-lock locale command either changes one locale or synchronizes it to all locales. Task submission rejects incomplete locale sets before touching Wallet/Ledger, and every read returns the complete translation map so the marketplace client can choose the active language without machine translation.
+**Architecture:** Add one soft-deletable `AffiliateTaskTranslation` row per task and content locale, backfill all historical tasks from the existing canonical fields, and keep `AffiliateTask.name/description` as the source-locale compatibility snapshot. Draft creation copies the entered source version to all five locales; an optimistic-lock locale command either changes one locale or synchronizes it to all locales. Task submission requires publishable content in at least one locale before touching Wallet/Ledger, and every read returns the available translation map so the marketplace client can choose the active language without machine translation.
 
 **Tech Stack:** Prisma 7/MySQL 8, Express, TypeScript strict, Zod, OpenAPI, Jest/Supertest, React 19/Vite/Vitest.
 
@@ -13,7 +13,7 @@
 - Execute only the Step 12 Affiliate-task localization microstep; merchant workspace UI remains the next separate microstep.
 - Supported content locales are exactly `zh-CN`, `zh-TW`, `en`, `ja`, and `ko`; UI display order remains Japanese, English, Korean, Traditional Chinese, Simplified Chinese.
 - Creating a draft from any source locale initializes every language with the same content; later locale edits remain independent unless `syncToAll=true`.
-- Submitting for review is one coordinated publication boundary: all five active translations must exist and have a non-empty task name before any NDP freeze.
+- Submitting for review requires at least one active translation with a non-empty valid task name before any NDP freeze; the other four language versions are optional.
 - No machine translation, browser-local task content, fake API, fake metrics, second Affiliate identity, or direct Wallet mutation.
 - Existing task, Claim, attribution, Wallet/Ledger, RBAC, AuditLog, idempotency, and shop-scope behavior must remain intact.
 - All new API input is Zod-validated, protected by the existing merchant Affiliate permissions, documented in OpenAPI, and audited.
@@ -119,7 +119,7 @@ expect(updated.translations.en.name).toBe("English campaign");
 expect(updated.translations.ja.name).toBe(taskFields.name);
 ```
 
-Add a second test proving `syncToAll=true` replaces all five rows, and a third proving an incomplete locale set makes `submit()` reject before `freezeAffiliateTaskBudget` is called.
+Add a second test proving `syncToAll=true` replaces all five rows, a third proving one publishable language is enough to submit and freeze once, and a fourth proving an entirely blank/missing set rejects before `freezeAffiliateTaskBudget` is called.
 
 - [ ] **Step 2: Run focused service tests and verify RED**
 
@@ -157,7 +157,7 @@ z.object({
 }).strict()
 ```
 
-`updateDraftLocale` must reuse publisher scope, draft-state checks, optimistic locking and write `affiliate.task.translation_updated` with locale and `syncToAll`. `submit()` must call a private completeness assertion before `transitionAffiliateTask` and before the ledger freeze.
+`updateDraftLocale` must reuse publisher scope, draft-state checks, optimistic locking and write `affiliate.task.translation_updated` with locale and `syncToAll`. `submit()` must assert that at least one publishable translation exists before `transitionAffiliateTask` and before the ledger freeze; otherwise it returns `error.affiliate.task_content_required`.
 
 - [ ] **Step 5: Verify service GREEN**
 
@@ -263,7 +263,7 @@ git commit -m "feat: render localized affiliate tasks"
 
 - [ ] **Step 1: Write failing checker contract test**
 
-Assert the script rejects production/remote databases, creates one uniquely marked draft, verifies initial five-copy state, independent edit, synchronize-all, incomplete-submit rollback, complete submit with one budget freeze, audit evidence, and marker-only cleanup.
+Assert the script rejects production/remote databases, creates one uniquely marked draft, verifies initial five-copy state, independent edit, synchronize-all, all-content-missing rejection without a freeze, one-language submit with one budget freeze, audit evidence, and marker-only cleanup.
 
 - [ ] **Step 2: Verify RED**
 
@@ -309,6 +309,6 @@ git commit -m "docs: verify affiliate task localization"
 
 ## Self-Review
 
-- Spec coverage: independent five-language values, default copy, explicit synchronize-all, coordinated submit, audit, RBAC, OpenAPI, real DB and active-language marketplace rendering are covered. Merchant task-management UI is explicitly left to its separate next microstep.
+- Spec coverage: independent five-language values, default copy, explicit synchronize-all, at-least-one-language submit gate, audit, RBAC, OpenAPI, real DB and active-language marketplace rendering are covered. Merchant task-management UI is explicitly left to its separate next microstep.
 - Placeholder scan: no TBD/TODO/FIXME or unspecified implementation step remains.
 - Type consistency: backend and frontend use the existing five content-locale codes; every task response carries the same translation payload shape; the locale update route uses the existing task lock version and merchant create permission.

@@ -10,10 +10,7 @@ const LOCAL_DATABASES = new Set(["needo_dev", "needo_test"]);
 const TASK_BUDGET_NDP = 20_000;
 const TASK_REWARD_NDP = 1_000;
 
-const assert: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
@@ -233,9 +230,12 @@ const main = async (): Promise<void> => {
       selectedServiceIds: [serviceRecord.id]
     });
     created.affiliateTaskIds.push(draft.id);
-    assert(Object.keys(draft.translations).length === CONTENT_LOCALES.length, "draft did not create five translations");
     assert(
-      CONTENT_LOCALES.every((locale) => draft.translations[locale].name === draft.name),
+      Object.keys(draft.translations).length === CONTENT_LOCALES.length,
+      "draft did not create five translations"
+    );
+    assert(
+      CONTENT_LOCALES.every((locale) => draft.translations[locale]?.name === draft.name),
       "initial task content was not copied to every language"
     );
     console.log("PASS initial source content copied to five task languages");
@@ -246,51 +246,51 @@ const main = async (): Promise<void> => {
       description: `${marker} English description`,
       syncToAll: false
     });
-    assert(independent.translations.en.name === `${marker} English task`, "English edit was not saved");
-    assert(independent.translations.ja.name === draft.translations.ja.name, "independent edit changed Japanese");
+    assert(
+      independent.translations.en?.name === `${marker} English task`,
+      "English edit was not saved"
+    );
+    assert(
+      independent.translations.ja?.name === draft.translations.ja?.name,
+      "independent edit changed Japanese"
+    );
     console.log("PASS independent language edit persisted without cross-language overwrite");
 
-    const synchronized = await taskService.updateDraftLocale(
-      publisherActor,
-      draft.id,
-      "ja",
-      {
-        lockVersion: independent.lockVersion,
-        name: `${marker} synchronized task`,
-        description: `${marker} synchronized description`,
-        syncToAll: true
-      }
-    );
+    const synchronized = await taskService.updateDraftLocale(publisherActor, draft.id, "ja", {
+      lockVersion: independent.lockVersion,
+      name: `${marker} synchronized task`,
+      description: `${marker} synchronized description`,
+      syncToAll: true
+    });
     assert(
       CONTENT_LOCALES.every(
         (locale) =>
-          synchronized.translations[locale].name === `${marker} synchronized task` &&
-          synchronized.translations[locale].sourceLocale === "ja"
+          synchronized.translations[locale]?.name === `${marker} synchronized task` &&
+          synchronized.translations[locale]?.sourceLocale === "ja"
       ),
       "synchronize-all did not replace every language"
     );
     console.log("PASS explicit synchronize-all replaced all five task languages");
 
-    await prisma.affiliateTaskTranslation.update({
-      where: { taskId_locale: { taskId: draft.id, locale: "KO" } },
+    await prisma.affiliateTaskTranslation.updateMany({
+      where: { taskId: draft.id, deletedAt: null },
       data: { deletedAt: new Date() }
     });
-    let incompleteRejected = false;
+    let missingContentRejected = false;
     try {
       await taskService.submit(publisherActor, draft.id);
     } catch (error) {
-      incompleteRejected =
-        error instanceof AppError &&
-        error.message === "error.affiliate.task_translations_incomplete";
+      missingContentRejected =
+        error instanceof AppError && error.message === "error.affiliate.task_content_required";
     }
-    assert(incompleteRejected, "incomplete task translations did not reject submission");
-    const walletBeforeCompleteSubmit = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+    assert(missingContentRejected, "task without localized content did not reject submission");
+    const walletBeforeContentSubmit = await prisma.wallet.findUnique({ where: { id: wallet.id } });
     assert(
-      walletBeforeCompleteSubmit?.availableBalance === TASK_BUDGET_NDP &&
-        walletBeforeCompleteSubmit.frozenBalance === 0,
-      "incomplete submit changed the wallet"
+      walletBeforeContentSubmit?.availableBalance === TASK_BUDGET_NDP &&
+        walletBeforeContentSubmit.frozenBalance === 0,
+      "content-required rejection changed the wallet"
     );
-    console.log("PASS incomplete task rejected before NDP freeze");
+    console.log("PASS task without content rejected before NDP freeze");
 
     const restored = await taskService.updateDraftLocale(publisherActor, draft.id, "ko", {
       lockVersion: synchronized.lockVersion,
@@ -299,24 +299,30 @@ const main = async (): Promise<void> => {
       syncToAll: false
     });
     const submitted = await taskService.submit(publisherActor, restored.id);
-    assert(submitted.status === "pending_review", "complete task was not submitted");
+    assert(submitted.status === "pending_review", "one-language task was not submitted");
     const walletAfterSubmit = await prisma.wallet.findUnique({ where: { id: wallet.id } });
     assert(
       walletAfterSubmit?.availableBalance === 0 &&
         walletAfterSubmit.frozenBalance === TASK_BUDGET_NDP,
-      "complete submit did not freeze the exact task budget"
+      "one-language submit did not freeze the exact task budget"
     );
     const translationRows = await prisma.affiliateTaskTranslation.findMany({
       where: { taskId: draft.id, deletedAt: null }
     });
     created.affiliateTaskTranslationIds.push(...translationRows.map((row) => row.id));
-    assert(translationRows.length === CONTENT_LOCALES.length, "complete submit lost a language row");
+    assert(
+      translationRows.length === 1,
+      "one-language submit unexpectedly required other languages"
+    );
     const freezeTransactions = await prisma.ledgerTransaction.findMany({
       where: { referenceType: "affiliate_task", referenceId: draft.id },
       select: { id: true }
     });
     created.ledgerTransactionIds.push(...freezeTransactions.map((row) => row.id));
-    assert(freezeTransactions.length === 1, "complete submit did not create exactly one freeze transaction");
+    assert(
+      freezeTransactions.length === 1,
+      "one-language submit did not create exactly one freeze transaction"
+    );
     const translationAudits = await prisma.auditLog.findMany({
       where: {
         targetType: "affiliate_task",
@@ -325,8 +331,11 @@ const main = async (): Promise<void> => {
       },
       select: { id: true }
     });
-    assert(translationAudits.length === 3, "affiliate.task.translation_updated audit evidence is incomplete");
-    console.log("PASS complete task submitted once with freeze and translation audit evidence");
+    assert(
+      translationAudits.length === 3,
+      "affiliate.task.translation_updated audit evidence is incomplete"
+    );
+    console.log("PASS one-language task submitted once with freeze and translation audit evidence");
 
     await taskService.reject(operatorActor, submitted.id, "local localization acceptance cleanup");
     evidence = {
@@ -336,8 +345,9 @@ const main = async (): Promise<void> => {
       languages: CONTENT_LOCALES,
       independentEdit: true,
       synchronizedAll: true,
-      incompleteSubmitRolledBack: true,
-      completeSubmitFrozenOnce: true,
+      missingContentRejectedBeforeFreeze: true,
+      oneLanguageContentAccepted: true,
+      oneLanguageSubmitFrozenOnce: true,
       audited: true,
       status: "ok"
     };
@@ -429,7 +439,10 @@ const main = async (): Promise<void> => {
         prisma.ledgerTransaction.count({ where: { id: { in: created.ledgerTransactionIds } } }),
         prisma.auditLog.count({ where: { id: { in: created.auditLogIds } } })
       ]);
-      assert(residue.every((count) => count === 0), "cleanup residue verification failed");
+      assert(
+        residue.every((count) => count === 0),
+        "cleanup residue verification failed"
+      );
       console.log("PASS cleanup residue verification across exact marker-owned rows: 0");
     } catch (error) {
       cleanupErrors.push(error);
