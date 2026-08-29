@@ -145,7 +145,7 @@ describe("ImMessageActionSheet", () => {
     expect(actionGrid?.className).not.toContain("min-[480px]");
     expect(quickReactionGrid?.className).toContain("grid-cols-7");
     expect(quickReactionGrid?.className).not.toContain("min-[480px]");
-    for (const emoji of ["🥹", "😭"]) {
+    for (const emoji of ["🥹", "🙏"]) {
       const button = [...(quickReactionGrid?.querySelectorAll("button") ?? [])]
         .find((candidate) => candidate.textContent?.trim() === emoji);
       expect(button).toBeDefined();
@@ -388,14 +388,14 @@ describe("ImMessageActionSheet", () => {
       }
 
       const quickReactionRow = document.querySelector<HTMLElement>('[data-im-message-reaction-row="quick"]');
-      for (const emoji of ["OK", "😂", "🤣", "👍", "🥹", "😭"]) {
+      for (const emoji of ["😀", "😂", "🥹", "👌", "👍", "🙏"]) {
         const reactionButton = [...(quickReactionRow?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
           .find((button) => button.textContent?.trim() === emoji);
         expect(reactionButton).toBeDefined();
         dispatchPointerActivation(reactionButton!);
       }
 
-      const moreButton = quickReactionRow?.querySelector<HTMLButtonElement>('[aria-label="展开默认表情"]');
+      const moreButton = quickReactionRow?.querySelector<HTMLButtonElement>('[aria-label="展开更多回复"]');
       expect(moreButton).not.toBeNull();
       dispatchPointerActivation(moreButton!);
     });
@@ -404,7 +404,7 @@ describe("ImMessageActionSheet", () => {
     for (const actionSpy of Object.values(spies)) {
       expect(actionSpy).toHaveBeenCalledTimes(1);
     }
-    expect(onReact.mock.calls.map(([emoji]) => emoji)).toEqual(["OK", "😂", "🤣", "👍", "🥹", "😭"]);
+    expect(onReact.mock.calls.map(([emoji]) => emoji)).toEqual(["😀", "😂", "🥹", "👌", "👍", "🙏"]);
     expect(onExpandedChange).toHaveBeenCalledOnce();
     expect(onExpandedChange).toHaveBeenCalledWith(true);
 
@@ -422,6 +422,74 @@ describe("ImMessageActionSheet", () => {
     const backdropContextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
     backdrop?.dispatchEvent(backdropContextMenuEvent);
     expect(backdropContextMenuEvent.defaultPrevented).toBe(true);
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps selected replies active while natively disabling the other values in each occupied category", async () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 });
+    const anchor = document.createElement("div");
+    anchor.dataset.imMessageSide = "left";
+    document.body.append(anchor);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this === anchor) return buildRect({ bottom: 560, height: 60, left: 0, top: 500, width: 360 });
+      if (this.dataset.imMessageActionSheet === "true") return buildRect({ bottom: 292, height: 280, left: 20, top: 12, width: 376 });
+      if (this.dataset.imMessageActionContent === "true") return buildRect({ bottom: 284, height: 264, left: 28, top: 20, width: 360 });
+      return buildRect({ bottom: 0, height: 0, left: 0, top: 0, width: 0 });
+    });
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onReact = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ImMessageActionSheet
+          actions={[]}
+          anchorElement={anchor}
+          expanded
+          isNight
+          onClose={vi.fn()}
+          onExpandedChange={vi.fn()}
+          onReact={onReact}
+          selectedEmoji="😂"
+          selectedJudgement="OK"
+        />
+      );
+    });
+
+    let buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-im-reaction-value]")];
+    expect(buttons.filter((button) => button.dataset.imReactionValue === "OK").every((button) => !button.disabled)).toBe(true);
+    expect(buttons.filter((button) => button.dataset.imReactionValue === "😂").every((button) => !button.disabled)).toBe(true);
+    expect(buttons.filter((button) => button.dataset.imReactionValue === "NO").every((button) => button.disabled)).toBe(true);
+    expect(buttons.filter((button) => button.dataset.imReactionValue === "👍").every((button) => button.disabled)).toBe(true);
+    expect(buttons.find((button) => button.dataset.imReactionValue === "OK")?.dataset.imReactionSelected).toBe("true");
+
+    await act(async () => {
+      buttons.find((button) => button.dataset.imReactionValue === "NO")?.click();
+    });
+    expect(onReact).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.render(
+        <ImMessageActionSheet
+          actions={[]}
+          anchorElement={anchor}
+          expanded
+          isNight
+          onClose={vi.fn()}
+          onExpandedChange={vi.fn()}
+          onReact={onReact}
+          pendingCategory="judgement"
+        />
+      );
+    });
+
+    buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-im-reaction-value]")];
+    expect(buttons.filter((button) => button.dataset.imReactionCategory === "judgement").every((button) => button.disabled)).toBe(true);
+    expect(buttons.filter((button) => button.dataset.imReactionCategory === "emoji").some((button) => !button.disabled)).toBe(true);
 
     await act(async () => root.unmount());
   });
@@ -448,20 +516,26 @@ describe("MessageBubble reactions", () => {
       root.render(createElement(MessageBubble, {
         message,
         isMine: true,
-        reactions: [{
-          emoji: "😂",
-          people: [
-            { id: "user-1", name: "第一位", avatar: "/avatar-1.png" },
-            { id: "user-2", name: "第二位", avatar: "/avatar-2.png" }
-          ]
-        }]
+        reactions: [
+          {
+            emoji: "Thanks",
+            people: [{ id: "user-1", name: "第一位", avatar: "/avatar-1.png" }]
+          },
+          {
+            emoji: "😂",
+            people: [{ id: "user-2", name: "第二位", avatar: "/avatar-2.png" }]
+          }
+        ]
       }));
     });
 
-    expect(container.textContent).toContain("第一位、第二位");
+    expect(container.textContent).toContain("第一位");
+    expect(container.textContent).toContain("第二位");
     expect([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("第一位、第二位"))).toBe(false);
     expect(container.querySelector('img[alt="第一位"]')).toBeNull();
     expect(container.querySelector('img[alt="第二位"]')).toBeNull();
+    expect(container.querySelector('button img[alt="Thanks"]')).not.toBeNull();
+    expect([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("😂"))).toBe(true);
 
     await act(async () => root.unmount());
   });
