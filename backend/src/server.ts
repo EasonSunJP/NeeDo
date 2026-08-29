@@ -7,6 +7,7 @@ import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.r
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
+import { ExchangePostRepository } from "./repositories/exchange.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
@@ -17,6 +18,7 @@ import { BookingUserRewardExpiryService } from "./services/booking-user-reward-e
 import { ContentPublicationSchedulerService } from "./services/content-publication-scheduler.service";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
+import { ExchangeService } from "./services/exchange.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { createShutdownHandler } from "./server-shutdown";
@@ -24,6 +26,7 @@ import { LedgerService } from "./services/ledger.service";
 import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
 import { AffiliateTaskExpiryWorker } from "./workers/affiliate-task-expiry.worker";
 import { BookingUserRewardExpiryWorker } from "./workers/booking-user-reward-expiry.worker";
+import { ExchangePostExpiryWorker } from "./workers/exchange-post-expiry.worker";
 import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 
@@ -40,9 +43,11 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
+const exchangeService = new ExchangeService(new ExchangePostRepository());
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
-  realtimeEventGateway
+  realtimeEventGateway,
+  exchangeService
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
   new IdentityApplicationPurgeService(
@@ -57,10 +62,7 @@ const affiliateTaskExpiryWorker = new AffiliateTaskExpiryWorker(
     new AffiliateTaskExpiryRepository(),
     new LedgerService(new LedgerRepository()),
     ({ taskId, code, message }) => {
-      logger.error(
-        { taskId, code, message },
-        "Affiliate task expiry candidate failed"
-      );
+      logger.error({ taskId, code, message }, "Affiliate task expiry candidate failed");
     }
   ),
   logger,
@@ -71,15 +73,18 @@ const bookingUserRewardExpiryWorker = new BookingUserRewardExpiryWorker(
   new BookingUserRewardExpiryService(
     new BookingUserRewardExpiryRepository(),
     ({ financialId, code, message }) => {
-      logger.error(
-        { financialId, code, message },
-        "Booking user reward expiry candidate failed"
-      );
+      logger.error({ financialId, code, message }, "Booking user reward expiry candidate failed");
     }
   ),
   logger,
   env.BOOKING_USER_REWARD_EXPIRY_INTERVAL_MS,
   env.BOOKING_USER_REWARD_EXPIRY_BATCH_SIZE
+);
+const exchangePostExpiryWorker = new ExchangePostExpiryWorker(
+  exchangeService,
+  logger,
+  env.EXCHANGE_EXPIRY_INTERVAL_MS,
+  env.EXCHANGE_EXPIRY_BATCH_SIZE
 );
 const affiliateAllianceInvitationExpiryWorker = new AffiliateAllianceInvitationExpiryWorker(
   new AffiliateAllianceInvitationExpiryService(new AffiliateAllianceRepository()),
@@ -114,6 +119,9 @@ const server = app.listen(env.PORT, () => {
   identityApplicationPurgeWorker.start();
   affiliateTaskExpiryWorker.start();
   bookingUserRewardExpiryWorker.start();
+  if (env.EXCHANGE_EXPIRY_WORKER_ENABLED) {
+    exchangePostExpiryWorker.start();
+  }
   affiliateAllianceInvitationExpiryWorker.start();
   contentPublicationWorker.start();
 });
@@ -130,6 +138,7 @@ const shutdown = createShutdownHandler({
       logger.error({ error }, "Realtime gateway shutdown failed");
     });
     bookingUserRewardExpiryWorker.stop();
+    exchangePostExpiryWorker.stop();
     contentPublicationWorker.stop();
     affiliateAllianceInvitationExpiryWorker.stop();
     affiliateTaskExpiryWorker.stop();

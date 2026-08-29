@@ -316,7 +316,11 @@ describe("ExchangePostRepository", () => {
         findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(created),
         create: jest.fn(async () => created)
       },
-      auditLog: { create: jest.fn(async () => ({ id: 1 })) }
+      auditLog: {
+        create: jest.fn(async (input: { data: { targetId: number | null } }) => ({
+          id: input.data.targetId ?? 1
+        }))
+      }
     };
     const client = {
       $transaction: jest.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
@@ -412,7 +416,11 @@ describe("ExchangePostRepository", () => {
       },
       exchangeComment: { count: jest.fn(async () => 4) },
       exchangeShare: { count: jest.fn(async () => 5) },
-      auditLog: { create: jest.fn(async () => ({ id: 1 })) }
+      auditLog: {
+        create: jest.fn(async (input: { data: { targetId: number | null } }) => ({
+          id: input.data.targetId ?? 1
+        }))
+      }
     };
     const client = {
       $transaction: jest.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
@@ -451,5 +459,41 @@ describe("ExchangePostRepository", () => {
     });
     expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
     expect(client.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("expires only claimed live rows and audits each successful transition", async () => {
+    const transaction = {
+      exchangePost: {
+        findMany: jest.fn(async () => [{ id: 41 }, { id: 42 }, { id: 43 }]),
+        updateMany: jest
+          .fn()
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 })
+          .mockResolvedValueOnce({ count: 1 })
+      },
+      auditLog: {
+        create: jest.fn(async (input: { data: { targetId: number | null } }) => ({
+          id: input.data.targetId ?? 1
+        }))
+      }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    };
+    const repository = new ExchangePostRepository(client as never);
+
+    await expect(repository.expireDue(now, 3)).resolves.toBe(2);
+    expect(transaction.exchangePost.findMany).toHaveBeenCalledWith({
+      where: { status: "PUBLISHED", expiresAt: { lte: now }, deletedAt: null },
+      orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+      take: 3,
+      select: { id: true }
+    });
+    expect(transaction.exchangePost.updateMany).toHaveBeenCalledTimes(3);
+    expect(transaction.auditLog.create.mock.calls.map(([call]) => call.data.targetId)).toEqual([
+      41, 43
+    ]);
   });
 });

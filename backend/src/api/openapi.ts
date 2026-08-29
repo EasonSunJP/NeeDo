@@ -620,6 +620,172 @@ const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> 
   return paths;
 };
 
+const exchangeErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description: "error.forbidden or error.identity.forbidden — denied permission or identity"
+  },
+  "404": { description: "error.exchange.post_not_found — post does not exist" },
+  "409": { description: "error.exchange.post_unavailable — post is withdrawn or expired" }
+};
+
+const exchangeIdempotencyKeyParameter = {
+  name: "Idempotency-Key",
+  in: "header",
+  required: true,
+  schema: { type: "string", minLength: 16, maxLength: 191 }
+};
+
+const exchangeOperation = (
+  summary: string,
+  permission: string | readonly string[],
+  extras: Record<string, unknown>
+) => ({
+  tags: ["NeeDo Exchange"],
+  summary,
+  security: [{ bearerAuth: [] }],
+  ...(typeof permission === "string"
+    ? { "x-required-permission": permission }
+    : { "x-required-permissions": permission }),
+  ...extras
+});
+
+const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
+  const base = `${config.API_PREFIX}/exchange/posts`;
+  const postId = idPathParameter("id");
+  const pageParameters = [
+    { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+    {
+      name: "page_size",
+      in: "query",
+      schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+    }
+  ];
+  const body = (schema: string) => ({
+    required: true,
+    content: { "application/json": { schema: { $ref: `#/components/schemas/${schema}` } } }
+  });
+  const mutationParameters = (includeId = true) => [
+    ...(includeId ? [postId] : []),
+    exchangeIdempotencyKeyParameter
+  ];
+
+  return {
+    [base]: {
+      get: exchangeOperation("List live demand or intelligence posts", "exchange:posts:list", {
+        parameters: [
+          {
+            name: "type",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["demand", "intelligence"] }
+          },
+          ...pageParameters
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated live Exchange posts", {
+            $ref: "#/components/schemas/ExchangePostPage"
+          }),
+          ...exchangeErrorResponses
+        }
+      }),
+      post: exchangeOperation(
+        "Publish a demand or intelligence post for the active identity",
+        ["exchange:posts:create-demand", "exchange:posts:create-intelligence"],
+        {
+          parameters: mutationParameters(false),
+          requestBody: body("ExchangePublishRequest"),
+          responses: {
+            "201": jsonDataResponse("Persisted Exchange post", {
+              $ref: "#/components/schemas/ExchangePost"
+            }),
+            ...exchangeErrorResponses
+          }
+        }
+      )
+    },
+    [`${base}/{id}`]: {
+      get: exchangeOperation("Read one persisted Exchange post", "exchange:posts:detail", {
+        parameters: [postId],
+        responses: {
+          "200": jsonDataResponse("Exchange post", {
+            $ref: "#/components/schemas/ExchangePost"
+          }),
+          ...exchangeErrorResponses
+        }
+      })
+    },
+    [`${base}/{id}/withdraw`]: {
+      post: exchangeOperation(
+        "Withdraw the active identity's own post",
+        "exchange:posts:withdraw-own",
+        {
+          parameters: mutationParameters(),
+          responses: {
+            "200": jsonDataResponse("Withdrawn Exchange post", {
+              $ref: "#/components/schemas/ExchangePost"
+            }),
+            ...exchangeErrorResponses
+          }
+        }
+      )
+    },
+    [`${base}/{id}/comments`]: {
+      get: exchangeOperation("List persisted comments", "exchange:comments:list", {
+        parameters: [postId, ...pageParameters],
+        responses: {
+          "200": jsonDataResponse("Paginated Exchange comments", {
+            $ref: "#/components/schemas/ExchangeCommentPage"
+          }),
+          ...exchangeErrorResponses
+        }
+      }),
+      post: exchangeOperation("Create a persisted comment", "exchange:comments:create", {
+        parameters: mutationParameters(),
+        requestBody: body("ExchangeCommentCreateRequest"),
+        responses: {
+          "201": jsonDataResponse("Persisted Exchange comment", {
+            $ref: "#/components/schemas/ExchangeComment"
+          }),
+          ...exchangeErrorResponses
+        }
+      })
+    },
+    [`${base}/{id}/like`]: {
+      put: exchangeOperation("Like one Exchange post", "exchange:likes:write", {
+        parameters: mutationParameters(),
+        responses: {
+          "200": jsonDataResponse("Server-authoritative interaction counts", {
+            $ref: "#/components/schemas/ExchangeInteractionCounts"
+          }),
+          ...exchangeErrorResponses
+        }
+      }),
+      delete: exchangeOperation("Unlike one Exchange post", "exchange:likes:write", {
+        parameters: mutationParameters(),
+        responses: {
+          "200": jsonDataResponse("Server-authoritative interaction counts", {
+            $ref: "#/components/schemas/ExchangeInteractionCounts"
+          }),
+          ...exchangeErrorResponses
+        }
+      })
+    },
+    [`${base}/{id}/shares`]: {
+      post: exchangeOperation("Record one successful share", "exchange:shares:create", {
+        parameters: mutationParameters(),
+        responses: {
+          "200": jsonDataResponse("Server-authoritative interaction counts", {
+            $ref: "#/components/schemas/ExchangeInteractionCounts"
+          }),
+          ...exchangeErrorResponses
+        }
+      })
+    }
+  };
+};
+
 const merchantEmployeeNeedoIdParameter = {
   name: "needoId",
   in: "path",
@@ -694,6 +860,254 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     schemas: {
+      ExchangeActor: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "identityType", "displayName", "avatarUrl"],
+        properties: {
+          publicId: { type: "string", minLength: 1, maxLength: 32 },
+          identityType: { type: "string", minLength: 1, maxLength: 50 },
+          displayName: { type: "string", minLength: 1, maxLength: 100 },
+          avatarUrl: { type: ["string", "null"], format: "uri" }
+        }
+      },
+      ExchangeInteractionCounts: {
+        type: "object",
+        additionalProperties: false,
+        required: ["comments", "likes", "shares"],
+        properties: {
+          comments: { type: "integer", minimum: 0 },
+          likes: { type: "integer", minimum: 0 },
+          shares: { type: "integer", minimum: 0 }
+        }
+      },
+      ExchangeViewerState: {
+        type: "object",
+        additionalProperties: false,
+        required: ["liked", "canWithdraw"],
+        properties: {
+          liked: { type: "boolean" },
+          canWithdraw: { type: "boolean" }
+        }
+      },
+      ExchangeDemand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["budgetMinJpy", "budgetMaxJpy"],
+        properties: {
+          budgetMinJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+        }
+      },
+      ExchangeIntelligence: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "serviceMode",
+          "addressLabel",
+          "serviceAreas",
+          "originalPriceJpy",
+          "campaignPriceJpy"
+        ],
+        properties: {
+          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
+          addressLabel: { type: ["string", "null"], maxLength: 255 },
+          serviceAreas: {
+            type: "array",
+            minItems: 1,
+            maxItems: 30,
+            uniqueItems: true,
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
+          originalPriceJpy: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 1000000000
+          },
+          campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+        }
+      },
+      ExchangePost: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "type",
+          "status",
+          "title",
+          "detail",
+          "contentLocale",
+          "areaLabel",
+          "serviceStartAt",
+          "serviceEndAt",
+          "expiresAt",
+          "publishedAt",
+          "publisher",
+          "counts",
+          "viewer",
+          "demand",
+          "intelligence"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          type: { type: "string", enum: ["demand", "intelligence"] },
+          status: { type: "string", enum: ["published", "withdrawn", "expired"] },
+          title: { type: "string", minLength: 1, maxLength: 120 },
+          detail: { type: "string", minLength: 1, maxLength: 10000 },
+          contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          areaLabel: { type: "string", minLength: 1, maxLength: 120 },
+          serviceStartAt: { type: "string", format: "date-time" },
+          serviceEndAt: { type: "string", format: "date-time" },
+          expiresAt: { type: "string", format: "date-time" },
+          publishedAt: { type: "string", format: "date-time" },
+          publisher: { $ref: "#/components/schemas/ExchangeActor" },
+          counts: { $ref: "#/components/schemas/ExchangeInteractionCounts" },
+          viewer: { $ref: "#/components/schemas/ExchangeViewerState" },
+          demand: {
+            oneOf: [{ $ref: "#/components/schemas/ExchangeDemand" }, { type: "null" }]
+          },
+          intelligence: {
+            oneOf: [{ $ref: "#/components/schemas/ExchangeIntelligence" }, { type: "null" }]
+          }
+        }
+      },
+      ExchangePostPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ExchangePost" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ExchangeComment: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "postId", "author", "content", "createdAt"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          postId: { type: "integer", minimum: 1 },
+          author: { $ref: "#/components/schemas/ExchangeActor" },
+          content: { type: "string", minLength: 1, maxLength: 1000 },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      ExchangeCommentPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ExchangeComment" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ExchangeDemandPublishRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "title",
+          "detail",
+          "contentLocale",
+          "areaLabel",
+          "serviceStartAt",
+          "serviceEndAt",
+          "expiresAt",
+          "budgetMinJpy",
+          "budgetMaxJpy"
+        ],
+        properties: {
+          type: { type: "string", enum: ["demand"] },
+          title: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            example: "中目黒でイベント用ヘアセットをお願いしたい"
+          },
+          detail: {
+            type: "string",
+            minLength: 1,
+            maxLength: 10000,
+            example: "午後のイベント前に、自然なアップスタイルを希望します。"
+          },
+          contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          areaLabel: { type: "string", minLength: 1, maxLength: 120 },
+          serviceStartAt: { type: "string", format: "date-time" },
+          serviceEndAt: { type: "string", format: "date-time" },
+          expiresAt: { type: "string", format: "date-time" },
+          budgetMinJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+        }
+      },
+      ExchangeIntelligencePublishRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "title",
+          "detail",
+          "contentLocale",
+          "areaLabel",
+          "serviceStartAt",
+          "serviceEndAt",
+          "expiresAt",
+          "serviceMode",
+          "serviceAreas",
+          "campaignPriceJpy"
+        ],
+        properties: {
+          type: { type: "string", enum: ["intelligence"] },
+          title: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            example: "平日限定のヘッドスパ枠をご案内します"
+          },
+          detail: {
+            type: "string",
+            minLength: 1,
+            maxLength: 10000,
+            example: "落ち着いた個室で施術します。事前相談も可能です。"
+          },
+          contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          areaLabel: { type: "string", minLength: 1, maxLength: 120 },
+          serviceStartAt: { type: "string", format: "date-time" },
+          serviceEndAt: { type: "string", format: "date-time" },
+          expiresAt: { type: "string", format: "date-time" },
+          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
+          addressLabel: { type: ["string", "null"], maxLength: 255 },
+          serviceAreas: {
+            type: "array",
+            minItems: 1,
+            maxItems: 30,
+            uniqueItems: true,
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
+          originalPriceJpy: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 1000000000
+          },
+          campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+        }
+      },
+      ExchangePublishRequest: {
+        oneOf: [
+          { $ref: "#/components/schemas/ExchangeDemandPublishRequest" },
+          { $ref: "#/components/schemas/ExchangeIntelligencePublishRequest" }
+        ],
+        discriminator: { propertyName: "type" }
+      },
+      ExchangeCommentCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["content"],
+        properties: { content: { type: "string", minLength: 1, maxLength: 1000 } }
+      },
       SaasFreeDuration: {
         type: ["object", "null"],
         required: ["years", "months", "days", "totalDays"],
@@ -5716,6 +6130,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   },
   paths: {
     ...createCarouselOpenApiPaths(config),
+    ...createExchangeOpenApiPaths(config),
     [`${config.API_PREFIX}/backoffice/platform-fee-policy`]: {
       get: {
         tags: ["Platform Fee Policy"],
@@ -12939,7 +13354,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   content: {
                     type: "string",
                     maxLength: 5000,
-                    description: "Trimmed content; may be empty only when at least one image is attached"
+                    description:
+                      "Trimmed content; may be empty only when at least one image is attached"
                   },
                   media: {
                     type: "object",

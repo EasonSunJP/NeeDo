@@ -484,17 +484,19 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         select: { id: true }
       });
       if (due.length === 0) return 0;
-      const ids = due.map(({ id }) => id);
-      const updated = await transaction.exchangePost.updateMany({
-        where: {
-          id: { in: ids },
-          status: DatabaseExchangePostStatus.PUBLISHED,
-          expiresAt: { lte: now },
-          deletedAt: null
-        },
-        data: { status: DatabaseExchangePostStatus.EXPIRED, updatedAt: now }
-      });
-      for (const id of ids.slice(0, updated.count)) {
+      let expired = 0;
+      for (const { id } of due) {
+        const updated = await transaction.exchangePost.updateMany({
+          where: {
+            id,
+            status: DatabaseExchangePostStatus.PUBLISHED,
+            expiresAt: { lte: now },
+            deletedAt: null
+          },
+          data: { status: DatabaseExchangePostStatus.EXPIRED, updatedAt: now }
+        });
+        if (updated.count !== 1) continue;
+        expired += 1;
         await transaction.auditLog.create({
           data: toAuditLogCreateData({
             actorId: null,
@@ -505,7 +507,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           })
         });
       }
-      return updated.count;
+      return expired;
     });
   }
 
