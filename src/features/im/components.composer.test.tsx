@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ImChatComposer } from "./components";
+import { ImChatComposer, ImReturnToLatestButton } from "./components";
 import type { ImChatComposerPanel } from "./components";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -84,6 +84,35 @@ describe("ImChatComposer", () => {
       morePanel?.querySelector<HTMLButtonElement>("button")?.click();
     });
     expect(actionRun).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it("renders the fixed Social-FAB-style down arrow only when requested", async () => {
+    const onActivate = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ImReturnToLatestButton onActivate={onActivate} visible />);
+    });
+
+    const button = container.querySelector<HTMLButtonElement>("[aria-label='回到最新消息']");
+    expect(button).not.toBeNull();
+    expect(button?.className).toContain("client-floating-action-button");
+    expect(button?.className).toContain("bottom-[calc(env(safe-area-inset-bottom)+104px)]");
+    expect(button?.querySelector("[data-im-return-arrow='true']")).not.toBeNull();
+
+    await act(async () => {
+      button?.click();
+    });
+    expect(onActivate).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      root.render(<ImReturnToLatestButton onActivate={onActivate} visible={false} />);
+    });
+    expect(container.querySelector("[aria-label='回到最新消息']")).toBeNull();
 
     await act(async () => root.unmount());
   });

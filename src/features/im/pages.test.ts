@@ -139,6 +139,18 @@ describe("IM pages", () => {
     expect(componentSource).toContain('list.addEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true)');
   });
 
+  it("shows one return-to-latest control when the terminal message position is outside the viewport", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentSource).toContain('data-im-latest-position="true"');
+    expect(componentSource).toContain("observeImLatestPosition");
+    expect(componentSource).toContain("!latestPositionVisible && !menuState && !mediaPreview");
+    expect(componentSource).toContain("getImReturnScrollBehavior()");
+    expect(componentSource).not.toContain("条新消息");
+  });
+
   it("uses confirmed standard recall and restores text only after success", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
