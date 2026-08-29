@@ -1,239 +1,194 @@
-# IM Compact Context Menu Implementation Plan
+# IM Width-Aware Action Menu and Click Reliability Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For implementation:** Execute one task at a time with test-driven development. Keep formal IM mutations, permissions, and persistence unchanged.
 
-**Goal:** Compress the formal IM message action menu and keep the quick-reaction row on the edge closest to the selected message.
+**Goal:** Make the six message actions fit on one row whenever the action sheet itself is wide enough, fall back to an exact 3-by-2 grid only when necessary, and make every action and quick reaction respond reliably to pointer and touch input.
 
-**Architecture:** Keep the single existing `ImMessageActionSheet` component and its viewport-aware placement calculation. Build named reaction and action sections once, then order them from the existing `placement` state; compact the existing controls without changing callbacks, permissions, or backend data.
+**Architecture:** Keep the existing `ImMessageActionSheet` and formal callbacks. Measure the rendered menu content, derive one compact density state from that measurement, and render the action and reaction rows from that state instead of viewport breakpoints. Treat the portal sheet as an interaction island so the conversation-level dismissal gesture cannot unmount it before a button click completes.
 
-**Tech Stack:** React 19, TypeScript, Tailwind utility classes, Vitest, JSDOM, Vite.
+**Tech Stack:** React 19, TypeScript, Vitest, JSDOM, Vite, existing formal IM API/store.
 
-## Global Constraints
+## Constraints
 
-- The menu prefers the message's upper side and flips below only when upper space is insufficient.
-- Above placement renders quick reactions last; below placement renders quick reactions first.
-- The action grid uses five columns and no separate full-width close row.
-- Touch targets remain at least 44px and all existing formal message actions remain available.
-- Do not add a second menu, mock data, fake API, or backend mutation.
+- Use the menu's rendered content width, not `window.innerWidth` or a Tailwind viewport breakpoint.
+- At content width `>= 304px`, render all six actions in one row; below it, render exactly three actions per row.
+- At content width `>= 336px`, show all six quick reactions plus the more button; below it, show four quick reactions plus the more button.
+- Preserve the existing placement rule: the quick-reaction row stays on the side nearest the selected message.
+- Preserve 44px minimum touch targets and left/right message anchoring.
+- Do not add polling, mock data, a second menu, permission bypasses, or alternative mutation paths.
+- A failed formal mutation must keep the existing rollback/error behavior.
 
 ---
 
-### Task 1: Compact and reorder the formal message action sheet
+### Task 1: Lock the width contract with failing tests
 
 **Files:**
 - Modify: `src/features/im/components.action-menu.test.tsx`
-- Modify: `src/features/im/components.tsx:2000-2250`
-- Verify: `src/features/im/pages.test.ts`
+- Read: `src/features/im/components.tsx:1980-2280`
 
-**Interfaces:**
-- Consumes: `menuPosition.placement: "above" | "below"`, `actions: ImMessageActionSheetItem[]`, `expanded: boolean`, and the existing reaction/action callbacks.
-- Produces: DOM sections marked with `data-im-message-action-section="reactions"` and `data-im-message-action-section="actions"`; compact action items marked with `data-im-message-action-item="true"`.
+- [ ] Add a reusable test renderer that supplies six named action spies, a reaction spy, an expand spy, and deterministic `getBoundingClientRect()` values for the anchor, sheet, and inner content.
 
-- [ ] **Step 1: Write the failing layout and compactness assertions**
+- [ ] Add a wide-content test (`content width = 360`) asserting:
+  - the action grid has the wide one-row state;
+  - all six action buttons are visible;
+  - all six quick reactions and the more button are visible;
+  - no viewport-width utility class controls either result.
 
-Extend the existing JSDOM render so it supplies one action and verifies the section order in both placements:
+- [ ] Add a narrow-content test (`content width = 280`) asserting:
+  - the action grid has the exact three-column state;
+  - only four quick reactions plus the more button are visible;
+  - the quick-reaction section remains nearest the selected message for both `above` and `below` placement.
 
-```tsx
-actions: [{
-  key: "reply",
-  label: "回复",
-  icon: "reply",
-  onClick: vi.fn()
-}],
-```
-
-Add these assertions after the first above placement calculation:
-
-```tsx
-const reactions = menu?.querySelector<HTMLElement>(
-  '[data-im-message-action-section="reactions"]'
-);
-const actionGrid = menu?.querySelector<HTMLElement>(
-  '[data-im-message-action-section="actions"]'
-);
-const actionItem = menu?.querySelector<HTMLElement>(
-  '[data-im-message-action-item="true"]'
-);
-
-expect(actionGrid?.compareDocumentPosition(reactions!))
-  .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-expect(actionItem?.className).toContain("py-2");
-expect(actionItem?.querySelector("span")?.className).toContain("h-8");
-expect([...menu!.querySelectorAll("button")].some(
-  (button) => button.textContent?.trim() === "收起"
-)).toBe(false);
-```
-
-After moving the anchor below the top edge and dispatching resize, re-query the sections and assert:
-
-```tsx
-expect(reactions?.compareDocumentPosition(actionGrid!))
-  .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-```
-
-- [ ] **Step 2: Run the focused test and verify RED**
-
-Run:
+- [ ] Run the focused test and confirm RED:
 
 ```bash
 npm test -- src/features/im/components.action-menu.test.tsx
 ```
 
-Expected: FAIL because the section data attributes do not exist, the action button still uses `py-3` and `h-10`, and the standalone `收起` button is still rendered.
+Expected failure: current markup still uses `min-[480px]` viewport breakpoints and cannot distinguish two menu widths at the same viewport width.
 
-- [ ] **Step 3: Implement the minimal adaptive compact layout**
+---
 
-In `ImMessageActionButton`, add `data-im-message-action-item="true"` and use compact tokens:
+### Task 2: Replace viewport breakpoints with measured menu density
 
-```tsx
-<button
-  className={cn(
-    "focus-ring min-h-11 min-w-0 rounded-[14px] px-1 py-2 text-center transition",
-    "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] text-[color:var(--client-text)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_13%,var(--client-surface)_87%)]",
-    danger && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-    item.disabled && "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]"
-  )}
-  data-im-message-action-item="true"
-  disabled={item.disabled}
-  onClick={item.onClick}
-  type="button"
->
-  <span className={cn(
-    "mx-auto grid h-8 w-8 place-items-center rounded-xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]",
-    item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]"
-  )}>
-    <ImIcon name={item.icon === "pin" ? "top" : item.icon} />
-  </span>
-  <span className="mt-1 block truncate text-[11px] font-black leading-4">
-    {item.label}
-  </span>
-</button>
-```
+**Files:**
+- Modify: `src/features/im/components.tsx:1980-2280`
+- Modify: `src/features/im/components.action-menu.test.tsx`
 
-Change the compact `ImReactionButton` token from `h-12 min-w-12 text-[24px]` to `h-11 min-w-11 text-[22px]`, preserving a 44px target.
+- [ ] Add a ref to the inner menu content and include its rendered width in the existing layout measurement. Update it on mount, resize, and the existing menu-position refresh path without installing a polling timer.
 
-Inside `ImMessageActionSheet`, create one `reactionSection` and one `actionSection` with stable markers:
+- [ ] Derive explicit booleans from the measured content width:
 
 ```tsx
-const quickReactionRow = (
-  <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-0.5 px-1 py-1.5">
-    {imQuickReactions.map((emoji) => (
-      <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
-    ))}
-    <button
-      aria-label={expanded ? "收起默认表情" : "展开默认表情"}
-      className={cn(
-        "focus-ring grid h-11 place-items-center rounded-full transition",
-        "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-      )}
-      onClick={() => onExpandedChange(!expanded)}
-      type="button"
-    >
-      <ImIcon name="more" />
-    </button>
-  </div>
-);
-
-const expandedReactionCatalog = expanded ? (
-  <div className="space-y-2 px-1 pb-2 pt-1">
-    <section>
-      <p className="mb-1 text-[11px] font-black text-[color:var(--client-muted)]">默认表情</p>
-      <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-9">
-        {imDefaultReactions.map((emoji) => (
-          <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
-        ))}
-      </div>
-    </section>
-  </div>
-) : null;
-
-const reactionSection = (
-  <section
-    className={menuPosition.placement === "above" ? "pt-1" : "pb-1"}
-    data-im-message-action-section="reactions"
-  >
-    {menuPosition.placement === "above" ? expandedReactionCatalog : quickReactionRow}
-    {menuPosition.placement === "above" ? quickReactionRow : expandedReactionCatalog}
-  </section>
-);
-
-const actionSection = actions.length > 0 ? (
-  <div
-    className="grid grid-cols-6 gap-1"
-    data-im-message-action-section="actions"
-  >
-    {actions.map((item) => (
-      <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
-    ))}
-  </div>
-) : null;
-
-const listActionSection = listActions.length > 0 ? (
-  <div className={cn("mt-2 overflow-hidden rounded-[16px]", listShellClass)}>
-    {listActions.map((item) => (
-      <button
-        className={cn(
-          "focus-ring flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-black transition",
-          "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
-          item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-          item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
-        )}
-        disabled={item.disabled}
-        key={item.key}
-        onClick={item.onClick}
-        type="button"
-      >
-        <ImIcon className="h-4.5 w-4.5 shrink-0" name={item.icon} />
-        <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      </button>
-    ))}
-  </div>
-) : null;
+const actionsFitOneRow = menuContentWidth >= 304;
+const reactionsFitFullRow = menuContentWidth >= 336;
 ```
 
-Group expanded default reactions with the quick-reaction section. Render sections in the existing scroll container as:
+- [ ] Render the action grid with exactly one of `grid-cols-6` or `grid-cols-3`. Remove `min-[480px]:grid-cols-6`.
 
-```tsx
-{menuPosition.placement === "below" ? reactionSection : null}
-{actionSection}
-{listActionSection}
-{menuPosition.placement === "above" ? reactionSection : null}
+- [ ] Render all reaction buttons, but hide reaction indices 4 and 5 only when `reactionsFitFullRow` is false. Make the quick-reaction grid five columns in compact mode and seven columns in full mode. Remove `min-[480px]` visibility/layout classes.
+
+- [ ] Guard initial measurement so the first paint uses the compact safe layout and switches once after the real width is known; avoid state updates when the measured width has not changed.
+
+- [ ] Run the focused test and confirm GREEN:
+
+```bash
+npm test -- src/features/im/components.action-menu.test.tsx
 ```
 
-Remove the standalone `收起` button. Change the scroll container to `p-2`, the sheet radius to `20px`, list spacing to compact values, and the positioner width to:
+---
 
-```tsx
-width: "min(520px, calc(100vw - 32px))"
-```
+### Task 3: Reproduce and isolate the lost-click path
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+**Files:**
+- Modify: `src/features/im/components.action-menu.test.tsx`
+- Modify: `src/features/im/pages.test.ts`
+- Read: `src/features/im/pages.tsx:2700-3050`
 
-Run:
+- [ ] Add a behavior test that wraps the action sheet in an outer surface which dismisses on pointer-down. Dispatch the real sequence `pointerdown -> pointerup -> click` on each of the six buttons. Assert each corresponding spy fires exactly once and the outer dismiss handler does not run first.
+
+- [ ] Add equivalent pointer-sequence tests for:
+  - each visible quick reaction;
+  - the more button opening and closing the expanded catalog;
+  - a disabled action remaining inert;
+  - right-click/context-menu inside the custom sheet not opening the native browser menu.
+
+- [ ] Add a source/behavior assertion around the conversation capture handler so targets inside `[data-im-message-action-sheet="true"]` are excluded using the event's composed path as well as `closest()`. This covers portal descendants and SVG icon targets.
+
+- [ ] Run the focused tests and confirm at least one new interaction assertion is RED before changing production code:
 
 ```bash
 npm test -- src/features/im/components.action-menu.test.tsx src/features/im/pages.test.ts
 ```
 
-Expected: both test files PASS with no React warnings.
+If all new assertions unexpectedly pass, do not add speculative event code. Reproduce once in the signed-in browser with event instrumentation and move the failing boundary into a test first.
 
-- [ ] **Step 5: Run static and production verification**
+---
 
-Run:
+### Task 4: Make the action sheet an interaction island
+
+**Files:**
+- Modify: `src/features/im/components.tsx:1980-2280`
+- Modify: `src/features/im/pages.tsx:2700-3050`
+- Modify: `src/features/im/components.action-menu.test.tsx`
+- Modify: `src/features/im/pages.test.ts`
+
+- [ ] Stop pointer-down, pointer-up, click, and context-menu propagation at the sheet boundary while leaving the backdrop button responsible for outside dismissal.
+
+- [ ] Keep every action on a native `<button type="button">`; invoke the existing callback once from `onClick`. Do not move formal mutations into pointer handlers.
+
+- [ ] Make the conversation capture guard inspect `nativeEvent.composedPath()` and return when any path element belongs to the action sheet, composer, or other already-exempt interactive surface.
+
+- [ ] Prevent the native desktop context menu only for message press targets and the custom action sheet. Preserve ordinary context menus elsewhere in the app.
+
+- [ ] Run focused tests and confirm GREEN:
+
+```bash
+npm test -- src/features/im/components.action-menu.test.tsx src/features/im/pages.test.ts
+```
+
+---
+
+### Task 5: Verify formal callbacks and persistence contracts
+
+**Files:**
+- Modify if needed: `src/features/im/pages.test.ts`
+- Verify: `src/features/im/pages.tsx`
+- Verify: `src/features/im/formal-api.ts`
+
+- [ ] Assert the six menu entries still map to the intended existing callbacks: reply, forward, copy, pin/unpin, recall, and delete.
+
+- [ ] Assert a quick reaction calls `store.setMessageReaction` once with the selected message ID and emoji, and that the optimistic rollback path remains active on API failure.
+
+- [ ] Assert disabled recall/delete states do not bypass ownership, expiry, or server authorization.
+
+- [ ] Run the complete formal IM test subset:
+
+```bash
+npm test -- src/features/im/components.action-menu.test.tsx src/features/im/pages.test.ts src/features/im/formal-store.test.ts src/features/im/formal-api.test.ts
+```
+
+Expected: all tests pass without React act warnings or unhandled promise rejections.
+
+---
+
+### Task 6: Static, build, and signed-in 5180 acceptance
+
+**Files:**
+- Verify only; no unrelated edits.
+
+- [ ] Run:
 
 ```bash
 npm run lint
 npm run verify:production-build
 ```
 
-Expected: lint exits 0; TypeScript/Vite production build and bundle audit report PASS.
+- [ ] On `http://127.0.0.1:5180/user.html#/messages/2561`, test a left-side and right-side text message and a media message:
+  - wide menu: six actions in one compressed row;
+  - narrow emulation: exact 3-by-2 actions and reduced quick reactions;
+  - menu remains aligned to the selected message side;
+  - all visible actions work on actual clicks;
+  - quick reactions persist after reload/reconnect;
+  - native desktop context menu does not appear on message long-press/right-click;
+  - clicking outside still closes the sheet.
 
-- [ ] **Step 6: Verify in the signed-in 5180 conversation**
+- [ ] Check browser console and network results. Treat any 4xx/5xx, duplicate mutation, unhandled rejection, or reload-only state as a failed acceptance.
 
-Reload `http://127.0.0.1:5180/#/messages/2561`, open a menu on a message in the lower half, and verify the action grid precedes the reaction row and the menu is above the message. Then open a menu on a message near the top and verify the reaction row precedes the action grid and the menu is below the message. Confirm the standalone `收起` row is absent and the ellipsis still expands/collapses the emoji catalog.
+---
 
-- [ ] **Step 7: Commit the implementation**
+### Task 7: Commit only the scoped IM fix
+
+- [ ] Review the diff and leave concurrent homepage/carousel work untouched.
 
 ```bash
-git add src/features/im/components.tsx src/features/im/components.action-menu.test.tsx
-git commit -m "fix: compact IM message action menu"
+git diff -- src/features/im/components.tsx src/features/im/components.action-menu.test.tsx src/features/im/pages.tsx src/features/im/pages.test.ts
+git status --short
+```
+
+- [ ] Commit only the four scoped files after all checks and browser acceptance pass:
+
+```bash
+git add src/features/im/components.tsx src/features/im/components.action-menu.test.tsx src/features/im/pages.tsx src/features/im/pages.test.ts
+git commit -m "fix: stabilize adaptive IM message actions"
 ```

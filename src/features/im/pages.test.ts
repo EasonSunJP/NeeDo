@@ -254,6 +254,20 @@ describe("IM pages", () => {
       .toBeLessThan(contextMenuSource.indexOf("hasActiveImMessageTextSelection"));
   });
 
+  it("keeps portal action-sheet pointer events out of the conversation dismissal path", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const handlerStart = componentSource.indexOf("const handleConversationPointerDownCapture");
+    const handlerEnd = componentSource.indexOf("const selectMessageText", handlerStart);
+    const handlerSource = componentSource.slice(handlerStart, handlerEnd);
+
+    expect(handlerStart).toBeGreaterThan(-1);
+    expect(handlerSource).toContain("event.nativeEvent.composedPath()");
+    expect(handlerSource).toContain("[data-im-message-action-sheet='true']");
+    expect(handlerSource).toContain("[data-im-composer-root='true']");
+  });
+
   it("handles privacy-save and leave failures inside the settings page instead of crashing the app", () => {
     expect(pagesSource).toContain('showInfoToast("隐私模式设置已保存")');
     expect(pagesSource).toContain('showInfoToast("隐私模式设置失败，请稍后重试")');
