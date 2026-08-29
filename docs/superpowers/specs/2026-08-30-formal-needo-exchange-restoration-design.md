@@ -23,7 +23,7 @@
 - 当前身份为 `customer` 的登录账号只能发布需求。
 - 当前身份为 `technician` 的登录账号只能发布情报。
 - 当前身份为 `merchant_owner` 或 `merchant_staff` 的登录账号只能以当前店铺范围发布情报。
-- 发布者由后端根据 Access Token 中的 `currentIdentityId` 解析；客户端不能提交作者用户 ID、身份 ID、店铺 ID或公开 NeeDoID。
+- 发布者由后端根据 Access Token 中的 `currentIdentityId` 解析；客户端不能提交作者用户 ID、身份 ID、店铺 ID 或公开 NeeDoID。
 - 新内容不经过运营审核，服务端校验通过后立即进入 `PUBLISHED` 状态。
 - 本人可以撤回；到期内容由服务端状态规则移出默认活动列表。
 
