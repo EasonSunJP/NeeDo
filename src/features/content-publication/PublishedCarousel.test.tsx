@@ -114,6 +114,16 @@ describe("PublishedCarousel", () => {
     expect(apiMocks.getUserHomeCarousel).toHaveBeenCalledWith("zh-CN");
   });
 
+  it("preserves the requested height while the formal request is loading", async () => {
+    apiMocks.getUserHomeCarousel.mockReturnValue(new Promise(() => undefined));
+
+    await renderCarousel("user-home", "h-[204px]");
+
+    expect(
+      container.querySelector('[data-testid="published-carousel-loading"].h\\-\\[204px\\]')
+    ).not.toBeNull();
+  });
+
   it("isolates a rejected request and retries without throwing through the page", async () => {
     apiMocks.getUserHomeCarousel
       .mockRejectedValueOnce(new Error("offline"))
@@ -132,6 +142,17 @@ describe("PublishedCarousel", () => {
     expect(apiMocks.getUserHomeCarousel).toHaveBeenCalledTimes(2);
   });
 
+  it("preserves the requested height in the isolated error state", async () => {
+    apiMocks.getUserHomeCarousel.mockRejectedValue(new Error("offline"));
+
+    await renderCarousel("user-home", "h-[204px]");
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="published-carousel-error"].h\\-\\[204px\\]')
+      ).not.toBeNull()
+    );
+  });
+
   it("renders an explicit empty state rather than production fallback slides", async () => {
     apiMocks.getAffiliateCarousel.mockResolvedValue({
       ...payload("AFFILIATE_HOME_NOTICE", {
@@ -145,6 +166,20 @@ describe("PublishedCarousel", () => {
 
     await waitFor(() => expect(container.textContent).toContain("暂无轮播内容"));
     expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("preserves the requested height in the explicit empty state", async () => {
+    apiMocks.getUserHomeCarousel.mockResolvedValue({
+      ...payload("USER_HOME", { type: "service", publicId: "service-1" }),
+      slides: []
+    });
+
+    await renderCarousel("user-home", "h-[204px]");
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="published-carousel-empty"].h\\-\\[204px\\]')
+      ).not.toBeNull()
+    );
   });
 
   it("passes API slides to FeatureCarousel and navigates a user-home target", async () => {

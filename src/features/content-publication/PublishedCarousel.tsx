@@ -27,17 +27,24 @@ export function carouselTargetPath(target: PublishedCarouselTarget): string {
 }
 
 function PublishedCarouselState({
+  cardHeightClassName,
   children,
   className,
   testId
 }: {
+  cardHeightClassName: string;
   children: React.ReactNode;
   className?: string;
   testId: string;
 }) {
   return (
     <section
-      className={cn(featureCarouselFrameClassName, "flex h-[176px] items-center justify-center", className)}
+      className={cn(
+        featureCarouselFrameClassName,
+        "flex items-center justify-center",
+        cardHeightClassName,
+        className
+      )}
       data-testid={testId}
       role="status"
     >
@@ -56,10 +63,12 @@ export function PublishedCarousel({
   const { language } = useOptionalI18n();
   const locale = toContentLocale(language);
   const { data, error, loading, retry } = usePublishedCarousel(scene, locale);
+  const resolvedCardHeightClassName = cardHeightClassName ?? "h-[176px]";
 
   if (loading) {
     return (
       <PublishedCarouselState
+        cardHeightClassName={resolvedCardHeightClassName}
         className="motion-safe:animate-pulse rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-sm font-bold text-[color:var(--client-muted)]"
         testId="published-carousel-loading"
       >
@@ -71,6 +80,7 @@ export function PublishedCarousel({
   if (error) {
     return (
       <PublishedCarouselState
+        cardHeightClassName={resolvedCardHeightClassName}
         className="flex-col gap-3 rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 text-center"
         testId="published-carousel-error"
       >
@@ -91,6 +101,7 @@ export function PublishedCarousel({
   if (!data || data.slides.length === 0) {
     return (
       <PublishedCarouselState
+        cardHeightClassName={resolvedCardHeightClassName}
         className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 text-center text-sm font-bold text-[color:var(--client-muted)]"
         testId="published-carousel-empty"
       >
@@ -110,5 +121,5 @@ export function PublishedCarousel({
     to: carouselTargetPath(slide.target)
   }));
 
-  return <FeatureCarousel cardHeightClassName={cardHeightClassName} slides={slides} />;
+  return <FeatureCarousel cardHeightClassName={resolvedCardHeightClassName} slides={slides} />;
 }
