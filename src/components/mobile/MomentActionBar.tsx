@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { ShareNetworkIcon } from "../ui/ShareNetworkIcon";
 
@@ -42,6 +43,7 @@ type MomentActionBarProps = {
   onReply: () => void;
   onTranslate?: () => void;
   onForward: () => void;
+  forwardLabel?: ReactNode;
 };
 
 export function MomentActionBar({
@@ -55,7 +57,8 @@ export function MomentActionBar({
   onLike,
   onReply,
   onTranslate,
-  onForward
+  onForward,
+  forwardLabel = "转发"
 }: MomentActionBarProps) {
   const actionClass =
     tone === "client"
@@ -95,7 +98,7 @@ export function MomentActionBar({
       ) : null}
       <button className={cn("inline-flex items-center gap-1.5 text-xs font-bold transition", actionClass)} onClick={onForward} type="button">
         <MomentActionIcon name="forward" />
-        <span>转发</span>
+        <span>{forwardLabel}</span>
       </button>
     </div>
   );

@@ -1,7 +1,10 @@
+import { EXCHANGE_SIMULATION_DEFAULT_SEED } from "./exchange-simulation.constants";
+
 export interface SimulationSeedConfig {
   databaseUrl: string;
   databaseName: string;
   defaultPassword: string;
+  exchangeSeed: string;
 }
 
 const requireValue = (value: string | undefined, name: string): string => {
@@ -46,6 +49,7 @@ export const getSimulationSeedConfig = (
     defaultPassword: requireValue(
       env.SIMULATION_DEFAULT_PASSWORD || env.TEST_USER_DEFAULT_PASSWORD,
       "SIMULATION_DEFAULT_PASSWORD or TEST_USER_DEFAULT_PASSWORD"
-    )
+    ),
+    exchangeSeed: env.EXCHANGE_SIMULATION_SEED?.trim() || EXCHANGE_SIMULATION_DEFAULT_SEED
   };
 };

@@ -122,6 +122,20 @@ npm run check:future-operations
 
 The workflow rejects production or remote databases, does not create accounts, and refuses to overwrite non-matching schedule or booking data in the target window. Repeating an exact successful apply returns `noop` without adding rows. Passing the database checker establishes only the real-data prerequisite; the user, technician, and merchant schedule UI mock-retirement slices remain separate acceptance work.
 
+### Formal NeeDo Exchange Dataset
+
+NeeDo Exchange now uses authenticated, persisted routes under `/api/v1/exchange`: paginated demand/intelligence posts, post detail, comments, like/unlike, share recording, direct publication, and author-only withdrawal. Customer identities may publish demand; active technician and merchant identities may publish intelligence. The server resolves the current user, active identity, and public NeeDoID from the authenticated session; clients cannot submit actor IDs.
+
+The local/test-only Exchange seed reuses existing active test users, identities, and public identifiers. It creates no account or shadow identity. A successful run contains exactly 20 demand posts and 20 intelligence posts; every post has 3–10 actor-linked comments, 10–66 unique actor-linked likes, and 2–15 unique actor-linked shares. The checker independently validates all totals, subtype ownership, actor joins, uniqueness, timestamps, and absence of old Exchange namespaces.
+
+```bash
+cd backend
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
+```
+
+The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment text remains in its original language. Offer-taking, quotes, matching, booking/order creation, appointments, and payment remain explicitly deferred and have no Exchange route or control in this phase.
+
 The isolated formal Social seed updates the 210 simulation accounts plus the six fixed role-entry accounts without replacing booking/order data. It assigns realistic shop and person names, persists 15 posts per account (text, single image, multi-image, video, and quote), and creates exactly 36 mutual friends per account across shop service accounts, technicians, and general users.
 
 ```bash

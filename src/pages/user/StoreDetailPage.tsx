@@ -3143,7 +3143,7 @@ export function StoreDetailExperience({
   const forwardOfferToNeedo = (offer: OfferCard, coverImage: string) => {
     void offer;
     void coverImage;
-    window.alert("正式需求与情报功能尚未启用，当前不会扣除积分或写入浏览器数据。");
+    window.alert("付费转发功能将在后续支付阶段开放。");
   };
   const getTechnicianServiceListTo = (technicianId: string) => getScopedTechnicianServiceListPath(scope, store.id, technicianId);
 

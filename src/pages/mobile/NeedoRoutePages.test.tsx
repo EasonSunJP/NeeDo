@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
-import source from "./NeedoRoutePages.tsx?raw";
+import routeSource from "./NeedoRoutePages.tsx?raw";
+import detailSource from "../../features/exchange/ExchangePostDetailPage.tsx?raw";
 
 describe("NeedoRoutePages", () => {
   it("keeps intelligence and demand detail content behind the glass header", () => {
-    const componentStart = source.indexOf("function NeedoPostDetailContent");
-    const componentEnd = source.indexOf("function NeedoCustomerDetailContent");
-    const componentSource = source.slice(componentStart, componentEnd);
-
-    expect(componentSource).toContain('<MobileFullscreenPage innerClassName="client-glass-page-surface">');
-    expect(componentSource).toContain("showSpacer={false}");
-    expect(componentSource).toContain("pt-[calc(env(safe-area-inset-top)+86px)]");
+    expect(routeSource).toContain("ExchangePostDetailPage");
+    expect(detailSource).toContain('<MobileFullscreenPage innerClassName="client-glass-page-surface">');
+    expect(detailSource).toContain("showSpacer={false}");
+    expect(detailSource).toContain("pt-[calc(env(safe-area-inset-top)+86px)]");
+    expect(detailSource).not.toMatch(/findNeedoPost|getDemandDetail|localStorage|needoExchangeBridge/u);
   });
 });
