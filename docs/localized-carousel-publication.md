@@ -108,6 +108,8 @@
 
 ## 5. 本地真实数据库 checker
 
+运行前必须确认固定场景 `USER_HOME` 与 `AFFILIATE_HOME_NOTICE` 都没有任何未删除的 release。checker 会先查询这两个 scene；任一 scene 已存在 release 时立即 fail closed，且不会覆盖、归档或清理已有内容。请改用专用的空白 `needo_dev` 或 `needo_test`，不要为了运行 checker 删除业务内容。
+
 命令：
 
 ```bash

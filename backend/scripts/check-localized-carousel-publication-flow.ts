@@ -122,6 +122,24 @@ export const deleteLocalizedPublicationCommandsByExactId = async (
   return deleted.count;
 };
 
+export const composeLocalizedPublicationCheckerError = (
+  operationError: unknown,
+  cleanupErrors: unknown[]
+): unknown => {
+  const operationFailed = operationError !== undefined;
+  if (operationFailed && cleanupErrors.length > 0) {
+    return new AggregateError(
+      [operationError, ...cleanupErrors],
+      "localized publication checker operation and cleanup failed"
+    );
+  }
+  if (operationFailed) return operationError;
+  if (cleanupErrors.length > 0) {
+    return new AggregateError(cleanupErrors, "localized publication checker cleanup failed");
+  }
+  return undefined;
+};
+
 const storedMediaFileExists = async (
   storage: { read(fileKey: string): Promise<Buffer> },
   fileKey: string
@@ -1212,10 +1230,8 @@ const main = async (): Promise<void> => {
     await disconnectPrisma().catch((error: unknown) => cleanupErrors.push(error));
   }
 
-  if (operationError) throw operationError;
-  if (cleanupErrors.length > 0) {
-    throw new AggregateError(cleanupErrors, "localized publication checker cleanup failed");
-  }
+  const finalError = composeLocalizedPublicationCheckerError(operationError, cleanupErrors);
+  if (finalError !== undefined) throw finalError;
   assert(evidence, "localized publication checker produced no evidence");
   console.log(JSON.stringify({ ...evidence, cleanup: "complete" }, null, 2));
 };

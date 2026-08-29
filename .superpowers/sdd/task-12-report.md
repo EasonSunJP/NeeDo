@@ -23,7 +23,7 @@ Two defects found while executing the real database lifecycle were converted int
 
 The safety review remediation added six independently observed RED contract failures for deploy/database normalization, exact command IDs and complete residue checks. The gated real-MySQL regression was separately RED because the exact-ID cleanup helper did not exist.
 
-Final safety-focused results: checker contract 1 suite / 18 tests passed; exact cleanup real-MySQL regression 1 suite / 1 test passed.
+Final safety-focused results: checker contract 1 suite / 21 tests passed; exact cleanup real-MySQL regression 1 suite / 1 test passed.
 
 The final integration rerun first hit a sandbox-only Prisma pool timeout because the restricted process could not open the local database socket. The same guarded command was rerun with approved local-database access and passed in 109 ms; no product assertion failed in the approved run.
 
@@ -38,6 +38,7 @@ The final integration rerun first hit a sandbox-only Prisma pool timeout because
 - Before changing either fixed carousel scene, the checker refuses to run if that scene already contains releases. It does not archive or overwrite pre-existing local content.
 - Every Service and scheduler command is resolved from its unique run-owned idempotency key to a command ID; `finally` deletes commands only by those exact IDs, never a cross-aggregate numeric release ID.
 - `finally` verifies captured IDs for every created root/translation/slide/profile/wallet/identity/link/audit/command table plus the physical media file. Any residue prevents `cleanup=complete`.
+- Final error composition is behavior-tested for operation-only, cleanup-only and combined failures. A combined failure throws one `AggregateError` containing the original operation error followed by every cleanup/disconnect error, so cleanup evidence cannot be masked.
 
 ## Real database lifecycle
 
@@ -84,6 +85,8 @@ Before changing cleanup, a read-only query of the explicit local `needo_dev` tar
 
 The real-MySQL regression then created two unique commands with the same numeric `release_id`, one Carousel and one OfficialAnnouncement. Deleting the captured Carousel command ID left the opposite aggregate command unchanged; test cleanup subsequently deleted both test IDs exactly. After the fixed full checker, a second read-only query again returned zero commands, announcements, announcement releases, carousels and content audits.
 
+The second review first added three behavior tests for final error composition. RED was the missing `composeLocalizedPublicationCheckerError` export. GREEN proves the original error is returned for operation-only failure, cleanup-only remains an explicit cleanup `AggregateError`, and simultaneous operation/cleanup failures retain all errors in one combined `AggregateError`. The runbook now puts the empty fixed-scene precondition before the checker command and explicitly forbids deleting business content to satisfy it.
+
 ## Automated verification
 
 Focused backend command from the implementation plan:
@@ -106,6 +109,8 @@ Repository gates:
 - i18n informational audit: exit 0, 11,547 Chinese source strings, 7,527 covered and 4,020 repository-wide extraction candidates; not treated as proof of the database publication lifecycle.
 - Formal production build and production bundle audit: passed.
 - `git diff --check`: passed.
+
+Second-review focused gates after error-composition remediation: source contract 1 suite / 21 tests passed; backend lint passed; backend TypeScript build passed; `git diff --check` passed. The full-suite counts above are the immediately preceding Task 12 repository-gate run; the second review changed only the checker helper, its focused tests and documentation.
 
 ## Browser handoff to root
 

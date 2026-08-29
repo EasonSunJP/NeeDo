@@ -1,6 +1,42 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertSafeLocalizedCarouselPublicationEnvironment } from "../scripts/check-localized-carousel-publication-flow";
+import {
+  assertSafeLocalizedCarouselPublicationEnvironment,
+  composeLocalizedPublicationCheckerError
+} from "../scripts/check-localized-carousel-publication-flow";
+
+describe("localized publication checker final error composition", () => {
+  it("returns the original operation failure when cleanup succeeds", () => {
+    const operationError = new Error("operation failed");
+
+    expect(composeLocalizedPublicationCheckerError(operationError, [])).toBe(operationError);
+  });
+
+  it("returns an explicit cleanup AggregateError when only cleanup fails", () => {
+    const cleanupError = new Error("cleanup failed");
+
+    const result = composeLocalizedPublicationCheckerError(undefined, [cleanupError]);
+
+    expect(result).toBeInstanceOf(AggregateError);
+    expect((result as AggregateError).message).toBe(
+      "localized publication checker cleanup failed"
+    );
+    expect((result as AggregateError).errors).toEqual([cleanupError]);
+  });
+
+  it("preserves both operation and cleanup failures in one AggregateError", () => {
+    const operationError = new Error("operation failed");
+    const cleanupErrors = [new Error("row cleanup failed"), new Error("disconnect failed")];
+
+    const result = composeLocalizedPublicationCheckerError(operationError, cleanupErrors);
+
+    expect(result).toBeInstanceOf(AggregateError);
+    expect((result as AggregateError).message).toBe(
+      "localized publication checker operation and cleanup failed"
+    );
+    expect((result as AggregateError).errors).toEqual([operationError, ...cleanupErrors]);
+  });
+});
 
 describe("localized carousel publication real-database checker", () => {
   const backendRoot = join(__dirname, "..");
