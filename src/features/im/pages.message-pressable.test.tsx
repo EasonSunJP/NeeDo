@@ -49,6 +49,7 @@ describe("MessagePressable", () => {
 
     await act(async () => {
       dispatchPointer(mediaButton!, "pointerup");
+      vi.advanceTimersByTime(1);
       mediaButton!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 

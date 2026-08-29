@@ -1248,6 +1248,7 @@ const contactSectionScrollMargin = "calc(env(safe-area-inset-top) + 5rem)";
 const contactIndexBottomGutter = "calc(6rem + env(safe-area-inset-bottom))";
 const contactIndexFixedRight = "max(0.5rem, calc((100vw - min(100vw, 880px)) / 2 + 0.5rem))";
 const contactIndexFixedBottom = "calc(7.5rem + env(safe-area-inset-bottom))";
+const imMessageLongPressActivationGuardMs = 800;
 const contactIndexBarClassName =
   "pointer-events-auto max-h-full touch-none select-none overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-1 py-2 shadow-[0_8px_18px_color-mix(in_srgb,var(--client-text)_10%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] backdrop-blur-xl";
 
@@ -1327,7 +1328,10 @@ export function MessagePressable({
     if (activationGuardTimerRef.current) {
       window.clearTimeout(activationGuardTimerRef.current);
     }
-    activationGuardTimerRef.current = window.setTimeout(clearActivationGuard, 0);
+    activationGuardTimerRef.current = window.setTimeout(
+      clearActivationGuard,
+      imMessageLongPressActivationGuardMs,
+    );
   };
 
   useEffect(() => () => {
