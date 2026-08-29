@@ -51,6 +51,12 @@ export function AnnouncementEditor({
   const [newBody, setNewBody] = useState("");
   const [publishAt, setPublishAt] = useState("");
   const [reason, setReason] = useState("");
+  const [disableReason, setDisableReason] = useState("");
+  const [rollbackReleaseId, setRollbackReleaseId] = useState("");
+  const [dirtyLocales, setDirtyLocales] = useState<Set<ContentLocaleCode>>(
+    () => new Set(),
+  );
+  const [conflict, setConflict] = useState(false);
   const [preview, setPreview] = useState<AnnouncementPreview | null>(null);
 
   const loadList = useCallback(async () => {
@@ -62,13 +68,23 @@ export function AnnouncementEditor({
         pageSize: 20,
       });
       setList(response.list);
-      setSelected(
-        (current) =>
-          response.list.find((item) => item.publicId === current?.publicId) ??
-          response.list[0] ??
-          null,
-      );
+      const next = response.list[0] ?? null;
+      setSelected(next);
+      if (next) {
+        const releases = await contentPublicationApi.getAnnouncementHistory(
+          next.publicId,
+          { page: 1, pageSize: 20 },
+        );
+        setHistory(releases.list);
+        const source = releases.list.find((item) => item.status !== "draft");
+        setRollbackReleaseId(source ? String(source.releaseId) : "");
+      } else {
+        setHistory([]);
+        setRollbackReleaseId("");
+      }
       setLoad("ready");
+      setDirtyLocales(new Set());
+      setConflict(false);
     } catch {
       setLoad("error");
       setError(t("loadError"));
@@ -79,24 +95,23 @@ export function AnnouncementEditor({
     void loadList();
   }, [loadList]);
 
-  useEffect(() => {
-    if (!selected) {
+  async function selectAnnouncement(item: AnnouncementRelease) {
+    setSelected(item);
+    setDirtyLocales(new Set());
+    setError("");
+    try {
+      const response = await contentPublicationApi.getAnnouncementHistory(
+        item.publicId,
+        { page: 1, pageSize: 20 },
+      );
+      setHistory(response.list);
+      const source = response.list.find((release) => release.status !== "draft");
+      setRollbackReleaseId(source ? String(source.releaseId) : "");
+    } catch {
       setHistory([]);
-      return;
+      setError(t("loadError"));
     }
-    let active = true;
-    void contentPublicationApi
-      .getAnnouncementHistory(selected.publicId, { page: 1, pageSize: 20 })
-      .then((response) => {
-        if (active) setHistory(response.list);
-      })
-      .catch(() => {
-        if (active) setHistory([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selected?.publicId]);
+  }
 
   function replaceSelected(next: AnnouncementRelease) {
     setSelected(next);
@@ -106,10 +121,16 @@ export function AnnouncementEditor({
     setError("");
   }
 
+  const draft = selected?.status === "draft" ? selected : null;
+  const latestVersion = Math.max(
+    selected?.version ?? 0,
+    ...history.map((item) => item.version),
+  );
+
   async function createDraft() {
     if (!newTitle.trim() || !newBody.trim()) return;
     try {
-      const created = await contentPublicationApi.createAnnouncementDraft({
+      await contentPublicationApi.createAnnouncementDraft({
         idempotencyKey: operationKey(),
         sourceLocale: locale,
         affiliateTaskId: null,
@@ -121,37 +142,47 @@ export function AnnouncementEditor({
           body: newBody.trim(),
         },
       });
-      setList((current) => [created, ...current]);
-      setSelected(created);
+      await loadList();
       setNewTitle("");
       setNewBody("");
+      setDirtyLocales(new Set());
       setNotice(t("saved"));
     } catch {
       setError(t("failedSave"));
     }
   }
 
-  async function saveLocale() {
-    if (!selected) return;
+  async function saveLocale(): Promise<AnnouncementRelease | null> {
+    if (!draft) return null;
+    if (dirtyLocales.size === 0) return draft;
     try {
-      replaceSelected(
-        await contentPublicationApi.updateAnnouncementLocale(
-          selected.publicId,
-          selected.releaseId,
+      let saved = draft;
+      for (const dirtyLocale of dirtyLocales) {
+        const value = draft.translations[dirtyLocale];
+        saved = await contentPublicationApi.updateAnnouncementLocale(
+          draft.publicId,
+          draft.releaseId,
           {
-            expectedLockVersion: selected.lockVersion,
-            locale,
-            ...selected.translations[locale],
+            expectedLockVersion: saved.lockVersion,
+            locale: dirtyLocale,
+            title: value.title,
+            summary: value.summary,
+            body: value.body,
           },
-        ),
-      );
+        );
+      }
+      replaceSelected(saved);
+      setDirtyLocales(new Set());
+      setConflict(false);
       setNotice(t("saved"));
+      return saved;
     } catch (caught) {
+      const isConflict = caught instanceof ApiClientError && caught.status === 409;
+      setConflict(isConflict);
       setError(
-        caught instanceof ApiClientError && caught.status === 409
-          ? t("conflict")
-          : t("failedSave"),
+        isConflict ? t("conflict") : t("failedSave"),
       );
+      return null;
     }
   }
 
@@ -159,54 +190,82 @@ export function AnnouncementEditor({
     field: "title" | "summary" | "body",
     value: string,
   ) {
-    if (!selected) return;
+    if (!draft) return;
     replaceSelected({
-      ...selected,
+      ...draft,
       translations: {
-        ...selected.translations,
+        ...draft.translations,
         [locale]: {
-          ...selected.translations[locale],
+          ...draft.translations[locale],
           [field]: field === "summary" ? value || null : value,
           sourceLocale: locale,
           isInitialCopy: false,
         },
       },
     });
+    setDirtyLocales((current) => {
+      const next = new Set(current);
+      next.add(locale);
+      return next;
+    });
     setNotice("");
   }
 
   async function copyLocale() {
-    if (!selected || !window.confirm(t("copyConfirm"))) return;
+    if (!draft || !window.confirm(t("copyConfirm"))) return;
+    const savedDraft = dirtyLocales.size > 0 ? await saveLocale() : draft;
+    if (!savedDraft) return;
     try {
       replaceSelected(
         await contentPublicationApi.copyAnnouncementLocaleToAll(
-          selected.publicId,
-          selected.releaseId,
+          savedDraft.publicId,
+          savedDraft.releaseId,
           {
-            expectedLockVersion: selected.lockVersion,
+            expectedLockVersion: savedDraft.lockVersion,
             sourceLocale: locale,
           },
         ),
       );
+      setDirtyLocales(new Set());
     } catch (caught) {
+      const isConflict = caught instanceof ApiClientError && caught.status === 409;
+      setConflict(isConflict);
       setError(
-        caught instanceof ApiClientError && caught.status === 409
-          ? t("conflict")
-          : t("failedSave"),
+        isConflict ? t("conflict") : t("failedSave"),
       );
     }
   }
 
   async function lifecycle(operation: () => Promise<AnnouncementRelease>) {
     try {
-      replaceSelected(await operation());
+      await operation();
+      await loadList();
       setNotice(t("saved"));
     } catch (caught) {
+      const isConflict = caught instanceof ApiClientError && caught.status === 409;
+      setConflict(isConflict);
       setError(
-        caught instanceof ApiClientError && caught.status === 409
-          ? t("conflict")
-          : t("failedSave"),
+        isConflict ? t("conflict") : t("failedSave"),
       );
+    }
+  }
+
+  async function ensureSaved() {
+    return dirtyLocales.size > 0 ? saveLocale() : draft;
+  }
+
+  async function previewDraft() {
+    const saved = await ensureSaved();
+    if (!saved) return;
+    try {
+      setPreview(
+        await contentPublicationApi.previewAnnouncement(
+          saved.publicId,
+          saved.releaseId,
+        ),
+      );
+    } catch {
+      setError(t("loadError"));
     }
   }
 
@@ -249,6 +308,16 @@ export function AnnouncementEditor({
             role="alert"
           >
             {error}
+            {conflict ? (
+              <Button
+                className="ml-3"
+                onClick={() => void loadList()}
+                size="sm"
+                variant="secondary"
+              >
+                {t("reload")}
+              </Button>
+            ) : null}
           </p>
         ) : null}
         {notice ? (
@@ -302,7 +371,7 @@ export function AnnouncementEditor({
               <button
                 className={`focus-ring rounded-full border px-3 py-2 text-xs font-bold ${item.publicId === selected?.publicId ? "border-moss bg-mint/10 text-moss" : "border-line bg-white text-ink/60"}`}
                 key={`${item.publicId}-${item.releaseId}`}
-                onClick={() => setSelected(item)}
+                onClick={() => void selectAnnouncement(item)}
                 type="button"
               >
                 {item.translations[locale].title}
@@ -330,7 +399,7 @@ export function AnnouncementEditor({
                 </button>
               ))}
             </div>
-          {selected.translations[locale].isInitialCopy ? (
+            {selected.translations[locale].isInitialCopy ? (
               <p className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-xs font-bold text-yellow-900">
                 {t("initialCopy").replace(
                   "{locale}",
@@ -339,164 +408,216 @@ export function AnnouncementEditor({
                   ],
                 )}
               </p>
-          ) : null}
-          <div className="mt-4 flex justify-end">
-            <Button
-              onClick={async () => {
-                try {
-                  setPreview(
-                    await contentPublicationApi.previewAnnouncement(
-                      selected.publicId,
-                      selected.releaseId,
-                    ),
-                  );
-                } catch {
-                  setError(t("loadError"));
+            ) : null}
+            <div className="mt-4 flex justify-end">
+              <Button
+                onClick={() =>
+                  void (draft
+                    ? previewDraft()
+                    : contentPublicationApi
+                        .previewAnnouncement(
+                          selected.publicId,
+                          selected.releaseId,
+                        )
+                        .then(setPreview)
+                        .catch(() => setError(t("loadError"))))
                 }
-              }}
-              variant="secondary"
-            >
-              {t("preview")}
-            </Button>
-          </div>
-            <PermissionGate
-              fallback={<Badge className="mt-4">{t("editDenied")}</Badge>}
-              permission={editPermission}
-            >
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-black">
-                  {t("title")}
+                variant="secondary"
+              >
+                {t("preview")}
+              </Button>
+            </div>
+            {draft ? (
+              <>
+                <PermissionGate
+                  fallback={<Badge className="mt-4">{t("editDenied")}</Badge>}
+                  permission={editPermission}
+                >
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <label className="text-sm font-black">
+                      {t("title")}
+                      <input
+                        className={`${inputClass} mt-2`}
+                        name="announcementTitle"
+                        onChange={(event) =>
+                          updateTranslation("title", event.target.value)
+                        }
+                        value={draft.translations[locale].title}
+                      />
+                    </label>
+                    <label className="text-sm font-black">
+                      {t("announcementSummary")}
+                      <input
+                        className={`${inputClass} mt-2`}
+                        name="announcementSummary"
+                        onChange={(event) =>
+                          updateTranslation("summary", event.target.value)
+                        }
+                        value={draft.translations[locale].summary ?? ""}
+                      />
+                    </label>
+                    <label className="text-sm font-black md:col-span-2">
+                      {t("announcementBody")}
+                      <textarea
+                        className={`${areaClass} mt-2`}
+                        name="announcementBody"
+                        onChange={(event) =>
+                          updateTranslation("body", event.target.value)
+                        }
+                        value={draft.translations[locale].body}
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2 md:col-span-2">
+                      <Button onClick={() => void saveLocale()}>
+                        {t("save")}
+                      </Button>
+                      <Button
+                        onClick={() => void copyLocale()}
+                        variant="secondary"
+                      >
+                        {t("copy")}
+                      </Button>
+                    </div>
+                  </div>
+                </PermissionGate>
+                <PermissionGate permission={publishPermission}>
+                  <div className="mt-5 grid gap-3 rounded-lg border border-line bg-paper p-4 lg:grid-cols-3">
+                    <Button
+                      onClick={() =>
+                        void (async () => {
+                          const saved = await ensureSaved();
+                          if (!saved) return;
+                          await lifecycle(() =>
+                            contentPublicationApi.publishAnnouncement(
+                              saved.publicId,
+                              saved.releaseId,
+                              {
+                                idempotencyKey: operationKey(),
+                                expectedLockVersion: saved.lockVersion,
+                              },
+                            ),
+                          );
+                        })()
+                      }
+                    >
+                      {t("publish")}
+                    </Button>
+                    <input
+                      aria-label={t("publishAt")}
+                      className={inputClass}
+                      onChange={(event) => setPublishAt(event.target.value)}
+                      type="datetime-local"
+                      value={publishAt}
+                    />
+                    <Button
+                      disabled={!publishAt}
+                      onClick={() =>
+                        void (async () => {
+                          const saved = await ensureSaved();
+                          if (!saved) return;
+                          await lifecycle(() =>
+                            contentPublicationApi.scheduleAnnouncement(
+                              saved.publicId,
+                              saved.releaseId,
+                              {
+                                idempotencyKey: operationKey(),
+                                expectedLockVersion: saved.lockVersion,
+                                publishAt: new Date(publishAt).toISOString(),
+                              },
+                            ),
+                          );
+                        })()
+                      }
+                      variant="secondary"
+                    >
+                      {t("schedule")}
+                    </Button>
+                  </div>
+                </PermissionGate>
+              </>
+            ) : (
+              <PermissionGate permission={publishPermission}>
+                <div className="mt-5 grid gap-3 rounded-lg border border-line bg-paper p-4 lg:grid-cols-3">
+                  <h3 className="text-sm font-black lg:col-span-3">
+                    {t("cloneFromHistory")}
+                  </h3>
+                  <select
+                    className={inputClass}
+                    name="announcementRollbackReleaseId"
+                    onChange={(event) =>
+                      setRollbackReleaseId(event.target.value)
+                    }
+                    value={rollbackReleaseId}
+                  >
+                    {history
+                      .filter((item) => item.status !== "draft")
+                      .map((item) => (
+                        <option key={item.releaseId} value={item.releaseId}>
+                          {item.status} · v{item.version}
+                        </option>
+                      ))}
+                  </select>
                   <input
-                    className={`${inputClass} mt-2`}
-                    onChange={(event) =>
-                      updateTranslation("title", event.target.value)
-                    }
-                    value={selected.translations[locale].title}
+                    className={inputClass}
+                    name="announcementRollbackReason"
+                    onChange={(event) => setReason(event.target.value)}
+                    placeholder={t("cloneReason")}
+                    value={reason}
                   />
-                </label>
-                <label className="text-sm font-black">
-                  {t("announcementSummary")}
-                  <input
-                    className={`${inputClass} mt-2`}
-                    onChange={(event) =>
-                      updateTranslation("summary", event.target.value)
-                    }
-                    value={selected.translations[locale].summary ?? ""}
-                  />
-                </label>
-                <label className="text-sm font-black md:col-span-2">
-                  {t("announcementBody")}
-                  <textarea
-                    className={`${areaClass} mt-2`}
-                    onChange={(event) =>
-                      updateTranslation("body", event.target.value)
-                    }
-                    value={selected.translations[locale].body}
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2 md:col-span-2">
-                  <Button onClick={() => void saveLocale()}>{t("save")}</Button>
-                  <Button onClick={() => void copyLocale()} variant="secondary">
-                    {t("copy")}
-                  </Button>
-                </div>
-              </div>
-            </PermissionGate>
-            <PermissionGate permission={publishPermission}>
-              <div className="mt-5 grid gap-3 rounded-lg border border-line bg-paper p-4 lg:grid-cols-3">
-                <Button
-                  onClick={() =>
-                    void lifecycle(() =>
-                      contentPublicationApi.publishAnnouncement(
-                        selected.publicId,
-                        selected.releaseId,
-                        {
-                          idempotencyKey: operationKey(),
-                          expectedLockVersion: selected.lockVersion,
-                        },
-                      ),
-                    )
-                  }
-                >
-                  {t("publish")}
-                </Button>
-                <input
-                  aria-label={t("publishAt")}
-                  className={inputClass}
-                  onChange={(event) => setPublishAt(event.target.value)}
-                  type="datetime-local"
-                  value={publishAt}
-                />
-                <Button
-                  disabled={!publishAt}
-                  onClick={() =>
-                    void lifecycle(() =>
-                      contentPublicationApi.scheduleAnnouncement(
-                        selected.publicId,
-                        selected.releaseId,
-                        {
-                          idempotencyKey: operationKey(),
-                          expectedLockVersion: selected.lockVersion,
-                          publishAt: new Date(publishAt).toISOString(),
-                        },
-                      ),
-                    )
-                  }
-                  variant="secondary"
-                >
-                  {t("schedule")}
-                </Button>
-                <input
-                  aria-label={t("disableReason")}
-                  className={inputClass}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder={t("disableReason")}
-                  value={reason}
-                />
-                <Button
-                  disabled={!reason.trim()}
-                  onClick={() =>
-                    void lifecycle(() =>
-                      contentPublicationApi.disableAnnouncement(
-                        selected.publicId,
-                        selected.releaseId,
-                        {
-                          idempotencyKey: operationKey(),
-                          expectedLockVersion: selected.lockVersion,
-                          reason: reason.trim(),
-                        },
-                      ),
-                    )
-                  }
-                  variant="danger"
-                >
-                  {t("disable")}
-                </Button>
-                <Button
-                  disabled={!reason.trim() || history.length === 0}
-                  onClick={() => {
-                    const target = history.find(
-                      (item) => item.releaseId !== selected.releaseId,
-                    );
-                    if (target)
+                  <Button
+                    disabled={!rollbackReleaseId || !reason.trim()}
+                    onClick={() =>
                       void lifecycle(() =>
                         contentPublicationApi.rollbackAnnouncement(
                           selected.publicId,
-                          target.releaseId,
+                          Number(rollbackReleaseId),
                           {
                             idempotencyKey: operationKey(),
-                            expectedCurrentVersion: selected.version,
+                            expectedCurrentVersion: latestVersion,
                             reason: reason.trim(),
                           },
                         ),
-                      );
-                  }}
-                  variant="secondary"
-                >
-                  {t("rollback")}
-                </Button>
-              </div>
-            </PermissionGate>
+                      )
+                    }
+                  >
+                    {t("createNewDraft")}
+                  </Button>
+                </div>
+              </PermissionGate>
+            )}
+            {selected.status === "published" ||
+            selected.status === "scheduled" ? (
+              <PermissionGate permission={publishPermission}>
+                <div className="mt-4 grid gap-3 rounded-lg border border-line bg-white p-4 md:grid-cols-[1fr_auto]">
+                  <input
+                    aria-label={t("disableReason")}
+                    className={inputClass}
+                    name="announcementDisableReason"
+                    onChange={(event) => setDisableReason(event.target.value)}
+                    value={disableReason}
+                  />
+                  <Button
+                    disabled={!disableReason.trim()}
+                    onClick={() =>
+                      void lifecycle(() =>
+                        contentPublicationApi.disableAnnouncement(
+                          selected.publicId,
+                          selected.releaseId,
+                          {
+                            idempotencyKey: operationKey(),
+                            expectedLockVersion: selected.lockVersion,
+                            reason: disableReason.trim(),
+                          },
+                        ),
+                      )
+                    }
+                    variant="danger"
+                  >
+                    {t("disable")}
+                  </Button>
+                </div>
+              </PermissionGate>
+            ) : null}
           </>
         ) : null}
         {preview ? (
@@ -507,8 +628,14 @@ export function AnnouncementEditor({
           >
             <article className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-line bg-white p-5 shadow-soft">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-xl font-black text-ink">{preview.translations[locale].title}</h3>
-                <Button onClick={() => setPreview(null)} size="sm" variant="secondary">
+                <h3 className="text-xl font-black text-ink">
+                  {preview.translations[locale].title}
+                </h3>
+                <Button
+                  onClick={() => setPreview(null)}
+                  size="sm"
+                  variant="secondary"
+                >
                   {t("closePreview")}
                 </Button>
               </div>

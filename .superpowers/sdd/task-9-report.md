@@ -41,16 +41,37 @@ The editor tests cover server draft loading, the exact five language tabs, initi
 
 ## Verification
 
-- Focused brief tests: PASS — 3 files, 38 tests.
-- Full frontend suite: PASS — 193 files, 1,073 tests.
+- Focused brief and review tests: PASS — 4 files, 54 tests.
+- Focused tests plus the Task 8 frontend API contract suite: PASS — 5 files, 62 tests.
+- Full frontend suite: PASS — 194 files, 1,089 tests.
 - ESLint: PASS.
 - i18n quality gate: PASS — zero missing entries for all five languages.
 - Production build and production artifact audit: PASS — 8 HTML entries and 22 built assets audited.
 - `git diff --check`: PASS.
+
+## Review follow-up
+
+An independent Task 9 review identified lifecycle and draft-continuation gaps. The follow-up began with contract-level RED coverage: 11 failures and 38 passes across the focused editor/route suite. The failures represented published-only and empty-scene bootstrap, historical cloning, draft-only announcement editing, dirty-operation guards, provenance-safe saves, slide structure controls, active-slot disable, historical rollback, media RBAC, announcement conflict reload, and post-mutation reconciliation.
+
+The follow-up implementation now:
+
+- creates a first carousel draft only after a real media upload, a real server-searched target, and a complete source-locale translation are present;
+- uses the formal rollback endpoint to clone an explicitly selected published or historical release into a new same-scene/same-announcement draft;
+- reloads the authoritative carousel scene and history, or announcement list and history, after lifecycle mutations;
+- edits only `draft` announcement releases and exposes immutable published/scheduled releases for preview, disable, or historical cloning;
+- saves dirty text before copy, preview, publish, and schedule, and aborts the requested operation when that save fails;
+- saves translation-only carousel edits through `updateCarouselSlideLocale`, so untouched locale provenance is not rewritten by the structural replacement endpoint;
+- strips server-owned provenance fields from strict structural request bodies and blocks structural replacement while any locale still carries initial-copy/non-self provenance, because the existing Task 8 replacement contract cannot persist those metadata fields; once every locale has been explicitly reviewed, known provenance is reconciled from the server response;
+- adds slide add/delete/enable controls and selects the actual published/scheduled release for disable plus an explicit historical source for rollback;
+- gates raw media inputs with `button:backoffice-content-media-upload`; and
+- gives announcement 409 conflicts the same explicit server-reload action while preserving in-memory input until that action is chosen.
+
+Dedicated `AnnouncementEditor.test.tsx` coverage was added. The expanded brief-focused suite covers multi-locale sequential locks and the structural provenance guard in addition to the original review cases. Final verification passed at 4 files / 54 tests focused, 5 files / 62 tests with the Task 8 frontend API contract, and 194 files / 1,089 tests across the full frontend suite.
 
 ## Concerns / deferred acceptance
 
 - Browser interaction and visual acceptance are intentionally deferred to Task 12, as required by the plan.
 - The broader repository i18n audit still reports its pre-existing untranslated-string backlog; the Task 9 five-language quality gate is clean.
 - The production build retains pre-existing warnings for the SocialProfile mixed static/dynamic import and large chunks; neither warning originates in Task 9.
+- No project formatter is installed (`prettier` is absent from `node_modules` and the package manifest); targeted files were manually style-reviewed, TypeScript-checked, and verified with `git diff --check` instead of adding an unrelated tooling dependency.
 - The worktree contains unrelated concurrent changes, including existing `App.tsx` and `App.test.tsx` changes. Only the Task 9 import/route hunks from `App.tsx` are staged; `App.test.tsx` and all unrelated changes remain unstaged.

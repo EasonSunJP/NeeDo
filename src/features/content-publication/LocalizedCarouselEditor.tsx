@@ -50,11 +50,16 @@ type EditorState = {
   error: string | null;
   conflict: boolean;
   notice: string | null;
+  history: CarouselRelease[];
 };
 
 type EditorAction =
   | { type: "loading" }
-  | { type: "loaded"; payload: BackofficeCarouselScene }
+  | {
+      type: "loaded";
+      payload: BackofficeCarouselScene;
+      history: CarouselRelease[];
+    }
   | { type: "load-error"; message: string }
   | { type: "select-locale"; locale: ContentLocaleCode }
   | { type: "select-slide"; slideId: string }
@@ -75,6 +80,7 @@ const initialState: EditorState = {
   error: null,
   conflict: false,
   notice: null,
+  history: [],
 };
 
 function reducer(state: EditorState, action: EditorAction): EditorState {
@@ -93,6 +99,7 @@ function reducer(state: EditorState, action: EditorAction): EditorState {
       error: null,
       conflict: false,
       notice: null,
+      history: action.history,
     };
   }
   if (action.type === "load-error")
@@ -161,11 +168,61 @@ function draftBody(
       visibleFrom: slide.visibleFrom,
       visibleUntil: slide.visibleUntil,
       target: slide.target,
-      translations: contentEditorLocales.map((locale) => ({
-        locale,
-        ...slide.translations[locale],
-      })),
+      translations: contentEditorLocales.map((locale) => {
+        const value = slide.translations[locale];
+        return {
+          locale,
+          badge: value.badge,
+          title: value.title,
+          caption: value.caption,
+          ctaLabel: value.ctaLabel,
+          imageAltText: value.imageAltText,
+        };
+      }),
     })),
+  };
+}
+
+const translationFieldsEqual = (
+  left: CarouselReleaseSlide["translations"][ContentLocaleCode],
+  right: CarouselReleaseSlide["translations"][ContentLocaleCode],
+) =>
+  left.badge === right.badge &&
+  left.title === right.title &&
+  left.caption === right.caption &&
+  left.ctaLabel === right.ctaLabel &&
+  left.imageAltText === right.imageAltText;
+
+function preserveKnownProvenance(
+  localDraft: CarouselRelease,
+  serverDraft: CarouselRelease,
+): CarouselRelease {
+  const localById = new Map(localDraft.slides.map((slide) => [slide.id, slide]));
+  return {
+    ...serverDraft,
+    slides: serverDraft.slides.map((serverSlide) => {
+      const localSlide = localById.get(serverSlide.id);
+      if (!localSlide) return serverSlide;
+      return {
+        ...serverSlide,
+        translations: Object.fromEntries(
+          contentEditorLocales.map((locale) => {
+            const local = localSlide.translations[locale];
+            const server = serverSlide.translations[locale];
+            return [
+              locale,
+              translationFieldsEqual(local, server)
+                ? {
+                    ...server,
+                    sourceLocale: local.sourceLocale,
+                    isInitialCopy: local.isInitialCopy,
+                  }
+                : server,
+            ];
+          }),
+        ) as CarouselReleaseSlide["translations"],
+      };
+    }),
   };
 }
 
@@ -225,12 +282,14 @@ export function LocalizedCarouselEditor({
   readPermission,
   editPermission,
   publishPermission,
+  mediaPermission = "button:backoffice-content-media-upload",
   announcementEditor,
 }: {
   scene: CarouselSceneSlug;
   readPermission: string;
   editPermission: string;
   publishPermission: string;
+  mediaPermission?: string;
   announcementEditor?: ReactNode;
 }) {
   const { language } = useOptionalI18n();
@@ -253,14 +312,46 @@ export function LocalizedCarouselEditor({
   const [publishAt, setPublishAt] = useState("");
   const [disableReason, setDisableReason] = useState("");
   const [rollbackReason, setRollbackReason] = useState("");
+  const [cloneReason, setCloneReason] = useState("");
+  const [draftSourceReleaseId, setDraftSourceReleaseId] = useState("");
+  const [disableReleaseId, setDisableReleaseId] = useState("");
+  const [rollbackReleaseId, setRollbackReleaseId] = useState("");
+  const [dirtyTranslations, setDirtyTranslations] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [structureDirty, setStructureDirty] = useState(false);
+  const [bootstrapTitle, setBootstrapTitle] = useState("");
+  const [bootstrapImageAlt, setBootstrapImageAlt] = useState("");
+  const [bootstrapMedia, setBootstrapMedia] = useState<{
+    publicId: string;
+    url: string;
+  } | null>(null);
+  const [bootstrapTarget, setBootstrapTarget] = useState<
+    CarouselReleaseSlide["target"] | null
+  >(null);
 
   const load = useCallback(async () => {
     dispatch({ type: "loading" });
     try {
+      const [sceneState, history] = await Promise.all([
+        contentPublicationApi.getBackofficeCarouselScene(scene),
+        contentPublicationApi.getCarouselHistory(scene, {
+          page: 1,
+          pageSize: 50,
+        }),
+      ]);
       dispatch({
         type: "loaded",
-        payload: await contentPublicationApi.getBackofficeCarouselScene(scene),
+        payload: sceneState,
+        history: history.list,
       });
+      setDirtyTranslations(new Set());
+      setStructureDirty(false);
+      const active = sceneState.scheduled ?? sceneState.published;
+      setDisableReleaseId(active ? String(active.releaseId) : "");
+      const source = history.list.find((release) => release.status !== "draft");
+      setRollbackReleaseId(source ? String(source.releaseId) : "");
+      setDraftSourceReleaseId(source ? String(source.releaseId) : "");
     } catch {
       dispatch({ type: "load-error", message: t("loadError") });
     }
@@ -279,6 +370,7 @@ export function LocalizedCarouselEditor({
 
   function replaceSelectedSlide(
     update: (slide: CarouselReleaseSlide) => CarouselReleaseSlide,
+    kind: "translation" | "structure" = "structure",
   ) {
     if (!draft || !selectedSlide) return;
     dispatch({
@@ -290,39 +382,121 @@ export function LocalizedCarouselEditor({
         ),
       },
     });
+    if (kind === "translation") {
+      setDirtyTranslations((current) => {
+        const next = new Set(current);
+        next.add(`${selectedSlide.id}:${state.selectedLocale}`);
+        return next;
+      });
+    } else {
+      setStructureDirty(true);
+    }
   }
 
   function updateTranslation(
     field: "badge" | "title" | "caption" | "ctaLabel" | "imageAltText",
     value: string,
   ) {
-    replaceSelectedSlide((slide) => ({
-      ...slide,
-      translations: {
-        ...slide.translations,
-        [state.selectedLocale]: {
-          ...slide.translations[state.selectedLocale],
-          [field]:
-            field === "title" || field === "imageAltText"
-              ? value
-              : value || null,
-          sourceLocale: state.selectedLocale,
-          isInitialCopy: false,
+    replaceSelectedSlide(
+      (slide) => ({
+        ...slide,
+        translations: {
+          ...slide.translations,
+          [state.selectedLocale]: {
+            ...slide.translations[state.selectedLocale],
+            [field]:
+              field === "title" || field === "imageAltText"
+                ? value
+                : value || null,
+            sourceLocale: state.selectedLocale,
+            isInitialCopy: false,
+          },
         },
-      },
-    }));
+      }),
+      "translation",
+    );
   }
 
-  async function saveDraft() {
-    if (!draft) return;
+  async function saveDraft(): Promise<CarouselRelease | null> {
+    if (!draft) return null;
+    if (!state.dirty) return draft;
+    if (
+      structureDirty &&
+      draft.slides.some((slide) =>
+        contentEditorLocales.some((locale) => {
+          const value = slide.translations[locale];
+          return value.isInitialCopy || value.sourceLocale !== locale;
+        }),
+      )
+    ) {
+      dispatch({
+        type: "save-error",
+        conflict: false,
+        message: t("provenanceBlocked"),
+      });
+      return null;
+    }
     dispatch({ type: "saving" });
     try {
-      const saved = await contentPublicationApi.replaceCarouselDraft(
-        scene,
-        draft.releaseId,
-        draftBody(draft, state.selectedLocale),
-      );
+      let saved = draft;
+      if (structureDirty) {
+        const replaced = await contentPublicationApi.replaceCarouselDraft(
+          scene,
+          draft.releaseId,
+          draftBody(draft, state.selectedLocale),
+        );
+        saved = preserveKnownProvenance(draft, replaced);
+      } else {
+        const baseline = state.sceneState?.draft;
+        const changedKeys = new Set(dirtyTranslations);
+        if (baseline) {
+          for (const slide of draft.slides) {
+            const baselineSlide = baseline.slides.find(
+              (candidate) => candidate.id === slide.id,
+            );
+            if (!baselineSlide) continue;
+            for (const locale of contentEditorLocales) {
+              const current = slide.translations[locale];
+              const previous = baselineSlide.translations[locale];
+              if (
+                !translationFieldsEqual(current, previous) ||
+                current.sourceLocale !== previous.sourceLocale ||
+                current.isInitialCopy !== previous.isInitialCopy
+              ) {
+                changedKeys.add(`${slide.id}:${locale}`);
+              }
+            }
+          }
+        }
+        for (const key of changedKeys) {
+          const separator = key.lastIndexOf(":");
+          const slideId = key.slice(0, separator);
+          const locale = key.slice(separator + 1) as ContentLocaleCode;
+          const slide = saved.slides.find((item) => item.id === slideId);
+          if (!slide) continue;
+          const value = draft.slides.find((item) => item.id === slideId)
+            ?.translations[locale];
+          if (!value) continue;
+          saved = await contentPublicationApi.updateCarouselSlideLocale(
+            scene,
+            saved.releaseId,
+            slideId,
+            locale,
+            {
+              expectedLockVersion: saved.lockVersion,
+              badge: value.badge,
+              title: value.title,
+              caption: value.caption,
+              ctaLabel: value.ctaLabel,
+              imageAltText: value.imageAltText,
+            },
+          );
+        }
+      }
+      setDirtyTranslations(new Set());
+      setStructureDirty(false);
       dispatch({ type: "replace-draft", draft: saved, notice: t("saved") });
+      return saved;
     } catch (error) {
       dispatch({
         type: "save-error",
@@ -332,21 +506,34 @@ export function LocalizedCarouselEditor({
             ? t("conflict")
             : t("failedSave"),
       });
+      return null;
     }
+  }
+
+  async function ensureSaved() {
+    return state.dirty ? saveDraft() : draft;
   }
 
   async function copyLocale() {
     if (!draft || !selectedSlide || !window.confirm(t("copyConfirm"))) return;
+    const savedDraft = await ensureSaved();
+    if (!savedDraft) return;
+    const savedSlide = savedDraft.slides.find(
+      (slide) => slide.id === selectedSlide.id,
+    );
+    if (!savedSlide) return;
     try {
       const saved = await contentPublicationApi.copyCarouselSlideLocaleToAll(
         scene,
-        draft.releaseId,
-        selectedSlide.id,
+        savedDraft.releaseId,
+        savedSlide.id,
         {
-          expectedLockVersion: draft.lockVersion,
+          expectedLockVersion: savedDraft.lockVersion,
           sourceLocale: state.selectedLocale,
         },
       );
+      setDirtyTranslations(new Set());
+      setStructureDirty(false);
       dispatch({ type: "replace-draft", draft: saved });
     } catch (error) {
       dispatch({
@@ -386,6 +573,28 @@ export function LocalizedCarouselEditor({
     }
   }
 
+  async function uploadBootstrapImage(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const media = await contentPublicationApi.uploadContentImage(
+        file,
+        bootstrapImageAlt,
+      );
+      setBootstrapMedia({ publicId: media.publicId, url: media.url });
+      dispatch({ type: "notice", message: t("uploadSuccess") });
+    } catch {
+      dispatch({
+        type: "save-error",
+        conflict: false,
+        message: t("uploadFailed"),
+      });
+    } finally {
+      input.value = "";
+    }
+  }
+
   async function searchTargets(page = 1) {
     const query = {
       page,
@@ -411,36 +620,36 @@ export function LocalizedCarouselEditor({
   }
 
   function selectTarget(item: CarouselTargetSearchItem) {
-    if (!selectedSlide) return;
-    replaceSelectedSlide((slide) => {
+    const resolve = (
+      current: CarouselReleaseSlide["target"] | null,
+    ): CarouselReleaseSlide["target"] | null => {
       if (item.type === "affiliate_task") {
-        if (slide.target.type !== "affiliate_announcement") return slide;
+        if (current?.type !== "affiliate_announcement") return current;
         return {
-          ...slide,
-          target: {
             type: "affiliate_announcement",
-            announcementPublicId: slide.target.announcementPublicId,
+            announcementPublicId: current.announcementPublicId,
             taskCode: item.taskCode,
-          } as unknown as CarouselReleaseSlide["target"],
-        };
+          } as unknown as CarouselReleaseSlide["target"];
       }
       if (item.type === "affiliate_announcement") {
         return {
-          ...slide,
-          target: {
             type: "affiliate_announcement",
             announcementPublicId: item.target.announcementPublicId,
             taskCode: item.target.taskCode,
-          } as unknown as CarouselReleaseSlide["target"],
-        };
+          } as unknown as CarouselReleaseSlide["target"];
       }
       return {
-        ...slide,
-        target: {
           type: item.type,
           publicId: item.publicId,
-        } as unknown as CarouselReleaseSlide["target"],
-      };
+        } as unknown as CarouselReleaseSlide["target"];
+    };
+    if (!selectedSlide) {
+      setBootstrapTarget((current) => resolve(current));
+      return;
+    }
+    replaceSelectedSlide((slide) => {
+      const target = resolve(slide.target);
+      return target ? { ...slide, target } : slide;
     });
   }
 
@@ -460,12 +669,63 @@ export function LocalizedCarouselEditor({
       type: "edit-draft",
       draft: { ...draft, slides: normalizeSortOrder(slides) },
     });
+    setStructureDirty(true);
+  }
+
+  function addSlide() {
+    if (!draft || !selectedSlide) return;
+    const id = globalThis.crypto.randomUUID();
+    const source = selectedSlide.translations[state.selectedLocale];
+    const next: CarouselReleaseSlide = {
+      ...selectedSlide,
+      id,
+      sortOrder: draft.slides.length,
+      isEnabled: true,
+      translations: Object.fromEntries(
+        contentEditorLocales.map((locale) => [
+          locale,
+          {
+            ...source,
+            sourceLocale: state.selectedLocale,
+            isInitialCopy: locale !== state.selectedLocale,
+          },
+        ]),
+      ) as CarouselReleaseSlide["translations"],
+    };
+    dispatch({
+      type: "edit-draft",
+      draft: { ...draft, slides: [...draft.slides, next] },
+    });
+    dispatch({ type: "select-slide", slideId: id });
+    setStructureDirty(true);
+  }
+
+  function deleteSlide() {
+    if (!draft || !selectedSlide || draft.slides.length <= 1) return;
+    dispatch({
+      type: "edit-draft",
+      draft: {
+        ...draft,
+        slides: normalizeSortOrder(
+          draft.slides.filter((slide) => slide.id !== selectedSlide.id),
+        ),
+      },
+    });
+    setStructureDirty(true);
+  }
+
+  function toggleSlide() {
+    replaceSelectedSlide((slide) => ({
+      ...slide,
+      isEnabled: !slide.isEnabled,
+    }));
   }
 
   async function performLifecycle(operation: () => Promise<CarouselRelease>) {
     dispatch({ type: "saving" });
     try {
-      dispatch({ type: "replace-draft", draft: await operation() });
+      await operation();
+      await load();
     } catch (error) {
       dispatch({
         type: "save-error",
@@ -477,6 +737,238 @@ export function LocalizedCarouselEditor({
       });
     }
   }
+
+  const latestVersion = Math.max(
+    0,
+    ...state.history.map((release) => release.version),
+    state.sceneState?.draft?.version ?? 0,
+    state.sceneState?.published?.version ?? 0,
+    state.sceneState?.scheduled?.version ?? 0,
+  );
+
+  async function cloneDraftFromHistory() {
+    const sourceReleaseId = Number(draftSourceReleaseId);
+    if (!sourceReleaseId || !cloneReason.trim()) return;
+    await performLifecycle(() =>
+      contentPublicationApi.rollbackCarousel(scene, sourceReleaseId, {
+        idempotencyKey: idempotencyKey(),
+        expectedCurrentVersion: latestVersion,
+        reason: cloneReason.trim(),
+      }),
+    );
+  }
+
+  async function createFirstDraft() {
+    if (
+      !bootstrapMedia ||
+      !bootstrapTarget ||
+      !bootstrapTitle.trim() ||
+      !bootstrapImageAlt.trim()
+    )
+      return;
+    dispatch({ type: "saving" });
+    try {
+      await contentPublicationApi.createCarouselDraft(scene, {
+        idempotencyKey: idempotencyKey(),
+        sourceLocale: state.selectedLocale,
+        slides: [
+          {
+            mediaAssetPublicId: bootstrapMedia.publicId,
+            sortOrder: 0,
+            isEnabled: true,
+            visibleFrom: null,
+            visibleUntil: null,
+            target: bootstrapTarget,
+            translations: [
+              {
+                locale: state.selectedLocale,
+                badge: null,
+                title: bootstrapTitle.trim(),
+                caption: null,
+                ctaLabel: null,
+                imageAltText: bootstrapImageAlt.trim(),
+              },
+            ],
+          },
+        ],
+      } as never);
+      await load();
+    } catch (error) {
+      dispatch({
+        type: "save-error",
+        conflict: error instanceof ApiClientError && error.status === 409,
+        message:
+          error instanceof ApiClientError && error.status === 409
+            ? t("conflict")
+            : t("failedSave"),
+      });
+    }
+  }
+
+  const targetSearchPanel = (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <h3 className="text-sm font-black text-ink">{t("searchTarget")}</h3>
+      <select
+        className={`${inputClass} mt-3`}
+        name="targetType"
+        onChange={(event) => setTargetType(event.target.value)}
+        value={targetType}
+      >
+        {scene === "user-home" ? (
+          <>
+            <option value="shop">{t("shop")}</option>
+            <option value="technician">{t("technician")}</option>
+            <option value="service">{t("service")}</option>
+          </>
+        ) : (
+          <>
+            <option value="announcement">{t("announcement")}</option>
+            <option value="affiliate_task">{t("affiliateTask")}</option>
+          </>
+        )}
+      </select>
+      <input
+        aria-label={t("targetQuery")}
+        className={`${inputClass} mt-2`}
+        name="targetQuery"
+        onChange={(event) => setTargetQuery(event.target.value)}
+        value={targetQuery}
+      />
+      <Button
+        className="mt-2 w-full"
+        onClick={() => void searchTargets(1)}
+        size="sm"
+        variant="secondary"
+      >
+        {t("searchTarget")}
+      </Button>
+      <div className="mt-3 space-y-2">
+        {targetResults.map((item) => (
+          <button
+            className="focus-ring w-full rounded-lg border border-line bg-paper p-3 text-left text-sm font-bold"
+            key={`${item.type}-${"publicId" in item ? item.publicId : item.taskCode}`}
+            onClick={() => selectTarget(item)}
+            type="button"
+          >
+            {item.label}
+            <span className="ml-2 text-xs text-ink/45">{item.status}</span>
+          </button>
+        ))}
+      </div>
+      {targetTotal > targetPage * 10 ? (
+        <Button
+          className="mt-3 w-full"
+          onClick={() => void searchTargets(targetPage + 1)}
+          size="sm"
+          variant="ghost"
+        >
+          {t("nextPage")}
+        </Button>
+      ) : null}
+    </section>
+  );
+
+  const versionOperations = (
+    <PermissionGate permission={publishPermission}>
+      <section className="mt-5 rounded-lg border border-line bg-white p-5 shadow-panel">
+        <h2 className="text-lg font-black text-ink">{t("versionOperations")}</h2>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <select
+            aria-label={t("disable")}
+            className={inputClass}
+            name="disableReleaseId"
+            onChange={(event) => setDisableReleaseId(event.target.value)}
+            value={disableReleaseId}
+          >
+            <option value="">{t("selectVersion")}</option>
+            {[state.sceneState?.scheduled, state.sceneState?.published]
+              .filter((release): release is CarouselRelease => Boolean(release))
+              .map((release) => (
+                <option key={release.releaseId} value={release.releaseId}>
+                  {release.status} · v{release.version}
+                </option>
+              ))}
+          </select>
+          <input
+            aria-label={t("disableReason")}
+            className={inputClass}
+            name="disableReason"
+            onChange={(event) => setDisableReason(event.target.value)}
+            value={disableReason}
+          />
+          <Button
+            disabled={!disableReleaseId || !disableReason.trim() || state.saving}
+            onClick={() => {
+              const active = [
+                state.sceneState?.scheduled,
+                state.sceneState?.published,
+              ].find((release) => release?.releaseId === Number(disableReleaseId));
+              if (!active) return;
+              void performLifecycle(() =>
+                contentPublicationApi.disableCarousel(scene, active.releaseId, {
+                  idempotencyKey: idempotencyKey(),
+                  expectedLockVersion: active.lockVersion,
+                  reason: disableReason.trim(),
+                }),
+              );
+            }}
+            variant="danger"
+          >
+            {t("disable")}
+          </Button>
+          <select
+            aria-label={t("rollback")}
+            className={inputClass}
+            disabled={Boolean(draft)}
+            name="rollbackReleaseId"
+            onChange={(event) => setRollbackReleaseId(event.target.value)}
+            value={rollbackReleaseId}
+          >
+            <option value="">{t("selectVersion")}</option>
+            {state.history
+              .filter((release) => release.status !== "draft")
+              .map((release) => (
+                <option key={release.releaseId} value={release.releaseId}>
+                  {release.status} · v{release.version}
+                </option>
+              ))}
+          </select>
+          <input
+            aria-label={t("rollbackReason")}
+            className={inputClass}
+            disabled={Boolean(draft)}
+            name="rollbackReason"
+            onChange={(event) => setRollbackReason(event.target.value)}
+            value={rollbackReason}
+          />
+          <Button
+            disabled={
+              Boolean(draft) ||
+              !rollbackReleaseId ||
+              !rollbackReason.trim() ||
+              state.saving
+            }
+            onClick={() =>
+              void performLifecycle(() =>
+                contentPublicationApi.rollbackCarousel(
+                  scene,
+                  Number(rollbackReleaseId),
+                  {
+                    idempotencyKey: idempotencyKey(),
+                    expectedCurrentVersion: latestVersion,
+                    reason: rollbackReason.trim(),
+                  },
+                ),
+              )
+            }
+            variant="secondary"
+          >
+            {t("rollback")}
+          </Button>
+        </div>
+      </section>
+    </PermissionGate>
+  );
 
   const content = (() => {
     if (state.load === "loading")
@@ -501,9 +993,118 @@ export function LocalizedCarouselEditor({
       );
     if (!draft)
       return (
-        <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/60">
-          {t("noDraft")}
-        </p>
+        <>
+          <section className="rounded-lg border border-line bg-white p-5 shadow-panel">
+            <h2 className="text-lg font-black text-ink">
+              {state.history.length > 0
+                ? t("cloneFromHistory")
+                : t("createFirstDraft")}
+            </h2>
+            <div
+              className="mt-4 flex overflow-x-auto border-b border-line"
+              role="tablist"
+            >
+              {contentEditorLocales.map((locale) => (
+                <button
+                  aria-selected={locale === state.selectedLocale}
+                  className={`focus-ring shrink-0 border-b-2 px-4 py-3 text-sm font-black ${locale === state.selectedLocale ? "border-moss text-moss" : "border-transparent text-ink/45"}`}
+                  key={locale}
+                  onClick={() => dispatch({ type: "select-locale", locale })}
+                  role="tab"
+                  type="button"
+                >
+                  {contentEditorLocaleLabels[locale]}
+                </button>
+              ))}
+            </div>
+            {state.history.length > 0 ? (
+              <PermissionGate permission={editPermission}>
+                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                  <select
+                    className={inputClass}
+                    name="draftSourceReleaseId"
+                    onChange={(event) =>
+                      setDraftSourceReleaseId(event.target.value)
+                    }
+                    value={draftSourceReleaseId}
+                  >
+                    {state.history
+                      .filter((release) => release.status !== "draft")
+                      .map((release) => (
+                        <option key={release.releaseId} value={release.releaseId}>
+                          {release.status} · v{release.version}
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    className={inputClass}
+                    name="cloneReason"
+                    onChange={(event) => setCloneReason(event.target.value)}
+                    placeholder={t("cloneReason")}
+                    value={cloneReason}
+                  />
+                  <Button
+                    disabled={!draftSourceReleaseId || !cloneReason.trim()}
+                    onClick={() => void cloneDraftFromHistory()}
+                  >
+                    {t("createNewDraft")}
+                  </Button>
+                </div>
+              </PermissionGate>
+            ) : (
+              <PermissionGate permission={editPermission}>
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <input
+                    className={inputClass}
+                    name="bootstrapTitle"
+                    onChange={(event) => setBootstrapTitle(event.target.value)}
+                    placeholder={t("title")}
+                    value={bootstrapTitle}
+                  />
+                  <input
+                    className={inputClass}
+                    name="bootstrapImageAlt"
+                    onChange={(event) => setBootstrapImageAlt(event.target.value)}
+                    placeholder={t("imageAlt")}
+                    value={bootstrapImageAlt}
+                  />
+                  <PermissionGate
+                    fallback={<Badge>{t("mediaDenied")}</Badge>}
+                    permission={mediaPermission}
+                  >
+                    <label className="focus-ring inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss">
+                      {t("media")}
+                      <input
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        name="bootstrapMedia"
+                        onChange={(event) => void uploadBootstrapImage(event)}
+                        type="file"
+                      />
+                    </label>
+                  </PermissionGate>
+                  <p className="self-center text-sm font-bold text-ink/55">
+                    {bootstrapMedia?.url ?? t("mediaRequired")}
+                  </p>
+                  <div className="lg:col-span-2">{targetSearchPanel}</div>
+                  <Button
+                    className="lg:col-span-2"
+                    disabled={
+                      !bootstrapMedia ||
+                      !bootstrapTarget ||
+                      !bootstrapTitle.trim() ||
+                      !bootstrapImageAlt.trim()
+                    }
+                    onClick={() => void createFirstDraft()}
+                  >
+                    {t("createFirstDraft")}
+                  </Button>
+                </div>
+              </PermissionGate>
+            )}
+          </section>
+          {versionOperations}
+        </>
       );
 
     const form = (readOnly: boolean) => (
@@ -631,15 +1232,20 @@ export function LocalizedCarouselEditor({
               >
                 {t("copy")}
               </Button>
-              <label className="focus-ring inline-flex h-8 cursor-pointer items-center rounded-full border border-line bg-white px-3 text-xs font-semibold text-ink hover:border-moss">
-                {t("media")}
-                <input
-                  accept="image/jpeg,image/png,image/webp"
-                  className="sr-only"
-                  onChange={(event) => void uploadImage(event)}
-                  type="file"
-                />
-              </label>
+              <PermissionGate
+                fallback={<Badge>{t("mediaDenied")}</Badge>}
+                permission={mediaPermission}
+              >
+                <label className="focus-ring inline-flex h-8 cursor-pointer items-center rounded-full border border-line bg-white px-3 text-xs font-semibold text-ink hover:border-moss">
+                  {t("media")}
+                  <input
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    onChange={(event) => void uploadImage(event)}
+                    type="file"
+                  />
+                </label>
+              </PermissionGate>
             </div>
           ) : null}
 
@@ -692,7 +1298,7 @@ export function LocalizedCarouselEditor({
                     {slide.translations[state.selectedLocale].title}
                   </button>
                   {!readOnly && slide.id === selectedSlide?.id ? (
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <button
                         aria-label={`上移 ${slide.id}`}
                         className="focus-ring rounded-md border border-line bg-white px-2 py-1 text-xs"
@@ -711,79 +1317,46 @@ export function LocalizedCarouselEditor({
                       >
                         ↓
                       </button>
+                      <input
+                        checked={slide.isEnabled}
+                        className="sr-only"
+                        name="slideEnabled"
+                        onChange={() => toggleSlide()}
+                        type="checkbox"
+                      />
+                      <Button
+                        onClick={() => toggleSlide()}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {slide.isEnabled ? t("disableSlide") : t("enableSlide")}
+                      </Button>
+                      <Button
+                        disabled={draft.slides.length <= 1}
+                        onClick={() => deleteSlide()}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {t("deleteSlide")}
+                      </Button>
                     </div>
                   ) : null}
                 </article>
               ))}
             </div>
-          </section>
-
-          {!readOnly ? (
-            <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-              <h3 className="text-sm font-black text-ink">
-                {t("searchTarget")}
-              </h3>
-              <select
-                className={`${inputClass} mt-3`}
-                name="targetType"
-                onChange={(event) => setTargetType(event.target.value)}
-                value={targetType}
-              >
-                {scene === "user-home" ? (
-                  <>
-                    <option value="shop">{t("shop")}</option>
-                    <option value="technician">{t("technician")}</option>
-                    <option value="service">{t("service")}</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="announcement">{t("announcement")}</option>
-                    <option value="affiliate_task">{t("affiliateTask")}</option>
-                  </>
-                )}
-              </select>
-              <input
-                aria-label={t("targetQuery")}
-                className={`${inputClass} mt-2`}
-                name="targetQuery"
-                onChange={(event) => setTargetQuery(event.target.value)}
-                value={targetQuery}
-              />
+            {!readOnly ? (
               <Button
-                className="mt-2 w-full"
-                onClick={() => void searchTargets(1)}
+                className="mt-3 w-full"
+                onClick={() => addSlide()}
                 size="sm"
                 variant="secondary"
               >
-                {t("searchTarget")}
+                {t("addSlide")}
               </Button>
-              <div className="mt-3 space-y-2">
-                {targetResults.map((item) => (
-                  <button
-                    className="focus-ring w-full rounded-lg border border-line bg-paper p-3 text-left text-sm font-bold"
-                    key={`${item.type}-${"publicId" in item ? item.publicId : item.taskCode}`}
-                    onClick={() => selectTarget(item)}
-                    type="button"
-                  >
-                    {item.label}
-                    <span className="ml-2 text-xs text-ink/45">
-                      {item.status}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              {targetTotal > targetPage * 10 ? (
-                <Button
-                  className="mt-3 w-full"
-                  onClick={() => void searchTargets(targetPage + 1)}
-                  size="sm"
-                  variant="ghost"
-                >
-                  {t("nextPage")}
-                </Button>
-              ) : null}
-            </section>
-          ) : null}
+            ) : null}
+          </section>
+
+          {!readOnly ? targetSearchPanel : null}
         </aside>
       </div>
     );
@@ -800,14 +1373,24 @@ export function LocalizedCarouselEditor({
             </h2>
             <div className="flex flex-wrap gap-2">
               <Button
-                onClick={async () =>
-                  setPreview(
-                    await contentPublicationApi.previewCarousel(
-                      scene,
-                      draft.releaseId,
-                    ),
-                  )
-                }
+                onClick={async () => {
+                  const saved = await ensureSaved();
+                  if (!saved) return;
+                  try {
+                    setPreview(
+                      await contentPublicationApi.previewCarousel(
+                        scene,
+                        saved.releaseId,
+                      ),
+                    );
+                  } catch {
+                    dispatch({
+                      type: "save-error",
+                      conflict: false,
+                      message: t("loadError"),
+                    });
+                  }
+                }}
                 variant="secondary"
               >
                 {t("preview")}
@@ -827,16 +1410,20 @@ export function LocalizedCarouselEditor({
               <Button
                 disabled={state.saving}
                 onClick={() =>
-                  void performLifecycle(() =>
-                    contentPublicationApi.publishCarousel(
-                      scene,
-                      draft.releaseId,
-                      {
-                        idempotencyKey: idempotencyKey(),
-                        expectedLockVersion: draft.lockVersion,
-                      },
-                    ),
-                  )
+                  void (async () => {
+                    const saved = await ensureSaved();
+                    if (!saved) return;
+                    await performLifecycle(() =>
+                      contentPublicationApi.publishCarousel(
+                        scene,
+                        saved.releaseId,
+                        {
+                          idempotencyKey: idempotencyKey(),
+                          expectedLockVersion: saved.lockVersion,
+                        },
+                      ),
+                    );
+                  })()
                 }
               >
                 {t("publish")}
@@ -854,88 +1441,30 @@ export function LocalizedCarouselEditor({
               <Button
                 disabled={!publishAt || state.saving}
                 onClick={() =>
-                  void performLifecycle(() =>
-                    contentPublicationApi.scheduleCarousel(
-                      scene,
-                      draft.releaseId,
-                      {
-                        idempotencyKey: idempotencyKey(),
-                        expectedLockVersion: draft.lockVersion,
-                        publishAt: new Date(publishAt).toISOString(),
-                      },
-                    ),
-                  )
+                  void (async () => {
+                    const saved = await ensureSaved();
+                    if (!saved) return;
+                    await performLifecycle(() =>
+                      contentPublicationApi.scheduleCarousel(
+                        scene,
+                        saved.releaseId,
+                        {
+                          idempotencyKey: idempotencyKey(),
+                          expectedLockVersion: saved.lockVersion,
+                          publishAt: new Date(publishAt).toISOString(),
+                        },
+                      ),
+                    );
+                  })()
                 }
                 variant="secondary"
               >
                 {t("schedule")}
               </Button>
-              <label className="text-xs font-black text-ink/60">
-                {t("disableReason")}
-                <input
-                  className={`${inputClass} mt-1`}
-                  name="disableReason"
-                  onChange={(event) => setDisableReason(event.target.value)}
-                  value={disableReason}
-                />
-              </label>
-              <Button
-                disabled={!disableReason.trim() || state.saving}
-                onClick={() =>
-                  void performLifecycle(() =>
-                    contentPublicationApi.disableCarousel(
-                      scene,
-                      draft.releaseId,
-                      {
-                        idempotencyKey: idempotencyKey(),
-                        expectedLockVersion: draft.lockVersion,
-                        reason: disableReason.trim(),
-                      },
-                    ),
-                  )
-                }
-                variant="danger"
-              >
-                {t("disable")}
-              </Button>
-              <span />
-              <label className="text-xs font-black text-ink/60">
-                {t("rollbackReason")}
-                <input
-                  className={`${inputClass} mt-1`}
-                  name="rollbackReason"
-                  onChange={(event) => setRollbackReason(event.target.value)}
-                  value={rollbackReason}
-                />
-              </label>
-              <Button
-                disabled={
-                  !rollbackReason.trim() ||
-                  !state.sceneState?.published ||
-                  state.saving
-                }
-                onClick={() => {
-                  const published = state.sceneState?.published;
-                  if (!published) return;
-                  void performLifecycle(() =>
-                    contentPublicationApi.rollbackCarousel(
-                      scene,
-                      published.releaseId,
-                      {
-                        idempotencyKey: idempotencyKey(),
-                        expectedCurrentVersion: published.version,
-                        reason: rollbackReason.trim(),
-                      },
-                    ),
-                  );
-                }}
-                variant="secondary"
-              >
-                {t("rollback")}
-              </Button>
             </div>
           </PermissionGate>
         </section>
+        {versionOperations}
       </>
     );
   })();

@@ -8,6 +8,7 @@ export function CarouselPage() {
         scene="user-home"
         readPermission="page:backoffice-user-home-carousel"
         editPermission="button:backoffice-user-home-carousel-edit"
+        mediaPermission="button:backoffice-content-media-upload"
         publishPermission="button:backoffice-user-home-carousel-publish"
       />
     </AdminLayout>

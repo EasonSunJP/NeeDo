@@ -9,6 +9,7 @@ export function AffiliateNoticeCarouselPage() {
         scene="affiliate-home-notice"
         readPermission="page:backoffice-affiliate-notice-carousel"
         editPermission="button:backoffice-affiliate-notice-carousel-edit"
+        mediaPermission="button:backoffice-content-media-upload"
         publishPermission="button:backoffice-affiliate-notice-carousel-publish"
         announcementEditor={
           <AnnouncementEditor
