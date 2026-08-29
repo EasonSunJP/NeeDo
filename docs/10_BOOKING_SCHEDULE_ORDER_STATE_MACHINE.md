@@ -66,7 +66,7 @@
 - [x] 技师本人发布的可排班时段标记为 `technician + affiliated_shops`，店铺发布的时段保持 `shop + shop_only`，不通过前端推断公开范围。
 - [x] 运营、商户集团与店铺的暂停接单状态持久化并分别释放；暂停期间仍展示时段并允许创建 `pending`，但在结算前阻止 `pending → confirmed`。
 - [x] 普通用户创建新 `pending` 时，在同一事务内取消其全部旧 `pending`、释放时段容量并记录替换历史；最高级 `black` 会员可保留多个 `pending`。
-- [x] `20260829130000_order_acceptance_pause` 已通过 dry-run 后应用到正式本地 `needo_dev`；61 个 migration 状态一致，真实流程检查完成并恢复精确基线。
+- [x] `20260829130000_order_acceptance_pause` 已通过 dry-run 后应用到正式本地 `needo_dev`；61 个 migration 状态一致，真实流程覆盖 membership 解除并发、多个旧 Affiliate 归因的预算原子复用并恢复精确基线。
 - [x] 本地真实 MySQL 验证时区、重叠冲突、并发容量与清理。
 
 ---

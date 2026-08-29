@@ -252,7 +252,10 @@ describe("BookingRepository order list scope", () => {
     const updateMany = jest.fn();
     const startsAt = new Date("2026-08-29T01:00:00.000Z");
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: 16 }]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 16 }])
+        .mockResolvedValueOnce([]),
       bookingOrder: {
         findFirst: jest.fn().mockResolvedValue({
           id: 101,
@@ -262,7 +265,6 @@ describe("BookingRepository order list scope", () => {
         }),
         updateMany
       },
-      merchantShopMembership: { findMany: jest.fn().mockResolvedValue([]) },
       orderAcceptancePause: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -323,9 +325,11 @@ describe("BookingRepository order list scope", () => {
       })
       .mockResolvedValueOnce({ id: 102 });
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: 16 }]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 16 }])
+        .mockResolvedValueOnce([]),
       bookingOrder: { findFirst: bookingFindFirst, updateMany },
-      merchantShopMembership: { findMany: jest.fn().mockResolvedValue([]) },
       orderAcceptancePause: { findMany: jest.fn().mockResolvedValue([]) },
       technicianProfile: { update: technicianUpdate }
     };

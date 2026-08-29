@@ -252,7 +252,7 @@ Before formal apply, the guarded local checker below was run against `needo_dev`
 ENV_FILE=.env.dev npm --prefix backend run check:order-acceptance-control-migration
 ```
 
-Migration `20260829130000_order_acceptance_pause` has now been applied through Prisma to the formal local `needo_dev` database. `prisma migrate status` reports all 61 repository migrations up to date, and the post-apply real-flow checker passes with exact fixture cleanup and zero financial or ledger drift:
+Migration `20260829130000_order_acceptance_pause` has now been applied through Prisma to the formal local `needo_dev` database. `prisma migrate status` reports all 61 repository migrations up to date. The post-apply real-flow command composes the acceptance-control and Affiliate checkout checkers: it covers membership-unlink/confirmation serialization plus multi-order same-task Affiliate budget reuse, then proves exact fixture cleanup and zero financial or ledger drift:
 
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run prisma:status

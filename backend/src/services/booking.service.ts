@@ -1,4 +1,5 @@
 import { ERROR_CODES } from "../constants/error-codes";
+import { logger } from "../config/logger";
 import type {
   AvailabilityListInput,
   BookingCreateRepositoryOptions,
@@ -21,7 +22,7 @@ import type {
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { AuditLogService } from "./audit-log.service";
 import type { BookingLedgerSettlementPort } from "./ledger.service";
-import type { OrderStatusNotificationPort } from "./realtime.service";
+import type { OrderStatusNotificationInput, OrderStatusNotificationPort } from "./realtime.service";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import {
@@ -268,7 +269,7 @@ export class BookingService {
     }
 
     for (const superseded of result.supersededOrders) {
-      await this.notificationService?.notifyOrderStatusChanged({
+      await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: superseded.order.id,
         orderNo: superseded.order.orderNo,
@@ -278,7 +279,7 @@ export class BookingService {
         recipientUserIds: superseded.recipientUserIds
       });
     }
-    await this.notificationService?.notifyOrderStatusChanged({
+    await this.notifyOrderStatusChangedBestEffort({
       actorUserId: actor.userId,
       orderId: result.order.id,
       orderNo: result.order.orderNo,
@@ -442,7 +443,7 @@ export class BookingService {
       });
     }
 
-    await this.notificationService?.notifyOrderStatusChanged({
+    await this.notifyOrderStatusChangedBestEffort({
       actorUserId: actor.userId,
       orderId: next.id,
       orderNo: next.orderNo,
@@ -453,6 +454,27 @@ export class BookingService {
     });
 
     return next;
+  }
+
+  private async notifyOrderStatusChangedBestEffort(
+    input: OrderStatusNotificationInput
+  ): Promise<void> {
+    if (!this.notificationService) {
+      return;
+    }
+    try {
+      await this.notificationService.notifyOrderStatusChanged(input);
+    } catch (error) {
+      logger.error(
+        {
+          error,
+          orderId: input.orderId,
+          fromStatus: input.fromStatus,
+          toStatus: input.toStatus
+        },
+        "Order status notification failed after booking commit"
+      );
+    }
   }
 
   private isAcceptancePausedResult(

@@ -874,6 +874,16 @@ export class BookingRepository implements BookingRepositoryPort {
               return null;
             }
 
+            if (options.invalidateSupersededAffiliate) {
+              for (const bookingOrderId of supersededOrderIds) {
+                await options.invalidateSupersededAffiliate({
+                  transactionClient: tx,
+                  bookingOrderId,
+                  actorUserId: input.customerUserId
+                });
+              }
+            }
+
             const originalPriceJpy = Math.round(Number(serviceSource.priceAmount.toString()));
             const affiliateContext: BookingCreateAffiliatePreparationContext = {
               transactionClient: tx,
@@ -959,15 +969,6 @@ export class BookingRepository implements BookingRepositoryPort {
                   }
                 }))
               });
-              if (options.invalidateSupersededAffiliate) {
-                for (const bookingOrderId of supersededOrderIds) {
-                  await options.invalidateSupersededAffiliate({
-                    transactionClient: tx,
-                    bookingOrderId,
-                    actorUserId: input.customerUserId
-                  });
-                }
-              }
             }
 
             const cancelledOrders =
@@ -1555,17 +1556,19 @@ export class BookingRepository implements BookingRepositoryPort {
       Prisma.sql`SELECT \`id\` FROM \`shops\` WHERE \`id\` = ${shopId} AND \`deleted_at\` IS NULL FOR UPDATE`
     );
     const at = new Date();
-    const memberships = await transaction.merchantShopMembership.findMany({
-      where: {
-        shopId,
-        activeKey: { not: null },
-        deletedAt: null,
-        startsAt: { lte: at },
-        OR: [{ endsAt: null }, { endsAt: { gt: at } }]
-      },
-      select: { merchantAccountId: true },
-      orderBy: { merchantAccountId: "asc" }
-    });
+    const memberships = await transaction.$queryRaw<Array<{ merchantAccountId: number }>>(
+      Prisma.sql`
+        SELECT \`merchant_account_id\` AS \`merchantAccountId\`
+        FROM \`merchant_shop_memberships\`
+        WHERE \`shop_id\` = ${shopId}
+          AND \`active_key\` IS NOT NULL
+          AND \`deleted_at\` IS NULL
+          AND \`starts_at\` <= ${at}
+          AND (\`ends_at\` IS NULL OR \`ends_at\` > ${at})
+        ORDER BY \`merchant_account_id\` ASC, \`id\` ASC
+        FOR UPDATE
+      `
+    );
     const merchantAccountIds = Array.from(
       new Set(memberships.map((membership) => membership.merchantAccountId))
     );

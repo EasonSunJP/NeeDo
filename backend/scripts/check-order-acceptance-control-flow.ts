@@ -305,6 +305,7 @@ const main = async (): Promise<void> => {
     const ordinaryCustomer = await createUser("ordinary-customer", "standard");
     const concurrentCustomer = await createUser("concurrent-customer", "standard");
     const rollbackCustomer = await createUser("rollback-customer", "standard");
+    const membershipRaceCustomer = await createUser("membership-race-customer", "standard");
     const blackCustomer = await createUser("black-customer", "black");
 
     const category = await prisma.category.create({
@@ -634,6 +635,80 @@ const main = async (): Promise<void> => {
       pageSize: 20
     });
     assert(merchantVisible.total === 3, "merchant scoped pause history is incomplete");
+
+    const membershipRacePause = await pauseService.createPause(merchantAccess, context, {
+      subjectType: "merchant_account",
+      subjectId: merchantAccount.id,
+      reasonCode: "membership_race_pause",
+      reasonDetail: "Marker-only membership race pause"
+    });
+    fixture.pauseIds.push(membershipRacePause.id);
+    const membershipRaceOrder = await createBooking(
+      membershipRaceCustomer.id,
+      (await createSlot("membership-race")).id
+    );
+    let markMembershipLocked: (() => void) | undefined;
+    let allowMembershipUnlink: (() => void) | undefined;
+    const membershipLocked = new Promise<void>((resolve) => {
+      markMembershipLocked = resolve;
+    });
+    const membershipUnlinkAllowed = new Promise<void>((resolve) => {
+      allowMembershipUnlink = resolve;
+    });
+    const unlinkMembership = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: number }>>`
+        SELECT id
+        FROM merchant_shop_memberships
+        WHERE id = ${membership.id}
+        FOR UPDATE
+      `;
+      markMembershipLocked?.();
+      await membershipUnlinkAllowed;
+      await tx.merchantShopMembership.update({
+        where: { id: membership.id },
+        data: {
+          activeKey: null,
+          endsAt: new Date(),
+          removedReason: "membership_race_check",
+          removedById: operationsUser.id
+        }
+      });
+    });
+    await membershipLocked;
+    let membershipRaceSettlementCalls = 0;
+    const confirmAfterUnlink = bookingRepository.transitionOrder(
+      {
+        id: membershipRaceOrder.id,
+        actorUserId: merchantUser.id,
+        fromStatus: "pending",
+        toStatus: "confirmed"
+      },
+      {
+        settle: async () => {
+          membershipRaceSettlementCalls += 1;
+        }
+      }
+    );
+    const confirmationBeforeUnlinkCommit = await Promise.race([
+      confirmAfterUnlink.then((result) => ({ state: "resolved" as const, result })),
+      new Promise<{ state: "blocked" }>((resolve) => {
+        setTimeout(() => resolve({ state: "blocked" }), 150);
+      })
+    ]);
+    allowMembershipUnlink?.();
+    await unlinkMembership;
+    assert(
+      confirmationBeforeUnlinkCommit.state === "blocked",
+      "confirmation did not serialize against an in-flight membership unlink"
+    );
+    const membershipRaceResult = await confirmAfterUnlink;
+    assert(
+      membershipRaceResult &&
+        !("kind" in membershipRaceResult) &&
+        membershipRaceResult.status === "confirmed" &&
+        membershipRaceSettlementCalls === 1,
+      "confirmation did not use the committed post-unlink membership snapshot"
+    );
     const financialAfter = await captureBaseline(prisma);
     assert(
       financialAfter.financials === financialBaseline.financials &&
@@ -663,6 +738,7 @@ const main = async (): Promise<void> => {
             },
             failedReplacementRolledBack: true,
             blackMembershipPending: blackPendingCount,
+            membershipUnlinkSerialized: true,
             financialRowsChanged: 0,
             ledgerTransactionsChanged: 0
           }

@@ -823,4 +823,34 @@ describe("BookingService state machine", () => {
       })
     );
   });
+
+  it("does not report a committed pending replacement as failed when notification delivery fails", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const replacement = makeOrder("pending");
+    const superseded = {
+      ...makeOrder("cancelled"),
+      id: 2,
+      orderNo: "ND202605260000"
+    };
+    repository.createBooking.mockResolvedValue({
+      order: replacement,
+      recipientUserIds: [2],
+      supersededOrders: [{ order: superseded, recipientUserIds: [2] }]
+    });
+    const notificationService: jest.Mocked<OrderStatusNotificationPort> = {
+      notifyOrderStatusChanged: jest.fn().mockRejectedValue(new Error("notification unavailable"))
+    };
+    const service = new BookingService(repository, undefined, notificationService);
+
+    await expect(
+      service.createBooking(actor, {
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toEqual(replacement);
+
+    expect(repository.createBooking).toHaveBeenCalledTimes(1);
+    expect(notificationService.notifyOrderStatusChanged).toHaveBeenCalledTimes(2);
+  });
 });
