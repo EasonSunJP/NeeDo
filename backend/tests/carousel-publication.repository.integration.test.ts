@@ -38,7 +38,7 @@ const assertSafeDatabase = (value: string | undefined): void => {
   if (
     url.protocol !== "mysql:" ||
     !["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname) ||
-    !["needo_dev", "needo_test"].includes(database)
+    database !== "needo_test"
   ) {
     throw new Error("Carousel integration requires a local NeeDo test database");
   }
@@ -62,6 +62,7 @@ const createDraft = async (
   }
 ): Promise<CarouselPublicationPayload> => {
   const translation = (locale: "zh-CN" | "zh-TW" | "en" | "ja" | "ko") => ({
+    mediaAssetPublicId: null,
     badge: null,
     title: `${label}-${locale}`,
     caption: null,
@@ -78,7 +79,7 @@ const createDraft = async (
     slides: [
       {
         publicId: randomUUID(),
-        mediaAssetPublicId: mediaPublicId,
+        defaultMediaAssetPublicId: mediaPublicId,
         sortOrder: 0,
         isEnabled: true,
         visibleFrom: null,
@@ -232,7 +233,7 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
     await disconnectPrisma?.();
   }, 30_000);
 
-  it("atomically replaces a draft media reference and preserves five translation provenance rows", async () => {
+  it("persists a none target plus a localized image override and publishes locale fallback", async () => {
     const draft = await createDraft("replace");
     const checksum = fingerprint("replacement-media");
     const media = await prisma.mediaAsset.create({
@@ -248,6 +249,20 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       }
     });
     extraMediaAssetIds.push(media.id);
+    const localizedChecksum = fingerprint("replacement-media-ja");
+    const localizedMedia = await prisma.mediaAsset.create({
+      data: {
+        entityType: "content_publication_upload",
+        entityId: actorUserId,
+        ownerUserId: actorUserId,
+        url: `/media/content/${localizedChecksum}.png`,
+        mimeType: "image/png",
+        usageType: "content_publication_public",
+        isActive: true,
+        checksumSha256: localizedChecksum
+      }
+    });
+    extraMediaAssetIds.push(localizedMedia.id);
     const replaced = await repository.replaceDraft({
       scene: "USER_HOME",
       releaseId: draft.releaseId,
@@ -256,13 +271,20 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       slides: [
         {
           publicId: draft.slides[0].id,
-          mediaAssetPublicId: checksum,
+          defaultMediaAssetPublicId: checksum,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
           visibleUntil: null,
-          target: draft.slides[0].target,
-          translations: draft.slides[0].translations
+          target: { type: "none" },
+          translations: {
+            ...draft.slides[0].translations,
+            ja: {
+              ...draft.slides[0].translations.ja,
+              mediaAssetPublicId: localizedChecksum,
+              ctaLabel: null
+            }
+          }
         }
       ],
       actorUserId,
@@ -272,9 +294,33 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       now: new Date()
     });
     expect(replaced).toMatchObject({ lockVersion: draft.lockVersion + 1 });
-    expect(replaced.slides[0].mediaAssetPublicId).toBe(checksum);
+    expect(replaced.slides[0].defaultMediaAssetPublicId).toBe(checksum);
+    expect(replaced.slides[0].translations.ja).toMatchObject({
+      mediaAssetPublicId: localizedChecksum,
+      imageUrl: `/media/content/${localizedChecksum}.png`
+    });
     expect(Object.keys(replaced.slides[0].translations)).toHaveLength(5);
     const published = await repository.publish(publishInput(replaced, "replace-cleanup"));
+    await expect(
+      repository.findPublishedScene("USER_HOME", "ja", actor(), new Date())
+    ).resolves.toMatchObject({
+      slides: [{ imageUrl: `/media/content/${localizedChecksum}.png`, target: { type: "none" } }]
+    });
+    await expect(
+      repository.findPublishedScene("USER_HOME", "zh-CN", actor(), new Date())
+    ).resolves.toMatchObject({
+      slides: [{ imageUrl: `/media/content/${checksum}.png`, target: { type: "none" } }]
+    });
+    await expect(
+      prisma.carouselSlide.findFirstOrThrow({ where: { releaseId: replaced.releaseId } })
+    ).resolves.toMatchObject({
+      targetType: "NONE",
+      shopId: null,
+      technicianProfileId: null,
+      serviceId: null,
+      announcementId: null,
+      affiliateTaskId: null
+    });
     await repository.disable({
       ...publishInput(published, "replace-disable"),
       expectedLockVersion: published.lockVersion,
@@ -292,7 +338,7 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
       slides: [
         {
           publicId: randomUUID(),
-          mediaAssetPublicId: fingerprint("media"),
+          defaultMediaAssetPublicId: fingerprint("media"),
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -550,6 +596,7 @@ describeIntegration("CarouselPublicationRepository MySQL transactions", () => {
         locale: "ja",
         copyToAll: false,
         translation: {
+          mediaAssetPublicId: null,
           badge: null,
           title: "must not persist",
           caption: null,

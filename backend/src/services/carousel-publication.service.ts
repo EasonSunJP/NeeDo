@@ -39,7 +39,7 @@ export type PublishedCarouselTarget =
   | { type: "affiliate_announcement"; publicId: string };
 
 export interface CarouselTranslationInput {
-  mediaAssetPublicId?: string | null;
+  mediaAssetPublicId: string | null;
   badge: string | null;
   title: string;
   caption: string | null;
@@ -48,17 +48,15 @@ export interface CarouselTranslationInput {
 }
 
 export interface CarouselTranslationPayload extends CarouselTranslationInput {
-  imageUrl?: string;
+  imageUrl: string;
   sourceLocale: ContentLocaleCode;
   isInitialCopy: boolean;
 }
 
 export interface CarouselSlidePayload {
   id: string;
-  defaultMediaAssetPublicId?: string;
-  defaultImageUrl?: string;
-  mediaAssetPublicId: string;
-  imageUrl: string;
+  defaultMediaAssetPublicId: string;
+  defaultImageUrl: string;
   sortOrder: number;
   isEnabled: boolean;
   visibleFrom: Date | null;
@@ -136,14 +134,19 @@ interface MutationBase {
 
 export interface StoredCarouselSlide {
   publicId: string;
-  defaultMediaAssetPublicId?: string;
-  mediaAssetPublicId: string;
+  defaultMediaAssetPublicId: string;
   sortOrder: number;
   isEnabled: boolean;
   visibleFrom: Date | null;
   visibleUntil: Date | null;
   target: CarouselTargetInput;
-  translations: Record<ContentLocaleCode, CarouselTranslationPayload>;
+  translations: Record<
+    ContentLocaleCode,
+    CarouselTranslationInput & {
+      sourceLocale: ContentLocaleCode;
+      isInitialCopy: boolean;
+    }
+  >;
 }
 
 export interface CreateCarouselDraftMutation extends MutationBase {
@@ -639,7 +642,6 @@ export class CarouselPublicationService {
       return {
         publicId: slide.publicId ?? this.createPublicId(),
         defaultMediaAssetPublicId: slide.defaultMediaAssetPublicId,
-        mediaAssetPublicId: slide.defaultMediaAssetPublicId,
         sortOrder: slide.sortOrder,
         isEnabled: slide.isEnabled,
         visibleFrom: slide.visibleFrom ? new Date(slide.visibleFrom) : null,

@@ -94,15 +94,24 @@ const releaseInclude = {
       service: { include: { shop: true } },
       announcement: true,
       affiliateTask: true,
-      translations: { where: { deletedAt: null }, orderBy: { id: "asc" as const } }
+      translations: {
+        where: { deletedAt: null },
+        orderBy: { id: "asc" as const },
+        include: { mediaAsset: true }
+      }
     }
   }
 } satisfies Prisma.CarouselReleaseInclude;
 
 type ReleaseRecord = Prisma.CarouselReleaseGetPayload<{ include: typeof releaseInclude }>;
-type ResolvedCarouselSlide = Omit<StoredCarouselSlide, "target"> & {
+type ResolvedCarouselSlide = Omit<StoredCarouselSlide, "target" | "translations"> & {
   mediaAssetId: number;
   target: CarouselTarget;
+  translations: {
+    [Locale in ContentLocaleCode]: StoredCarouselSlide["translations"][Locale] & {
+      mediaAssetId: number | null;
+    };
+  };
 };
 
 interface MutationAuditInput {
@@ -481,6 +490,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         await transaction.carouselSlideTranslation.updateMany({
           where: { slideId: slide.id, deletedAt: null },
           data: {
+            mediaAssetId: source.mediaAssetId,
             badge: source.badge,
             title: source.title,
             caption: source.caption,
@@ -494,10 +504,23 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       } else {
         if (!input.translation)
           throw this.contentError("error.content.incomplete_translations", 409);
+        const localizedMedia = input.translation.mediaAssetPublicId
+          ? await this.resolveContentMedia(
+              transaction,
+              input.translation.mediaAssetPublicId,
+              input.actorUserId,
+              new Set()
+            )
+          : null;
         const updated = await transaction.carouselSlideTranslation.updateMany({
           where: { slideId: slide.id, locale: localeToDb[input.locale], deletedAt: null },
           data: {
-            ...input.translation,
+            mediaAssetId: localizedMedia?.id ?? null,
+            badge: input.translation.badge,
+            title: input.translation.title,
+            caption: input.translation.caption,
+            ctaLabel: input.translation.ctaLabel,
+            imageAltText: input.translation.imageAltText,
             sourceLocale: localeToDb[input.locale],
             isInitialCopy: false,
             updatedAt: input.now
@@ -673,29 +696,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
             createdAt: input.now
           }
         });
-        const slides: StoredCarouselSlide[] = source.slides.map((slide) => ({
-          publicId: randomUUID(),
-          mediaAssetPublicId: slide.mediaAsset.checksumSha256 ?? "",
-          sortOrder: slide.sortOrder,
-          isEnabled: slide.isEnabled,
-          visibleFrom: slide.visibleFrom,
-          visibleUntil: slide.visibleUntil,
-          target: this.mapTarget(slide),
-          translations: Object.fromEntries(
-            slide.translations.map((translation) => [
-              localeFromDb[translation.locale],
-              {
-                badge: translation.badge,
-                title: translation.title,
-                caption: translation.caption,
-                ctaLabel: translation.ctaLabel,
-                imageAltText: translation.imageAltText,
-                sourceLocale: localeFromDb[translation.sourceLocale],
-                isInitialCopy: false
-              }
-            ])
-          ) as StoredCarouselSlide["translations"]
-        }));
+        const slides = this.cloneSlides(source);
         const resolved = await this.resolveSlides(
           transaction,
           input.scene,
@@ -704,7 +705,14 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           input.now,
           input.validateAffiliateTask,
           this.actorShopScopeId(input.actor),
-          new Set(source.slides.map((slide) => slide.mediaAssetId))
+          new Set(
+            source.slides.flatMap((slide) => [
+              slide.mediaAssetId,
+              ...slide.translations.flatMap((translation) =>
+                translation.mediaAssetId === null ? [] : [translation.mediaAssetId]
+              )
+            ])
+          )
         );
         await this.createSlides(transaction, clone.id, resolved, input.now);
         const result = await this.loadRelease(transaction, input.scene, clone.id);
@@ -791,7 +799,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         return [];
       const translation = slide.translations.find((item) => item.locale === localeToDb[locale]);
       const target = this.publicTarget(slide, announcementSet);
-      if (!translation || !target || !this.mediaAvailable(slide.mediaAsset)) return [];
+      const localizedMedia = translation?.mediaAsset ?? slide.mediaAsset;
+      if (!translation || !target || !this.mediaAvailable(localizedMedia)) return [];
       return [
         {
           id: slide.publicId,
@@ -800,7 +809,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           caption: translation.caption,
           ctaLabel: translation.ctaLabel,
           imageAltText: translation.imageAltText,
-          imageUrl: slide.mediaAsset.url,
+          imageUrl: localizedMedia.url,
           target
         }
       ];
@@ -1098,24 +1107,12 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   ): Promise<ResolvedCarouselSlide[]> {
     const result: ResolvedCarouselSlide[] = [];
     for (const slide of slides) {
-      const media = await transaction.mediaAsset.findFirst({
-        where: {
-          checksumSha256: slide.mediaAssetPublicId,
-          entityType: "content_publication_upload",
-          usageType: "content_publication_public",
-          isActive: true,
-          purgedAt: null,
-          deletedAt: null,
-          ...(authorizedMediaAssetIds.size > 0
-            ? {
-                OR: [{ ownerUserId: actorUserId }, { id: { in: [...authorizedMediaAssetIds] } }]
-              }
-            : { ownerUserId: actorUserId })
-        },
-        select: { id: true },
-        orderBy: { id: "desc" }
-      });
-      if (!media) throw this.contentError("error.content.media_invalid", 409);
+      const media = await this.resolveContentMedia(
+        transaction,
+        slide.defaultMediaAssetPublicId,
+        actorUserId,
+        authorizedMediaAssetIds
+      );
       const target = await this.resolveTarget(transaction, scene, slide.target, scopeShopId);
       if (scene === "AFFILIATE_HOME_NOTICE" && target.type === "affiliate_announcement") {
         const announcement = await transaction.officialAnnouncement.findUniqueOrThrow({
@@ -1142,9 +1139,79 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           await validateAffiliateTask(target.affiliateTaskId);
         }
       }
-      result.push({ ...slide, mediaAssetId: media.id, target });
+      const translations = {} as ResolvedCarouselSlide["translations"];
+      for (const locale of CONTENT_LOCALES) {
+        const translation = slide.translations[locale];
+        const localizedMedia = translation.mediaAssetPublicId
+          ? await this.resolveContentMedia(
+              transaction,
+              translation.mediaAssetPublicId,
+              actorUserId,
+              authorizedMediaAssetIds
+            )
+          : null;
+        translations[locale] = {
+          ...translation,
+          mediaAssetId: localizedMedia?.id ?? null
+        };
+      }
+      result.push({ ...slide, mediaAssetId: media.id, target, translations });
     }
     return result;
+  }
+
+  private cloneSlides(source: ReleaseRecord): StoredCarouselSlide[] {
+    return source.slides.map((slide) => ({
+      publicId: randomUUID(),
+      defaultMediaAssetPublicId: slide.mediaAsset.checksumSha256 ?? "",
+      sortOrder: slide.sortOrder,
+      isEnabled: slide.isEnabled,
+      visibleFrom: slide.visibleFrom,
+      visibleUntil: slide.visibleUntil,
+      target: this.mapTarget(slide),
+      translations: Object.fromEntries(
+        slide.translations.map((translation) => [
+          localeFromDb[translation.locale],
+          {
+            mediaAssetPublicId: translation.mediaAsset?.checksumSha256 ?? null,
+            badge: translation.badge,
+            title: translation.title,
+            caption: translation.caption,
+            ctaLabel: translation.ctaLabel,
+            imageAltText: translation.imageAltText,
+            sourceLocale: localeFromDb[translation.sourceLocale],
+            isInitialCopy: false
+          }
+        ])
+      ) as StoredCarouselSlide["translations"]
+    }));
+  }
+
+  private async resolveContentMedia(
+    transaction: Prisma.TransactionClient,
+    checksumSha256: string,
+    actorUserId: number,
+    authorizedMediaAssetIds: ReadonlySet<number>
+  ): Promise<{ id: number }> {
+    const media = await transaction.mediaAsset.findFirst({
+      where: {
+        checksumSha256,
+        entityType: "content_publication_upload",
+        usageType: "content_publication_public",
+        isActive: true,
+        purgedAt: null,
+        deletedAt: null,
+        ...(authorizedMediaAssetIds.size > 0
+          ? {
+              OR: [{ ownerUserId: actorUserId }, { id: { in: [...authorizedMediaAssetIds] } }]
+            }
+          : { ownerUserId: actorUserId })
+      },
+      select: { id: true },
+      orderBy: { id: "desc" }
+    });
+    if (!media) throw this.contentError("error.content.media_invalid", 409);
+    return media;
   }
 
   private async resolveTarget(
@@ -1153,6 +1220,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
     target: CarouselTargetInput,
     scopeShopId: number | null
   ): Promise<CarouselTarget> {
+    if (scene === "USER_HOME" && target.type === "none") return { type: "none" };
     if (scene === "USER_HOME" && target.type === "shop") {
       const row = await transaction.shop.findFirst({
         where: {
@@ -1282,7 +1350,10 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         !this.mediaAvailable(slide.mediaAsset) ||
         slide.translations.length !== CONTENT_LOCALES.length ||
         slide.translations.some(
-          (translation) => !translation.title.trim() || !translation.imageAltText.trim()
+          (translation) =>
+            !translation.title.trim() ||
+            !translation.imageAltText.trim() ||
+            (translation.mediaAsset ? !this.mediaAvailable(translation.mediaAsset) : false)
         )
       )
         throw this.contentError("error.content.incomplete_translations", 409);
@@ -1310,6 +1381,15 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   }
 
   private publicTarget(slide: ReleaseRecord["slides"][number], announcements: Set<number>) {
+    if (
+      slide.targetType === CarouselTargetType.NONE &&
+      slide.shopId === null &&
+      slide.technicianProfileId === null &&
+      slide.serviceId === null &&
+      slide.announcementId === null &&
+      slide.affiliateTaskId === null
+    )
+      return { type: "none" as const };
     if (
       slide.targetType === CarouselTargetType.SHOP &&
       slide.shop?.status === "published" &&
@@ -1359,6 +1439,15 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   }
 
   private mapTarget(slide: ReleaseRecord["slides"][number]): CarouselTarget {
+    if (
+      slide.targetType === CarouselTargetType.NONE &&
+      slide.shopId === null &&
+      slide.technicianProfileId === null &&
+      slide.serviceId === null &&
+      slide.announcementId === null &&
+      slide.affiliateTaskId === null
+    )
+      return { type: "none" };
     if (slide.targetType === CarouselTargetType.SHOP && slide.shopId)
       return { type: "shop", shopId: slide.shopId };
     if (slide.targetType === CarouselTargetType.TECHNICIAN && slide.technicianProfileId)
@@ -1413,7 +1502,9 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
 
   private slideScalarData(slide: ResolvedCarouselSlide, announcementId?: number | null) {
     const targetType =
-      slide.target.type === "shop"
+      slide.target.type === "none"
+        ? CarouselTargetType.NONE
+        : slide.target.type === "shop"
         ? CarouselTargetType.SHOP
         : slide.target.type === "technician"
           ? CarouselTargetType.TECHNICIAN
@@ -1431,7 +1522,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       technicianProfileId:
         slide.target.type === "technician" ? slide.target.technicianProfileId : null,
       serviceId: slide.target.type === "service" ? slide.target.serviceId : null,
-      announcementId: announcementId ?? null,
+      announcementId:
+        slide.target.type === "affiliate_announcement" ? (announcementId ?? null) : null,
       affiliateTaskId:
         slide.target.type === "affiliate_announcement" ? slide.target.affiliateTaskId : null
     };
@@ -1440,7 +1532,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   private translationData(
     slideId: number,
     locale: ContentLocaleCode,
-    slide: StoredCarouselSlide,
+    slide: ResolvedCarouselSlide,
     now: Date
   ) {
     return {
@@ -1451,9 +1543,10 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
     };
   }
 
-  private translationValues(locale: ContentLocaleCode, slide: StoredCarouselSlide) {
+  private translationValues(locale: ContentLocaleCode, slide: ResolvedCarouselSlide) {
     const value = slide.translations[locale];
     return {
+      mediaAssetId: value.mediaAssetId,
       badge: value.badge,
       title: value.title,
       caption: value.caption,
@@ -1500,8 +1593,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       slides: release.slides.map(
         (slide): CarouselSlidePayload => ({
           id: slide.publicId,
-          mediaAssetPublicId: slide.mediaAsset.checksumSha256 ?? "",
-          imageUrl: slide.mediaAsset.url,
+          defaultMediaAssetPublicId: slide.mediaAsset.checksumSha256 ?? "",
+          defaultImageUrl: slide.mediaAsset.url,
           sortOrder: slide.sortOrder,
           isEnabled: slide.isEnabled,
           visibleFrom: slide.visibleFrom,
@@ -1511,6 +1604,8 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
             slide.translations.map((translation) => [
               localeFromDb[translation.locale],
               {
+                mediaAssetPublicId: translation.mediaAsset?.checksumSha256 ?? null,
+                imageUrl: (translation.mediaAsset ?? slide.mediaAsset).url,
                 badge: translation.badge,
                 title: translation.title,
                 caption: translation.caption,

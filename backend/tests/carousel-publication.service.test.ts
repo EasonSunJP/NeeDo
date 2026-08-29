@@ -24,6 +24,8 @@ const mediaPublicId = "a".repeat(64);
 
 const translations = {
   "zh-CN": {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "首页",
     caption: null,
@@ -33,6 +35,8 @@ const translations = {
     isInitialCopy: true
   },
   "zh-TW": {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "首頁",
     caption: null,
@@ -42,6 +46,8 @@ const translations = {
     isInitialCopy: true
   },
   en: {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "Home",
     caption: null,
@@ -51,6 +57,8 @@ const translations = {
     isInitialCopy: true
   },
   ja: {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "ホーム",
     caption: null,
@@ -60,6 +68,8 @@ const translations = {
     isInitialCopy: false
   },
   ko: {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "홈",
     caption: null,
@@ -87,8 +97,7 @@ const payload = (
     {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       defaultMediaAssetPublicId: mediaPublicId,
-      mediaAssetPublicId: mediaPublicId,
-      imageUrl: "/media/content/a.png",
+      defaultImageUrl: "/media/content/a.png",
       sortOrder: 0,
       isEnabled: true,
       visibleFrom: null,
@@ -185,7 +194,13 @@ describe("CarouselPublicationService", () => {
         slides: input.slides.map((slide) => ({
           ...slide,
           id: slide.publicId,
-          imageUrl: "/media/content/a.png",
+          defaultImageUrl: "/media/content/a.png",
+          translations: Object.fromEntries(
+            Object.entries(slide.translations).map(([locale, value]) => [
+              locale,
+              { ...value, imageUrl: "/media/content/a.png" }
+            ])
+          ) as CarouselPublicationPayload["slides"][number]["translations"],
           target: { type: "shop", shopId: 7 }
         }))
       })
@@ -209,6 +224,7 @@ describe("CarouselPublicationService", () => {
           translations: [
             {
               locale: "ja",
+              mediaAssetPublicId: null,
               badge: null,
               title: "ホーム",
               caption: null,
@@ -264,6 +280,7 @@ describe("CarouselPublicationService", () => {
           translations: [
             {
               locale: "ja" as const,
+              mediaAssetPublicId: null,
               badge: null,
               title: " ",
               caption: null,
@@ -294,6 +311,7 @@ describe("CarouselPublicationService", () => {
       translations: [
         {
           locale: "ja" as const,
+          mediaAssetPublicId: null,
           badge: null,
           title: `ホーム-${sortOrder}`,
           caption: null,
@@ -321,6 +339,7 @@ describe("CarouselPublicationService", () => {
     const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
     const explicitCopies = (["zh-CN", "zh-TW", "en", "ja", "ko"] as const).map((locale) => ({
       locale,
+      mediaAssetPublicId: null,
       badge: null,
       title: `Copied ${locale}`,
       caption: null,
@@ -366,6 +385,7 @@ describe("CarouselPublicationService", () => {
     const localeInput = ["zh-CN", "zh-TW", "en", "ja", "ko"] as const;
     const explicitTranslations = localeInput.map((locale, index) => ({
       locale,
+      mediaAssetPublicId: null,
       badge: null,
       title: `Round trip ${locale}`,
       caption: null,
@@ -377,6 +397,8 @@ describe("CarouselPublicationService", () => {
     const storedTranslations = dbLocales.map((locale) => ({
       id: dbLocales.indexOf(locale) + 1,
       slideId: 901,
+      mediaAssetId: null,
+      mediaAsset: null,
       locale,
       badge: null,
       title: `Before ${locale}`,
@@ -553,6 +575,7 @@ describe("CarouselPublicationService", () => {
       {
         expectedLockVersion: 1,
         locale: "en",
+        mediaAssetPublicId: null,
         badge: null,
         title: "Changed",
         caption: null,
@@ -629,6 +652,7 @@ describe("CarouselPublicationService", () => {
           translations: [
             {
               locale: "ja",
+              mediaAssetPublicId: null,
               badge: null,
               title: "ホーム",
               caption: null,
