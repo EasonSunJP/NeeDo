@@ -3,6 +3,7 @@ import { httpClient } from "./httpClient";
 import {
   contentPublicationApi,
   type CarouselDraftCreateInput,
+  type CarouselDraftReplaceInput,
   type ContentLocaleCode
 } from "./contentPublication";
 import { toContentLocale } from "../features/content-publication/locales";
@@ -14,6 +15,33 @@ vi.mock("./httpClient", () => ({
 }));
 
 const idempotencyKey = "11111111-1111-4111-8111-111111111111";
+const translation = {
+  locale: "ja" as ContentLocaleCode,
+  badge: null,
+  title: "Tokyo",
+  caption: null,
+  ctaLabel: null,
+  imageAltText: "東京の街並み"
+};
+
+const userSlide = {
+  mediaAssetPublicId: "a".repeat(64),
+  sortOrder: 0,
+  isEnabled: true,
+  visibleFrom: null,
+  visibleUntil: null,
+  target: { type: "service" as const, publicId: "46969a0f-2c2c-4b7b-b986-88e406393255" },
+  translations: [translation]
+};
+
+const affiliateSlide = {
+  ...userSlide,
+  target: {
+    type: "affiliate_announcement" as const,
+    announcementPublicId: "46969a0f-2c2c-4b7b-b986-88e406393255",
+    affiliateTaskId: null
+  }
+};
 
 describe("contentPublicationApi", () => {
   beforeEach(() => {
@@ -26,6 +54,60 @@ describe("contentPublicationApi", () => {
     expect(toContentLocale("ja")).toBe("ja");
     expect(toContentLocale("en")).toBe("en");
     expect(toContentLocale("ko")).toBe("ko");
+  });
+
+  it("keeps carousel draft and target-search inputs bound to their fixed scene", async () => {
+    const userDraft = {
+      idempotencyKey,
+      sourceLocale: "ja",
+      slides: [userSlide]
+    } satisfies CarouselDraftCreateInput<"USER_HOME">;
+    const affiliateReplacement = {
+      expectedLockVersion: 2,
+      sourceLocale: "ja",
+      slides: [affiliateSlide]
+    } satisfies CarouselDraftReplaceInput<"affiliate-home-notice">;
+
+    await contentPublicationApi.createCarouselDraft("USER_HOME", userDraft);
+    await contentPublicationApi.replaceCarouselDraft(
+      "affiliate-home-notice",
+      81,
+      affiliateReplacement
+    );
+    await contentPublicationApi.searchCarouselTargets("USER_HOME", { type: "technician" });
+    await contentPublicationApi.searchCarouselTargets("AFFILIATE_HOME_NOTICE", {
+      type: "affiliate_task"
+    });
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/backoffice/content/carousels/user-home/releases",
+      { body: userDraft, method: "POST" }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/content/carousels/affiliate-home-notice/releases/81",
+      { body: affiliateReplacement, method: "PATCH" }
+    );
+  });
+
+  it("rejects draft and search inputs from the other fixed scene at compile time", () => {
+    contentPublicationApi.createCarouselDraft("USER_HOME", {
+      idempotencyKey,
+      sourceLocale: "ja",
+      // @ts-expect-error USER_HOME cannot target an Affiliate announcement.
+      slides: [affiliateSlide]
+    });
+    contentPublicationApi.replaceCarouselDraft("AFFILIATE_HOME_NOTICE", 81, {
+      expectedLockVersion: 2,
+      sourceLocale: "ja",
+      // @ts-expect-error Affiliate carousel cannot target a Service.
+      slides: [userSlide]
+    });
+    // @ts-expect-error USER_HOME target search does not accept Affiliate task filters.
+    contentPublicationApi.searchCarouselTargets("user-home", { type: "affiliate_task" });
+    // @ts-expect-error Affiliate target search does not accept Technician filters.
+    contentPublicationApi.searchCarouselTargets("affiliate-home-notice", { type: "technician" });
   });
 
   it("calls the three public localized endpoints exactly", async () => {

@@ -13,6 +13,8 @@ const apiMocks = vi.hoisted(() => ({
   getUserHomeCarousel: vi.fn()
 }));
 
+const i18nMock = vi.hoisted(() => ({ language: "zh" as "zh" | "zh-Hant" | "ja" | "en" | "ko" }));
+
 vi.mock("../../api/contentPublication", async () => {
   const actual = await vi.importActual<typeof import("../../api/contentPublication")>(
     "../../api/contentPublication"
@@ -21,7 +23,7 @@ vi.mock("../../api/contentPublication", async () => {
 });
 
 vi.mock("../../i18n/I18nProvider", () => ({
-  useOptionalI18n: () => ({ language: "zh" })
+  useOptionalI18n: () => ({ language: i18nMock.language })
 }));
 
 function LocationProbe() {
@@ -84,6 +86,7 @@ async function renderCarousel(scene: "user-home" | "affiliate-home-notice") {
 describe("PublishedCarousel", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    i18nMock.language = "zh";
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -162,6 +165,133 @@ describe("PublishedCarousel", () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe(
       "/services/46969a0f-2c2c-4b7b-b986-88e406393255"
     );
+  });
+
+  it("preserves the API image alt and explicit no-CTA semantics", async () => {
+    apiMocks.getUserHomeCarousel.mockResolvedValue({
+      ...payload("USER_HOME", {
+        type: "service",
+        publicId: "46969a0f-2c2c-4b7b-b986-88e406393255"
+      }),
+      slides: [
+        {
+          ...payload("USER_HOME", { type: "service", publicId: "service-1" }).slides[0],
+          ctaLabel: null,
+          imageAltText: "施術室を準備するスタッフ"
+        }
+      ]
+    });
+
+    await renderCarousel("user-home");
+    await waitFor(() => expect(container.textContent).toContain("东京护理"));
+
+    expect(container.querySelector("img")?.getAttribute("alt")).toBe("施術室を準備するスタッフ");
+    expect(container.textContent).not.toContain("查看详情");
+  });
+
+  it("starts a fresh locale request and ignores the older locale response", async () => {
+    let resolveChinese!: (value: PublishedCarouselPayload) => void;
+    apiMocks.getUserHomeCarousel
+      .mockReturnValueOnce(
+        new Promise<PublishedCarouselPayload>((resolve) => {
+          resolveChinese = resolve;
+        })
+      )
+      .mockResolvedValueOnce({
+        ...payload("USER_HOME", { type: "service", publicId: "service-ja" }),
+        locale: "ja",
+        slides: [
+          {
+            ...payload("USER_HOME", { type: "service", publicId: "service-ja" }).slides[0],
+            title: "新しい日本語"
+          }
+        ]
+      });
+
+    await renderCarousel("user-home");
+    i18nMock.language = "ja";
+    await renderCarousel("user-home");
+    await waitFor(() => expect(container.textContent).toContain("新しい日本語"));
+
+    await act(async () =>
+      resolveChinese({
+        ...payload("USER_HOME", { type: "service", publicId: "service-zh" }),
+        slides: [
+          {
+            ...payload("USER_HOME", { type: "service", publicId: "service-zh" }).slides[0],
+            title: "旧中文"
+          }
+        ]
+      })
+    );
+
+    expect(apiMocks.getUserHomeCarousel).toHaveBeenNthCalledWith(1, "zh-CN");
+    expect(apiMocks.getUserHomeCarousel).toHaveBeenNthCalledWith(2, "ja");
+    expect(container.textContent).toContain("新しい日本語");
+    expect(container.textContent).not.toContain("旧中文");
+  });
+
+  it("starts a fresh scene request and ignores the older scene response", async () => {
+    let resolveUser!: (value: PublishedCarouselPayload) => void;
+    apiMocks.getUserHomeCarousel.mockReturnValueOnce(
+      new Promise<PublishedCarouselPayload>((resolve) => {
+        resolveUser = resolve;
+      })
+    );
+    apiMocks.getAffiliateCarousel.mockResolvedValueOnce({
+      ...payload("AFFILIATE_HOME_NOTICE", {
+        type: "affiliate_announcement",
+        publicId: "notice-new"
+      }),
+      slides: [
+        {
+          ...payload("AFFILIATE_HOME_NOTICE", {
+            type: "affiliate_announcement",
+            publicId: "notice-new"
+          }).slides[0],
+          title: "联盟新公告"
+        }
+      ]
+    });
+
+    await renderCarousel("user-home");
+    await renderCarousel("affiliate-home-notice");
+    await waitFor(() => expect(container.textContent).toContain("联盟新公告"));
+    await act(async () =>
+      resolveUser({
+        ...payload("USER_HOME", { type: "service", publicId: "service-old" }),
+        slides: [
+          {
+            ...payload("USER_HOME", { type: "service", publicId: "service-old" }).slides[0],
+            title: "用户旧轮播"
+          }
+        ]
+      })
+    );
+
+    expect(apiMocks.getAffiliateCarousel).toHaveBeenCalledWith("zh-CN");
+    expect(container.textContent).toContain("联盟新公告");
+    expect(container.textContent).not.toContain("用户旧轮播");
+  });
+
+  it("does not update state after unmount when a request settles late", async () => {
+    let resolveLate!: (value: PublishedCarouselPayload) => void;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    apiMocks.getUserHomeCarousel.mockReturnValueOnce(
+      new Promise<PublishedCarouselPayload>((resolve) => {
+        resolveLate = resolve;
+      })
+    );
+
+    await renderCarousel("user-home");
+    await act(async () => root.unmount());
+    await act(async () =>
+      resolveLate(payload("USER_HOME", { type: "service", publicId: "service-late" }))
+    );
+
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+    root = createRoot(container);
   });
 
   it("uses the affiliate announcement route for the affiliate scene", async () => {

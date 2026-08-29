@@ -98,8 +98,9 @@ export function PublishedCarousel({ scene }: { scene: PublishedCarouselUiScene }
     badge: slide.badge ?? undefined,
     title: slide.title,
     caption: slide.caption ?? undefined,
-    cta: slide.ctaLabel ?? undefined,
+    cta: slide.ctaLabel,
     image: slide.imageUrl,
+    imageAlt: slide.imageAltText,
     to: carouselTargetPath(slide.target)
   }));
 

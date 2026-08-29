@@ -4,6 +4,8 @@ export type ContentLocaleCode = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type PublishedCarouselScene = "USER_HOME" | "AFFILIATE_HOME_NOTICE";
 export type CarouselSceneSlug = "user-home" | "affiliate-home-notice";
 export type CarouselScene = PublishedCarouselScene | CarouselSceneSlug;
+export type UserHomeCarouselScene = "USER_HOME" | "user-home";
+export type AffiliateCarouselScene = "AFFILIATE_HOME_NOTICE" | "affiliate-home-notice";
 export type ContentPublicationStatus = "draft" | "scheduled" | "published" | "disabled" | "archived";
 
 export type PublishedCarouselTarget =
@@ -96,29 +98,32 @@ export type AffiliateCarouselTargetInput =
       taskCode: string | null;
     };
 
-export type CarouselTargetInput = UserHomeCarouselTargetInput | AffiliateCarouselTargetInput;
+export type CarouselTargetInput<TScene extends CarouselScene = CarouselScene> =
+  TScene extends UserHomeCarouselScene
+    ? UserHomeCarouselTargetInput
+    : AffiliateCarouselTargetInput;
 
-export type CarouselDraftSlideInput = {
+export type CarouselDraftSlideInput<TScene extends CarouselScene = CarouselScene> = {
   publicId?: string;
   mediaAssetPublicId: string;
   sortOrder: number;
   isEnabled: boolean;
   visibleFrom: string | null;
   visibleUntil: string | null;
-  target: CarouselTargetInput;
+  target: CarouselTargetInput<TScene>;
   translations: CarouselTranslationInput[];
 };
 
-export type CarouselDraftCreateInput = {
+export type CarouselDraftCreateInput<TScene extends CarouselScene = CarouselScene> = {
   idempotencyKey: string;
   sourceLocale: ContentLocaleCode;
-  slides: CarouselDraftSlideInput[];
+  slides: CarouselDraftSlideInput<TScene>[];
 };
 
-export type CarouselDraftReplaceInput = {
+export type CarouselDraftReplaceInput<TScene extends CarouselScene = CarouselScene> = {
   expectedLockVersion: number;
   sourceLocale: ContentLocaleCode;
-  slides: CarouselDraftSlideInput[];
+  slides: CarouselDraftSlideInput<TScene>[];
 };
 
 export type CarouselLocaleUpdateInput = Omit<CarouselTranslationInput, "locale"> & {
@@ -203,7 +208,8 @@ export type AffiliateTargetSearchQuery = ContentPageQuery & {
   type?: "announcement" | "affiliate_task";
 };
 
-export type CarouselTargetSearchQuery = UserHomeTargetSearchQuery | AffiliateTargetSearchQuery;
+export type CarouselTargetSearchQuery<TScene extends CarouselScene = CarouselScene> =
+  TScene extends UserHomeCarouselScene ? UserHomeTargetSearchQuery : AffiliateTargetSearchQuery;
 
 export type PublishContentInput = {
   idempotencyKey: string;
@@ -354,7 +360,10 @@ export const contentPublicationApi = {
     return httpClient.request<BackofficeCarouselScene>(carouselBase(scene));
   },
 
-  createCarouselDraft(scene: CarouselScene, body: CarouselDraftCreateInput) {
+  createCarouselDraft<TScene extends CarouselScene>(
+    scene: TScene,
+    body: CarouselDraftCreateInput<NoInfer<TScene>>
+  ) {
     return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases`, {
       body,
       method: "POST"
@@ -367,7 +376,10 @@ export const contentPublicationApi = {
     });
   },
 
-  searchCarouselTargets(scene: CarouselScene, query: CarouselTargetSearchQuery = {}) {
+  searchCarouselTargets<TScene extends CarouselScene>(
+    scene: TScene,
+    query: CarouselTargetSearchQuery<NoInfer<TScene>> = {}
+  ) {
     return httpClient.request<ContentPage<CarouselTargetSearchItem>>(`${carouselBase(scene)}/targets`, {
       query
     });
@@ -377,7 +389,11 @@ export const contentPublicationApi = {
     return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases/${releaseId}`);
   },
 
-  replaceCarouselDraft(scene: CarouselScene, releaseId: number, body: CarouselDraftReplaceInput) {
+  replaceCarouselDraft<TScene extends CarouselScene>(
+    scene: TScene,
+    releaseId: number,
+    body: CarouselDraftReplaceInput<NoInfer<TScene>>
+  ) {
     return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases/${releaseId}`, {
       body,
       method: "PATCH"
