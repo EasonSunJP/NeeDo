@@ -2000,17 +2000,20 @@ const imDefaultReactions = [
 function ImReactionButton({
   emoji,
   onClick,
-  compact = false
+  compact = false,
+  className
 }: {
   emoji: string;
   onClick: () => void;
   compact?: boolean;
+  className?: string;
 }) {
   return (
     <button
       className={cn(
         "focus-ring grid place-items-center rounded-2xl text-center font-black transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
-        compact ? "h-11 min-w-11 px-1 text-[22px]" : "h-11 px-1 text-[25px]"
+        compact ? "h-11 min-w-11 px-1 text-[22px]" : "h-11 px-1 text-[25px]",
+        className
       )}
       onClick={onClick}
       type="button"
@@ -2117,11 +2120,24 @@ export function ImMessageActionSheet({
         Math.max(unclampedTop, viewportTop + viewportMargin),
         viewportBottom - viewportMargin - renderedHeight
       );
-      const anchorCenter = anchorRect.left + anchorRect.width / 2;
+      const messageSide = anchorElement.dataset.imMessageSide;
+      const alignedLeft = messageSide === "left"
+        ? anchorRect.left + 12
+        : messageSide === "right"
+          ? anchorRect.right - 12 - menuRect.width
+          : anchorRect.left + anchorRect.width / 2 - menuRect.width / 2;
       const left = Math.min(
-        Math.max(anchorCenter - menuRect.width / 2, viewportLeft + viewportMargin),
+        Math.max(alignedLeft, viewportLeft + viewportMargin),
         viewportRight - viewportMargin - menuRect.width
       );
+      const bubbleRect = anchorElement.querySelector<HTMLElement>("[data-im-message-bubble='true']")?.getBoundingClientRect();
+      const anchorCenter = bubbleRect
+        ? bubbleRect.left + bubbleRect.width / 2
+        : messageSide === "left"
+          ? anchorRect.left + 52
+          : messageSide === "right"
+            ? anchorRect.right - 52
+            : anchorRect.left + anchorRect.width / 2;
       const arrowLeft = Math.min(Math.max(anchorCenter - left, 24), menuRect.width - 24);
 
       setMenuPosition({ arrowLeft, left, maxHeight, placement, ready: true, top });
@@ -2155,9 +2171,9 @@ export function ImMessageActionSheet({
   };
 
   const quickReactionRow = (
-    <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-0.5 px-1 py-1.5">
-      {imQuickReactions.map((emoji) => (
-        <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
+    <div className="grid grid-cols-5 items-center gap-0.5 px-1 py-1.5 min-[480px]:grid-cols-7" data-im-message-reaction-row="quick">
+      {imQuickReactions.map((emoji, index) => (
+        <ImReactionButton className={index >= 4 ? "hidden min-[480px]:grid" : undefined} emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
       ))}
       <button
         aria-label={expanded ? "收起默认表情" : "展开默认表情"}
@@ -2198,7 +2214,7 @@ export function ImMessageActionSheet({
   );
 
   const actionSection = actions.length > 0 ? (
-    <div className="grid grid-cols-6 gap-1" data-im-message-action-section="actions" key="actions">
+    <div className="grid grid-cols-3 gap-1 min-[480px]:grid-cols-6" data-im-message-action-section="actions" key="actions">
       {actions.map((item) => (
         <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
       ))}
@@ -2473,7 +2489,6 @@ export function MessageBubble({
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const disappearing = message.ext?.disappearing;
-  const [expandedReactionEmoji, setExpandedReactionEmoji] = useState<string | null>(null);
   const quotedPreview = quotedMessage?.content || (quotedMessage ? previewLabel(quotedMessage.type) : "");
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
@@ -2684,8 +2699,7 @@ export function MessageBubble({
     <div className="mt-2 flex max-w-full flex-wrap gap-1.5">
       {reactions.map((reaction) => {
         const names = reaction.people.map((person) => person.name).filter(Boolean);
-        const nameLabel = names.length > 2 ? `${names[0]}等${names.length}人` : names.join("、");
-        const expanded = expandedReactionEmoji === reaction.emoji;
+        const nameLabel = names.join("、");
 
         return (
           <span className={cn("relative inline-flex min-w-0 items-center overflow-visible rounded-full px-1.5 py-1", isMine ? "bg-black/[0.08]" : "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")} key={`${message.id}-${reaction.emoji}`}>
@@ -2704,27 +2718,12 @@ export function MessageBubble({
             >
               {reaction.emoji}
             </button>
-            <button
-              className="min-w-0 max-w-[9rem] truncate px-2 text-left text-[12px] font-black opacity-78"
+            <span
+              className="min-w-0 max-w-[12rem] truncate px-2 text-left text-[12px] font-black opacity-78"
               key={`${message.id}-${reaction.emoji}-names`}
-              onClick={(event) => {
-                event.stopPropagation();
-                setExpandedReactionEmoji(expanded ? null : reaction.emoji);
-              }}
-              type="button"
             >
               {nameLabel || `${reaction.people.length}人`}
-            </button>
-            {expanded ? (
-              <span className={cn("absolute bottom-[calc(100%+6px)] left-0 z-20 min-w-[160px] rounded-[14px] px-3 py-2 text-left text-[12px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.22)]", isMine ? "bg-[#18231e] text-white" : "bg-[color:var(--client-elevated)] text-[color:var(--client-text)]")}>
-                {reaction.people.map((person) => (
-                  <span className="flex min-w-0 items-center gap-2 py-1" key={person.id}>
-                    {person.avatar ? <AvatarImage alt={person.name} className="h-6 w-6 shrink-0" src={person.avatar} /> : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-black/[0.08]">{person.name.slice(0, 1)}</span>}
-                    <span className="truncate">{person.name}</span>
-                  </span>
-                ))}
-              </span>
-            ) : null}
+            </span>
           </span>
         );
       })}

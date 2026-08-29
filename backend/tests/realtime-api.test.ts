@@ -1637,6 +1637,27 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       });
 
     await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ emoji: "😂" })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          id: messageResponse.body.data.id,
+          reactions: [
+            {
+              emoji: "😂",
+              reactedByMe: true,
+              people: [
+                { userId: 2, username: "Mika Technician" },
+                { userId: 1, username: "Aya Customer" }
+              ]
+            }
+          ]
+        });
+      });
+
+    await request(fixture.app)
       .get("/api/v1/im/conversations/1/messages?pageSize=20")
       .set("Authorization", `Bearer ${ayaToken}`)
       .expect(200)
@@ -1646,8 +1667,11 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
           reactions: [
             {
               emoji: "😂",
-              reactedByMe: false,
-              people: [{ userId: 2, username: "Mika Technician" }]
+              reactedByMe: true,
+              people: [
+                { userId: 2, username: "Mika Technician" },
+                { userId: 1, username: "Aya Customer" }
+              ]
             }
           ]
         });

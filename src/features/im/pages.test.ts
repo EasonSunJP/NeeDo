@@ -241,6 +241,19 @@ describe("IM pages", () => {
     expect(componentSource).not.toContain("void api\n      .setMessageReaction");
   });
 
+  it("always suppresses the native desktop context menu before preserving a message text selection", () => {
+    const componentStart = pagesSource.indexOf("function MessagePressable");
+    const componentEnd = pagesSource.indexOf("function ImQuickMenuItem", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const contextMenuStart = componentSource.indexOf("onContextMenu={(event) => {");
+    const contextMenuEnd = componentSource.indexOf("onPointerCancel", contextMenuStart);
+    const contextMenuSource = componentSource.slice(contextMenuStart, contextMenuEnd);
+
+    expect(contextMenuStart).toBeGreaterThan(-1);
+    expect(contextMenuSource.indexOf("event.preventDefault()"))
+      .toBeLessThan(contextMenuSource.indexOf("hasActiveImMessageTextSelection"));
+  });
+
   it("handles privacy-save and leave failures inside the settings page instead of crashing the app", () => {
     expect(pagesSource).toContain('showInfoToast("隐私模式设置已保存")');
     expect(pagesSource).toContain('showInfoToast("隐私模式设置失败，请稍后重试")');

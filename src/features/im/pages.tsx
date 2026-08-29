@@ -1335,10 +1335,10 @@ function MessagePressable({
   return (
     <div
       onContextMenu={(event) => {
+        event.preventDefault();
         if (hasActiveImMessageTextSelection(event.currentTarget)) {
           return;
         }
-        event.preventDefault();
         onOpenMenu();
       }}
       onPointerCancel={clearPress}
@@ -5617,6 +5617,7 @@ export function ImConversationRoomPage({
                 <div
                   className={cn("relative rounded-3xl transition", menuState ? "z-20" : "z-10", flashMessageId === message.id && "bg-[#fff7d4]", menuState?.message.id === message.id && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]")}
                   data-im-message-selected={menuState?.message.id === message.id ? "true" : undefined}
+                  data-im-message-side={isMine ? "right" : "left"}
                   key={message.id}
                   ref={(element) => {
                     messageRefs.current[message.id] = element;
