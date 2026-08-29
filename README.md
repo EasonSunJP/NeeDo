@@ -244,15 +244,22 @@ ENV_FILE=.env.dev npm --prefix backend run check:booking-platform-fee-debt-flow
 
 The checker rejects production flags, remote MySQL hosts, and production-looking database names. It creates uniquely marked real users, customer/technician profiles, shops, services, schedule slots, bookings, wallets, holds, ledger entries, adjustments, and audits; exercises disabled/shop/technician payer, rollback, explicit and consecutive overdrafts, cancellation, immediate/delayed/expired reward, and replay behavior. It also uses real MySQL barriers to force both completion-first and top-up-first races. Settlement locks the payer wallet before reading the complete `OrderFinancial` row with `FOR UPDATE`; top-up and expiry use the same locking read, and reward deadlines use `CURRENT_TIMESTAMP(3)`. The current check creates 7 users, 9 shops, and 10 bookings, then proves exact pre/post aggregate equality after marker-only cleanup.
 
-The next additive Booking slice is migration `20260829130000_order_acceptance_pause`. It introduces persisted merchant-group/shop acceptance pauses with separate operations, merchant, and shop authorities. Active pauses leave availability visible and still allow a customer to create a `PENDING` order, but block only `PENDING → CONFIRMED` before settlement. All active authorities must release their own pause before confirmation can proceed. Ordinary customers are serialized on the real User row and atomically replace all older `PENDING` orders; `membershipLevel=black` is the only multiple-PENDING exception. Replacement cancellation, slot capacity release, status history, affiliate invalidation, and the new order share one transaction, including rollback when the new slot cannot be committed.
+The additive Booking slice uses migration `20260829130000_order_acceptance_pause`. It introduces persisted merchant-group/shop acceptance pauses with separate operations, merchant, and shop authorities. Active pauses leave availability visible and still allow a customer to create a `PENDING` order, but block only `PENDING → CONFIRMED` before settlement. All active authorities must release their own pause before confirmation can proceed. Ordinary customers are serialized on the real User row and atomically replace all older `PENDING` orders; `membershipLevel=black` is the only multiple-PENDING exception. Replacement cancellation, slot capacity release, status history, affiliate invalidation, and the new order share one transaction, including rollback when the new slot cannot be committed.
 
-The guarded local checker below first dry-runs the DDL against the existing non-production schema, validates its 17 columns, four foreign keys, and four checks, transactionally rolls back the permission DML, runs real repository/service scenarios, proves exact marker cleanup, and drops the dry-run table. It deliberately does not record the migration as applied:
+Before formal apply, the guarded local checker below was run against `needo_dev`. It dry-ran the DDL, validated its 17 columns, four foreign keys, and four checks, transactionally rolled back the permission DML, ran real repository/service scenarios, proved exact marker cleanup, and dropped the dry-run table without recording the migration. Use it only on a fresh local non-production schema where the migration has not yet been applied:
 
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run check:order-acceptance-control-migration
 ```
 
-Formal `needo_dev` migration apply remains a separate reconciliation step. Do not bypass Prisma migration history, copy only an external step's SQL without its matching schema/code, or manually leave the dry-run table in place when database-only migrations are not yet present in the current branch.
+Migration `20260829130000_order_acceptance_pause` has now been applied through Prisma to the formal local `needo_dev` database. `prisma migrate status` reports all 61 repository migrations up to date, and the post-apply real-flow checker passes with exact fixture cleanup and zero financial or ledger drift:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run check:order-acceptance-control-flow
+```
+
+This evidence is local database acceptance only; it is not a production deployment. Do not bypass Prisma migration history or copy only an external step's SQL without its matching schema and code.
 
 ## Formal Customer Reservations
 
