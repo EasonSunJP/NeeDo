@@ -27,6 +27,11 @@ Affiliate task authoring:
 - `PUT /api/v1/merchant-admin/affiliate/tasks/:taskId/locales/:locale` edits one language with an optimistic lock; `syncToAll=true` is the only operation that copies the selected version to every language.
 - `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit` requires publishable task content in at least one active language before it can freeze NDP or enter review.
 
+Affiliate platform fee policy:
+
+- `GET /api/v1/backoffice/affiliate/fee-rules` returns paginated global/shop rule history.
+- `POST /api/v1/backoffice/affiliate/fee-rules` creates the next optimistic, immutable rule version with a required reason and effective time.
+
 Store navigation:
 
 - `GET /api/v1/shops/:shopId`, where `shopId` may be the public `shop##########` identifier returned by the marketplace task view.
@@ -47,7 +52,9 @@ All protected requests use the existing access-token and RBAC pipeline. Task par
 
 The public marketplace response intentionally excludes wallet balances, reservation internals, ledger links, token hashes, claimant private data, and signing material. Remaining budget is a non-negative aggregate derived by the backend from the approved task reservation; it is presentation data, not an authorization for browser-side settlement.
 
-Claim creation does not pay or allocate a reward. Booking attribution performs the authoritative allocation, and service completion performs the authoritative NDP settlement in their existing database transactions.
+Claim creation does not pay or allocate a reward. Booking attribution performs the authoritative commission allocation, and service completion atomically captures the promoter reward plus the task's immutable platform-fee allocation. The promoter receives the full advertised reward; the platform fee is an additional publisher cost and never reduces that reward.
+
+At the default 1,000 bps rate, a 2,000,000 NDP commission budget freezes 2,200,000 NDP: 2,000,000 commission plus 200,000 fee reserve. A completed 10,000 NDP reward captures 11,000 frozen NDP, credits 10,000 to the claimant, and credits 1,000 to the canonical platform wallet. Allocation capacity remains commission-only, so the fee reserve cannot create extra Claims or completed-order capacity.
 
 ## Languages
 
@@ -79,6 +86,12 @@ Fresh verification on 2026-08-29:
 - the recommendation page and announcement-detail page loaded without browser warnings or errors;
 - both carousel administration routes exposed independent published versions and shared language tabs in the required Japanese, English, Korean, Traditional Chinese, and Simplified Chinese display order while preserving Simplified Chinese as the selected draft source; the browser emitted no warning or error logs;
 - the display-order change passed a RED/GREEN cycle: the focused regression first failed only on the old tab order, then 3 focused files / 67 tests, frontend TypeScript lint, 214 full frontend files / 1,258 tests, and the formal production build with 8-entry bundle audit all passed.
+
+Additional fee-reserve verification on 2026-08-30:
+
+- migrations `20260830010000_affiliate_platform_fee_reserve_settlement` and `20260830013000_affiliate_platform_fee_budget_constraint` applied to local `needo_dev`;
+- the guarded real-MySQL check passed exact 2,200,000 gross freeze, 11,000 gross capture, 10,000 claimant credit, 1,000 platform credit, immutable shop override snapshots, mixed-rate pre-wallet rejection, rejection/expiry split release, idempotent retries, reconciliation/audit evidence, and exact transactional cleanup baseline;
+- the OpenAPI contract exposes the protected paginated fee-rule history/version endpoint without internal numeric actor IDs.
 
 No saved password, refresh token, browser storage, existing carousel content, or persisted user data was read or overwritten during browser acceptance. The guarded localized-carousel publication check also refused to mutate the non-empty local carousel scenes and left its captured temporary rows/files at zero; carousel scene separation remains covered by the passing integration suites. Because the formal database currently contains no eligible published Affiliate task, task-card, task-detail, and browser-click Claim acceptance remain data-blocked; their API, service, route, and component paths are covered by the passing automated and guarded real-database suites without seeding fake marketplace data.
 

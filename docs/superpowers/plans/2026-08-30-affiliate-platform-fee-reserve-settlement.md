@@ -213,7 +213,7 @@ git commit -m "feat: add affiliate fee policy API"
 - Produces task DTO fields `platformFeeBps`, `platformFeeReserveNdp`, and `grossReservedBudgetNdp`.
 - Keeps allocation capacity based on `commissionFrozenNdp`, never `totalFrozenNdp`.
 
-- [ ] **Step 1: Write failing task submission tests**
+- [x] **Step 1: Write failing task submission tests**
 
 ```ts
 expect(ledger.freezeAffiliateTaskBudget).toHaveBeenCalledWith(
@@ -227,13 +227,13 @@ expect(submitted.reservedBudgetNdp).toBe(2_200_000);
 
 Also prove differing multi-shop rates reject before `freezeAffiliateTaskBudget`, retry submission freezes once, rejection releases gross, and existing zero-fee tasks retain old behavior.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `npm test -- affiliate-task.service.test.ts affiliate-task.repository.test.ts affiliate-task-expiry.service.test.ts affiliate-task-expiry.repository.test.ts`
 
 Expected: FAIL because submission still freezes commission only.
 
-- [ ] **Step 3: Implement gross freeze and snapshot persistence**
+- [x] **Step 3: Implement gross freeze and snapshot persistence**
 
 ```ts
 const platformFeeReserveNdp = Math.ceil(
@@ -244,17 +244,17 @@ const grossFrozenNdp = task.totalBudgetNdp + platformFeeReserveNdp;
 
 Persist the snapshot before ledger freeze in the same database transaction. Store commission and fee components separately on the reservation. `reservedBudgetNdp` becomes the actual gross frozen amount; task allocation/claim limits remain based on `totalBudgetNdp` and commission-only reservation fields.
 
-- [ ] **Step 4: Update rejection and expiry release**
+- [x] **Step 4: Update rejection and expiry release**
 
 Rejection releases the full gross amount. Expiry releases remaining commission plus `platformFeeFrozenNdp - platformFeeCapturedNdp - platformFeeReleasedNdp`. Audit metadata must show both components and their gross sum.
 
-- [ ] **Step 5: Run the focused tests and verify GREEN**
+- [x] **Step 5: Run the focused tests and verify GREEN**
 
 Run: `npm test -- affiliate-task.service.test.ts affiliate-task.repository.test.ts affiliate-task-expiry.service.test.ts affiliate-task-expiry.repository.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/src/services/affiliate-task.service.ts backend/src/repositories/affiliate-task.repository.ts backend/src/services/affiliate-state-machine.service.ts backend/src/services/affiliate-task-expiry.service.ts backend/src/repositories/affiliate-task-expiry.repository.ts backend/src/routes/affiliate-task.routes.ts backend/src/app.ts backend/tests/affiliate-task.service.test.ts backend/tests/affiliate-task.repository.test.ts backend/tests/affiliate-task-expiry.service.test.ts backend/tests/affiliate-task-expiry.repository.test.ts
@@ -279,7 +279,7 @@ git commit -m "feat: freeze affiliate commission and platform fee"
 - Produces `AffiliateRewardLedgerResult.platformWalletId`.
 - Uses platform wallet `{ ownerType: "platform", ownerId: 1, currency: "NDP" }`.
 
-- [ ] **Step 1: Write failing three-wallet settlement tests**
+- [x] **Step 1: Write failing three-wallet settlement tests**
 
 ```ts
 expect(result.transaction.amount).toBe(11_000);
@@ -290,27 +290,27 @@ expect(platform.availableBalance).toBe(beforePlatform + 1_000);
 
 Cover replay idempotency, publisher-wallet mismatch, insufficient gross frozen balance, zero-fee compatibility tasks, reconciliation amount 11,000, and rollback when any wallet update fails.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `npm test -- affiliate-budget-ledger.service.test.ts affiliate-checkout.service.test.ts affiliate-checkout.repository.test.ts`
 
 Expected: FAIL because settlement currently creates only publisher and claimant entries.
 
-- [ ] **Step 3: Implement the atomic transaction**
+- [x] **Step 3: Implement the atomic transaction**
 
 Create one `AFFILIATE_REWARD_SETTLEMENT` transaction with amount `rewardNdp + platformFeeNdp`. Debit the publisher frozen balance by the gross amount, credit the claimant by reward, and credit the platform by fee. Zero-fee compatibility tasks omit the zero-value platform ledger entry but still resolve the canonical platform wallet only when fee is positive.
 
-- [ ] **Step 4: Persist reward and reservation allocation evidence**
+- [x] **Step 4: Persist reward and reservation allocation evidence**
 
 Save `platformFeeNdp` and `platformWalletId` on `AffiliateReward`; increment commission `capturedNdp` by reward and fee `platformFeeCapturedNdp` by platform fee. Store both values in reconciliation and audit metadata. Replay must validate all three wallet IDs and both amounts.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Run: `npm test -- affiliate-budget-ledger.service.test.ts affiliate-checkout.service.test.ts affiliate-checkout.repository.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/src/services/ledger.service.ts backend/src/repositories/ledger.repository.ts backend/src/services/affiliate-checkout.service.ts backend/src/repositories/affiliate-checkout.repository.ts backend/tests/affiliate-budget-ledger.service.test.ts backend/tests/affiliate-checkout.service.test.ts backend/tests/affiliate-checkout.repository.test.ts
@@ -335,17 +335,17 @@ git commit -m "feat: settle affiliate platform fee atomically"
 - Produces command: `ENV_FILE=.env.dev npm --prefix backend run check:affiliate-platform-fee-flow`.
 - Documents the fee-rule APIs and expanded task/reward DTOs.
 
-- [ ] **Step 1: Write failing OpenAPI and checker-contract tests**
+- [x] **Step 1: Write failing OpenAPI and checker-contract tests**
 
 Assert both fee-rule paths exist, use JWT/RBAC, paginate, document stable errors, and expose no internal numeric actor IDs. Assert the checker refuses production flags, remote MySQL, and production-like database names.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `npm test -- openapi.test.ts affiliate-platform-fee-flow-script.test.ts`
 
 Expected: FAIL because the API documentation and checker do not exist.
 
-- [ ] **Step 3: Implement the guarded real-database checker**
+- [x] **Step 3: Implement the guarded real-database checker**
 
 The checker must create uniquely marked shop and merchant publisher tasks and prove:
 
@@ -357,7 +357,7 @@ The checker must create uniquely marked shop and merchant publisher tasks and pr
 6. Exact retries do not duplicate rules, freezes, settlements, ledger entries, reconciliation, or audit.
 7. Cleanup restores captured row counts and wallet aggregate balances exactly.
 
-- [ ] **Step 4: Run complete verification**
+- [x] **Step 4: Run complete verification**
 
 Run: `npm test`
 
@@ -375,7 +375,7 @@ Run: `ENV_FILE=.env.dev npm run check:affiliate-platform-fee-flow`
 
 Expected: every command exits 0; the checker reports exact 2,200,000 freeze, 11,000 capture, 10,000 claimant credit, 1,000 platform credit, and zero cleanup residue.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/api/openapi.ts backend/scripts/check-affiliate-platform-fee-flow.ts backend/package.json backend/tests/openapi.test.ts backend/tests/affiliate-platform-fee-flow-script.test.ts docs/affiliate-marketplace-mobile-ui.md docs/ledger.md README.md

@@ -32,12 +32,15 @@ const ruleSelect = {
 } satisfies Prisma.AffiliatePlatformFeeRuleSelect;
 
 type RuleRecord = Prisma.AffiliatePlatformFeeRuleGetPayload<{ select: typeof ruleSelect }>;
+type AffiliatePlatformFeePrismaClient = PrismaClient | Prisma.TransactionClient;
 
 export class AffiliatePlatformFeeRepository implements AffiliatePlatformFeeRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(private readonly client: AffiliatePlatformFeePrismaClient = prisma) {}
 
   public withTransactionClient(transactionClient: unknown): AffiliatePlatformFeeRepositoryPort {
-    return new AffiliatePlatformFeeRepository(transactionClient as PrismaClient);
+    return new AffiliatePlatformFeeRepository(
+      transactionClient as AffiliatePlatformFeePrismaClient
+    );
   }
 
   public async findActiveShopIds(shopIds: number[]): Promise<number[]> {
@@ -113,7 +116,7 @@ export class AffiliatePlatformFeeRepository implements AffiliatePlatformFeeRepos
     input: AffiliatePlatformFeeRuleMutationInput
   ): Promise<AffiliatePlatformFeeRuleMutationResult> {
     try {
-      return await this.client.$transaction(async (transaction) => {
+      const mutate = async (transaction: AffiliatePlatformFeePrismaClient) => {
         if (input.scopeType === "shop") {
           const shop = await transaction.shop.findFirst({
             where: { id: input.shopId as number, status: "published", deletedAt: null },
@@ -187,13 +190,20 @@ export class AffiliatePlatformFeeRepository implements AffiliatePlatformFeeRepos
         });
 
         return { kind: "created", value: this.mapRule(created) } as const;
-      });
+      };
+      return this.canStartTransaction(this.client)
+        ? await this.client.$transaction((transaction) => mutate(transaction))
+        : await mutate(this.client);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         return { kind: "version_conflict" };
       }
       throw error;
     }
+  }
+
+  private canStartTransaction(client: AffiliatePlatformFeePrismaClient): client is PrismaClient {
+    return "$transaction" in client && typeof client.$transaction === "function";
   }
 
   private mapRule(rule: RuleRecord): AffiliatePlatformFeeRuleRecord {
