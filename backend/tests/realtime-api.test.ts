@@ -1149,6 +1149,40 @@ const createFixture = async () => {
 };
 
 describe("Step 13 realtime IM / Social / Notification API", () => {
+  it("accepts an image-only post while rejecting an empty post", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const checksum = "b".repeat(64);
+
+    await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        content: "",
+        media: {
+          items: [{ id: "image-only", type: "image", mediaAssetPublicId: checksum }]
+        },
+        visibility: "public"
+      })
+      .expect(201);
+
+    expect(fixture.realtimeRepository.createSocialPost).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        authorUserId: 1,
+        content: "",
+        media: {
+          items: [{ id: "image-only", type: "image", mediaAssetPublicId: checksum }]
+        }
+      })
+    );
+
+    await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "", media: { items: [] }, visibility: "public" })
+      .expect(400);
+  });
+
   it("accepts only request-owned image references and unique contact reminder IDs", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");

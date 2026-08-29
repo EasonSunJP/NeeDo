@@ -88,6 +88,34 @@ describe("ImChatComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("centers single-line composer controls while keeping bottom alignment for expanding drafts", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    const inputShell = container.querySelector<HTMLElement>("[data-im-composer-input-shell='true']");
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    const controls = [
+      container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']"),
+      container.querySelector<HTMLButtonElement>("[data-im-composer-control='emoji-chat']"),
+      container.querySelector<HTMLButtonElement>("[aria-label='打开更多功能']")
+    ];
+
+    expect(inputShell?.classList.contains("items-end")).toBe(true);
+    expect(textarea?.parentElement?.classList.contains("min-h-[40px]")).toBe(true);
+    for (const control of controls) {
+      expect(control).not.toBeNull();
+      expect(control?.classList.contains("h-10")).toBe(true);
+      expect(control?.classList.contains("w-10")).toBe(true);
+    }
+
+    await act(async () => root.unmount());
+  });
+
   it("renders the fixed Social-FAB-style down arrow only when requested", async () => {
     const onActivate = vi.fn();
     const container = document.createElement("div");
