@@ -17,4 +17,18 @@ describe("BusinessCpsPage affiliate name", () => {
     expect(source).toContain("搜索推荐任务");
     expect(source).not.toContain("<MobileFullscreenHeader");
   });
+
+  it("places the independent formal Affiliate notice carousel before the marketplace boundary", () => {
+    const carousel = '<PublishedCarousel scene="affiliate-home-notice" />';
+    const carouselIndex = source.indexOf(carousel);
+    const boundaryIndex = source.indexOf("<ExistingAffiliateCapabilityBoundary");
+
+    expect(source).toContain(
+      'import { PublishedCarousel } from "../../features/content-publication/PublishedCarousel";'
+    );
+    expect(carouselIndex).toBeGreaterThan(-1);
+    expect(boundaryIndex).toBeGreaterThan(carouselIndex);
+    expect(source).not.toContain("homeCarouselStore");
+    expect(source).not.toContain("localStorage");
+  });
 });

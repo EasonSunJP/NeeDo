@@ -89,3 +89,14 @@ describe("production route chunk boundaries", () => {
     expect(appSource).toContain('path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)}');
   });
 });
+
+describe("Affiliate announcement route", () => {
+  it("registers the localized announcement detail inside the protected Affiliate portal", () => {
+    expect(appSource).toContain(
+      'import { AffiliateAnnouncementDetailPage } from "./features/content-publication/AffiliateAnnouncementDetailPage";'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/announcements/:announcementPublicId" element={protect("business", <AffiliateAnnouncementDetailPage />)}'
+    );
+  });
+});

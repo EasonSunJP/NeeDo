@@ -140,6 +140,7 @@ import { MerchantApplicationPage } from "./features/identity-applications/Mercha
 import { AffiliateActivationPage } from "./features/identity-applications/AffiliateActivationPage";
 import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";
 import { AffiliateAlliancePage } from "./features/affiliate-alliance/AffiliateAlliancePage";
+import { AffiliateAnnouncementDetailPage } from "./features/content-publication/AffiliateAnnouncementDetailPage";
 import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
@@ -1098,6 +1099,7 @@ export default function App() {
               <Route path="/needo/posts/:postId" element={protect("user", <NeedoPostDetailRoutePage />)} />
               <Route path="/needo" element={protect("user", <NeedoExchangePage />)} />
               <Route path="/afirieito" element={protect("business", <BusinessCpsPage />)} />
+              <Route path="/afirieito/announcements/:announcementPublicId" element={protect("business", <AffiliateAnnouncementDetailPage />)} />
               <Route path="/afirieito/more" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/plan" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/data" element={protect("business", <BusinessCpsPage />)} />
