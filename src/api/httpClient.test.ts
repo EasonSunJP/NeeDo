@@ -8,6 +8,7 @@ import {
   getStoredRefreshToken,
   httpClient,
   refreshStoredAccessToken,
+  setAuthExpiredHandler,
   setAuthTokens
 } from "./httpClient";
 import type { AuthMePayload } from "../auth/rbac";
@@ -74,6 +75,7 @@ describe("httpClient auth tokens", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    setAuthExpiredHandler(null);
     clearAuthTokens();
     clearCachedDeviceFingerprint();
     vi.unstubAllEnvs();
@@ -141,6 +143,24 @@ describe("httpClient auth tokens", () => {
       })
     );
     expect(getAccessToken()).toBe("fresh-access-token");
+  });
+
+  it("expires the local session when a protected request receives 401 without a refresh token", async () => {
+    const onAuthExpired = vi.fn();
+    setAuthTokens({ accessToken: "stale-access-token" });
+    setAuthExpiredHandler(onAuthExpired);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    await expect(httpClient.request("/affiliate/profile")).rejects.toMatchObject({
+      code: 40105,
+      message: "error.auth.token_invalid",
+      status: 401
+    });
+
+    expect(getAccessToken()).toBeNull();
+    expect(onAuthExpired).toHaveBeenCalledTimes(1);
   });
 
   it("coalesces explicit session restoration and unauthorized retries into one refresh request", async () => {

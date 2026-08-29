@@ -219,6 +219,18 @@ function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
+function expireAuthenticationOnUnauthorized(
+  response: Response,
+  options: HttpClientRequestOptions
+) {
+  if (response.status !== 401 || options.auth === false) {
+    return;
+  }
+
+  clearAuthTokens();
+  authExpiredHandler?.();
+}
+
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const externalSignal = init.signal;
@@ -317,6 +329,8 @@ async function sendRequest<TData>(
     }
   }
 
+  expireAuthenticationOnUnauthorized(response, options);
+
   return assertSuccess(envelope, response.status);
 }
 
@@ -380,6 +394,8 @@ async function sendCsvExportRequest(
     }
   }
 
+  expireAuthenticationOnUnauthorized(response, options);
+
   if (!response.ok || isJsonContentType(contentType)) {
     const envelope = await parseEnvelope<unknown>(response);
     assertSuccess(envelope, response.status);
@@ -441,6 +457,8 @@ async function sendDataUrlRequest(
       throw error;
     }
   }
+
+  expireAuthenticationOnUnauthorized(response, options);
 
   if (!response.ok || isJsonContentType(contentType)) {
     const envelope = await parseEnvelope<string>(response);

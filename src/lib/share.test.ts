@@ -226,4 +226,15 @@ describe("isNonFatalBrowserRuntimeError", () => {
     expect(isOpaqueBrowserScriptError("Script error.")).toBe(true);
     expect(isNonFatalBrowserRuntimeError(new Error("Script error."))).toBe(true);
   });
+
+  it("keeps expected expired-session rejections out of the global recovery page", () => {
+    for (const message of [
+      "error.auth.token_invalid",
+      "error.auth.token_expired",
+      "error.auth.token_blacklisted",
+      "error.auth.refresh_missing"
+    ]) {
+      expect(isNonFatalBrowserRuntimeError(new Error(message))).toBe(true);
+    }
+  });
 });

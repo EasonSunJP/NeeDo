@@ -134,3 +134,15 @@ Observed browser evidence:
 The browser run exposed one duplicate React key when a Service contained `Tokyo` in both `serviceAreas` and `tags`. A RED regression test was added, `buildServiceTagLabels` now deduplicates those combined chips, the focused test passed, and a fresh browser page confirmed the Service detail console is clean.
 
 The real-database checker remains the direct evidence for native datetime scheduling/scheduler activation and all target-kind/claimable projections. The browser automation could not reliably drive Chromium's segmented `datetime-local` control, so the report does not mislabel a DOM-only value change as a browser schedule action. Full browser evidence and this limitation are recorded in `docs/localized-carousel-publication.md`.
+
+## Post-merge main verification
+
+The feature branch was merged locally into `main` as `e96aa48a` while retaining the newer platform-fee, payroll, realtime and IM changes already present on `main`. No push or deployment was performed.
+
+- Full backend after conflict resolution: 252 suites / 1,747 tests passed; 9 suites / 37 tests conditionally skipped.
+- Full frontend after conflict resolution: 205 files / 1,218 tests passed.
+- Backend/frontend lint, backend TypeScript build, formal production build and eight-entry production bundle audit passed.
+- Prisma reported 57 migrations and `Database schema is up to date!` against the local `needo_dev` database.
+- Fresh `main` browser runs showed the persisted user carousel, Service UUID click-through, affiliate notice carousel, announcement detail and user/affiliate identity switching with no relevant warnings or errors.
+
+The post-merge browser run also reproduced the previously reported stale-session recovery-page defect. RED regressions now cover protected HTTP 401 handling without a refresh token and expected expired-session runtime rejections. The client clears the invalid local session, notifies the auth provider, and keeps those expected expiry rejections out of the global recovery page. A fresh reload restored the normal affiliate page and identity switch flow instead of the recovery screen.
