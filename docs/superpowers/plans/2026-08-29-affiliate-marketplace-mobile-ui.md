@@ -36,7 +36,7 @@
 - Consumes: persisted `AffiliateTask`, active `AffiliateBudgetReservation`, task cover `MediaAsset`, `AffiliateTaskShop.shop.publicIdentifier`, and active public shop media.
 - Produces: `AffiliateMarketplaceTaskPublicView` with `totalBudgetNdp`, `remainingBudgetNdp`, `remainingBudgetBps`, `coverImageUrl`, and enriched public shop snapshots containing `publicId`, `city`, `address`, and `mediaAssets`.
 
-- [ ] **Step 1: Write failing service tests for budget progress and media-safe mapping**
+- [x] **Step 1: Write failing service tests for budget progress and media-safe mapping**
 
 ```ts
 expect(task).toMatchObject({
@@ -53,13 +53,13 @@ expect(task.shops[0]).toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Run the focused service test and verify RED**
+- [x] **Step 2: Run the focused service test and verify RED**
 
 Run: `npm --prefix backend test -- affiliate-marketplace.service.test.ts --runInBand`
 
 Expected: FAIL because the public view does not yet expose budget progress or public media.
 
-- [ ] **Step 3: Extend repository records without leaking finance internals**
+- [x] **Step 3: Extend repository records without leaking finance internals**
 
 ```ts
 export interface AffiliateMarketplaceShopPublicSnapshot
@@ -79,7 +79,7 @@ export interface AffiliateMarketplaceTaskRecord
 
 Update the Prisma include to fetch only active, non-deleted cover/shop media and the active shop public identifier in one query. Preserve task order after the paginated ID query.
 
-- [ ] **Step 4: Map the public budget fields in the service**
+- [x] **Step 4: Map the public budget fields in the service**
 
 ```ts
 const remainingBudgetNdp = Math.max(
@@ -97,17 +97,17 @@ const remainingBudgetBps = Math.min(
 
 Use the task cover URL first and the first ordered shop media URL as the cover fallback. Return no reservation object or wallet identifier.
 
-- [ ] **Step 5: Add repository/API/OpenAPI assertions**
+- [x] **Step 5: Add repository/API/OpenAPI assertions**
 
 Assert that list/detail/Claim task summaries serialize the new fields, preserve pagination, and still omit `publisherShopId`, `budgetReservation`, `walletId`, `tokenHash`, and `activeKey`.
 
-- [ ] **Step 6: Run focused backend tests and verify GREEN**
+- [x] **Step 6: Run focused backend tests and verify GREEN**
 
 Run: `npm --prefix backend test -- affiliate-marketplace.service.test.ts affiliate-marketplace.repository.test.ts affiliate-marketplace-api.test.ts openapi.test.ts --runInBand`
 
 Expected: all focused suites PASS with no warnings.
 
-- [ ] **Step 7: Commit the backend presentation contract**
+- [x] **Step 7: Commit the backend presentation contract**
 
 ```bash
 git add backend/src/services/affiliate-marketplace.service.ts backend/src/repositories/affiliate-marketplace.repository.ts backend/src/api/openapi.ts backend/tests/affiliate-marketplace.service.test.ts backend/tests/affiliate-marketplace.repository.test.ts backend/tests/affiliate-marketplace-api.test.ts backend/tests/openapi.test.ts
@@ -126,7 +126,7 @@ git commit -m "feat: expose affiliate marketplace presentation data"
 - Consumes: the public marketplace and Claim envelopes from Task 1 through `httpClient`.
 - Produces: `affiliateMarketplaceApi.listTasks`, `getTask`, `claimTask`, `listMyClaims`, and pure display helpers for remaining percentage, maximum available reward, date windows, discount labels, and task tags.
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
 ```ts
 await affiliateMarketplaceApi.listTasks({ keyword: "massage", page: 2, pageSize: 12 });
@@ -141,13 +141,13 @@ expect(httpClient.request).toHaveBeenCalledWith("/affiliate/tasks/22/claims", {
 });
 ```
 
-- [ ] **Step 2: Run adapter tests and verify RED**
+- [x] **Step 2: Run adapter tests and verify RED**
 
 Run: `npx vitest run src/api/affiliateMarketplace.test.ts src/features/affiliate-marketplace/model.test.ts`
 
 Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement the API types and adapter**
+- [x] **Step 3: Implement the API types and adapter**
 
 ```ts
 export const affiliateMarketplaceApi = {
@@ -166,7 +166,7 @@ export const affiliateMarketplaceApi = {
 };
 ```
 
-- [ ] **Step 4: Implement pure, verified display calculations**
+- [x] **Step 4: Implement pure, verified display calculations**
 
 ```ts
 export function getMaximumRewardNdp(task: AffiliateMarketplaceTask) {
@@ -179,13 +179,13 @@ export function getMaximumRewardNdp(task: AffiliateMarketplaceTask) {
 
 Task tags must derive only from formal task/service fields: customer scope, minimum-order rule, service names, discount, and high reward. Never infer external followers or unverified performance.
 
-- [ ] **Step 5: Run focused frontend tests and verify GREEN**
+- [x] **Step 5: Run focused frontend tests and verify GREEN**
 
 Run: `npx vitest run src/api/affiliateMarketplace.test.ts src/features/affiliate-marketplace/model.test.ts`
 
 Expected: both files PASS.
 
-- [ ] **Step 6: Commit the adapter and model**
+- [x] **Step 6: Commit the adapter and model**
 
 ```bash
 git add src/api/affiliateMarketplace.ts src/api/affiliateMarketplace.test.ts src/features/affiliate-marketplace/model.ts src/features/affiliate-marketplace/model.test.ts
@@ -207,35 +207,35 @@ git commit -m "feat: add affiliate marketplace client"
 - Consumes: Task 2 adapter/model and existing Affiliate header/carousel.
 - Produces: a real recommended-task section on Affiliate home plus a paginated `/afirieito/plan` marketplace page.
 
-- [ ] **Step 1: Write failing card and page tests**
+- [x] **Step 1: Write failing card and page tests**
 
 Assert that a card renders task name, task intro, verified task tags, `剩余：70%`, formatted maximum reward, image/alt text, and links to `/afirieito/tasks/22`. Assert loading, empty, retryable error, search, and next-page states.
 
-- [ ] **Step 2: Run focused UI tests and verify RED**
+- [x] **Step 2: Run focused UI tests and verify RED**
 
 Run: `npx vitest run src/features/affiliate-marketplace/AffiliateTaskCard.test.tsx src/pages/mobile/AffiliateMarketplacePage.test.tsx src/pages/mobile/BusinessCpsPage.test.tsx`
 
 Expected: FAIL because the marketplace components and route page do not exist.
 
-- [ ] **Step 3: Implement the continuous task card**
+- [x] **Step 3: Implement the continuous task card**
 
 Use one large rounded card with a real image, top-left remaining budget pill, top-right maximum reward, task name, two-line task intro, and data-derived tag chips. Use `Link` for the complete card and preserve keyboard focus visibility.
 
-- [ ] **Step 4: Implement list ownership and pagination**
+- [x] **Step 4: Implement list ownership and pagination**
 
 The section owns one abortable request keyed by query/page; a stale response cannot overwrite a newer search. Home requests the first six tasks and shows “推荐任务”; the full page uses a URL-backed search keyword and server pagination.
 
-- [ ] **Step 5: Replace only the home capability gate**
+- [x] **Step 5: Replace only the home capability gate**
 
 Keep the header and `PublishedCarousel scene="affiliate-home-notice"` unchanged. Render the task overview/recommended section after the carousel; do not remove Affiliate profile or alliance routes.
 
-- [ ] **Step 6: Run focused UI tests and verify GREEN**
+- [x] **Step 6: Run focused UI tests and verify GREEN**
 
 Run: `npx vitest run src/features/affiliate-marketplace/AffiliateTaskCard.test.tsx src/pages/mobile/AffiliateMarketplacePage.test.tsx src/pages/mobile/BusinessCpsPage.test.tsx`
 
 Expected: all focused UI tests PASS.
 
-- [ ] **Step 7: Commit the marketplace list UI**
+- [x] **Step 7: Commit the marketplace list UI**
 
 ```bash
 git add src/features/affiliate-marketplace/AffiliateTaskCard.tsx src/features/affiliate-marketplace/AffiliateTaskCard.test.tsx src/features/affiliate-marketplace/AffiliateMarketplaceSection.tsx src/pages/mobile/AffiliateMarketplacePage.tsx src/pages/mobile/AffiliateMarketplacePage.test.tsx src/pages/mobile/BusinessCpsPage.tsx src/pages/mobile/BusinessCpsPage.test.tsx
@@ -254,35 +254,35 @@ git commit -m "feat: show real recommended affiliate tasks"
 - Consumes: `affiliateMarketplaceApi.getTask` and `claimTask`, public shop IDs/media, and the existing formal IM new-conversation directory search.
 - Produces: `/afirieito/tasks/:taskId` with gallery, shop navigation, task terms, real Claim result, promotion code/URL copy actions, and a working shop consultation entry.
 
-- [ ] **Step 1: Write failing detail behavior tests**
+- [x] **Step 1: Write failing detail behavior tests**
 
 Assert the page renders task name, “任务详细/跳转到店铺”, image thumbnails, total budget, remaining percentage, start/end, description/notice, unit reward, “聊天咨询”, and “立即参加”. Assert duplicate participation shows the same returned Claim and disables repeat submits while one request is pending.
 
-- [ ] **Step 2: Run focused detail tests and verify RED**
+- [x] **Step 2: Run focused detail tests and verify RED**
 
 Run: `npx vitest run src/pages/mobile/AffiliateTaskDetailPage.test.tsx src/features/im/pages.test.tsx`
 
 Expected: FAIL because the task detail page and prefilled IM query do not exist.
 
-- [ ] **Step 3: Implement detail loading and gallery**
+- [x] **Step 3: Implement detail loading and gallery**
 
 Reject non-positive/non-integer route IDs before calling the API. Use task cover first, then de-duplicated shop media. A thumbnail changes only the selected public media URL; no browser business state is persisted.
 
-- [ ] **Step 4: Implement shop and consultation navigation**
+- [x] **Step 4: Implement shop and consultation navigation**
 
 “跳转到店铺” links to `/stores/:publicId`. “聊天咨询” links to `/messages/new?mode=friend&q=<encoded shop name or public id>`. Extend `ImNewConversationPage` to initialize its formal directory query from `q` while retaining manual editing.
 
-- [ ] **Step 5: Implement idempotent participation UI**
+- [x] **Step 5: Implement idempotent participation UI**
 
 Call the existing POST endpoint once per click, keep the button disabled while pending, and show the server-returned Claim code and URL. Copy actions use the returned values only; errors preserve the detail page and expose retry.
 
-- [ ] **Step 6: Run focused detail tests and verify GREEN**
+- [x] **Step 6: Run focused detail tests and verify GREEN**
 
 Run: `npx vitest run src/pages/mobile/AffiliateTaskDetailPage.test.tsx src/features/im/pages.test.tsx`
 
 Expected: both files PASS.
 
-- [ ] **Step 7: Commit task detail and participation**
+- [x] **Step 7: Commit task detail and participation**
 
 ```bash
 git add src/pages/mobile/AffiliateTaskDetailPage.tsx src/pages/mobile/AffiliateTaskDetailPage.test.tsx src/features/im/pages.tsx src/features/im/pages.test.tsx
@@ -303,21 +303,21 @@ git commit -m "feat: add affiliate task participation flow"
 - Consumes: pages from Tasks 3-4.
 - Produces: protected Affiliate marketplace and detail routes plus documented formal acceptance evidence.
 
-- [ ] **Step 1: Write failing route and i18n tests**
+- [x] **Step 1: Write failing route and i18n tests**
 
 Assert `/afirieito/plan` mounts `AffiliateMarketplacePage`, `/afirieito/tasks/:taskId` mounts `AffiliateTaskDetailPage`, the old plan route no longer mounts `BusinessCpsPage`, and every new UI source key has `zh-Hant`, `ja`, `en`, and `ko` translations.
 
-- [ ] **Step 2: Run route/i18n tests and verify RED**
+- [x] **Step 2: Run route/i18n tests and verify RED**
 
 Run: `npx vitest run src/App.test.tsx src/i18n/translations.test.ts`
 
 Expected: FAIL on missing routes/translations.
 
-- [ ] **Step 3: Wire routes and translations**
+- [x] **Step 3: Wire routes and translations**
 
 Keep both routes behind `protect("business", ...)`. Add only UI chrome/status translations; do not machine-translate merchant-authored task content in the browser.
 
-- [ ] **Step 4: Run focused and full verification**
+- [x] **Step 4: Run focused and full verification**
 
 Run:
 
@@ -347,7 +347,7 @@ Using real local MySQL/Redis/backend/frontend and a formal switchable account:
 7. Use “立即参加”, record the returned Claim, reload, repeat, and verify the same persisted code/URL returns.
 8. Switch all five UI languages and verify marketplace chrome changes without browser-generated task translations.
 
-- [ ] **Step 6: Document the exact boundary and evidence**
+- [x] **Step 6: Document the exact boundary and evidence**
 
 `docs/affiliate-marketplace-mobile-ui.md` must list changed routes/APIs, privacy boundary, verification commands, browser results, and explicit remaining microsteps: AffiliateTask five-language authoring, merchant publishing UI, completed-order reversal, metrics/rankings, operations monitoring, and withdrawal/payment-provider completion.
 

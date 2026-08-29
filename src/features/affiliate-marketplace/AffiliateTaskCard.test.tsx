@@ -41,7 +41,13 @@ const task: AffiliateMarketplaceTask = {
       publicId: "shop0000000011",
       city: "Tokyo",
       address: "Shibuya 1-1",
-      mediaAssets: []
+      mediaAssets: [
+        {
+          url: "https://cdn.needo.test/shop-fallback.jpg",
+          altText: "店铺备用图",
+          sortOrder: 0
+        }
+      ]
     }
   ],
   services: [

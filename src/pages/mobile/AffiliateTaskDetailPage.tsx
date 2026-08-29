@@ -131,7 +131,7 @@ export function AffiliateTaskDetailPage() {
       />
       <main className="space-y-5 px-4 pb-40 pt-3">
         {!validTaskId ? (
-          <StatusPanel detail={t("请从推荐任务列表重新进入。") } title={t("任务链接无效")} />
+          <StatusPanel detail={t("请从推荐任务列表重新进入。")} title={t("任务链接无效")} />
         ) : loading ? (
           <StatusPanel title={t("正在读取任务详细")} />
         ) : loadError || !task ? (

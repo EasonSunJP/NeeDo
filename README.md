@@ -330,6 +330,8 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-marketplace-claim-flo
 
 The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. Claim creation itself does not allocate or settle reward budget; those changes occur only in Booking Checkout and the service-completion transaction.
 
+The protected mobile Affiliate experience now consumes those formal endpoints on `/afirieito`, `/afirieito/plan`, and `/afirieito/tasks/:taskId`. Its announcement carousel remains independent from the ordinary user-home carousel; recommended-task cards, search, server pagination, task detail, public store navigation, IM directory prefill, and idempotent participation all use persisted API data. See [Affiliate marketplace mobile UI](docs/affiliate-marketplace-mobile-ui.md) for the data/privacy boundary, verification evidence, and remaining formal microsteps.
+
 ### Formal Affiliate Checkout Attribution And Customer Discounts
 
 Booking creation accepts an optional explicit promotion code or signed affiliate public token. When both are supplied, the explicit code wins. The Booking transaction locks the Claim, Task, budget reservation, and schedule slot; revalidates task time/state, claimant separation, shop/service scope, minimum order amount, and remaining reward allocation; then persists one Touch, one active Attribution, Claim/Task counters, the allocated reward amount, and the order's original price, discount, and final-price snapshots atomically.

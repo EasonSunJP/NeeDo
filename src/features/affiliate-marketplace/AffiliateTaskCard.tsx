@@ -39,7 +39,9 @@ export function AffiliateTaskCard({ task }: { task: AffiliateMarketplaceTask }) 
   const remainingPercent = getRemainingPercent(task);
   const maximumRewardNdp = getMaximumRewardNdp(task);
   const imageUrl = task.coverImageUrl ?? task.shops[0]?.mediaAssets[0]?.url ?? null;
-  const imageAlt = task.shops[0]?.mediaAssets[0]?.altText || task.name;
+  const imageAlt = task.coverImageUrl
+    ? task.name
+    : task.shops[0]?.mediaAssets[0]?.altText || task.name;
 
   return (
     <Link

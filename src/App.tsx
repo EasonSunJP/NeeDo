@@ -40,6 +40,8 @@ import { TechniciansPage } from "./pages/admin/TechniciansPage";
 import { UsersPage } from "./pages/admin/UsersPage";
 import { MerchantPortalPage, MerchantStaffDetailRoutePage } from "./pages/mobile/MerchantPortalPage";
 import { BusinessCpsPage } from "./pages/mobile/BusinessCpsPage";
+import { AffiliateMarketplacePage } from "./pages/mobile/AffiliateMarketplacePage";
+import { AffiliateTaskDetailPage } from "./pages/mobile/AffiliateTaskDetailPage";
 import { MerchantAutoDispatchRoutePage } from "./pages/mobile/MerchantAutoDispatchRoutePage";
 import { MerchantScheduleArrangementRoutePage } from "./pages/mobile/MerchantScheduleArrangementRoutePage";
 import { MerchantScheduleCellRoutePage } from "./pages/mobile/MerchantScheduleCellRoutePage";
@@ -1135,7 +1137,8 @@ export default function App() {
               <Route path="/afirieito" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/announcements/:announcementPublicId" element={protect("business", <AffiliateAnnouncementDetailPage />)} />
               <Route path="/afirieito/more" element={protect("business", <BusinessCpsPage />)} />
-              <Route path="/afirieito/plan" element={protect("business", <BusinessCpsPage />)} />
+              <Route path="/afirieito/plan" element={protect("business", <AffiliateMarketplacePage />)} />
+              <Route path="/afirieito/tasks/:taskId" element={protect("business", <AffiliateTaskDetailPage />)} />
               <Route path="/afirieito/data" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/organization" element={protect("business", <AffiliateAlliancePage />)} />
               <Route path="/afirieito/promotions" element={protect("business", <BusinessCpsPage />)} />

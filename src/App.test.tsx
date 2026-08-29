@@ -127,3 +127,23 @@ describe("Affiliate announcement route", () => {
     );
   });
 });
+
+describe("Affiliate marketplace routes", () => {
+  it("mounts the real task list and detail pages behind the Affiliate portal", () => {
+    expect(appSource).toContain(
+      'import { AffiliateMarketplacePage } from "./pages/mobile/AffiliateMarketplacePage";'
+    );
+    expect(appSource).toContain(
+      'import { AffiliateTaskDetailPage } from "./pages/mobile/AffiliateTaskDetailPage";'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/plan" element={protect("business", <AffiliateMarketplacePage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/tasks/:taskId" element={protect("business", <AffiliateTaskDetailPage />)}'
+    );
+    expect(appSource).not.toContain(
+      'path="/afirieito/plan" element={protect("business", <BusinessCpsPage />)}'
+    );
+  });
+});
