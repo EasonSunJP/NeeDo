@@ -79,6 +79,7 @@ import {
   ImMessageActionSheet,
   ImMessageSelectionHandles,
   ImQuotedMessagePreview,
+  ImReturnToLatestButton,
   hasActiveImMessageTextSelection,
   type ImMessageActionSheetItem,
   type ImMessageReactionSummary,
@@ -100,6 +101,7 @@ import {
   UnifiedPinnedConversationToggle
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
+import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
 import {
   buildContactSections,
   buildConversationRowPreview,
@@ -4189,9 +4191,10 @@ export function ImConversationRoomPage({
   const [scheduleInviteAttendeePickerOpen, setScheduleInviteAttendeePickerOpen] = useState(false);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
-  const [newMessageCount, setNewMessageCount] = useState(0);
+  const [latestPositionVisible, setLatestPositionVisible] = useState(true);
   const [disappearingNow, setDisappearingNow] = useState(() => Date.now());
   const listRef = useRef<HTMLDivElement | null>(null);
+  const latestPositionRef = useRef<HTMLDivElement | null>(null);
   const listWasNearBottomRef = useRef(true);
   const listStateRef = useRef({ conversationId: "", messageCount: 0 });
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -4356,6 +4359,22 @@ export function ImConversationRoomPage({
   }, [conversationId, draft, messages.length, panel, pendingImage, quotedMessageId, voiceMode]);
 
   useEffect(() => {
+    const root = listRef.current;
+    const target = latestPositionRef.current;
+
+    if (!root || !target) {
+      setLatestPositionVisible(true);
+      return undefined;
+    }
+
+    return observeImLatestPosition({
+      onVisibilityChange: setLatestPositionVisible,
+      root,
+      target
+    });
+  }, [conversationId, messages.length]);
+
+  useEffect(() => {
     if (!listRef.current) {
       return;
     }
@@ -4390,13 +4409,8 @@ export function ImConversationRoomPage({
       };
 
       scrollToBottom();
-      setNewMessageCount(0);
       const frame = window.requestAnimationFrame(scrollToBottom);
       return () => window.cancelAnimationFrame(frame);
-    }
-
-    if (messages.length > previousMessageCount) {
-      setNewMessageCount((count) => count + 1);
     }
   }, [conversationId, messages.length, searchParams, store.currentUserId]);
 
@@ -5717,11 +5731,7 @@ export function ImConversationRoomPage({
               }
             }}
             onScroll={(event) => {
-              const target = event.currentTarget;
-              updateListNearBottom(target);
-              if (listWasNearBottomRef.current) {
-                setNewMessageCount(0);
-              }
+              updateListNearBottom(event.currentTarget);
             }}
             ref={listRef}
           >
@@ -5803,20 +5813,29 @@ export function ImConversationRoomPage({
                 </div>
               );
             })}
+            <div
+              aria-hidden="true"
+              className="h-px w-full"
+              data-im-latest-position="true"
+              ref={latestPositionRef}
+            />
           </div>
 
-          {newMessageCount > 0 && !menuState ? (
-            <button
-              className="absolute bottom-[140px] right-4 z-20 rounded-full bg-[color:var(--client-primary)] px-4 py-2 text-xs font-medium text-[color:var(--pin-badge-glyph)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_32%,transparent)]"
-              onClick={() => {
-                listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-                setNewMessageCount(0);
-              }}
-              type="button"
-            >
-              {newMessageCount} 条新消息
-            </button>
-          ) : null}
+          <ImReturnToLatestButton
+            onActivate={() => {
+              const list = listRef.current;
+
+              if (!list) {
+                return;
+              }
+
+              list.scrollTo({
+                behavior: getImReturnScrollBehavior(),
+                top: list.scrollHeight
+              });
+            }}
+            visible={!latestPositionVisible && !menuState && !mediaPreview}
+          />
 
           {recordingNotice ? (
             <div className={cn("relative z-10 px-4 py-2 text-xs", recordingHintClass)}>

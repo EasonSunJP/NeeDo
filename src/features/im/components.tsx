@@ -455,6 +455,42 @@ export type ImChatComposerPendingImage = {
   previewUrl: string;
 };
 
+export function ImReturnToLatestButton({
+  onActivate,
+  visible
+}: {
+  onActivate: () => void;
+  visible: boolean;
+}) {
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <button
+      aria-label="回到最新消息"
+      className="focus-ring client-floating-action-button fixed bottom-[calc(env(safe-area-inset-bottom)+104px)] right-4 z-50 grid place-items-center"
+      data-page-drag-ignore="true"
+      data-scroll-drag-ignore="true"
+      onClick={onActivate}
+      type="button"
+    >
+      <span aria-hidden="true" className="client-floating-action-button__shine" />
+      <span className="client-floating-action-button__icon">
+        <svg aria-hidden="true" data-im-return-arrow="true" fill="none" viewBox="0 0 24 24">
+          <path
+            d="M12 5v11m-4-4 4 4 4-4M7 20h10"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2.2"
+          />
+        </svg>
+      </span>
+    </button>
+  );
+}
+
 export function ImChatComposer({
   actions = [],
   blocked = false,
