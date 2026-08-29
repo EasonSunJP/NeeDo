@@ -131,9 +131,28 @@ export type RealtimeFriendRequest = {
 
 export type RealtimeDirectoryProfile = {
   user: RealtimeParticipant;
+  identityCard: RealtimeDirectoryIdentityCard;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
   contactId: number | null;
   friendRequest: RealtimeFriendRequest | null;
+};
+
+export type RealtimeDirectoryIdentityCard = {
+  entityType: "user" | "technician" | "shop" | "account";
+  profileId: number | null;
+  displayName: string;
+  identityLabel: string | null;
+  verified: boolean;
+  creditValue: string | null;
+  creditReviewCount: number;
+  gender: string | null;
+  age: number | null;
+  heightCm: string | null;
+  languages: string[];
+  city: string | null;
+  serviceArea: string | null;
+  yearsExperience: number | null;
+  bio: string | null;
 };
 
 export type RealtimeCreateFriendRequestResult = {

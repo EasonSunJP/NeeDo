@@ -293,9 +293,41 @@ describe("RealtimeRepository friend request lifecycle", () => {
 
   it("returns an incoming pending directory relationship with a safe profile", async () => {
     const pending = requestRecord({ requesterUserId: target.id, targetUserId: requester.id });
+    const publicTarget = {
+      ...target,
+      identities: [
+        {
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "东京生活，预约前请先确认时间。",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: true,
+        gender: "female",
+        age: 25,
+        heightCm: { toString: () => "164.00" },
+        languages: ["日本語", "中文"],
+        visibility: "public",
+        deletedAt: null,
+        reviewSummary: {
+          ratingAverage: { toString: () => "5.00" },
+          reviewCount: 28,
+          deletedAt: null
+        }
+      },
+      technicianProfile: null
+    };
     const client = {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
-      user: { findFirst: jest.fn().mockResolvedValue(target) },
+      user: { findFirst: jest.fn().mockResolvedValue(publicTarget) },
       contact: { findFirst: jest.fn().mockResolvedValue(null) },
       friendRequest: { findFirst: jest.fn().mockResolvedValue(pending) }
     } as unknown as PrismaClient;
@@ -306,8 +338,192 @@ describe("RealtimeRepository friend request lifecycle", () => {
       relationship: "incoming_pending",
       contactId: null,
       user: { userId: target.id, needoId: target.needoId },
-      friendRequest: { id: pending.id, status: "pending" }
+      friendRequest: { id: pending.id, status: "pending" },
+      identityCard: {
+        entityType: "user",
+        profileId: 73,
+        displayName: "Mia",
+        identityLabel: "premium",
+        verified: false,
+        creditValue: "5.00",
+        creditReviewCount: 28,
+        gender: "female",
+        age: 25,
+        heightCm: "164.00",
+        languages: ["日本語", "中文"],
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: null,
+        bio: "东京生活，预约前请先确认时间。"
+      }
     });
+  });
+
+  it("does not expose private customer profile fields in a directory identity card", async () => {
+    const privateTarget = {
+      ...target,
+      identities: [
+        {
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "private bio",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: false,
+        gender: "female",
+        age: 25,
+        heightCm: { toString: () => "164.00" },
+        languages: ["日本語", "中文"],
+        visibility: "private",
+        deletedAt: null,
+        reviewSummary: null
+      },
+      technicianProfile: null
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(privateTarget) },
+      contact: { findFirst: jest.fn().mockResolvedValue({ id: 91 }) },
+      friendRequest: { findFirst: jest.fn() }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(requester.id, target.id)
+    ).resolves.toMatchObject({
+      relationship: "friend",
+      identityCard: {
+        entityType: "account",
+        profileId: null,
+        displayName: target.username,
+        creditValue: null,
+        creditReviewCount: 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: null,
+        bio: null
+      }
+    });
+  });
+
+  it("maps a published technician identity to its formal profile and credit summary", async () => {
+    const technicianTarget = {
+      ...target,
+      identities: [
+        {
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 88,
+          displayName: "Mia 技师",
+          isDefault: true
+        }
+      ],
+      customerProfile: null,
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: "擅长整体护理。",
+        city: "东京",
+        serviceArea: "涩谷区、港区",
+        yearsExperience: 7,
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: dbNow,
+        deletedAt: null,
+        reviewSummary: {
+          ratingAverage: { toString: () => "4.90" },
+          reviewCount: 42,
+          deletedAt: null
+        }
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(technicianTarget) },
+      contact: { findFirst: jest.fn().mockResolvedValue({ id: 92 }) },
+      friendRequest: { findFirst: jest.fn() }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(requester.id, target.id)
+    ).resolves.toMatchObject({
+      identityCard: {
+        entityType: "technician",
+        profileId: 88,
+        displayName: "Mia 技师",
+        verified: true,
+        creditValue: "4.90",
+        creditReviewCount: 42,
+        city: "东京",
+        serviceArea: "涩谷区、港区",
+        yearsExperience: 7,
+        bio: "擅长整体护理。"
+      }
+    });
+  });
+
+  it("maps a merchant shop identity without exposing account-only metrics", async () => {
+    const merchantTarget = {
+      ...target,
+      identities: [
+        {
+          type: "merchant_owner",
+          scopeType: "shop",
+          scopeId: 55,
+          displayName: "NeeDo 银座店",
+          isDefault: true
+        }
+      ],
+      customerProfile: null,
+      technicianProfile: null
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(merchantTarget) },
+      shop: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 55,
+          name: "NeeDo 银座店",
+          description: "预约制护理门店。",
+          city: "东京",
+          address: "中央区银座 1-1",
+          reviewSummary: {
+            ratingAverage: { toString: () => "4.75" },
+            reviewCount: 81,
+            deletedAt: null
+          }
+        })
+      },
+      contact: { findFirst: jest.fn().mockResolvedValue({ id: 93 }) },
+      friendRequest: { findFirst: jest.fn() }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(requester.id, target.id)
+    ).resolves.toMatchObject({
+      identityCard: {
+        entityType: "shop",
+        profileId: 55,
+        displayName: "NeeDo 银座店",
+        creditValue: "4.75",
+        creditReviewCount: 81,
+        city: "东京",
+        serviceArea: "中央区银座 1-1",
+        bio: "预约制护理门店。"
+      }
+    });
+    expect(client.shop.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 55, status: "published", deletedAt: null }
+    }));
   });
 
   it("counts only incoming requests that remain unexpired by database time", async () => {

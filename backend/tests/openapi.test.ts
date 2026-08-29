@@ -330,6 +330,26 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/search");
     expect(response.body.paths).toHaveProperty("/api/v1/im/directory");
     expect(response.body.paths).toHaveProperty("/api/v1/im/directory/{userId}");
+    expect(response.body.components.schemas.RealtimeDirectoryProfile).toMatchObject({
+      required: expect.arrayContaining(["user", "identityCard"]),
+      properties: {
+        identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" }
+      }
+    });
+    expect(response.body.components.schemas.RealtimeDirectoryIdentityCard).toMatchObject({
+      required: expect.arrayContaining([
+        "entityType",
+        "displayName",
+        "creditValue",
+        "creditReviewCount",
+        "languages"
+      ]),
+      properties: {
+        entityType: { enum: ["user", "technician", "shop", "account"] },
+        creditValue: { type: "string", nullable: true },
+        creditReviewCount: { type: "integer", minimum: 0 }
+      }
+    });
     expect(response.body.paths["/api/v1/im/contacts"].post).toBeUndefined();
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations/{conversationId}/media");
     expect(

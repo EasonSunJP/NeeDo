@@ -87,9 +87,28 @@ export type FriendRequest = {
 
 export type DirectoryProfile = {
   user: ImUser;
+  identityCard: DirectoryIdentityCard;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
   contactId?: string;
   friendRequest?: FriendRequest;
+};
+
+export type DirectoryIdentityCard = {
+  entityType: "user" | "technician" | "shop" | "account";
+  profileId?: string;
+  displayName: string;
+  identityLabel?: string;
+  verified: boolean;
+  creditValue?: number;
+  creditReviewCount: number;
+  gender?: string;
+  age?: number;
+  heightCm?: number;
+  languages: string[];
+  city?: string;
+  serviceArea?: string;
+  yearsExperience?: number;
+  bio?: string;
 };
 
 const generatedContactSignaturePatterns = [

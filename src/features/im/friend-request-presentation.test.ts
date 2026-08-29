@@ -33,6 +33,13 @@ const profile: DirectoryProfile = {
     canCall: true,
     canVideoCall: true,
   },
+  identityCard: {
+    entityType: "account",
+    displayName: "松本 琴音",
+    verified: false,
+    creditReviewCount: 0,
+    languages: [],
+  },
   relationship: "none",
 };
 

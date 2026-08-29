@@ -906,6 +906,23 @@ const createFixture = async () => {
         );
       return {
         user: publicProfile(targetUserId),
+        identityCard: {
+          entityType: "account" as const,
+          profileId: null,
+          displayName: targetUser.username,
+          identityLabel: null,
+          verified: false,
+          creditValue: null,
+          creditReviewCount: 0,
+          gender: null,
+          age: null,
+          heightCm: null,
+          languages: [],
+          city: null,
+          serviceArea: null,
+          yearsExperience: null,
+          bio: null
+        },
         relationship: contact
           ? ("friend" as const)
           : friendRequest?.requesterUserId === viewerUserId
@@ -1533,6 +1550,14 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(({ body }) => {
         expect(body.data.relationship).toBe("outgoing_pending");
         expect(body.data.user).not.toHaveProperty("email");
+        expect(body.data.identityCard).toMatchObject({
+          entityType: "account",
+          creditValue: null,
+          creditReviewCount: 0,
+          languages: []
+        });
+        expect(body.data.identityCard).not.toHaveProperty("points");
+        expect(body.data.identityCard).not.toHaveProperty("usageCount");
       });
   });
 

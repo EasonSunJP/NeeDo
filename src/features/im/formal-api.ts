@@ -641,6 +641,29 @@ export function createFormalImApi({
       const profile = await realtimeApi.getDirectoryProfile(toNumericId(userId));
       return {
         user: toImUser(profile.user),
+        identityCard: {
+          entityType: profile.identityCard.entityType,
+          profileId: profile.identityCard.profileId === null
+            ? undefined
+            : String(profile.identityCard.profileId),
+          displayName: profile.identityCard.displayName,
+          identityLabel: profile.identityCard.identityLabel ?? undefined,
+          verified: profile.identityCard.verified,
+          creditValue: profile.identityCard.creditValue === null
+            ? undefined
+            : Number(profile.identityCard.creditValue),
+          creditReviewCount: profile.identityCard.creditReviewCount,
+          gender: profile.identityCard.gender ?? undefined,
+          age: profile.identityCard.age ?? undefined,
+          heightCm: profile.identityCard.heightCm === null
+            ? undefined
+            : Number(profile.identityCard.heightCm),
+          languages: profile.identityCard.languages,
+          city: profile.identityCard.city ?? undefined,
+          serviceArea: profile.identityCard.serviceArea ?? undefined,
+          yearsExperience: profile.identityCard.yearsExperience ?? undefined,
+          bio: profile.identityCard.bio ?? undefined,
+        },
         relationship: profile.relationship,
         contactId: profile.contactId === null ? undefined : String(profile.contactId),
         friendRequest: profile.friendRequest

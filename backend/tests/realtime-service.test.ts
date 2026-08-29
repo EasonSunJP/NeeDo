@@ -27,6 +27,23 @@ describe("RealtimeService fuzzy search", () => {
   it("loads a safe directory profile for another user", async () => {
     const profile = {
       user: { userId: 167, needoId: "u0000000167", username: "Target", avatarUrl: null },
+      identityCard: {
+        entityType: "account" as const,
+        profileId: null,
+        displayName: "Target",
+        identityLabel: null,
+        verified: false,
+        creditValue: null,
+        creditReviewCount: 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: null,
+        serviceArea: null,
+        yearsExperience: null,
+        bio: null
+      },
       relationship: "none" as const,
       contactId: null,
       friendRequest: null

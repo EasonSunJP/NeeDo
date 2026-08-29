@@ -105,6 +105,7 @@ import {
   UnifiedPinnedConversationToggle
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
+import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
 import {
   buildContactSections,
@@ -2655,7 +2656,7 @@ export function ImFriendRequestsPage() {
           );
         })}
         {requests.length === 0 ? (
-          <ImEmptyState caption={t("好友申请会显示在这里")} title={t("暂无好友申请")} />
+          <ImEmptyState caption={t("好友申请")} title={t("暂无资料")} />
         ) : null}
       </div>
     </ImStandaloneShell>
@@ -2807,7 +2808,7 @@ export function ImDirectoryProfilePage() {
     } catch (error) {
       setMutationError(
         error instanceof Error && error.message === "error.im.friend_request_expired"
-          ? "好友申请已过期"
+          ? "已过期"
           : errorMessage,
       );
     } finally {
@@ -2819,7 +2820,7 @@ export function ImDirectoryProfilePage() {
     if (!request) return;
     await runMutation(
       () => store.acceptFriendRequest(request.id),
-      "申请状态已变化，请刷新后重试",
+      "联系人状态已变化，请刷新后重试。",
     );
   };
 
@@ -2827,7 +2828,7 @@ export function ImDirectoryProfilePage() {
     if (!request) return;
     await runMutation(
       () => store.rejectFriendRequest(request.id),
-      "申请状态已变化，请刷新后重试",
+      "联系人状态已变化，请刷新后重试。",
     );
   };
 
@@ -2835,7 +2836,7 @@ export function ImDirectoryProfilePage() {
     if (!userId) return;
     await runMutation(
       () => store.sendFriendRequest(userId),
-      "好友申请发送失败，请稍后重试",
+      "发送失败",
     );
   };
 
@@ -2843,7 +2844,7 @@ export function ImDirectoryProfilePage() {
     <MobileFullscreenPage innerClassName="bg-[color:var(--client-bg)]">
       <MobileFullscreenHeader
         dark={isNight}
-        info={t("查看账号资料和好友关系状态")}
+        info={t("查看资料")}
         onBack={fromRequests ? undefined : () => navigate(-1)}
         onClose={fromRequests ? () => navigate(config.routes.friendRequests) : undefined}
         title={t("账号信息")}
@@ -6815,7 +6816,6 @@ export function ImConversationRoomPage({
 
 export function ImConversationInfoPage() {
   const { scope, store, config } = useImRuntime();
-  const entityStore = useEntityStore();
   const social = useSocial();
   const navigate = useNavigate();
   const { conversationId } = useParams();
@@ -6830,6 +6830,7 @@ export function ImConversationInfoPage() {
     ? numericContactUserId
     : undefined;
   const [formalActivityStatus, setFormalActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
+  const [conversationDirectoryProfile, setConversationDirectoryProfile] = useState<DirectoryProfile | null>(null);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
   const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
@@ -6930,6 +6931,30 @@ export function ImConversationInfoPage() {
       cancelled = true;
     };
   }, [formalActivityTargetUserId]);
+
+  useEffect(() => {
+    if (!formalActivityTargetUserId) {
+      setConversationDirectoryProfile(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    void store.getDirectoryProfile(String(formalActivityTargetUserId))
+      .then((profile) => {
+        if (!cancelled) {
+          setConversationDirectoryProfile(profile);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setConversationDirectoryProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formalActivityTargetUserId, store.getDirectoryProfile]);
 
   useEffect(() => {
     if (!conversation) {
@@ -7150,26 +7175,19 @@ export function ImConversationInfoPage() {
   const infoCardDetailTo = user
     ? resolveImProfilePath(scope, user) ?? (infoCardProfileRef ? getScopedProfileDetailPath(scope, infoCardProfileRef.entityType, infoCardProfileRef.id) : undefined)
     : undefined;
-  const infoCardClassName = "w-full shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_24%,transparent)]";
-  const infoCardActionLabel = contact ? "好友" : "关注";
-  const infoMiniCard = (() => {
-    if (!user || !infoCardProfileRef) {
-      return undefined;
-    }
-
-    if (infoCardProfileRef.entityType === "shop") {
-      const shop = entityStore.stores.find((item) => item.id === infoCardProfileRef.id);
-      return shop ? <SocialProfileMiniCard actionLabel={infoCardActionLabel} className={infoCardClassName} detailTo={infoCardDetailTo} store={shop} /> : undefined;
-    }
-
-    if (infoCardProfileRef.entityType === "technician") {
-      const technician = entityStore.technicians.find((item) => item.id === infoCardProfileRef.id);
-      return technician ? <SocialProfileMiniCard actionLabel={infoCardActionLabel} className={infoCardClassName} detailTo={infoCardDetailTo} technician={technician} /> : undefined;
-    }
-
-    const customer = entityStore.customers.find((item) => item.id === infoCardProfileRef.id);
-    return customer ? <SocialProfileMiniCard actionLabel={infoCardActionLabel} className={infoCardClassName} customer={customer} detailTo={infoCardDetailTo} /> : undefined;
-  })();
+  const infoIdentityCard = user
+    ? conversationDirectoryProfile?.identityCard ?? {
+        entityType: "account" as const,
+        displayName: user.nickname,
+        identityLabel: user.entityType,
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      }
+    : undefined;
+  const infoIdentityCardDetailTo = infoIdentityCard?.profileId && infoIdentityCard.entityType !== "account"
+    ? getScopedProfileDetailPath(scope, infoIdentityCard.entityType, infoIdentityCard.profileId)
+    : infoCardDetailTo;
   const socialScope = scope as SocialPortalScope;
   const infoSocialProfileKey = infoCardProfileRef ? profileKey(infoCardProfileRef) : undefined;
   const infoSocialProfile = infoSocialProfileKey ? social.profiles[infoSocialProfileKey] : undefined;
@@ -7196,7 +7214,13 @@ export function ImConversationInfoPage() {
         <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
       </div>
       <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
-        {infoMiniCard ?? (user ? <ContactSummaryCard contact={contact} detailTo={infoCardDetailTo} showTags={false} user={user} /> : null)}
+        {conversation.type === "single" && user && infoIdentityCard ? (
+          <ConversationIdentityProfileCard
+            detailTo={infoIdentityCardDetailTo}
+            identityCard={infoIdentityCard}
+            user={user}
+          />
+        ) : null}
 
         <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
           <div className="flex items-center justify-between gap-3">

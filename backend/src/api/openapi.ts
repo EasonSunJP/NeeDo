@@ -1130,11 +1130,52 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           created: { type: "boolean" }
         }
       },
+      RealtimeDirectoryIdentityCard: {
+        type: "object",
+        required: [
+          "entityType",
+          "profileId",
+          "displayName",
+          "identityLabel",
+          "verified",
+          "creditValue",
+          "creditReviewCount",
+          "gender",
+          "age",
+          "heightCm",
+          "languages",
+          "city",
+          "serviceArea",
+          "yearsExperience",
+          "bio"
+        ],
+        properties: {
+          entityType: {
+            type: "string",
+            enum: ["user", "technician", "shop", "account"]
+          },
+          profileId: { type: "integer", nullable: true },
+          displayName: { type: "string" },
+          identityLabel: { type: "string", nullable: true },
+          verified: { type: "boolean" },
+          creditValue: { type: "string", nullable: true },
+          creditReviewCount: { type: "integer", minimum: 0 },
+          gender: { type: "string", nullable: true },
+          age: { type: "integer", nullable: true, minimum: 0 },
+          heightCm: { type: "string", nullable: true },
+          languages: { type: "array", items: { type: "string" } },
+          city: { type: "string", nullable: true },
+          serviceArea: { type: "string", nullable: true },
+          yearsExperience: { type: "integer", nullable: true, minimum: 0 },
+          bio: { type: "string", nullable: true }
+        }
+      },
       RealtimeDirectoryProfile: {
         type: "object",
-        required: ["user", "relationship", "contactId", "friendRequest"],
+        required: ["user", "identityCard", "relationship", "contactId", "friendRequest"],
         properties: {
           user: { $ref: "#/components/schemas/RealtimeParticipant" },
+          identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" },
           relationship: {
             type: "string",
             enum: ["none", "friend", "incoming_pending", "outgoing_pending"]

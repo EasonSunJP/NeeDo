@@ -29,9 +29,21 @@ describe("ImNewConversationPage directory query handoff", () => {
 
     expect(profileSource).toContain("<MobileFullscreenPage");
     expect(profileSource).toContain("<MobileFullscreenHeader");
-    expect(profileSource).toContain('info={t("查看账号资料和好友关系状态")}');
+    expect(profileSource).toContain('info={t("查看资料")}');
     expect(profileSource).toContain("onClose={fromRequests");
     expect(profileSource).not.toContain("subtitle=");
     expect(profileSource).not.toContain("gradient");
+  });
+
+  it("uses the formal identity profile card in one-to-one conversation settings", () => {
+    const start = source.indexOf("export function ImConversationInfoPage");
+    const end = source.indexOf("export function ImConversationSearchPage", start);
+    const infoSource = source.slice(start, end);
+
+    expect(infoSource).toContain("store.getDirectoryProfile");
+    expect(infoSource).toContain("<ConversationIdentityProfileCard");
+    expect(infoSource).not.toContain("infoMiniCard");
+    expect(infoSource).not.toContain("<SocialProfileMiniCard");
+    expect(infoSource).not.toContain("<ContactSummaryCard");
   });
 });

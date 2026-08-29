@@ -856,6 +856,23 @@ describe("formal IM adapter", () => {
       relationship: "none",
       contactId: null,
       friendRequest: null,
+      identityCard: {
+        entityType: "user",
+        profileId: 73,
+        displayName: "小松 美咲",
+        identityLabel: "premium",
+        verified: false,
+        creditValue: "4.80",
+        creditReviewCount: 28,
+        gender: "female",
+        age: 25,
+        heightCm: "164.00",
+        languages: ["日本語", "中文"],
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: null,
+        bio: "预约前请先确认时间。",
+      },
     });
     const createFriendRequest = vi.spyOn(realtimeApi, "createFriendRequest").mockResolvedValue({
       friendRequest,
@@ -874,6 +891,23 @@ describe("formal IM adapter", () => {
     await expect(api.getDirectoryProfile("201")).resolves.toEqual({
       user: expect.objectContaining({ id: "201", nickname: "小松 美咲" }),
       relationship: "none",
+      identityCard: {
+        entityType: "user",
+        profileId: "73",
+        displayName: "小松 美咲",
+        identityLabel: "premium",
+        verified: false,
+        creditValue: 4.8,
+        creditReviewCount: 28,
+        gender: "female",
+        age: 25,
+        heightCm: 164,
+        languages: ["日本語", "中文"],
+        city: "东京",
+        serviceArea: undefined,
+        yearsExperience: undefined,
+        bio: "预约前请先确认时间。",
+      },
     });
     await expect(api.sendFriendRequest("201")).resolves.toMatchObject({
       friendRequest: { id: "51", expiresAt: friendRequest.expiresAt },

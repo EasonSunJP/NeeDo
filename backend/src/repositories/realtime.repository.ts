@@ -164,9 +164,28 @@ export type CreateFriendRequestOutcome =
 
 export interface DirectoryProfilePayload {
   user: ParticipantPayload;
+  identityCard: DirectoryIdentityCardPayload;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
   contactId: number | null;
   friendRequest: FriendRequestPayload | null;
+}
+
+export interface DirectoryIdentityCardPayload {
+  entityType: "user" | "technician" | "shop" | "account";
+  profileId: number | null;
+  displayName: string;
+  identityLabel: string | null;
+  verified: boolean;
+  creditValue: string | null;
+  creditReviewCount: number;
+  gender: string | null;
+  age: number | null;
+  heightCm: string | null;
+  languages: string[];
+  city: string | null;
+  serviceArea: string | null;
+  yearsExperience: number | null;
+  bio: string | null;
 }
 
 export interface RespondFriendRequestResult {
@@ -623,6 +642,69 @@ type SocialAuthorRecord = Prisma.UserGetPayload<{ select: typeof socialAuthorSel
 type SocialPostRecord = Prisma.SocialPostGetPayload<{ include: typeof socialPostInclude }>;
 type FollowRecord = Prisma.FollowGetPayload<Record<string, never>>;
 type NotificationRecord = Prisma.NotificationGetPayload<Record<string, never>>;
+
+type DirectoryReviewRecord = {
+  ratingAverage: { toString: () => string };
+  reviewCount: number;
+  deletedAt: Date | null;
+} | null;
+
+type DirectoryProfileUserRecord = {
+  id: number;
+  needoId: string;
+  username: string;
+  avatarUrl: string | null;
+  identities: Array<{
+    type: string;
+    scopeType: string | null;
+    scopeId: number | null;
+    displayName: string | null;
+    isDefault: boolean;
+  }>;
+  customerProfile: {
+    id: number;
+    displayName: string;
+    bio: string | null;
+    city: string | null;
+    membershipLevel: string;
+    isPublic: boolean;
+    gender: string;
+    age: number | null;
+    heightCm: { toString: () => string } | null;
+    languages: unknown;
+    visibility: string;
+    deletedAt: Date | null;
+    reviewSummary: DirectoryReviewRecord;
+  } | null;
+  technicianProfile: {
+    id: number;
+    displayName: string;
+    bio: string | null;
+    city: string;
+    serviceArea: string | null;
+    yearsExperience: number;
+    employmentType: string;
+    status: string;
+    verifiedAt: Date | null;
+    deletedAt: Date | null;
+    reviewSummary: DirectoryReviewRecord;
+  } | null;
+};
+
+function toDirectoryLanguages(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
 
 export class RealtimeRepository implements RealtimeRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
@@ -1943,11 +2025,72 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
     const user = await this.client.user.findFirst({
       where: { id: targetUserId, isActive: true, deletedAt: null },
-      select: { id: true, needoId: true, username: true, avatarUrl: true }
+      select: {
+        id: true,
+        needoId: true,
+        username: true,
+        avatarUrl: true,
+        identities: {
+          where: { deletedAt: null, isActive: true },
+          select: {
+            type: true,
+            scopeType: true,
+            scopeId: true,
+            displayName: true,
+            isDefault: true
+          },
+          orderBy: [{ isDefault: "desc" }, { id: "asc" }]
+        },
+        customerProfile: {
+          select: {
+            id: true,
+            displayName: true,
+            bio: true,
+            city: true,
+            membershipLevel: true,
+            isPublic: true,
+            gender: true,
+            age: true,
+            heightCm: true,
+            languages: true,
+            visibility: true,
+            deletedAt: true,
+            reviewSummary: {
+              select: {
+                ratingAverage: true,
+                reviewCount: true,
+                deletedAt: true
+              }
+            }
+          }
+        },
+        technicianProfile: {
+          select: {
+            id: true,
+            displayName: true,
+            bio: true,
+            city: true,
+            serviceArea: true,
+            yearsExperience: true,
+            employmentType: true,
+            status: true,
+            verifiedAt: true,
+            deletedAt: true,
+            reviewSummary: {
+              select: {
+                ratingAverage: true,
+                reviewCount: true,
+                deletedAt: true
+              }
+            }
+          }
+        }
+      }
     });
     if (!user) {
       return null;
     }
+    const identityCard = await this.buildDirectoryIdentityCard(user);
     const contact = await this.client.contact.findFirst({
       where: {
         ownerUserId: viewerUserId,
@@ -1959,6 +2102,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (contact) {
       return {
         user: this.mapParticipant(user),
+        identityCard,
         relationship: "friend",
         contactId: contact.id,
         friendRequest: null
@@ -1980,6 +2124,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     return {
       user: this.mapParticipant(user),
+      identityCard,
       relationship: friendRequest
         ? friendRequest.requesterUserId === viewerUserId
           ? "outgoing_pending"
@@ -3364,6 +3509,146 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       avatarUrl: user.avatarUrl,
       ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
+  }
+
+  private async buildDirectoryIdentityCard(
+    user: DirectoryProfileUserRecord
+  ): Promise<DirectoryIdentityCardPayload> {
+    const identity =
+      user.identities.find((item) =>
+        ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(
+          item.type
+        )
+      ) ?? user.identities[0];
+    const fallback: DirectoryIdentityCardPayload = {
+      entityType: "account",
+      profileId: null,
+      displayName: user.username,
+      identityLabel: identity?.type ?? null,
+      verified: false,
+      creditValue: null,
+      creditReviewCount: 0,
+      gender: null,
+      age: null,
+      heightCm: null,
+      languages: [],
+      city: null,
+      serviceArea: null,
+      yearsExperience: null,
+      bio: null
+    };
+
+    if (identity?.type === "customer") {
+      const profile = user.customerProfile;
+      if (
+        !profile ||
+        profile.deletedAt !== null ||
+        !profile.isPublic ||
+        profile.visibility !== "public"
+      ) {
+        return fallback;
+      }
+      const review = profile.reviewSummary?.deletedAt === null
+        ? profile.reviewSummary
+        : null;
+      return {
+        entityType: "user",
+        profileId: profile.id,
+        displayName: profile.displayName,
+        identityLabel: profile.membershipLevel,
+        verified: false,
+        creditValue: review?.ratingAverage.toString() ?? null,
+        creditReviewCount: review?.reviewCount ?? 0,
+        gender: profile.gender === "private" ? null : profile.gender,
+        age: profile.age,
+        heightCm: profile.heightCm?.toString() ?? null,
+        languages: toDirectoryLanguages(profile.languages),
+        city: profile.city,
+        serviceArea: null,
+        yearsExperience: null,
+        bio: profile.bio
+      };
+    }
+
+    if (identity?.type === "technician") {
+      const profile = user.technicianProfile;
+      if (!profile || profile.deletedAt !== null || profile.status !== "published") {
+        return fallback;
+      }
+      const review = profile.reviewSummary?.deletedAt === null
+        ? profile.reviewSummary
+        : null;
+      return {
+        entityType: "technician",
+        profileId: profile.id,
+        displayName: profile.displayName,
+        identityLabel: profile.employmentType,
+        verified: profile.verifiedAt !== null,
+        creditValue: review?.ratingAverage.toString() ?? null,
+        creditReviewCount: review?.reviewCount ?? 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: profile.city,
+        serviceArea: profile.serviceArea,
+        yearsExperience: profile.yearsExperience,
+        bio: profile.bio
+      };
+    }
+
+    if (
+      identity &&
+      ["merchant", "merchant_owner", "merchant_staff"].includes(identity.type) &&
+      identity.scopeType === "shop" &&
+      identity.scopeId !== null
+    ) {
+      const shop = await this.client.shop.findFirst({
+        where: {
+          id: identity.scopeId,
+          status: "published",
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          city: true,
+          address: true,
+          reviewSummary: {
+            select: {
+              ratingAverage: true,
+              reviewCount: true,
+              deletedAt: true
+            }
+          }
+        }
+      });
+      if (shop) {
+        const review = shop.reviewSummary?.deletedAt === null
+          ? shop.reviewSummary
+          : null;
+        return {
+          entityType: "shop",
+          profileId: shop.id,
+          displayName: shop.name,
+          identityLabel: identity.type,
+          verified: true,
+          creditValue: review?.ratingAverage.toString() ?? null,
+          creditReviewCount: review?.reviewCount ?? 0,
+          gender: null,
+          age: null,
+          heightCm: null,
+          languages: [],
+          city: shop.city,
+          serviceArea: shop.address,
+          yearsExperience: null,
+          bio: shop.description
+        };
+      }
+    }
+
+    return fallback;
   }
 
   private mapFriendRequest(friendRequest: FriendRequestRecord, dbNow?: Date): FriendRequestPayload {
