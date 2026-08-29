@@ -21,6 +21,12 @@ Affiliate marketplace:
 - `POST /api/v1/affiliate/tasks/:taskId/claims`
 - `GET /api/v1/affiliate/claims`
 
+Affiliate task authoring:
+
+- `POST /api/v1/merchant-admin/affiliate/tasks` accepts an optional source locale.
+- `PUT /api/v1/merchant-admin/affiliate/tasks/:taskId/locales/:locale` edits one language with an optimistic lock; `syncToAll=true` is the only operation that copies the selected version to every language.
+- `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit` requires all five active language rows before it can freeze NDP or enter review.
+
 Store navigation:
 
 - `GET /api/v1/shops/:shopId`, where `shopId` may be the public `shop##########` identifier returned by the marketplace task view.
@@ -45,21 +51,24 @@ Claim creation does not pay or allocate a reward. Booking attribution performs t
 
 ## Languages
 
-Marketplace chrome and status text have independent Simplified Chinese, Traditional Chinese, Japanese, English, and Korean values. Merchant-authored task names/descriptions are rendered exactly as returned by the formal API; the browser never machine-translates or duplicates authored content.
+Marketplace chrome and status text have independent Simplified Chinese, Traditional Chinese, Japanese, English, and Korean values. AffiliateTask names/descriptions are stored as five independent database rows and returned as one complete translation map. Creating from any source language initially copies the same value to all five versions; later versions remain independent unless the publisher explicitly uses synchronize-all. Recommended cards and task detail select the authored value for the current application language, never machine-translate it, and search can match any active language.
 
-Five-language AffiliateTask authoring, draft synchronization, and publish-all-language-version controls are intentionally left for a separate schema/editor microstep so that authored legal and commercial content is versioned and audited rather than synthesized in the client.
+The five-language set is one coordinated review/publication boundary: missing or blank task names prevent submission before the Wallet/Ledger freeze. Each locale edit reuses publisher scope, draft status, optimistic locking, RBAC and `affiliate.task.translation_updated` audit evidence.
 
 ## Verification
 
 Fresh verification on 2026-08-29:
 
-- focused frontend marketplace/routes/i18n regression: 11 files and 117 tests passed;
+- focused frontend task-localization/marketplace regression: 5 files and 17 tests passed;
 - frontend TypeScript lint: passed;
-- full frontend regression: 214 files and 1,258 tests passed;
+- full frontend regression: 215 files and 1,268 tests passed;
 - formal production build and bundle audit: passed; the existing dynamic-import and chunk-size warnings remain non-blocking;
 - backend ESLint and TypeScript production build: passed;
-- focused backend marketplace/public-shop/OpenAPI regression: 6 suites and 43 tests passed;
-- full backend regression: 258 suites and 1,766 tests passed, with the repository-configured 9 suites / 37 tests skipped;
+- focused backend task-localization/marketplace/OpenAPI regression: 6 suites and 40 tests passed;
+- full backend regression: 260 suites and 1,780 tests passed, with the repository-configured 9 suites / 37 tests skipped;
+- migration `20260829223000_affiliate_task_translations` applied successfully to local `needo_dev`; Prisma reports all 59 migrations up to date;
+- the guarded real-database AffiliateTask localization flow passed initial five-language copy, independent edit, explicit synchronize-all, incomplete-submit no-freeze rollback, one complete NDP freeze, translation audit evidence, and exact temporary-row cleanup with zero residue;
+- the existing guarded Affiliate task-publishing flow passed again after the schema change, including shop and merchant-account freezes, scope isolation, approval/rejection, reconciliation, idempotency, and cleanup;
 - isolated formal runtime on backend `3003` and frontend `5183`: `/health`, `/ready`, and frontend HTTP returned healthy/ready/200 with real local MySQL and Redis;
 - the existing formal `affiliate@example.com` account passed password-login, 25-permission, RBAC, and Affiliate-portal checks against the isolated backend;
 - the guarded real-database Affiliate Claim flow passed marketplace filtering, concurrent/repeated idempotency, stable credentials, signed-link tamper rejection, current-user isolation, unchanged wallet balance at Claim time, token-free audit evidence, and exact temporary-row cleanup;
@@ -77,7 +86,6 @@ No saved password, refresh token, browser storage, existing carousel content, or
 
 This is not the complete Affiliate platform. The following remain separately capability-gated:
 
-- five-language AffiliateTask authoring and coordinated publication;
 - merchant task publishing and management UI;
 - completed-order reversal and reward recovery;
 - formal Affiliate metrics, rankings, fraud aggregates, and exports;

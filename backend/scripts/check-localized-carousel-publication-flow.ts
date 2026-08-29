@@ -1127,6 +1127,9 @@ const main = async (): Promise<void> => {
               where: { id: { in: created.affiliateTaskShopIds } }
             });
           }
+          await transaction.affiliateTaskTranslation.deleteMany({
+            where: { taskId: { in: created.affiliateTaskIds } }
+          });
           await transaction.affiliateTask.deleteMany({
             where: { id: { in: created.affiliateTaskIds } }
           });

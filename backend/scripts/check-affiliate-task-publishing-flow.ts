@@ -435,6 +435,9 @@ const main = async (): Promise<void> => {
         await transaction.affiliateTaskShop.deleteMany({
           where: { taskId: { in: taskIds } }
         });
+        await transaction.affiliateTaskTranslation.deleteMany({
+          where: { taskId: { in: taskIds } }
+        });
         await transaction.affiliateTask.deleteMany({ where: { id: { in: taskIds } } });
       }
       if (ledgerTransactionIds.length > 0) {
