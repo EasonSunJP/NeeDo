@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i18n";
+import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes every shared carousel state in all five supported languages", () => {
+    Object.values(contentPublicationTranslations).forEach((entry) => {
+      expect(entry).toMatchObject({
+        zh: expect.any(String),
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+      expect(Object.values(entry).every((value) => value.trim().length > 0)).toBe(true);
+    });
+  });
+
   it("keeps the shared language selector order aligned with product rules", () => {
     expect(languages.map((item) => item.code)).toEqual(["ja", "en", "ko", "zh-Hant", "zh"]);
     expect(languages.map((item) => item.label)).toEqual(["日本語", "English", "한국어", "繁中", "简中"]);

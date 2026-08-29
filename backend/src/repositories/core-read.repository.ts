@@ -99,6 +99,7 @@ export interface TechnicianCardPayload {
 
 export interface ServiceCardPayload {
   id: number;
+  publicId: string;
   name: string;
   description: string | null;
   category: CategoryPayload;
@@ -165,7 +166,7 @@ export interface HomeRecommendationsPayload {
 export interface CoreReadRepositoryPort {
   listCategories: (input: CategoryListInput) => Promise<PaginatedResponse<CategoryPayload>>;
   listServices: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
-  findServiceDetail: (id: number) => Promise<ServiceDetailPayload | null>;
+  findServiceDetail: (id: number | string) => Promise<ServiceDetailPayload | null>;
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
   search: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   findShopDetail: (id: number) => Promise<ShopDetailPayload | null>;
@@ -271,10 +272,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
-  public async findServiceDetail(id: number): Promise<ServiceDetailPayload | null> {
+  public async findServiceDetail(id: number | string): Promise<ServiceDetailPayload | null> {
     const service = await this.client.service.findFirst({
       where: {
-        id,
+        ...(typeof id === "number" ? { id } : { publicId: id }),
         deletedAt: null,
         status: PUBLISHED_STATUS
       },
@@ -552,6 +553,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
     return {
       id: service.id,
+      publicId: service.publicId,
       name: service.name,
       description: service.description,
       category: this.mapCategory(service.category),
@@ -651,10 +653,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private requirePublicId(
-    identifier: PublicIdentifier | null,
-    expectedKind: "S" | "SHOP"
-  ): string {
+  private requirePublicId(identifier: PublicIdentifier | null, expectedKind: "S" | "SHOP"): string {
     if (
       identifier &&
       identifier.kind === expectedKind &&

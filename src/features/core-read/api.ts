@@ -241,8 +241,22 @@ export function isCoreReadApiId(id: string | number | null | undefined) {
   return typeof id === "number" ? Number.isInteger(id) && id > 0 : Boolean(id && /^[1-9]\d*$/.test(id));
 }
 
-export function coreReadIdFromRoute(id: string | number | null | undefined) {
-  return isCoreReadApiId(id) ? Number(id) : null;
+const coreReadUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+export function coreReadIdFromRoute(
+  id: string | number | null | undefined,
+  options: { allowUuid: true }
+): number | string | null;
+export function coreReadIdFromRoute(id: string | number | null | undefined): number | null;
+export function coreReadIdFromRoute(
+  id: string | number | null | undefined,
+  options?: { allowUuid?: boolean }
+) {
+  if (isCoreReadApiId(id)) {
+    return Number(id);
+  }
+
+  return options?.allowUuid && typeof id === "string" && coreReadUuidPattern.test(id) ? id : null;
 }
 
 export function mapCoreCategoryToServiceCategory(category: CoreCategory): ServiceCategory {
@@ -406,7 +420,7 @@ export const coreReadApi = {
     return httpClient.request<CoreHomeRecommendations>("/home/recommendations", { auth: false, query });
   },
 
-  getServiceDetail(id: number) {
+  getServiceDetail(id: number | string) {
     return httpClient.request<CoreServiceDetail>(`/services/${id}`, { auth: false });
   },
 

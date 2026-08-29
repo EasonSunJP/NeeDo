@@ -26,7 +26,7 @@ export class CoreReadService {
     return this.repository.listServices(input);
   }
 
-  public async getServiceDetail(id: number): Promise<ServiceDetailPayload> {
+  public async getServiceDetail(id: number | string): Promise<ServiceDetailPayload> {
     const service = await this.repository.findServiceDetail(id);
 
     if (!service) {

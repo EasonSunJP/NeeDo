@@ -2,6 +2,8 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import type {
+  AffiliateAllianceInvitationPayload,
+  AffiliateAllianceMemberPayload,
   AffiliateAlliancePayload,
   AffiliateAllianceRepositoryPort
 } from "../src/services/affiliate-alliance.service";
@@ -84,14 +86,20 @@ const createUser = (id: number, identityType: "scout" | "customer", codes: strin
 const createFixture = () => {
   const read = "page:affiliate-alliance";
   const create = "button:affiliate-alliance-create";
+  const members = "affiliate-alliance:members:list";
+  const candidates = "affiliate-alliance:candidates:list";
+  const invitations = "affiliate-alliance:invitations:list";
+  const invite = "button:affiliate-alliance-invite";
+  const respond = "button:affiliate-alliance-invitation-respond";
   const users = [
-    createUser(7, "scout", [read, create]),
-    createUser(8, "scout", [read]),
+    createUser(7, "scout", [read, create, members, candidates, invitations, invite, respond]),
+    createUser(8, "scout", [read, invitations, respond]),
     createUser(9, "scout", [create]),
-    createUser(10, "customer", [read, create]),
-    createUser(11, "scout", [read, create])
+    createUser(10, "customer", [read, create, members, candidates, invitations, invite, respond]),
+    createUser(11, "scout", [read, create, members, candidates, invitations, invite, respond])
   ];
   const alliances = new Map<number, AffiliateAlliancePayload>();
+  const invitationRecords: AffiliateAllianceInvitationPayload[] = [];
   const profileStatuses = new Map<number, "active" | "suspended" | "closed">(
     users.map((user) => [user.id, user.id === 11 ? "suspended" : "active"])
   );
@@ -135,6 +143,82 @@ const createFixture = () => {
       };
       alliances.set(input.userId, alliance);
       return alliance;
+    }),
+    listMembers: jest.fn(async (input) => {
+      const alliance = [...alliances.values()].find((item) => item.allianceId === input.allianceId)!;
+      const owner: AffiliateAllianceMemberPayload = {
+        memberId: alliance.membership.memberId,
+        person: alliance.owner,
+        role: "owner",
+        parent: null,
+        promoterShareBpsOverride: null,
+        permissions: alliance.membership.permissions,
+        joinedAt: alliance.createdAt
+      };
+      return { list: [owner], total: 1, page: input.page, page_size: input.pageSize };
+    }),
+    listEligibleContacts: jest.fn(async (input) => ({
+      list: [{ needoId: "u0000000008", displayName: "Affiliate 8", avatarUrl: null }],
+      total: 1,
+      page: input.page,
+      page_size: input.pageSize
+    })),
+    listSentInvitations: jest.fn(async (input) => {
+      const list = invitationRecords.filter((item) => item.alliance.allianceId === input.allianceId);
+      return { list, total: list.length, page: input.page, page_size: input.pageSize };
+    }),
+    createInvitation: jest.fn(async (input) => {
+      const alliance = [...alliances.values()].find((item) => item.allianceId === input.allianceId)!;
+      const createdAt = input.now();
+      const expiresAt = new Date(createdAt.getTime() + input.invitationTtlMs);
+      const invitation: AffiliateAllianceInvitationPayload = {
+        invitationId: 70 + invitationRecords.length + 1,
+        alliance: { allianceId: alliance.allianceId, name: alliance.name },
+        inviter: alliance.owner,
+        invitee: { needoId: input.inviteeNeedoId, displayName: "Affiliate 8", avatarUrl: null },
+        role: input.role,
+        proposedParent: null,
+        status: "pending",
+        expiresAt: expiresAt.toISOString(),
+        respondedAt: null,
+        createdAt: createdAt.toISOString()
+      };
+      invitationRecords.push(invitation);
+      return { kind: "created" as const, invitation };
+    }),
+    listReceivedInvitations: jest.fn(async (input) => {
+      const needoId = users.find((user) => user.id === input.inviteeUserId)!.needoId;
+      const list = invitationRecords.filter((item) => item.invitee.needoId === needoId);
+      return { list, total: list.length, page: input.page, page_size: input.pageSize };
+    }),
+    acceptInvitation: jest.fn(async (input) => {
+      const invitation = invitationRecords.find((item) => item.invitationId === input.invitationId);
+      if (!invitation) return { kind: "not_found" as const };
+      const accepted = { ...invitation, status: "accepted" as const, respondedAt: input.now.toISOString() };
+      invitationRecords.splice(invitationRecords.indexOf(invitation), 1, accepted);
+      const member: AffiliateAllianceMemberPayload = {
+        memberId: 100 + input.inviteeUserId,
+        person: invitation.invitee,
+        role: invitation.role,
+        parent: null,
+        promoterShareBpsOverride: null,
+        permissions: {
+          canClaimTasks: false,
+          canViewAllianceOverview: false,
+          canViewMemberDetails: false,
+          canManageOwnSubordinates: false,
+          canViewAllianceWallet: false
+        },
+        joinedAt: input.now.toISOString()
+      };
+      return { kind: "accepted" as const, invitation: accepted, member };
+    }),
+    rejectInvitation: jest.fn(async (input) => {
+      const invitation = invitationRecords.find((item) => item.invitationId === input.invitationId);
+      if (!invitation) return { kind: "not_found" as const };
+      const rejected = { ...invitation, status: "rejected" as const, respondedAt: input.now.toISOString() };
+      invitationRecords.splice(invitationRecords.indexOf(invitation), 1, rejected);
+      return { kind: "rejected" as const, invitation: rejected };
     })
   };
 
@@ -160,7 +244,7 @@ const createFixture = () => {
     ])
   ) as Record<number, string>;
 
-  return { app, alliances, repository, tokens };
+  return { app, alliances, invitationRecords, repository, tokens };
 };
 
 describe("affiliate alliance HTTP API", () => {
@@ -275,5 +359,101 @@ describe("affiliate alliance HTTP API", () => {
       .expect(({ body }) =>
         expect(body).toMatchObject({ message: "error.affiliate_alliance.already_joined" })
       );
+  });
+
+  it("exposes owner member, candidate, sent invitation, and create endpoints", async () => {
+    const fixture = createFixture();
+    const authorization = `Bearer ${fixture.tokens[7]}`;
+    await request(fixture.app)
+      .post("/api/v1/affiliate/alliances")
+      .set("Authorization", authorization)
+      .send({ name: "东京联盟", defaultPromoterShareBps: 8000 })
+      .expect(201);
+
+    await request(fixture.app)
+      .get("/api/v1/affiliate/alliances/me/members?page=1&pageSize=20")
+      .set("Authorization", authorization)
+      .expect(200)
+      .expect(({ body }) => expect(body.data.list[0]).toMatchObject({ role: "owner" }));
+    await request(fixture.app)
+      .get("/api/v1/affiliate/alliances/me/eligible-contacts?q=Affiliate")
+      .set("Authorization", authorization)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.list).toEqual([
+          { needoId: "u0000000008", displayName: "Affiliate 8", avatarUrl: null }
+        ]);
+        expect(JSON.stringify(body.data)).not.toMatch(/userId|email|phone|identityId/);
+      });
+    await request(fixture.app)
+      .post("/api/v1/affiliate/alliances/me/invitations")
+      .set("Authorization", authorization)
+      .send({ inviteeNeedoId: "u0000000008", role: "partner" })
+      .expect(201)
+      .expect(({ body }) => expect(body.data.invitation).toMatchObject({ invitationId: 71, status: "pending" }));
+    await request(fixture.app)
+      .get("/api/v1/affiliate/alliances/me/invitations?status=pending")
+      .set("Authorization", authorization)
+      .expect(200)
+      .expect(({ body }) => expect(body.data.total).toBe(1));
+  });
+
+  it("lets only the invitee list and respond to received invitations", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .post("/api/v1/affiliate/alliances")
+      .set("Authorization", `Bearer ${fixture.tokens[7]}`)
+      .send({ name: "东京联盟", defaultPromoterShareBps: 8000 })
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/affiliate/alliances/me/invitations")
+      .set("Authorization", `Bearer ${fixture.tokens[7]}`)
+      .send({ inviteeNeedoId: "u0000000008", role: "partner" })
+      .expect(201);
+
+    await request(fixture.app)
+      .get("/api/v1/affiliate/alliance-invitations/mine")
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .expect(200)
+      .expect(({ body }) => expect(body.data.list[0]).toMatchObject({ invitationId: 71 }));
+    await request(fixture.app)
+      .post("/api/v1/affiliate/alliance-invitations/71/accept")
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .send({})
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.invitation.status).toBe("accepted");
+        expect(body.data.member.permissions).toEqual({
+          canClaimTasks: false,
+          canViewAllianceOverview: false,
+          canViewMemberDetails: false,
+          canManageOwnSubordinates: false,
+          canViewAllianceWallet: false
+        });
+      });
+    await request(fixture.app)
+      .post("/api/v1/affiliate/alliance-invitations/999/reject")
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .send({})
+      .expect(404)
+      .expect(({ body }) => expect(body.message).toBe("error.affiliate_alliance.invitation_not_found"));
+  });
+
+  it("enforces invitation RBAC and strict request contracts", async () => {
+    const fixture = createFixture();
+    await request(fixture.app).get("/api/v1/affiliate/alliance-invitations/mine").expect(401);
+    await request(fixture.app)
+      .get("/api/v1/affiliate/alliances/me/members")
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .expect(403);
+    await request(fixture.app)
+      .post("/api/v1/affiliate/alliance-invitations/71/accept")
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .send({ allianceId: 42 })
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/affiliate/alliance-invitations/mine?status=cancelled")
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .expect(400);
   });
 });

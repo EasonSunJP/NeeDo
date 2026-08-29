@@ -146,6 +146,7 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/identity-applications/{id}/merchant-contract-acceptance",
       "/api/v1/identity-applications/{id}/media",
       "/api/v1/identity-applications/{id}/media/{mediaId}",
+      "/api/v1/backoffice/content/media",
       "/api/v1/identity-applications/{id}/submit",
       "/api/v1/identity-applications/{id}/withdraw",
       "/api/v1/contracts/affiliate/current",
@@ -167,6 +168,58 @@ describe("GET /api/v1/openapi.json", () => {
     expect(
       response.body.paths["/api/v1/identity-applications/{id}/media"].post.requestBody.content
     ).toHaveProperty("image/jpeg");
+    const contentMediaUpload = response.body.paths["/api/v1/backoffice/content/media"].post;
+    expect(contentMediaUpload.security).toEqual([{ bearerAuth: [] }]);
+    expect(contentMediaUpload.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "alt_text",
+          in: "query",
+          required: false,
+          schema: expect.objectContaining({ minLength: 1, maxLength: 255 })
+        })
+      ])
+    );
+    expect(contentMediaUpload.requestBody.required).toBe(true);
+    expect(Object.keys(contentMediaUpload.requestBody.content).sort()).toEqual([
+      "image/jpeg",
+      "image/png",
+      "image/webp"
+    ]);
+    expect(
+      contentMediaUpload.responses["201"].content["application/json"].schema.properties.data
+    ).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "publicId",
+        "mediaAssetId",
+        "url",
+        "mimeType",
+        "width",
+        "height",
+        "checksumSha256"
+      ],
+      properties: {
+        publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        mediaAssetId: { type: "integer", minimum: 1 },
+        url: { type: "string", pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$" },
+        mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+        width: { type: "null" },
+        height: { type: "null" },
+        checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
+      }
+    });
+    expect(contentMediaUpload.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.objectContaining({ description: expect.stringContaining("media_invalid") }),
+        "401": expect.objectContaining({ description: expect.stringContaining("token_invalid") }),
+        "403": expect.objectContaining({ description: expect.stringContaining("forbidden") }),
+        "409": expect.objectContaining({ description: expect.stringContaining("lock_conflict") }),
+        "413": expect.objectContaining({ description: expect.stringContaining("media_too_large") }),
+        "415": expect.objectContaining({ description: expect.stringContaining("media_invalid") })
+      })
+    );
     expect(
       response.body.paths["/api/v1/contracts/acceptances/{receiptId}/receipt"].get.security
     ).toEqual([{ bearerAuth: [] }]);
@@ -1058,6 +1111,402 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).toContain("canViewAllianceWallet");
     expect(publicContract).not.toMatch(/userId|identityId|scout/);
   });
+
+  it("documents all paginated alliance invitation operations and exact permissions", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      parameters?: Array<Record<string, unknown>>;
+      requestBody?: { content: Record<string, { schema: Record<string, string> }> };
+      responses: Record<string, unknown>;
+      "x-permission": string;
+    };
+    type Schema = { additionalProperties?: boolean; properties?: Record<string, unknown> };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const operations = [
+      ["/api/v1/affiliate/alliances/me/members", "get", "affiliate-alliance:members:list"],
+      [
+        "/api/v1/affiliate/alliances/me/eligible-contacts",
+        "get",
+        "affiliate-alliance:candidates:list"
+      ],
+      ["/api/v1/affiliate/alliances/me/invitations", "get", "affiliate-alliance:invitations:list"],
+      ["/api/v1/affiliate/alliances/me/invitations", "post", "button:affiliate-alliance-invite"],
+      ["/api/v1/affiliate/alliance-invitations/mine", "get", "affiliate-alliance:invitations:list"],
+      [
+        "/api/v1/affiliate/alliance-invitations/{id}/accept",
+        "post",
+        "button:affiliate-alliance-invitation-respond"
+      ],
+      [
+        "/api/v1/affiliate/alliance-invitations/{id}/reject",
+        "post",
+        "button:affiliate-alliance-invitation-respond"
+      ]
+    ] as const;
+
+    for (const [path, method, permissionCode] of operations) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toBeDefined();
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation["x-permission"]).toBe(permissionCode);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+
+    expect(
+      document.paths["/api/v1/affiliate/alliances/me/invitations"].post.requestBody?.content[
+        "application/json"
+      ].schema
+    ).toEqual({ $ref: "#/components/schemas/AffiliateAllianceInvitationCreate" });
+    for (const path of [
+      "/api/v1/affiliate/alliance-invitations/{id}/accept",
+      "/api/v1/affiliate/alliance-invitations/{id}/reject"
+    ]) {
+      const operation = document.paths[path].post;
+      expect(operation.requestBody?.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/StrictEmptyBody"
+      });
+      expect(operation.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "id", in: "path", required: true })
+        ])
+      );
+    }
+    for (const schemaName of [
+      "AffiliateAlliancePublicPerson",
+      "AffiliateAllianceMember",
+      "AffiliateAllianceInvitation",
+      "AffiliateAllianceInvitationCreate",
+      "StrictEmptyBody"
+    ]) {
+      expect(document.components.schemas[schemaName]).toBeDefined();
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    const publicSchemaNames = [
+      "AffiliateAlliancePublicPerson",
+      "AffiliateAllianceMemberParent",
+      "AffiliateAllianceMember",
+      "AffiliateAllianceInvitation",
+      "AffiliateAllianceMemberPage",
+      "AffiliateAllianceCandidatePage",
+      "AffiliateAllianceInvitationPage",
+      "AffiliateAllianceInvitationCreate",
+      "AffiliateAllianceInvitationCreated",
+      "AffiliateAllianceInvitationAccepted",
+      "StrictEmptyBody"
+    ];
+    const publicContract = JSON.stringify({
+      operations,
+      schemas: Object.fromEntries(
+        publicSchemaNames.map((schemaName) => [schemaName, document.components.schemas[schemaName]])
+      )
+    });
+    expect(publicContract).not.toMatch(/passwordHash|email|phone|identityId|bankAccount|ekyc/);
+  });
+
+  it("documents the complete localized Affiliate announcement lifecycle without public internals", () => {
+    type Operation = {
+      description: string;
+      security: Array<Record<string, unknown>>;
+      parameters?: Array<Record<string, unknown>>;
+      requestBody?: { content: Record<string, { schema: Record<string, unknown> }> };
+      responses: Record<string, { description?: string }>;
+      "x-permission": string;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Operation>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const base = "/api/v1/backoffice/affiliate/announcements";
+    const release = `${base}/{publicId}/releases/{releaseId}`;
+    const operations = [
+      [base, "get", "page:backoffice-affiliate-announcement"],
+      [base, "post", "button:backoffice-affiliate-announcement-edit"],
+      [`${base}/{publicId}/history`, "get", "page:backoffice-affiliate-announcement"],
+      [release, "get", "page:backoffice-affiliate-announcement"],
+      [release, "patch", "button:backoffice-affiliate-announcement-edit"],
+      [`${release}/preview`, "get", "page:backoffice-affiliate-announcement"],
+      [`${release}/publish`, "post", "button:backoffice-affiliate-announcement-publish"],
+      [`${release}/schedule`, "post", "button:backoffice-affiliate-announcement-publish"],
+      [`${release}/disable`, "post", "button:backoffice-affiliate-announcement-publish"],
+      [`${release}/rollback`, "post", "button:backoffice-affiliate-announcement-publish"],
+      ["/api/v1/affiliate/announcements/{publicId}", "get", "page:affiliate-marketplace"]
+    ] as const;
+
+    for (const [path, method, permission] of operations) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toBeDefined();
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation["x-permission"]).toBe(permission);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+      expect(operation.responses["400"].description).toContain("error.validation");
+    }
+
+    expect(document.paths[base].post.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/OfficialAnnouncementDraftCreate"
+    });
+    expect(document.paths[release].patch.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/OfficialAnnouncementDraftMutation"
+    });
+    expect(
+      document.paths[`${release}/schedule`].post.requestBody?.content["application/json"].schema
+    ).toEqual({ $ref: "#/components/schemas/ContentScheduleCommand" });
+    expect(
+      document.paths[`${release}/rollback`].post.requestBody?.content["application/json"].schema
+    ).toEqual({ $ref: "#/components/schemas/ContentRollbackCommand" });
+
+    const createSchema = document.components.schemas.OfficialAnnouncementDraftCreate as {
+      additionalProperties: boolean;
+      required: string[];
+    };
+    expect(createSchema.additionalProperties).toBe(false);
+    expect(createSchema.required).toEqual(["idempotencyKey", "sourceLocale", "translation"]);
+    const protectedPayload = JSON.stringify({
+      payload: document.components.schemas.OfficialAnnouncementProtectedPayload,
+      translation: document.components.schemas.OfficialAnnouncementProtectedTranslation
+    });
+    expect(protectedPayload).toContain("translations");
+    expect(protectedPayload).toContain("sourceLocale");
+    expect(protectedPayload).toContain("isInitialCopy");
+    const publicPayload = JSON.stringify(
+      document.components.schemas.OfficialAnnouncementPublicPayload
+    );
+    expect(publicPayload).toContain("locale");
+    expect(publicPayload).toContain("taskAction");
+    expect(publicPayload).not.toMatch(
+      /releaseId|affiliateTaskId|translations|createdBy|updatedBy|publishedBy|disabledBy/
+    );
+    const publicOperation = document.paths["/api/v1/affiliate/announcements/{publicId}"].get;
+    expect(publicOperation.description).toContain("active Affiliate identity");
+    expect(publicOperation.description).toContain("scout");
+    expect(publicOperation.responses["403"].description).toContain(
+      "error.affiliate_profile.identity_required"
+    );
+    expect(publicOperation.responses["403"].description).toContain("scout");
+    const lifecycleContract = JSON.stringify({
+      operations: Object.fromEntries(
+        operations.map(([path, method]) => [`${method}:${path}`, document.paths[path][method]])
+      ),
+      schemas: Object.fromEntries(
+        Object.entries(document.components.schemas).filter(([name]) =>
+          /OfficialAnnouncement|Content(?:Publish|Schedule|Disable|Rollback)/.test(name)
+        )
+      )
+    });
+    for (const errorKey of [
+      "error.content.locale_invalid",
+      "error.content.not_found",
+      "error.content.release_not_found",
+      "error.content.draft_exists",
+      "error.content.lock_conflict",
+      "error.content.incomplete_translations",
+      "error.content.schedule_conflict",
+      "error.content.target_unavailable",
+      "error.content.invalid_state_transition",
+      "error.idempotency_key_reused"
+    ]) {
+      expect(lifecycleContract).toContain(errorKey);
+    }
+  });
+
+  it("documents both fixed carousel scenes, target search, copy-to-all, and public-safe payloads", () => {
+    type CarouselOperation = {
+      security: Array<Record<string, unknown>>;
+      parameters: Array<{ name: string }>;
+      responses: Record<string, unknown>;
+      "x-permission": string;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, CarouselOperation>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const scenes = [
+      [
+        "user-home",
+        "page:backoffice-user-home-carousel",
+        "button:backoffice-user-home-carousel-edit",
+        "button:backoffice-user-home-carousel-publish"
+      ],
+      [
+        "affiliate-home-notice",
+        "page:backoffice-affiliate-notice-carousel",
+        "button:backoffice-affiliate-notice-carousel-edit",
+        "button:backoffice-affiliate-notice-carousel-publish"
+      ]
+    ] as const;
+    for (const [slug, read, edit, publish] of scenes) {
+      const base = `/api/v1/backoffice/content/carousels/${slug}`;
+      const release = `${base}/releases/{releaseId}`;
+      const operations = [
+        [base, "get", read],
+        [base + "/releases", "post", edit],
+        [base + "/history", "get", read],
+        [base + "/targets", "get", read],
+        [release, "get", read],
+        [release, "patch", edit],
+        [release + "/slides/{slidePublicId}/locales/{locale}", "patch", edit],
+        [release + "/slides/{slidePublicId}/copy-to-all", "post", edit],
+        [release + "/preview", "get", read],
+        [release + "/publish", "post", publish],
+        [release + "/schedule", "post", publish],
+        [release + "/disable", "post", publish],
+        [release + "/rollback", "post", publish]
+      ] as const;
+      for (const [path, method, permission] of operations) {
+        expect(document.paths[path]?.[method]).toEqual(
+          expect.objectContaining({
+            security: [{ bearerAuth: [] }],
+            "x-permission": permission,
+            responses: expect.objectContaining({
+              "400": expect.any(Object),
+              "401": expect.any(Object),
+              "403": expect.any(Object),
+              "404": expect.any(Object),
+              "409": expect.any(Object)
+            })
+          })
+        );
+      }
+      expect(document.paths[base + "/targets"].get.parameters.map((value) => value.name)).toEqual(
+        expect.arrayContaining(["type", "q", "page", "pageSize"])
+      );
+      const expectedPrefix = slug === "user-home" ? "CarouselUserHome" : "CarouselAffiliateNotice";
+      type RequestBodyOperation = {
+        requestBody: { content: Record<string, { schema: { $ref: string } }> };
+      };
+      expect(
+        (document.paths[base + "/releases"].post as unknown as RequestBodyOperation).requestBody
+          .content["application/json"].schema.$ref
+      ).toBe(`#/components/schemas/${expectedPrefix}DraftCreate`);
+      expect(
+        (document.paths[release].patch as unknown as RequestBodyOperation).requestBody.content[
+          "application/json"
+        ].schema.$ref
+      ).toBe(`#/components/schemas/${expectedPrefix}DraftReplace`);
+      expect(
+        (
+          document.paths[release + "/slides/{slidePublicId}/locales/{locale}"]
+            .patch as unknown as RequestBodyOperation
+        ).requestBody.content["application/json"].schema.$ref
+      ).toBe("#/components/schemas/CarouselLocaleMutation");
+    }
+    expect(document.paths["/api/v1/content/carousels/user-home"].get).toBeDefined();
+    expect(document.paths["/api/v1/affiliate/content/carousel"].get["x-permission"]).toBe(
+      "page:affiliate-marketplace"
+    );
+    const publicPayload = JSON.stringify({
+      payload: document.components.schemas.PublishedCarouselPayload,
+      target: document.components.schemas.PublishedCarouselTarget
+    });
+    expect(publicPayload).toContain("releaseVersion");
+    expect(publicPayload).toContain("publicId");
+    expect(publicPayload).not.toMatch(
+      /shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId|releaseId/
+    );
+    const targetSearch = JSON.stringify({
+      page: document.components.schemas.CarouselTargetSearchPage,
+      item: document.components.schemas.CarouselTargetSearchItem
+    });
+    expect(targetSearch).toContain("publicId");
+    expect(targetSearch).toContain("taskCode");
+    expect(targetSearch).toContain("target");
+    expect(targetSearch).not.toMatch(
+      /shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId/
+    );
+    const userCreate = JSON.stringify(document.components.schemas.CarouselUserHomeCreateSlideInput);
+    const affiliateCreate = JSON.stringify(
+      document.components.schemas.CarouselAffiliateNoticeCreateSlideInput
+    );
+    const userReplace = JSON.stringify(
+      document.components.schemas.CarouselUserHomeReplaceSlideInput
+    );
+    expect(userCreate).toContain("CarouselUserHomeTargetInput");
+    expect(JSON.stringify(document.components.schemas.CarouselUserHomeTargetInput)).not.toContain(
+      "affiliate_announcement"
+    );
+    expect(affiliateCreate).toContain("CarouselAffiliateNoticeTargetInput");
+    expect(
+      JSON.stringify(document.components.schemas.CarouselAffiliateNoticeTargetInput)
+    ).not.toContain("technicianProfileId");
+    expect(userCreate).toContain('"minItems":1');
+    expect(userCreate).toContain('"maxItems":1');
+    expect(userReplace).toContain("CarouselFiveTranslations");
+    expect(JSON.stringify(document.components.schemas.CarouselFiveTranslations)).toContain(
+      '"minItems":5'
+    );
+    expect(JSON.stringify(document.components.schemas.CarouselFiveTranslations)).toContain(
+      '"maxItems":5'
+    );
+    expect(document.components.schemas.CarouselLocaleMutation).toEqual({
+      oneOf: [
+        { $ref: "#/components/schemas/CarouselLocaleUpdate" },
+        { $ref: "#/components/schemas/CarouselLocaleCopyCommand" }
+      ]
+    });
+  });
+
+  it("documents canonical Service UUID and legacy numeric identifiers on the same detail route", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            parameters: Array<Record<string, unknown>>;
+            responses: Record<
+              string,
+              { content: Record<string, { schema: Record<string, unknown> }> }
+            >;
+          }
+        >
+      >;
+      components: {
+        schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
+      };
+    };
+    const operation = document.paths["/api/v1/services/{id}"].get;
+    const id = operation.parameters.find((parameter) => parameter.name === "id") as {
+      schema: { oneOf: Array<Record<string, unknown>> };
+    };
+
+    expect(id.schema.oneOf).toEqual([
+      { type: "integer", minimum: 1 },
+      { type: "string", format: "uuid" }
+    ]);
+    expect(document.components.schemas.ServiceCard.required).toContain("publicId");
+    expect(document.components.schemas.ServiceCard.properties).toHaveProperty("publicId", {
+      type: "string",
+      format: "uuid"
+    });
+    expect(operation.responses["200"].content["application/json"].schema).toEqual({
+      type: "object",
+      required: ["code", "message", "data"],
+      properties: {
+        code: { type: "integer", enum: [0] },
+        message: { type: "string", enum: ["success"] },
+        data: { $ref: "#/components/schemas/ServiceDetail" }
+      }
+    });
+  });
+
 
   it("documents the formal platform fee policy contracts", () => {
     type Operation = {

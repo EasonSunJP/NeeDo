@@ -353,6 +353,22 @@ enum AffiliateAllianceMemberRole {
   @@map("affiliate_alliance_member_role")
 }
 
+enum AffiliateAllianceInvitationRole {
+  PARTNER     @map("partner")
+  SUBORDINATE @map("subordinate")
+
+  @@map("affiliate_alliance_invitation_role")
+}
+
+enum AffiliateAllianceInvitationStatus {
+  PENDING  @map("pending")
+  ACCEPTED @map("accepted")
+  REJECTED @map("rejected")
+  EXPIRED  @map("expired")
+
+  @@map("affiliate_alliance_invitation_status")
+}
+
 enum FinanceReconciliationStatus {
   PENDING  @map("pending")
   EXPORTED @map("exported")
@@ -551,6 +567,7 @@ model User {
   affiliateProfile                      AffiliateProfile?
   ownedAffiliateAlliances               AffiliateAlliance[]                 @relation("AffiliateAllianceOwner")
   affiliateAllianceMemberships          AffiliateAllianceMember[]           @relation("AffiliateAllianceMemberUser")
+  receivedAffiliateAllianceInvitations  AffiliateAllianceInvitation[]       @relation("AffiliateAllianceInvitationInvitee")
   bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
   orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
   orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
@@ -3355,8 +3372,9 @@ model AffiliateAlliance {
   updatedAt               DateTime                @updatedAt @map("updated_at")
   deletedAt               DateTime?               @map("deleted_at")
 
-  owner   User                      @relation("AffiliateAllianceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  members AffiliateAllianceMember[]
+  owner                        User                          @relation("AffiliateAllianceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members                      AffiliateAllianceMember[]
+  affiliateAllianceInvitations AffiliateAllianceInvitation[]
 
   @@index([ownerUserId])
   @@index([status])
@@ -3380,11 +3398,13 @@ model AffiliateAllianceMember {
   updatedAt                DateTime                    @updatedAt @map("updated_at")
   deletedAt                DateTime?                   @map("deleted_at")
 
-  alliance   AffiliateAlliance            @relation(fields: [allianceId], references: [id], onDelete: Restrict)
-  user       User                         @relation("AffiliateAllianceMemberUser", fields: [userId], references: [id], onDelete: Restrict)
-  parent     AffiliateAllianceMember?     @relation("AffiliateAllianceMemberTree", fields: [parentMemberId], references: [id], onDelete: SetNull)
-  children   AffiliateAllianceMember[]    @relation("AffiliateAllianceMemberTree")
-  permission AffiliateAlliancePermission?
+  alliance                             AffiliateAlliance             @relation(fields: [allianceId], references: [id], onDelete: Restrict)
+  user                                 User                          @relation("AffiliateAllianceMemberUser", fields: [userId], references: [id], onDelete: Restrict)
+  parent                               AffiliateAllianceMember?      @relation("AffiliateAllianceMemberTree", fields: [parentMemberId], references: [id], onDelete: SetNull)
+  children                             AffiliateAllianceMember[]     @relation("AffiliateAllianceMemberTree")
+  permission                           AffiliateAlliancePermission?
+  sentAffiliateAllianceInvitations     AffiliateAllianceInvitation[] @relation("AllianceInvitationInviter")
+  parentedAffiliateAllianceInvitations AffiliateAllianceInvitation[] @relation("AllianceInvitationParent")
 
   @@index([allianceId, role])
   @@index([userId])
@@ -3409,6 +3429,37 @@ model AffiliateAlliancePermission {
 
   @@index([deletedAt])
   @@map("affiliate_alliance_permissions")
+}
+
+model AffiliateAllianceInvitation {
+  id                     Int                               @id @default(autoincrement())
+  allianceId             Int                               @map("alliance_id")
+  inviterMemberId        Int                               @map("inviter_member_id")
+  inviteeUserId          Int                               @map("invitee_user_id")
+  role                   AffiliateAllianceInvitationRole
+  proposedParentMemberId Int?                              @map("proposed_parent_member_id")
+  status                 AffiliateAllianceInvitationStatus @default(PENDING)
+  pendingKey             String?                           @unique @map("pending_key") @db.VarChar(191)
+  expiresAt              DateTime                          @map("expires_at")
+  respondedAt            DateTime?                         @map("responded_at")
+  expiredAt              DateTime?                         @map("expired_at")
+  version                Int                               @default(1)
+  createdAt              DateTime                          @default(now()) @map("created_at")
+  updatedAt              DateTime                          @updatedAt @map("updated_at")
+  deletedAt              DateTime?                         @map("deleted_at")
+
+  alliance             AffiliateAlliance        @relation(fields: [allianceId], references: [id], onDelete: Restrict)
+  inviterMember        AffiliateAllianceMember  @relation("AllianceInvitationInviter", fields: [inviterMemberId], references: [id], onDelete: Restrict)
+  invitee              User                     @relation("AffiliateAllianceInvitationInvitee", fields: [inviteeUserId], references: [id], onDelete: Restrict)
+  proposedParentMember AffiliateAllianceMember? @relation("AllianceInvitationParent", fields: [proposedParentMemberId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([allianceId, status, createdAt])
+  @@index([inviteeUserId, status, createdAt], map: "affiliate_alliance_invitee_status_created_idx")
+  @@index([status, expiresAt, id])
+  @@index([inviterMemberId])
+  @@index([proposedParentMemberId])
+  @@index([deletedAt])
+  @@map("affiliate_alliance_invitations")
 }
 
 model AffiliateTask {
