@@ -2,15 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Enforce one judgement reply (`OK`, `NO`, or `Pending`) and one emoji reply per user per message, with disabled alternatives, click-again cancellation, server-authoritative persistence, and explicit failure feedback.
+**Goal:** Enforce one of eight SVG judgement replies plus one emoji reply per user per message, and unify the message-action and composer catalogs around shared recent, judgement, and general sections.
 
-**Architecture:** Keep `MessageReaction.emoji` as the persisted value and classify it into one of two slots. The repository serializes mutations with the existing message-row lock and returns explicit mutation outcomes; the service converts an occupied slot into a 409 business error and only publishes changed authoritative messages. The React action sheet derives selected slots from server-backed reaction summaries, disables every unselected option in an occupied category, and updates only from successful REST/SSE payloads.
+**Architecture:** Keep `MessageReaction.emoji` as the persisted value and classify the eight specified word values into the judgement slot. A shared frontend catalog/store supplies device-local recent values and the three ordered sections to both entry points, while an SVG renderer gives judgement values one compact visual identity. The repository serializes mutations with the existing message-row lock; React remains server-authoritative for reactions and only records a reaction as recent after REST success.
 
 **Tech Stack:** React 19, TypeScript, Vite, Vitest/JSDOM, Node.js 22, Express, Prisma, MySQL 8, Jest/Supertest, OpenAPI.
 
 ## Global Constraints
 
 - Implement only the approved design in `docs/superpowers/specs/2026-08-30-im-quick-response-slots-design.md`; do not add a third slot or direct replacement behavior.
+- Judgement values are exactly `OK`, `NO`, `Pending`, `+1`, `Done`, `Cool`, `Good`, and `Thanks`, preserving case.
+- The compact action row mixes recent judgement and emoji values in one row and keeps “more” at the end; expanded order is “常用表情”, “判断表情”, “一般表情”.
+- The composer uses the same catalog and SVGs; a judgement inserts its text while an emoji inserts its Unicode value.
 - Preserve the current React/Vite frontend, formal REST API, Prisma repository layering, SSE transport, and `reactionVersion` conflict protection.
 - Do not add mock data, local-only reaction state, placeholder code, `TODO`, or `FIXME`.
 - Preserve other users' reactions and all unrelated worktree changes. Before every commit run `git status --short`, then stage only the files named in that task.
@@ -23,7 +26,7 @@
 
 ---
 
-## Task 1: Define and lock the two-category reaction contract
+## Task 1: Define the eight-value policy and shared recent catalog
 
 **Files:**
 
@@ -31,10 +34,19 @@
 - Create: `backend/tests/message-reaction-policy.test.ts`
 - Create: `src/features/im/reaction-policy.ts`
 - Create: `src/features/im/reaction-policy.test.ts`
+- Create: `src/features/im/reaction-catalog.ts`
+- Create: `src/features/im/reaction-catalog.test.ts`
+- Reuse: `src/features/im/emoji.ts`
+
+**Interfaces:**
+
+- Produces: `MESSAGE_JUDGEMENT_REACTIONS`, `getMessageReactionCategory`, and `compareMessageReactionCategories` for repository and service code.
+- Produces: `IM_JUDGEMENT_REPLIES`, `getImReactionCategory`, `deriveCurrentUserReactionSlots`, and `isImReactionChoiceDisabled` for UI state.
+- Produces: `getRecentImReactionSnapshot()`, `subscribeRecentImReactions(listener)`, and `recordRecentImReaction(value)` for both catalog entry points.
 
 - [ ] **Step 1: Add failing backend policy tests**
 
-Create `backend/tests/message-reaction-policy.test.ts` with assertions for all three judgement values, representative emoji values, and category ordering:
+Create `backend/tests/message-reaction-policy.test.ts` with assertions for all eight judgement values, representative emoji values, and category ordering:
 
 ```ts
 import {
@@ -44,18 +56,20 @@ import {
 } from "../src/constants/message-reaction.constants";
 
 describe("message reaction policy", () => {
-  it.each(["OK", "NO", "Pending"])("classifies %s as judgement", (value) => {
+  it.each(["OK", "NO", "Pending", "+1", "Done", "Cool", "Good", "Thanks"])("classifies %s as judgement", (value) => {
     expect(getMessageReactionCategory(value)).toBe("judgement");
   });
 
-  it.each(["😂", "👍", "+1"])("classifies %s as emoji", (value) => {
+  it.each(["😂", "👍", "❤️"])("classifies %s as emoji", (value) => {
     expect(getMessageReactionCategory(value)).toBe("emoji");
   });
 
   it("keeps the contract values and judgement-first order stable", () => {
-    expect(MESSAGE_JUDGEMENT_REACTIONS).toEqual(["OK", "NO", "Pending"]);
-    expect(["😂", "Pending", "OK"].sort(compareMessageReactionCategories))
-      .toEqual(["Pending", "OK", "😂"]);
+    expect(MESSAGE_JUDGEMENT_REACTIONS).toEqual([
+      "OK", "NO", "Pending", "+1", "Done", "Cool", "Good", "Thanks"
+    ]);
+    expect(["😂", "Thanks", "OK"].sort(compareMessageReactionCategories))
+      .toEqual(["Thanks", "OK", "😂"]);
   });
 });
 ```
@@ -77,7 +91,9 @@ Expected: FAIL because `message-reaction.constants.ts` does not exist.
 Create `backend/src/constants/message-reaction.constants.ts`:
 
 ```ts
-export const MESSAGE_JUDGEMENT_REACTIONS = ["OK", "NO", "Pending"] as const;
+export const MESSAGE_JUDGEMENT_REACTIONS = [
+  "OK", "NO", "Pending", "+1", "Done", "Cool", "Good", "Thanks"
+] as const;
 
 export type MessageReactionCategory = "judgement" | "emoji";
 
@@ -93,7 +109,7 @@ export function compareMessageReactionCategories(left: string, right: string): n
 }
 ```
 
-- [ ] **Step 4: Add failing frontend policy tests**
+- [ ] **Step 4: Add failing frontend policy and catalog tests**
 
 Create `src/features/im/reaction-policy.test.ts` covering classification, current-user slot derivation, disabling, and stable judgement-first ordering:
 
@@ -123,10 +139,42 @@ describe("IM reaction policy", () => {
   });
 
   it("orders judgement summaries before emoji summaries", () => {
-    expect(sortImReactionSummaries([{ emoji: "😂" }, { emoji: "NO" }]))
-      .toEqual([{ emoji: "NO" }, { emoji: "😂" }]);
-    expect(getImReactionCategory("Pending")).toBe("judgement");
+    expect(sortImReactionSummaries([{ emoji: "😂" }, { emoji: "Thanks" }]))
+      .toEqual([{ emoji: "Thanks" }, { emoji: "😂" }]);
+    expect(getImReactionCategory("+1")).toBe("judgement");
   });
+});
+```
+
+Create `src/features/im/reaction-catalog.test.ts` and use `vi.resetModules()` plus localStorage so the test exercises the real module state:
+
+```ts
+it("migrates legacy recent emojis and mixes new judgement usage at the front", async () => {
+  window.localStorage.setItem(
+    "needo.im.recent-emojis.v1",
+    JSON.stringify(["😂", "👍"])
+  );
+  const catalog = await import("./reaction-catalog");
+
+  expect(catalog.getRecentImReactionSnapshot().slice(0, 2)).toEqual(["😂", "👍"]);
+  expect(JSON.parse(window.localStorage.getItem("needo.im.recent-reactions.v2") ?? "[]").slice(0, 2))
+    .toEqual(["😂", "👍"]);
+  catalog.recordRecentImReaction("Thanks");
+  expect(catalog.getRecentImReactionSnapshot().slice(0, 3))
+    .toEqual(["Thanks", "😂", "👍"]);
+  expect(JSON.parse(window.localStorage.getItem("needo.im.recent-reactions.v2") ?? "[]"))
+    .toEqual(catalog.getRecentImReactionSnapshot());
+});
+
+it("keeps only eight valid unique judgement-or-emoji values", async () => {
+  window.localStorage.setItem(
+    "needo.im.recent-reactions.v2",
+    JSON.stringify(["bad", "OK", "OK", "😂", "NO", "👍", "Done", "Cool", "Good", "Thanks", "❤️"])
+  );
+  const catalog = await import("./reaction-catalog");
+  expect(catalog.getRecentImReactionSnapshot()).toEqual([
+    "OK", "😂", "NO", "👍", "Done", "Cool", "Good", "Thanks"
+  ]);
 });
 ```
 
@@ -138,38 +186,95 @@ Run:
 npm test -- src/features/im/reaction-policy.test.ts
 ```
 
-Expected: FAIL because `reaction-policy.ts` does not exist.
+Expected: FAIL because `reaction-policy.ts` and `reaction-catalog.ts` do not exist.
 
-- [ ] **Step 6: Implement the frontend policy and drift guard**
+- [ ] **Step 6: Implement the frontend policy, recent store, and drift guard**
 
-Create `src/features/im/reaction-policy.ts` with the same three judgement values plus the approved quick emoji list. Keep helpers pure so both the action sheet and room page use one rule:
+Create `src/features/im/reaction-policy.ts` with the same eight judgement values. Keep helpers pure so both the action sheet and room page use one rule:
 
 ```ts
-export const IM_JUDGEMENT_REPLIES = ["OK", "NO", "Pending"] as const;
-export const IM_QUICK_EMOJI_REPLIES = ["😂", "🤣", "👍", "🥹", "😭"] as const;
+export const IM_JUDGEMENT_REPLIES = [
+  "OK", "NO", "Pending", "+1", "Done", "Cool", "Good", "Thanks"
+] as const;
 export type ImReactionCategory = "judgement" | "emoji";
 
 export const getImReactionCategory = (value: string): ImReactionCategory =>
   (IM_JUDGEMENT_REPLIES as readonly string[]).includes(value) ? "judgement" : "emoji";
 ```
 
-Implement `deriveCurrentUserReactionSlots`, `isImReactionChoiceDisabled`, and a stable `sortImReactionSummaries`. Add a backend test that reads `src/features/im/reaction-policy.ts` and asserts the frontend contract still contains exactly `OK`, `NO`, and `Pending`; this is a compile-independent drift guard because backend and frontend have separate TypeScript roots.
+Implement `deriveCurrentUserReactionSlots`, `isImReactionChoiceDisabled`, and a stable `sortImReactionSummaries`.
+
+Create `src/features/im/reaction-catalog.ts` as a tiny external-store module:
+
+```ts
+import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
+import { IM_COMMON_EMOJIS, loadRecentImEmojis } from "./emoji";
+import { IM_JUDGEMENT_REPLIES } from "./reaction-policy";
+
+export const IM_RECENT_REACTION_LIMIT = 8;
+export const IM_RECENT_REACTION_STORAGE_KEY = "needo.im.recent-reactions.v2";
+
+const allowed = new Set<string>([...IM_JUDGEMENT_REPLIES, ...IM_COMMON_EMOJIS]);
+const listeners = new Set<() => void>();
+
+const normalize = (values: readonly unknown[]) => {
+  const result: string[] = [];
+  for (const value of values) {
+    if (typeof value === "string" && allowed.has(value) && !result.includes(value)) {
+      result.push(value);
+    }
+    if (result.length === IM_RECENT_REACTION_LIMIT) break;
+  }
+  for (const fallback of loadRecentImEmojis()) {
+    if (!result.includes(fallback)) result.push(fallback);
+    if (result.length === IM_RECENT_REACTION_LIMIT) break;
+  }
+  return result;
+};
+
+const storedRecent = parseBrowserStorageJson<unknown[]>(
+  IM_RECENT_REACTION_STORAGE_KEY,
+  [],
+  { removeOnError: true, silent: true }
+);
+let recent = normalize(storedRecent);
+if (storedRecent.length === 0) {
+  writeBrowserStorage(IM_RECENT_REACTION_STORAGE_KEY, JSON.stringify(recent), { silent: true });
+}
+
+export const getRecentImReactionSnapshot = () => recent;
+export const subscribeRecentImReactions = (listener: () => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+export const recordRecentImReaction = (value: string) => {
+  if (!allowed.has(value)) return recent;
+  recent = normalize([value, ...recent.filter((item) => item !== value)]);
+  writeBrowserStorage(IM_RECENT_REACTION_STORAGE_KEY, JSON.stringify(recent), { silent: true });
+  listeners.forEach((listener) => listener());
+  return recent;
+};
+```
+
+Add a backend drift test that reads `src/features/im/reaction-policy.ts` and asserts all eight values exactly. This remains compile-independent because backend and frontend have separate TypeScript roots.
 
 - [ ] **Step 7: Run the focused policy tests**
 
 Run:
 
 ```bash
-npm test -- --runInBand tests/message-reaction-policy.test.ts
-npm test -- src/features/im/reaction-policy.test.ts
+npm --prefix backend test -- --runInBand tests/message-reaction-policy.test.ts
+npm test -- src/features/im/reaction-policy.test.ts src/features/im/reaction-catalog.test.ts
 ```
 
-Expected: both PASS.
+Working directory: repository root. Expected: both PASS.
 
 - [ ] **Step 8: Commit the contract**
 
 ```bash
-git add backend/src/constants/message-reaction.constants.ts backend/tests/message-reaction-policy.test.ts src/features/im/reaction-policy.ts src/features/im/reaction-policy.test.ts
+git add backend/src/constants/message-reaction.constants.ts backend/tests/message-reaction-policy.test.ts src/features/im/reaction-policy.ts src/features/im/reaction-policy.test.ts src/features/im/reaction-catalog.ts src/features/im/reaction-catalog.test.ts
 git commit -m "feat: define IM reaction slot policy"
 ```
 
@@ -181,6 +286,11 @@ git commit -m "feat: define IM reaction slot policy"
 
 - Modify: `backend/src/repositories/realtime.repository.ts`
 - Modify: `backend/tests/im-message-reaction.repository.test.ts`
+
+**Interfaces:**
+
+- Consumes: Task 1 backend category helpers.
+- Produces: `MessageReactionMutationOutcome` for both PUT and DELETE service paths.
 
 - [ ] **Step 1: Rewrite the repository test fixture for active, soft-deleted, and concurrent reactions**
 
@@ -289,6 +399,11 @@ git commit -m "feat: enforce per-message reaction slots"
 - Modify: `backend/src/api/openapi.ts`
 - Modify: `backend/tests/openapi.test.ts`
 
+**Interfaces:**
+
+- Consumes: Task 2 `MessageReactionMutationOutcome`.
+- Produces: formal 200/409 reaction API behavior and `error.im.reaction_slot_occupied`.
+
 - [ ] **Step 1: Add failing service tests for all repository outcomes**
 
 Update the reaction repository mock to return `MessageReactionMutationOutcome`. Assert:
@@ -391,6 +506,11 @@ git commit -m "feat: expose IM reaction slot conflicts"
 - Create: `backend/scripts/check-message-reaction-slots.ts`
 - Modify: `backend/package.json`
 
+**Interfaces:**
+
+- Consumes: the exact eight-value classification from Task 1, duplicated literally in deploy SQL.
+- Produces: deterministic soft cleanup, explicit rollback SQL, and read-only `check:message-reaction-slots`.
+
 - [ ] **Step 1: Add a failing migration contract test**
 
 The test must assert that the migration:
@@ -450,7 +570,7 @@ FROM (
           `message_id`,
           `user_id`,
           CASE
-            WHEN `emoji` IN ('OK', 'NO', 'Pending') THEN 'judgement'
+            WHEN `emoji` IN ('OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks') THEN 'judgement'
             ELSE 'emoji'
           END
         ORDER BY `updated_at` DESC, `id` DESC
@@ -542,7 +662,7 @@ const duplicates = await prisma.$queryRaw<Array<{
   SELECT
     message_id AS messageId,
     user_id AS userId,
-    CASE WHEN emoji IN ('OK', 'NO', 'Pending') THEN 'judgement' ELSE 'emoji' END AS category,
+    CASE WHEN emoji IN ('OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks') THEN 'judgement' ELSE 'emoji' END AS category,
     COUNT(*) AS activeCount
   FROM message_reactions
   WHERE deleted_at IS NULL
@@ -587,15 +707,157 @@ git commit -m "feat: reconcile historical IM reaction slots"
 
 ---
 
-## Task 5: Render judgement and emoji as independently disabled UI groups
+## Task 5: Create the compact SVG judgement icon system
 
 **Files:**
 
+- Create: `src/assets/im/judgement-reactions/ok.svg`
+- Create: `src/assets/im/judgement-reactions/no.svg`
+- Create: `src/assets/im/judgement-reactions/pending.svg`
+- Create: `src/assets/im/judgement-reactions/plus-one.svg`
+- Create: `src/assets/im/judgement-reactions/done.svg`
+- Create: `src/assets/im/judgement-reactions/cool.svg`
+- Create: `src/assets/im/judgement-reactions/good.svg`
+- Create: `src/assets/im/judgement-reactions/thanks.svg`
+- Create: `src/features/im/JudgementReactionIcon.tsx`
+- Create: `src/features/im/JudgementReactionIcon.test.tsx`
+
+**Interfaces:**
+
+- Consumes: `IM_JUDGEMENT_REPLIES` and `getImReactionCategory` from Task 1.
+- Produces: `JudgementReactionIcon({ value, className? })` and `ImReactionValue({ value, className? })` for action buttons, composer buttons, and message summaries.
+
+- [ ] **Step 1: Write failing SVG renderer tests**
+
+Create `JudgementReactionIcon.test.tsx` and render all eight values. Assert each produces an `<img>` with an SVG URL, accessible label, compact class, and no black background. Assert `ImReactionValue` renders an SVG for `Thanks` but literal Unicode for `😂`:
+
+```tsx
+it.each(IM_JUDGEMENT_REPLIES)("renders the dedicated %s SVG", async (value) => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  await act(async () => root.render(<JudgementReactionIcon value={value} />));
+  const image = container.querySelector("img");
+  expect(image?.getAttribute("src")).toMatch(/\.svg/);
+  expect(image?.getAttribute("alt")).toBe(value);
+  expect(image?.className).toContain("max-h-[26px]");
+  expect(container.innerHTML).not.toContain("bg-black");
+  await act(async () => root.unmount());
+});
+```
+
+- [ ] **Step 2: Run the renderer test and observe the missing module**
+
+Run:
+
+```bash
+npm test -- src/features/im/JudgementReactionIcon.test.tsx
+```
+
+Expected: FAIL because the renderer and SVG files do not exist.
+
+- [ ] **Step 3: Add eight explicit transparent SVG assets**
+
+Each SVG uses `viewBox="0 0 WIDTH 28"`, transparent background, bold italic system text, a same-hue dark stroke, and a subtle same-hue shadow. Use these exact identities:
+
+| File | Text | Width | Fill | Stroke |
+|---|---:|---:|---|---|
+| `ok.svg` | OK | 42 | `#22C55E` | `#15803D` |
+| `no.svg` | NO | 42 | `#EF4444` | `#B91C1C` |
+| `pending.svg` | Pending | 82 | `#F59E0B` | `#B45309` |
+| `plus-one.svg` | +1 | 42 | `#3B82F6` | `#1D4ED8` |
+| `done.svg` | Done | 58 | `#16A34A` | `#166534` |
+| `cool.svg` | Cool | 54 | `#06B6D4` | `#0E7490` |
+| `good.svg` | Good | 58 | `#A855F7` | `#7E22CE` |
+| `thanks.svg` | Thanks | 74 | `#F97316` | `#C2410C` |
+
+Use this complete structure for every file, substituting the table values and a unique filter id:
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 28" role="img" aria-label="OK">
+  <defs>
+    <filter id="ok-shadow" x="-20%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#15803D" flood-opacity="0.52"/>
+    </filter>
+  </defs>
+  <text x="50%" y="20" text-anchor="middle" fill="#22C55E" stroke="#15803D"
+    stroke-width="0.65" paint-order="stroke" filter="url(#ok-shadow)"
+    font-family="Arial Black, Arial, sans-serif" font-size="19" font-style="italic" font-weight="900">OK</text>
+</svg>
+```
+
+The implementation must contain no raster screenshots, embedded script, external URL, or black rectangle.
+
+- [ ] **Step 4: Implement the typed icon map and shared value renderer**
+
+Create `JudgementReactionIcon.tsx` with eight static imports and this exhaustive map:
+
+```tsx
+const judgementIconUrl: Record<(typeof IM_JUDGEMENT_REPLIES)[number], string> = {
+  OK: okIcon,
+  NO: noIcon,
+  Pending: pendingIcon,
+  "+1": plusOneIcon,
+  Done: doneIcon,
+  Cool: coolIcon,
+  Good: goodIcon,
+  Thanks: thanksIcon
+};
+
+export function JudgementReactionIcon({ value, className }: {
+  value: (typeof IM_JUDGEMENT_REPLIES)[number];
+  className?: string;
+}) {
+  return <img alt={value} className={cn("block h-auto max-h-[26px] max-w-full", className)} src={judgementIconUrl[value]} />;
+}
+
+export function ImReactionValue({ value, className }: { value: string; className?: string }) {
+  return getImReactionCategory(value) === "judgement"
+    ? <JudgementReactionIcon className={className} value={value as (typeof IM_JUDGEMENT_REPLIES)[number]} />
+    : <span className={className}>{value}</span>;
+}
+```
+
+- [ ] **Step 5: Run renderer and asset-safety checks**
+
+Run:
+
+```bash
+npm test -- src/features/im/JudgementReactionIcon.test.tsx
+rg -L '<svg' src/assets/im/judgement-reactions/*.svg
+rg -n 'script|https?://|<rect[^>]+fill="(#000|black)' src/assets/im/judgement-reactions/*.svg
+```
+
+Expected: test PASS; both asset scans print nothing.
+
+- [ ] **Step 6: Commit the SVG system**
+
+```bash
+git add src/assets/im/judgement-reactions src/features/im/JudgementReactionIcon.tsx src/features/im/JudgementReactionIcon.test.tsx
+git commit -m "feat: add compact IM judgement icons"
+```
+
+---
+
+## Task 6: Build one recent-first catalog for action sheet and composer
+
+**Files:**
+
+- Create: `src/features/im/ReactionCatalog.tsx`
+- Create: `src/features/im/ReactionCatalog.test.tsx`
 - Modify: `src/features/im/components.tsx`
 - Modify: `src/features/im/components.action-menu.test.tsx`
-- Modify: `src/features/im/pages.test.ts`
+- Modify: `src/features/im/components.composer.test.tsx`
 
-- [ ] **Step 1: Add failing DOM tests for action-sheet state**
+**Interfaces:**
+
+- Consumes: Task 1 recent store/policy and Task 5 `ImReactionValue`.
+- Produces: `ReactionCatalog` with compact/expanded variants, optional reaction-slot state, and `onSelect(value)`.
+
+- [ ] **Step 1: Add failing shared catalog DOM tests**
+
+Create `ReactionCatalog.test.tsx`. Render recent values `Thanks`, `😂`, and `OK`. Assert compact mode renders one mixed `data-im-reaction-section="common"` row in recent order with a more button at the end, but no judgement/general headings. Assert expanded mode renders headings in the exact order `常用表情`, `判断表情`, `一般表情`, includes all eight SVG judgement values, and filters every judgement value out of the general section.
+
+Extend `components.action-menu.test.tsx` with a `MessageBubble` containing `Thanks` and `😂` summaries; assert the judgement summary uses the SVG renderer and the emoji summary remains literal Unicode.
 
 Render `ImMessageActionSheet` with these new props:
 
@@ -605,31 +867,51 @@ selectedEmoji="😂"
 pendingCategory={undefined}
 ```
 
-Assert:
+Assert `OK` and `😂` are selected but enabled; the other seven judgements and all other emojis are disabled in both common/full sections; a disabled click does not call `onReact`; and `pendingCategory="judgement"` disables all eight judgement values without disabling emoji values. Assert the action sheet delegates to compact/expanded catalog variants and no longer owns `imQuickReactions` or `imDefaultReactions` arrays.
 
-- separate `data-im-message-reaction-group="judgement"` and `"emoji"` sections;
-- `OK`, `NO`, and `Pending` are all present only in the judgement group;
-- `OK` and `😂` have `aria-pressed="true"` and are not disabled;
-- `NO`, `Pending`, and every emoji other than `😂` are natively disabled;
-- clicking a disabled button never calls `onReact`;
-- clicking selected `OK` and `😂` calls `onReact` once with the selected value;
-- `pendingCategory="judgement"` disables all three judgement buttons without disabling emoji controls.
+- [ ] **Step 2: Add failing composer parity tests**
 
-Update compact/full-width assertions to count each group separately rather than treating reactions as one row.
+In `components.composer.test.tsx`, open the emoji panel and assert the same three headings and all eight SVG values. Click `Thanks` and expect `onDraftChange("existingThanks")`; click `😂` and expect `onDraftChange("existing😂")`. After each click, assert the value is first in `getRecentImReactionSnapshot()`.
 
-- [ ] **Step 2: Run the action-menu test and observe missing props/groups**
+- [ ] **Step 3: Run catalog, action-menu, and composer tests to verify RED**
 
 Run:
 
 ```bash
-npm test -- src/features/im/components.action-menu.test.tsx
+npm test -- src/features/im/ReactionCatalog.test.tsx src/features/im/components.action-menu.test.tsx src/features/im/components.composer.test.tsx
 ```
 
-Expected: FAIL because the action sheet still renders one mixed quick-reaction row.
+Expected: FAIL because `ReactionCatalog` and the unified sections do not exist.
 
-- [ ] **Step 3: Extend `ImReactionButton` without blackening the selected reply**
+- [ ] **Step 4: Implement the shared catalog with native disabled semantics**
 
-Add `selected` and `disabled` props, native semantics, and a component-boundary click guard:
+Create `ReactionCatalog.tsx` with this exact interface:
+
+```ts
+export type ReactionCatalogProps = {
+  disabled?: boolean;
+  expanded: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  onSelect: (value: string) => void;
+  pendingCategory?: ImReactionCategory;
+  recentValues: readonly string[];
+  selectedEmoji?: string;
+  selectedJudgement?: string;
+  visibleRecentCount?: number;
+};
+```
+
+Every item derives its category and uses this native guard:
+
+```ts
+const category = getImReactionCategory(value);
+const selectedValue = category === "judgement" ? selectedJudgement : selectedEmoji;
+const itemDisabled = Boolean(disabled)
+  || pendingCategory === category
+  || isImReactionChoiceDisabled(value, selectedValue, false);
+```
+
+Default `visibleRecentCount` to 6 when the caller has not measured a compact width. Then render:
 
 ```tsx
 <button
@@ -639,11 +921,13 @@ Add `selected` and `disabled` props, native semantics, and a component-boundary 
   onClick={disabled ? undefined : onClick}
   type="button"
 >
+  <ImReactionValue value={value} />
+</button>
 ```
 
-Use a light primary tint/ring for selected state. Use muted gray plus `cursor-not-allowed` for disabled state. Do not use a black selected background, and do not let the disabled class override the selected class because selected buttons remain enabled except while their category request is pending.
+Selected uses a light primary ring/tint, never black. Disabled uses grayscale, reduced opacity, and `cursor-not-allowed`. Compact mode renders `recentValues.slice(0, visibleRecentCount)` in one non-scrolling row and always appends more. Expanded mode renders all three sections and a collapse control only when `onExpandedChange` exists.
 
-- [ ] **Step 4: Split the action sheet into two groups**
+- [ ] **Step 5: Replace both existing catalog implementations**
 
 Change `ImMessageActionSheet` props to include:
 
@@ -653,37 +937,45 @@ selectedEmoji?: string;
 pendingCategory?: ImReactionCategory;
 ```
 
-Render:
+Use `useSyncExternalStore(subscribeRecentImReactions, getRecentImReactionSnapshot, getRecentImReactionSnapshot)` in both `ImMessageActionSheet` and `ImChatComposer`. The action sheet passes its measured visible count plus selection/pending props. The composer always renders the expanded three-section catalog and passes no selected/pending values because it inserts content rather than mutating a message.
 
-- “判断回复”: `IM_JUDGEMENT_REPLIES` (`OK`, `NO`, `Pending`);
-- “表情回复”: `IM_QUICK_EMOJI_REPLIES` plus the expandable default emoji catalog.
+Delete the old `imQuickReactions`, `imDefaultReactions`, duplicated “最近使用/所有表情” JSX, and local `recentEmojis` state. Keep `IM_COMMON_EMOJIS` in `emoji.ts` as the general-catalog authority.
 
-Filter `OK`, `NO`, and `Pending` out of the default catalog defensively with `getImReactionCategory(value) === "emoji"`. Derive every button's disabled state through `isImReactionChoiceDisabled`, so an occupied emoji slot also disables emojis in the expanded catalog.
+Replace the message-summary `{reaction.emoji}` label in `MessageBubble` with `<ImReactionValue value={reaction.emoji} />`, preserving the existing click target and people label.
 
-- [ ] **Step 5: Add source-contract assertions**
+- [ ] **Step 6: Insert composer values and record usage**
 
-Update `src/features/im/pages.test.ts` so it no longer expects the old mixed `imQuickReactions` constant. Assert the page passes selected slots and category pending state to `ImMessageActionSheet`.
+Replace `selectEmoji` with:
 
-- [ ] **Step 6: Run component and source-contract tests**
+```ts
+const selectReactionValue = (value: string) => {
+  onDraftChange(`${draft}${value}`);
+  recordRecentImReaction(value);
+};
+```
+
+The action sheet must not record directly because a reaction request can fail; Task 7 records only after a successful add response.
+
+- [ ] **Step 7: Run shared catalog and both-entry tests**
 
 Run:
 
 ```bash
-npm test -- src/features/im/components.action-menu.test.tsx src/features/im/pages.test.ts
+npm test -- src/features/im/reaction-catalog.test.ts src/features/im/ReactionCatalog.test.tsx src/features/im/components.action-menu.test.tsx src/features/im/components.composer.test.tsx
 ```
 
-Expected: PASS with no mobile-width count regression.
+Expected: PASS, including compact-width counts, exact section order, SVG rendering, and composer insertion.
 
-- [ ] **Step 7: Commit the action-sheet UI**
+- [ ] **Step 8: Commit the unified catalog UI**
 
 ```bash
-git add src/features/im/components.tsx src/features/im/components.action-menu.test.tsx src/features/im/pages.test.ts
-git commit -m "feat: split IM judgement and emoji controls"
+git add src/features/im/ReactionCatalog.tsx src/features/im/ReactionCatalog.test.tsx src/features/im/components.tsx src/features/im/components.action-menu.test.tsx src/features/im/components.composer.test.tsx
+git commit -m "feat: unify IM reaction and emoji catalogs"
 ```
 
 ---
 
-## Task 6: Replace optimistic reaction flashes with authoritative request handling
+## Task 7: Replace optimistic reaction flashes with authoritative request handling
 
 **Files:**
 
@@ -692,6 +984,11 @@ git commit -m "feat: split IM judgement and emoji controls"
 - Modify: `src/features/im/pages.tsx`
 - Modify: `src/features/im/pages.test.ts`
 - Modify: `src/i18n/translations.ts`
+
+**Interfaces:**
+
+- Consumes: Task 1 category/recent functions and Task 6 action-sheet props.
+- Produces: authoritative category-pending mutation flow and explicit localized failure notices.
 
 - [ ] **Step 1: Add failing error-copy and authoritative-flow tests**
 
@@ -711,6 +1008,8 @@ expect(getImReactionFailureMessage(new Error("network")))
 ```
 
 Update the page contract test to require a category key such as `${message.id}:${getImReactionCategory(reaction)}`, require `.catch((error) => setActionNotice(...))`, and forbid the old optimistic `setMessageReactions` block before the API call.
+
+Add an async interaction assertion: a rejected add does not call `recordRecentImReaction`, while a resolved add calls it once with the added value. A successful DELETE does not need to reorder recent usage because the value was already used when added.
 
 - [ ] **Step 2: Run the focused tests and observe failures**
 
@@ -756,9 +1055,10 @@ The function must:
 4. mark only that category pending;
 5. call `store.setMessageReaction(..., !reactedByMe)`;
 6. replace local groups only from `savedMessage.reactions` on success;
-7. close the action sheet after success when `closeAfter` is true;
-8. preserve the existing groups and show mapped failure copy on rejection;
-9. clear both the ref and render pending state in `finally`.
+7. call `recordRecentImReaction(reaction)` only when the operation was an add and succeeded;
+8. close the action sheet after success when `closeAfter` is true;
+9. preserve the existing groups and show mapped failure copy on rejection;
+10. clear both the ref and render pending state in `finally`.
 
 There must be no pre-request `setMessageReactions` call and no captured `previousState` rollback. The old confirmed summary remains visible throughout a cancellation request; a new summary appears only after a successful server response.
 
@@ -770,20 +1070,21 @@ Sort `getMessageReactionSummaries` with `sortImReactionSummaries`. The existing 
 
 Add translation entries for:
 
-- `判断回复`
-- `表情回复`
+- `常用表情`
+- `判断表情`
+- `一般表情`
 - `请先取消已发送的同类回复`
 - `操作过于频繁，请稍后重试`
 - `回复操作失败，请稍后重试`
 
-Provide `zh-Hant`, `ja`, `en`, and `ko` values in `src/i18n/translations.ts`; keep `OK`, `NO`, and `Pending` unchanged.
+Provide `zh-Hant`, `ja`, `en`, and `ko` values in `src/i18n/translations.ts`; keep all eight judgement values unchanged.
 
 - [ ] **Step 8: Run focused frontend tests**
 
 Run:
 
 ```bash
-npm test -- src/features/im/reaction-policy.test.ts src/features/im/components.action-menu.test.tsx src/features/im/pages.test.ts src/features/im/store.test.ts src/features/im/formal-api.test.ts
+npm test -- src/features/im/reaction-policy.test.ts src/features/im/reaction-catalog.test.ts src/features/im/JudgementReactionIcon.test.tsx src/features/im/ReactionCatalog.test.tsx src/features/im/components.action-menu.test.tsx src/features/im/components.composer.test.tsx src/features/im/pages.test.ts src/features/im/store.test.ts src/features/im/formal-api.test.ts
 ```
 
 Expected: PASS. Existing `reactionVersion` stale-snapshot tests must remain green.
@@ -797,7 +1098,7 @@ git commit -m "fix: keep IM reaction state server authoritative"
 
 ---
 
-## Task 7: Update formal documentation and complete end-to-end verification
+## Task 8: Update formal documentation and complete end-to-end verification
 
 **Files:**
 
@@ -805,12 +1106,18 @@ git commit -m "fix: keep IM reaction state server authoritative"
 - Modify only if current behavior is documented there: `README.md`
 - Create: `docs/verification/2026-08-30-im-quick-response-slots.md`
 
+**Interfaces:**
+
+- Consumes: all prior task outputs.
+- Produces: formal contract documentation and reproducible automated/browser acceptance evidence.
+
 - [ ] **Step 1: Update the formal IM contract documentation**
 
 Document:
 
-- judgement values `OK`, `NO`, `Pending`;
+- judgement values `OK`, `NO`, `Pending`, `+1`, `Done`, `Cool`, `Good`, `Thanks`;
 - one judgement plus one emoji per user/message;
+- shared “常用表情 → 判断表情 → 一般表情” catalog structure, v2 recent storage migration, composer insertion behavior, and compact SVG asset contract;
 - same-value PUT idempotence and different-value same-category 409;
 - exact-value DELETE and `reactionVersion` SSE/REST ordering;
 - historical soft-cleanup migration and read-only duplicate checker.
@@ -835,7 +1142,7 @@ Expected: all focused tests, lint, and build pass; the read-only checker returns
 Run from the repository root:
 
 ```bash
-npm test -- src/features/im/reaction-policy.test.ts src/features/im/components.action-menu.test.tsx src/features/im/pages.test.ts src/features/im/store.test.ts src/features/im/formal-api.test.ts
+npm test -- src/features/im/reaction-policy.test.ts src/features/im/reaction-catalog.test.ts src/features/im/JudgementReactionIcon.test.tsx src/features/im/ReactionCatalog.test.tsx src/features/im/components.action-menu.test.tsx src/features/im/components.composer.test.tsx src/features/im/pages.test.ts src/features/im/store.test.ts src/features/im/formal-api.test.ts
 npm run lint
 npm run i18n:audit
 npm run verify:production-build
@@ -866,13 +1173,16 @@ Use the browser-control skill and a message whose original reaction state is rec
 For account A:
 
 1. Open the message action sheet at mobile width and select `OK`.
-2. Reopen the sheet and verify `OK` is selected/enabled while `NO` and `Pending` are gray, have `disabled === true`, and clicking them creates no network request.
+2. Reopen the sheet and verify `OK` is selected/enabled while the other seven judgements are gray, have `disabled === true`, and clicking them creates no network request.
 3. Select one emoji and verify a judgement plus an emoji are both visible below the message.
 4. Reopen the sheet and verify the selected emoji is enabled while every other quick and expanded emoji is disabled.
 5. Wait at least 1.2 seconds, reload, and verify both values persist.
 6. Click the selected judgement summary to cancel; verify all judgement options re-enable and the emoji remains.
 7. Click the selected emoji summary to cancel; verify all emoji options re-enable.
 8. Trigger or simulate a controlled 409/429 only through safe local test setup; verify the confirmed UI remains unchanged and the explicit notice is shown. Do not spam the shared rate limiter.
+9. Confirm the compact row shows newly used values in recent order with more at the end; expand it and verify `常用表情`, `判断表情`, `一般表情` order.
+10. Open the composer emoji button, verify the same section order, insert `Thanks` as text and `😂` as Unicode, and confirm both update the common row.
+11. Inspect all eight SVGs at mobile width: 22–26px visual height, transparent background, no black selected state, and no horizontal overflow.
 
 For account B:
 
@@ -900,7 +1210,7 @@ Create `docs/verification/2026-08-30-im-quick-response-slots.md` containing:
 
 ```bash
 git add docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md docs/verification/2026-08-30-im-quick-response-slots.md
-git add README.md  # only when Task 7 Step 1 actually changed it
+git add README.md  # only when Task 8 Step 1 actually changed it
 git commit -m "docs: verify IM quick response slots"
 ```
 
@@ -908,12 +1218,15 @@ git commit -m "docs: verify IM quick response slots"
 
 ## Final Acceptance Checklist
 
-- [ ] One user can persist exactly one judgement and one emoji on one message.
+- [ ] One user can persist exactly one of the eight judgement values and one emoji on one message.
 - [ ] A second different value in an occupied category never writes and returns 409.
 - [ ] Same-value PUT is idempotent and click-again DELETE cancels the selected value.
 - [ ] Unselected same-category controls are gray, natively disabled, and send no request.
 - [ ] The selected control is highlighted, not black/gray, and remains clickable.
 - [ ] Other users' controls and reactions remain independent.
+- [ ] Compact mode mixes recently used values in one row; expanded action/composer catalogs use common, judgement, general order.
+- [ ] All eight judgement values use the dedicated transparent SVGs in catalog controls and message summaries.
+- [ ] Composer judgement clicks insert exact text, emoji clicks insert Unicode, and both update the shared v2 recent list.
 - [ ] 409, 429, network, and 5xx failures do not create a transient reaction summary.
 - [ ] Older REST/SSE `reactionVersion` snapshots cannot overwrite newer state.
 - [ ] Historical duplicates are soft-deleted deterministically or migration application is explicitly blocked with evidence.
