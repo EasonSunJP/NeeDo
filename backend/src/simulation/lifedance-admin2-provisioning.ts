@@ -1,5 +1,6 @@
 export const LIFEDANCE_ADMIN2_PLAN = {
-  email: "admin2@lifedance.com",
+  email: "admina@lifedance.com",
+  legacyEmails: ["admin2@lifedance.com"],
   needoId: "needo0000000002",
   numberPart: "0000000002",
   displayName: "LifeDance 管理员 2",

@@ -7,7 +7,8 @@ import {
 describe("LifeDance admin2 provisioning plan", () => {
   it("keeps the requested fixed account, NeeDo ID, shop, identities, and friend count", () => {
     expect(LIFEDANCE_ADMIN2_PLAN).toMatchObject({
-      email: "admin2@lifedance.com",
+      email: "admina@lifedance.com",
+      legacyEmails: ["admin2@lifedance.com"],
       needoId: "needo0000000002",
       numberPart: "0000000002",
       shopName: "麻布十番超级按摩",
