@@ -293,6 +293,12 @@ describe("ImMessageActionSheet", () => {
     expect(onClose).not.toHaveBeenCalled();
 
     await act(async () => {
+      backdrop!.blur();
+      backdrop!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
       dispatchPointerActivation(backdrop!);
     });
     expect(onClose).toHaveBeenCalledOnce();

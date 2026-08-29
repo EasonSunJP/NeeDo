@@ -2285,7 +2285,10 @@ export function ImMessageActionSheet({
           const pointerStartedOnBackdrop = backdropPointerStartedRef.current;
           backdropPointerStartedRef.current = false;
 
-          if (!pointerStartedOnBackdrop && event.detail !== 0) {
+          const keyboardActivatedFocusedBackdrop =
+            event.detail === 0 && document.activeElement === event.currentTarget;
+
+          if (!pointerStartedOnBackdrop && !keyboardActivatedFocusedBackdrop) {
             event.preventDefault();
             event.stopPropagation();
             return;
