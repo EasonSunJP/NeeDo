@@ -89,10 +89,7 @@ describe("AffiliateTaskRepository transaction boundary", () => {
               ]
             },
             {
-              OR: [
-                { name: { contains: "Shibuya" } },
-                { taskCode: { contains: "Shibuya" } }
-              ]
+              OR: [{ name: { contains: "Shibuya" } }, { taskCode: { contains: "Shibuya" } }]
             }
           ]
         })
@@ -111,7 +108,8 @@ describe("AffiliateTaskRepository transaction boundary", () => {
       reviewedById: 99,
       reviewedAt: now,
       rejectionReason: "Incomplete proof",
-      releasedBudgetNdp: 2_000_000
+      releasedBudgetNdp: 2_000_000,
+      releasedPlatformFeeNdp: 200_000
     });
 
     expect(update).toHaveBeenCalledWith({
@@ -122,7 +120,84 @@ describe("AffiliateTaskRepository transaction boundary", () => {
         reviewedAt: now,
         rejectionReason: "Incomplete proof",
         releasedBudgetNdp: 2_000_000,
+        releasedPlatformFeeNdp: 200_000,
         lockVersion: { increment: 1 }
+      }
+    });
+  });
+
+  it("persists the fee rule snapshot and gross reserve when submitting", async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const repository = new AffiliateTaskRepository({ affiliateTask: { update } } as never);
+
+    await repository.markTaskSubmitted({
+      taskId: 81,
+      submittedAt: now,
+      reservedBudgetNdp: 2_200_000,
+      platformFeeRuleId: 12,
+      platformFeeBps: 1_000,
+      platformFeeReserveNdp: 200_000
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 81 },
+      data: {
+        status: "PENDING_REVIEW",
+        submittedAt: now,
+        reservedBudgetNdp: 2_200_000,
+        platformFeeRuleId: 12,
+        platformFeeBps: 1_000,
+        platformFeeReserveNdp: 200_000,
+        lockVersion: { increment: 1 }
+      }
+    });
+  });
+
+  it("persists the commission and platform fee components of a gross reservation", async () => {
+    const createdAt = new Date("2026-08-26T00:01:00.000Z");
+    const create = jest.fn().mockResolvedValue({
+      id: 33,
+      taskId: 81,
+      walletId: 501,
+      totalFrozenNdp: 2_200_000,
+      commissionFrozenNdp: 2_000_000,
+      platformFeeFrozenNdp: 200_000,
+      allocatedNdp: 0,
+      capturedNdp: 0,
+      platformFeeCapturedNdp: 0,
+      releasedNdp: 0,
+      platformFeeReleasedNdp: 0,
+      status: "ACTIVE",
+      idempotencyKey: "affiliate-task:81:v1:reservation",
+      frozenAt: createdAt,
+      releasedAt: null
+    });
+    const repository = new AffiliateTaskRepository({
+      affiliateBudgetReservation: { create }
+    } as never);
+
+    await expect(
+      repository.createBudgetReservation({
+        taskId: 81,
+        walletId: 501,
+        totalFrozenNdp: 2_200_000,
+        commissionFrozenNdp: 2_000_000,
+        platformFeeFrozenNdp: 200_000,
+        idempotencyKey: "affiliate-task:81:v1:reservation"
+      })
+    ).resolves.toMatchObject({
+      totalFrozenNdp: 2_200_000,
+      commissionFrozenNdp: 2_000_000,
+      platformFeeFrozenNdp: 200_000
+    });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        taskId: 81,
+        walletId: 501,
+        totalFrozenNdp: 2_200_000,
+        commissionFrozenNdp: 2_000_000,
+        platformFeeFrozenNdp: 200_000,
+        idempotencyKey: "affiliate-task:81:v1:reservation"
       }
     });
   });

@@ -1,5 +1,6 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { AffiliateTaskFeeSnapshot } from "../src/services/affiliate-platform-fee.service";
 import {
   AffiliateTaskService,
   type AffiliateBudgetLedgerPort,
@@ -126,6 +127,33 @@ class AffiliateBudgetLedgerSpy implements AffiliateBudgetLedgerPort {
   }
 }
 
+class AffiliatePlatformFeeSpy {
+  public readonly calls: Array<{
+    shopIds: number[];
+    effectiveAt: Date;
+    transactionClient?: unknown;
+  }> = [];
+  public result: AffiliateTaskFeeSnapshot = {
+    ruleId: 81,
+    ruleIds: [81],
+    feeBps: 1_000,
+    source: "global",
+    shopIds: [11],
+    effectiveAt: now
+  };
+  public error: unknown;
+
+  public async resolveForTask(
+    shopIds: number[],
+    effectiveAt: Date,
+    transactionClient?: unknown
+  ): Promise<AffiliateTaskFeeSnapshot> {
+    this.calls.push({ shopIds, effectiveAt, transactionClient });
+    if (this.error) throw this.error;
+    return { ...this.result, shopIds, effectiveAt };
+  }
+}
+
 class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
   public readonly shops = new Map<number, AffiliateShopScopeRecord>();
   public readonly services = new Map<number, AffiliateServiceScopeRecord>();
@@ -139,7 +167,12 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     kind: "freeze" | "release";
     amountNdp: number;
   }> = [];
-  public auditRows: Array<{ action: string; taskId: number; actorUserId: number }> = [];
+  public auditRows: Array<{
+    action: string;
+    taskId: number;
+    actorUserId: number;
+    metadata?: unknown;
+  }> = [];
 
   private taskId = 1;
   private reservationId = 1;
@@ -212,6 +245,11 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       allocatedBudgetNdp: 0,
       settledBudgetNdp: 0,
       releasedBudgetNdp: 0,
+      platformFeeRuleId: null,
+      platformFeeBps: 0,
+      platformFeeReserveNdp: 0,
+      settledPlatformFeeNdp: 0,
+      releasedPlatformFeeNdp: 0,
       reviewedById: null,
       reviewedAt: null,
       rejectionReason: null,
@@ -326,11 +364,17 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     taskId: number;
     submittedAt: Date;
     reservedBudgetNdp: number;
+    platformFeeRuleId: number;
+    platformFeeBps: number;
+    platformFeeReserveNdp: number;
   }): Promise<void> {
     const task = this.tasks.get(input.taskId)!;
     task.status = "pending_review";
     task.submittedAt = input.submittedAt;
     task.reservedBudgetNdp = input.reservedBudgetNdp;
+    task.platformFeeRuleId = input.platformFeeRuleId;
+    task.platformFeeBps = input.platformFeeBps;
+    task.platformFeeReserveNdp = input.platformFeeReserveNdp;
     task.lockVersion += 1;
   }
 
@@ -338,6 +382,8 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     taskId: number;
     walletId: number;
     totalFrozenNdp: number;
+    commissionFrozenNdp: number;
+    platformFeeFrozenNdp: number;
     idempotencyKey: string;
   }): Promise<AffiliateBudgetReservationRecord> {
     const reservation: AffiliateBudgetReservationRecord = {
@@ -345,9 +391,13 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       taskId: input.taskId,
       walletId: input.walletId,
       totalFrozenNdp: input.totalFrozenNdp,
+      commissionFrozenNdp: input.commissionFrozenNdp,
+      platformFeeFrozenNdp: input.platformFeeFrozenNdp,
       allocatedNdp: 0,
       capturedNdp: 0,
+      platformFeeCapturedNdp: 0,
       releasedNdp: 0,
+      platformFeeReleasedNdp: 0,
       status: "active",
       idempotencyKey: input.idempotencyKey,
       frozenAt: now,
@@ -389,6 +439,7 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     reviewedAt: Date;
     rejectionReason: string;
     releasedBudgetNdp: number;
+    releasedPlatformFeeNdp: number;
   }): Promise<void> {
     Object.assign(this.tasks.get(input.taskId)!, input, {
       status: "rejected",
@@ -399,12 +450,14 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
   public async releaseBudgetReservation(input: {
     reservationId: number;
     releasedNdp: number;
+    platformFeeReleasedNdp: number;
     releasedAt: Date;
   }): Promise<void> {
     const reservation = [...this.reservations.values()].find(
       (candidate) => candidate.id === input.reservationId
     )!;
     reservation.releasedNdp = input.releasedNdp;
+    reservation.platformFeeReleasedNdp = input.platformFeeReleasedNdp;
     reservation.releasedAt = input.releasedAt;
     reservation.status = "released";
   }
@@ -413,6 +466,7 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     actorUserId: number;
     action: string;
     taskId: number;
+    metadata?: unknown;
   }): Promise<void> {
     this.auditRows.push(input);
   }
@@ -437,13 +491,15 @@ const createFixture = () => {
   repository.memberships.set(31, new Set([11, 12]));
   repository.manageableAccounts.set(shopActor.userId, new Set([31]));
   const ledger = new AffiliateBudgetLedgerSpy();
+  const platformFee = new AffiliatePlatformFeeSpy();
   let codeSequence = 1;
   const service = new AffiliateTaskService(repository, ledger, {
     now: () => now,
-    createTaskCode: () => `AFF-TEST-${codeSequence++}`
+    createTaskCode: () => `AFF-TEST-${codeSequence++}`,
+    platformFeeService: platformFee
   });
 
-  return { repository, ledger, service };
+  return { repository, ledger, platformFee, service };
 };
 
 const createShopDraft = async (
@@ -666,7 +722,9 @@ describe("AffiliateTaskService submission and review", () => {
 
     await expect(service.submit(shopActor, draft.id)).resolves.toMatchObject({
       status: "pending_review",
-      reservedBudgetNdp: taskFields.totalBudgetNdp
+      reservedBudgetNdp: 2_200_000,
+      platformFeeBps: 1_000,
+      platformFeeReserveNdp: 200_000
     });
     expect(ledger.freezeCalls).toHaveLength(1);
   });
@@ -703,12 +761,17 @@ describe("AffiliateTaskService submission and review", () => {
     expect(repeated.id).toBe(submitted.id);
     expect(submitted).toMatchObject({
       status: "pending_review",
-      reservedBudgetNdp: 2_000_000,
+      reservedBudgetNdp: 2_200_000,
+      platformFeeRuleId: 81,
+      platformFeeBps: 1_000,
+      platformFeeReserveNdp: 200_000,
       shops: [{ shopNameSnapshot: "Shibuya Shop Updated" }],
       services: [{ serviceNameSnapshot: "Aroma 60 Updated", servicePriceJpySnapshot: 9_900 }],
       budgetReservation: {
         walletId: ledger.walletId,
-        totalFrozenNdp: 2_000_000,
+        totalFrozenNdp: 2_200_000,
+        commissionFrozenNdp: 2_000_000,
+        platformFeeFrozenNdp: 200_000,
         status: "active"
       }
     });
@@ -717,16 +780,36 @@ describe("AffiliateTaskService submission and review", () => {
         taskId: draft.id,
         ownerType: "shop",
         ownerId: 11,
-        amountNdp: 2_000_000,
+        amountNdp: 2_200_000,
         actorUserId: shopActor.userId
       })
     ]);
     expect(repository.budgetTransactionLinks).toEqual([
-      expect.objectContaining({ kind: "freeze", amountNdp: 2_000_000 })
+      expect.objectContaining({ kind: "freeze", amountNdp: 2_200_000 })
     ]);
     expect(repository.auditRows).toContainEqual(
       expect.objectContaining({ action: "affiliate.task.submitted", taskId: draft.id })
     );
+  });
+
+  it("rejects mismatched multi-shop fee rates before freezing funds", async () => {
+    const { ledger, platformFee, service } = createFixture();
+    const draft = await service.createDraft(shopActor, {
+      publisherType: "merchant_account",
+      merchantAccountId: 31,
+      shopIds: [11, 12],
+      ...taskFields,
+      serviceScopeMode: "all_current_services",
+      selectedServiceIds: []
+    });
+    platformFee.error = Object.assign(new Error("rate mismatch"), {
+      code: ERROR_CODES.AFFILIATE_PLATFORM_FEE_RATE_MISMATCH,
+      message: "error.affiliate.platform_fee_rate_mismatch",
+      statusCode: 409
+    });
+
+    await expect(service.submit(shopActor, draft.id)).rejects.toBe(platformFee.error);
+    expect(ledger.freezeCalls).toHaveLength(0);
   });
 
   it("rolls back refreshed snapshots and task state when the wallet is insufficient", async () => {
@@ -787,13 +870,15 @@ describe("AffiliateTaskService submission and review", () => {
     expect(repeated.id).toBe(rejected.id);
     expect(rejected).toMatchObject({
       status: "rejected",
-      reservedBudgetNdp: 2_000_000,
+      reservedBudgetNdp: 2_200_000,
       releasedBudgetNdp: 2_000_000,
+      releasedPlatformFeeNdp: 200_000,
       reviewedById: platformActor.userId,
       rejectionReason: "Campaign proof is incomplete",
       budgetReservation: {
         status: "released",
         releasedNdp: 2_000_000,
+        platformFeeReleasedNdp: 200_000,
         releasedAt: now
       }
     });
@@ -803,13 +888,13 @@ describe("AffiliateTaskService submission and review", () => {
         walletId: ledger.walletId,
         ownerType: "shop",
         ownerId: 11,
-        amountNdp: 2_000_000,
+        amountNdp: 2_200_000,
         actorUserId: platformActor.userId
       })
     ]);
     expect(repository.budgetTransactionLinks).toEqual([
       expect.objectContaining({ kind: "freeze" }),
-      expect.objectContaining({ kind: "release", amountNdp: 2_000_000 })
+      expect.objectContaining({ kind: "release", amountNdp: 2_200_000 })
     ]);
   });
 });

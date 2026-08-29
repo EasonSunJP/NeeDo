@@ -6,8 +6,12 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AffiliateTaskRepository } from "../repositories/affiliate-task.repository";
+import { AffiliatePlatformFeeRepository } from "../repositories/affiliate-platform-fee.repository";
+import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
 import { AffiliateTaskService } from "../services/affiliate-task.service";
+import { AffiliatePlatformFeeService } from "../services/affiliate-platform-fee.service";
+import { AuditLogService } from "../services/audit-log.service";
 import { LedgerService } from "../services/ledger.service";
 import {
   affiliateTaskIdParamSchema,
@@ -37,14 +41,17 @@ export const createAffiliateTaskRoutes = (
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
   );
-  const taskRepository =
-    dependencies.affiliateTaskRepository ?? new AffiliateTaskRepository();
-  const ledgerService = new LedgerService(
-    dependencies.ledgerRepository ?? new LedgerRepository()
-  );
+  const taskRepository = dependencies.affiliateTaskRepository ?? new AffiliateTaskRepository();
+  const ledgerService = new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository());
+  const platformFeeService =
+    dependencies.affiliatePlatformFeeService ??
+    new AffiliatePlatformFeeService(
+      dependencies.affiliatePlatformFeeRepository ?? new AffiliatePlatformFeeRepository(),
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
   const service =
     dependencies.affiliateTaskService ??
-    new AffiliateTaskService(taskRepository, ledgerService);
+    new AffiliateTaskService(taskRepository, ledgerService, { platformFeeService });
   const controller = new AffiliateTaskController(service);
 
   router.get(

@@ -34,6 +34,9 @@ const taskSelect = {
   allocatedBudgetNdp: true,
   settledBudgetNdp: true,
   releasedBudgetNdp: true,
+  platformFeeReserveNdp: true,
+  settledPlatformFeeNdp: true,
+  releasedPlatformFeeNdp: true,
   endedAt: true
 } satisfies Prisma.AffiliateTaskSelect;
 
@@ -42,9 +45,13 @@ const reservationSelect = {
   taskId: true,
   walletId: true,
   totalFrozenNdp: true,
+  commissionFrozenNdp: true,
+  platformFeeFrozenNdp: true,
   allocatedNdp: true,
   capturedNdp: true,
+  platformFeeCapturedNdp: true,
   releasedNdp: true,
+  platformFeeReleasedNdp: true,
   status: true,
   idempotencyKey: true,
   frozenAt: true,
@@ -83,7 +90,10 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
             )
             OR (
               task.status = 'ended'
-              AND reservation.total_frozen_ndp > reservation.allocated_ndp + reservation.captured_ndp + reservation.released_ndp
+              AND (
+                reservation.commission_frozen_ndp > reservation.allocated_ndp + reservation.captured_ndp + reservation.released_ndp
+                OR reservation.platform_fee_frozen_ndp > reservation.platform_fee_captured_ndp + reservation.platform_fee_released_ndp
+              )
             )
           )
         ORDER BY task.id ASC
@@ -176,6 +186,7 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
     taskId: number;
     reservationId: number;
     releasedAfterNdp: number;
+    platformFeeReleasedAfterNdp: number;
     reservationStatus: AffiliateBudgetStatus;
     releasedAt: Date | null;
   }): Promise<void> {
@@ -186,19 +197,31 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
       !reservation ||
       reservation.id !== input.reservationId ||
       input.releasedAfterNdp < task.releasedBudgetNdp ||
-      input.releasedAfterNdp < reservation.releasedNdp
+      input.releasedAfterNdp < reservation.releasedNdp ||
+      input.platformFeeReleasedAfterNdp < task.releasedPlatformFeeNdp ||
+      input.platformFeeReleasedAfterNdp < reservation.platformFeeReleasedNdp
     ) {
       this.throwConflict();
     }
     const taskReleaseDelta = input.releasedAfterNdp - task.releasedBudgetNdp;
     const reservationReleaseDelta = input.releasedAfterNdp - reservation.releasedNdp;
-    if (taskReleaseDelta !== reservationReleaseDelta) {
+    const taskPlatformFeeReleaseDelta =
+      input.platformFeeReleasedAfterNdp - task.releasedPlatformFeeNdp;
+    const reservationPlatformFeeReleaseDelta =
+      input.platformFeeReleasedAfterNdp - reservation.platformFeeReleasedNdp;
+    if (
+      taskReleaseDelta !== reservationReleaseDelta ||
+      taskPlatformFeeReleaseDelta !== reservationPlatformFeeReleaseDelta
+    ) {
       this.throwConflict();
     }
 
     const taskUpdate = await this.client.affiliateTask.updateMany({
       where: this.taskGuard(task, task.status),
-      data: { releasedBudgetNdp: { increment: taskReleaseDelta } }
+      data: {
+        releasedBudgetNdp: { increment: taskReleaseDelta },
+        releasedPlatformFeeNdp: { increment: taskPlatformFeeReleaseDelta }
+      }
     });
     if (taskUpdate.count !== 1) {
       this.throwConflict();
@@ -210,13 +233,18 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
         taskId: input.taskId,
         status: this.budgetStatusToDb(reservation.status),
         totalFrozenNdp: reservation.totalFrozenNdp,
+        commissionFrozenNdp: reservation.commissionFrozenNdp,
+        platformFeeFrozenNdp: reservation.platformFeeFrozenNdp,
         allocatedNdp: reservation.allocatedNdp,
         capturedNdp: reservation.capturedNdp,
+        platformFeeCapturedNdp: reservation.platformFeeCapturedNdp,
         releasedNdp: reservation.releasedNdp,
+        platformFeeReleasedNdp: reservation.platformFeeReleasedNdp,
         deletedAt: null
       },
       data: {
         releasedNdp: { increment: reservationReleaseDelta },
+        platformFeeReleasedNdp: { increment: reservationPlatformFeeReleaseDelta },
         status: this.budgetStatusToDb(input.reservationStatus),
         releasedAt: input.releasedAt
       }
@@ -227,11 +255,13 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
 
     this.lockedTasks.set(input.taskId, {
       ...task,
-      releasedBudgetNdp: input.releasedAfterNdp
+      releasedBudgetNdp: input.releasedAfterNdp,
+      releasedPlatformFeeNdp: input.platformFeeReleasedAfterNdp
     });
     this.lockedReservations.set(input.taskId, {
       ...reservation,
       releasedNdp: input.releasedAfterNdp,
+      platformFeeReleasedNdp: input.platformFeeReleasedAfterNdp,
       status: input.reservationStatus,
       releasedAt: input.releasedAt
     });
@@ -286,6 +316,9 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
       allocatedBudgetNdp: task.allocatedBudgetNdp,
       settledBudgetNdp: task.settledBudgetNdp,
       releasedBudgetNdp: task.releasedBudgetNdp,
+      platformFeeReserveNdp: task.platformFeeReserveNdp,
+      settledPlatformFeeNdp: task.settledPlatformFeeNdp,
+      releasedPlatformFeeNdp: task.releasedPlatformFeeNdp,
       deletedAt: null
     };
   }
@@ -335,6 +368,9 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
       allocatedBudgetNdp: task.allocatedBudgetNdp,
       settledBudgetNdp: task.settledBudgetNdp,
       releasedBudgetNdp: task.releasedBudgetNdp,
+      platformFeeReserveNdp: task.platformFeeReserveNdp,
+      settledPlatformFeeNdp: task.settledPlatformFeeNdp,
+      releasedPlatformFeeNdp: task.releasedPlatformFeeNdp,
       endedAt: task.endedAt
     };
   }
@@ -347,9 +383,13 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
       taskId: reservation.taskId,
       walletId: reservation.walletId,
       totalFrozenNdp: reservation.totalFrozenNdp,
+      commissionFrozenNdp: reservation.commissionFrozenNdp,
+      platformFeeFrozenNdp: reservation.platformFeeFrozenNdp,
       allocatedNdp: reservation.allocatedNdp,
       capturedNdp: reservation.capturedNdp,
+      platformFeeCapturedNdp: reservation.platformFeeCapturedNdp,
       releasedNdp: reservation.releasedNdp,
+      platformFeeReleasedNdp: reservation.platformFeeReleasedNdp,
       status: reservation.status.toLowerCase() as AffiliateBudgetStatus,
       idempotencyKey: reservation.idempotencyKey,
       frozenAt: reservation.frozenAt,
