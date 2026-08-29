@@ -5,6 +5,8 @@ import { requireCustomerProfileRepositoryIntegrationDatabaseUrl } from "./custom
 
 const runCustomerProfileRepositoryIntegration =
   process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
+const runCarouselPublicationIntegration =
+  process.env.RUN_CAROUSEL_PUBLICATION_INTEGRATION === "true";
 
 if (runCustomerProfileRepositoryIntegration) {
   const envFile = process.env.ENV_FILE?.trim();
@@ -27,8 +29,20 @@ if (runCustomerProfileRepositoryIntegration) {
   });
 }
 
-process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
-process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
+if (runCarouselPublicationIntegration) {
+  const envFile = process.env.ENV_FILE?.trim();
+  if (!envFile) throw new Error("Carousel publication integration tests require ENV_FILE");
+  const loadedEnvironment = loadDotenv({ path: envFile });
+  if (loadedEnvironment.error || !loadedEnvironment.parsed?.DATABASE_URL) {
+    throw new Error(`Unable to load carousel publication integration ENV_FILE: ${envFile}`);
+  }
+  process.env.DATABASE_URL = loadedEnvironment.parsed.DATABASE_URL;
+}
+
+if (!runCarouselPublicationIntegration) {
+  process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
+  process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
+}
 process.env.ALLOW_TEST_LOGIN = "true";
 process.env.ALLOW_FORMAL_TEST_SEED = "true";
 process.env.ALLOW_SIMULATION_SEED = "true";
@@ -47,7 +61,7 @@ process.env.METRICS_BEARER_TOKEN = "";
 process.env.TRACING_ENABLED = "true";
 process.env.CACHE_PUBLIC_MAX_AGE_SECONDS = "30";
 process.env.CACHE_STALE_WHILE_REVALIDATE_SECONDS = "120";
-if (!runCustomerProfileRepositoryIntegration) {
+if (!runCustomerProfileRepositoryIntegration && !runCarouselPublicationIntegration) {
   process.env.DATABASE_URL =
     process.env.CUSTOMER_PROFILE_REPOSITORY_TEST_DATABASE_URL ??
     "mysql://needo_test:needo_test_password@localhost:3307/needo_test";
@@ -78,6 +92,10 @@ process.env.AFFILIATE_LINK_SECRET = "test-affiliate-link-secret-with-at-least-32
 process.env.SENSITIVE_DATA_ENCRYPTION_KEY = "test-sensitive-data-key-with-at-least-32-chars";
 process.env.AFFILIATE_PUBLIC_BASE_URL = "http://localhost:5180/afirieito";
 process.env.CUSTOMER_AVATAR_STORAGE_DIR = join(tmpdir(), "needo-customer-avatars-test");
+process.env.CONTENT_MEDIA_STORAGE_DIR = join(tmpdir(), "needo-content-media-test");
+process.env.CONTENT_PUBLICATION_INTERVAL_MS = "60000";
+process.env.CONTENT_PUBLICATION_BATCH_SIZE = "50";
+process.env.CONTENT_PUBLICATION_MAX_ACTIVATION_ATTEMPTS = "3";
 process.env.CUSTOMER_AVATAR_PUBLIC_BASE_URL = "http://localhost:3101/media/customer-avatars";
 process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS = "900";
 process.env.AUTH_REFRESH_TOKEN_TTL_SECONDS = "604800";

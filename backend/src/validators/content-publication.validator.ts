@@ -1,0 +1,462 @@
+import { z } from "zod";
+
+export const CONTENT_PUBLICATION_ERROR_MESSAGES = [
+  "error.content.locale_invalid",
+  "error.content.media_invalid",
+  "error.content.media_too_large",
+  "error.content.not_found",
+  "error.content.release_not_found",
+  "error.content.draft_exists",
+  "error.content.lock_conflict",
+  "error.content.incomplete_translations",
+  "error.content.schedule_conflict",
+  "error.content.target_invalid",
+  "error.content.target_unavailable",
+  "error.content.invalid_state_transition",
+  "error.idempotency_key_reused"
+] as const;
+
+export type ContentPublicationErrorMessage = (typeof CONTENT_PUBLICATION_ERROR_MESSAGES)[number];
+
+const contentPublicationErrorMessageSet = new Set<string>(CONTENT_PUBLICATION_ERROR_MESSAGES);
+
+export const contentPublicationValidationErrorMessage = (
+  error: z.ZodError
+): ContentPublicationErrorMessage | undefined => {
+  for (const issue of error.issues) {
+    if (contentPublicationErrorMessageSet.has(issue.message)) {
+      return issue.message as ContentPublicationErrorMessage;
+    }
+
+    if (issue.path.some((segment) => segment === "locale" || segment === "sourceLocale")) {
+      return "error.content.locale_invalid";
+    }
+    if (issue.path.includes("mediaAssetPublicId")) {
+      return "error.content.media_invalid";
+    }
+    if (issue.path.includes("target") || issue.path.includes("type")) {
+      return "error.content.target_invalid";
+    }
+    if (
+      issue.path.some(
+        (segment) =>
+          segment === "publishAt" || segment === "visibleFrom" || segment === "visibleUntil"
+      )
+    ) {
+      return "error.content.schedule_conflict";
+    }
+  }
+
+  return undefined;
+};
+
+const localeSchema = z.enum(["zh-CN", "zh-TW", "en", "ja", "ko"], {
+  errorMap: () => ({ message: "error.content.locale_invalid" })
+});
+
+const idempotencyKeySchema = z.string().uuid();
+const positiveVersionSchema = z.number().int().positive();
+const optionalReasonSchema = z.string().trim().min(1).max(500).optional();
+const requiredReasonSchema = z.string().trim().min(1).max(500);
+const utcDateTimeSchema = z
+  .string()
+  .datetime({ offset: false })
+  .refine((value) => value.endsWith("Z"), "UTC date-time is required");
+const nullableUtcDateTimeSchema = utcDateTimeSchema.nullable().default(null);
+
+const addOrderedWindowIssue = (
+  value: { visibleFrom: string | null; visibleUntil: string | null },
+  context: z.RefinementCtx
+): void => {
+  if (
+    value.visibleFrom !== null &&
+    value.visibleUntil !== null &&
+    Date.parse(value.visibleFrom) >= Date.parse(value.visibleUntil)
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["visibleUntil"],
+      message: "error.content.schedule_conflict"
+    });
+  }
+};
+
+export const carouselSceneParamSchema = z
+  .object({ scene: z.enum(["user-home", "affiliate-home-notice"]) })
+  .strict();
+
+const userTargetSchema = z.union([
+  z.object({ type: z.literal("shop"), shopId: z.number().int().positive() }).strict(),
+  z.object({ type: z.literal("shop"), publicId: z.string().regex(/^shop[0-9]{10}$/u) }).strict(),
+  z
+    .object({
+      type: z.literal("technician"),
+      technicianProfileId: z.number().int().positive()
+    })
+    .strict(),
+  z.object({ type: z.literal("technician"), publicId: z.string().regex(/^s[0-9]{10}$/u) }).strict(),
+  z.object({ type: z.literal("service"), serviceId: z.number().int().positive() }).strict(),
+  z.object({ type: z.literal("service"), publicId: z.string().uuid() }).strict()
+]);
+
+const affiliateTargetSchema = z.union([
+  z
+    .object({
+      type: z.literal("affiliate_announcement"),
+      announcementPublicId: z.string().uuid(),
+      affiliateTaskId: z.number().int().positive().nullable().default(null)
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("affiliate_announcement"),
+      announcementPublicId: z.string().uuid(),
+      taskCode: z.string().trim().min(1).max(80).nullable()
+    })
+    .strict()
+]);
+
+export const translationBodySchema = z
+  .object({
+    locale: localeSchema,
+    badge: z.string().trim().max(40).nullable(),
+    title: z.string().trim().min(1).max(160),
+    caption: z.string().trim().max(500).nullable(),
+    ctaLabel: z.string().trim().max(60).nullable(),
+    imageAltText: z.string().trim().min(1).max(255)
+  })
+  .strict();
+
+export const replacementTranslationBodySchema = translationBodySchema
+  .extend({
+    sourceLocale: localeSchema,
+    isInitialCopy: z.boolean()
+  })
+  .strict();
+
+const replacementTranslationsSchema = z
+  .array(replacementTranslationBodySchema)
+  .length(5)
+  .superRefine((translations, context) => {
+    const seenLocales = new Set<string>();
+    translations.forEach((translation, index) => {
+      if (seenLocales.has(translation.locale)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, "locale"],
+          message: "error.content.locale_invalid"
+        });
+      }
+      seenLocales.add(translation.locale);
+    });
+  });
+
+const slideBaseShape = {
+  publicId: z.string().uuid().optional(),
+  mediaAssetPublicId: z.string().regex(/^[a-f0-9]{64}$/, "error.content.media_invalid"),
+  sortOrder: z.number().int().nonnegative(),
+  isEnabled: z.boolean().default(true),
+  visibleFrom: nullableUtcDateTimeSchema,
+  visibleUntil: nullableUtcDateTimeSchema
+};
+
+const createTranslationsSchema = z.array(translationBodySchema).length(1);
+
+const userHomeCreateSlideSchema = z
+  .object({
+    ...slideBaseShape,
+    target: userTargetSchema,
+    translations: createTranslationsSchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+const userHomeUpdateSlideSchema = z
+  .object({
+    ...slideBaseShape,
+    target: userTargetSchema,
+    translations: replacementTranslationsSchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+const affiliateNoticeCreateSlideSchema = z
+  .object({
+    ...slideBaseShape,
+    target: affiliateTargetSchema,
+    translations: createTranslationsSchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+const affiliateNoticeUpdateSlideSchema = z
+  .object({
+    ...slideBaseShape,
+    target: affiliateTargetSchema,
+    translations: replacementTranslationsSchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+const addCreateSourceLocaleIssue = (
+  value: { sourceLocale: string; slides: Array<{ translations: Array<{ locale: string }> }> },
+  context: z.RefinementCtx
+): void => {
+  value.slides.forEach((slide, slideIndex) => {
+    if (slide.translations[0]?.locale !== value.sourceLocale) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slides", slideIndex, "translations", 0, "locale"],
+        message: "error.content.locale_invalid"
+      });
+    }
+  });
+};
+
+const createDraftCommandShape = {
+  idempotencyKey: idempotencyKeySchema,
+  sourceLocale: localeSchema
+};
+
+const updateDraftCommandShape = {
+  expectedLockVersion: positiveVersionSchema,
+  sourceLocale: localeSchema
+};
+
+export const userHomeCarouselDraftCreateBodySchema = z
+  .object({
+    ...createDraftCommandShape,
+    slides: z.array(userHomeCreateSlideSchema).min(1).max(50)
+  })
+  .strict()
+  .superRefine(addCreateSourceLocaleIssue);
+
+export const userHomeCarouselDraftUpdateBodySchema = z
+  .object({
+    ...updateDraftCommandShape,
+    slides: z.array(userHomeUpdateSlideSchema).min(1).max(50)
+  })
+  .strict();
+
+export const affiliateNoticeCarouselDraftCreateBodySchema = z
+  .object({
+    ...createDraftCommandShape,
+    slides: z.array(affiliateNoticeCreateSlideSchema).min(1).max(50)
+  })
+  .strict()
+  .superRefine(addCreateSourceLocaleIssue);
+
+export const affiliateNoticeCarouselDraftUpdateBodySchema = z
+  .object({
+    ...updateDraftCommandShape,
+    slides: z.array(affiliateNoticeUpdateSlideSchema).min(1).max(50)
+  })
+  .strict();
+
+export const carouselDraftBodySchemaByScene = {
+  "user-home": {
+    create: userHomeCarouselDraftCreateBodySchema,
+    update: userHomeCarouselDraftUpdateBodySchema
+  },
+  "affiliate-home-notice": {
+    create: affiliateNoticeCarouselDraftCreateBodySchema,
+    update: affiliateNoticeCarouselDraftUpdateBodySchema
+  }
+} as const;
+
+export const carouselDraftBodySchema = z.union([
+  userHomeCarouselDraftCreateBodySchema,
+  userHomeCarouselDraftUpdateBodySchema,
+  affiliateNoticeCarouselDraftCreateBodySchema,
+  affiliateNoticeCarouselDraftUpdateBodySchema
+]);
+
+const announcementTranslationBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(160),
+    summary: z.string().trim().max(500).nullable(),
+    body: z.string().trim().min(1).max(50_000)
+  })
+  .strict();
+
+export const announcementDraftCreateBodySchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema,
+    sourceLocale: localeSchema,
+    affiliateTaskId: z.number().int().positive().nullable().default(null),
+    visibleFrom: nullableUtcDateTimeSchema,
+    visibleUntil: nullableUtcDateTimeSchema,
+    translation: announcementTranslationBodySchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+export const announcementDraftUpdateBodySchema = z
+  .object({
+    expectedLockVersion: positiveVersionSchema,
+    locale: localeSchema,
+    title: z.string().trim().min(1).max(160),
+    summary: z.string().trim().max(500).nullable(),
+    body: z.string().trim().min(1).max(50_000)
+  })
+  .strict();
+
+export const announcementCopyAllBodySchema = z
+  .object({
+    operation: z.literal("copy_to_all"),
+    expectedLockVersion: positiveVersionSchema,
+    sourceLocale: localeSchema
+  })
+  .strict();
+
+export const announcementDraftMetadataUpdateBodySchema = z
+  .object({
+    operation: z.literal("update_metadata"),
+    expectedLockVersion: positiveVersionSchema,
+    affiliateTaskId: z.number().int().positive().nullable(),
+    visibleFrom: nullableUtcDateTimeSchema,
+    visibleUntil: nullableUtcDateTimeSchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+export const announcementDraftMutationBodySchema = z.union([
+  announcementDraftUpdateBodySchema,
+  announcementCopyAllBodySchema,
+  announcementDraftMetadataUpdateBodySchema
+]);
+
+export const announcementDraftBodySchema = z.union([
+  announcementDraftCreateBodySchema,
+  announcementDraftMutationBodySchema
+]);
+
+export const publishBodySchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema,
+    expectedLockVersion: positiveVersionSchema,
+    reason: optionalReasonSchema
+  })
+  .strict();
+
+export const scheduleBodySchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema,
+    expectedLockVersion: positiveVersionSchema,
+    publishAt: utcDateTimeSchema.refine(
+      (value) => Date.parse(value) > Date.now(),
+      "error.content.schedule_conflict"
+    ),
+    reason: optionalReasonSchema
+  })
+  .strict();
+
+export const disableBodySchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema,
+    expectedLockVersion: positiveVersionSchema,
+    reason: requiredReasonSchema
+  })
+  .strict();
+
+export const rollbackBodySchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema,
+    expectedCurrentVersion: positiveVersionSchema,
+    reason: requiredReasonSchema
+  })
+  .strict();
+
+const paginationShape = {
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(20)
+};
+
+export const contentHistoryQuerySchema = z.object(paginationShape).strict();
+
+export const announcementAffiliateTaskSearchQuerySchema = z
+  .object({
+    ...paginationShape,
+    q: z.string().trim().min(1).max(160).optional()
+  })
+  .strict();
+
+const targetSearchBaseShape = {
+  ...paginationShape,
+  q: z.string().trim().min(1).max(160).optional()
+};
+
+const userHomeCarouselTargetSearchQuerySchema = z
+  .object({
+    ...targetSearchBaseShape,
+    type: z.enum(["shop", "technician", "service"]).optional()
+  })
+  .strict();
+
+const affiliateNoticeCarouselTargetSearchQuerySchema = z
+  .object({
+    ...targetSearchBaseShape,
+    type: z.enum(["announcement", "affiliate_task"]).optional()
+  })
+  .strict();
+
+export const carouselTargetSearchQuerySchemaByScene = {
+  "user-home": userHomeCarouselTargetSearchQuerySchema,
+  "affiliate-home-notice": affiliateNoticeCarouselTargetSearchQuerySchema
+} as const;
+
+export const carouselSlideParamSchema = z
+  .object({
+    releaseId: z.coerce.number().int().positive(),
+    slidePublicId: z.string().uuid()
+  })
+  .strict();
+
+export const carouselSlideLocaleParamSchema = carouselSlideParamSchema.extend({
+  locale: localeSchema
+});
+
+export const carouselLocaleUpdateBodySchema = translationBodySchema
+  .omit({ locale: true })
+  .extend({ expectedLockVersion: positiveVersionSchema })
+  .strict();
+
+export const carouselCopyAllBodySchema = z
+  .object({
+    expectedLockVersion: positiveVersionSchema,
+    sourceLocale: localeSchema
+  })
+  .strict();
+
+export const carouselLocaleCopyCommandBodySchema = carouselCopyAllBodySchema
+  .extend({ operation: z.literal("copy_to_all") })
+  .strict();
+
+export const carouselLocaleMutationBodySchema = z.union([
+  carouselLocaleUpdateBodySchema,
+  carouselLocaleCopyCommandBodySchema
+]);
+
+export type CarouselSceneParam = z.infer<typeof carouselSceneParamSchema>;
+export type CarouselDraftBody = z.infer<typeof carouselDraftBodySchema>;
+export type AnnouncementDraftBody = z.infer<typeof announcementDraftBodySchema>;
+export type AnnouncementDraftUpdateBody = z.infer<typeof announcementDraftUpdateBodySchema>;
+export type AnnouncementCopyAllBody = z.infer<typeof announcementCopyAllBodySchema>;
+export type AnnouncementDraftMetadataUpdateBody = z.infer<
+  typeof announcementDraftMetadataUpdateBodySchema
+>;
+export type AnnouncementDraftMutationBody = z.infer<typeof announcementDraftMutationBodySchema>;
+export type PublishBody = z.infer<typeof publishBodySchema>;
+export type ScheduleBody = z.infer<typeof scheduleBodySchema>;
+export type DisableBody = z.infer<typeof disableBodySchema>;
+export type RollbackBody = z.infer<typeof rollbackBodySchema>;
+export type ContentHistoryQuery = z.infer<typeof contentHistoryQuerySchema>;
+export type AnnouncementAffiliateTaskSearchQuery = z.infer<
+  typeof announcementAffiliateTaskSearchQuerySchema
+>;
+export type CarouselTargetSearchQuery =
+  | z.infer<typeof userHomeCarouselTargetSearchQuerySchema>
+  | z.infer<typeof affiliateNoticeCarouselTargetSearchQuerySchema>;
+export type CarouselLocaleUpdateBody = z.infer<typeof carouselLocaleUpdateBodySchema>;
+export type CarouselCopyAllBody = z.infer<typeof carouselCopyAllBodySchema>;
+export type CarouselLocaleMutationBody = z.infer<typeof carouselLocaleMutationBodySchema>;

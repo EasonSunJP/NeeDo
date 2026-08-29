@@ -208,6 +208,30 @@ describe("httpClient auth tokens", () => {
     });
   });
 
+  it("honors a caller abort signal without misreporting it as a timeout", async () => {
+    const callerController = new AbortController();
+    vi.mocked(fetch).mockImplementationOnce((_url, init) => {
+      const requestSignal = (init as RequestInit).signal;
+
+      return new Promise<Response>((_resolve, reject) => {
+        if (requestSignal?.aborted) {
+          reject(new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        requestSignal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      });
+    });
+
+    const request = httpClient.request("/affiliate/alliances/me", {
+      signal: callerController.signal
+    });
+    callerController.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("reports non-json API responses as a routing error", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response("<!doctype html><html><body>NeeDo</body></html>", {

@@ -4,6 +4,7 @@ import { successResponse } from "../utils/api-response";
 import {
   categoryListQuerySchema,
   coreReadIdParamSchema,
+  coreReadServiceIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
   serviceListQuerySchema
@@ -56,7 +57,9 @@ export class CoreReadController {
     try {
       response
         .status(200)
-        .json(successResponse(await this.coreReadService.getServiceDetail(this.getId(request))));
+        .json(
+          successResponse(await this.coreReadService.getServiceDetail(this.getServiceId(request)))
+        );
     } catch (error) {
       next(error);
     }
@@ -144,5 +147,9 @@ export class CoreReadController {
 
   private getId(request: Request): number {
     return coreReadIdParamSchema.parse(request.params).id;
+  }
+
+  private getServiceId(request: Request): number | string {
+    return coreReadServiceIdParamSchema.parse(request.params).id;
   }
 }

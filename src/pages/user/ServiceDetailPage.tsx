@@ -19,6 +19,10 @@ import type { ServiceItem, Technician } from "../../types/domain";
 
 const servicePriceHighlightClassName = "text-[color:var(--client-primary)]";
 
+export function buildServiceTagLabels(serviceAreas: string[], tags: string[]) {
+  return Array.from(new Set([...serviceAreas, ...tags])).slice(0, 12);
+}
+
 type ServiceTopActionIconName = "like" | "favorite" | "translate" | "forward";
 
 const serviceTopActionIconMap: Record<ServiceTopActionIconName, IconName> = {
@@ -114,7 +118,7 @@ function ServiceDetailStatus({
 function ServiceDetailContent() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const apiId = coreReadIdFromRoute(id);
+  const apiId = coreReadIdFromRoute(id, { allowUuid: true });
   const serviceQuery = useCoreReadQuery(
     () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
     [apiId]
@@ -256,7 +260,7 @@ function ServiceDetailContent() {
         <section className={mobileDetailCardClassName}>
           <h2 className="font-black">服务标签</h2>
           <div className="mt-3 flex flex-wrap gap-2">
-            {[...service.serviceAreas, ...service.tags].slice(0, 12).map((tag) => (
+            {buildServiceTagLabels(service.serviceAreas, service.tags).map((tag) => (
               <span className="rounded-[18px] bg-paper px-3 py-2 text-xs font-bold text-ink/60" key={tag}>
                 {tag}
               </span>

@@ -8,6 +8,8 @@ import { AdminThemeMenu } from "./AdminThemeMenu";
 import { CloseIconButton } from "../ui/CloseIconButton";
 import { LanguageSwitcher } from "../ui/LanguageSwitcher";
 import { NotificationBadge } from "../ui/NotificationBadge";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { contentPublicationEditorText } from "../../features/content-publication/i18n";
 
 const themeStorageKey = "needo.admin.theme";
 const themePreferenceModeStorageKey = "needo.admin.theme.mode";
@@ -50,7 +52,7 @@ const navSections: AdminNavSection[] = [
       { label: "分析中心", to: "/admin/analytics", icon: "◔" },
       { label: "数据中心", to: "/admin/data", icon: "▥" },
       { label: "动态管理", to: "/admin/data?module=moments", icon: "◎" },
-      { label: "轮播图", to: "/admin/carousel", icon: "播", children: ["3 张轮播", "日期区间", "时间区间"] },
+      { label: "用户端首页轮播图", to: "/admin/carousel", icon: "播", permission: "page:backoffice-user-home-carousel", children: ["五语言", "草稿与发布", "版本回滚"] },
       { label: "官方通知", to: "/admin/notifications", icon: "通", children: ["通知列表", "定时发送", "图文视频"] }
     ]
   },
@@ -102,7 +104,8 @@ const navSections: AdminNavSection[] = [
     title: "联盟营销",
     badge: "TEST",
     items: [
-      { label: "联盟营销任务", to: "/admin/afirieito", icon: "联", permission: "menu:backoffice-affiliate", children: ["任务审核", "预算状态", "范围快照"] }
+      { label: "联盟营销任务", to: "/admin/afirieito", icon: "联", permission: "menu:backoffice-affiliate", children: ["任务审核", "预算状态", "范围快照"] },
+      { label: "联盟营销公告轮播", to: "/admin/afirieito/announcements/carousel", icon: "告", permission: "page:backoffice-affiliate-notice-carousel", children: ["正式公告", "五语言", "发布与回滚"] }
     ]
   },
   {
@@ -255,15 +258,26 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { canAccessMenu } = useAuth();
+  const { language } = useOptionalI18n();
   const visibleNavSections = useMemo(
     () =>
       navSections
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => !item.permission || canAccessMenu(item.permission))
+          items: section.items
+            .filter((item) => !item.permission || canAccessMenu(item.permission))
+            .map((item) => ({
+              ...item,
+              label:
+                item.to === "/admin/carousel"
+                  ? contentPublicationEditorText("userHomeMenu", language)
+                  : item.to === "/admin/afirieito/announcements/carousel"
+                    ? contentPublicationEditorText("affiliateNoticeMenu", language)
+                    : item.label
+            }))
         }))
         .filter((section) => section.items.length > 0),
-    [canAccessMenu]
+    [canAccessMenu, language]
   );
   const routeSectionKey = getSectionForRoute(location.pathname, location.search);
   const [activeSectionKey, setActiveSectionKey] = useState(routeSectionKey);

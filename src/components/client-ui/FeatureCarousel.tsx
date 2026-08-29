@@ -10,8 +10,9 @@ export type FeatureCarouselSlide = {
   badge?: string;
   title: string;
   caption?: string;
-  cta?: string;
+  cta?: string | null;
   image: string;
+  imageAlt?: string;
   to?: string;
 };
 
@@ -145,7 +146,7 @@ export function FeatureCarousel({
 
   const renderDefaultSlideContent = (slide: FeatureCarouselSlide) => (
     <>
-      <img alt={slide.title} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(slide.image)} />
+      <img alt={slide.imageAlt ?? slide.title} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(slide.image)} />
       <div className="absolute inset-0 bg-gradient-to-r from-[rgba(0,0,0,0.62)] via-[rgba(0,0,0,0.28)] to-[rgba(0,0,0,0.08)]" />
       <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[rgba(0,0,0,0.34)] to-transparent" />
       <div className="relative flex h-full flex-col justify-between p-4 pb-8 text-white">
@@ -158,12 +159,17 @@ export function FeatureCarousel({
           <h3 className="mt-3 max-w-[72%] text-[28px] font-black leading-[1.04] tracking-[-0.04em]">{slide.title}</h3>
           {slide.caption ? <p className="mt-2 max-w-[72%] text-[12px] leading-5 text-white/80">{slide.caption}</p> : null}
         </div>
-        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/14 px-3 py-2 text-[12px] font-black backdrop-blur">
-          {slide.cta || "查看详情"}
-          <svg aria-hidden="true" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-            <path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
-          </svg>
-        </span>
+        {slide.cta === null ? null : (
+          <span
+            className="inline-flex w-fit items-center gap-1 rounded-full bg-white/14 px-3 py-2 text-[12px] font-black backdrop-blur"
+            data-feature-carousel-cta="true"
+          >
+            {slide.cta ?? "查看详情"}
+            <svg aria-hidden="true" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+              <path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+            </svg>
+          </span>
+        )}
       </div>
     </>
   );

@@ -11,7 +11,12 @@ const activatedAffiliate = [
   "page:affiliate-profile",
   "button:affiliate-profile-edit",
   "page:affiliate-alliance",
-  "button:affiliate-alliance-create"
+  "button:affiliate-alliance-create",
+  "affiliate-alliance:members:list",
+  "affiliate-alliance:candidates:list",
+  "affiliate-alliance:invitations:list",
+  "button:affiliate-alliance-invite",
+  "button:affiliate-alliance-invitation-respond"
 ];
 const merchantPublisher = [
   "menu:merchant-affiliate",
@@ -57,6 +62,11 @@ describe("affiliate RBAC seed contract", () => {
     expect(assignments[role]).not.toContain("button:affiliate-profile-edit");
     expect(assignments[role]).not.toContain("page:affiliate-alliance");
     expect(assignments[role]).not.toContain("button:affiliate-alliance-create");
+    expect(assignments[role]).not.toContain("affiliate-alliance:members:list");
+    expect(assignments[role]).not.toContain("affiliate-alliance:candidates:list");
+    expect(assignments[role]).not.toContain("affiliate-alliance:invitations:list");
+    expect(assignments[role]).not.toContain("button:affiliate-alliance-invite");
+    expect(assignments[role]).not.toContain("button:affiliate-alliance-invitation-respond");
   });
 
   it("grants marketplace and profile access only to the activated affiliate role", () => {

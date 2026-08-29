@@ -30,6 +30,7 @@ export type HttpClientRequestOptions = {
   method?: HttpMethod;
   query?: Record<string, boolean | number | string | null | undefined>;
   retryOnUnauthorized?: boolean;
+  signal?: AbortSignal;
 };
 
 export type HttpClientCsvExportPayload = {
@@ -220,6 +221,13 @@ function isAbortError(error: unknown) {
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
+  const externalSignal = init.signal;
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal?.aborted) {
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
   const timeoutId = globalThis.setTimeout(() => {
     controller.abort();
   }, apiRequestTimeoutMs);
@@ -230,6 +238,9 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Pr
       signal: controller.signal
     });
   } catch (error) {
+    if (externalSignal?.aborted) {
+      throw error;
+    }
     if (isAbortError(error)) {
       throw new ApiClientError("error.network.timeout", 408, 408);
     }
@@ -237,6 +248,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Pr
     throw error;
   } finally {
     globalThis.clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
   }
 }
 
@@ -283,7 +295,8 @@ async function sendRequest<TData>(
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
     headers: await createRequestHeaders(options, previewShopId),
-    method
+    method,
+    signal: options.signal
   });
   const envelope = await parseEnvelope<TData>(response);
 
@@ -345,7 +358,8 @@ async function sendCsvExportRequest(
       ...options,
       headers: { ...(options.headers ?? {}), Accept: "text/csv" }
     }, previewShopId),
-    method
+    method,
+    signal: options.signal
   });
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -406,7 +420,8 @@ async function sendDataUrlRequest(
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
     headers: await createRequestHeaders(options, previewShopId),
-    method
+    method,
+    signal: options.signal
   });
   const contentType = response.headers.get("content-type") ?? "";
 
