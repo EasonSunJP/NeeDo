@@ -12,6 +12,7 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
 import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
 import { AffiliateAdminPage } from "./pages/admin/AffiliateAdminPage";
+import { AffiliateNoticeCarouselPage } from "./pages/admin/AffiliateNoticeCarouselPage";
 import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
 import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
 import { AdminNotificationComposePage } from "./pages/admin/AdminNotificationComposePage";
@@ -1338,7 +1339,7 @@ export default function App() {
               <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/analytics" element={protect("admin", <AnalyticsPage />)} />
-              <Route path="/admin/carousel" element={protect("admin", <CarouselPage />)} />
+              <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
               <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications" element={protect("admin", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
@@ -1357,6 +1358,7 @@ export default function App() {
               <Route path="/admin/crm" element={protect("admin", <CRMPage />)} />
               <Route path="/admin/users" element={protectPermission("admin", "page:user-management", <UsersPage />)} />
               <Route path="/admin/afirieito" element={protect("admin", <AffiliateAdminPage />)} />
+              <Route path="/admin/afirieito/announcements/carousel" element={protectPermission("admin", "page:backoffice-affiliate-notice-carousel", <AffiliateNoticeCarouselPage />)} />
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
