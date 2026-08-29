@@ -188,6 +188,21 @@ const orderAcceptancePauseListParameters = [
   { name: "subjectId", in: "query", schema: { type: "integer", minimum: 1 } }
 ];
 
+const affiliatePlatformFeeErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description: "error.forbidden or error.identity_forbidden — denied permission or scope"
+  },
+  "404": {
+    description: "error.affiliate.platform_fee_shop_not_found — shop does not exist"
+  },
+  "409": {
+    description:
+      "error.affiliate.platform_fee_version_conflict, error.affiliate.platform_fee_policy_conflict, or error.affiliate.platform_fee_rate_mismatch"
+  }
+};
+
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -4653,9 +4668,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "taskId",
           "walletId",
           "totalFrozenNdp",
+          "commissionFrozenNdp",
+          "platformFeeFrozenNdp",
           "allocatedNdp",
           "capturedNdp",
+          "platformFeeCapturedNdp",
           "releasedNdp",
+          "platformFeeReleasedNdp",
           "status",
           "idempotencyKey",
           "frozenAt",
@@ -4666,9 +4685,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           taskId: { type: "integer", minimum: 1 },
           walletId: { type: "integer", minimum: 1 },
           totalFrozenNdp: { type: "integer", minimum: 0 },
+          commissionFrozenNdp: { type: "integer", minimum: 0 },
+          platformFeeFrozenNdp: { type: "integer", minimum: 0 },
           allocatedNdp: { type: "integer", minimum: 0 },
           capturedNdp: { type: "integer", minimum: 0 },
+          platformFeeCapturedNdp: { type: "integer", minimum: 0 },
           releasedNdp: { type: "integer", minimum: 0 },
+          platformFeeReleasedNdp: { type: "integer", minimum: 0 },
           status: { type: "string", enum: ["active", "released", "exhausted"] },
           idempotencyKey: { type: "string", maxLength: 180 },
           frozenAt: { type: "string", format: "date-time" },
@@ -4688,10 +4711,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "name",
           "rewardNdpPerCompletedOrder",
           "totalBudgetNdp",
+          "platformFeeBps",
+          "platformFeeReserveNdp",
           "reservedBudgetNdp",
+          "grossReservedBudgetNdp",
           "allocatedBudgetNdp",
           "settledBudgetNdp",
+          "settledPlatformFeeNdp",
           "releasedBudgetNdp",
+          "releasedPlatformFeeNdp",
           "customerDiscountType",
           "claimStartsAt",
           "claimEndsAt",
@@ -4720,6 +4748,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
           rewardNdpPerCompletedOrder: affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
           totalBudgetNdp: affiliateEditableTaskProperties.totalBudgetNdp,
+          platformFeeBps: { type: "integer", minimum: 0, maximum: 10000 },
+          platformFeeReserveNdp: { type: "integer", minimum: 0 },
           customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
           fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
           discountRateBps: affiliateEditableTaskProperties.discountRateBps,
@@ -4735,9 +4765,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             affiliateEditableTaskProperties.maxCompletedOrdersPerCustomer,
           serviceScopeMode: affiliateEditableTaskProperties.serviceScopeMode,
           reservedBudgetNdp: { type: "integer", minimum: 0 },
+          grossReservedBudgetNdp: { type: "integer", minimum: 0 },
           allocatedBudgetNdp: { type: "integer", minimum: 0 },
           settledBudgetNdp: { type: "integer", minimum: 0 },
+          settledPlatformFeeNdp: { type: "integer", minimum: 0 },
           releasedBudgetNdp: { type: "integer", minimum: 0 },
+          releasedPlatformFeeNdp: { type: "integer", minimum: 0 },
           status: { type: "string", enum: affiliateTaskStatuses },
           reviewedById: { type: ["integer", "null"], minimum: 1 },
           reviewedAt: { type: ["string", "null"], format: "date-time" },
@@ -4856,6 +4889,77 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
+      },
+      AffiliatePlatformFeeRule: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "scopeType",
+          "scopeKey",
+          "shopId",
+          "feeBps",
+          "version",
+          "effectiveFrom",
+          "effectiveTo",
+          "activeKey",
+          "reason",
+          "createdByNeedoId",
+          "updatedByNeedoId",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          scopeType: { type: "string", enum: ["global", "shop"] },
+          scopeKey: { type: "string", pattern: "^(?:global|shop:[1-9][0-9]*)$" },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          feeBps: { type: "integer", minimum: 0, maximum: 10000 },
+          version: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          activeKey: { type: ["string", "null"], maxLength: 191 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          createdByNeedoId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|needo)[0-9]{10}$"
+          },
+          updatedByNeedoId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|needo)[0-9]{10}$"
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliatePlatformFeeRulePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliatePlatformFeeRule" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliatePlatformFeeRuleCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scopeType", "shopId", "feeBps", "expectedVersion", "effectiveFrom", "reason"],
+        properties: {
+          scopeType: { type: "string", enum: ["global", "shop"] },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          feeBps: { type: "integer", minimum: 0, maximum: 10000 },
+          expectedVersion: { type: "integer", minimum: 0 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        },
+        description:
+          "Global scope requires shopId=null; shop scope requires a positive shopId. expectedVersion provides optimistic concurrency."
       },
       AffiliateMarketplaceMediaAsset: {
         type: "object",
@@ -6323,6 +6427,56 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   paths: {
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
+    [`${config.API_PREFIX}/backoffice/affiliate/fee-rules`]: {
+      get: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "List versioned Affiliate platform fee rules",
+        description:
+          "Requires page:backoffice-affiliate-fee-rule and a global or platform operations identity.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          {
+            name: "scopeType",
+            in: "query",
+            schema: { type: "string", enum: ["global", "shop"] }
+          },
+          { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated Affiliate platform fee rule history", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeRulePage"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      },
+      post: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "Create the next Affiliate platform fee rule version",
+        description:
+          "Requires button:backoffice-affiliate-fee-rule-create. The prior version is closed and retained for immutable task snapshots.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliatePlatformFeeRuleCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created Affiliate platform fee rule version", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeRule"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/platform-fee-policy`]: {
       get: {
         tags: ["Platform Fee Policy"],

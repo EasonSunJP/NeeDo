@@ -336,9 +336,7 @@ describe("GET /api/v1/openapi.json", () => {
         .content
     ).toHaveProperty("image/png");
     expect(response.body.paths).toHaveProperty("/api/v1/shops/{id}");
-    expect(
-      response.body.paths["/api/v1/shops/{id}"].get.parameters[0].schema.oneOf
-    ).toEqual(
+    expect(response.body.paths["/api/v1/shops/{id}"].get.parameters[0].schema.oneOf).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "integer", minimum: 1 }),
         expect.objectContaining({ type: "string", pattern: "^shop[0-9]{10}$" })
@@ -1817,5 +1815,98 @@ describe("GET /api/v1/openapi.json", () => {
       confirmationConflict.content["application/json"].schema.properties.data.properties.pauses
         .items
     ).toEqual({ $ref: "#/components/schemas/OrderAcceptancePauseSummary" });
+  });
+
+  it("documents the Affiliate platform fee rule history and immutable fee snapshots", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<string, { description?: string }>;
+      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
+      parameters?: Array<{ name: string; in: string }>;
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties: Record<string, { type?: string | string[]; pattern?: string }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "post", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const feeRules = document.paths["/api/v1/backoffice/affiliate/fee-rules"];
+
+    for (const operation of [feeRules.get, feeRules.post]) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.objectContaining({
+            description: expect.stringContaining("error.validation")
+          }),
+          "401": expect.objectContaining({ description: expect.stringContaining("error.auth") }),
+          "403": expect.objectContaining({ description: expect.stringContaining("error") }),
+          "404": expect.objectContaining({
+            description: expect.stringContaining("error.affiliate.platform_fee_shop_not_found")
+          }),
+          "409": expect.objectContaining({
+            description: expect.stringContaining("error.affiliate.platform_fee")
+          })
+        })
+      );
+    }
+    expect(feeRules.get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "pageSize", in: "query" }),
+        expect.objectContaining({ name: "scopeType", in: "query" }),
+        expect.objectContaining({ name: "shopId", in: "query" })
+      ])
+    );
+    expect(feeRules.post.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/AffiliatePlatformFeeRuleCreate"
+    });
+
+    const rule = document.components.schemas.AffiliatePlatformFeeRule;
+    expect(rule.additionalProperties).toBe(false);
+    expect(rule.required).toEqual(
+      expect.arrayContaining([
+        "scopeType",
+        "feeBps",
+        "version",
+        "effectiveFrom",
+        "createdByNeedoId",
+        "updatedByNeedoId"
+      ])
+    );
+    expect(rule.properties).not.toHaveProperty("createdById");
+    expect(rule.properties).not.toHaveProperty("updatedById");
+    expect(rule.properties.createdByNeedoId.pattern).toBe("^(?:u|needo)[0-9]{10}$");
+    expect(rule.properties.updatedByNeedoId.pattern).toBe("^(?:u|needo)[0-9]{10}$");
+    expect(document.components.schemas.AffiliatePlatformFeeRuleCreate.additionalProperties).toBe(
+      false
+    );
+    expect(document.components.schemas.AffiliatePlatformFeeRulePage.required).toEqual([
+      "list",
+      "total",
+      "page",
+      "page_size"
+    ]);
+
+    expect(document.components.schemas.AffiliateTask.required).toEqual(
+      expect.arrayContaining([
+        "platformFeeBps",
+        "platformFeeReserveNdp",
+        "grossReservedBudgetNdp",
+        "settledPlatformFeeNdp",
+        "releasedPlatformFeeNdp"
+      ])
+    );
+    expect(document.components.schemas.AffiliateBudgetReservation.required).toEqual(
+      expect.arrayContaining([
+        "commissionFrozenNdp",
+        "platformFeeFrozenNdp",
+        "platformFeeCapturedNdp",
+        "platformFeeReleasedNdp"
+      ])
+    );
   });
 });

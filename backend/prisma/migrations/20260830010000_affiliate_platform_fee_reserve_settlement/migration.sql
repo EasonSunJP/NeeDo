@@ -45,7 +45,7 @@ CREATE TABLE `affiliate_platform_fee_rules` (
 ALTER TABLE `affiliate_platform_fee_rules`
   ADD CONSTRAINT `affiliate_platform_fee_rules_shop_id_fkey`
   FOREIGN KEY (`shop_id`) REFERENCES `shops`(`id`)
-  ON DELETE RESTRICT ON UPDATE CASCADE;
+  ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `affiliate_platform_fee_rules`
