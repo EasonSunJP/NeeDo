@@ -211,3 +211,42 @@ npm --prefix backend test -- --runInBand \
 数据库迁移为增量结构。已有正式内容后不得直接 drop 新表；如确需归档或删除，必须另行审批并提供迁移、备份和审计方案。
 
 证据限定的延期领域：店铺/技师/服务全资料多语言、联盟人物/联盟组织介绍、联盟任务正文、规则/利用规约更广范围的统一发布，以及 Social、聊天、Request。它们必须分别沿用正式 API、五语言持久化和发布边界完成，不能由本轮播功能推断为已完成。
+
+## 9. USER_HOME 五页正式内容替换验收（2026-08-30）
+
+本次在上一节既有发布系统上追加迁移 `backend/prisma/migrations/20260829213000_carousel_locale_media_none_target/migration.sql`，并把用户首页正式轮播替换为五页独立内容，不使用品牌拼图：
+
+1. `欢迎进入 NeeDo`：`target.type=none`，不显示 CTA，不生成链接。
+2. `麻布十番超级按摩`：`#/stores/shop7507769538`。
+3. `Roppongi Recovery Lounge`：`#/stores/shop6566838167`。
+4. `Daikanyama Skin & Lash`：`#/stores/shop9966203542`。
+5. `Aoyama Care Studio`：`#/stores/shop3709181088`。
+
+每页必须有 `defaultMediaAssetPublicId`；五种语言的 translation 各自持久化 `badge`、`title`、`caption`、`ctaLabel`、`imageAltText` 和可空的 `mediaAssetPublicId`。语言图片为空时只回退到该页默认图，不回退到 mock 或浏览器数据；运营后台可以逐语言独立上传、替换或清除语言图片，也允许不同语言上传同一张图。`none` 目标只允许用于 `USER_HOME`，且必须没有 CTA；四个 Shop 目标在发布时解析为正式公开店铺 ID。
+
+正式数据库最终状态为：无 draft，`published v4`、`archived v3`、`disabled v2`、`archived v1`。v4 发布原因为 `Replace legacy Service slide with five-language NeeDo welcome and Shop campaign`。数据库只读对账确认 5 页 × 5 语言共 25 条翻译完整，当前所有语言图片 override 均为空，因此使用各页默认图；这不影响后台后续逐语言单独上传。
+
+实际浏览器验收使用本地 backend `3000`、frontend `5180`、MySQL `3307`、Redis `6379`：
+
+- 简体中文首页与动态页均显示同一 v4 的五页、相同顺序、相同图片和四个正式公开链接；欢迎页无链接和 CTA。
+- 日语首页显示数据库发布的日语 badge、caption、CTA 和 alt，正式店名不再被前端运行时二次翻译。
+- 在 440 × 956 视口分别验收首页和动态页，五张图片均完成加载，页面无横向溢出；日语六本木页标题换行为两行，文案和 CTA 未溢出。
+- 四个 Shop 均从轮播实际点击进入目标页，最终 URL 与页面一级标题分别为：`shop7507769538 / 麻布十番超级按摩`、`shop6566838167 / Roppongi Recovery Lounge`、`shop9966203542 / Daikanyama Skin & Lash`、`shop3709181088 / Aoyama Care Studio`（店铺详情会按界面语言本地化自身标题）。
+- backend 重启后，首页和动态页仍返回同一五页、图片均成功加载、四个公开链接不变，证明发布内容和媒体不是内存或 localStorage 状态。
+- 本次 in-app browser 未提供 CDP console capability，因此没有把“console 0”列为本次证据；可见页面、图片请求和跳转均无错误态，后端请求日志未出现本次变更新增的错误。正式上线前仍应在可读取 console 的 Chromium 环境补一次控制台检查。
+
+浏览器验收同时发现并修复两项正式运行问题：Vite 现在把 `/media` 与 `/api/v1` 一起代理到正式 backend；`PublishedCarousel` 标记服务端发布文案为 `data-no-i18n`，避免语言切换后被全局运行时 i18n 再次改写。轮播指示器的程序化滚动也改为按真实 scroll container 的 DOM rect 计算目标位置。
+
+本次最终自动化结果：
+
+- 聚焦 backend：6 suites / 90 tests，通过。
+- 聚焦 frontend：6 files / 76 tests，通过。
+- 完整 backend：261 suites / 1,789 tests，通过；另有条件跳过 9 suites / 37 tests。
+- 完整 frontend：216 files / 1,281 tests，通过。
+- `npm --prefix backend run lint`、`npm --prefix backend run build`、`npm run lint`：通过。
+- `npm run i18n:quality`：退出 0；14,375 entries，四个目标语言缺失均为 0，spreadsheet error、英语 CJK 泄漏、韩语混合泄漏和繁简泄漏均为 0；保留仓库既有日语简体扫描 462 项和 same-as-source 41 项。
+- `npm run i18n:audit`：退出 0；11,863 个中文源、7,585 已覆盖、4,278 个既有未覆盖候选。审计脚本已补齐模块化 `affiliateMarketplaceTranslations` 的加载，避免临时模块相对路径错误。
+- `npm run verify:production-build`：通过；正式 bundle 审计为 8 个 HTML entries 和 22 个 assets。
+- 专用真实写入 integration 只允许独立 `needo_test`；本机未配置该环境，因此 1 项按安全条件跳过，没有对已有 `needo_dev` 发布内容执行清理式测试。
+
+内容回滚优先使用运营后台历史回滚：选择 archived v3 克隆为更高版本 draft，复核五语言、图片和目标后再发布；如需立即停止展示，可先停用 published v4。不得删除 v4、手改已应用 migration、直接改发布行或恢复浏览器本地轮播。应用回滚前应保留数据库与媒体文件，并继续由正式 API 读取已发布内容。
