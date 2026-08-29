@@ -180,9 +180,15 @@ describe("IM pages", () => {
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
     const componentSource = pagesSource.slice(componentStart, componentEnd);
 
+    expect(pagesSource).toContain('import { createPortal } from "react-dom";');
     expect(componentSource).toContain('data-testid="im-media-viewer"');
     expect(componentSource).toContain('role="dialog"');
     expect(componentSource).toContain('aria-modal="true"');
+    expect(componentSource).toContain("createPortal(");
+    expect(componentSource).toContain('document.querySelector<HTMLElement>(".client-shell") ?? document.body');
+    expect(componentSource).toContain("isolate");
+    expect(componentSource).toContain("bg-black text-white");
+    expect(componentSource).not.toContain("bg-black/96");
     expect(componentSource).toContain("object-contain");
     expect(componentSource).toContain("mediaPreviewScale");
     expect(componentSource).toContain("Math.min(4");
@@ -191,6 +197,22 @@ describe("IM pages", () => {
     expect(componentSource).toContain('mode: "forward"');
     expect(componentSource).toContain("messageId: mediaPreview.id");
     expect(componentSource).toContain("<video");
+  });
+
+  it("anchors the long-press action menu to the selected message instead of the composer edge", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentSource).toContain("anchorElement={messageRefs.current[menuState.message.id]}");
+    expect(componentSource).not.toContain('scrollIntoView({ block: "end", behavior: "smooth" })');
+    expect(componentsSource).toContain("anchorElement: HTMLElement | null;");
+    expect(componentsSource).toContain("anchorElement.getBoundingClientRect()");
+    expect(componentsSource).toContain('position: "fixed"');
+    expect(componentsSource).toContain('placement: "above"');
+    expect(componentsSource).toContain('document.querySelector<HTMLElement>(".client-shell") ?? document.body');
+    expect(componentsSource).toContain("createPortal(actionMenu, portalTarget)");
+    expect(componentsSource).not.toContain('style={{ height: expanded ? "min(76dvh, 620px)" : "min(43dvh, 360px)" }}');
   });
 
   it("routes quick reactions through the store and suppresses duplicate in-flight taps", () => {
