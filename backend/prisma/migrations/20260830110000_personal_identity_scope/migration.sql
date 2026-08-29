@@ -22,6 +22,20 @@ ALTER TABLE `friend_requests`
   ADD COLUMN `requester_identity_id` INTEGER NULL,
   ADD COLUMN `target_identity_id` INTEGER NULL;
 
+ALTER TABLE `social_posts`
+  ADD COLUMN `author_identity_id` INTEGER NULL;
+
+ALTER TABLE `follows`
+  ADD COLUMN `follower_identity_id` INTEGER NULL,
+  ADD COLUMN `following_identity_id` INTEGER NULL;
+
+ALTER TABLE `notifications`
+  ADD COLUMN `recipient_identity_id` INTEGER NULL,
+  ADD COLUMN `actor_identity_id` INTEGER NULL;
+
+ALTER TABLE `media_assets`
+  ADD COLUMN `owner_identity_id` INTEGER NULL;
+
 -- Historical account-scoped records belong to the account's active customer identity.
 -- Accounts without a customer identity fall back to their active default/oldest identity.
 UPDATE `conversations` AS `row`
@@ -150,6 +164,71 @@ SET
     LIMIT 1
   );
 
+UPDATE `social_posts` AS `row`
+SET `row`.`author_identity_id` = (
+  SELECT `candidate`.`id` FROM `user_identities` AS `candidate`
+  WHERE `candidate`.`user_id` = `row`.`author_user_id`
+    AND `candidate`.`is_active` = true AND `candidate`.`deleted_at` IS NULL
+  ORDER BY CASE WHEN `candidate`.`type` IN ('customer', 'user', 'u') THEN 0 ELSE 1 END,
+    `candidate`.`is_default` DESC, `candidate`.`id` ASC
+  LIMIT 1
+);
+
+UPDATE `follows` AS `row`
+SET
+  `row`.`follower_identity_id` = (
+    SELECT `candidate`.`id` FROM `user_identities` AS `candidate`
+    WHERE `candidate`.`user_id` = `row`.`follower_user_id`
+      AND `candidate`.`is_active` = true AND `candidate`.`deleted_at` IS NULL
+    ORDER BY CASE WHEN `candidate`.`type` IN ('customer', 'user', 'u') THEN 0 ELSE 1 END,
+      `candidate`.`is_default` DESC, `candidate`.`id` ASC LIMIT 1
+  ),
+  `row`.`following_identity_id` = (
+    SELECT `candidate`.`id` FROM `user_identities` AS `candidate`
+    WHERE `candidate`.`user_id` = `row`.`following_user_id`
+      AND `candidate`.`is_active` = true AND `candidate`.`deleted_at` IS NULL
+    ORDER BY CASE WHEN `candidate`.`type` IN ('customer', 'user', 'u') THEN 0 ELSE 1 END,
+      `candidate`.`is_default` DESC, `candidate`.`id` ASC LIMIT 1
+  );
+
+UPDATE `notifications` AS `row`
+SET
+  `row`.`recipient_identity_id` = (
+    SELECT `candidate`.`id` FROM `user_identities` AS `candidate`
+    WHERE `candidate`.`user_id` = `row`.`recipient_user_id`
+      AND `candidate`.`is_active` = true AND `candidate`.`deleted_at` IS NULL
+    ORDER BY CASE WHEN `candidate`.`type` IN ('customer', 'user', 'u') THEN 0 ELSE 1 END,
+      `candidate`.`is_default` DESC, `candidate`.`id` ASC LIMIT 1
+  ),
+  `row`.`actor_identity_id` = (
+    SELECT `candidate`.`id` FROM `user_identities` AS `candidate`
+    WHERE `candidate`.`user_id` = `row`.`actor_user_id`
+      AND `candidate`.`is_active` = true AND `candidate`.`deleted_at` IS NULL
+    ORDER BY CASE WHEN `candidate`.`type` IN ('customer', 'user', 'u') THEN 0 ELSE 1 END,
+      `candidate`.`is_default` DESC, `candidate`.`id` ASC LIMIT 1
+  )
+WHERE `row`.`actor_user_id` IS NOT NULL;
+
+UPDATE `notifications` AS `row`
+SET `row`.`recipient_identity_id` = (
+  SELECT `candidate`.`id` FROM `user_identities` AS `candidate`
+  WHERE `candidate`.`user_id` = `row`.`recipient_user_id`
+    AND `candidate`.`is_active` = true AND `candidate`.`deleted_at` IS NULL
+  ORDER BY CASE WHEN `candidate`.`type` IN ('customer', 'user', 'u') THEN 0 ELSE 1 END,
+    `candidate`.`is_default` DESC, `candidate`.`id` ASC LIMIT 1
+)
+WHERE `row`.`recipient_identity_id` IS NULL;
+
+UPDATE `media_assets` AS `row`
+SET `row`.`owner_identity_id` = (
+  SELECT `candidate`.`id` FROM `user_identities` AS `candidate`
+  WHERE `candidate`.`user_id` = `row`.`owner_user_id`
+    AND `candidate`.`is_active` = true AND `candidate`.`deleted_at` IS NULL
+  ORDER BY CASE WHEN `candidate`.`type` IN ('customer', 'user', 'u') THEN 0 ELSE 1 END,
+    `candidate`.`is_default` DESC, `candidate`.`id` ASC LIMIT 1
+)
+WHERE `row`.`owner_user_id` IS NOT NULL;
+
 -- NOT NULL conversion is an intentional fail-closed guard for unresolved historical actors.
 ALTER TABLE `conversation_participants`
   MODIFY `identity_id` INTEGER NOT NULL;
@@ -163,11 +242,19 @@ ALTER TABLE `contacts`
 ALTER TABLE `friend_requests`
   MODIFY `requester_identity_id` INTEGER NOT NULL,
   MODIFY `target_identity_id` INTEGER NOT NULL;
+ALTER TABLE `social_posts`
+  MODIFY `author_identity_id` INTEGER NOT NULL;
+ALTER TABLE `follows`
+  MODIFY `follower_identity_id` INTEGER NOT NULL,
+  MODIFY `following_identity_id` INTEGER NOT NULL;
+ALTER TABLE `notifications`
+  MODIFY `recipient_identity_id` INTEGER NOT NULL;
 
 DROP INDEX `conversation_participants_conversation_id_user_id_key` ON `conversation_participants`;
 DROP INDEX `message_user_deletions_user_id_message_id_key` ON `message_user_deletions`;
 DROP INDEX `message_reactions_message_id_user_id_emoji_key` ON `message_reactions`;
 DROP INDEX `contacts_owner_user_id_contact_user_id_key` ON `contacts`;
+DROP INDEX `follows_follower_user_id_following_user_id_key` ON `follows`;
 
 CREATE UNIQUE INDEX `conversation_participants_conversation_id_identity_id_key`
   ON `conversation_participants`(`conversation_id`, `identity_id`);
@@ -177,6 +264,8 @@ CREATE UNIQUE INDEX `message_reactions_message_id_identity_id_emoji_key`
   ON `message_reactions`(`message_id`, `identity_id`, `emoji`);
 CREATE UNIQUE INDEX `contacts_owner_identity_id_contact_identity_id_key`
   ON `contacts`(`owner_identity_id`, `contact_identity_id`);
+CREATE UNIQUE INDEX `follows_follower_identity_id_following_identity_id_key`
+  ON `follows`(`follower_identity_id`, `following_identity_id`);
 
 CREATE INDEX `conversations_created_by_identity_id_idx` ON `conversations`(`created_by_identity_id`);
 CREATE INDEX `conversation_participants_identity_id_idx` ON `conversation_participants`(`identity_id`);
@@ -187,6 +276,14 @@ CREATE INDEX `contacts_owner_identity_id_idx` ON `contacts`(`owner_identity_id`)
 CREATE INDEX `contacts_contact_identity_id_idx` ON `contacts`(`contact_identity_id`);
 CREATE INDEX `friend_requests_requester_identity_id_idx` ON `friend_requests`(`requester_identity_id`);
 CREATE INDEX `friend_requests_target_identity_id_idx` ON `friend_requests`(`target_identity_id`);
+CREATE INDEX `social_posts_author_identity_id_idx` ON `social_posts`(`author_identity_id`);
+CREATE INDEX `social_posts_author_identity_scope_idx`
+  ON `social_posts`(`author_identity_id`, `deleted_at`, `created_at`);
+CREATE INDEX `follows_follower_identity_id_idx` ON `follows`(`follower_identity_id`);
+CREATE INDEX `follows_following_identity_id_idx` ON `follows`(`following_identity_id`);
+CREATE INDEX `notifications_recipient_identity_id_idx` ON `notifications`(`recipient_identity_id`);
+CREATE INDEX `notifications_actor_identity_id_idx` ON `notifications`(`actor_identity_id`);
+CREATE INDEX `media_assets_owner_identity_id_idx` ON `media_assets`(`owner_identity_id`);
 
 ALTER TABLE `conversations`
   ADD CONSTRAINT `conversations_created_by_identity_id_fkey`
@@ -213,3 +310,19 @@ ALTER TABLE `friend_requests`
   FOREIGN KEY (`requester_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `friend_requests_target_identity_id_fkey`
   FOREIGN KEY (`target_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `social_posts`
+  ADD CONSTRAINT `social_posts_author_identity_id_fkey`
+  FOREIGN KEY (`author_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `follows`
+  ADD CONSTRAINT `follows_follower_identity_id_fkey`
+  FOREIGN KEY (`follower_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT `follows_following_identity_id_fkey`
+  FOREIGN KEY (`following_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `notifications`
+  ADD CONSTRAINT `notifications_recipient_identity_id_fkey`
+  FOREIGN KEY (`recipient_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT `notifications_actor_identity_id_fkey`
+  FOREIGN KEY (`actor_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `media_assets`
+  ADD CONSTRAINT `media_assets_owner_identity_id_fkey`
+  FOREIGN KEY (`owner_identity_id`) REFERENCES `user_identities`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;

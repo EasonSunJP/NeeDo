@@ -88,7 +88,9 @@ export interface MessageHistoryPayload extends PaginatedResponse<MessagePayload>
 export interface ContactPayload {
   id: number;
   ownerUserId: number;
+  ownerIdentityId: number;
   contactUserId: number;
+  contactIdentityId: number;
   contactUser: ParticipantPayload;
   nickname: string | null;
   source: string;
@@ -132,7 +134,9 @@ export interface AddContactInput {
 export interface FriendRequestPayload {
   id: number;
   requesterUserId: number;
+  requesterIdentityId: number;
   targetUserId: number;
+  targetIdentityId: number;
   status: FriendRequestStatusPayload;
   message: string | null;
   respondedAt: Date | null;
@@ -141,6 +145,7 @@ export interface FriendRequestPayload {
 
 export interface SocialPostAuthorPayload {
   userId: number;
+  identityId: number;
   username: string;
   displayName: string;
   avatarUrl: string | null;
@@ -159,6 +164,7 @@ export interface SocialActivityStatusPayload {
 export interface SocialPostPayload {
   id: number;
   authorUserId: number;
+  authorIdentityId: number;
   content: string;
   media: unknown;
   visibility: SocialPostVisibilityPayload;
@@ -172,20 +178,24 @@ export interface SocialPostPayload {
 
 type SocialRelationshipMap = {
   follows: Set<string>;
-  friendUserIds: Set<number>;
+  friendIdentityIds: Set<number>;
 };
 
 export interface FollowPayload {
   id: number;
   followerUserId: number;
+  followerIdentityId: number;
   followingUserId: number;
+  followingIdentityId: number;
   createdAt: Date;
 }
 
 export interface NotificationPayload {
   id: number;
   recipientUserId: number;
+  recipientIdentityId: number;
   actorUserId: number | null;
+  actorIdentityId: number | null;
   type: NotificationTypePayload;
   title: string;
   body: string;
@@ -325,6 +335,7 @@ export interface RespondFriendRequestInput {
 
 export interface CreateSocialPostInput {
   authorUserId: number;
+  authorIdentityId?: number;
   content: string;
   media?: CreateSocialPostMediaEnvelope;
   mentionUserIds: number[];
@@ -361,17 +372,22 @@ export type UpdateSocialPostResult = CreateSocialPostResult;
 
 export interface SocialPostListInput extends PaginationInput {
   authorUserId?: number;
+  authorIdentityId?: number;
 }
 
 export interface SocialActivityStatusInput {
   viewerUserId: number;
+  viewerIdentityId?: number;
   targetUserId: number;
+  targetIdentityId?: number;
   since: Date;
 }
 
 export interface CreateFollowInput {
   followerUserId: number;
+  followerIdentityId?: number;
   followingUserId: number;
+  followingIdentityId?: number;
 }
 
 export interface NotificationListInput extends PaginationInput {
@@ -380,7 +396,9 @@ export interface NotificationListInput extends PaginationInput {
 
 export interface CreateOrderStatusNotificationInput {
   recipientUserIds: number[];
+  recipientIdentities?: Array<{ userId: number; identityId: number }>;
   actorUserId: number;
+  actorIdentityId?: number;
   orderId: number;
   orderNo: string;
   fromStatus: string;
@@ -476,26 +494,37 @@ export interface RealtimeRepositoryPort {
   createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
   updateSocialPost: (input: UpdateSocialPostInput) => Promise<UpdateSocialPostResult | null>;
   listSocialPosts: (
-    userId: number,
-    input: SocialPostListInput
+    identityId: number,
+    input: SocialPostListInput,
+    userId?: number
   ) => Promise<PaginatedResponse<SocialPostPayload>>;
-  getSocialPost: (userId: number, postId: number) => Promise<SocialPostPayload | null>;
+  getSocialPost: (
+    identityId: number,
+    postId: number,
+    userId?: number
+  ) => Promise<SocialPostPayload | null>;
   getSocialActivityStatus: (
     input: SocialActivityStatusInput
   ) => Promise<SocialActivityStatusPayload | null>;
   listFollowerUserIds: (followingUserId: number) => Promise<number[]>;
+  listFollowerRecipients?: (
+    followingIdentityId: number
+  ) => Promise<Array<{ userId: number; identityId: number }>>;
   createFollow: (input: CreateFollowInput) => Promise<FollowPayload>;
-  deleteFollow: (followerUserId: number, followingUserId: number) => Promise<{ deleted: boolean }>;
+  deleteFollow: (
+    followerIdentityId: number,
+    followingIdentityId: number
+  ) => Promise<{ deleted: boolean }>;
   listNotifications: (
-    userId: number,
+    identityId: number,
     input: NotificationListInput
   ) => Promise<PaginatedResponse<NotificationPayload>>;
   markNotificationRead: (
-    userId: number,
+    identityId: number,
     notificationId: number
   ) => Promise<NotificationPayload | null>;
-  markAllNotificationsRead: (userId: number) => Promise<{ count: number }>;
-  getUnreadCounts: (userId: number) => Promise<UnreadCountsPayload>;
+  markAllNotificationsRead: (identityId: number) => Promise<{ count: number }>;
+  getUnreadCounts: (identityId: number) => Promise<UnreadCountsPayload>;
   createOrderStatusNotifications: (
     input: CreateOrderStatusNotificationInput
   ) => Promise<NotificationPayload[]>;
@@ -524,7 +553,7 @@ const socialAuthorSelect = {
   createdAt: true,
   identities: {
     where: { deletedAt: null, isActive: true },
-    select: { type: true, displayName: true, isDefault: true },
+    select: { id: true, type: true, displayName: true, isDefault: true },
     orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
   }
 } satisfies Prisma.UserSelect;
@@ -532,6 +561,9 @@ const socialAuthorSelect = {
 const socialPostInclude = {
   author: {
     select: socialAuthorSelect
+  },
+  authorIdentity: {
+    select: { id: true, type: true, displayName: true }
   }
 } satisfies Prisma.SocialPostInclude;
 
@@ -1861,7 +1893,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       await tx.notification.create({
         data: {
           recipientUserId: input.targetUserId,
+          recipientIdentityId: targetIdentityId,
           actorUserId: input.requesterUserId,
+          actorIdentityId: requesterIdentityId,
           type: NotificationType.FRIEND_REQUEST,
           title: "New friend request",
           body: "You have a new friend request.",
@@ -1952,7 +1986,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async createSocialPost(input: CreateSocialPostInput): Promise<CreateSocialPostResult> {
     return this.client.$transaction(async (transaction) => {
+      const authorIdentityId = input.authorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.authorUserId);
+      if (!authorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
       const mentionUserIds = Array.from(new Set(input.mentionUserIds));
+      const mentionIdentityByUser = new Map<number, number>();
       if (
         mentionUserIds.length !== input.mentionUserIds.length ||
         mentionUserIds.length > 50 ||
@@ -1964,14 +2008,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       if (mentionUserIds.length > 0) {
         const contacts = await transaction.contact.findMany({
           where: {
-            ownerUserId: input.authorUserId,
+            ownerIdentityId: authorIdentityId,
             contactUserId: { in: mentionUserIds },
             blockedAt: null,
             deletedAt: null,
             contactUser: { isActive: true, deletedAt: null }
           },
-          select: { contactUserId: true }
+          select: { contactUserId: true, contactIdentityId: true },
+          orderBy: { contactIdentityId: "asc" }
         });
+        for (const contact of contacts) {
+          if (!mentionIdentityByUser.has(contact.contactUserId)) {
+            mentionIdentityByUser.set(contact.contactUserId, contact.contactIdentityId);
+          }
+        }
         const matchedContactIds = new Set(contacts.map((contact) => contact.contactUserId));
         if (
           matchedContactIds.size !== mentionUserIds.length ||
@@ -1995,6 +2045,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         const mediaAssets = await transaction.mediaAsset.findMany({
           where: {
             ownerUserId: input.authorUserId,
+            ownerIdentityId: authorIdentityId,
             entityType: "social_post_upload",
             usageType: "social_post_public",
             isActive: true,
@@ -2062,6 +2113,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const socialPost = await transaction.socialPost.create({
         data: {
           authorUserId: input.authorUserId,
+          authorIdentityId,
           content: input.content,
           media: this.toJsonValue(media),
           visibility: this.socialPostVisibilityToDb(input.visibility)
@@ -2077,6 +2129,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           where: {
             id: { in: selectedMediaAssetIds },
             ownerUserId: input.authorUserId,
+            ownerIdentityId: authorIdentityId,
             entityType: "social_post_upload",
             usageType: "social_post_public",
             isActive: true,
@@ -2095,7 +2148,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         const notification = await transaction.notification.create({
           data: {
             recipientUserId,
+            recipientIdentityId: mentionIdentityByUser.get(recipientUserId)!,
             actorUserId: input.authorUserId,
+            actorIdentityId: authorIdentityId,
             type: NotificationType.SOCIAL,
             title: "动态提醒",
             body: "提醒你查看一条新动态。",
@@ -2122,7 +2177,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
 
       return {
-        post: this.mapSocialPost(socialPost, input.authorUserId, input.authorUserId),
+        post: this.mapSocialPost(socialPost, authorIdentityId, authorIdentityId),
         notifications
       };
     });
@@ -2130,10 +2185,19 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async updateSocialPost(input: UpdateSocialPostInput): Promise<UpdateSocialPostResult | null> {
     return this.client.$transaction(async (transaction) => {
+      const authorIdentityId = input.authorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.authorUserId);
+      if (!authorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
       const existingPost = await transaction.socialPost.findFirst({
         where: {
           id: input.postId,
-          authorUserId: input.authorUserId,
+          authorIdentityId,
           deletedAt: null
         },
         include: socialPostInclude
@@ -2143,6 +2207,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }
 
       const mentionUserIds = Array.from(new Set(input.mentionUserIds));
+      const mentionIdentityByUser = new Map<number, number>();
       if (
         mentionUserIds.length !== input.mentionUserIds.length ||
         mentionUserIds.length > 50 ||
@@ -2154,14 +2219,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       if (mentionUserIds.length > 0) {
         const contacts = await transaction.contact.findMany({
           where: {
-            ownerUserId: input.authorUserId,
+            ownerIdentityId: authorIdentityId,
             contactUserId: { in: mentionUserIds },
             blockedAt: null,
             deletedAt: null,
             contactUser: { isActive: true, deletedAt: null }
           },
-          select: { contactUserId: true }
+          select: { contactUserId: true, contactIdentityId: true },
+          orderBy: { contactIdentityId: "asc" }
         });
+        for (const contact of contacts) {
+          if (!mentionIdentityByUser.has(contact.contactUserId)) {
+            mentionIdentityByUser.set(contact.contactUserId, contact.contactIdentityId);
+          }
+        }
         const matchedContactIds = new Set(contacts.map((contact) => contact.contactUserId));
         if (
           matchedContactIds.size !== mentionUserIds.length ||
@@ -2185,6 +2256,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         const mediaAssets = await transaction.mediaAsset.findMany({
           where: {
             ownerUserId: input.authorUserId,
+            ownerIdentityId: authorIdentityId,
             usageType: "social_post_public",
             isActive: true,
             deletedAt: null,
@@ -2272,6 +2344,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           where: {
             id: { in: pendingMediaAssetIds },
             ownerUserId: input.authorUserId,
+            ownerIdentityId: authorIdentityId,
             entityType: "social_post_upload",
             usageType: "social_post_public",
             isActive: true,
@@ -2291,7 +2364,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         const notification = await transaction.notification.create({
           data: {
             recipientUserId,
+            recipientIdentityId: mentionIdentityByUser.get(recipientUserId)!,
             actorUserId: input.authorUserId,
+            actorIdentityId: authorIdentityId,
             type: NotificationType.SOCIAL,
             title: "动态提醒",
             body: "提醒你查看一条动态。",
@@ -2319,28 +2394,30 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
 
       return {
-        post: this.mapSocialPost(updatedPost, input.authorUserId, input.authorUserId),
+        post: this.mapSocialPost(updatedPost, authorIdentityId, authorIdentityId),
         notifications
       };
     });
   }
 
   public async listSocialPosts(
-    userId: number,
-    input: SocialPostListInput
+    identityId: number,
+    input: SocialPostListInput,
+    userId: number = identityId
   ): Promise<PaginatedResponse<SocialPostPayload>> {
     const pagination = toPrismaPagination(input);
     const where: Prisma.SocialPostWhereInput = {
       deletedAt: null,
       ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
+      ...(input.authorIdentityId ? { authorIdentityId: input.authorIdentityId } : {}),
       OR: [
         { visibility: SocialPostVisibility.PUBLIC },
-        { authorUserId: userId },
+        { authorIdentityId: identityId },
         {
-          author: {
+          authorIdentity: {
             followers: {
               some: {
-                followerUserId: userId,
+                followerIdentityId: identityId,
                 deletedAt: null
               }
             }
@@ -2360,32 +2437,36 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     ]);
 
     const relationshipMap = await this.loadSocialRelationshipMap(
-      userId,
-      list.map((socialPost) => socialPost.authorUserId)
+      identityId,
+      list.map((socialPost) => socialPost.authorIdentityId)
     );
 
     return buildPaginatedResponse(
       list.map((socialPost) =>
-        this.mapSocialPost(socialPost, userId, socialPost.authorUserId, relationshipMap)
+        this.mapSocialPost(socialPost, identityId, socialPost.authorIdentityId, relationshipMap)
       ),
       total,
       pagination
     );
   }
 
-  public async getSocialPost(userId: number, postId: number): Promise<SocialPostPayload | null> {
+  public async getSocialPost(
+    identityId: number,
+    postId: number,
+    _userId: number = identityId
+  ): Promise<SocialPostPayload | null> {
     const socialPost = await this.client.socialPost.findFirst({
       where: {
         id: postId,
         deletedAt: null,
         OR: [
           { visibility: SocialPostVisibility.PUBLIC },
-          { authorUserId: userId },
+          { authorIdentityId: identityId },
           {
-            author: {
+            authorIdentity: {
               followers: {
                 some: {
-                  followerUserId: userId,
+                  followerIdentityId: identityId,
                   deletedAt: null
                 }
               }
@@ -2400,8 +2481,15 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       return null;
     }
 
-    const relationshipMap = await this.loadSocialRelationshipMap(userId, [socialPost.authorUserId]);
-    return this.mapSocialPost(socialPost, userId, socialPost.authorUserId, relationshipMap);
+    const relationshipMap = await this.loadSocialRelationshipMap(identityId, [
+      socialPost.authorIdentityId
+    ]);
+    return this.mapSocialPost(
+      socialPost,
+      identityId,
+      socialPost.authorIdentityId,
+      relationshipMap
+    );
   }
 
   public async getSocialActivityStatus(
@@ -2422,17 +2510,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     const latestVisiblePost = await this.client.socialPost.findFirst({
       where: {
-        authorUserId: input.targetUserId,
+        authorIdentityId: input.targetIdentityId ?? input.targetUserId,
         createdAt: { gte: input.since },
         deletedAt: null,
         OR: [
           { visibility: SocialPostVisibility.PUBLIC },
-          { authorUserId: input.viewerUserId },
+          { authorIdentityId: input.viewerIdentityId ?? input.viewerUserId },
           {
-            author: {
+            authorIdentity: {
               followers: {
                 some: {
-                  followerUserId: input.viewerUserId,
+                  followerIdentityId: input.viewerIdentityId ?? input.viewerUserId,
                   deletedAt: null
                 }
               }
@@ -2465,17 +2553,43 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return follows.map((follow) => follow.followerUserId);
   }
 
+  public async listFollowerRecipients(
+    followingIdentityId: number
+  ): Promise<Array<{ userId: number; identityId: number }>> {
+    const follows = await this.client.follow.findMany({
+      where: { followingIdentityId, deletedAt: null },
+      select: { followerUserId: true, followerIdentityId: true }
+    });
+    return follows.map((follow) => ({
+      userId: follow.followerUserId,
+      identityId: follow.followerIdentityId
+    }));
+  }
+
   public async createFollow(input: CreateFollowInput): Promise<FollowPayload> {
+    const followerIdentityId = input.followerIdentityId ??
+      await this.findCanonicalIdentityIdForUser(input.followerUserId);
+    const followingIdentityId = input.followingIdentityId ??
+      await this.findCanonicalIdentityIdForUser(input.followingUserId);
+    if (!followerIdentityId || !followingIdentityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_NOT_FOUND,
+        message: "error.auth.identity_not_found",
+        statusCode: 403
+      });
+    }
     const follow = await this.client.follow.upsert({
       where: {
-        followerUserId_followingUserId: {
-          followerUserId: input.followerUserId,
-          followingUserId: input.followingUserId
+        followerIdentityId_followingIdentityId: {
+          followerIdentityId,
+          followingIdentityId
         }
       },
       create: {
         followerUserId: input.followerUserId,
-        followingUserId: input.followingUserId
+        followerIdentityId,
+        followingUserId: input.followingUserId,
+        followingIdentityId
       },
       update: {
         deletedAt: null
@@ -2486,13 +2600,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public async deleteFollow(
-    followerUserId: number,
-    followingUserId: number
+    followerIdentityId: number,
+    followingIdentityId: number
   ): Promise<{ deleted: boolean }> {
     const result = await this.client.follow.updateMany({
       where: {
-        followerUserId,
-        followingUserId,
+        followerIdentityId,
+        followingIdentityId,
         deletedAt: null
       },
       data: {
@@ -2504,12 +2618,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public async listNotifications(
-    userId: number,
+    identityId: number,
     input: NotificationListInput
   ): Promise<PaginatedResponse<NotificationPayload>> {
     const pagination = toPrismaPagination(input);
     const where: Prisma.NotificationWhereInput = {
-      recipientUserId: userId,
+      recipientIdentityId: identityId,
       deletedAt: null,
       ...(input.unreadOnly ? { readAt: null } : {})
     };
@@ -2531,13 +2645,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public async markNotificationRead(
-    userId: number,
+    identityId: number,
     notificationId: number
   ): Promise<NotificationPayload | null> {
     const notification = await this.client.notification.findFirst({
       where: {
         id: notificationId,
-        recipientUserId: userId,
+        recipientIdentityId: identityId,
         deletedAt: null
       }
     });
@@ -2554,10 +2668,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return this.mapNotification(updated);
   }
 
-  public async markAllNotificationsRead(userId: number): Promise<{ count: number }> {
+  public async markAllNotificationsRead(identityId: number): Promise<{ count: number }> {
     const result = await this.client.notification.updateMany({
       where: {
-        recipientUserId: userId,
+        recipientIdentityId: identityId,
         readAt: null,
         deletedAt: null
       },
@@ -2569,11 +2683,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return { count: result.count };
   }
 
-  public async getUnreadCounts(userId: number): Promise<UnreadCountsPayload> {
+  public async getUnreadCounts(identityId: number): Promise<UnreadCountsPayload> {
     const [conversationUnread, notifications, friendRequests] = await Promise.all([
       this.client.conversationParticipant.aggregate({
         where: {
-          userId,
+          identityId,
           deletedAt: null,
           conversation: { deletedAt: null }
         },
@@ -2581,14 +2695,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }),
       this.client.notification.count({
         where: {
-          recipientUserId: userId,
+          recipientIdentityId: identityId,
           readAt: null,
           deletedAt: null
         }
       }),
       this.client.friendRequest.count({
         where: {
-          targetUserId: userId,
+          targetIdentityId: identityId,
           status: FriendRequestStatus.PENDING,
           deletedAt: null
         }
@@ -2607,6 +2721,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   public async createOrderStatusNotifications(
     input: CreateOrderStatusNotificationInput
   ): Promise<NotificationPayload[]> {
+    const suppliedIdentities = new Map(
+      input.recipientIdentities?.map((recipient) => [recipient.userId, recipient.identityId]) ?? []
+    );
     const recipientUserIds = Array.from(new Set(input.recipientUserIds)).filter(
       (recipientUserId) => recipientUserId !== input.actorUserId
     );
@@ -2615,12 +2732,31 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       return [];
     }
 
+    const actorIdentityId = input.actorIdentityId ??
+      await this.findCanonicalIdentityIdForUser(input.actorUserId);
+    const recipients = await Promise.all(
+      recipientUserIds.map(async (userId) => ({
+        userId,
+        identityId: suppliedIdentities.get(userId) ??
+          await this.findCanonicalIdentityIdForUser(userId)
+      }))
+    );
+    if (!actorIdentityId || recipients.some((recipient) => !recipient.identityId)) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_NOT_FOUND,
+        message: "error.auth.identity_not_found",
+        statusCode: 403
+      });
+    }
+
     const notifications = await this.client.$transaction(
-      recipientUserIds.map((recipientUserId) =>
+      recipients.map((recipient) =>
         this.client.notification.create({
           data: {
-            recipientUserId,
+            recipientUserId: recipient.userId,
+            recipientIdentityId: recipient.identityId!,
             actorUserId: input.actorUserId,
+            actorIdentityId,
             type: NotificationType.ORDER_STATUS,
             title: "Order status updated",
             body: `${input.serviceName} changed from ${input.fromStatus} to ${input.toStatus}.`,
@@ -2924,7 +3060,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return {
       id: contact.id,
       ownerUserId: contact.ownerUserId,
+      ownerIdentityId: contact.ownerIdentityId,
       contactUserId: contact.contactUserId,
+      contactIdentityId: contact.contactIdentityId,
       contactUser: this.mapParticipant(contact.contactUser),
       nickname: contact.nickname,
       source: contact.source,
@@ -2952,7 +3090,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return {
       id: friendRequest.id,
       requesterUserId: friendRequest.requesterUserId,
+      requesterIdentityId: friendRequest.requesterIdentityId,
       targetUserId: friendRequest.targetUserId,
+      targetIdentityId: friendRequest.targetIdentityId,
       status: this.friendRequestStatusFromDb(friendRequest.status),
       message: friendRequest.message,
       respondedAt: friendRequest.respondedAt,
@@ -2961,12 +3101,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   private async loadSocialRelationshipMap(
-    viewerUserId: number,
-    authorUserIds: number[]
+    viewerIdentityId: number,
+    authorIdentityIds: number[]
   ): Promise<SocialRelationshipMap> {
-    const uniqueAuthorUserIds = [...new Set(authorUserIds)];
-    if (uniqueAuthorUserIds.length === 0) {
-      return { follows: new Set(), friendUserIds: new Set() };
+    const uniqueAuthorIdentityIds = [...new Set(authorIdentityIds)];
+    if (uniqueAuthorIdentityIds.length === 0) {
+      return { follows: new Set(), friendIdentityIds: new Set() };
     }
 
     const [relationships, contacts] = await Promise.all([
@@ -2975,18 +3115,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           deletedAt: null,
           OR: [
             {
-              followerUserId: viewerUserId,
-              followingUserId: { in: uniqueAuthorUserIds }
+              followerIdentityId: viewerIdentityId,
+              followingIdentityId: { in: uniqueAuthorIdentityIds }
             },
             {
-              followerUserId: { in: uniqueAuthorUserIds },
-              followingUserId: viewerUserId
+              followerIdentityId: { in: uniqueAuthorIdentityIds },
+              followingIdentityId: viewerIdentityId
             }
           ]
         },
         select: {
-          followerUserId: true,
-          followingUserId: true
+          followerIdentityId: true,
+          followingIdentityId: true
         }
       }),
       this.client.contact.findMany({
@@ -2994,35 +3134,45 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           blockedAt: null,
           deletedAt: null,
           OR: [
-            { ownerUserId: viewerUserId, contactUserId: { in: uniqueAuthorUserIds } },
-            { ownerUserId: { in: uniqueAuthorUserIds }, contactUserId: viewerUserId }
+            {
+              ownerIdentityId: viewerIdentityId,
+              contactIdentityId: { in: uniqueAuthorIdentityIds }
+            },
+            {
+              ownerIdentityId: { in: uniqueAuthorIdentityIds },
+              contactIdentityId: viewerIdentityId
+            }
           ]
         },
-        select: { ownerUserId: true, contactUserId: true }
+        select: { ownerIdentityId: true, contactIdentityId: true }
       })
     ]);
     const follows = new Set(
       relationships.map(
-        (relationship) => `${relationship.followerUserId}:${relationship.followingUserId}`
+        (relationship) =>
+          `${relationship.followerIdentityId}:${relationship.followingIdentityId}`
       )
     );
     const contactPairs = new Set(
-      contacts.map((contact) => `${contact.ownerUserId}:${contact.contactUserId}`)
+      contacts.map((contact) => `${contact.ownerIdentityId}:${contact.contactIdentityId}`)
     );
-    const friendUserIds = new Set(
-      uniqueAuthorUserIds.filter(
-        (authorUserId) =>
-          authorUserId !== viewerUserId &&
-          contactPairs.has(`${viewerUserId}:${authorUserId}`) &&
-          contactPairs.has(`${authorUserId}:${viewerUserId}`)
+    const friendIdentityIds = new Set(
+      uniqueAuthorIdentityIds.filter(
+        (authorIdentityId) =>
+          authorIdentityId !== viewerIdentityId &&
+          contactPairs.has(`${viewerIdentityId}:${authorIdentityId}`) &&
+          contactPairs.has(`${authorIdentityId}:${viewerIdentityId}`)
       )
     );
 
-    return { follows, friendUserIds };
+    return { follows, friendIdentityIds };
   }
 
-  private mapSocialAuthor(author: SocialAuthorRecord): SocialPostAuthorPayload {
-    const identity =
+  private mapSocialAuthor(
+    author: SocialAuthorRecord,
+    postIdentity?: { id: number; type: string; displayName: string | null }
+  ): SocialPostAuthorPayload {
+    const identity = postIdentity ??
       author.identities.find((item) =>
         ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(
           item.type
@@ -3039,6 +3189,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     return {
       userId: author.id,
+      identityId: identity?.id ?? author.id,
       username: author.username,
       displayName: identity?.displayName?.trim() || author.username,
       avatarUrl: author.avatarUrl,
@@ -3049,29 +3200,30 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   private mapSocialPost(
     socialPost: SocialPostRecord,
-    viewerUserId: number,
-    authorUserId: number,
+    viewerIdentityId: number,
+    authorIdentityId: number,
     relationshipMap: SocialRelationshipMap = {
       follows: new Set(),
-      friendUserIds: new Set()
+      friendIdentityIds: new Set()
     }
   ): SocialPostPayload {
     return {
       id: socialPost.id,
       authorUserId: socialPost.authorUserId,
+      authorIdentityId: socialPost.authorIdentityId,
       content: socialPost.content,
       media: socialPost.media,
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
       createdAt: socialPost.createdAt,
       updatedAt: socialPost.updatedAt,
       viewerFollowsAuthor:
-        viewerUserId === authorUserId ||
-        relationshipMap.follows.has(`${viewerUserId}:${authorUserId}`),
+        viewerIdentityId === authorIdentityId ||
+        relationshipMap.follows.has(`${viewerIdentityId}:${authorIdentityId}`),
       authorFollowsViewer:
-        viewerUserId === authorUserId ||
-        relationshipMap.follows.has(`${authorUserId}:${viewerUserId}`),
-      viewerIsFriend: relationshipMap.friendUserIds.has(authorUserId),
-      author: this.mapSocialAuthor(socialPost.author)
+        viewerIdentityId === authorIdentityId ||
+        relationshipMap.follows.has(`${authorIdentityId}:${viewerIdentityId}`),
+      viewerIsFriend: relationshipMap.friendIdentityIds.has(authorIdentityId),
+      author: this.mapSocialAuthor(socialPost.author, socialPost.authorIdentity)
     };
   }
 
@@ -3079,7 +3231,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return {
       id: follow.id,
       followerUserId: follow.followerUserId,
+      followerIdentityId: follow.followerIdentityId,
       followingUserId: follow.followingUserId,
+      followingIdentityId: follow.followingIdentityId,
       createdAt: follow.createdAt
     };
   }
@@ -3088,7 +3242,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return {
       id: notification.id,
       recipientUserId: notification.recipientUserId,
+      recipientIdentityId: notification.recipientIdentityId,
       actorUserId: notification.actorUserId,
+      actorIdentityId: notification.actorIdentityId,
       type: this.notificationTypeFromDb(notification.type),
       title: notification.title,
       body: notification.body,

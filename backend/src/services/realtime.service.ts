@@ -32,12 +32,14 @@ const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface OrderStatusNotificationInput {
   actorUserId: number;
+  actorIdentityId?: number;
   orderId: number;
   orderNo: string;
   fromStatus: string;
   toStatus: string;
   serviceName: string;
   recipientUserIds: number[];
+  recipientIdentities?: Array<{ userId: number; identityId: number }>;
 }
 
 export interface OrderStatusNotificationPort {
@@ -580,6 +582,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       id: this.createEventId(),
       type: `friend_request.${friendRequest.status}`,
       recipientUserId: friendRequest.requesterUserId,
+      recipientIdentityId: friendRequest.requesterIdentityId,
       payload: friendRequest,
       createdAt: new Date().toISOString()
     });
@@ -592,16 +595,28 @@ export class RealtimeService implements OrderStatusNotificationPort {
     input: Omit<CreateSocialPostInput, "authorUserId" | "context">,
     context: AuthRequestContext
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const result = await this.repository.createSocialPost({
       authorUserId: auth.userId,
+      authorIdentityId: scope.identityId,
       content: input.content,
       media: input.media,
       mentionUserIds: input.mentionUserIds,
       visibility: input.visibility,
       context
     });
-    const recipientUserIds = Array.from(
-      new Set([auth.userId, ...(await this.repository.listFollowerUserIds(auth.userId))])
+    const followerRecipients = this.repository.listFollowerRecipients
+      ? await this.repository.listFollowerRecipients(scope.identityId)
+      : (await this.repository.listFollowerUserIds(auth.userId)).map((userId) => ({
+          userId,
+          identityId: userId
+        }));
+    const recipients = [
+      { userId: auth.userId, identityId: scope.identityId },
+      ...followerRecipients
+    ].filter(
+      (recipient, index, all) =>
+        all.findIndex((candidate) => candidate.identityId === recipient.identityId) === index
     );
 
     for (const notification of result.notifications) {
@@ -609,16 +624,18 @@ export class RealtimeService implements OrderStatusNotificationPort {
         id: this.createEventId(),
         type: "notification.created",
         recipientUserId: notification.recipientUserId,
+        recipientIdentityId: notification.recipientIdentityId,
         payload: notification,
         createdAt: new Date().toISOString()
       });
     }
 
-    for (const recipientUserId of recipientUserIds) {
+    for (const recipient of recipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: "social.post.created",
-        recipientUserId,
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
         payload: result.post,
         createdAt: new Date().toISOString()
       });
@@ -633,9 +650,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     input: Omit<UpdateSocialPostInput, "postId" | "authorUserId" | "context">,
     context: AuthRequestContext
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
     const result = await this.repository.updateSocialPost({
       postId,
       authorUserId: auth.userId,
+      authorIdentityId: scope.identityId,
       content: input.content,
       media: input.media,
       mentionUserIds: input.mentionUserIds,
@@ -646,23 +665,35 @@ export class RealtimeService implements OrderStatusNotificationPort {
       throw this.notFoundError("error.realtime.social_post_not_found");
     }
 
-    const recipientUserIds = Array.from(
-      new Set([auth.userId, ...(await this.repository.listFollowerUserIds(auth.userId))])
+    const followerRecipients = this.repository.listFollowerRecipients
+      ? await this.repository.listFollowerRecipients(scope.identityId)
+      : (await this.repository.listFollowerUserIds(auth.userId)).map((userId) => ({
+          userId,
+          identityId: userId
+        }));
+    const recipients = [
+      { userId: auth.userId, identityId: scope.identityId },
+      ...followerRecipients
+    ].filter(
+      (recipient, index, all) =>
+        all.findIndex((candidate) => candidate.identityId === recipient.identityId) === index
     );
     for (const notification of result.notifications) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: "notification.created",
         recipientUserId: notification.recipientUserId,
+        recipientIdentityId: notification.recipientIdentityId,
         payload: notification,
         createdAt: new Date().toISOString()
       });
     }
-    for (const recipientUserId of recipientUserIds) {
+    for (const recipient of recipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: "social.post.updated",
-        recipientUserId,
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
         payload: result.post,
         createdAt: new Date().toISOString()
       });
@@ -671,12 +702,20 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return result.post;
   }
 
-  public listSocialPosts(auth: AuthenticatedAccessContext, input: SocialPostListInput) {
-    return this.repository.listSocialPosts(auth.userId, input);
+  public async listSocialPosts(auth: AuthenticatedAccessContext, input: SocialPostListInput) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.listSocialPosts(
+      scope.identityId,
+      input.authorUserId === auth.userId
+        ? { ...input, authorIdentityId: scope.identityId }
+        : input,
+      auth.userId
+    );
   }
 
   public async getSocialPost(auth: AuthenticatedAccessContext, postId: number) {
-    const post = await this.repository.getSocialPost(auth.userId, postId);
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const post = await this.repository.getSocialPost(scope.identityId, postId, auth.userId);
 
     if (!post) {
       throw this.notFoundError("error.realtime.social_post_not_found");
@@ -690,9 +729,18 @@ export class RealtimeService implements OrderStatusNotificationPort {
     targetUserId: number,
     now: Date = new Date()
   ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const targetIdentityId = targetUserId === auth.userId
+      ? scope.identityId
+      : await this.repository.findCanonicalIdentityIdForUser(targetUserId);
+    if (!targetIdentityId) {
+      throw this.notFoundError("error.realtime.social_profile_not_found");
+    }
     const result = await this.repository.getSocialActivityStatus({
       viewerUserId: auth.userId,
+      viewerIdentityId: scope.identityId,
       targetUserId,
+      targetIdentityId,
       since: new Date(now.getTime() - SOCIAL_ACTIVITY_WINDOW_MS)
     });
 
@@ -712,14 +760,19 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     await this.assertActiveUsers([input.targetUserId]);
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const targetIdentityId = await this.requireCanonicalTargetIdentity(input.targetUserId);
     const follow = await this.repository.createFollow({
       followerUserId: auth.userId,
-      followingUserId: input.targetUserId
+      followerIdentityId: scope.identityId,
+      followingUserId: input.targetUserId,
+      followingIdentityId: targetIdentityId
     });
     this.eventGateway.publish({
       id: this.createEventId(),
       type: "follow.created",
       recipientUserId: input.targetUserId,
+      recipientIdentityId: targetIdentityId,
       payload: follow,
       createdAt: new Date().toISOString()
     });
@@ -727,16 +780,20 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return follow;
   }
 
-  public deleteFollow(auth: AuthenticatedAccessContext, targetUserId: number) {
-    return this.repository.deleteFollow(auth.userId, targetUserId);
+  public async deleteFollow(auth: AuthenticatedAccessContext, targetUserId: number) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const targetIdentityId = await this.requireCanonicalTargetIdentity(targetUserId);
+    return this.repository.deleteFollow(scope.identityId, targetIdentityId);
   }
 
-  public listNotifications(auth: AuthenticatedAccessContext, input: NotificationListInput) {
-    return this.repository.listNotifications(auth.userId, input);
+  public async listNotifications(auth: AuthenticatedAccessContext, input: NotificationListInput) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.listNotifications(scope.identityId, input);
   }
 
   public async markNotificationRead(auth: AuthenticatedAccessContext, notificationId: number) {
-    const notification = await this.repository.markNotificationRead(auth.userId, notificationId);
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const notification = await this.repository.markNotificationRead(scope.identityId, notificationId);
 
     if (!notification) {
       throw this.notFoundError("error.realtime.notification_not_found");
@@ -746,6 +803,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       id: this.createEventId(),
       type: "notification.read",
       recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
       payload: notification,
       createdAt: new Date().toISOString()
     });
@@ -753,12 +811,14 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return notification;
   }
 
-  public markAllNotificationsRead(auth: AuthenticatedAccessContext) {
-    return this.repository.markAllNotificationsRead(auth.userId);
+  public async markAllNotificationsRead(auth: AuthenticatedAccessContext) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.markAllNotificationsRead(scope.identityId);
   }
 
-  public getUnreadCounts(auth: AuthenticatedAccessContext) {
-    return this.repository.getUnreadCounts(auth.userId);
+  public async getUnreadCounts(auth: AuthenticatedAccessContext) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    return this.repository.getUnreadCounts(scope.identityId);
   }
 
   public async streamEvents(auth: AuthenticatedAccessContext, response: Response): Promise<void> {
@@ -769,7 +829,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
   public async notifyOrderStatusChanged(input: OrderStatusNotificationInput): Promise<void> {
     const notificationsInput: CreateOrderStatusNotificationInput = {
       actorUserId: input.actorUserId,
+      actorIdentityId: input.actorIdentityId,
       recipientUserIds: input.recipientUserIds,
+      recipientIdentities: input.recipientIdentities,
       orderId: input.orderId,
       orderNo: input.orderNo,
       fromStatus: input.fromStatus,
@@ -783,6 +845,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
         id: this.createEventId(),
         type: "notification.order_status",
         recipientUserId: notification.recipientUserId,
+        recipientIdentityId: notification.recipientIdentityId,
         payload: notification,
         createdAt: new Date().toISOString()
       });

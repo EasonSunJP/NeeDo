@@ -15,6 +15,7 @@ import type {
 } from "../services/technician-application-review.service";
 import { AppError } from "../utils/app-error";
 import { IdentityActivationRepository } from "./identity-activation.repository";
+import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 
 const technicianReviewSelect = {
   id: true,
@@ -188,10 +189,27 @@ export class TechnicianApplicationReviewRepository
   ): Promise<TechnicianRejectionResult> {
     return this.client.$transaction(async (transaction) => {
       await this.closeForReview(transaction, input, "rejected", input.rejectionReason);
+      const recipientIdentityId = await resolveCanonicalPersonalIdentityId(
+        transaction,
+        input.applicantUserId
+      );
+      const actorIdentityId = await resolveCanonicalPersonalIdentityId(
+        transaction,
+        input.reviewerUserId
+      );
+      if (!recipientIdentityId || !actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
       await transaction.notification.create({
         data: {
           recipientUserId: input.applicantUserId,
+          recipientIdentityId,
           actorUserId: input.reviewerUserId,
+          actorIdentityId,
           type: "SYSTEM",
           title: "identity.application.rejected.title",
           body: "identity.application.rejected.body",

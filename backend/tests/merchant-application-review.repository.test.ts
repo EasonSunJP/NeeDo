@@ -104,6 +104,7 @@ describe("MerchantApplicationReviewRepository", () => {
       saasFreePeriod: { create: jest.fn().mockResolvedValue({ id: 82 }) },
       role: { findFirst: jest.fn().mockResolvedValue({ id: 6, code: "merchant_owner" }) },
       userIdentity: {
+        findFirst: jest.fn().mockResolvedValue({ id: 109 }),
         create: jest.fn().mockResolvedValue({
           id: 91,
           userId: 7,
@@ -231,6 +232,7 @@ describe("MerchantApplicationReviewRepository", () => {
   it("rejects optimistically, notifies the applicant, and leaves no activated records", async () => {
     const tx = {
       identityApplication: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      userIdentity: { findFirst: jest.fn().mockResolvedValue({ id: 107 }) },
       notification: { create: jest.fn().mockResolvedValue({ id: 111 }) },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 121 }) }
     };
@@ -257,6 +259,8 @@ describe("MerchantApplicationReviewRepository", () => {
     expect(tx.notification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         recipientUserId: 7,
+        recipientIdentityId: 107,
+        actorIdentityId: 107,
         type: "SYSTEM",
         payload: { applicationId: 41, rejectionReason: "法人登记文件无法确认" }
       })

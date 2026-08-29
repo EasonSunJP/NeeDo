@@ -15,6 +15,8 @@ const validPng = Buffer.concat([
 
 const actor = {
   userId: 41,
+  currentIdentityId: 71,
+  currentIdentityType: "technician",
   email: "social@example.test",
   accessTokenJti: "social-media-test",
   accessTokenExpiresAt: 2_000_000_000,
@@ -46,7 +48,8 @@ describe("SocialMediaService", () => {
     };
     const service = new SocialMediaService(
       repository,
-      new ContentMediaFileStorage(directory)
+      new ContentMediaFileStorage(directory),
+      { resolve: jest.fn(async () => ({ identityId: 71, userId: 41, identityType: "technician" })) }
     );
 
     const result = await service.upload(actor, context, {
@@ -65,6 +68,7 @@ describe("SocialMediaService", () => {
     expect(repository.createUpload).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerUserId: 41,
+        ownerIdentityId: 71,
         entityType: "social_post_upload",
         usageType: "social_post_public",
         fileName: "moment.png",
@@ -138,6 +142,7 @@ describe("SocialMediaRepository", () => {
     await expect(
       repository.createUpload({
         ownerUserId: 41,
+        ownerIdentityId: 71,
         entityType: "social_post_upload",
         usageType: "social_post_public",
         fileKey: `${"a".repeat(64)}.png`,
@@ -160,6 +165,7 @@ describe("SocialMediaRepository", () => {
         entityType: "social_post_upload",
         entityId: 41,
         ownerUserId: 41,
+        ownerIdentityId: 71,
         usageType: "social_post_public",
         checksumSha256: "a".repeat(64)
       })

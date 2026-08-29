@@ -18,6 +18,7 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
   const existingPost = {
     id: 701,
     authorUserId: options.postAuthorUserId ?? 41,
+    authorIdentityId: options.postAuthorUserId === 99 ? 199 : 71,
     content: "before",
     media: {
       items: [
@@ -34,7 +35,8 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
     visibility: SocialPostVisibility.PUBLIC,
     createdAt: now,
     updatedAt: now,
-    author
+    author,
+    authorIdentity: { id: 71, type: "customer", displayName: "Aya" }
   };
   const transaction = {
     socialPost: {
@@ -50,7 +52,10 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
       }))
     },
     contact: {
-      findMany: jest.fn(async () => [{ contactUserId: 52 }, { contactUserId: 63 }])
+      findMany: jest.fn(async () => [
+        { contactUserId: 52, contactIdentityId: 152 },
+        { contactUserId: 63, contactIdentityId: 163 }
+      ])
     },
     mediaAsset: {
       findMany: jest.fn(async () => [
@@ -79,7 +84,9 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
       create: jest.fn(async ({ data }) => ({
         id: 801,
         recipientUserId: data.recipientUserId,
+        recipientIdentityId: data.recipientIdentityId,
         actorUserId: data.actorUserId,
+        actorIdentityId: data.actorIdentityId,
         type: NotificationType.SOCIAL,
         title: data.title,
         body: data.body,
@@ -97,6 +104,7 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
 const updateInput = () => ({
   postId: 701,
   authorUserId: 41,
+  authorIdentityId: 71,
   content: "after",
   visibility: "followers" as const,
   mentionUserIds: [52, 63],

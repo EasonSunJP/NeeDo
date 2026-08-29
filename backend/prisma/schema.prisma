@@ -1189,6 +1189,7 @@ model MediaAsset {
   technicianProfileId Int?      @map("technician_profile_id")
   customerProfileId   Int?      @map("customer_profile_id")
   ownerUserId         Int?      @map("owner_user_id")
+  ownerIdentityId     Int?      @map("owner_identity_id")
   url                 String    @db.VarChar(500)
   mimeType            String    @default("image/jpeg") @map("mime_type") @db.VarChar(100)
   usageType           String    @default("gallery") @map("usage_type") @db.VarChar(50)
@@ -1210,6 +1211,7 @@ model MediaAsset {
   technicianProfile         TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   customerProfile           CustomerProfile?           @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   ownerUser                 User?                      @relation("ApplicationMediaOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  ownerIdentity             UserIdentity?              @relation("MediaAssetOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: SetNull)
   affiliateTaskCovers       AffiliateTask[]            @relation("AffiliateTaskCover")
   identityApplications      IdentityApplicationMedia[]
   carouselSlides            CarouselSlide[]
@@ -1222,6 +1224,7 @@ model MediaAsset {
   @@index([technicianProfileId])
   @@index([customerProfileId])
   @@index([ownerUserId])
+  @@index([ownerIdentityId])
   @@index([usageType])
   @@index([purgeAt])
   @@index([deletedAt])
@@ -1997,18 +2000,22 @@ model FriendRequest {
 }
 
 model SocialPost {
-  id           Int                  @id @default(autoincrement())
-  authorUserId Int                  @map("author_user_id")
-  content      String               @db.Text
-  media        Json?
-  visibility   SocialPostVisibility @default(PUBLIC)
-  createdAt    DateTime             @default(now()) @map("created_at")
-  updatedAt    DateTime             @updatedAt @map("updated_at")
-  deletedAt    DateTime?            @map("deleted_at")
+  id               Int                  @id @default(autoincrement())
+  authorUserId     Int                  @map("author_user_id")
+  authorIdentityId Int                  @map("author_identity_id")
+  content          String               @db.Text
+  media            Json?
+  visibility       SocialPostVisibility @default(PUBLIC)
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  deletedAt        DateTime?            @map("deleted_at")
 
-  author User @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  author         User         @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorIdentity UserIdentity @relation("SocialPostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
 
   @@index([authorUserId])
+  @@index([authorIdentityId])
+  @@index([authorIdentityId, deletedAt, createdAt])
   @@index([authorUserId, deletedAt, createdAt])
   @@index([visibility])
   @@index([createdAt])
@@ -2017,41 +2024,53 @@ model SocialPost {
 }
 
 model Follow {
-  id              Int       @id @default(autoincrement())
-  followerUserId  Int       @map("follower_user_id")
-  followingUserId Int       @map("following_user_id")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                  Int       @id @default(autoincrement())
+  followerUserId      Int       @map("follower_user_id")
+  followerIdentityId  Int       @map("follower_identity_id")
+  followingUserId     Int       @map("following_user_id")
+  followingIdentityId Int       @map("following_identity_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
-  follower  User @relation("FollowFollower", fields: [followerUserId], references: [id], onDelete: Restrict)
-  following User @relation("FollowFollowing", fields: [followingUserId], references: [id], onDelete: Restrict)
+  follower          User         @relation("FollowFollower", fields: [followerUserId], references: [id], onDelete: Restrict)
+  followerIdentity  UserIdentity @relation("FollowFollowerIdentity", fields: [followerIdentityId], references: [id], onDelete: Restrict)
+  following         User         @relation("FollowFollowing", fields: [followingUserId], references: [id], onDelete: Restrict)
+  followingIdentity UserIdentity @relation("FollowFollowingIdentity", fields: [followingIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([followerUserId, followingUserId])
+  @@unique([followerIdentityId, followingIdentityId])
   @@index([followerUserId])
+  @@index([followerIdentityId])
   @@index([followingUserId])
+  @@index([followingIdentityId])
   @@index([deletedAt])
   @@map("follows")
 }
 
 model Notification {
-  id              Int              @id @default(autoincrement())
-  recipientUserId Int              @map("recipient_user_id")
-  actorUserId     Int?             @map("actor_user_id")
-  type            NotificationType
-  title           String           @db.VarChar(160)
-  body            String           @db.VarChar(500)
-  payload         Json?
-  readAt          DateTime?        @map("read_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  deletedAt       DateTime?        @map("deleted_at")
+  id                  Int              @id @default(autoincrement())
+  recipientUserId     Int              @map("recipient_user_id")
+  recipientIdentityId Int              @map("recipient_identity_id")
+  actorUserId         Int?             @map("actor_user_id")
+  actorIdentityId     Int?             @map("actor_identity_id")
+  type                NotificationType
+  title               String           @db.VarChar(160)
+  body                String           @db.VarChar(500)
+  payload             Json?
+  readAt              DateTime?        @map("read_at")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  deletedAt           DateTime?        @map("deleted_at")
 
-  recipient User  @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
-  actor     User? @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  recipient         User          @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientIdentity UserIdentity  @relation("NotificationRecipientIdentity", fields: [recipientIdentityId], references: [id], onDelete: Restrict)
+  actor             User?         @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorIdentity     UserIdentity? @relation("NotificationActorIdentity", fields: [actorIdentityId], references: [id], onDelete: SetNull)
 
   @@index([recipientUserId])
+  @@index([recipientIdentityId])
   @@index([actorUserId])
+  @@index([actorIdentityId])
   @@index([type])
   @@index([readAt])
   @@index([createdAt])
@@ -2088,6 +2107,12 @@ model UserIdentity {
   contactTargets           Contact[]                 @relation("ContactTargetIdentity")
   requestedFriendRequests  FriendRequest[]           @relation("FriendRequestRequesterIdentity")
   targetedFriendRequests   FriendRequest[]           @relation("FriendRequestTargetIdentity")
+  socialPosts              SocialPost[]              @relation("SocialPostAuthorIdentity")
+  following                Follow[]                  @relation("FollowFollowerIdentity")
+  followers                Follow[]                  @relation("FollowFollowingIdentity")
+  receivedNotifications    Notification[]            @relation("NotificationRecipientIdentity")
+  actedNotifications       Notification[]            @relation("NotificationActorIdentity")
+  ownedMediaAssets         MediaAsset[]              @relation("MediaAssetOwnerIdentity")
 
   @@index([userId])
   @@index([type])

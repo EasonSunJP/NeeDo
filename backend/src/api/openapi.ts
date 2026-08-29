@@ -1483,7 +1483,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "ownerUserId",
+          "ownerIdentityId",
           "contactUserId",
+          "contactIdentityId",
           "contactUser",
           "nickname",
           "source",
@@ -1493,7 +1495,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer" },
           ownerUserId: { type: "integer" },
+          ownerIdentityId: { type: "integer" },
           contactUserId: { type: "integer" },
+          contactIdentityId: { type: "integer" },
           contactUser: { $ref: "#/components/schemas/RealtimeParticipant" },
           nickname: { type: ["string", "null"] },
           source: { type: "string" },
@@ -1516,7 +1520,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "requesterUserId",
+          "requesterIdentityId",
           "targetUserId",
+          "targetIdentityId",
           "status",
           "message",
           "respondedAt",
@@ -1525,7 +1531,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer" },
           requesterUserId: { type: "integer" },
+          requesterIdentityId: { type: "integer" },
           targetUserId: { type: "integer" },
+          targetIdentityId: { type: "integer" },
           status: { type: "string", enum: ["pending", "accepted", "rejected"] },
           message: { type: ["string", "null"] },
           respondedAt: { type: ["string", "null"], format: "date-time" },
@@ -1537,6 +1545,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "authorUserId",
+          "authorIdentityId",
           "content",
           "media",
           "visibility",
@@ -1550,6 +1559,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer" },
           authorUserId: { type: "integer" },
+          authorIdentityId: { type: "integer" },
           content: { type: "string" },
           media: {},
           visibility: { type: "string", enum: ["public", "followers"] },
@@ -1568,9 +1578,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       SocialProfileSummary: {
         type: "object",
         additionalProperties: false,
-        required: ["userId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
+        required: ["userId", "identityId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
         properties: {
           userId: { type: "integer" },
+          identityId: { type: "integer" },
           username: { type: "string" },
           displayName: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
@@ -1590,11 +1601,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       Follow: {
         type: "object",
-        required: ["id", "followerUserId", "followingUserId", "createdAt"],
+        required: [
+          "id",
+          "followerUserId",
+          "followerIdentityId",
+          "followingUserId",
+          "followingIdentityId",
+          "createdAt"
+        ],
         properties: {
           id: { type: "integer" },
           followerUserId: { type: "integer" },
+          followerIdentityId: { type: "integer" },
           followingUserId: { type: "integer" },
+          followingIdentityId: { type: "integer" },
           createdAt: { type: "string", format: "date-time" }
         }
       },
@@ -1603,7 +1623,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "recipientUserId",
+          "recipientIdentityId",
           "actorUserId",
+          "actorIdentityId",
           "type",
           "title",
           "body",
@@ -1614,7 +1636,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer" },
           recipientUserId: { type: "integer" },
+          recipientIdentityId: { type: "integer" },
           actorUserId: { type: ["integer", "null"] },
+          actorIdentityId: { type: ["integer", "null"] },
           type: { type: "string", enum: ["orderStatus", "friendRequest", "system", "social"] },
           title: { type: "string" },
           body: { type: "string" },

@@ -17,7 +17,7 @@ const author = {
 };
 
 const createFixture = (overrides: {
-  contacts?: Array<{ contactUserId: number }>;
+  contacts?: Array<{ contactUserId: number; contactIdentityId: number }>;
   mediaAssets?: Array<{
     id: number;
     checksumSha256: string;
@@ -29,8 +29,8 @@ const createFixture = (overrides: {
   const transaction = {
     contact: {
       findMany: jest.fn(async () => overrides.contacts ?? [
-        { contactUserId: 52 },
-        { contactUserId: 63 }
+        { contactUserId: 52, contactIdentityId: 152 },
+        { contactUserId: 63, contactIdentityId: 163 }
       ])
     },
     mediaAsset: {
@@ -54,18 +54,22 @@ const createFixture = (overrides: {
       create: jest.fn(async ({ data }) => ({
         id: 701,
         authorUserId: data.authorUserId,
+        authorIdentityId: data.authorIdentityId,
         content: data.content,
         media: data.media,
         visibility: SocialPostVisibility.PUBLIC,
         createdAt: now,
-        author
+        author,
+        authorIdentity: { id: 71, type: "customer", displayName: "Aya" }
       }))
     },
     notification: {
       create: jest.fn(async ({ data }) => ({
         id: notificationId++,
         recipientUserId: data.recipientUserId,
+        recipientIdentityId: data.recipientIdentityId,
         actorUserId: data.actorUserId,
+        actorIdentityId: data.actorIdentityId,
         type: NotificationType.SOCIAL,
         title: data.title,
         body: data.body,
@@ -86,6 +90,7 @@ const createFixture = (overrides: {
 
 const createInput = () => ({
   authorUserId: 41,
+  authorIdentityId: 71,
   content: "formal post",
   visibility: "public" as const,
   mentionUserIds: [52, 63],
@@ -134,18 +139,20 @@ describe("RealtimeRepository Social post mentions", () => {
     ]);
     expect(fixture.transaction.contact.findMany).toHaveBeenCalledWith({
       where: {
-        ownerUserId: 41,
+        ownerIdentityId: 71,
         contactUserId: { in: [52, 63] },
         blockedAt: null,
         deletedAt: null,
         contactUser: { isActive: true, deletedAt: null }
       },
-      select: { contactUserId: true }
+      select: { contactUserId: true, contactIdentityId: true },
+      orderBy: { contactIdentityId: "asc" }
     });
     expect(fixture.transaction.mediaAsset.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           ownerUserId: 41,
+          ownerIdentityId: 71,
           entityType: "social_post_upload",
           usageType: "social_post_public",
           isActive: true,
@@ -159,6 +166,7 @@ describe("RealtimeRepository Social post mentions", () => {
       where: expect.objectContaining({
         id: { in: [301, 302] },
         ownerUserId: 41,
+        ownerIdentityId: 71,
         entityType: "social_post_upload",
         usageType: "social_post_public"
       }),
@@ -178,7 +186,7 @@ describe("RealtimeRepository Social post mentions", () => {
   });
 
   it("rejects the whole operation when any mention is not an active unblocked owned contact", async () => {
-    const fixture = createFixture({ contacts: [{ contactUserId: 52 }] });
+    const fixture = createFixture({ contacts: [{ contactUserId: 52, contactIdentityId: 152 }] });
 
     await expect(fixture.repository.createSocialPost(createInput())).rejects.toMatchObject({
       message: "error.social.invalid_mention_contact",

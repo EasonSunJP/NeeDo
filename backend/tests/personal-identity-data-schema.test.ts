@@ -31,12 +31,20 @@ describe("personal identity data schema", () => {
     expect(modelSource("MessageUserDeletion")).toContain(
       "@@unique([identityId, messageId])"
     );
+    expect(modelSource("SocialPost")).toContain("authorIdentityId");
+    expect(modelSource("Follow")).toContain(
+      "@@unique([followerIdentityId, followingIdentityId])"
+    );
+    expect(modelSource("Notification")).toContain("recipientIdentityId");
+    expect(modelSource("MediaAsset")).toContain("ownerIdentityId");
   });
 
   it("backfills existing records to customer identity first and fails closed before required columns", () => {
     expect(migration).toContain("IN ('customer', 'user', 'u')");
     expect(migration).toContain("UPDATE `conversation_participants`");
     expect(migration).toContain("UPDATE `contacts`");
+    expect(migration).toContain("UPDATE `social_posts`");
+    expect(migration).toContain("UPDATE `notifications`");
     expect(migration).toContain("MODIFY `identity_id` INTEGER NOT NULL");
     expect(migration).toContain("MODIFY `owner_identity_id` INTEGER NOT NULL");
     expect(migration).not.toMatch(/(?:^|\n)\s*(?:DELETE|TRUNCATE)\b/i);

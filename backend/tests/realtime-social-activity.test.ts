@@ -4,7 +4,9 @@ import { RealtimeService } from "../src/services/realtime.service";
 
 type ActivityStatusMethod = (input: {
   viewerUserId: number;
+  viewerIdentityId?: number;
   targetUserId: number;
+  targetIdentityId?: number;
   since: Date;
 }) => Promise<unknown>;
 
@@ -24,6 +26,7 @@ describe("RealtimeRepository friend activity status", () => {
           createdAt: joinedAt,
           identities: [
             {
+              id: 1237,
               type: "customer",
               displayName: "柴田 陽菜",
               isDefault: true
@@ -49,7 +52,9 @@ describe("RealtimeRepository friend activity status", () => {
     await expect(
       method.call(repository, {
         viewerUserId: 137,
+        viewerIdentityId: 1137,
         targetUserId: 237,
+        targetIdentityId: 1237,
         since
       })
     ).resolves.toEqual({
@@ -57,6 +62,7 @@ describe("RealtimeRepository friend activity status", () => {
       latestVisiblePostAt,
       profile: {
         userId: 237,
+        identityId: 1237,
         username: "柴田 陽菜",
         displayName: "柴田 陽菜",
         avatarUrl: "/images/generated/profiles/cartoon-profile-03.png",
@@ -74,23 +80,23 @@ describe("RealtimeRepository friend activity status", () => {
         createdAt: true,
         identities: {
           where: { deletedAt: null, isActive: true },
-          select: { type: true, displayName: true, isDefault: true },
+          select: { id: true, type: true, displayName: true, isDefault: true },
           orderBy: [{ isDefault: "desc" }, { id: "asc" }]
         }
       }
     });
     expect(client.socialPost.findFirst).toHaveBeenCalledWith({
       where: {
-        authorUserId: 237,
+        authorIdentityId: 1237,
         createdAt: { gte: since },
         deletedAt: null,
         OR: [
           { visibility: "PUBLIC" },
-          { authorUserId: 137 },
+          { authorIdentityId: 1137 },
           {
-            author: {
+            authorIdentity: {
               followers: {
-                some: { followerUserId: 137, deletedAt: null }
+                some: { followerIdentityId: 1137, deletedAt: null }
               }
             }
           }
@@ -113,7 +119,9 @@ describe("RealtimeRepository friend activity status", () => {
     await expect(
       method.call(repository, {
         viewerUserId: 137,
+        viewerIdentityId: 1137,
         targetUserId: 237,
+        targetIdentityId: 1237,
         since
       })
     ).resolves.toMatchObject({
@@ -126,6 +134,7 @@ describe("RealtimeRepository friend activity status", () => {
 describe("RealtimeService friend activity window", () => {
   it("uses the exact rolling 30-day boundary from a fixed clock", async () => {
     const repository = {
+      findCanonicalIdentityIdForUser: jest.fn(async () => 1237),
       getSocialActivityStatus: jest.fn(async () => ({
         status: "no_recent_posts" as const,
         latestVisiblePostAt: null,
@@ -161,13 +170,16 @@ describe("RealtimeService friend activity window", () => {
 
     expect(repository.getSocialActivityStatus).toHaveBeenCalledWith({
       viewerUserId: 137,
+      viewerIdentityId: 137,
       targetUserId: 237,
+      targetIdentityId: 1237,
       since: new Date("2026-07-28T10:00:00.000Z")
     });
   });
 
   it("returns a stable not-found error when the target account is unavailable", async () => {
     const repository = {
+      findCanonicalIdentityIdForUser: jest.fn(async () => null),
       getSocialActivityStatus: jest.fn(async () => null)
     };
     const service = new RealtimeService(repository as never, {

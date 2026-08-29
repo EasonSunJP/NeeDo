@@ -16,6 +16,7 @@ export class SocialMediaRepository implements SocialMediaRepositoryPort {
           entityType: input.entityType,
           entityId: input.ownerUserId,
           ownerUserId: input.ownerUserId,
+          ownerIdentityId: input.ownerIdentityId,
           url: `/media/content/${input.fileKey}`,
           mimeType: input.mimeType,
           usageType: input.usageType,

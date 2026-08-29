@@ -98,4 +98,48 @@ describe("RealtimeService personal identity scope", () => {
     expect(eventGateway.subscribe).toHaveBeenCalledWith(70, response);
     expect(eventGateway.subscribe).not.toHaveBeenCalledWith(7, response);
   });
+
+  it("owns social posts, follows, notifications, and unread counts by canonical identity", async () => {
+    const post = { id: 12, authorUserId: 7, authorIdentityId: 70 };
+    const notifications = { list: [], total: 0, page: 1, page_size: 20 };
+    const repository = {
+      createSocialPost: jest.fn(async () => ({ post, notifications: [] })),
+      listFollowerRecipients: jest.fn(async () => [{ userId: 8, identityId: 80 }]),
+      listSocialPosts: jest.fn(async () => ({ list: [post], total: 1, page: 1, page_size: 20 })),
+      findActiveUserIds: jest.fn(async () => [8]),
+      findCanonicalIdentityIdForUser: jest.fn(async () => 80),
+      createFollow: jest.fn(async () => ({ id: 3 })),
+      listNotifications: jest.fn(async () => notifications),
+      getUnreadCounts: jest.fn(async () => ({ conversations: 0, notifications: 0, friendRequests: 0, total: 0 }))
+    };
+    const service = new RealtimeService(repository as never, eventGateway as never, scopeResolver as never);
+
+    await service.createSocialPost(
+      auth,
+      { content: "identity-owned", mentionUserIds: [], visibility: "public" },
+      { ip: "127.0.0.1" }
+    );
+    await service.listSocialPosts(auth, { page: 1, pageSize: 20 });
+    await service.createFollow(auth, { targetUserId: 8 });
+    await service.listNotifications(auth, { page: 1, pageSize: 20 });
+    await service.getUnreadCounts(auth);
+
+    expect(repository.createSocialPost).toHaveBeenCalledWith(expect.objectContaining({
+      authorIdentityId: 70,
+      authorUserId: 7
+    }));
+    expect(repository.listSocialPosts).toHaveBeenCalledWith(70, { page: 1, pageSize: 20 }, 7);
+    expect(repository.createFollow).toHaveBeenCalledWith({
+      followerIdentityId: 70,
+      followerUserId: 7,
+      followingIdentityId: 80,
+      followingUserId: 8
+    });
+    expect(repository.listNotifications).toHaveBeenCalledWith(70, { page: 1, pageSize: 20 });
+    expect(repository.getUnreadCounts).toHaveBeenCalledWith(70);
+    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
+      recipientIdentityId: 80,
+      type: "social.post.created"
+    }));
+  });
 });

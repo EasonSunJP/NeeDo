@@ -7,6 +7,7 @@ import {
   type IdentityActivationRepositoryPort
 } from "../services/identity-activation.service";
 import { AppError } from "../utils/app-error";
+import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 
 const roleCodeByIdentityType: Readonly<Record<string, string>> = {
   technician: "technician",
@@ -112,10 +113,23 @@ export class IdentityActivationRepository implements IdentityActivationRepositor
           });
         }
 
+        const actorIdentityId = await resolveCanonicalPersonalIdentityId(
+          transaction,
+          input.actorUserId
+        );
+        if (!actorIdentityId) {
+          throw new AppError({
+            code: ERROR_CODES.IDENTITY_NOT_FOUND,
+            message: "error.auth.identity_not_found",
+            statusCode: 403
+          });
+        }
         await transaction.notification.create({
           data: {
             recipientUserId: input.userId,
+            recipientIdentityId: identity.id,
             actorUserId: input.actorUserId,
+            actorIdentityId,
             type: "SYSTEM",
             title: "identity.activation.approved.title",
             body: "identity.activation.approved.body",
