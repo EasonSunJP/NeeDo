@@ -705,11 +705,30 @@ describe("GET /api/v1/openapi.json", () => {
         })
       })
     });
-    expect(
+    const reactionPath =
       response.body.paths[
         "/api/v1/im/conversations/{conversationId}/messages/{messageId}/reactions"
-      ]
-    ).toMatchObject({ put: expect.any(Object), delete: expect.any(Object) });
+      ];
+    expect(reactionPath).toMatchObject({ put: expect.any(Object), delete: expect.any(Object) });
+    expect(reactionPath.put.summary).toBe(
+      "Set the current user's reaction in its IM reply category"
+    );
+    expect(reactionPath.put.description).toContain(
+      "OK, NO, Pending, +1, Done, Cool, Good, Thanks"
+    );
+    expect(reactionPath.put.description).toContain("one judgement and one emoji");
+    expect(reactionPath.put.responses).toEqual(
+      expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object),
+        "409": expect.objectContaining({
+          description: expect.stringContaining("error.im.reaction_slot_occupied")
+        })
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations/{conversationId}/read");
     expect(response.body.paths).toHaveProperty("/api/v1/im/contacts");
     expect(response.body.paths["/api/v1/im/contacts/{contactId}"].delete).toMatchObject({

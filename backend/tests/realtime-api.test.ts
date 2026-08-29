@@ -1,6 +1,10 @@
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
+import {
+  compareMessageReactionCategories,
+  getMessageReactionCategory
+} from "../src/constants/message-reaction.constants";
 
 interface StoredValue {
   value: string;
@@ -313,6 +317,7 @@ const createFixture = async () => {
     recallMode: "standard" | null;
     contentPurgedAt: Date | null;
     lifecycleVersion: number;
+    reactionVersion: number;
   }> = [];
   const messageReactions: Array<{
     messageId: number;
@@ -385,11 +390,13 @@ const createFixture = async () => {
 
     return {
       ...message,
-      reactions: Array.from(grouped.entries()).map(([emoji, people]) => ({
-        emoji,
-        people,
-        reactedByMe: people.some((person) => person.userId === viewerUserId)
-      }))
+      reactions: Array.from(grouped.entries())
+        .sort(([left], [right]) => compareMessageReactionCategories(left, right))
+        .map(([emoji, people]) => ({
+          emoji,
+          people,
+          reactedByMe: people.some((person) => person.userId === viewerUserId)
+        }))
     };
   };
 
@@ -623,7 +630,8 @@ const createFixture = async () => {
           recalledAt: null,
           recallMode: null,
           contentPurgedAt: null,
-          lifecycleVersion: 0
+          lifecycleVersion: 0,
+          reactionVersion: 0
         };
         messages.push(message);
         conversation.updatedAt = now;
@@ -755,23 +763,40 @@ const createFixture = async () => {
         const message = messages.find(
           (item) => item.id === input.messageId && item.conversationId === input.conversationId
         );
-        if (!conversation?.participantUserIds.includes(input.userId) || !message) return null;
-
-        if (
-          !messageReactions.some(
-            (reaction) =>
-              reaction.messageId === input.messageId &&
-              reaction.userId === input.userId &&
-              reaction.emoji === input.emoji
-          )
-        ) {
-          messageReactions.push({
-            messageId: input.messageId,
-            userId: input.userId,
-            emoji: input.emoji
-          });
+        if (!conversation?.participantUserIds.includes(input.userId) || !message) {
+          return { status: "not_found" as const };
         }
-        return mapMessage(message, input.userId);
+
+        const activeInSlot = messageReactions.find(
+          (reaction) =>
+            reaction.messageId === input.messageId &&
+            reaction.userId === input.userId &&
+            getMessageReactionCategory(reaction.emoji) ===
+              getMessageReactionCategory(input.emoji)
+        );
+
+        if (activeInSlot?.emoji === input.emoji) {
+          return {
+            status: "unchanged" as const,
+            message: mapMessage(message, input.userId)
+          };
+        }
+
+        if (activeInSlot) {
+          return {
+            status: "slot_occupied" as const,
+            message: mapMessage(message, input.userId),
+            activeEmoji: activeInSlot.emoji
+          };
+        }
+
+        messageReactions.push({
+          messageId: input.messageId,
+          userId: input.userId,
+          emoji: input.emoji
+        });
+        message.reactionVersion += 1;
+        return { status: "updated" as const, message: mapMessage(message, input.userId) };
       }
     ),
     removeMessageReaction: jest.fn(
@@ -785,7 +810,9 @@ const createFixture = async () => {
         const message = messages.find(
           (item) => item.id === input.messageId && item.conversationId === input.conversationId
         );
-        if (!conversation?.participantUserIds.includes(input.userId) || !message) return null;
+        if (!conversation?.participantUserIds.includes(input.userId) || !message) {
+          return { status: "not_found" as const };
+        }
 
         const reactionIndex = messageReactions.findIndex(
           (reaction) =>
@@ -793,8 +820,16 @@ const createFixture = async () => {
             reaction.userId === input.userId &&
             reaction.emoji === input.emoji
         );
-        if (reactionIndex >= 0) messageReactions.splice(reactionIndex, 1);
-        return mapMessage(message, input.userId);
+        if (reactionIndex < 0) {
+          return {
+            status: "unchanged" as const,
+            message: mapMessage(message, input.userId)
+          };
+        }
+
+        messageReactions.splice(reactionIndex, 1);
+        message.reactionVersion += 1;
+        return { status: "updated" as const, message: mapMessage(message, input.userId) };
       }
     ),
     markConversationRead: jest.fn(async (input: { conversationId: number; userId: number }) => {
@@ -1817,7 +1852,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       });
   });
 
-  it("persists message reactions and returns them when the conversation is loaded again", async () => {
+  it("enforces one judgement plus one emoji and returns the authoritative state", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");
     const mikaToken = await fixture.login("mika@example.com");
@@ -1833,53 +1868,93 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .send({ type: "text", content: "承知しました。" })
       .expect(201);
 
-    await request(fixture.app)
+    const judgementResponse = await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "OK" })
+      .expect(200);
+    expect(judgementResponse.body.data).toMatchObject({
+      id: messageResponse.body.data.id,
+      reactionVersion: 1,
+      reactions: [
+        {
+          emoji: "OK",
+          reactedByMe: true,
+          people: [{ userId: 2, username: "Mika Technician" }]
+        }
+      ]
+    });
+
+    const emojiResponse = await request(fixture.app)
       .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
       .set("Authorization", `Bearer ${mikaToken}`)
       .send({ emoji: "😂" })
-      .expect(200)
-      .expect((response) => {
-        expect(response.body.data).toMatchObject({
-          id: messageResponse.body.data.id,
-          reactions: [
-            {
-              emoji: "😂",
-              reactedByMe: true,
-              people: [{ userId: 2, username: "Mika Technician" }]
-            }
-          ]
-        });
-      });
+      .expect(200);
+    expect(emojiResponse.body.data).toMatchObject({
+      reactionVersion: 2,
+      reactions: [{ emoji: "OK" }, { emoji: "😂" }]
+    });
 
     await request(fixture.app)
       .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
-      .set("Authorization", `Bearer ${ayaToken}`)
-      .send({ emoji: "😂" })
-      .expect(200)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "NO" })
+      .expect(409)
       .expect((response) => {
-        expect(response.body.data).toMatchObject({
-          id: messageResponse.body.data.id,
-          reactions: [
-            {
-              emoji: "😂",
-              reactedByMe: true,
-              people: [
-                { userId: 2, username: "Mika Technician" },
-                { userId: 1, username: "Aya Customer" }
-              ]
-            }
-          ]
+        expect(response.body).toEqual({
+          code: 40946,
+          message: "error.im.reaction_slot_occupied",
+          data: null
         });
       });
 
     await request(fixture.app)
       .get("/api/v1/im/conversations/1/messages?pageSize=20")
-      .set("Authorization", `Bearer ${ayaToken}`)
+      .set("Authorization", `Bearer ${mikaToken}`)
       .expect(200)
       .expect((response) => {
         expect(response.body.data.list[0]).toMatchObject({
           id: messageResponse.body.data.id,
+          reactionVersion: 2,
+          reactions: [{ emoji: "OK", reactedByMe: true }, { emoji: "😂", reactedByMe: true }]
+        });
+      });
+
+    await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "OK" })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.reactionVersion).toBe(2);
+      });
+
+    await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ emoji: "😂" })
+      .expect(200);
+
+    await request(fixture.app)
+      .delete(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "OK" })
+      .expect(200);
+
+    await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "NO" })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          reactionVersion: 5,
           reactions: [
+            {
+              emoji: "NO",
+              reactedByMe: true,
+              people: [{ userId: 2, username: "Mika Technician" }]
+            },
             {
               emoji: "😂",
               reactedByMe: true,

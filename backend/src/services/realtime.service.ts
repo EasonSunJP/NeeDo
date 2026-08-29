@@ -221,38 +221,53 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<MessageReactionMutationInput, "userId">
   ) {
-    const message = await this.repository.setMessageReaction({
+    const outcome = await this.repository.setMessageReaction({
       ...input,
       userId: auth.userId
     });
-    if (!message) throw this.notFoundError("error.realtime.message_not_found");
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.message_not_found");
+    }
+    if (outcome.status === "slot_occupied") {
+      throw new AppError({
+        code: ERROR_CODES.MESSAGE_REACTION_SLOT_OCCUPIED,
+        message: "error.im.reaction_slot_occupied",
+        statusCode: 409
+      });
+    }
 
-    await this.publishToConversation(
-      input.conversationId,
-      "message.reaction.updated",
-      message,
-      auth.userId
-    );
-    return message;
+    if (outcome.status === "updated") {
+      await this.publishToConversation(
+        input.conversationId,
+        "message.reaction.updated",
+        outcome.message,
+        auth.userId
+      );
+    }
+    return outcome.message;
   }
 
   public async removeMessageReaction(
     auth: AuthenticatedAccessContext,
     input: Omit<MessageReactionMutationInput, "userId">
   ) {
-    const message = await this.repository.removeMessageReaction({
+    const outcome = await this.repository.removeMessageReaction({
       ...input,
       userId: auth.userId
     });
-    if (!message) throw this.notFoundError("error.realtime.message_not_found");
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.message_not_found");
+    }
 
-    await this.publishToConversation(
-      input.conversationId,
-      "message.reaction.updated",
-      message,
-      auth.userId
-    );
-    return message;
+    if (outcome.status === "updated") {
+      await this.publishToConversation(
+        input.conversationId,
+        "message.reaction.updated",
+        outcome.message,
+        auth.userId
+      );
+    }
+    return outcome.message;
   }
 
   public async recallMessage(

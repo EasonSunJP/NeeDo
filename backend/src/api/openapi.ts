@@ -12682,7 +12682,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}/reactions`]: {
       put: {
         tags: ["Step 13 Realtime"],
-        summary: "Add the current user's reaction to an IM message",
+        summary: "Set the current user's reaction in its IM reply category",
+        description:
+          "Each user may keep one judgement and one emoji on a message. Judgement values are OK, NO, Pending, +1, Done, Cool, Good, Thanks. Repeating the currently selected value is idempotent; choose DELETE before setting a different value in the same category.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -12711,8 +12713,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "200": { description: "Updated message with persisted reactions" },
-          "404": { description: "Conversation or message not found" }
+          "200": { description: "Authoritative message; may be an idempotent unchanged result" },
+          "400": { description: "Invalid path or reaction payload" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Missing message:list permission" },
+          "404": { description: "Conversation or message not found" },
+          "409": {
+            description:
+              "error.im.reaction_slot_occupied: another value already occupies this reply category"
+          }
         }
       },
       delete: {
@@ -12747,6 +12756,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": { description: "Updated message after reaction removal" },
+          "400": { description: "Invalid path or reaction payload" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Missing message:list permission" },
           "404": { description: "Conversation or message not found" }
         }
       }
