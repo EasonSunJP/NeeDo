@@ -39,4 +39,15 @@ describe("affiliate platform fee migration", () => {
     expect(migration).toContain("affiliate_platform_fee_rules_active_key_key");
     expect(migration).toContain("affiliate_platform_fee_rules_effective_idx");
   });
+
+  it("keeps the fee-rule API deployable with least-privilege role assignments", () => {
+    expect(migration).toContain("page:backoffice-affiliate-fee-rule");
+    expect(migration).toContain("button:backoffice-affiliate-fee-rule-create");
+    expect(migration).toMatch(
+      /roles`.`code` IN \('admin', 'operator', 'finance', 'viewer'\)[\s\S]*page:backoffice-affiliate-fee-rule/
+    );
+    expect(migration).toMatch(
+      /roles`.`code` IN \('admin', 'finance'\)[\s\S]*button:backoffice-affiliate-fee-rule-create/
+    );
+  });
 });

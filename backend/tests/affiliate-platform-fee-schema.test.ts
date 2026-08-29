@@ -9,7 +9,9 @@ describe("affiliate platform fee schema contract", () => {
     expect(schema).toMatch(
       /model AffiliatePlatformFeeRule \{[\s\S]*scopeType\s+AffiliatePlatformFeeScopeType[\s\S]*scopeKey\s+String[\s\S]*shopId\s+Int\?[\s\S]*feeBps\s+Int[\s\S]*version\s+Int[\s\S]*effectiveFrom\s+DateTime[\s\S]*effectiveTo\s+DateTime\?[\s\S]*activeKey\s+String\?[\s\S]*reason\s+String[\s\S]*createdAt[\s\S]*updatedAt[\s\S]*deletedAt/
     );
-    expect(schema).toContain('@@unique([scopeKey, version], map: "affiliate_platform_fee_rules_scope_key_version_key")');
+    expect(schema).toContain(
+      '@@unique([scopeKey, version], map: "affiliate_platform_fee_rules_scope_key_version_key")'
+    );
     expect(schema).toMatch(
       /model AffiliateTask \{[\s\S]*platformFeeRuleId\s+Int\?[\s\S]*platformFeeBps\s+Int[\s\S]*platformFeeReserveNdp\s+Int[\s\S]*settledPlatformFeeNdp\s+Int[\s\S]*releasedPlatformFeeNdp\s+Int/
     );
