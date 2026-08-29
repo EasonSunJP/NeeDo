@@ -41,6 +41,7 @@ ALLOW_SIMULATION_SEED
 |---|---|---|---|
 | 运营后台 | `/pf-admin.html#/login/admin` | `platform` | `global` |
 | 商户后台 | `/merchant.html#/login/merchant-admin` | `merchant_owner` | LifeDance Shop `16` |
+| 商户组织管理 | `/merchant.html#/login/merchant-admin` | `merchant_organization` | `lifedance-real-ops` MerchantAccount |
 | 用户端 | `/user.html#/login/user` | `customer` | 管理员自己的客户档案 |
 | 技师端 | `/technician.html#/login/technician` | `technician` | 管理员自己的私有技师档案 |
 | 店铺端 | `/merchant.html#/login/merchant` | `merchant_owner` | LifeDance Shop `16` |
@@ -59,6 +60,7 @@ ENV_FILE=.env.dev npm run prisma:status
 ENV_FILE=.env.dev npm run prisma:migrate:deploy
 npm run prisma:generate
 ENV_FILE=.env.dev npm run migrate:lifedance-admin-ownership
+npm run check:lifedance-admin-ownership
 npm run seed:lifedance-operations
 npm run check:lifedance-operations
 ```
