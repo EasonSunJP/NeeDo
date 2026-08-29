@@ -8,4 +8,9 @@ describe("MobileFullscreenHeader overlay modes", () => {
     expect(source).not.toContain("floating = true");
     expect(source).not.toContain("if (!floating) {");
   });
+
+  it("lets feature selectors share the glass header at their own content width", () => {
+    expect(source).toContain('maxWidth?: CSSProperties["maxWidth"]');
+    expect(source).toContain("maxWidth={maxWidth ?? \"480px\"}");
+  });
 });

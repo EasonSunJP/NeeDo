@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, type ChangeEvent, type ReactNode } from "react";
-import { AppIcon, FloatingBackButton, FloatingCloseButton } from "../../../components/client-ui/AppScaffold";
+import { AppIcon, FloatingCloseButton } from "../../../components/client-ui/AppScaffold";
+import { MobileFullscreenHeader } from "../../../components/mobile/MobileFullscreenHeader";
 import { InteractiveAvatar } from "../../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
-import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
 import type { SocialCommentPermission, SocialMediaItem, SocialMentionCandidate, SocialProfile, SocialVisibility } from "../types";
 import {
@@ -95,24 +95,13 @@ function SelectorLayout({
 
   return (
     <div className={cn("mx-auto w-full max-w-[720px] px-4 pt-0 text-[color:var(--client-text)] sm:px-6", hasFooter ? "pb-[calc(env(safe-area-inset-bottom)+128px)]" : "pb-10")}>
-      <FloatingBackButton onClick={onBack} />
-      <div className="fixed inset-x-0 top-0 z-30 border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] backdrop-blur-xl">
-        <div className="safe-header-top mx-auto w-full max-w-[720px] px-4 pb-4 sm:px-6">
-          <div className="flex min-h-12 items-center justify-center">
-            <div className="min-w-0 flex-1 px-[56px] text-center sm:px-[60px]">
-              <TitleWithInfo
-                as="p"
-                className="justify-center"
-                info={subtitle}
-                label={`${title} 说明`}
-                title={title}
-                titleClassName="truncate text-base font-black text-[color:var(--client-text)]"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-      <div aria-hidden="true" className="h-[calc(env(safe-area-inset-top)+5rem)]" />
+      <MobileFullscreenHeader
+        className="needo-composer-glass-header"
+        info={subtitle}
+        maxWidth="720px"
+        onBack={onBack}
+        title={title}
+      />
       <div className="pt-5">{children}</div>
       {footer ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-4 sm:px-6">

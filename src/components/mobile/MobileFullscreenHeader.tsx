@@ -81,6 +81,7 @@ export function MobileFullscreenHeader({
   action,
   dark = false,
   className,
+  maxWidth,
   hideBackButton = false,
   hideCloseButton = false,
   backLabel = "返回",
@@ -96,6 +97,7 @@ export function MobileFullscreenHeader({
   action?: ReactNode;
   dark?: boolean;
   className?: string;
+  maxWidth?: CSSProperties["maxWidth"];
   hideBackButton?: boolean;
   hideCloseButton?: boolean;
   backLabel?: string;
@@ -116,7 +118,7 @@ export function MobileFullscreenHeader({
     <FloatingHomeHeader
       className="gap-0"
       frameClassName="z-40"
-      maxWidth="480px"
+      maxWidth={maxWidth ?? "480px"}
       panelClassName={cn(dark ? mobileFullscreenHeaderDarkSurfaceClassName : mobileFullscreenHeaderSurfaceClassName, className)}
       showSpacer={showSpacer}
       spacerGapPx={0}

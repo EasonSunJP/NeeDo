@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import composerSource from "./UnifiedComposerUi.tsx?raw";
 import source from "./UnifiedSocialUi.tsx?raw";
 
 describe("UnifiedSocialUi technician store booking links", () => {
@@ -12,5 +13,13 @@ describe("UnifiedSocialUi technician store booking links", () => {
   it("does not render the four special review stamps in the dynamic profile header", () => {
     expect(source).not.toContain("<SocialTechnicianReviewStamps />");
     expect(source).not.toContain("function SocialTechnicianReviewStamps");
+  });
+
+  it("uses the chat-style shared glass header inside composer selectors", () => {
+    expect(composerSource).toContain("<MobileFullscreenHeader");
+    expect(composerSource).toContain('className="needo-composer-glass-header"');
+    expect(composerSource).toContain('maxWidth="720px"');
+    expect(composerSource).not.toContain("fixed inset-x-0 top-0 z-30 border-b");
+    expect(composerSource).not.toContain("<FloatingBackButton onClick={onBack}");
   });
 });
