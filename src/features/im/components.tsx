@@ -1,13 +1,16 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type Ref,
   type ReactNode
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
@@ -2048,6 +2051,7 @@ function ImMessageActionButton({
 
 export function ImMessageActionSheet({
   actions,
+  anchorElement,
   expanded,
   isNight,
   listActions = [],
@@ -2056,6 +2060,7 @@ export function ImMessageActionSheet({
   onReact
 }: {
   actions: ImMessageActionSheetItem[];
+  anchorElement: HTMLElement | null;
   expanded: boolean;
   isNight: boolean;
   listActions?: ImMessageActionSheetItem[];
@@ -2063,255 +2068,195 @@ export function ImMessageActionSheet({
   onExpandedChange: (expanded: boolean) => void;
   onReact: (emoji: string) => void;
 }) {
-  const expandedRef = useRef(expanded);
-  const handleDragRef = useRef<{ startY: number; moved: boolean; closed: boolean } | null>(null);
-  const handleDragAbortRef = useRef<AbortController | null>(null);
-  const activeHandlePointerIdRef = useRef<number | null>(null);
-  const suppressHandleClickRef = useRef(false);
+  const menuRef = useRef<HTMLElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState({
+    arrowLeft: 28,
+    left: 12,
+    maxHeight: 360,
+    placement: "above" as "above" | "below",
+    ready: false,
+    top: 12
+  });
 
-  useEffect(() => {
-    expandedRef.current = expanded;
-  }, [expanded]);
-
-  useEffect(() => {
-    return () => {
-      handleDragAbortRef.current?.abort();
-      handleDragAbortRef.current = null;
-    };
-  }, []);
-
-  const suppressNextHandleClick = () => {
-    suppressHandleClickRef.current = true;
-
-    if (typeof window === "undefined") {
-      return;
+  useLayoutEffect(() => {
+    if (!anchorElement || typeof window === "undefined") {
+      return undefined;
     }
 
-    window.setTimeout(() => {
-      suppressHandleClickRef.current = false;
-    }, 0);
-  };
+    const updatePosition = () => {
+      const menu = menuRef.current;
 
-  const updateExpandedFromDrag = (clientY: number) => {
-    const drag = handleDragRef.current;
-
-    if (!drag || drag.closed) {
-      return;
-    }
-
-    const deltaY = clientY - drag.startY;
-
-    if (Math.abs(deltaY) > 6) {
-      drag.moved = true;
-    }
-
-    if (!drag.moved) {
-      return;
-    }
-
-    if (deltaY < -28) {
-      expandedRef.current = true;
-      onExpandedChange(true);
-      drag.startY = clientY;
-      return;
-    }
-
-    if (deltaY > 36) {
-      if (expandedRef.current) {
-        if (deltaY > 96) {
-          drag.closed = true;
-          suppressNextHandleClick();
-          onClose();
-          return;
-        }
-
-        expandedRef.current = false;
-        onExpandedChange(false);
-        drag.startY = clientY;
+      if (!menu) {
         return;
       }
 
-      drag.closed = true;
-      suppressNextHandleClick();
-      onClose();
-    }
-  };
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const visualViewport = window.visualViewport;
+      const viewportLeft = visualViewport?.offsetLeft ?? 0;
+      const viewportTop = visualViewport?.offsetTop ?? 0;
+      const viewportWidth = visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = visualViewport?.height ?? window.innerHeight;
+      const viewportRight = viewportLeft + viewportWidth;
+      const viewportBottom = viewportTop + viewportHeight;
+      const viewportMargin = 12;
+      const anchorGap = 10;
+      const menuRect = menu.getBoundingClientRect();
+      const roomAbove = Math.max(0, anchorRect.top - viewportTop - viewportMargin - anchorGap);
+      const roomBelow = Math.max(0, viewportBottom - anchorRect.bottom - viewportMargin - anchorGap);
+      const wantedHeight = Math.min(menu.scrollHeight, viewportHeight - viewportMargin * 2);
+      const placement: "above" | "below" = roomAbove >= Math.min(wantedHeight, 180) || roomAbove >= roomBelow
+        ? "above"
+        : "below";
+      const maxHeight = Math.max(140, placement === "above" ? roomAbove : roomBelow);
+      const renderedHeight = Math.min(menuRect.height, maxHeight);
+      const unclampedTop = placement === "above"
+        ? anchorRect.top - anchorGap - renderedHeight
+        : anchorRect.bottom + anchorGap;
+      const top = Math.min(
+        Math.max(unclampedTop, viewportTop + viewportMargin),
+        viewportBottom - viewportMargin - renderedHeight
+      );
+      const anchorCenter = anchorRect.left + anchorRect.width / 2;
+      const left = Math.min(
+        Math.max(anchorCenter - menuRect.width / 2, viewportLeft + viewportMargin),
+        viewportRight - viewportMargin - menuRect.width
+      );
+      const arrowLeft = Math.min(Math.max(anchorCenter - left, 24), menuRect.width - 24);
 
-  const finishHandleDrag = () => {
-    const drag = handleDragRef.current;
+      setMenuPosition({ arrowLeft, left, maxHeight, placement, ready: true, top });
+    };
 
-    handleDragAbortRef.current?.abort();
-    handleDragAbortRef.current = null;
-    activeHandlePointerIdRef.current = null;
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.visualViewport?.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("scroll", updatePosition);
 
-    if (drag?.moved) {
-      suppressNextHandleClick();
-    }
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("scroll", updatePosition);
+    };
+  }, [actions.length, anchorElement, expanded, listActions.length]);
 
-    handleDragRef.current = null;
-  };
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    handleDragRef.current = { startY: event.clientY, moved: false, closed: false };
-    activeHandlePointerIdRef.current = event.pointerId;
-    handleDragAbortRef.current?.abort();
-
-    const controller = new AbortController();
-    handleDragAbortRef.current = controller;
-
-    window.addEventListener(
-      "pointermove",
-      (nativeEvent) => {
-        if (nativeEvent.pointerId !== activeHandlePointerIdRef.current) {
-          return;
-        }
-
-        updateExpandedFromDrag(nativeEvent.clientY);
-
-        if (handleDragRef.current?.moved && nativeEvent.cancelable) {
-          nativeEvent.preventDefault();
-        }
-      },
-      { passive: false, signal: controller.signal }
-    );
-    window.addEventListener(
-      "pointerup",
-      (nativeEvent) => {
-        if (nativeEvent.pointerId === activeHandlePointerIdRef.current) {
-          finishHandleDrag();
-        }
-      },
-      { passive: true, signal: controller.signal }
-    );
-    window.addEventListener(
-      "pointercancel",
-      (nativeEvent) => {
-        if (nativeEvent.pointerId === activeHandlePointerIdRef.current) {
-          finishHandleDrag();
-        }
-      },
-      { passive: true, signal: controller.signal }
-    );
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture release is best-effort across mobile browsers.
-    }
-
-    finishHandleDrag();
-  };
-
-  const handleHandleClick = () => {
-    if (suppressHandleClickRef.current) {
-      suppressHandleClickRef.current = false;
-      return;
-    }
-
-    onExpandedChange(!expandedRef.current);
-  };
-
-  const sheetClass = "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_96%,var(--client-bg)_4%)] text-[color:var(--client-text)] shadow-[0_-18px_48px_color-mix(in_srgb,var(--client-shadow)_24%,transparent)]";
+  const sheetClass = "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_98%,var(--client-bg)_2%)] text-[color:var(--client-text)] shadow-[0_18px_56px_color-mix(in_srgb,var(--client-shadow)_42%,transparent)]";
   const listShellClass = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)]";
+  const menuStyle: CSSProperties = {
+    left: menuPosition.left,
+    maxHeight: menuPosition.maxHeight,
+    opacity: menuPosition.ready ? 1 : 0,
+    position: "fixed",
+    top: menuPosition.top,
+    width: "min(560px, calc(100vw - 24px))"
+  };
 
-  return (
-    <section
-      className={cn("relative z-20 shrink-0 overflow-hidden rounded-t-[28px] border-t backdrop-blur-xl transition-[height] duration-200", sheetClass)}
-      data-im-message-action-sheet="true"
-      style={{ height: expanded ? "min(76dvh, 620px)" : "min(43dvh, 360px)" }}
-    >
+  const actionMenu = (
+    <div className="fixed inset-0 z-[200]" data-im-message-action-layer="true">
       <button
-        aria-label={expanded ? "收起消息操作面板" : "展开消息操作面板"}
-        className="focus-ring mx-auto mt-2 block h-8 w-20 touch-none rounded-full text-[color:var(--client-muted)]"
-        onClick={handleHandleClick}
-        onPointerCancel={handlePointerUp}
-        onPointerDown={handlePointerDown}
-        onPointerMove={(event) => {
-          updateExpandedFromDrag(event.clientY);
-          if (handleDragRef.current?.moved) {
-            event.preventDefault();
-          }
-        }}
-        onPointerUp={handlePointerUp}
+        aria-label="关闭消息操作菜单"
+        className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        onClick={onClose}
         type="button"
-      >
-        <span className="mx-auto block h-1.5 w-11 rounded-full bg-[color:color-mix(in_srgb,var(--client-muted)_28%,transparent)]" />
-      </button>
+      />
+      <div className="z-[201]" style={menuStyle}>
+        <span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute z-0 h-3.5 w-3.5 -translate-x-1/2 rotate-45 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_98%,var(--client-bg)_2%)]",
+            menuPosition.placement === "above" ? "-bottom-2 border-b border-r" : "-top-2 border-l border-t"
+          )}
+          style={{ left: menuPosition.arrowLeft }}
+        />
 
-      <div className="scrollbar-none h-[calc(100%-2.5rem)] touch-pan-y overflow-y-auto overscroll-y-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1 [-webkit-overflow-scrolling:touch]">
-        <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-1 py-2">
-          {imQuickReactions.map((emoji) => (
-            <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
-          ))}
-          <button
-            aria-label={expanded ? "收起默认表情" : "展开默认表情"}
-            className={cn(
-              "focus-ring grid h-11 place-items-center rounded-full transition",
-              "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-            )}
-            onClick={() => onExpandedChange(!expanded)}
-            type="button"
-          >
-            <ImIcon name="more" />
-          </button>
-        </div>
-
-        {expanded ? (
-          <div className="space-y-4 pb-4 pt-1">
-            <section>
-              <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">默认表情</p>
-              <div className="grid grid-cols-7 gap-2 sm:grid-cols-9">
-                {imDefaultReactions.map((emoji) => (
-                  <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
-                ))}
-              </div>
-            </section>
-          </div>
-        ) : null}
-
-        {actions.length > 0 ? (
-          <div className="grid grid-cols-4 gap-3">
-            {actions.map((item) => (
-              <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
-            ))}
-          </div>
-        ) : null}
-
-        {listActions.length > 0 ? (
-          <div className={cn("mt-4 overflow-hidden rounded-[22px]", listShellClass)}>
-            {listActions.map((item) => (
+        <section
+          className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[24px] border backdrop-blur-xl", sheetClass)}
+          data-im-message-action-sheet="true"
+          ref={menuRef}
+          style={{ maxHeight: menuPosition.maxHeight }}
+        >
+          <div className="touch-pan-y px-4 py-3 [-webkit-overflow-scrolling:touch]">
+            <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-1 py-2">
+              {imQuickReactions.map((emoji) => (
+                <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
+              ))}
               <button
+                aria-label={expanded ? "收起默认表情" : "展开默认表情"}
                 className={cn(
-                  "focus-ring flex w-full items-center gap-3 px-4 py-4 text-left text-[15px] font-black transition",
-                  "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
-                  item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-                  item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
+                  "focus-ring grid h-11 place-items-center rounded-full transition",
+                  "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
                 )}
-                disabled={item.disabled}
-                key={item.key}
-                onClick={item.onClick}
+                onClick={() => onExpandedChange(!expanded)}
                 type="button"
               >
-                <ImIcon className="h-5 w-5 shrink-0" name={item.icon} />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <ImIcon name="more" />
               </button>
-            ))}
-          </div>
-        ) : null}
+            </div>
 
-        <button
-          className="focus-ring mt-4 w-full rounded-2xl px-4 py-3 text-sm font-black text-[color:var(--client-muted)] transition hover:bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]"
-          onClick={onClose}
-          type="button"
-        >
-          收起
-        </button>
+            {expanded ? (
+              <div className="space-y-4 pb-4 pt-1">
+                <section>
+                  <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">默认表情</p>
+                  <div className="grid grid-cols-7 gap-2 sm:grid-cols-9">
+                    {imDefaultReactions.map((emoji) => (
+                      <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
+            {actions.length > 0 ? (
+              <div className="grid grid-cols-5 gap-2">
+                {actions.map((item) => (
+                  <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
+                ))}
+              </div>
+            ) : null}
+
+            {listActions.length > 0 ? (
+              <div className={cn("mt-4 overflow-hidden rounded-[22px]", listShellClass)}>
+                {listActions.map((item) => (
+                  <button
+                    className={cn(
+                      "focus-ring flex w-full items-center gap-3 px-4 py-4 text-left text-[15px] font-black transition",
+                      "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+                      item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
+                      item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
+                    )}
+                    disabled={item.disabled}
+                    key={item.key}
+                    onClick={item.onClick}
+                    type="button"
+                  >
+                    <ImIcon className="h-5 w-5 shrink-0" name={item.icon} />
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <button
+              className="focus-ring mt-3 w-full rounded-2xl px-4 py-2 text-sm font-black text-[color:var(--client-muted)] transition hover:bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]"
+              onClick={onClose}
+              type="button"
+            >
+              收起
+            </button>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
   );
+
+  if (typeof document === "undefined") {
+    return actionMenu;
+  }
+
+  const portalTarget = document.querySelector<HTMLElement>(".client-shell") ?? document.body;
+  return createPortal(actionMenu, portalTarget);
 }
 
 export function ImEmptyState({

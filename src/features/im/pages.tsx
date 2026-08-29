@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
@@ -4295,18 +4296,6 @@ export function ImConversationRoomPage({
   }, [conversationId, messages.length, searchParams, store.currentUserId]);
 
   useEffect(() => {
-    if (!menuState) {
-      return undefined;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      messageRefs.current[menuState.message.id]?.scrollIntoView({ block: "end", behavior: "smooth" });
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [menuState?.message.id, messageMenuExpanded]);
-
-  useEffect(() => {
     if (!recordingNotice || typeof window === "undefined") {
       return;
     }
@@ -5718,6 +5707,7 @@ export function ImConversationRoomPage({
                   <ImMessageSelectionHandles active messageRoot={messageRefs.current[menuState.message.id]} />
                   <ImMessageActionSheet
                     actions={primaryActions}
+                    anchorElement={messageRefs.current[menuState.message.id]}
                     expanded={messageMenuExpanded}
                     isNight={isNight}
                     listActions={listActions}
@@ -6114,11 +6104,11 @@ export function ImConversationRoomPage({
         )}
       </ImBottomSheet>
 
-      {mediaPreview ? (
+      {mediaPreview && typeof document !== "undefined" ? createPortal(
         <div
           aria-label="媒体查看器"
           aria-modal="true"
-          className="fixed inset-0 z-[120] flex h-[100dvh] w-full flex-col bg-black/96 text-white"
+          className="fixed inset-0 z-[240] isolate flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-black text-white"
           data-testid="im-media-viewer"
           onClick={closeMediaPreview}
           role="dialog"
@@ -6213,7 +6203,8 @@ export function ImConversationRoomPage({
               转发
             </button>
           </footer>
-        </div>
+        </div>,
+        document.querySelector<HTMLElement>(".client-shell") ?? document.body
       ) : null}
     </ImStandaloneShell>
   );
