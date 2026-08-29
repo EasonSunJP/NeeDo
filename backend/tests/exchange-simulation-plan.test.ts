@@ -87,6 +87,50 @@ describe("formal Exchange simulation plan", () => {
     expect(countTriples.size).toBeGreaterThan(10);
   });
 
+  it("keeps share idempotency keys bound to the same post and actor across seed changes", () => {
+    const alternatePlan = buildExchangeSimulationPlan(actors, "exchange-integration-seed");
+    const originalKeys = new Map(
+      plan.posts.flatMap((post) =>
+        post.shares.map((share) => [
+          `${post.key}:${share.actor.userId}`,
+          share.idempotencyKey
+        ] as const)
+      )
+    );
+    const overlappingShares = alternatePlan.posts.flatMap((post) =>
+      post.shares
+        .filter((share) => originalKeys.has(`${post.key}:${share.actor.userId}`))
+        .map((share) => ({
+          expected: originalKeys.get(`${post.key}:${share.actor.userId}`),
+          actual: share.idempotencyKey
+        }))
+    );
+
+    expect(overlappingShares.length).toBeGreaterThan(0);
+    for (const share of overlappingShares) {
+      expect(share.actual).toBe(share.expected);
+    }
+  });
+
+  it("never selects two identities of the same account for one like or share set", () => {
+    const actorsWithDuplicateIdentities = actors.flatMap((actor, index) =>
+      index < 40
+        ? [actor, { ...actor, identityId: actor.identityId + 10_000 }]
+        : [actor]
+    );
+    const duplicateIdentityPlan = buildExchangeSimulationPlan(
+      actorsWithDuplicateIdentities,
+      "duplicate-identity-seed"
+    );
+
+    for (const post of duplicateIdentityPlan.posts) {
+      expect(new Set(post.likes.map((like) => like.actor.userId)).size).toBe(post.likes.length);
+      expect(new Set(post.shares.map((share) => share.actor.userId)).size).toBe(
+        post.shares.length
+      );
+    }
+  });
+
   it("uses explicit authored locales and plausible deterministic service windows", () => {
     const locales = new Set(plan.posts.map((post) => post.contentLocale));
     expect(locales).toEqual(new Set(["zh-CN", "zh-TW", "en", "ja", "ko"]));

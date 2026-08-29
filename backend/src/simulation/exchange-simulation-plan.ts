@@ -149,6 +149,17 @@ const sampleUnique = <T>(values: readonly T[], count: number, next: () => number
   return shuffled.slice(0, count);
 };
 
+const distinctActorsByUser = (
+  values: readonly ExchangeSimulationActor[]
+): ExchangeSimulationActor[] => {
+  const seenUserIds = new Set<number>();
+  return values.filter((actor) => {
+    if (seenUserIds.has(actor.userId)) return false;
+    seenUserIds.add(actor.userId);
+    return true;
+  });
+};
+
 const atMinutes = (base: Date, minutes: number): string =>
   new Date(base.getTime() + minutes * 60_000).toISOString();
 
@@ -206,7 +217,9 @@ export const buildExchangeSimulationPlan = (
     );
     const serviceEndAt = new Date(serviceStartAt.getTime() + (60 + (index % 3) * 30) * 60_000);
     const expiresAt = new Date(serviceEndAt.getTime() + 6 * 60 * 60_000);
-    const interactionActors = actors.filter((candidate) => candidate.userId !== author.userId);
+    const interactionActors = distinctActorsByUser(
+      actors.filter((candidate) => candidate.userId !== author.userId)
+    );
     const commentCount = randomInteger(
       next,
       EXCHANGE_SIMULATION_COUNTS.comments.minimum,
@@ -276,7 +289,7 @@ export const buildExchangeSimulationPlan = (
       })),
       shares: shareActors.map((shareActor, shareIndex) => ({
         key: `${key}:share:${String(shareIndex + 1).padStart(2, "0")}`,
-        idempotencyKey: `${EXCHANGE_SIMULATION_NAMESPACE}share:${key}:${String(shareIndex + 1).padStart(2, "0")}`,
+        idempotencyKey: `${EXCHANGE_SIMULATION_NAMESPACE}share:${key}:actor:${shareActor.userId}`,
         actor: shareActor,
         createdAt: interactionTime(createdAt, shareIndex + 1, next)
       }))
