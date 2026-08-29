@@ -88,4 +88,19 @@ describe("LifeDance real operations persistence contract", () => {
     expect(checkerSource).toContain("payoutRecords");
     expect(checkerSource).toContain("settlementReconciliation");
   });
+
+  it("validates historical payslips against their persisted compensation profile version", () => {
+    expect(checkerSource).toContain("activeCompensationProfiles");
+    expect(checkerSource).toContain("compensationProfileById");
+    expect(checkerSource).toContain(
+      "compensationProfileById.get(payslip.compensationProfileId)"
+    );
+    expect(checkerSource).toContain(
+      "compensationProfile.technicianProfileId === payslip.technicianProfileId"
+    );
+    expect(checkerSource).toContain("compensationProfile.shopId === lifeDanceShop.id");
+    expect(checkerSource).not.toContain(
+      "payslip.compensationProfileId === compensationProfile.id"
+    );
+  });
 });

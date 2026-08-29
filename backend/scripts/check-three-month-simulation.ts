@@ -954,13 +954,15 @@ const main = async (): Promise<void> => {
         where: {
           shopId: lifeDanceShop.id,
           technicianProfileId: { in: lifeDanceTechnicianProfileIds },
-          status: "active",
+          status: { in: ["active", "archived"] },
           deletedAt: null
         },
         select: {
           id: true,
+          shopId: true,
           technicianProfileId: true,
           name: true,
+          status: true,
           wageMode: true,
           baseSalaryJpy: true,
           hourlyRateJpy: true,
@@ -994,15 +996,21 @@ const main = async (): Promise<void> => {
         orderBy: [{ periodStart: "asc" }]
       })
     ]);
+    const activeCompensationProfiles = compensationProfiles.filter(
+      (profile) => profile.status === "active"
+    );
     assert(
-      compensationProfiles.length === 20,
-      `expected 20 active compensation profiles, found ${compensationProfiles.length}`
+      activeCompensationProfiles.length === 20,
+      `expected 20 active compensation profiles, found ${activeCompensationProfiles.length}`
     );
     const employmentByTechnicianProfileId = new Map(
       lifeDanceTechnicians.map(({ profile }) => [profile.id, profile.employmentType])
     );
     const compensationProfileByTechnicianId = new Map(
-      compensationProfiles.map((profile) => [profile.technicianProfileId, profile])
+      activeCompensationProfiles.map((profile) => [profile.technicianProfileId, profile])
+    );
+    const compensationProfileById = new Map(
+      compensationProfiles.map((profile) => [profile.id, profile])
     );
     for (const technicianProfileId of lifeDanceTechnicianProfileIds) {
       const profile = compensationProfileByTechnicianId.get(technicianProfileId);
@@ -1080,12 +1088,14 @@ const main = async (): Promise<void> => {
         (summary, payslip) => {
           const employmentType = employmentByTechnicianProfileId.get(payslip.technicianProfileId);
           const fullTime = employmentType === TechnicianEmploymentType.FULL_TIME;
-          const compensationProfile = compensationProfileByTechnicianId.get(
-            payslip.technicianProfileId
-          );
+          const compensationProfile = payslip.compensationProfileId
+            ? compensationProfileById.get(payslip.compensationProfileId)
+            : undefined;
           assert(
-            compensationProfile && payslip.compensationProfileId === compensationProfile.id,
-            `payslip ${payslip.id} compensation profile is missing or stale`
+            compensationProfile &&
+              compensationProfile.shopId === lifeDanceShop.id &&
+              compensationProfile.technicianProfileId === payslip.technicianProfileId,
+            `payslip ${payslip.id} compensation profile is missing or cross-scoped`
           );
           const signedLineTotal = payslip.lines.reduce((total, line) => total + line.amountJpy, 0);
           const ruleBaseLines = payslip.lines.filter(
@@ -1293,7 +1303,7 @@ const main = async (): Promise<void> => {
               0
             )
           },
-          compensationProfiles: compensationProfiles.length,
+          compensationProfiles: activeCompensationProfiles.length,
           payRuns: payRuns.length,
           payslips,
           payslipOrderLines,
