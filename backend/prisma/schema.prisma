@@ -3512,6 +3512,7 @@ model AffiliateTask {
   publisherShop            Shop?                       @relation("AffiliateShopPublisher", fields: [publisherShopId], references: [id], onDelete: Restrict)
   coverMediaAsset          MediaAsset?                 @relation("AffiliateTaskCover", fields: [coverMediaAssetId], references: [id], onDelete: SetNull)
   reviewedBy               User?                       @relation("AffiliateTaskReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  translations             AffiliateTaskTranslation[]
   shops                    AffiliateTaskShop[]
   services                 AffiliateTaskService[]
   claims                   AffiliateClaim[]
@@ -3531,6 +3532,26 @@ model AffiliateTask {
   @@index([reviewedById])
   @@index([deletedAt])
   @@map("affiliate_tasks")
+}
+
+model AffiliateTaskTranslation {
+  id            Int           @id @default(autoincrement())
+  taskId        Int           @map("task_id")
+  locale        ContentLocale
+  name          String        @db.VarChar(160)
+  description   String?       @db.Text
+  sourceLocale  ContentLocale @map("source_locale")
+  isInitialCopy Boolean       @default(false) @map("is_initial_copy")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  task AffiliateTask @relation(fields: [taskId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, locale])
+  @@index([locale, deletedAt])
+  @@index([deletedAt])
+  @@map("affiliate_task_translations")
 }
 
 model AffiliateTaskShop {
