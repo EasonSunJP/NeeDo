@@ -34,6 +34,7 @@ const taskSelect = {
   allocatedBudgetNdp: true,
   settledBudgetNdp: true,
   releasedBudgetNdp: true,
+  platformFeeBps: true,
   platformFeeReserveNdp: true,
   settledPlatformFeeNdp: true,
   releasedPlatformFeeNdp: true,
@@ -92,7 +93,12 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
               task.status = 'ended'
               AND (
                 reservation.commission_frozen_ndp > reservation.allocated_ndp + reservation.captured_ndp + reservation.released_ndp
-                OR reservation.platform_fee_frozen_ndp > reservation.platform_fee_captured_ndp + reservation.platform_fee_released_ndp
+                OR reservation.platform_fee_frozen_ndp >
+                  reservation.platform_fee_captured_ndp
+                  + reservation.platform_fee_released_ndp
+                  + (
+                    reservation.allocated_ndp DIV task.reward_ndp_per_completed_order
+                  ) * FLOOR(task.reward_ndp_per_completed_order * task.platform_fee_bps / 10000)
               )
             )
           )
@@ -316,6 +322,7 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
       allocatedBudgetNdp: task.allocatedBudgetNdp,
       settledBudgetNdp: task.settledBudgetNdp,
       releasedBudgetNdp: task.releasedBudgetNdp,
+      platformFeeBps: task.platformFeeBps,
       platformFeeReserveNdp: task.platformFeeReserveNdp,
       settledPlatformFeeNdp: task.settledPlatformFeeNdp,
       releasedPlatformFeeNdp: task.releasedPlatformFeeNdp,
@@ -368,6 +375,7 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
       allocatedBudgetNdp: task.allocatedBudgetNdp,
       settledBudgetNdp: task.settledBudgetNdp,
       releasedBudgetNdp: task.releasedBudgetNdp,
+      platformFeeBps: task.platformFeeBps,
       platformFeeReserveNdp: task.platformFeeReserveNdp,
       settledPlatformFeeNdp: task.settledPlatformFeeNdp,
       releasedPlatformFeeNdp: task.releasedPlatformFeeNdp,

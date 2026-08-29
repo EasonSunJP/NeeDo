@@ -20,6 +20,8 @@ describe("AffiliateCheckoutRepository contract", () => {
     reservationId: 81,
     rewardId: 61,
     rewardNdp: 1_000,
+    platformFeeNdp: 100,
+    platformWalletId: 99,
     ledgerTransactionId: 91,
     settledAt: new Date("2026-08-26T00:00:00.000Z")
   };
@@ -101,6 +103,7 @@ describe("AffiliateCheckoutRepository contract", () => {
         claimantUserId: 601,
         publisherWalletId: 92,
         rewardNdp: 1_000,
+        platformFeeNdp: 100,
         qualifiedAt: new Date("2026-08-26T00:00:00.000Z")
       })
     ).resolves.toEqual({
@@ -118,6 +121,16 @@ describe("AffiliateCheckoutRepository contract", () => {
         }
       }
     });
+    expect(transactionClient.affiliateReward.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          rewardNdp: 1_000,
+          platformFeeNdp: 100,
+          publisherWalletId: 92,
+          claimantWalletId: 91
+        })
+      })
+    );
   });
 
   it("keeps a technician-priced booking settleable from its attribution snapshot", async () => {
@@ -133,6 +146,7 @@ describe("AffiliateCheckoutRepository contract", () => {
           shopId: 21,
           serviceId: 11,
           rewardAllocatedNdp: 1_000,
+          platformFeeBps: 1_000,
           taskStatus: "active",
           taskStartsAt: new Date("2026-08-25T00:00:00.000Z"),
           taskEndsAt: new Date("2026-09-25T00:00:00.000Z"),
@@ -147,9 +161,11 @@ describe("AffiliateCheckoutRepository contract", () => {
           rewardId: null,
           rewardStatus: null,
           rewardNdp: null,
+          rewardPlatformFeeNdp: null,
           rewardLedgerTransactionId: null,
           rewardPublisherWalletId: null,
           rewardClaimantWalletId: null,
+          rewardPlatformWalletId: null,
           bookingCustomerUserId: 501,
           bookingShopId: 21,
           bookingServiceId: 11
@@ -169,6 +185,9 @@ describe("AffiliateCheckoutRepository contract", () => {
     };
     const sql = query.strings?.join(" ") ?? "";
     expect(sql).toContain("LEFT JOIN technician_services");
+    expect(sql).toContain("task.platform_fee_bps AS platformFeeBps");
+    expect(sql).toContain("reward.platform_fee_ndp AS rewardPlatformFeeNdp");
+    expect(sql).toContain("reward.platform_wallet_id AS rewardPlatformWalletId");
     expect(sql).not.toContain("booked_technician_service.deleted_at");
   });
 
@@ -191,11 +210,28 @@ describe("AffiliateCheckoutRepository contract", () => {
     expect(sql).toContain("task.deleted_at IS NULL");
     expect(sql).toContain("reservation.allocated_ndp = 0");
     expect(sql).toContain(
-      "reservation.total_frozen_ndp = reservation.captured_ndp + reservation.released_ndp"
+      "reservation.commission_frozen_ndp = reservation.captured_ndp + reservation.released_ndp"
+    );
+    expect(sql).toContain(
+      "reservation.platform_fee_frozen_ndp = reservation.platform_fee_captured_ndp + reservation.platform_fee_released_ndp"
     );
     expect(sql).toContain("reservation.status = 'released'");
     expect(sql).toContain("COALESCE(reservation.released_at");
     expect(query).toMatchObject({ values: [settlementInput.settledAt, 81, 31] });
+    expect(transactionClient.affiliateReward.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ rewardNdp: 1_000, platformFeeNdp: 100 }),
+        data: expect.objectContaining({ platformWalletId: 99, status: "SETTLED" })
+      })
+    );
+    expect(transactionClient.affiliateBudgetReservation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          capturedNdp: { increment: 1_000 },
+          platformFeeCapturedNdp: { increment: 100 }
+        })
+      })
+    );
   });
 
   it.each([

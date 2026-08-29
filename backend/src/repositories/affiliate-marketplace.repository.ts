@@ -325,7 +325,7 @@ export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepos
       Prisma.sql`reservation.deleted_at IS NULL`,
       Prisma.sql`reservation.status = 'active'`,
       Prisma.sql`(
-        reservation.total_frozen_ndp
+        reservation.commission_frozen_ndp
         - reservation.allocated_ndp
         - reservation.captured_ndp
         - reservation.released_ndp

@@ -26,6 +26,7 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     action: string;
     actorUserId: number | null;
     targetId: number;
+    metadata?: unknown;
   }> = [];
   public transactionClient: LedgerTransactionClient | undefined;
 
@@ -183,6 +184,7 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     actorUserId: number | null;
     action: string;
     targetId: number;
+    metadata?: unknown;
   }): Promise<void> {
     this.auditRows.push(input);
   }
@@ -236,10 +238,7 @@ const createExistingAffiliateReleaseTransaction = (
 
 interface ExistingAffiliateReleaseMismatch {
   description: string;
-  mutate: (
-    transaction: LedgerTransactionPayload,
-    input: ReleaseAffiliateTaskBudgetInput
-  ) => void;
+  mutate: (transaction: LedgerTransactionPayload, input: ReleaseAffiliateTaskBudgetInput) => void;
 }
 
 describe("LedgerService affiliate task budget operations", () => {
@@ -504,10 +503,7 @@ describe("LedgerService affiliate task budget operations", () => {
     {
       description: "metadata with a custom prototype",
       mutate: (transaction) => {
-        const metadata = Object.assign(
-          Object.create({ inherited: true }),
-          transaction.metadata
-        );
+        const metadata = Object.assign(Object.create({ inherited: true }), transaction.metadata);
         transaction.metadata = metadata;
       }
     },
@@ -688,7 +684,7 @@ describe("LedgerService affiliate task budget operations", () => {
 });
 
 describe("LedgerService affiliate reward settlement", () => {
-  it("captures publisher frozen NDP into the claimant wallet exactly once", async () => {
+  it("atomically captures publisher frozen NDP into claimant and platform wallets exactly once", async () => {
     const repository = new AffiliateBudgetLedgerRepository();
     const publisherWallet = repository.seedWallet({
       ownerType: "merchant_account",
@@ -707,7 +703,9 @@ describe("LedgerService affiliate reward settlement", () => {
       publisherOwnerId: 41,
       publisherWalletId: publisherWallet.id,
       claimantUserId: 51,
-      amountNdp: 1_000,
+      rewardNdp: 10_000,
+      platformFeeNdp: 1_000,
+      platformFeeBps: 1_000,
       idempotencyKey: "affiliate:task:91:booking:391:reward:settlement",
       actorUserId: 7
     };
@@ -719,11 +717,16 @@ describe("LedgerService affiliate reward settlement", () => {
     expect(repeated.transaction.id).toBe(first.transaction.id);
     expect(first.publisherWalletId).toBe(publisherWallet.id);
     expect(first.claimantWalletId).toBe(repository.wallets.get("user:51:NDP")?.id);
+    expect(first.platformWalletId).toBe(repository.wallets.get("platform:1:NDP")?.id);
     expect(repository.wallets.get("merchant_account:41:NDP")).toMatchObject({
       availableBalance: 500_000,
-      frozenBalance: 1_999_000
+      frozenBalance: 1_989_000
     });
     expect(repository.wallets.get("user:51:NDP")).toMatchObject({
+      availableBalance: 10_000,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.get("platform:1:NDP")).toMatchObject({
       availableBalance: 1_000,
       frozenBalance: 0
     });
@@ -731,41 +734,59 @@ describe("LedgerService affiliate reward settlement", () => {
       expect.objectContaining({
         walletId: publisherWallet.id,
         direction: "frozen_debit",
-        amount: 1_000,
+        amount: 11_000,
         availableDelta: 0,
-        frozenDelta: -1_000,
+        frozenDelta: -11_000,
         reason: "affiliate_reward_publisher_frozen_debit"
       }),
       expect.objectContaining({
         walletId: first.claimantWalletId,
         direction: "available_credit",
+        amount: 10_000,
+        availableDelta: 10_000,
+        frozenDelta: 0,
+        reason: "affiliate_reward_claimant_available_credit"
+      }),
+      expect.objectContaining({
+        walletId: first.platformWalletId,
+        direction: "available_credit",
         amount: 1_000,
         availableDelta: 1_000,
         frozenDelta: 0,
-        reason: "affiliate_reward_claimant_available_credit"
+        reason: "affiliate_reward_platform_available_credit"
       })
     ]);
     expect(first.transaction).toMatchObject({
       type: "affiliate_reward_settlement",
       referenceType: "affiliate_reward",
       referenceId: 291,
-      amount: 1_000,
+      amount: 11_000,
       metadata: expect.objectContaining({
         taskId: 91,
         attributionId: 191,
         bookingOrderId: 391,
         publisherWalletId: publisherWallet.id,
         claimantUserId: 51,
-        claimantWalletId: first.claimantWalletId
+        claimantWalletId: first.claimantWalletId,
+        platformFeeBps: 1_000,
+        rewardNdp: 10_000,
+        platformFeeNdp: 1_000,
+        platformWalletId: first.platformWalletId
       })
     });
     expect(repository.reconciliationRows).toEqual([
-      expect.objectContaining({ expectedAmount: 1_000, actualAmount: 1_000 })
+      expect.objectContaining({ expectedAmount: 11_000, actualAmount: 11_000 })
     ]);
     expect(repository.auditRows).toEqual([
       expect.objectContaining({
         action: "ledger.affiliate_reward.settlement",
-        actorUserId: 7
+        actorUserId: 7,
+        metadata: expect.objectContaining({
+          rewardNdp: 10_000,
+          platformFeeNdp: 1_000,
+          platformFeeBps: 1_000,
+          platformWalletId: first.platformWalletId
+        })
       })
     ]);
   });
@@ -790,7 +811,9 @@ describe("LedgerService affiliate reward settlement", () => {
         publisherOwnerId: 14,
         publisherWalletId: publisherWallet.id,
         claimantUserId: 52,
-        amountNdp: 1_000,
+        rewardNdp: 1_000,
+        platformFeeNdp: 0,
+        platformFeeBps: 0,
         idempotencyKey: "affiliate:task:92:booking:392:reward:settlement",
         actorUserId: 8
       })
@@ -809,9 +832,41 @@ describe("LedgerService affiliate reward settlement", () => {
     expect(repository.auditRows).toHaveLength(0);
   });
 
+  it("keeps zero-fee compatibility settlements on the publisher and claimant wallets only", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const publisherWallet = repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 16,
+      availableBalance: 0,
+      frozenBalance: 1_000
+    });
+    const service = new LedgerService(repository);
+
+    const settled = await service.settleAffiliateReward({
+      taskId: 94,
+      attributionId: 194,
+      rewardId: 294,
+      bookingOrderId: 394,
+      publisherOwnerType: "shop",
+      publisherOwnerId: 16,
+      publisherWalletId: publisherWallet.id,
+      claimantUserId: 54,
+      rewardNdp: 1_000,
+      platformFeeNdp: 0,
+      platformFeeBps: 0,
+      idempotencyKey: "affiliate:task:94:booking:394:reward:settlement",
+      actorUserId: 8
+    });
+
+    expect(settled.platformWalletId).toBeNull();
+    expect(repository.wallets.has("platform:1:NDP")).toBe(false);
+    expect(settled.transaction.amount).toBe(1_000);
+    expect(repository.entries).toHaveLength(2);
+  });
+
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid reward amount %s before any wallet mutation",
-    async (amountNdp) => {
+    async (rewardNdp) => {
       const repository = new AffiliateBudgetLedgerRepository();
       const publisherWallet = repository.seedWallet({
         ownerType: "shop",
@@ -831,7 +886,9 @@ describe("LedgerService affiliate reward settlement", () => {
           publisherOwnerId: 15,
           publisherWalletId: publisherWallet.id,
           claimantUserId: 53,
-          amountNdp,
+          rewardNdp,
+          platformFeeNdp: 0,
+          platformFeeBps: 0,
           idempotencyKey: "affiliate:task:93:booking:393:reward:settlement",
           actorUserId: 8
         })
