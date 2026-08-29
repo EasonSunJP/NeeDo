@@ -42,6 +42,25 @@ export interface MerchantEmployeePayload {
   };
 }
 
+export type EmployeeTimelineTone = "accent" | "green" | "red" | "neutral";
+
+export interface EmployeeTimelineEventPayload {
+  id: string;
+  at: string;
+  actorName: string;
+  actorAvatarUrl: string | null;
+  actorRole: string;
+  message: string;
+  tone: EmployeeTimelineTone;
+}
+
+export type EmployeeTimelineListInput = PaginationInput;
+
+export interface EmployeeTimelineRepositoryInput extends EmployeeTimelineListInput {
+  affiliationId: number;
+  shopId: number;
+}
+
 export interface EmployeeProfileUpdateInput {
   displayName?: string;
   bio?: string | null;
@@ -65,6 +84,72 @@ export interface MerchantEmployeeListInput extends PaginationInput {
 
 export interface EmployeeListRepositoryInput extends MerchantEmployeeListInput {
   shopId: number;
+}
+
+export type EmployeeScheduleView = "day" | "week" | "month";
+
+export interface EmployeeScheduleQueryInput {
+  from: Date;
+  to: Date;
+  view: EmployeeScheduleView;
+}
+
+export interface EmployeeScheduleRepositoryInput extends EmployeeScheduleQueryInput {
+  shopId: number;
+  technicianIdentityId: number;
+}
+
+interface EmployeeScheduleEventBase {
+  projectionId: string;
+  startsAt: string;
+  endsAt: string;
+  title: string;
+  isClickable: boolean;
+  isEditable: boolean;
+}
+
+export interface EmployeeScheduleVisibleEvent extends EmployeeScheduleEventBase {
+  kind: "availability" | "schedule" | "booking";
+  visibility: "current_shop" | "affiliated_shops";
+  status:
+    | "available"
+    | "scheduled"
+    | "pending"
+    | "confirmed"
+    | "in_service"
+    | "completed"
+    | "blocked";
+  detail?: string;
+  orderId?: number;
+}
+
+export interface EmployeeScheduleRedactedEvent extends EmployeeScheduleEventBase {
+  kind: "busy_redacted";
+  visibility: "busy_redacted";
+  status: "busy";
+  title: "其他店铺已有确认安排";
+  isClickable: false;
+  isEditable: false;
+}
+
+export type EmployeeScheduleEvent =
+  | EmployeeScheduleVisibleEvent
+  | EmployeeScheduleRedactedEvent;
+
+export interface EmployeeScheduleProjection {
+  employee: {
+    needoId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    relationshipType: EmployeeRelationshipType;
+    workStatus: EmployeeWorkStatus;
+  };
+  range: {
+    from: string;
+    to: string;
+    view: EmployeeScheduleView;
+  };
+  events: EmployeeScheduleEvent[];
 }
 
 export interface EmployeeAffiliationMutationInput {
@@ -93,6 +178,12 @@ export interface TechnicianShopAffiliationRepositoryPort {
     shopId: number,
     technicianIdentityId: number
   ): Promise<MerchantEmployeePayload | null>;
+  listCurrentShopEmployeeSchedule(
+    input: EmployeeScheduleRepositoryInput
+  ): Promise<EmployeeScheduleEvent[] | null>;
+  listCurrentShopEmployeeTimeline(
+    input: EmployeeTimelineRepositoryInput
+  ): Promise<PaginatedResponse<EmployeeTimelineEventPayload>>;
   updateCurrentShopEmployeeProfile(
     input: EmployeeProfileUpdateRepositoryInput
   ): Promise<MerchantEmployeePayload | null>;
@@ -147,6 +238,95 @@ export class TechnicianShopAffiliationService {
       metadata: { shopId }
     });
     return employee;
+  }
+
+  public async getCurrentShopEmployeeSchedule(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: EmployeeScheduleQueryInput
+  ): Promise<EmployeeScheduleProjection> {
+    const shopId = this.requireMerchantShopScope(actor);
+    const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
+    const employee = await this.repository.findCurrentShopEmployee(
+      shopId,
+      technicianIdentityId
+    );
+    if (!employee) throw this.notFound();
+
+    const events = await this.repository.listCurrentShopEmployeeSchedule({
+      shopId,
+      technicianIdentityId,
+      ...input
+    });
+    if (!events) throw this.notFound();
+
+    await this.auditLogService.record({
+      actor,
+      action: "merchant_admin.employee_schedule.read",
+      targetType: "technician_shop_affiliation",
+      targetId: employee.affiliation.id,
+      context,
+      metadata: { eventCount: events.length, shopId }
+    });
+
+    return {
+      employee: {
+        needoId: employee.needoId,
+        displayName: employee.displayName,
+        avatarUrl: employee.avatarUrl,
+        relationshipType: employee.affiliation.relationshipType,
+        workStatus: employee.affiliation.workStatus
+      },
+      range: {
+        from: input.from.toISOString(),
+        to: input.to.toISOString(),
+        view: input.view
+      },
+      events
+    };
+  }
+
+  public async getCurrentShopEmployeeTimeline(
+    actor: AuthenticatedAccessContext,
+    publicId: string,
+    input: EmployeeTimelineListInput
+  ): Promise<PaginatedResponse<EmployeeTimelineEventPayload>> {
+    const shopId = this.requireMerchantShopScope(actor);
+    const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
+    const employee = await this.repository.findCurrentShopEmployee(shopId, technicianIdentityId);
+    if (!employee) throw this.notFound();
+
+    return this.repository.listCurrentShopEmployeeTimeline({
+      affiliationId: employee.affiliation.id,
+      shopId,
+      ...input
+    });
+  }
+
+  public async addCurrentShopEmployeeTimelineComment(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    message: string
+  ): Promise<{ created: true }> {
+    const shopId = this.requireMerchantShopScope(actor);
+    if (actor.isReadOnlyMerchantPreview) {
+      throw this.forbidden();
+    }
+    const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
+    const employee = await this.repository.findCurrentShopEmployee(shopId, technicianIdentityId);
+    if (!employee) throw this.notFound();
+
+    await this.auditLogService.record({
+      actor,
+      action: "merchant_admin.employee_timeline.comment",
+      targetType: "technician_shop_affiliation",
+      targetId: employee.affiliation.id,
+      context,
+      metadata: { message, shopId }
+    });
+    return { created: true };
   }
 
   public async upsertCurrentShopAffiliation(

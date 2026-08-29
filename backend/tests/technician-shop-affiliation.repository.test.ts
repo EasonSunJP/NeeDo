@@ -154,6 +154,259 @@ describe("TechnicianShopAffiliationRepository", () => {
     );
   });
 
+  it("maps scoped audit mutations into paginated semantic employee events", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 501,
+        action: "merchant_admin.employee_profile.update",
+        metadata: { changedFields: ["displayName", "city"] },
+        createdAt: new Date("2026-08-28T15:43:00.000Z"),
+        actor: {
+          username: "LifeDance 管理员",
+          email: "admin@example.jp",
+          avatarUrl: "/admin-avatar.png"
+        }
+      }
+    ]);
+    const count = jest.fn().mockResolvedValue(1);
+    const findAffiliation = jest.fn().mockResolvedValue({
+      startsAt: new Date("2026-06-01T00:00:00.000Z"),
+      technicianProfile: { verifiedAt: new Date("2026-05-25T00:00:00.000Z") },
+      shop: { name: "LifeDance Wellness" }
+    });
+    const repository = new TechnicianShopAffiliationRepository({
+      auditLog: { findMany, count },
+      technicianShopAffiliation: { findFirst: findAffiliation }
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeTimeline({
+      affiliationId: 91,
+      shopId: 16,
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result).toEqual({
+      list: [
+        {
+          id: "audit-501",
+          at: "2026-08-28T15:43:00.000Z",
+          actorName: "LifeDance 管理员",
+          actorAvatarUrl: "/admin-avatar.png",
+          actorRole: "基本资料",
+          message: "更新了姓名、城市",
+          tone: "accent"
+        },
+        {
+          id: "system-affiliation-91",
+          at: "2026-06-01T00:00:00.000Z",
+          actorName: "NeeDo 系统",
+          actorAvatarUrl: null,
+          actorRole: "从属关系",
+          message: "加入店铺并建立员工从属关系 · LifeDance Wellness",
+          tone: "green"
+        },
+        {
+          id: "system-verified-91",
+          at: "2026-05-25T00:00:00.000Z",
+          actorName: "NeeDo 系统",
+          actorAvatarUrl: null,
+          actorRole: "档案验证",
+          message: "员工档案已通过验证",
+          tone: "green"
+        }
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          action: { in: expect.arrayContaining(["merchant_admin.employee_profile.update"]) },
+          targetType: "technician_shop_affiliation",
+          targetId: 91,
+          deletedAt: null
+        },
+        skip: 0,
+        take: 1
+      })
+    );
+    expect(findAffiliation).toHaveBeenCalledWith({
+      where: { id: 91, shopId: 16, deletedAt: null },
+      select: {
+        startsAt: true,
+        technicianProfile: { select: { verifiedAt: true } },
+        shop: { select: { name: true } }
+      }
+    });
+    expect(findMany.mock.calls[0]?.[0]?.select?.actor?.select).toEqual({
+      username: true,
+      avatarUrl: true
+    });
+    expect(JSON.stringify(result)).not.toMatch(/changedFields|merchant_admin|shopId|targetId/);
+  });
+
+  it("paginates employee system lifecycle events inside the same formal total", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 505,
+        action: "merchant_admin.employee_timeline.comment",
+        metadata: { message: "第一条审计记录" },
+        createdAt: new Date("2026-08-01T00:00:00.000Z"),
+        actor: { username: "财务管理员", avatarUrl: null }
+      },
+      {
+        id: 504,
+        action: "merchant_admin.employee_timeline.comment",
+        metadata: { message: "第二条审计记录" },
+        createdAt: new Date("2026-07-15T00:00:00.000Z"),
+        actor: { username: "财务管理员", avatarUrl: null }
+      },
+      {
+        id: 503,
+        action: "merchant_admin.employee_timeline.comment",
+        metadata: { message: "第三条审计记录" },
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        actor: { username: "财务管理员", avatarUrl: null }
+      }
+    ]);
+    const repository = new TechnicianShopAffiliationRepository({
+      auditLog: { findMany, count: jest.fn().mockResolvedValue(3) },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({
+          startsAt: new Date("2026-06-01T00:00:00.000Z"),
+          technicianProfile: { verifiedAt: new Date("2026-05-25T00:00:00.000Z") },
+          shop: { name: "LifeDance Wellness" }
+        })
+      }
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeTimeline({
+      affiliationId: 91,
+      shopId: 16,
+      page: 2,
+      pageSize: 2
+    });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 3 }));
+    expect(result).toEqual(expect.objectContaining({
+      total: 5,
+      page: 2,
+      page_size: 2,
+      list: [
+        expect.objectContaining({ id: "audit-503" }),
+        expect.objectContaining({ id: "system-affiliation-91" })
+      ]
+    }));
+  });
+
+  it("sorts lifecycle and audit events together before applying the page", async () => {
+    const repository = new TechnicianShopAffiliationRepository({
+      auditLog: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: 500,
+          action: "merchant_admin.employee_timeline.comment",
+          metadata: { message: "更早的审计记录" },
+          createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          actor: { username: "财务管理员", avatarUrl: null }
+        }]),
+        count: jest.fn().mockResolvedValue(1)
+      },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({
+          startsAt: new Date("2026-06-01T00:00:00.000Z"),
+          technicianProfile: { verifiedAt: new Date("2026-05-25T00:00:00.000Z") },
+          shop: { name: "LifeDance Wellness" }
+        })
+      }
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeTimeline({
+      affiliationId: 91,
+      shopId: 16,
+      page: 1,
+      pageSize: 2
+    });
+
+    expect(result.list.map((event) => event.id)).toEqual([
+      "system-affiliation-91",
+      "system-verified-91"
+    ]);
+    expect(result.total).toBe(3);
+  });
+
+  it("projects partner availability and merges other-shop confirmed time without leaking details", async () => {
+    const bookingFindMany = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          startsAt: new Date("2026-08-29T13:00:00.000Z"),
+          endsAt: new Date("2026-08-29T14:00:00.000Z")
+        },
+        {
+          startsAt: new Date("2026-08-29T13:30:00.000Z"),
+          endsAt: new Date("2026-08-29T15:00:00.000Z")
+        }
+      ]);
+    const repository = new TechnicianShopAffiliationRepository({
+      userIdentity: {
+        findFirst: jest.fn().mockResolvedValue({
+          user: { technicianProfile: { id: 47 } }
+        })
+      },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({ relationshipType: "PARTNER" })
+      },
+      scheduleSlot: { findMany: jest.fn().mockResolvedValue([]) },
+      bookingOrder: { findMany: bookingFindMany },
+      availability: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            startsAt: new Date("2026-08-29T12:00:00.000Z"),
+            endsAt: new Date("2026-08-29T16:00:00.000Z")
+          }
+        ])
+      }
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeSchedule({
+      shopId: 16,
+      technicianIdentityId: 86,
+      from: new Date("2026-08-29T00:00:00.000Z"),
+      to: new Date("2026-08-30T00:00:00.000Z"),
+      view: "day"
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "availability",
+        startsAt: "2026-08-29T12:00:00.000Z",
+        endsAt: "2026-08-29T13:00:00.000Z"
+      }),
+      {
+        projectionId:
+          "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
+        kind: "busy_redacted",
+        visibility: "busy_redacted",
+        status: "busy",
+        startsAt: "2026-08-29T13:00:00.000Z",
+        endsAt: "2026-08-29T15:00:00.000Z",
+        title: "其他店铺已有确认安排",
+        isClickable: false,
+        isEditable: false
+      },
+      expect.objectContaining({
+        kind: "availability",
+        startsAt: "2026-08-29T15:00:00.000Z",
+        endsAt: "2026-08-29T16:00:00.000Z"
+      })
+    ]);
+    const serialized = JSON.stringify(result?.find((event) => event.kind === "busy_redacted"));
+    expect(serialized).not.toMatch(/shop|order|service|customer|price|address|note|participant/i);
+  });
+
   it("updates only a profile with a current affiliation in the requested shop", async () => {
     const tx = transactionClient();
     const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));

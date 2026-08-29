@@ -4,6 +4,7 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   compensationProfileBodySchema,
+  employeeCompensationProfileParamSchema,
   compensationProfileParamSchema,
   compensationProfilePreviewBodySchema
 } from "../validators/compensation-profile.validator";
@@ -76,6 +77,77 @@ export class CompensationProfileController {
               getRequestContext(request),
               shopId,
               technicianProfileId,
+              compensationProfilePreviewBodySchema.parse(request.body)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getEmployeeCompensationProfile = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { needoId } = employeeCompensationProfileParamSchema.parse(request.params);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getEmployeeCompensationProfile(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              needoId
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public updateEmployeeCompensationProfile = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { needoId } = employeeCompensationProfileParamSchema.parse(request.params);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.updateEmployeeCompensationProfile(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              needoId,
+              compensationProfileBodySchema.parse(request.body)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public previewEmployeeCompensationProfile = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { needoId } = employeeCompensationProfileParamSchema.parse(request.params);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.previewEmployeeCompensationProfile(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              needoId,
               compensationProfilePreviewBodySchema.parse(request.body)
             )
           )

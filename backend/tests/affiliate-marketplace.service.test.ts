@@ -1,13 +1,13 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { AffiliateLinkTokenService } from "../src/services/affiliate-link-token.service";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
-import type { AffiliateTaskRecord } from "../src/services/affiliate-task.service";
 import {
   AffiliateMarketplaceService,
   type AffiliateClaimPersistenceInput,
   type AffiliateClaimRecord,
   type AffiliateClaimUniqueConflict,
   type AffiliateMarketplaceRepositoryPort,
+  type AffiliateMarketplaceTaskRecord,
   type AffiliateMarketplaceTransactionClient
 } from "../src/services/affiliate-marketplace.service";
 import { buildPaginatedResponse, type PaginatedResponse } from "../src/utils/pagination";
@@ -26,7 +26,9 @@ const actor: AuthenticatedAccessContext = {
   permissions: ["page:affiliate-marketplace", "button:affiliate-claim"]
 };
 
-const task = (overrides: Partial<AffiliateTaskRecord> = {}): AffiliateTaskRecord => ({
+const task = (
+  overrides: Partial<AffiliateMarketplaceTaskRecord> = {}
+): AffiliateMarketplaceTaskRecord => ({
   id: 22,
   taskCode: "AFF-PUBLIC-22",
   lineageKey: "AFF-PUBLIC-22",
@@ -35,9 +37,42 @@ const task = (overrides: Partial<AffiliateTaskRecord> = {}): AffiliateTaskRecord
   publisherType: "merchant_account",
   publisherMerchantAccountId: 91,
   publisherShopId: null,
+  translations: {
+    "zh-CN": {
+      name: "涩谷服务完成奖励",
+      description: "完成服务后获得奖励。",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    "zh-TW": {
+      name: "澀谷服務完成獎勵",
+      description: "完成服務後獲得獎勵。",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    en: {
+      name: "Shibuya completed-service reward",
+      description: "Earn after the referred service is completed.",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    ja: {
+      name: "渋谷サービス完了報酬",
+      description: "紹介したサービスの完了後に報酬を獲得できます。",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    ko: {
+      name: "시부야 서비스 완료 보상",
+      description: "소개한 서비스 완료 후 보상을 받습니다.",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    }
+  },
   name: "Shibuya completed-service reward",
   description: "Earn after the referred service is completed.",
   coverMediaAssetId: null,
+  coverImageUrl: null,
   rewardNdpPerCompletedOrder: 1_000,
   totalBudgetNdp: 2_000_000,
   reservedBudgetNdp: 2_000_000,
@@ -65,7 +100,17 @@ const task = (overrides: Partial<AffiliateTaskRecord> = {}): AffiliateTaskRecord
   activatedAt: null,
   createdAt: new Date("2026-08-28T00:00:00.000Z"),
   updatedAt: new Date("2026-08-30T00:00:00.000Z"),
-  shops: [{ id: 1, shopId: 11, shopNameSnapshot: "Shibuya Relax" }],
+  shops: [
+    {
+      id: 1,
+      shopId: 11,
+      shopNameSnapshot: "Shibuya Relax",
+      publicId: "shop0000000011",
+      city: "Tokyo",
+      address: "Shibuya 1-1",
+      mediaAssets: []
+    }
+  ],
   services: [
     {
       id: 2,
@@ -92,7 +137,7 @@ const task = (overrides: Partial<AffiliateTaskRecord> = {}): AffiliateTaskRecord
 });
 
 class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepositoryPort {
-  public tasks = new Map<number, AffiliateTaskRecord>([[22, task()]]);
+  public tasks = new Map<number, AffiliateMarketplaceTaskRecord>([[22, task()]]);
   public claims = new Map<number, AffiliateClaimRecord>();
   public auditRows: Array<{
     actorUserId: number;
@@ -124,21 +169,25 @@ class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepo
   public async listClaimableTasks(input: {
     page: number;
     pageSize: number;
-  }): Promise<PaginatedResponse<AffiliateTaskRecord>> {
+  }): Promise<PaginatedResponse<AffiliateMarketplaceTaskRecord>> {
     this.listInputs.push(input);
     const list = this.claimable ? [...this.tasks.values()] : [];
     return buildPaginatedResponse(list, list.length, input);
   }
 
-  public async findClaimableTaskById(taskId: number): Promise<AffiliateTaskRecord | null> {
+  public async findClaimableTaskById(
+    taskId: number
+  ): Promise<AffiliateMarketplaceTaskRecord | null> {
     return this.claimable ? (this.tasks.get(taskId) ?? null) : null;
   }
 
-  public async findTaskById(taskId: number): Promise<AffiliateTaskRecord | null> {
+  public async findTaskById(taskId: number): Promise<AffiliateMarketplaceTaskRecord | null> {
     return this.tasks.get(taskId) ?? null;
   }
 
-  public async lockClaimableTaskForShare(taskId: number): Promise<AffiliateTaskRecord | null> {
+  public async lockClaimableTaskForShare(
+    taskId: number
+  ): Promise<AffiliateMarketplaceTaskRecord | null> {
     return this.findClaimableTaskById(taskId);
   }
 
@@ -192,9 +241,7 @@ class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepo
     pageSize: number;
   }): Promise<PaginatedResponse<AffiliateClaimRecord>> {
     const list = [...this.claims.values()].filter(
-      (claim) =>
-        claim.userId === input.userId &&
-        (!input.status || claim.status === input.status)
+      (claim) => claim.userId === input.userId && (!input.status || claim.status === input.status)
     );
     return buildPaginatedResponse(list, list.length, input);
   }
@@ -210,11 +257,7 @@ class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepo
   public async findClaimByPublicTokenId(
     publicTokenId: string
   ): Promise<AffiliateClaimRecord | null> {
-    return (
-      [...this.claims.values()].find(
-        (claim) => claim.publicTokenId === publicTokenId
-      ) ?? null
-    );
+    return [...this.claims.values()].find((claim) => claim.publicTokenId === publicTokenId) ?? null;
   }
 
   public async createClaimAuditLog(input: {
@@ -229,7 +272,10 @@ class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepo
 
 const createService = (
   repository = new InMemoryAffiliateMarketplaceRepository()
-): { service: AffiliateMarketplaceService; repository: InMemoryAffiliateMarketplaceRepository } => ({
+): {
+  service: AffiliateMarketplaceService;
+  repository: InMemoryAffiliateMarketplaceRepository;
+} => ({
   service: new AffiliateMarketplaceService(
     repository,
     new AffiliateLinkTokenService({
@@ -248,6 +294,37 @@ const createService = (
 describe("AffiliateMarketplaceService", () => {
   it("returns only the public marketplace view and normalizes pagination", async () => {
     const { service, repository } = createService();
+    const presentableTask = {
+      ...task({
+        totalBudgetNdp: 10_000,
+        budgetReservation: {
+          ...task().budgetReservation!,
+          totalFrozenNdp: 10_000,
+          allocatedNdp: 2_000,
+          capturedNdp: 1_000,
+          releasedNdp: 0
+        }
+      }),
+      coverImageUrl: "https://cdn.needo.test/task-cover.jpg",
+      shops: [
+        {
+          id: 1,
+          shopId: 11,
+          shopNameSnapshot: "Shibuya Relax",
+          publicId: "shop0000000011",
+          city: "Tokyo",
+          address: "Shibuya 1-1",
+          mediaAssets: [
+            {
+              url: "https://cdn.needo.test/shop-cover.jpg",
+              altText: "Shibuya Relax",
+              sortOrder: 0
+            }
+          ]
+        }
+      ]
+    };
+    repository.tasks.set(22, presentableTask);
 
     const result = await service.listTasks(actor, { page: 0, pageSize: 999 });
 
@@ -256,9 +333,29 @@ describe("AffiliateMarketplaceService", () => {
         expect.objectContaining({
           id: 22,
           name: "Shibuya completed-service reward",
+          translations: expect.objectContaining({
+            ja: expect.objectContaining({ name: "渋谷サービス完了報酬" })
+          }),
           rewardNdpPerCompletedOrder: 1_000,
+          totalBudgetNdp: 10_000,
+          remainingBudgetNdp: 7_000,
+          remainingBudgetBps: 7_000,
+          coverImageUrl: "https://cdn.needo.test/task-cover.jpg",
           claimable: true,
-          shops: [{ id: 1, shopId: 11, shopNameSnapshot: "Shibuya Relax" }]
+          shops: [
+            expect.objectContaining({
+              publicId: "shop0000000011",
+              city: "Tokyo",
+              address: "Shibuya 1-1",
+              mediaAssets: [
+                {
+                  url: "https://cdn.needo.test/shop-cover.jpg",
+                  altText: "Shibuya Relax",
+                  sortOrder: 0
+                }
+              ]
+            })
+          ]
         })
       ],
       total: 1,

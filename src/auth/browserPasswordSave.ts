@@ -26,16 +26,10 @@ type PasswordCredentialInput = {
 
 type PasswordCredentialsContainer = CredentialsContainer & {
   create(options: { password: PasswordCredentialInput }): Promise<Credential | null>;
-  get(options: {
-    mediation: "optional";
-    password: true;
-  }): Promise<Credential | null>;
 };
 
-type StoredPasswordCredential = Credential & { password?: string };
-
 export function readBrowserPasswordSavePreference(scope: BrowserPasswordSaveScope) {
-  return readBrowserStorage(`${preferencePrefix}${scope}`, { silent: true }) === "true";
+  return readBrowserStorage(`${preferencePrefix}${scope}`, { silent: true }) !== "false";
 }
 
 export function writeBrowserPasswordSavePreference(
@@ -45,40 +39,6 @@ export function writeBrowserPasswordSavePreference(
   return writeBrowserStorage(`${preferencePrefix}${scope}`, String(enabled), {
     silent: true
   });
-}
-
-export async function readBrowserSavedPassword(): Promise<{
-  id: string;
-  password: string;
-} | null> {
-  if (
-    typeof navigator === "undefined" ||
-    !navigator.credentials?.get
-  ) {
-    return null;
-  }
-
-  try {
-    const credential = (await (
-      navigator.credentials as PasswordCredentialsContainer
-    ).get({
-      mediation: "optional",
-      password: true
-    })) as StoredPasswordCredential | null;
-
-    if (
-      !credential ||
-      credential.type !== "password" ||
-      !credential.id ||
-      !credential.password
-    ) {
-      return null;
-    }
-
-    return { id: credential.id, password: credential.password };
-  } catch {
-    return null;
-  }
 }
 
 export async function requestBrowserPasswordSave(input: PasswordCredentialInput) {

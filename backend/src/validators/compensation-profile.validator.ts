@@ -5,6 +5,10 @@ export const compensationProfileParamSchema = z.object({
   technicianProfileId: z.coerce.number().int().positive()
 });
 
+export const employeeCompensationProfileParamSchema = z.object({
+  needoId: z.string().trim().regex(/^s\d{10}$/)
+});
+
 const activeFlagSchema = z.boolean().default(true);
 
 export const compensationBonusRuleSchema = z.object({
@@ -53,6 +57,9 @@ export const compensationProfilePreviewBodySchema = z.object({
 });
 
 export type CompensationProfileParams = z.infer<typeof compensationProfileParamSchema>;
+export type EmployeeCompensationProfileParams = z.infer<
+  typeof employeeCompensationProfileParamSchema
+>;
 export type CompensationProfileBody = z.input<typeof compensationProfileBodySchema>;
 export type ParsedCompensationProfileBody = z.output<typeof compensationProfileBodySchema>;
 export type CompensationProfilePreviewBody = z.input<typeof compensationProfilePreviewBodySchema>;

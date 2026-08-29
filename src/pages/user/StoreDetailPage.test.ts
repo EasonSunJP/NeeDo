@@ -520,10 +520,13 @@ describe("StoreDetailPage routed booking defaults", () => {
 });
 
 describe("StoreDetailPage formal route isolation", () => {
-  it("routes numeric IDs to the API-only page", () => {
-    expect(pageSource).toContain('import { FormalStoreDetailPage } from "./FormalStoreDetailPage";');
+  it("hydrates numeric IDs into the single complete store experience", () => {
+    expect(pageSource).not.toContain('import { FormalStoreDetailPage } from "./FormalStoreDetailPage";');
     expect(pageSource).toContain("if (apiId) {");
-    expect(pageSource).toContain("return <FormalStoreDetailPage scope={scope} shopId={apiId} />;");
+    expect(pageSource).toContain("return <UnifiedFormalStoreDetail scope={scope} shopId={apiId} />;");
+    expect(pageSource).toContain("<StoreDetailExperience");
+    expect(pageSource).toContain("presentationOverride={buildFormalStorePresentation(query.data, store)}");
+    expect(pageSource).toContain("techniciansOverride={technicians}");
   });
 
   it("rejects nonnumeric legacy records", () => {
@@ -535,5 +538,11 @@ describe("StoreDetailPage formal route isolation", () => {
   it("localizes the formal invalid-link state", () => {
     expect(pageSource).toContain("const formalStoreLinkCopy: Record<Language");
     expect(pageSource).toContain("formalStoreLinkCopy[language]");
+  });
+});
+
+describe("StoreDetailPage public Shop route", () => {
+  it("accepts the public Shop identifier used by Affiliate navigation", () => {
+    expect(pageSource).toContain("coreReadShopIdFromRoute(id)");
   });
 });

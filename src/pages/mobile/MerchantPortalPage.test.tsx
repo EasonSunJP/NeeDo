@@ -3,6 +3,15 @@ import merchantSource from "./MerchantPortalPage.tsx?raw";
 import storeDetailSource from "../user/StoreDetailPage.tsx?raw";
 
 describe("MerchantPortalPage store privacy control", () => {
+  it("loads the active store and staff from the formal API before rendering the merchant workspace", () => {
+    expect(merchantSource).toContain("function MerchantPortalDataGate");
+    expect(merchantSource).toContain("coreReadApi.getShopDetail(storeApiId)");
+    expect(merchantSource).toContain("mapCoreShopToStore(formalStoreQuery.data)");
+    expect(merchantSource).toContain("mapCoreTechnicianToTechnician(technician)");
+    expect(merchantSource).toContain("<MerchantPortalContent store={store} technicians={technicians} />");
+    expect(merchantSource).not.toContain("stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0]");
+  });
+
   it("places appointment list navigation controls above the schedule tabs and hides the shared bottom nav", () => {
     const scheduleHeaderSource = merchantSource.slice(
       merchantSource.indexOf("function MerchantScheduleHeaderTabs"),

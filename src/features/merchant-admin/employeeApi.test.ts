@@ -78,4 +78,49 @@ describe("merchant employee API client", () => {
       },
     );
   });
+
+  it("loads a bounded employee schedule by canonical NeeDoID", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await merchantEmployeeApi.schedule(" NEEDO-S-47/东京 ", {
+      from: "2026-08-24T15:00:00.000Z",
+      to: "2026-08-31T15:00:00.000Z",
+      view: "week",
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/merchant-admin/employees/NEEDO-S-47%2F%E4%B8%9C%E4%BA%AC/schedule",
+      {
+        query: {
+          from: "2026-08-24T15:00:00.000Z",
+          to: "2026-08-31T15:00:00.000Z",
+          view: "week",
+        },
+      },
+    );
+  });
+
+  it("loads semantic employee events and persists comments through scoped routes", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await merchantEmployeeApi.timeline(" NEEDO-S-47/东京 ", 2, 10);
+    await merchantEmployeeApi.addTimelineComment(
+      " NEEDO-S-47/东京 ",
+      "  已确认本月结算。  ",
+    );
+
+    const path =
+      "/merchant-admin/employees/NEEDO-S-47%2F%E4%B8%9C%E4%BA%AC";
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, `${path}/timeline`, {
+      query: { page: 2, pageSize: 10 },
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      `${path}/timeline/comments`,
+      {
+        body: { message: "已确认本月结算。" },
+        method: "POST",
+      },
+    );
+  });
 });

@@ -1902,6 +1902,14 @@ function useTimelineFirstEventAutoScroll(autoScrollKey: string, anchor: Timeline
 }
 
 function getEventStyle(event: UnifiedCalendarEvent): CSSProperties {
+  if (event.visibility === "busy_redacted") {
+    return {
+      "--calendar-accent": "color-mix(in srgb, var(--client-muted) 72%, var(--client-line) 28%)",
+      "--calendar-soft": "color-mix(in srgb, var(--client-muted) 18%, var(--client-elevated) 82%)",
+      "--calendar-text": "color-mix(in srgb, var(--client-text) 70%, var(--client-muted) 30%)",
+      "--calendar-contrast": "var(--client-text)"
+    } as CSSProperties;
+  }
   const source = sourceConfigs[event.sourceId];
   return {
     "--calendar-accent": source.accent,
@@ -2416,7 +2424,12 @@ function CalendarEventCard({
   onOpen: (event: UnifiedCalendarEvent) => void;
 }) {
   const source = sourceConfigs[event.sourceId];
-  const badgeLabel = compact ? source.shortLabel : event.badge;
+  const badgeLabel =
+    event.visibility === "busy_redacted"
+      ? event.badge
+      : compact
+        ? source.shortLabel
+        : event.badge;
   return (
     <button
       className={cn(

@@ -6,7 +6,10 @@ import {
   merchantEmployeeAffiliationBodySchema,
   merchantEmployeeListQuerySchema,
   merchantEmployeeParamSchema,
-  merchantEmployeeProfileBodySchema
+  merchantEmployeeProfileBodySchema,
+  merchantEmployeeScheduleQuerySchema,
+  merchantEmployeeTimelineCommentBodySchema,
+  merchantEmployeeTimelineQuerySchema
 } from "../validators/technician-shop-affiliation.validator";
 
 export class TechnicianShopAffiliationController {
@@ -48,6 +51,72 @@ export class TechnicianShopAffiliationController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public schedule = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { needoId } = merchantEmployeeParamSchema.parse(request.params);
+      response.status(200).json(
+        successResponse(
+          await this.service.getCurrentShopEmployeeSchedule(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            needoId,
+            merchantEmployeeScheduleQuerySchema.parse(request.query)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public timeline = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { needoId } = merchantEmployeeParamSchema.parse(request.params);
+      response.status(200).json(
+        successResponse(
+          await this.service.getCurrentShopEmployeeTimeline(
+            getAuthenticatedAccess(response),
+            needoId,
+            merchantEmployeeTimelineQuerySchema.parse(request.query)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public addTimelineComment = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { needoId } = merchantEmployeeParamSchema.parse(request.params);
+      const { message } = merchantEmployeeTimelineCommentBodySchema.parse(request.body);
+      response.status(201).json(
+        successResponse(
+          await this.service.addCurrentShopEmployeeTimelineComment(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            needoId,
+            message
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }

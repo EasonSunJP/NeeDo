@@ -119,6 +119,36 @@ export function getMessageFailureReason(error: unknown): ConversationMessage["fa
     : "send_failed";
 }
 
+export function getForwardableMessagePayload(
+  messagesByConversation: Record<string, ConversationMessage[]>,
+  messageId: string,
+): { type: ImMessageType; content: string; ext?: MessageExt } {
+  const source = Object.values(messagesByConversation)
+    .flat()
+    .find((message) => message.id === messageId);
+
+  if (
+    !source ||
+    source.type === "recalled" ||
+    source.type === "system" ||
+    source.serverState === "recalled"
+  ) {
+    throw new Error("error.im.forward_source_unavailable");
+  }
+
+  return {
+    type: source.type,
+    content: source.content,
+    ext: source.ext
+      ? {
+          ...source.ext,
+          mentions: undefined,
+          mentionAll: undefined,
+        }
+      : undefined,
+  };
+}
+
 type ImSnapshot = {
   status: StoreStatus;
   error?: string;
@@ -699,6 +729,24 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
   }
 
+  async function setMessageReaction(
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+    reacted: boolean,
+  ) {
+    await hydrateStore();
+    const response = await api.setMessageReaction(
+      conversationId,
+      messageId,
+      emoji,
+      reacted,
+    );
+    upsertMessage(response.message);
+    emit();
+    return response;
+  }
+
   async function recallMessage(conversationId: string, messageId: string, mode: "standard") {
     await hydrateStore();
     const response = await api.recallMessage(conversationId, messageId, mode);
@@ -707,13 +755,49 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response;
   }
 
+  async function deleteMessage(conversationId: string, messageId: string) {
+    await hydrateStore();
+    const response = await api.deleteMessage(conversationId, messageId);
+    const remainingMessages = (snapshot.messagesByConversation[conversationId] ?? []).filter(
+      (message) => message.id !== messageId,
+    );
+    const latestMessage = remainingMessages[remainingMessages.length - 1];
+    snapshot = {
+      ...snapshot,
+      messagesByConversation: {
+        ...snapshot.messagesByConversation,
+        [conversationId]: remainingMessages,
+      },
+      conversations: snapshot.conversations.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              lastMessagePreview: latestMessage
+                ? buildMessagePreview(
+                    latestMessage,
+                    snapshot.currentUserId ?? "",
+                    snapshot.usersById,
+                  )
+                : "",
+              lastMessageId: latestMessage?.id,
+              lastMessageTime: latestMessage?.sentAt ?? conversation.updatedAt,
+            }
+          : conversation,
+      ),
+    };
+    emit();
+    return response;
+  }
+
   async function forwardMessage(messageId: string, conversationId: string) {
     await hydrateStore();
-    const response = await api.forwardMessage(messageId, conversationId);
-    upsertConversation(response.conversation);
-    upsertMessage(response.message);
-    emit();
-    return response.message;
+    const source = getForwardableMessagePayload(
+      snapshot.messagesByConversation,
+      messageId,
+    );
+    return sendMessage(conversationId, source.type, source.content, {
+      ext: source.ext,
+    });
   }
 
   async function pinConversation(conversationId: string, isPinned: boolean) {
@@ -808,15 +892,58 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     await loadConversation(conversationId);
   }
 
-  async function removeConversationMember(conversationId: string, userId: string) {
+  function removeConversationLocally(conversationId: string) {
+    const nextMessagesByConversation = { ...snapshot.messagesByConversation };
+    const nextPaginationByConversation = { ...snapshot.paginationByConversation };
+    delete nextMessagesByConversation[conversationId];
+    delete nextPaginationByConversation[conversationId];
+    snapshot = {
+      ...snapshot,
+      conversations: snapshot.conversations.filter(
+        (conversation) => conversation.id !== conversationId,
+      ),
+      members: snapshot.members.filter(
+        (member) => member.conversationId !== conversationId,
+      ),
+      messagesByConversation: nextMessagesByConversation,
+      paginationByConversation: nextPaginationByConversation,
+      activeConversationId:
+        snapshot.activeConversationId === conversationId
+          ? undefined
+          : snapshot.activeConversationId,
+    };
+    emit();
+  }
+
+  async function removeConversationMember(
+    conversationId: string,
+    userId: string,
+    transferOwnerUserId?: string,
+  ) {
     await hydrateStore();
-    const response = await api.removeConversationMember(conversationId, userId);
-    upsertConversation(response.conversation);
+    const response = await api.removeConversationMember(
+      conversationId,
+      userId,
+      transferOwnerUserId,
+    );
+    if (response.conversation) {
+      upsertConversation(response.conversation);
+    }
+    if (userId === snapshot.currentUserId) {
+      removeConversationLocally(conversationId);
+      return;
+    }
     snapshot = {
       ...snapshot,
       members: snapshot.members.filter((member) => !(member.conversationId === conversationId && member.userId === userId))
     };
     emit();
+  }
+
+  async function dissolveConversation(conversationId: string) {
+    await hydrateStore();
+    await api.dissolveConversation(conversationId);
+    removeConversationLocally(conversationId);
   }
 
   async function updateRemark(contactId: string, remarkName: string) {
@@ -1010,7 +1137,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       estimateTagMessageCampaign,
       sendTagMessageCampaign,
       resendMessage,
+      setMessageReaction,
       recallMessage,
+      deleteMessage,
       forwardMessage,
       pinConversation,
       muteConversation,
@@ -1023,6 +1152,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       createGroupConversation,
       addConversationMembers,
       removeConversationMember,
+      dissolveConversation,
       addContact,
       updateRemark,
       updateContactTags,

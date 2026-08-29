@@ -2,7 +2,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
   CompensationProfilePayload,
-  CompensationProfileRepositoryPort
+  CompensationProfileRepositoryPort,
+  EmployeePayrollSummaryPayload
 } from "../services/compensation-profile.service";
 import type {
   CompensationAdjustmentRule,
@@ -107,6 +108,179 @@ export class CompensationProfileRepository implements CompensationProfileReposit
     });
 
     return this.mapProfile(created);
+  }
+
+  public async findCurrentEmployeeAffiliation(
+    shopId: number,
+    needoId: string
+  ): Promise<{ id: number; technicianProfileId: number } | null> {
+    return this.client.technicianShopAffiliation.findFirst({
+      where: {
+        shopId,
+        activeKey: { not: null },
+        workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
+        endsAt: null,
+        deletedAt: null,
+        technicianProfile: {
+          deletedAt: null,
+          user: {
+            isActive: true,
+            deletedAt: null,
+            identities: {
+              some: {
+                type: "technician",
+                isActive: true,
+                deletedAt: null,
+                publicIdentifier: {
+                  is: {
+                    publicId: needoId,
+                    kind: "S",
+                    status: "ACTIVE",
+                    deletedAt: null
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      select: { id: true, technicianProfileId: true }
+    });
+  }
+
+  public async findEmployeePayrollSummary(
+    shopId: number,
+    technicianProfileId: number
+  ): Promise<EmployeePayrollSummaryPayload> {
+    const payslip = await this.client.payslip.findFirst({
+      where: {
+        shopId,
+        technicianProfileId,
+        deletedAt: null,
+        payRun: { deletedAt: null }
+      },
+      orderBy: [{ periodEnd: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        periodStart: true,
+        periodEnd: true,
+        status: true,
+        disputeStatus: true,
+        baseSalaryJpy: true,
+        annualSalaryProratedJpy: true,
+        dailyWageJpy: true,
+        hourlyWageJpy: true,
+        commissionJpy: true,
+        guaranteeTopupJpy: true,
+        bonusJpy: true,
+        allowanceJpy: true,
+        deductionJpy: true,
+        platformFeeShareDeductionJpy: true,
+        netPayJpy: true,
+        paidAmountJpy: true,
+        unpaidAmountJpy: true,
+        lines: {
+          where: { orderId: { not: null }, deletedAt: null },
+          select: { orderId: true }
+        }
+      }
+    });
+    if (!payslip) return this.emptyPayrollSummary();
+
+    const orderIds = [...new Set(
+      payslip.lines
+        .map((line) => line.orderId)
+        .filter((orderId): orderId is number => orderId !== null)
+    )];
+    const [orders, serviceIncome, payoutRecordCount] = await Promise.all([
+      orderIds.length > 0
+        ? this.client.bookingOrder.findMany({
+            where: {
+              id: { in: orderIds },
+              shopId,
+              technicianProfileId,
+              status: "COMPLETED",
+              deletedAt: null
+            },
+            select: { id: true, startsAt: true, endsAt: true }
+          })
+        : Promise.resolve([]),
+      orderIds.length > 0
+        ? this.client.orderFinancial.aggregate({
+            where: {
+              bookingOrderId: { in: orderIds },
+              shopId,
+              technicianProfileId,
+              serviceIncomeStatus: { in: ["reported", "confirmed"] },
+              deletedAt: null
+            },
+            _sum: { serviceAmountJpy: true }
+          })
+        : Promise.resolve({ _sum: { serviceAmountJpy: null } }),
+      this.client.payoutRecord.count({
+        where: {
+          payslipId: payslip.id,
+          shopId,
+          technicianProfileId,
+          status: "completed",
+          deletedAt: null
+        }
+      })
+    ]);
+
+    const workedMinutes = orders.reduce((total, order) => {
+      const duration = Math.max(0, order.endsAt.getTime() - order.startsAt.getTime());
+      return total + Math.round(duration / 60_000);
+    }, 0);
+
+    return {
+      payslipId: payslip.id,
+      periodStart: payslip.periodStart.toISOString(),
+      periodEnd: payslip.periodEnd.toISOString(),
+      status: payslip.status,
+      disputeStatus: payslip.disputeStatus,
+      completedOrderCount: orders.length,
+      workedMinutes,
+      serviceIncomeJpy: serviceIncome._sum.serviceAmountJpy ?? 0,
+      basePayJpy:
+        payslip.baseSalaryJpy +
+        payslip.annualSalaryProratedJpy +
+        payslip.dailyWageJpy +
+        payslip.hourlyWageJpy +
+        payslip.guaranteeTopupJpy,
+      commissionJpy: payslip.commissionJpy,
+      bonusJpy: payslip.bonusJpy,
+      allowanceJpy: payslip.allowanceJpy,
+      deductionJpy: payslip.deductionJpy,
+      platformFeeShareDeductionJpy: payslip.platformFeeShareDeductionJpy,
+      netPayJpy: payslip.netPayJpy,
+      paidAmountJpy: payslip.paidAmountJpy,
+      unpaidAmountJpy: payslip.unpaidAmountJpy,
+      payoutRecordCount
+    };
+  }
+
+  private emptyPayrollSummary(): EmployeePayrollSummaryPayload {
+    return {
+      payslipId: null,
+      periodStart: null,
+      periodEnd: null,
+      status: null,
+      disputeStatus: null,
+      completedOrderCount: 0,
+      workedMinutes: 0,
+      serviceIncomeJpy: 0,
+      basePayJpy: 0,
+      commissionJpy: 0,
+      bonusJpy: 0,
+      allowanceJpy: 0,
+      deductionJpy: 0,
+      platformFeeShareDeductionJpy: 0,
+      netPayJpy: 0,
+      paidAmountJpy: 0,
+      unpaidAmountJpy: 0,
+      payoutRecordCount: 0
+    };
   }
 
   private mapProfile(record: TechnicianProfileRecord): CompensationProfilePayload {

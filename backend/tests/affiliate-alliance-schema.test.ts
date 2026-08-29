@@ -51,4 +51,26 @@ describe("affiliate alliance schema", () => {
     expect(schema).toMatch(/ownedAffiliateAlliances\s+AffiliateAlliance\[\]/);
     expect(schema).toMatch(/affiliateAllianceMemberships\s+AffiliateAllianceMember\[\]/);
   });
+
+  it("defines durable versioned alliance invitations and their state machine", () => {
+    expect(schema).toMatch(
+      /enum AffiliateAllianceInvitationRole[\s\S]*PARTNER\s+@map\("partner"\)[\s\S]*SUBORDINATE\s+@map\("subordinate"\)/
+    );
+    expect(schema).toMatch(
+      /enum AffiliateAllianceInvitationStatus[\s\S]*PENDING\s+@map\("pending"\)[\s\S]*ACCEPTED\s+@map\("accepted"\)[\s\S]*REJECTED\s+@map\("rejected"\)[\s\S]*EXPIRED\s+@map\("expired"\)/
+    );
+    expect(schema).toMatch(
+      /model AffiliateAllianceInvitation \{[\s\S]*id\s+Int[\s\S]*allianceId\s+Int[\s\S]*inviterMemberId\s+Int[\s\S]*inviteeUserId\s+Int[\s\S]*role\s+AffiliateAllianceInvitationRole[\s\S]*proposedParentMemberId\s+Int\?[\s\S]*status\s+AffiliateAllianceInvitationStatus[\s\S]*pendingKey\s+String\?[\s\S]*@unique[\s\S]*expiresAt\s+DateTime[\s\S]*respondedAt\s+DateTime\?[\s\S]*expiredAt\s+DateTime\?[\s\S]*version\s+Int[\s\S]*createdAt[\s\S]*updatedAt[\s\S]*deletedAt/
+    );
+  });
+
+  it("indexes invitation owner, recipient, expiry, parent, and soft deletion queries", () => {
+    expect(schema).toMatch(
+      /model AffiliateAllianceInvitation[\s\S]*@@index\(\[allianceId, status, createdAt\]\)[\s\S]*@@index\(\[inviteeUserId, status, createdAt\], map: "affiliate_alliance_invitee_status_created_idx"\)[\s\S]*@@index\(\[status, expiresAt, id\]\)[\s\S]*@@index\(\[inviterMemberId\]\)[\s\S]*@@index\(\[proposedParentMemberId\]\)[\s\S]*@@index\(\[deletedAt\]\)/
+    );
+    expect(schema).toMatch(/affiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
+    expect(schema).toMatch(/sentAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
+    expect(schema).toMatch(/parentedAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
+    expect(schema).toMatch(/receivedAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
+  });
 });

@@ -38,8 +38,7 @@ export interface AuthenticatedBookingActor {
   currentIdentityScopeId?: number | null;
 }
 export interface BookingCreateInput
-  extends Omit<BookingCreateRepositoryInput, "customerUserId">,
-    AffiliatePromotionInput {
+  extends Omit<BookingCreateRepositoryInput, "customerUserId">, AffiliatePromotionInput {
   orderType?: "booking" | "request";
 }
 
@@ -137,22 +136,26 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<ScheduleSlotPayload> {
     const scope = this.getScheduleScope(actor);
-    const targetShopId = scope.scope === "merchant"
-      ? scope.shopId
-      : await this.repository.findTechnicianShopId?.(scope.technicianProfileId);
+    const targetShopId =
+      scope.scope === "merchant"
+        ? scope.shopId
+        : await this.repository.findTechnicianShopId?.(scope.technicianProfileId);
     await this.assertShopNotSuspended(targetShopId ?? null);
-    const repositoryInput: ScheduleSlotCreateInput = scope.scope === "technician"
-      ? {
-          scope: "technician",
-          technicianProfileId: scope.technicianProfileId,
-          serviceId: input.serviceId,
-          technicianServiceId: input.technicianServiceId,
-          startsAt: input.startsAt,
-          endsAt: input.endsAt,
-          capacity: input.capacity
-        }
-      : { ...input, scope: "merchant", shopId: scope.shopId };
-    const slot = this.requireScheduleMutation(await this.repository.createScheduleSlot(repositoryInput));
+    const repositoryInput: ScheduleSlotCreateInput =
+      scope.scope === "technician"
+        ? {
+            scope: "technician",
+            technicianProfileId: scope.technicianProfileId,
+            serviceId: input.serviceId,
+            technicianServiceId: input.technicianServiceId,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+            capacity: input.capacity
+          }
+        : { ...input, scope: "merchant", shopId: scope.shopId };
+    const slot = this.requireScheduleMutation(
+      await this.repository.createScheduleSlot(repositoryInput)
+    );
     await this.recordScheduleMutation(actor, context, scope, "create", slot);
     return slot;
   }
@@ -164,8 +167,10 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<ScheduleSlotPayload> {
     const scope = this.getScheduleScope(actor);
-    await this.assertShopNotSuspended(await this.repository.findScheduleSlotShopId?.(id) ?? null);
-    const slot = this.requireScheduleMutation(await this.repository.updateScheduleSlot({ ...scope, id, ...input }));
+    await this.assertShopNotSuspended((await this.repository.findScheduleSlotShopId?.(id)) ?? null);
+    const slot = this.requireScheduleMutation(
+      await this.repository.updateScheduleSlot({ ...scope, id, ...input })
+    );
     await this.recordScheduleMutation(actor, context, scope, "update", slot);
     return slot;
   }
@@ -176,7 +181,9 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<ScheduleSlotPayload> {
     const scope = this.getScheduleScope(actor);
-    const slot = this.requireScheduleMutation(await this.repository.deleteScheduleSlot({ ...scope, id }));
+    const slot = this.requireScheduleMutation(
+      await this.repository.deleteScheduleSlot({ ...scope, id })
+    );
     await this.recordScheduleMutation(actor, context, scope, "delete", slot);
     return slot;
   }
@@ -186,7 +193,7 @@ export class BookingService {
     input: BookingCreateInput
   ): Promise<BookingOrderPayload> {
     await this.assertShopNotSuspended(
-      await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId) ?? null
+      (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );
     const repositoryInput: BookingCreateRepositoryInput = {
       customerUserId: actor.userId,
@@ -209,16 +216,20 @@ export class BookingService {
     const repositoryOptions = {
       ...(selector
         ? {
-            prepareAffiliate: (context: Parameters<
-              NonNullable<BookingCreateRepositoryOptions["prepareAffiliate"]>
-            >[0]) =>
+            prepareAffiliate: (
+              context: Parameters<
+                NonNullable<BookingCreateRepositoryOptions["prepareAffiliate"]>
+              >[0]
+            ) =>
               this.affiliateCheckoutService!.prepareCheckout({
                 ...context,
                 selector
               }),
-            persistAffiliate: (context: Parameters<
-              NonNullable<BookingCreateRepositoryOptions["persistAffiliate"]>
-            >[0]) =>
+            persistAffiliate: (
+              context: Parameters<
+                NonNullable<BookingCreateRepositoryOptions["persistAffiliate"]>
+              >[0]
+            ) =>
               this.affiliateCheckoutService!.persistAttribution({
                 bookingOrderId: context.bookingOrderId,
                 customerUserId: context.customerUserId,
@@ -231,9 +242,11 @@ export class BookingService {
         : {}),
       ...(this.affiliateCheckoutService
         ? {
-            invalidateSupersededAffiliate: (context: Parameters<
-              NonNullable<BookingCreateRepositoryOptions["invalidateSupersededAffiliate"]>
-            >[0]) =>
+            invalidateSupersededAffiliate: (
+              context: Parameters<
+                NonNullable<BookingCreateRepositoryOptions["invalidateSupersededAffiliate"]>
+              >[0]
+            ) =>
               this.affiliateCheckoutService!.invalidateCancelledBooking({
                 bookingOrderId: context.bookingOrderId,
                 actorUserId: context.actorUserId,
@@ -242,9 +255,10 @@ export class BookingService {
           }
         : {})
     };
-    const result = Object.keys(repositoryOptions).length > 0
-      ? await this.repository.createBooking(repositoryInput, repositoryOptions)
-      : await this.repository.createBooking(repositoryInput);
+    const result =
+      Object.keys(repositoryOptions).length > 0
+        ? await this.repository.createBooking(repositoryInput, repositoryOptions)
+        : await this.repository.createBooking(repositoryInput);
 
     if (!result) {
       throw this.slotUnavailableError();
@@ -307,7 +321,13 @@ export class BookingService {
     reason?: string | null,
     confirmInput?: OrderConfirmInput
   ): Promise<BookingOrderPayload> {
-    return this.transition(actor, id, action, reason, action === "confirm" ? confirmInput : undefined);
+    return this.transition(
+      actor,
+      id,
+      action,
+      reason,
+      action === "confirm" ? confirmInput : undefined
+    );
   }
 
   public async confirmManualPayment(
@@ -373,16 +393,41 @@ export class BookingService {
       throw this.invalidTransitionError();
     }
 
-    const next = await this.repository.transitionOrder(
-      {
-        id,
-        actorUserId: actor.userId,
-        fromStatus: order.status,
-        toStatus: rule.to,
-        reason
-      },
-      this.createSettlementOptions(actor, order, action, confirmInput)
-    );
+    const transitionInput = {
+      id,
+      actorUserId: actor.userId,
+      fromStatus: order.status,
+      toStatus: rule.to,
+      reason
+    };
+    const transitionOptions = this.createSettlementOptions(actor, order, action, confirmInput);
+    const guardedResult =
+      action === "confirm"
+        ? await this.repository.transitionOrderWithScheduleGuard?.(
+            transitionInput,
+            transitionOptions
+          )
+        : undefined;
+    if (guardedResult?.outcome === "schedule_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.SCHEDULE_CONFLICT,
+        message: "error.schedule.conflict",
+        statusCode: 409
+      });
+    }
+    if (guardedResult?.outcome === "acceptance_paused") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_ACCEPTANCE_PAUSED,
+        message: "error.order.acceptance_paused",
+        statusCode: 409,
+        data: { pauses: guardedResult.pauses }
+      });
+    }
+    const next = guardedResult
+      ? guardedResult.outcome === "ok"
+        ? guardedResult.order
+        : null
+      : await this.repository.transitionOrder(transitionInput, transitionOptions);
 
     if (!next) {
       throw this.invalidTransitionError();
@@ -431,7 +476,11 @@ export class BookingService {
     if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
       return { scope: "technician", technicianProfileId: actor.currentIdentityScopeId };
     }
-    throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.auth.identity_forbidden", statusCode: 403 });
+    throw new AppError({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.auth.identity_forbidden",
+      statusCode: 403
+    });
   }
 
   private getManualPaymentScope(actor: AuthenticatedAccessContext): ManualPaymentScope {
@@ -448,9 +497,7 @@ export class BookingService {
     });
   }
 
-  private requireManualPaymentMutation(
-    result: ManualPaymentMutationResult
-  ): BookingOrderPayload {
+  private requireManualPaymentMutation(result: ManualPaymentMutationResult): BookingOrderPayload {
     if (result.outcome === "ok") return result.order;
     if (result.outcome === "not_found") throw this.notFoundError();
     if (result.outcome === "invalid_state") {
@@ -501,20 +548,31 @@ export class BookingService {
     if (result.outcome === "ok") return result.slot;
     if (result.outcome === "suspended") throw this.suspendedError();
     if (result.outcome === "not_found") {
-      throw new AppError({ code: ERROR_CODES.NOT_FOUND, message: "error.schedule.slot_not_found", statusCode: 404 });
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.schedule.slot_not_found",
+        statusCode: 404
+      });
     }
     if (result.outcome === "in_use") {
-      throw new AppError({ code: ERROR_CODES.SCHEDULE_SLOT_IN_USE, message: "error.schedule.slot_in_use", statusCode: 409 });
+      throw new AppError({
+        code: ERROR_CODES.SCHEDULE_SLOT_IN_USE,
+        message: "error.schedule.slot_in_use",
+        statusCode: 409
+      });
     }
     throw new AppError({
       code: ERROR_CODES.SCHEDULE_CONFLICT,
-      message: result.outcome === "duration_mismatch" ? "error.schedule.duration_mismatch" : "error.schedule.conflict",
+      message:
+        result.outcome === "duration_mismatch"
+          ? "error.schedule.duration_mismatch"
+          : "error.schedule.conflict",
       statusCode: 409
     });
   }
 
   private async assertShopNotSuspended(shopId: number | null): Promise<void> {
-    if (shopId && await this.repository.isShopSuspended?.(shopId)) {
+    if (shopId && (await this.repository.isShopSuspended?.(shopId))) {
       throw this.suspendedError();
     }
   }
@@ -567,9 +625,7 @@ export class BookingService {
     action: OrderAction,
     confirmInput?: OrderConfirmInput
   ): OrderTransitionRepositoryOptions {
-    const actions: Array<
-      NonNullable<OrderTransitionRepositoryOptions["settle"]>
-    > = [];
+    const actions: Array<NonNullable<OrderTransitionRepositoryOptions["settle"]>> = [];
     const ledgerOptions = this.createLedgerSettlementOptions(actor, order, action, confirmInput);
     if (ledgerOptions.settle) {
       actions.push(ledgerOptions.settle);
@@ -631,8 +687,7 @@ export class BookingService {
               acceptedAt: new Date(),
               customerUserId: order.customerUserId,
               actorUserId: actor.userId,
-              insufficientBalanceConfirmation:
-                confirmInput?.insufficientBalanceConfirmation
+              insufficientBalanceConfirmation: confirmInput?.insufficientBalanceConfirmation
             },
             { transactionClient: context.transactionClient }
           ).then(() => undefined)
@@ -769,7 +824,11 @@ export class BookingService {
 
     if (!hasPlatformRole) return false;
     if (!actor.currentIdentityScopeType && !actor.currentIdentityType) return true;
-    return actor.currentIdentityScopeType === "global" || actor.currentIdentityType === "platform" || actor.currentIdentityType === "platform_admin";
+    return (
+      actor.currentIdentityScopeType === "global" ||
+      actor.currentIdentityType === "platform" ||
+      actor.currentIdentityType === "platform_admin"
+    );
   }
 
   private moneyToInteger(value: string): number {

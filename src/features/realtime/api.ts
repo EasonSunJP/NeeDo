@@ -12,6 +12,7 @@ export type RealtimeParticipant = {
   needoId: string;
   userId: number;
   username: string;
+  role?: "owner" | "admin" | "member";
 };
 
 export type RealtimeMessage = {
@@ -38,6 +39,12 @@ export type RealtimeRecallResult = {
   messageId: number;
 };
 
+export type RealtimeMessageDeletionResult = {
+  conversationId: number;
+  messageId: number;
+  deleted: true;
+};
+
 export type RealtimeMessageReaction = {
   emoji: string;
   people: Array<{
@@ -59,7 +66,26 @@ export type RealtimeConversation = {
   isPinned?: boolean;
   isMuted?: boolean;
   isHidden?: boolean;
+  privacyModeEnabled?: boolean;
+  hideMemberProfiles?: boolean;
+  disappearingTtlSeconds?: number | null;
+  disappearingStartMode?: "sent" | "read_by_all";
+  privacyPolicyVersion?: number;
   updatedAt: string;
+};
+
+export type RealtimeConversationPrivacyInput = {
+  privacyModeEnabled: boolean;
+  hideMemberProfiles?: boolean;
+  disappearingTtlSeconds?: number | null;
+  disappearingStartMode?: "sent" | "read_by_all";
+};
+
+export type RealtimeLeaveConversationResult = {
+  conversationId: number;
+  removedUserId: number;
+  newOwnerUserId: number | null;
+  dissolved: boolean;
 };
 
 export type RealtimeMessageHistory = PaginatedRealtimeData<RealtimeMessage> & {
@@ -146,7 +172,15 @@ export const realtimeApi = {
   listConversations(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeConversation>>("/im/conversations", { query });
   },
-  createConversation(input: { participantUserIds: number[]; title?: string; type?: "direct" | "group" }) {
+  createConversation(input: {
+    participantUserIds: number[];
+    title?: string;
+    type?: "direct" | "group";
+    privacyModeEnabled?: boolean;
+    hideMemberProfiles?: boolean;
+    disappearingTtlSeconds?: number | null;
+    disappearingStartMode?: "sent" | "read_by_all";
+  }) {
     return httpClient.request<RealtimeConversation>("/im/conversations", { body: input, method: "POST" });
   },
   listMessages(conversationId: number, query: { beforeId?: number; pageSize?: number } = {}) {
@@ -188,8 +222,44 @@ export const realtimeApi = {
       method: "PATCH"
     });
   },
+  updateConversationPrivacy(
+    conversationId: number,
+    privacy: RealtimeConversationPrivacyInput
+  ) {
+    return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}/privacy`, {
+      body: privacy,
+      method: "PATCH"
+    });
+  },
+  leaveConversation(conversationId: number, transferOwnerUserId?: number) {
+    return httpClient.request<RealtimeLeaveConversationResult>(
+      `/im/conversations/${conversationId}/leave`,
+      {
+        body: transferOwnerUserId ? { transferOwnerUserId } : {},
+        method: "POST"
+      }
+    );
+  },
+  dissolveConversation(conversationId: number) {
+    return httpClient.request<RealtimeLeaveConversationResult>(
+      `/im/conversations/${conversationId}/dissolve`,
+      { method: "POST" }
+    );
+  },
   deleteConversation(conversationId: number) {
     return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}`, { method: "DELETE" });
+  },
+  clearConversationMessages(conversationId: number) {
+    return httpClient.request<RealtimeConversation>(
+      `/im/conversations/${conversationId}/messages`,
+      { method: "DELETE" }
+    );
+  },
+  deleteMessageForMe(conversationId: number, messageId: number) {
+    return httpClient.request<RealtimeMessageDeletionResult>(
+      `/im/conversations/${conversationId}/messages/${messageId}`,
+      { method: "DELETE" }
+    );
   },
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });

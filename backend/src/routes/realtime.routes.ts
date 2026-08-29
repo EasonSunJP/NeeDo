@@ -14,7 +14,9 @@ import {
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
+  conversationLeaveBodySchema,
   conversationListQuerySchema,
+  conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
   directorySearchQuerySchema,
   followCreateBodySchema,
@@ -23,6 +25,7 @@ import {
   friendRequestIdParamSchema,
   friendRequestListQuerySchema,
   messageCreateBodySchema,
+  messageDeleteParamSchema,
   messageListQuerySchema,
   messageRecallBodySchema,
   messageRecallParamSchema,
@@ -43,11 +46,16 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   listMessages: "message:list",
   createMessage: "message:create",
   recallMessage: "message:recall",
+  deleteMessageForUser: "message:list",
   reactToMessage: "message:react",
   markConversationRead: "message:read",
   markConversationUnread: "message:read",
   updateConversationPreferences: "conversation:list",
+  updateConversationPrivacy: "conversation:create",
+  leaveConversation: "conversation:list",
+  dissolveConversation: "conversation:create",
   hideConversation: "conversation:list",
+  clearConversationMessages: "message:list",
   listContacts: "contact:list",
   searchDirectory: "contact:list",
   addContact: "contact:list",
@@ -113,6 +121,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     validateRequest({ params: messageRecallParamSchema, body: messageRecallBodySchema }),
     controller.recallMessage
   );
+  router.delete(
+    "/im/conversations/:conversationId/messages/:messageId",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.deleteMessageForUser),
+    validateRequest({ params: messageDeleteParamSchema }),
+    controller.deleteMessageForUser
+  );
   router.put(
     "/im/conversations/:conversationId/messages/:messageId/reactions",
     authenticate(),
@@ -150,6 +165,37 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
       body: conversationPreferencesBodySchema
     }),
     controller.updateConversationPreferences
+  );
+  router.patch(
+    "/im/conversations/:conversationId/privacy",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.updateConversationPrivacy),
+    validateRequest({
+      params: conversationIdParamSchema,
+      body: conversationPrivacyBodySchema
+    }),
+    controller.updateConversationPrivacy
+  );
+  router.post(
+    "/im/conversations/:conversationId/leave",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.leaveConversation),
+    validateRequest({ params: conversationIdParamSchema, body: conversationLeaveBodySchema }),
+    controller.leaveConversation
+  );
+  router.post(
+    "/im/conversations/:conversationId/dissolve",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.dissolveConversation),
+    validateRequest({ params: conversationIdParamSchema }),
+    controller.dissolveConversation
+  );
+  router.delete(
+    "/im/conversations/:conversationId/messages",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.clearConversationMessages),
+    validateRequest({ params: conversationIdParamSchema }),
+    controller.clearConversationMessages
   );
   router.delete(
     "/im/conversations/:conversationId",

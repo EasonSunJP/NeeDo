@@ -2,7 +2,13 @@ import type { NextFunction, Request, Response } from "express";
 import type { AffiliateAllianceService } from "../services/affiliate-alliance.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
-import { affiliateAllianceCreateBodySchema } from "../validators/affiliate-alliance.validator";
+import {
+  affiliateAllianceCreateBodySchema,
+  affiliateAllianceInvitationCreateBodySchema,
+  affiliateAllianceInvitationIdParamSchema,
+  affiliateAllianceInvitationListQuerySchema,
+  affiliateAllianceListQuerySchema
+} from "../validators/affiliate-alliance.validator";
 
 export class AffiliateAllianceController {
   public constructor(private readonly service: AffiliateAllianceService) {}
@@ -25,6 +31,88 @@ export class AffiliateAllianceController {
           )
         )
       );
+  });
+
+  public listMembers = this.handle(async (request, response) => {
+    response.status(200).json(
+      successResponse(
+        await this.service.listMembers(
+          getAuthenticatedAccess(response),
+          affiliateAllianceListQuerySchema.parse(request.query)
+        )
+      )
+    );
+  });
+
+  public listEligibleContacts = this.handle(async (request, response) => {
+    response.status(200).json(
+      successResponse(
+        await this.service.listEligibleContacts(
+          getAuthenticatedAccess(response),
+          affiliateAllianceListQuerySchema.parse(request.query)
+        )
+      )
+    );
+  });
+
+  public listSentInvitations = this.handle(async (request, response) => {
+    response.status(200).json(
+      successResponse(
+        await this.service.listSentInvitations(
+          getAuthenticatedAccess(response),
+          affiliateAllianceInvitationListQuerySchema.parse(request.query)
+        )
+      )
+    );
+  });
+
+  public createInvitation = this.handle(async (request, response) => {
+    response.status(201).json(
+      successResponse(
+        await this.service.createInvitation(
+          getAuthenticatedAccess(response),
+          getRequestContext(request),
+          affiliateAllianceInvitationCreateBodySchema.parse(request.body)
+        )
+      )
+    );
+  });
+
+  public listReceivedInvitations = this.handle(async (request, response) => {
+    response.status(200).json(
+      successResponse(
+        await this.service.listReceivedInvitations(
+          getAuthenticatedAccess(response),
+          affiliateAllianceInvitationListQuerySchema.parse(request.query)
+        )
+      )
+    );
+  });
+
+  public acceptInvitation = this.handle(async (request, response) => {
+    const { id } = affiliateAllianceInvitationIdParamSchema.parse(request.params);
+    response.status(200).json(
+      successResponse(
+        await this.service.acceptInvitation(
+          getAuthenticatedAccess(response),
+          getRequestContext(request),
+          id
+        )
+      )
+    );
+  });
+
+  public rejectInvitation = this.handle(async (request, response) => {
+    const { id } = affiliateAllianceInvitationIdParamSchema.parse(request.params);
+    response.status(200).json(
+      successResponse(
+        await this.service.rejectInvitation(
+          getAuthenticatedAccess(response),
+          getRequestContext(request),
+          id
+        )
+      )
+    );
   });
 
   private handle(

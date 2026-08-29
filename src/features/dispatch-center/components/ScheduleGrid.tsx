@@ -629,9 +629,17 @@ function getPrimaryRangeTone(range: DayTimelineRange) {
   return "open";
 }
 
-type DayTimelineLegendTone = "available" | "scheduled" | "booked" | "conflictPending" | "other" | "standby" | "travel" | "inService" | "extraTime" | "breakBuffer";
+type DayTimelineLegendTone = "available" | "scheduled" | "booked" | "conflictPending" | "other" | "busyRedacted" | "standby" | "travel" | "inService" | "extraTime" | "breakBuffer";
 
 function getScheduleToneStyle(tone: DayTimelineLegendTone) {
+  if (tone === "busyRedacted") {
+    return {
+      background: "color-mix(in srgb, var(--client-muted) 28%, var(--client-elevated) 72%)",
+      border: "1px solid color-mix(in srgb, var(--client-muted) 54%, var(--client-line) 46%)",
+      color: "color-mix(in srgb, var(--client-text) 68%, var(--client-muted) 32%)",
+      textShadow: "none"
+    } satisfies CSSProperties;
+  }
   const cssTone =
     tone === "conflictPending"
       ? "conflict-pending"
@@ -873,6 +881,9 @@ function buildPeriodSummaryRanges(cell: DispatchScheduleCell) {
 }
 
 function getPeriodSummaryTone(range: PeriodSummaryRange): DayTimelineLegendTone {
+  if (range.cells.some((cell) => cell.privacyVisibility === "busy_redacted")) {
+    return "busyRedacted";
+  }
   if (range.status === "booked") {
     return "booked";
   }
@@ -893,6 +904,9 @@ function getPeriodSummaryTone(range: PeriodSummaryRange): DayTimelineLegendTone 
 }
 
 function getPeriodSummaryRangeLabel(range: PeriodSummaryRange, language: Language) {
+  if (range.cells.some((cell) => cell.privacyVisibility === "busy_redacted")) {
+    return `${formatPeriodHour(range.startHour)}-${formatPeriodHour(range.endHour)} ${translateText("其他店铺已有确认安排", language)}`;
+  }
   const label =
     range.status === "booked"
       ? getLocalizedTimelineLabel("appointments", language, Math.max(1, range.appointmentCount))

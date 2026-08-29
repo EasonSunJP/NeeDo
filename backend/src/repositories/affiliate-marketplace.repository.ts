@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { ContentLocale, Prisma, type PrismaClient } from "@prisma/client";
+import type { ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
 import type {
   AffiliateClaimPersistenceInput,
@@ -8,14 +9,14 @@ import type {
   AffiliateClaimUniqueField,
   AffiliateMarketplaceListInput,
   AffiliateMarketplaceRepositoryPort,
+  AffiliateMarketplaceTaskRecord,
   AffiliateMarketplaceTransactionClient
 } from "../services/affiliate-marketplace.service";
 import type {
   AffiliateBudgetReservationRecord,
   AffiliateDiscountType,
   AffiliatePublisherType,
-  AffiliateServiceScopeMode,
-  AffiliateTaskRecord
+  AffiliateServiceScopeMode
 } from "../services/affiliate-task.service";
 import type { AffiliateTaskStatus } from "../services/affiliate-state-machine.service";
 import {
@@ -27,9 +28,30 @@ import {
 type AffiliatePrismaClient = PrismaClient | Prisma.TransactionClient;
 
 const taskInclude = {
-  shops: {
+  translations: {
     where: { deletedAt: null },
     orderBy: { id: "asc" as const }
+  },
+  coverMediaAsset: true,
+  shops: {
+    where: { deletedAt: null },
+    orderBy: { id: "asc" as const },
+    include: {
+      shop: {
+        include: {
+          publicIdentifier: true,
+          mediaAssets: {
+            where: {
+              deletedAt: null,
+              purgedAt: null,
+              isActive: true,
+              mimeType: { startsWith: "image/" }
+            },
+            orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }]
+          }
+        }
+      }
+    }
   },
   services: {
     where: { deletedAt: null },
@@ -48,12 +70,11 @@ type AffiliateTaskDbRecord = Prisma.AffiliateTaskGetPayload<{
 type AffiliateClaimDbRecord = Prisma.AffiliateClaimGetPayload<{
   include: typeof claimInclude;
 }>;
-type AffiliateBudgetReservationDbRecord =
-  Prisma.AffiliateBudgetReservationGetPayload<Record<string, never>>;
+type AffiliateBudgetReservationDbRecord = Prisma.AffiliateBudgetReservationGetPayload<
+  Record<string, never>
+>;
 
-export class AffiliateMarketplaceRepository
-  implements AffiliateMarketplaceRepositoryPort
-{
+export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepositoryPort {
   public constructor(private readonly client: AffiliatePrismaClient = prisma) {}
 
   public async runInTransaction<T>(
@@ -65,16 +86,12 @@ export class AffiliateMarketplaceRepository
   ): Promise<T> {
     if (transactionClient) {
       return handler(
-        new AffiliateMarketplaceRepository(
-          transactionClient as AffiliatePrismaClient
-        ),
+        new AffiliateMarketplaceRepository(transactionClient as AffiliatePrismaClient),
         transactionClient
       );
     }
     if (this.canStartTransaction(this.client)) {
-      return this.client.$transaction((tx) =>
-        handler(new AffiliateMarketplaceRepository(tx), tx)
-      );
+      return this.client.$transaction((tx) => handler(new AffiliateMarketplaceRepository(tx), tx));
     }
     return handler(this, this.client);
   }
@@ -85,7 +102,7 @@ export class AffiliateMarketplaceRepository
       page: number;
       pageSize: number;
     }
-  ): Promise<PaginatedResponse<AffiliateTaskRecord>> {
+  ): Promise<PaginatedResponse<AffiliateMarketplaceTaskRecord>> {
     const pagination = toPrismaPagination(input);
     const conditions = this.eligibilityConditions(input, input.now);
     const [idRows, totalRows] = await Promise.all([
@@ -113,17 +130,13 @@ export class AffiliateMarketplaceRepository
     const taskIds = idRows.map((row) => Number(row.id));
     const tasks = await this.loadTasks(taskIds);
 
-    return buildPaginatedResponse(
-      tasks,
-      Number(totalRows[0]?.total ?? 0),
-      input
-    );
+    return buildPaginatedResponse(tasks, Number(totalRows[0]?.total ?? 0), input);
   }
 
   public async findClaimableTaskById(
     taskId: number,
     now: Date
-  ): Promise<AffiliateTaskRecord | null> {
+  ): Promise<AffiliateMarketplaceTaskRecord | null> {
     const rows = await this.eligibleTaskIds({ page: 1, pageSize: 1 }, now, taskId);
     if (rows.length !== 1) {
       return null;
@@ -131,7 +144,7 @@ export class AffiliateMarketplaceRepository
     return this.findTaskById(rows[0]);
   }
 
-  public async findTaskById(taskId: number): Promise<AffiliateTaskRecord | null> {
+  public async findTaskById(taskId: number): Promise<AffiliateMarketplaceTaskRecord | null> {
     const task = await this.client.affiliateTask.findFirst({
       where: { id: taskId, deletedAt: null },
       include: taskInclude
@@ -142,7 +155,7 @@ export class AffiliateMarketplaceRepository
   public async lockClaimableTaskForShare(
     taskId: number,
     now: Date
-  ): Promise<AffiliateTaskRecord | null> {
+  ): Promise<AffiliateMarketplaceTaskRecord | null> {
     const conditions = this.eligibilityConditions({}, now, taskId);
     const rows = await this.client.$queryRaw<Array<{ id: number }>>(
       Prisma.sql`
@@ -168,9 +181,7 @@ export class AffiliateMarketplaceRepository
     return claim ? this.mapClaim(claim) : null;
   }
 
-  public async createClaim(
-    input: AffiliateClaimPersistenceInput
-  ): Promise<AffiliateClaimRecord> {
+  public async createClaim(input: AffiliateClaimPersistenceInput): Promise<AffiliateClaimRecord> {
     const claim = await this.client.affiliateClaim.create({
       data: input,
       include: claimInclude
@@ -178,9 +189,7 @@ export class AffiliateMarketplaceRepository
     return this.mapClaim(claim);
   }
 
-  public classifyClaimUniqueConflict(
-    error: unknown
-  ): AffiliateClaimUniqueConflict | null {
+  public classifyClaimUniqueConflict(error: unknown): AffiliateClaimUniqueConflict | null {
     if (!error || typeof error !== "object" || !("code" in error)) {
       return null;
     }
@@ -203,11 +212,7 @@ export class AffiliateMarketplaceRepository
       .flatMap((value) => (Array.isArray(value) ? value : [value]))
       .map((value) => String(value ?? ""))
       .join(" ");
-    const fields: AffiliateClaimUniqueField[] = [
-      "active_key",
-      "public_code",
-      "public_token_id"
-    ];
+    const fields: AffiliateClaimUniqueField[] = ["active_key", "public_code", "public_token_id"];
     const field = fields.find((candidate) => target.includes(candidate));
     if (!field) {
       return null;
@@ -340,7 +345,19 @@ export class AffiliateMarketplaceRepository
     if (input.keyword?.trim()) {
       const keyword = `%${input.keyword.trim()}%`;
       conditions.push(
-        Prisma.sql`(task.name LIKE ${keyword} OR task.task_code LIKE ${keyword})`
+        Prisma.sql`(
+          task.name LIKE ${keyword}
+          OR task.task_code LIKE ${keyword}
+          OR EXISTS (
+            SELECT 1 FROM affiliate_task_translations AS translation
+            WHERE translation.task_id = task.id
+              AND translation.deleted_at IS NULL
+              AND (
+                translation.name LIKE ${keyword}
+                OR translation.description LIKE ${keyword}
+              )
+          )
+        )`
       );
     }
     if (input.shopId) {
@@ -364,14 +381,12 @@ export class AffiliateMarketplaceRepository
       );
     }
     if (input.customerDiscountType) {
-      conditions.push(
-        Prisma.sql`task.customer_discount_type = ${input.customerDiscountType}`
-      );
+      conditions.push(Prisma.sql`task.customer_discount_type = ${input.customerDiscountType}`);
     }
     return conditions;
   }
 
-  private async loadTasks(taskIds: number[]): Promise<AffiliateTaskRecord[]> {
+  private async loadTasks(taskIds: number[]): Promise<AffiliateMarketplaceTaskRecord[]> {
     if (taskIds.length === 0) {
       return [];
     }
@@ -409,7 +424,7 @@ export class AffiliateMarketplaceRepository
     };
   }
 
-  private mapTask(task: AffiliateTaskDbRecord): AffiliateTaskRecord {
+  private mapTask(task: AffiliateTaskDbRecord): AffiliateMarketplaceTaskRecord {
     return {
       id: task.id,
       taskCode: task.taskCode,
@@ -419,17 +434,35 @@ export class AffiliateMarketplaceRepository
       publisherType: task.publisherType.toLowerCase() as AffiliatePublisherType,
       publisherMerchantAccountId: task.publisherMerchantAccountId,
       publisherShopId: task.publisherShopId,
+      translations: Object.fromEntries(
+        task.translations.map((translation) => [
+          this.localeFromDb(translation.locale),
+          {
+            name: translation.name,
+            description: translation.description,
+            sourceLocale: this.localeFromDb(translation.sourceLocale),
+            isInitialCopy: translation.isInitialCopy
+          }
+        ])
+      ) as AffiliateMarketplaceTaskRecord["translations"],
       name: task.name,
       description: task.description,
       coverMediaAssetId: task.coverMediaAssetId,
+      coverImageUrl:
+        task.coverMediaAsset &&
+        task.coverMediaAsset.deletedAt === null &&
+        task.coverMediaAsset.purgedAt === null &&
+        task.coverMediaAsset.isActive &&
+        task.coverMediaAsset.mimeType.startsWith("image/")
+          ? task.coverMediaAsset.url
+          : null,
       rewardNdpPerCompletedOrder: task.rewardNdpPerCompletedOrder,
       totalBudgetNdp: task.totalBudgetNdp,
       reservedBudgetNdp: task.reservedBudgetNdp,
       allocatedBudgetNdp: task.allocatedBudgetNdp,
       settledBudgetNdp: task.settledBudgetNdp,
       releasedBudgetNdp: task.releasedBudgetNdp,
-      customerDiscountType:
-        task.customerDiscountType.toLowerCase() as AffiliateDiscountType,
+      customerDiscountType: task.customerDiscountType.toLowerCase() as AffiliateDiscountType,
       fixedDiscountJpy: task.fixedDiscountJpy,
       discountRateBps: task.discountRateBps,
       discountCapJpy: task.discountCapJpy,
@@ -441,8 +474,7 @@ export class AffiliateMarketplaceRepository
       attributionWindowDays: task.attributionWindowDays,
       maxCompletedOrdersPerClaim: task.maxCompletedOrdersPerClaim,
       maxCompletedOrdersPerCustomer: task.maxCompletedOrdersPerCustomer,
-      serviceScopeMode:
-        task.serviceScopeMode.toLowerCase() as AffiliateServiceScopeMode,
+      serviceScopeMode: task.serviceScopeMode.toLowerCase() as AffiliateServiceScopeMode,
       status: task.status.toLowerCase() as AffiliateTaskStatus,
       reviewedById: task.reviewedById,
       reviewedAt: task.reviewedAt,
@@ -454,7 +486,25 @@ export class AffiliateMarketplaceRepository
       shops: task.shops.map((shop) => ({
         id: shop.id,
         shopId: shop.shopId,
-        shopNameSnapshot: shop.shopNameSnapshot
+        shopNameSnapshot: shop.shopNameSnapshot,
+        publicId:
+          shop.shop.publicIdentifier?.deletedAt === null &&
+          shop.shop.publicIdentifier.status === "ACTIVE"
+            ? shop.shop.publicIdentifier.publicId
+            : null,
+        city: shop.shop.city,
+        address: shop.shop.address,
+        mediaAssets: [...shop.shop.mediaAssets]
+          .sort((left, right) => {
+            const coverOrder =
+              Number(right.usageType === "cover") - Number(left.usageType === "cover");
+            return coverOrder || left.sortOrder - right.sortOrder || left.id - right.id;
+          })
+          .map((asset) => ({
+            url: asset.url,
+            altText: asset.altText,
+            sortOrder: asset.sortOrder
+          }))
       })),
       services: task.services.map((service) => ({
         id: service.id,
@@ -481,8 +531,7 @@ export class AffiliateMarketplaceRepository
       allocatedNdp: reservation.allocatedNdp,
       capturedNdp: reservation.capturedNdp,
       releasedNdp: reservation.releasedNdp,
-      status:
-        reservation.status.toLowerCase() as AffiliateBudgetReservationRecord["status"],
+      status: reservation.status.toLowerCase() as AffiliateBudgetReservationRecord["status"],
       idempotencyKey: reservation.idempotencyKey,
       frozenAt: reservation.frozenAt,
       releasedAt: reservation.releasedAt
@@ -498,9 +547,18 @@ export class AffiliateMarketplaceRepository
     return values[status];
   }
 
-  private canStartTransaction(
-    client: AffiliatePrismaClient
-  ): client is PrismaClient {
+  private localeFromDb(locale: ContentLocale): ContentLocaleCode {
+    const values: Record<ContentLocale, ContentLocaleCode> = {
+      [ContentLocale.ZH_CN]: "zh-CN",
+      [ContentLocale.ZH_TW]: "zh-TW",
+      [ContentLocale.EN]: "en",
+      [ContentLocale.JA]: "ja",
+      [ContentLocale.KO]: "ko"
+    };
+    return values[locale];
+  }
+
+  private canStartTransaction(client: AffiliatePrismaClient): client is PrismaClient {
     return "$transaction" in client && typeof client.$transaction === "function";
   }
 }

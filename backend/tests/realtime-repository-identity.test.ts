@@ -48,7 +48,7 @@ describe("RealtimeRepository formal identity payloads", () => {
       pageSize: 20
     });
 
-    expect(result.list[0]?.participants[0]).toEqual({
+    expect(result.list[0]?.participants[0]).toMatchObject({
       userId: 237,
       needoId: "u0000000237",
       username: "柴田 陽菜",

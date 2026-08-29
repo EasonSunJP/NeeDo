@@ -139,6 +139,21 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("maps an atomic cross-shop confirmation collision to a non-leaking schedule conflict", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.transitionOrderWithScheduleGuard = jest
+      .fn()
+      .mockResolvedValue({ outcome: "schedule_conflict" });
+    const service = new BookingService(repository);
+
+    await expect(service.transitionOrder(actor, 1, "confirm")).rejects.toMatchObject({
+      code: ERROR_CODES.SCHEDULE_CONFLICT,
+      message: "error.schedule.conflict",
+      statusCode: 409
+    });
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
+  });
+
   it("derives technician scope for a single schedule slot", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);
@@ -181,8 +196,8 @@ describe("BookingService state machine", () => {
 
   it("returns a structured conflict when an active acceptance pause blocks confirmation", async () => {
     const repository = createRepository(makeOrder("pending"));
-    repository.transitionOrder.mockResolvedValue({
-      kind: "acceptance_paused",
+    repository.transitionOrderWithScheduleGuard = jest.fn().mockResolvedValue({
+      outcome: "acceptance_paused",
       pauses: [
         {
           subjectType: "merchant_account",
@@ -191,7 +206,7 @@ describe("BookingService state machine", () => {
           startsAt: new Date("2026-08-29T01:00:00.000Z")
         }
       ]
-    } as never);
+    });
     const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
       freezeBookingAcceptance: jest.fn(),
       releaseBookingHold: jest.fn(),
@@ -214,6 +229,7 @@ describe("BookingService state machine", () => {
         ]
       }
     });
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
     expect(ledgerService.freezeBookingAcceptance).not.toHaveBeenCalled();
   });
 
@@ -428,24 +444,30 @@ describe("BookingService state machine", () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);
 
-    await service.listOrders({
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 11
-    }, { page: 1, pageSize: 20 });
+    await service.listOrders(
+      {
+        userId: 2,
+        roles: ["merchant_owner"],
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 11
+      },
+      { page: 1, pageSize: 20 }
+    );
     expect(repository.listOrders).toHaveBeenLastCalledWith({
       shopId: 11,
       page: 1,
       pageSize: 20
     });
 
-    await service.listOrders({
-      userId: 3,
-      roles: ["technician"],
-      currentIdentityScopeType: "technician_profile",
-      currentIdentityScopeId: 17
-    }, { page: 1, pageSize: 20 });
+    await service.listOrders(
+      {
+        userId: 3,
+        roles: ["technician"],
+        currentIdentityScopeType: "technician_profile",
+        currentIdentityScopeId: 17
+      },
+      { page: 1, pageSize: 20 }
+    );
     expect(repository.listOrders).toHaveBeenLastCalledWith({
       technicianProfileId: 17,
       page: 1,
@@ -454,22 +476,37 @@ describe("BookingService state machine", () => {
   });
 
   it("hides orders outside the active merchant and technician identity scope", async () => {
-    const merchantService = new BookingService(createRepository({ ...makeOrder("pending"), shopId: 99 }));
-    const technicianService = new BookingService(createRepository({ ...makeOrder("confirmed"), technicianProfileId: 99 }));
+    const merchantService = new BookingService(
+      createRepository({ ...makeOrder("pending"), shopId: 99 })
+    );
+    const technicianService = new BookingService(
+      createRepository({ ...makeOrder("confirmed"), technicianProfileId: 99 })
+    );
 
-    await expect(merchantService.getOrder({
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 11
-    }, 1)).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+    await expect(
+      merchantService.getOrder(
+        {
+          userId: 2,
+          roles: ["merchant_owner"],
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: 11
+        },
+        1
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
 
-    await expect(technicianService.transitionOrder({
-      userId: 3,
-      roles: ["technician"],
-      currentIdentityScopeType: "technician_profile",
-      currentIdentityScopeId: 17
-    }, 1, "start")).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+    await expect(
+      technicianService.transitionOrder(
+        {
+          userId: 3,
+          roles: ["technician"],
+          currentIdentityScopeType: "technician_profile",
+          currentIdentityScopeId: 17
+        },
+        1,
+        "start"
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
   });
 
   it("hides other customers' orders from customer actors", async () => {
@@ -764,12 +801,16 @@ describe("BookingService state machine", () => {
       createRepository(makeOrder("pending")),
       undefined,
       notificationService
-    ).transitionOrder({
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 1
-    }, 1, "confirm");
+    ).transitionOrder(
+      {
+        userId: 2,
+        roles: ["merchant_owner"],
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 1
+      },
+      1,
+      "confirm"
+    );
 
     expect(notificationService.notifyOrderStatusChanged).toHaveBeenCalledWith(
       expect.objectContaining({

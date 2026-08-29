@@ -17,7 +17,7 @@ import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceI
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
-import { getCategoryHeroImage, orderedServiceCategories, type HomeCategoryId } from "../../lib/homeCategories";
+import { getCategoryHeroImage, type HomeCategoryId } from "../../lib/homeCategories";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn, yen } from "../../lib/utils";
@@ -87,7 +87,6 @@ const popularCategoryTags: PopularSearchTag[] = [
 ];
 
 const pinnedCategoryTags = popularCategoryTags.slice(0, 10);
-const homeCategoryIdSet = new Set(orderedServiceCategories.map((item) => item.id));
 const popularCategoryTagMap = new Map(popularCategoryTags.map((item) => [item.id, item] as const));
 const entityFilterTags: Array<{ value: CategoryEntityFilter; label: string }> = [
   { value: "all", label: "全部" },
@@ -305,16 +304,16 @@ function findPreferredCategoryId(tagIds: string[], availableCategoryIds: string[
   return null;
 }
 
-function resolveMatchedCategories(tagIds: string[] = []) {
+function resolveMatchedCategories(categories: ServiceCategory[], tagIds: string[] = []) {
   const selectedCategoryIds = uniqueStrings(
     tagIds.map((tagId) => popularCategoryTagMap.get(tagId)?.categoryId).filter((categoryId): categoryId is HomeCategoryId => Boolean(categoryId))
   );
 
   if (selectedCategoryIds.length === 0) {
-    return orderedServiceCategories;
+    return categories;
   }
 
-  return orderedServiceCategories.filter((category) => selectedCategoryIds.includes(category.id as HomeCategoryId));
+  return categories.filter((category) => selectedCategoryIds.includes(category.id as HomeCategoryId));
 }
 
 function scoreByTokens(fragments: string[], tokens: string[]) {
@@ -412,9 +411,7 @@ export function CategoryPage() {
   const entityFilter = normalizeEntityFilter(searchParams.get("type"));
   const initialTagIds = getTagIdsFromSearchParams(searchParams);
   const [activeCategoryId, setActiveCategoryId] = useState<HomeCategoryId>(
-    initialCategoryId && homeCategoryIdSet.has(initialCategoryId)
-      ? (initialCategoryId as HomeCategoryId)
-      : ((orderedServiceCategories[0]?.id ?? "cleaning") as HomeCategoryId)
+    (initialCategoryId || "cleaning") as HomeCategoryId
   );
   const [searchDraft, setSearchDraft] = useState("");
   const [appliedTagIds, setAppliedTagIds] = useState<string[]>(initialTagIds);
@@ -422,6 +419,14 @@ export function CategoryPage() {
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const { scrollRef: tagRailRef, dragScrollProps: tagRailDragProps } = useHorizontalDragScroll({});
   const categoryQuery = useCoreReadQuery(() => coreReadApi.listCategories({ pageSize: 100 }), []);
+  const availableCategories = useMemo(
+    () => uniqueById((categoryQuery.data?.list ?? []).map(mapCoreCategoryToServiceCategory)),
+    [categoryQuery.data]
+  );
+  const availableCategoryIdSet = useMemo(
+    () => new Set(availableCategories.map((category) => category.id)),
+    [availableCategories]
+  );
   const apiCategoryId = useMemo(
     () =>
       categoryQuery.data?.list.find((category) => mapCoreCategoryToServiceCategory(category).id === activeCategoryId)?.id,
@@ -432,13 +437,18 @@ export function CategoryPage() {
   const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");
   const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;
   const searchQuery = useCoreReadQuery(
-    () =>
-      coreReadApi.search({
+    () => {
+      if (shouldApplyCategoryScope && searchCategoryId === undefined) {
+        return null;
+      }
+
+      return coreReadApi.search({
         categoryId: searchCategoryId,
         keyword: searchKeyword || undefined,
         pageSize: 40,
         sort: "rating_desc"
-      }),
+      });
+    },
     [searchCategoryId, searchKeyword]
   );
   const apiServices = useMemo(
@@ -493,7 +503,7 @@ export function CategoryPage() {
   useEffect(() => {
     const requestedCategoryId = searchParams.get("category");
 
-    if (!requestedCategoryId || !homeCategoryIdSet.has(requestedCategoryId)) {
+    if (!requestedCategoryId || !availableCategoryIdSet.has(requestedCategoryId)) {
       return;
     }
 
@@ -502,7 +512,7 @@ export function CategoryPage() {
     if (nextCategoryId !== activeCategoryId) {
       setActiveCategoryId(nextCategoryId);
     }
-  }, [activeCategoryId, searchParams]);
+  }, [activeCategoryId, availableCategoryIdSet, searchParams]);
 
   useEffect(() => {
     const nextTagIds = getTagIdsFromSearchParams(searchParams);
@@ -510,7 +520,7 @@ export function CategoryPage() {
 
     setAppliedTagIds((current) => (areStringListsEqual(current, nextTagIds) ? current : nextTagIds));
 
-    if (requestedCategoryId && homeCategoryIdSet.has(requestedCategoryId)) {
+    if (requestedCategoryId && availableCategoryIdSet.has(requestedCategoryId)) {
       return;
     }
 
@@ -520,20 +530,34 @@ export function CategoryPage() {
 
     const preferredCategoryId = findPreferredCategoryId(
       nextTagIds,
-      orderedServiceCategories.map((category) => category.id)
+      availableCategories.map((category) => category.id)
     );
 
     if (preferredCategoryId) {
       setActiveCategoryId(preferredCategoryId);
     }
-  }, [searchParams]);
+  }, [availableCategories, availableCategoryIdSet, searchParams]);
 
-  const filteredCategories = useMemo(() => resolveMatchedCategories(appliedTagIds), [appliedTagIds]);
+  useEffect(() => {
+    const firstCategoryId = availableCategories[0]?.id;
+
+    if (!firstCategoryId || availableCategoryIdSet.has(activeCategoryId)) {
+      return;
+    }
+
+    setActiveCategoryId(firstCategoryId as HomeCategoryId);
+  }, [activeCategoryId, availableCategories, availableCategoryIdSet]);
+
+  const filteredCategories = useMemo(
+    () => resolveMatchedCategories(availableCategories, appliedTagIds),
+    [appliedTagIds, availableCategories]
+  );
   const activeCategory =
     filteredCategories.find((category) => category.id === activeCategoryId) ??
     filteredCategories[0] ??
-    orderedServiceCategories.find((category) => category.id === activeCategoryId) ??
-    orderedServiceCategories[0];
+    availableCategories.find((category) => category.id === activeCategoryId) ??
+    availableCategories[0] ??
+    null;
   const appliedSearchKeywords = appliedCustomLabels;
   const hasAppliedSearch = appliedTagIds.length > 0 || appliedSearchKeywords.length > 0;
   const scopedCategoryIds = useMemo(
@@ -542,28 +566,38 @@ export function CategoryPage() {
   );
   const relatedServices = useMemo(
     () => {
+      if (!activeCategory) {
+        return [];
+      }
+
       const hasActiveCategoryResult = apiServices.some((service) => service.categoryId === activeCategory.id);
       const categoryScope = scopedCategoryIds.length > 0 ? scopedCategoryIds : appliedSearchKeywords.length > 0 || !hasActiveCategoryResult ? [] : [activeCategory.id];
 
       return apiServices
         .filter((service) => categoryScope.length === 0 || categoryScope.includes(service.categoryId))
         .filter((service) => {
-          const category = orderedServiceCategories.find((item) => item.id === service.categoryId);
+          const category = availableCategories.find((item) => item.id === service.categoryId);
           return matchesAllSearchKeywords(buildServiceSearchFragments(service, category), appliedSearchKeywords);
         })
         .sort((left, right) => right.sales - left.sales || right.rating - left.rating)
         .slice(0, 4);
     },
-    [activeCategory.id, apiServices, appliedSearchKeywords, scopedCategoryIds]
+    [activeCategory, apiServices, appliedSearchKeywords, availableCategories, scopedCategoryIds]
   );
   const categoryTokens = useMemo(
-    () => uniqueStrings([...buildCategoryTokens(activeCategory, relatedServices), ...appliedSearchKeywords]),
+    () => activeCategory
+      ? uniqueStrings([...buildCategoryTokens(activeCategory, relatedServices), ...appliedSearchKeywords])
+      : uniqueStrings(appliedSearchKeywords),
     [activeCategory, appliedSearchKeywords, relatedServices]
   );
 
   const relatedStores = useMemo(
-    () =>
-      apiStores
+    () => {
+      if (!activeCategory) {
+        return [];
+      }
+
+      return apiStores
         .map((store) => {
           const linkedTechnicians = apiTechnicians.filter((technician) => technician.storeId === store.id);
 
@@ -575,20 +609,26 @@ export function CategoryPage() {
         })
         .filter((item) => matchesAllSearchKeywords(buildStoreSearchFragments(item.store, item.technicians), appliedSearchKeywords))
         .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "store" ? 10 : 3),
+        .slice(0, entityFilter === "store" ? 10 : 3);
+    },
     [activeCategory, apiStores, apiTechnicians, appliedSearchKeywords, categoryTokens, entityFilter]
   );
 
   const relatedTechnicians = useMemo(
-    () =>
-      apiTechnicians
+    () => {
+      if (!activeCategory) {
+        return [];
+      }
+
+      return apiTechnicians
         .map((technician) => ({
           technician,
           score: rankTechnicianForCategory(technician, activeCategory, categoryTokens)
         }))
         .filter((item) => matchesAllSearchKeywords(buildTechnicianSearchFragments(item.technician), appliedSearchKeywords))
         .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "technician" ? 20 : 4),
+        .slice(0, entityFilter === "technician" ? 20 : 4);
+    },
     [activeCategory, apiTechnicians, appliedSearchKeywords, categoryTokens, entityFilter]
   );
 
@@ -616,6 +656,10 @@ export function CategoryPage() {
   );
 
   const categoryHeroSlides = useMemo<FeatureCarouselSlide[]>(() => {
+    if (!activeCategory) {
+      return [];
+    }
+
     const serviceSlides = relatedServices.slice(0, 3).map((service) => ({
       id: `category-service-${service.id}`,
       badge: t("全部分类"),
@@ -719,7 +763,7 @@ export function CategoryPage() {
 
     const nextTagIds = uniqueStrings([...appliedTagIds, ...parsedDraft.tagIds]);
     const nextCustomLabels = uniqueStrings([...appliedCustomLabels, ...parsedDraft.customLabels]);
-    const matchedCategories = resolveMatchedCategories(nextTagIds);
+    const matchedCategories = resolveMatchedCategories(availableCategories, nextTagIds);
 
     setSearchDraft("");
     setAppliedTagIds(nextTagIds);
@@ -780,7 +824,7 @@ export function CategoryPage() {
   const entityFilterLabel = entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? "全部";
   const showServiceSection = entityFilter === "all" || entityFilter === "service";
   const hasVisibleResults = (showServiceSection && relatedServices.length > 0) || bookableProfiles.length > 0;
-  const showEmptyState = filteredCategories.length === 0 || (hasAppliedSearch && !hasVisibleResults);
+  const showEmptyState = !activeCategory || filteredCategories.length === 0 || (hasAppliedSearch && !hasVisibleResults);
   const hasStaticSearchContent = apiServices.length > 0 || apiStores.length > 0 || apiTechnicians.length > 0;
   const isCoreReadLoading = (categoryQuery.loading || searchQuery.loading) && !hasStaticSearchContent;
   const coreReadError = hasStaticSearchContent ? null : categoryQuery.error ?? searchQuery.error;
@@ -864,7 +908,7 @@ export function CategoryPage() {
               style={{ msOverflowStyle: "none" }}
             >
               {pinnedCategoryTags.map((tag) => {
-                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory.id === tag.categoryId);
+                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
 
                 return (
                   <button
@@ -916,7 +960,7 @@ export function CategoryPage() {
 
                 <div className="flex flex-wrap gap-2">
                   {popularCategoryTags.map((tag) => {
-                    const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory.id === tag.categoryId);
+                    const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
 
                     return (
                       <button
@@ -995,7 +1039,7 @@ export function CategoryPage() {
                         <div className="rounded-[14px] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))] px-3 py-2.5">
                           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">当前聚焦</p>
                           <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-text)]">
-                            {activeCategory.name}，下面会优先展示对应的服务摘要与可预约店铺 / 个人技师。
+                            {activeCategory?.name}，下面会优先展示对应的服务摘要与可预约店铺 / 个人技师。
                           </p>
                         </div>
                       </div>

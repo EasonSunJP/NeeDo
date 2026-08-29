@@ -104,6 +104,19 @@ const createPermission = (
   isSystem: true
 });
 
+export const CONTENT_PUBLICATION_PERMISSIONS = {
+  userHomeRead: "page:backoffice-user-home-carousel",
+  userHomeEdit: "button:backoffice-user-home-carousel-edit",
+  userHomePublish: "button:backoffice-user-home-carousel-publish",
+  affiliateAnnouncementRead: "page:backoffice-affiliate-announcement",
+  affiliateAnnouncementEdit: "button:backoffice-affiliate-announcement-edit",
+  affiliateAnnouncementPublish: "button:backoffice-affiliate-announcement-publish",
+  affiliateNoticeRead: "page:backoffice-affiliate-notice-carousel",
+  affiliateNoticeEdit: "button:backoffice-affiliate-notice-carousel-edit",
+  affiliateNoticePublish: "button:backoffice-affiliate-notice-carousel-publish",
+  contentMediaUpload: "button:backoffice-content-media-upload"
+} as const;
+
 export const SYSTEM_PERMISSIONS = [
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
   createPermission("auth:refresh", "刷新访问令牌", "api", "auth", "使用刷新令牌续期访问令牌"),
@@ -995,19 +1008,48 @@ export const SYSTEM_PERMISSIONS = [
     "affiliate",
     "编辑本人联盟营销资料和外部平台主页链接"
   ),
-  createPermission(
-    "page:affiliate-alliance",
-    "联盟",
-    "page",
-    "affiliate",
-    "访问本人当前联盟"
-  ),
+  createPermission("page:affiliate-alliance", "联盟", "page", "affiliate", "访问本人当前联盟"),
   createPermission(
     "button:affiliate-alliance-create",
     "创建联盟",
     "button",
     "affiliate",
     "创建本人拥有的联盟"
+  ),
+  createPermission(
+    "affiliate-alliance:members:list",
+    "查看联盟成员",
+    "api",
+    "affiliate",
+    "查看本人负责联盟的成员列表"
+  ),
+  createPermission(
+    "affiliate-alliance:candidates:list",
+    "查看联盟邀请候选",
+    "api",
+    "affiliate",
+    "查看本人负责联盟的双向好友候选"
+  ),
+  createPermission(
+    "affiliate-alliance:invitations:list",
+    "查看联盟邀请",
+    "api",
+    "affiliate",
+    "查看本人负责联盟发出的邀请或本人收到的邀请"
+  ),
+  createPermission(
+    "button:affiliate-alliance-invite",
+    "邀请联盟成员",
+    "button",
+    "affiliate",
+    "向符合条件的双向好友发送联盟邀请"
+  ),
+  createPermission(
+    "button:affiliate-alliance-invitation-respond",
+    "响应联盟邀请",
+    "button",
+    "affiliate",
+    "接受或拒绝本人收到的联盟邀请"
   ),
   createPermission(
     "menu:merchant-affiliate",
@@ -1085,6 +1127,76 @@ export const SYSTEM_PERMISSIONS = [
     "button",
     "backoffice-affiliate",
     "显示联盟营销服务端导出操作"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.userHomeRead,
+    "用户首页轮播读取",
+    "page",
+    "content-publication",
+    "查看用户首页轮播版本和预览"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.userHomeEdit,
+    "用户首页轮播编辑",
+    "button",
+    "content-publication",
+    "创建和编辑用户首页轮播草稿"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.userHomePublish,
+    "用户首页轮播发布",
+    "button",
+    "content-publication",
+    "发布、定时、停用和回滚用户首页轮播"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementRead,
+    "联盟公告读取",
+    "page",
+    "content-publication",
+    "查看联盟营销正式公告版本和预览"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementEdit,
+    "联盟公告编辑",
+    "button",
+    "content-publication",
+    "创建和编辑联盟营销公告草稿"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementPublish,
+    "联盟公告发布",
+    "button",
+    "content-publication",
+    "发布、定时、停用和回滚联盟营销公告"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticeRead,
+    "联盟公告轮播读取",
+    "page",
+    "content-publication",
+    "查看联盟营销公告轮播版本和预览"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticeEdit,
+    "联盟公告轮播编辑",
+    "button",
+    "content-publication",
+    "创建和编辑联盟营销公告轮播草稿"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticePublish,
+    "联盟公告轮播发布",
+    "button",
+    "content-publication",
+    "发布、定时、停用和回滚联盟营销公告轮播"
+  ),
+  createPermission(
+    CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload,
+    "内容媒体上传",
+    "button",
+    "content-publication",
+    "上传正式内容发布媒体资源"
   )
 ] as const satisfies readonly SystemPermissionDefinition[];
 
@@ -1312,7 +1424,12 @@ const ACTIVATED_AFFILIATE_PERMISSION_CODES = [
   "page:affiliate-profile",
   "button:affiliate-profile-edit",
   "page:affiliate-alliance",
-  "button:affiliate-alliance-create"
+  "button:affiliate-alliance-create",
+  "affiliate-alliance:members:list",
+  "affiliate-alliance:candidates:list",
+  "affiliate-alliance:invitations:list",
+  "button:affiliate-alliance-invite",
+  "button:affiliate-alliance-invitation-respond"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const MERCHANT_AFFILIATE_PERMISSION_CODES = [
@@ -1341,6 +1458,23 @@ const BACKOFFICE_AFFILIATE_FINANCE_PERMISSION_CODES = [
   "button:backoffice-affiliate-export"
 ] as const satisfies readonly SystemPermissionCode[];
 
+const CONTENT_PUBLICATION_READ_PERMISSION_CODES = [
+  CONTENT_PUBLICATION_PERMISSIONS.userHomeRead,
+  CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementRead,
+  CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticeRead
+] as const satisfies readonly SystemPermissionCode[];
+
+const CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES = [
+  ...CONTENT_PUBLICATION_READ_PERMISSION_CODES,
+  CONTENT_PUBLICATION_PERMISSIONS.userHomeEdit,
+  CONTENT_PUBLICATION_PERMISSIONS.userHomePublish,
+  CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementEdit,
+  CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementPublish,
+  CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticeEdit,
+  CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticePublish,
+  CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload
+] as const satisfies readonly SystemPermissionCode[];
+
 export const buildRolePermissionAssignments = (): Record<
   SystemRoleCode,
   SystemPermissionCode[]
@@ -1351,6 +1485,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES,
+    ...CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES,
     ...OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES,
     "finance:fee-rule:list",
     "finance:fee-rule:preview",
@@ -1441,6 +1576,7 @@ export const buildRolePermissionAssignments = (): Record<
   viewer: [
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
-    ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES
+    ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES,
+    ...CONTENT_PUBLICATION_READ_PERMISSION_CODES
   ]
 });

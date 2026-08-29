@@ -10,7 +10,6 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { authApi, type VerificationChallengePayload } from "../../api/auth";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import {
-  readBrowserSavedPassword,
   readBrowserPasswordSavePreference,
   requestBrowserPasswordSave,
   writeBrowserPasswordSavePreference,
@@ -184,6 +183,7 @@ export function resolveLoginErrorMessage(
       "无法加载 Google 登录服务，请检查网络后重试。",
     "error.auth.invalid_credentials": "邮箱、NeeDo ID 或密码不正确。",
     "error.auth.invalid_otp": "验证码不正确，请重新输入。",
+    "error.auth.portal_forbidden": "当前账号没有此入口所需的身份，请切换账号后重试。",
     "error.auth.otp_delivery_failed": "验证码发送失败，请稍后重试。",
     "error.auth.otp_cooldown": "请稍候再重新发送验证码。",
     "error.auth.otp_expired": "验证码已过期，请重新发送。",
@@ -368,25 +368,6 @@ export function LoginPage({
   useEffect(() => {
     setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
   }, [passwordSaveScope]);
-  useEffect(() => {
-    if (!savePassword || panelMode !== "account") {
-      return;
-    }
-
-    let active = true;
-    void readBrowserSavedPassword().then((credential) => {
-      if (!active || !credential) {
-        return;
-      }
-
-      setLoginIdentifier((current) => current || credential.id);
-      setLoginPassword((current) => current || credential.password);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [panelMode, savePassword]);
   useEffect(() => {
     navigationInFlightRef.current = false;
   }, [activePortal, nextPath]);
@@ -875,9 +856,11 @@ export function LoginPage({
               </form>
             ) : panelMode === "account" ? (
               <form
-                autoComplete={savePassword ? "on" : "off"}
+                action="/api/v1/auth/login"
+                autoComplete="on"
                 className="space-y-5 text-left"
                 data-testid="password-login-form"
+                method="post"
                 onSubmit={handleAccountLogin}
               >
                 <div className="text-center">
@@ -893,7 +876,7 @@ export function LoginPage({
                     {copy.accountLabel}
                   </span>
                   <input
-                    autoComplete={savePassword ? "username" : "off"}
+                    autoComplete="username"
                     className="mt-2 h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
                     data-testid="login-identifier"
                     name="username"
@@ -925,7 +908,7 @@ export function LoginPage({
                     </span>
                   </span>
                   <PasswordInput
-                    autoComplete={savePassword ? "current-password" : "off"}
+                    autoComplete="current-password"
                     data-testid="login-password"
                     disabled={pending}
                     hidePasswordLabel={copy.hidePassword}

@@ -161,6 +161,7 @@ const affiliateTaskStatuses = [
   "cancelled",
   "rejected"
 ];
+const affiliateContentLocales = ["zh-CN", "zh-TW", "en", "ja", "ko"];
 
 const affiliateEditableTaskProperties = {
   name: { type: "string", minLength: 1, maxLength: 160 },
@@ -263,13 +264,42 @@ const affiliateProfileErrorResponses = {
 };
 
 const affiliateAllianceErrorResponses = {
-  "400": { description: "Invalid strict affiliate alliance create contract" },
+  "400": { description: "Invalid strict affiliate alliance or invitation contract" },
   "401": { description: "Missing or invalid access token" },
   "403": {
-    description: "Missing alliance permission, Affiliate identity, or active Affiliate profile"
+    description:
+      "Missing alliance permission, owner scope, reciprocal contact, Affiliate identity, or active Affiliate profile"
   },
-  "409": { description: "The current user already has an active alliance membership" }
+  "404": { description: "Invitation not found in the authenticated invitee scope" },
+  "409": {
+    description:
+      "Active membership, duplicate invitation, parent, expiry, or invitation-state conflict"
+  }
 };
+
+const affiliateAllianceListParameters = [
+  { name: "q", in: "query", schema: { type: "string", maxLength: 80 } },
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+  }
+];
+
+const affiliateAllianceInvitationListParameters = [
+  {
+    name: "status",
+    in: "query",
+    schema: { type: "string", enum: ["pending", "accepted", "rejected", "expired"] }
+  },
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+  }
+];
 
 const customerProfileErrorResponses = {
   "400": { description: "Invalid customer self-profile update payload" },
@@ -277,6 +307,317 @@ const customerProfileErrorResponses = {
   "403": { description: "Missing customer-profile permission or customer identity scope" },
   "404": { description: "Customer profile not found in authenticated scope" },
   "500": { description: "Unexpected customer profile persistence error" }
+};
+
+const contentAnnouncementErrorResponses = {
+  "400": {
+    description:
+      "error.validation — malformed UUID, positive release ID, pagination, or strict request body; error.content.locale_invalid — unsupported locale"
+  },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden — missing exact content publication permission" },
+  "404": {
+    description:
+      "error.content.not_found or error.content.release_not_found — announcement or release is unavailable"
+  },
+  "409": {
+    description:
+      "error.content.draft_exists, error.content.lock_conflict, error.content.incomplete_translations, error.content.schedule_conflict, error.content.target_unavailable, error.content.invalid_state_transition, or error.idempotency_key_reused"
+  }
+};
+
+const announcementPublicIdParameter = {
+  name: "publicId",
+  in: "path",
+  required: true,
+  schema: { type: "string", format: "uuid" }
+};
+
+const announcementReleaseIdParameter = {
+  name: "releaseId",
+  in: "path",
+  required: true,
+  schema: { type: "integer", minimum: 1 }
+};
+
+const contentHistoryParameters = [
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+  }
+];
+
+const announcementOperation = (
+  summary: string,
+  permission: string,
+  extras: Record<string, unknown> = {}
+) => ({
+  tags: ["Affiliate Content Publication"],
+  summary,
+  security: [{ bearerAuth: [] }],
+  "x-permission": permission,
+  ...extras,
+  responses: {
+    ...contentAnnouncementErrorResponses,
+    ...((extras.responses as Record<string, unknown> | undefined) ?? {})
+  }
+});
+
+const carouselErrorResponses = {
+  "400": {
+    description:
+      "error.validation, error.content.locale_invalid, error.content.media_invalid, or error.carousel.target_invalid"
+  },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden — missing the exact fixed-scene permission" },
+  "404": { description: "error.content.release_not_found — carousel release is unavailable" },
+  "409": {
+    description:
+      "error.content.draft_exists, error.content.lock_conflict, error.content.incomplete_translations, error.content.schedule_conflict, error.content.target_unavailable, error.content.invalid_state_transition, error.carousel.sort_invalid, error.carousel.no_visible_slide, or error.idempotency_key_reused"
+  }
+};
+
+const carouselOperation = (
+  summary: string,
+  permission: string | null,
+  extras: Record<string, unknown> = {}
+) => ({
+  tags: ["Carousel Content Publication"],
+  summary,
+  security: [{ bearerAuth: [] }],
+  ...(permission ? { "x-permission": permission } : {}),
+  ...extras,
+  responses: {
+    ...carouselErrorResponses,
+    ...((extras.responses as Record<string, unknown> | undefined) ?? {})
+  }
+});
+
+const carouselReleaseIdParameter = {
+  name: "releaseId",
+  in: "path",
+  required: true,
+  schema: { type: "integer", minimum: 1 }
+};
+const carouselSlidePublicIdParameter = {
+  name: "slidePublicId",
+  in: "path",
+  required: true,
+  schema: { type: "string", format: "uuid" }
+};
+const carouselLocaleParameter = {
+  name: "locale",
+  in: "path",
+  required: true,
+  schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+};
+const carouselPublicLocaleParameter = {
+  name: "locale",
+  in: "query",
+  required: true,
+  schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+};
+
+const carouselSlideInputSchema = (targetSchema: string, replace: boolean) => ({
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "defaultMediaAssetPublicId",
+    "sortOrder",
+    "isEnabled",
+    "visibleFrom",
+    "visibleUntil",
+    "target",
+    "translations"
+  ],
+  properties: {
+    publicId: { type: "string", format: "uuid" },
+    defaultMediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    sortOrder: { type: "integer", minimum: 0 },
+    isEnabled: { type: "boolean" },
+    visibleFrom: { type: ["string", "null"], format: "date-time" },
+    visibleUntil: { type: ["string", "null"], format: "date-time" },
+    target: { $ref: `#/components/schemas/${targetSchema}` },
+    translations: replace
+      ? { $ref: "#/components/schemas/CarouselFiveTranslations" }
+      : {
+          type: "array",
+          minItems: 1,
+          maxItems: 1,
+          description: "Exactly the translation matching the draft sourceLocale",
+          items: { $ref: "#/components/schemas/CarouselTranslationInput" }
+        }
+  }
+});
+
+const carouselDraftInputSchema = (slideSchema: string, create: boolean) => ({
+  type: "object",
+  additionalProperties: false,
+  required: [create ? "idempotencyKey" : "expectedLockVersion", "sourceLocale", "slides"],
+  properties: {
+    ...(create
+      ? { idempotencyKey: { type: "string", format: "uuid" } }
+      : { expectedLockVersion: { type: "integer", minimum: 1 } }),
+    sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+    slides: {
+      type: "array",
+      minItems: 1,
+      maxItems: 50,
+      items: { $ref: `#/components/schemas/${slideSchema}` }
+    }
+  }
+});
+
+const createCarouselOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
+  const paths: Record<string, unknown> = {};
+  const scenes = [
+    {
+      slug: "user-home",
+      read: "page:backoffice-user-home-carousel",
+      edit: "button:backoffice-user-home-carousel-edit",
+      publish: "button:backoffice-user-home-carousel-publish",
+      schemaPrefix: "CarouselUserHome",
+      targetTypes: ["shop", "technician", "service"]
+    },
+    {
+      slug: "affiliate-home-notice",
+      read: "page:backoffice-affiliate-notice-carousel",
+      edit: "button:backoffice-affiliate-notice-carousel-edit",
+      publish: "button:backoffice-affiliate-notice-carousel-publish",
+      schemaPrefix: "CarouselAffiliateNotice",
+      targetTypes: ["announcement", "affiliate_task"]
+    }
+  ] as const;
+  const jsonBody = (schema: string) => ({
+    required: true,
+    content: { "application/json": { schema: { $ref: `#/components/schemas/${schema}` } } }
+  });
+  const protectedResponse = (description: string) => ({
+    "200": jsonDataResponse(description, { $ref: "#/components/schemas/CarouselProtectedPayload" })
+  });
+  for (const scene of scenes) {
+    const base = `${config.API_PREFIX}/backoffice/content/carousels/${scene.slug}`;
+    const release = `${base}/releases/{releaseId}`;
+    paths[base] = {
+      get: carouselOperation("Read fixed-scene carousel publication slots", scene.read, {
+        responses: {
+          "200": jsonDataResponse("Current fixed-scene slots", {
+            $ref: "#/components/schemas/CarouselSceneState"
+          })
+        }
+      })
+    };
+    paths[`${base}/releases`] = {
+      post: carouselOperation("Create one current fixed-scene carousel draft", scene.edit, {
+        requestBody: jsonBody(`${scene.schemaPrefix}DraftCreate`),
+        responses: {
+          "201": jsonDataResponse("Carousel draft created", {
+            $ref: "#/components/schemas/CarouselProtectedPayload"
+          })
+        }
+      })
+    };
+    paths[`${base}/history`] = {
+      get: carouselOperation("List immutable fixed-scene carousel history", scene.read, {
+        parameters: contentHistoryParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated carousel history", {
+            $ref: "#/components/schemas/CarouselProtectedPage"
+          })
+        }
+      })
+    };
+    paths[`${base}/targets`] = {
+      get: carouselOperation("Search live targets inside the authenticated scope", scene.read, {
+        parameters: [
+          { name: "type", in: "query", schema: { type: "string", enum: scene.targetTypes } },
+          { name: "q", in: "query", schema: { type: "string", minLength: 1, maxLength: 160 } },
+          ...contentHistoryParameters
+        ],
+        responses: {
+          "200": jsonDataResponse("Public-safe paginated target picker", {
+            $ref: "#/components/schemas/CarouselTargetSearchPage"
+          })
+        }
+      })
+    };
+    paths[release] = {
+      get: carouselOperation("Read one protected carousel release", scene.read, {
+        parameters: [carouselReleaseIdParameter],
+        responses: protectedResponse("Protected carousel release")
+      }),
+      patch: carouselOperation("Atomically replace one draft slide set", scene.edit, {
+        parameters: [carouselReleaseIdParameter],
+        requestBody: jsonBody(`${scene.schemaPrefix}DraftReplace`),
+        responses: protectedResponse("Carousel draft replaced")
+      })
+    };
+    paths[`${release}/slides/{slidePublicId}/locales/{locale}`] = {
+      patch: carouselOperation("Update exactly one slide locale", scene.edit, {
+        parameters: [
+          carouselReleaseIdParameter,
+          carouselSlidePublicIdParameter,
+          carouselLocaleParameter
+        ],
+        requestBody: jsonBody("CarouselLocaleMutation"),
+        responses: protectedResponse("Carousel locale updated")
+      })
+    };
+    paths[`${release}/slides/{slidePublicId}/copy-to-all`] = {
+      post: carouselOperation("Copy one explicit source locale to all five locales", scene.edit, {
+        parameters: [carouselReleaseIdParameter, carouselSlidePublicIdParameter],
+        requestBody: jsonBody("CarouselCopyAll"),
+        responses: protectedResponse("Carousel locale copied to all")
+      })
+    };
+    paths[`${release}/preview`] = {
+      get: carouselOperation("Preview the protected five-locale draft", scene.read, {
+        parameters: [carouselReleaseIdParameter],
+        responses: protectedResponse("Protected carousel preview")
+      })
+    };
+    for (const [action, schema, summary] of [
+      ["publish", "ContentPublishCommand", "Publish a complete carousel draft immediately"],
+      ["schedule", "ContentScheduleCommand", "Schedule a complete carousel draft"],
+      ["disable", "ContentDisableCommand", "Disable a published or scheduled carousel release"],
+      ["rollback", "ContentRollbackCommand", "Clone immutable history into a new rollback draft"]
+    ] as const) {
+      paths[`${release}/${action}`] = {
+        post: carouselOperation(summary, scene.publish, {
+          parameters: [carouselReleaseIdParameter],
+          requestBody: jsonBody(schema),
+          responses: protectedResponse(`Carousel ${action} command completed`)
+        })
+      };
+    }
+  }
+  paths[`${config.API_PREFIX}/content/carousels/user-home`] = {
+    get: carouselOperation("Read the actual current user-home PUBLISHED slot", null, {
+      parameters: [carouselPublicLocaleParameter],
+      responses: {
+        "200": jsonDataResponse("One-locale user-home carousel", {
+          $ref: "#/components/schemas/PublishedCarouselPayload"
+        })
+      }
+    })
+  };
+  paths[`${config.API_PREFIX}/affiliate/content/carousel`] = {
+    get: carouselOperation(
+      "Read the actual current Affiliate notice PUBLISHED slot",
+      "page:affiliate-marketplace",
+      {
+        parameters: [carouselPublicLocaleParameter],
+        responses: {
+          "200": jsonDataResponse("One-locale Affiliate notice carousel", {
+            $ref: "#/components/schemas/PublishedCarouselPayload"
+          })
+        }
+      }
+    )
+  };
+  return paths;
 };
 
 const merchantEmployeeNeedoIdParameter = {
@@ -545,7 +886,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             pattern: "^(?:u|s|b|o|needo)[0-9]{10}$"
           },
           username: { type: "string" },
-          avatarUrl: { type: ["string", "null"] }
+          avatarUrl: { type: ["string", "null"] },
+          role: { type: "string", enum: ["owner", "admin", "member"] }
         }
       },
       RealtimeMessage: {
@@ -613,6 +955,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "participants",
           "lastMessage",
           "unreadCount",
+          "privacyModeEnabled",
+          "hideMemberProfiles",
+          "disappearingTtlSeconds",
+          "disappearingStartMode",
+          "privacyPolicyVersion",
           "createdAt",
           "updatedAt"
         ],
@@ -628,6 +975,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             anyOf: [{ $ref: "#/components/schemas/RealtimeMessage" }, { type: "null" }]
           },
           unreadCount: { type: "integer" },
+          privacyModeEnabled: { type: "boolean" },
+          hideMemberProfiles: { type: "boolean" },
+          disappearingTtlSeconds: { type: ["integer", "null"], minimum: 60 },
+          disappearingStartMode: { type: "string", enum: ["sent", "read_by_all"] },
+          privacyPolicyVersion: { type: "integer", minimum: 0 },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
         }
@@ -997,6 +1349,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       BackofficeAccount: {
         type: "object",
         required: [
+          "needoId",
           "username",
           "email",
           "phone",
@@ -1007,6 +1360,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "identities"
         ],
         properties: {
+          needoId: { type: "string", pattern: "^[usm][0-9]{10}$" },
           username: { type: "string" },
           email: { type: "string", format: "email" },
           phone: { type: ["string", "null"] },
@@ -1033,6 +1387,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           actorAvatarUrl: { type: ["string", "null"] },
           createdAt: { type: "string", format: "date-time" },
           metadata: { type: ["object", "null"], additionalProperties: true }
+        }
+      },
+      BackofficeAuditTimelinePage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeAuditEvent" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
       BackofficeReviewSummary: {
@@ -1154,12 +1521,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "status",
           "paymentStatus",
           "customerUserId",
+          "customerProfileId",
           "customerName",
           "serviceId",
           "serviceName",
           "shopId",
           "shopName",
           "technicianProfileId",
+          "technicianNeedoId",
           "technicianName",
           "fulfillmentMode",
           "priceAmount",
@@ -1180,12 +1549,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["pending", "confirmed", "refundPending", "refunded"]
           },
           customerUserId: { type: "integer" },
+          customerProfileId: { type: ["integer", "null"] },
           customerName: { type: "string" },
           serviceId: { type: ["integer", "null"] },
           serviceName: { type: "string" },
           shopId: { type: "integer" },
           shopName: { type: "string" },
           technicianProfileId: { type: ["integer", "null"] },
+          technicianNeedoId: { type: ["string", "null"] },
           technicianName: { type: ["string", "null"] },
           fulfillmentMode: { type: "string" },
           priceAmount: { type: "number" },
@@ -1317,7 +1688,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "nextBooking",
               "recentBookings",
               "reviewSummary",
-              "timeline"
+              "timeline",
+              "membershipGrantMode",
+              "membershipDurationUnit",
+              "membershipDurationValue",
+              "membershipStartsAt",
+              "membershipExpiresAt",
+              "membershipGrantedBy"
             ],
             properties: {
               bio: { type: ["string", "null"] },
@@ -1341,6 +1718,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               timeline: {
                 type: "array",
                 items: { $ref: "#/components/schemas/BackofficeAuditEvent" }
+              },
+              membershipGrantMode: {
+                type: "string",
+                enum: ["self_service", "operator_complimentary"]
+              },
+              membershipDurationUnit: {
+                type: ["string", "null"],
+                enum: ["forever", "day", "month", null]
+              },
+              membershipDurationValue: { type: ["integer", "null"], minimum: 1 },
+              membershipStartsAt: { type: ["string", "null"], format: "date-time" },
+              membershipExpiresAt: { type: ["string", "null"], format: "date-time" },
+              membershipGrantedBy: {
+                anyOf: [
+                  {
+                    type: "object",
+                    required: ["needoId", "username"],
+                    properties: {
+                      needoId: { type: "string" },
+                      username: { type: "string" }
+                    }
+                  },
+                  { type: "null" }
+                ]
               }
             }
           }
@@ -1432,8 +1833,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           displayName: { type: "string", minLength: 1, maxLength: 120 },
           bio: { type: ["string", "null"], maxLength: 5000 },
           city: { type: ["string", "null"], maxLength: 100 },
-          membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
           isPublic: { type: "boolean" }
+        }
+      },
+      BackofficeCustomerMembershipGrantInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["membershipLevel", "grantMode", "durationUnit", "durationValue", "startsAt"],
+        properties: {
+          membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
+          grantMode: { type: "string", enum: ["operator_complimentary"] },
+          durationUnit: { type: "string", enum: ["forever", "day", "month"] },
+          durationValue: { type: ["integer", "null"], minimum: 1, maximum: 1200 },
+          startsAt: { type: "string", format: "date-time" }
         }
       },
       BackofficeServiceInputFields: {
@@ -1780,6 +2192,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         required: [
           "id",
+          "publicId",
           "name",
           "description",
           "category",
@@ -1794,6 +2207,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
+          publicId: { type: "string", format: "uuid" },
           name: { type: "string" },
           description: { type: ["string", "null"] },
           category: { $ref: "#/components/schemas/Category" },
@@ -2361,6 +2775,74 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           csv: { type: "string" }
         }
       },
+      PayrollScheduleRule: {
+        type: "object",
+        required: [
+          "id",
+          "version",
+          "cadence",
+          "weeklySettlementWeekday",
+          "monthlySettlementDay",
+          "holidayAdjustment",
+          "timezone",
+          "effectiveFrom",
+          "effectiveTo"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          version: { type: "integer", minimum: 1 },
+          cadence: { type: "string", enum: ["daily", "weekly", "monthly"] },
+          weeklySettlementWeekday: { type: ["integer", "null"], minimum: 1, maximum: 7 },
+          monthlySettlementDay: { type: ["integer", "null"], minimum: 1, maximum: 31 },
+          holidayAdjustment: {
+            type: "string",
+            enum: ["previous_business_day", "next_business_day"]
+          },
+          timezone: { type: "string", enum: ["Asia/Tokyo"] },
+          effectiveFrom: { type: "string", format: "date" },
+          effectiveTo: { type: ["string", "null"], format: "date" }
+        }
+      },
+      PayrollSchedulePreview: {
+        type: "object",
+        required: [
+          "periodStart",
+          "periodEnd",
+          "naturalSettlementDate",
+          "plannedPaymentDate",
+          "adjustmentReason"
+        ],
+        properties: {
+          periodStart: { type: "string", format: "date" },
+          periodEnd: { type: "string", format: "date" },
+          naturalSettlementDate: { type: "string", format: "date" },
+          plannedPaymentDate: { type: "string", format: "date" },
+          adjustmentReason: {
+            type: ["string", "null"],
+            enum: ["weekend", "public_holiday", null]
+          }
+        }
+      },
+      PayrollSchedulePolicyResult: {
+        type: "object",
+        required: ["configured", "source", "effectivePolicy", "preview"],
+        properties: {
+          configured: { type: "boolean" },
+          source: {
+            type: "string",
+            enum: ["shop", "employee_override", "shop_unconfigured"]
+          },
+          inheritShopPolicy: { type: "boolean" },
+          shopPolicy: { type: ["object", "null"], additionalProperties: true },
+          employeeOverride: { type: ["object", "null"], additionalProperties: true },
+          effectivePolicy: {
+            oneOf: [{ $ref: "#/components/schemas/PayrollScheduleRule" }, { type: "null" }]
+          },
+          preview: {
+            oneOf: [{ $ref: "#/components/schemas/PayrollSchedulePreview" }, { type: "null" }]
+          }
+        }
+      },
       FeeCalculationResult: {
         type: "object",
         required: [
@@ -2647,6 +3129,176 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           preview: { $ref: "#/components/schemas/CompensationPreview" }
         }
       },
+      EmployeeCompensationProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceType",
+          "name",
+          "status",
+          "version",
+          "wageMode",
+          "baseSalaryJpy",
+          "hourlyRateJpy",
+          "dailyRateJpy",
+          "fixedOrderPayJpy",
+          "commissionRatePercent",
+          "guaranteedMinimumJpy",
+          "ndpFeeBearer",
+          "technicianNdpSharePercent",
+          "bonusRules",
+          "deductionRules",
+          "effectiveFrom",
+          "effectiveTo",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          sourceType: { type: "string", enum: ["shop_default", "technician_override"] },
+          name: { type: "string" },
+          status: { type: "string", enum: ["active", "archived"] },
+          version: { type: "integer", minimum: 0 },
+          wageMode: {
+            type: "string",
+            enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+          },
+          baseSalaryJpy: { type: "integer", minimum: 0 },
+          hourlyRateJpy: { type: "integer", minimum: 0 },
+          dailyRateJpy: { type: "integer", minimum: 0 },
+          fixedOrderPayJpy: { type: "integer", minimum: 0 },
+          commissionRatePercent: { type: "number", minimum: 0, maximum: 100 },
+          guaranteedMinimumJpy: { type: "integer", minimum: 0 },
+          ndpFeeBearer: { type: "string", enum: ["shop", "technician", "split"] },
+          technicianNdpSharePercent: { type: "number", minimum: 0, maximum: 100 },
+          bonusRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          deductionRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      EmployeePayrollSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "payslipId",
+          "periodStart",
+          "periodEnd",
+          "status",
+          "disputeStatus",
+          "completedOrderCount",
+          "workedMinutes",
+          "serviceIncomeJpy",
+          "basePayJpy",
+          "commissionJpy",
+          "bonusJpy",
+          "allowanceJpy",
+          "deductionJpy",
+          "platformFeeShareDeductionJpy",
+          "netPayJpy",
+          "paidAmountJpy",
+          "unpaidAmountJpy",
+          "payoutRecordCount"
+        ],
+        properties: {
+          payslipId: { type: ["integer", "null"], minimum: 1 },
+          periodStart: { type: ["string", "null"], format: "date-time" },
+          periodEnd: { type: ["string", "null"], format: "date-time" },
+          status: { type: ["string", "null"] },
+          disputeStatus: { type: ["string", "null"] },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          workedMinutes: { type: "integer", minimum: 0 },
+          serviceIncomeJpy: { type: "integer", minimum: 0 },
+          basePayJpy: { type: "integer" },
+          commissionJpy: { type: "integer" },
+          bonusJpy: { type: "integer" },
+          allowanceJpy: { type: "integer" },
+          deductionJpy: { type: "integer" },
+          platformFeeShareDeductionJpy: { type: "integer" },
+          netPayJpy: { type: "integer" },
+          paidAmountJpy: { type: "integer", minimum: 0 },
+          unpaidAmountJpy: { type: "integer", minimum: 0 },
+          payoutRecordCount: { type: "integer", minimum: 0 }
+        }
+      },
+      EmployeeCompensationResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["employee", "profile", "payrollSummary"],
+        properties: {
+          employee: {
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId"],
+            properties: { needoId: { type: "string", pattern: "^s\\d{10}$" } }
+          },
+          profile: { $ref: "#/components/schemas/EmployeeCompensationProfile" },
+          payrollSummary: { $ref: "#/components/schemas/EmployeePayrollSummary" }
+        }
+      },
+      EmployeeCompensationPreviewResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["employee", "profile", "preview"],
+        properties: {
+          employee: {
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId"],
+            properties: { needoId: { type: "string", pattern: "^s\\d{10}$" } }
+          },
+          profile: { $ref: "#/components/schemas/EmployeeCompensationProfile" },
+          preview: { $ref: "#/components/schemas/CompensationPreview" }
+        }
+      },
+      CompensationProfileInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "wageMode"],
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          wageMode: {
+            type: "string",
+            enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+          },
+          baseSalaryJpy: { type: "integer", minimum: 0, default: 0 },
+          hourlyRateJpy: { type: "integer", minimum: 0, default: 0 },
+          dailyRateJpy: { type: "integer", minimum: 0, default: 0 },
+          fixedOrderPayJpy: { type: "integer", minimum: 0, default: 0 },
+          commissionRatePercent: { type: "number", minimum: 0, maximum: 100, default: 60 },
+          guaranteedMinimumJpy: { type: "integer", minimum: 0, default: 0 },
+          ndpFeeBearer: {
+            type: "string",
+            enum: ["shop", "technician", "split"],
+            default: "shop"
+          },
+          technicianNdpSharePercent: {
+            type: "number",
+            minimum: 0,
+            maximum: 100,
+            default: 0
+          },
+          bonusRules: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          deductionRules: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" }
+        }
+      },
       OrderFinanceDetail: {
         type: "object",
         required: [
@@ -2768,6 +3420,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "payRunId",
           "shopId",
           "technicianProfileId",
+          "technicianNeedoId",
           "status",
           "netPayJpy",
           "lines",
@@ -2781,6 +3434,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           technicianProfileId: { type: "integer" },
           technicianName: { type: "string" },
           technicianUserId: { type: ["integer", "null"] },
+          technicianNeedoId: {
+            type: "string",
+            pattern: "^(u|s|b|o)\\d{10}$",
+            description: "Public NeeDoID for the employee linked to this payslip"
+          },
           compensationProfileId: { type: ["integer", "null"] },
           periodStart: { type: "string", format: "date-time" },
           periodEnd: { type: "string", format: "date-time" },
@@ -3080,7 +3738,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 },
           owner: { $ref: "#/components/schemas/AffiliateAllianceOwner" },
           membership: { $ref: "#/components/schemas/AffiliateAllianceMembership" },
-          wallet: { $ref: "#/components/schemas/AffiliateAllianceWallet" },
+          wallet: {
+            oneOf: [{ $ref: "#/components/schemas/AffiliateAllianceWallet" }, { type: "null" }]
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
         }
@@ -3112,6 +3772,185 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           description: { type: ["string", "null"], minLength: 1, maxLength: 500 },
           defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 }
         }
+      },
+      AffiliateAlliancePublicPerson: {
+        type: "object",
+        additionalProperties: false,
+        required: ["needoId", "displayName", "avatarUrl"],
+        properties: {
+          needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1 },
+          avatarUrl: { type: ["string", "null"], format: "uri" }
+        }
+      },
+      AffiliateAllianceMemberParent: {
+        type: "object",
+        additionalProperties: false,
+        required: ["memberId", "person"],
+        properties: {
+          memberId: { type: "integer", minimum: 1 },
+          person: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" }
+        }
+      },
+      AffiliateAllianceMember: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "memberId",
+          "person",
+          "role",
+          "parent",
+          "promoterShareBpsOverride",
+          "permissions",
+          "joinedAt"
+        ],
+        properties: {
+          memberId: { type: "integer", minimum: 1 },
+          person: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" },
+          role: { type: "string", enum: ["owner", "partner", "subordinate"] },
+          parent: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliateAllianceMemberParent" },
+              { type: "null" }
+            ]
+          },
+          promoterShareBpsOverride: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 10000
+          },
+          permissions: { $ref: "#/components/schemas/AffiliateAlliancePermissions" },
+          joinedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateAllianceInvitation: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "invitationId",
+          "alliance",
+          "inviter",
+          "invitee",
+          "role",
+          "proposedParent",
+          "status",
+          "expiresAt",
+          "respondedAt",
+          "createdAt"
+        ],
+        properties: {
+          invitationId: { type: "integer", minimum: 1 },
+          alliance: {
+            type: "object",
+            additionalProperties: false,
+            required: ["allianceId", "name"],
+            properties: {
+              allianceId: { type: "integer", minimum: 1 },
+              name: { type: "string", minLength: 2, maxLength: 120 }
+            }
+          },
+          inviter: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" },
+          invitee: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" },
+          role: { type: "string", enum: ["partner", "subordinate"] },
+          proposedParent: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliateAllianceMemberParent" },
+              { type: "null" }
+            ]
+          },
+          status: {
+            type: "string",
+            enum: ["pending", "accepted", "rejected", "expired"]
+          },
+          expiresAt: { type: "string", format: "date-time" },
+          respondedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateAllianceMemberPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateAllianceMember" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliateAllianceCandidatePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateAlliancePublicPerson" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliateAllianceInvitationPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateAllianceInvitation" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliateAllianceInvitationCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["inviteeNeedoId", "role"],
+        properties: {
+          inviteeNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          role: { type: "string", enum: ["partner", "subordinate"] },
+          proposedParentMemberId: { type: ["integer", "null"], minimum: 1 }
+        },
+        allOf: [
+          {
+            if: { properties: { role: { const: "subordinate" } } },
+            then: { required: ["proposedParentMemberId"] }
+          },
+          {
+            if: { properties: { role: { const: "partner" } } },
+            then: { properties: { proposedParentMemberId: { type: "null" } } }
+          }
+        ]
+      },
+      AffiliateAllianceInvitationCreated: {
+        type: "object",
+        additionalProperties: false,
+        required: ["invitation"],
+        properties: {
+          invitation: { $ref: "#/components/schemas/AffiliateAllianceInvitation" }
+        }
+      },
+      AffiliateAllianceInvitationAccepted: {
+        type: "object",
+        additionalProperties: false,
+        required: ["invitation", "member"],
+        properties: {
+          invitation: { $ref: "#/components/schemas/AffiliateAllianceInvitation" },
+          member: { $ref: "#/components/schemas/AffiliateAllianceMember" }
+        }
+      },
+      StrictEmptyBody: {
+        type: "object",
+        additionalProperties: false,
+        maxProperties: 0,
+        properties: {}
       },
       AffiliateChannelCreate: {
         type: "object",
@@ -3239,6 +4078,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "version",
           "lockVersion",
           "publisherType",
+          "translations",
           "name",
           "rewardNdpPerCompletedOrder",
           "totalBudgetNdp",
@@ -3268,6 +4108,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publisherType: { type: "string", enum: ["merchant_account", "shop"] },
           publisherMerchantAccountId: { type: ["integer", "null"], minimum: 1 },
           publisherShopId: { type: ["integer", "null"], minimum: 1 },
+          translations: { $ref: "#/components/schemas/AffiliateTaskTranslations" },
           name: affiliateEditableTaskProperties.name,
           description: affiliateEditableTaskProperties.description,
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
@@ -3318,6 +4159,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             required: ["publisherType", ...affiliateEditableTaskRequired],
             properties: {
               publisherType: { type: "string", const: "shop" },
+              sourceLocale: { type: "string", enum: affiliateContentLocales },
               ...affiliateEditableTaskProperties
             }
           },
@@ -3332,6 +4174,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             ],
             properties: {
               publisherType: { type: "string", const: "merchant_account" },
+              sourceLocale: { type: "string", enum: affiliateContentLocales },
               merchantAccountId: { type: "integer", minimum: 1 },
               shopIds: {
                 type: "array",
@@ -3362,6 +4205,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ...affiliateEditableTaskProperties
         }
       },
+      AffiliateTaskTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "description", "sourceLocale", "isInitialCopy"],
+        properties: {
+          name: affiliateEditableTaskProperties.name,
+          description: affiliateEditableTaskProperties.description,
+          sourceLocale: { type: "string", enum: affiliateContentLocales },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      AffiliateTaskTranslations: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 1,
+        properties: Object.fromEntries(
+          affiliateContentLocales.map((locale) => [
+            locale,
+            { $ref: "#/components/schemas/AffiliateTaskTranslation" }
+          ])
+        )
+      },
+      AffiliateTaskTranslationUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["lockVersion", "name", "description"],
+        properties: {
+          lockVersion: { type: "integer", minimum: 1 },
+          name: affiliateEditableTaskProperties.name,
+          description: affiliateEditableTaskProperties.description,
+          syncToAll: { type: "boolean", default: false }
+        }
+      },
       AffiliateTaskPage: {
         type: "object",
         required: ["list", "total", "page", "page_size"],
@@ -3375,16 +4251,56 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      AffiliateMarketplaceMediaAsset: {
+        type: "object",
+        additionalProperties: false,
+        required: ["url", "altText", "sortOrder"],
+        properties: {
+          url: { type: "string", minLength: 1 },
+          altText: { type: ["string", "null"], maxLength: 200 },
+          sortOrder: { type: "integer", minimum: 0 }
+        }
+      },
+      AffiliateMarketplaceShop: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "shopId",
+          "shopNameSnapshot",
+          "publicId",
+          "city",
+          "address",
+          "mediaAssets"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", minimum: 1 },
+          shopNameSnapshot: { type: "string", maxLength: 160 },
+          publicId: { type: ["string", "null"], pattern: "^shop[0-9]{10}$" },
+          city: { type: "string", maxLength: 120 },
+          address: { type: "string", maxLength: 500 },
+          mediaAssets: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateMarketplaceMediaAsset" }
+          }
+        }
+      },
       AffiliateMarketplaceTask: {
         type: "object",
         additionalProperties: false,
         required: [
           "id",
           "taskCode",
+          "translations",
           "name",
           "description",
           "coverMediaAssetId",
+          "coverImageUrl",
           "rewardNdpPerCompletedOrder",
+          "totalBudgetNdp",
+          "remainingBudgetNdp",
+          "remainingBudgetBps",
           "customerDiscountType",
           "fixedDiscountJpy",
           "discountRateBps",
@@ -3407,10 +4323,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer", minimum: 1 },
           taskCode: { type: "string", maxLength: 80 },
+          translations: { $ref: "#/components/schemas/AffiliateTaskTranslations" },
           name: affiliateEditableTaskProperties.name,
           description: affiliateEditableTaskProperties.description,
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
+          coverImageUrl: { type: ["string", "null"] },
           rewardNdpPerCompletedOrder: affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
+          totalBudgetNdp: affiliateEditableTaskProperties.totalBudgetNdp,
+          remainingBudgetNdp: { type: "integer", minimum: 0 },
+          remainingBudgetBps: { type: "integer", minimum: 0, maximum: 10000 },
           customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
           fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
           discountRateBps: affiliateEditableTaskProperties.discountRateBps,
@@ -3429,7 +4350,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shops: {
             type: "array",
             minItems: 1,
-            items: { $ref: "#/components/schemas/AffiliateTaskShopSnapshot" }
+            items: { $ref: "#/components/schemas/AffiliateMarketplaceShop" }
           },
           services: {
             type: "array",
@@ -3640,6 +4561,150 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      MerchantEmployeeTimelineEvent: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "at", "actorName", "actorAvatarUrl", "actorRole", "message", "tone"],
+        properties: {
+          id: { type: "string", pattern: "^audit-[0-9]+$" },
+          at: { type: "string", format: "date-time" },
+          actorName: { type: "string" },
+          actorAvatarUrl: { type: ["string", "null"], format: "uri-reference" },
+          actorRole: { type: "string" },
+          message: { type: "string" },
+          tone: { type: "string", enum: ["accent", "green", "red", "neutral"] }
+        }
+      },
+      MerchantEmployeeTimelinePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MerchantEmployeeTimelineEvent" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      MerchantEmployeeTimelineCommentInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["message"],
+        properties: {
+          message: { type: "string", minLength: 1, maxLength: 1000 }
+        }
+      },
+      MerchantEmployeeScheduleVisibleEvent: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "projectionId",
+          "kind",
+          "visibility",
+          "status",
+          "startsAt",
+          "endsAt",
+          "title",
+          "isClickable",
+          "isEditable"
+        ],
+        properties: {
+          projectionId: { type: "string" },
+          kind: { type: "string", enum: ["availability", "schedule", "booking"] },
+          visibility: { type: "string", enum: ["current_shop", "affiliated_shops"] },
+          status: {
+            type: "string",
+            enum: [
+              "available",
+              "scheduled",
+              "pending",
+              "confirmed",
+              "in_service",
+              "completed",
+              "blocked"
+            ]
+          },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          title: { type: "string" },
+          detail: { type: "string" },
+          orderId: { type: "integer", minimum: 1 },
+          isClickable: { type: "boolean" },
+          isEditable: { type: "boolean" }
+        }
+      },
+      MerchantEmployeeScheduleRedactedEvent: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "Privacy projection for another affiliated shop's confirmed or in-service booking. No source shop, participant, service, order, price, address, note, or source event identifier is returned.",
+        required: [
+          "projectionId",
+          "kind",
+          "visibility",
+          "status",
+          "startsAt",
+          "endsAt",
+          "title",
+          "isClickable",
+          "isEditable"
+        ],
+        properties: {
+          projectionId: { type: "string" },
+          kind: { type: "string", enum: ["busy_redacted"] },
+          visibility: { type: "string", enum: ["busy_redacted"] },
+          status: { type: "string", enum: ["busy"] },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          title: { type: "string", enum: ["其他店铺已有确认安排"] },
+          isClickable: { type: "boolean", enum: [false] },
+          isEditable: { type: "boolean", enum: [false] }
+        }
+      },
+      MerchantEmployeeScheduleProjection: {
+        type: "object",
+        additionalProperties: false,
+        required: ["employee", "range", "events"],
+        properties: {
+          employee: {
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId", "displayName", "avatarUrl", "relationshipType", "workStatus"],
+            properties: {
+              needoId: { type: "string", pattern: "^s[0-9]{10}$" },
+              displayName: { type: "string" },
+              avatarUrl: { type: ["string", "null"], format: "uri-reference" },
+              relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+              workStatus: {
+                type: "string",
+                enum: ["active", "on_leave", "suspended", "ended"]
+              }
+            }
+          },
+          range: {
+            type: "object",
+            additionalProperties: false,
+            required: ["from", "to", "view"],
+            properties: {
+              from: { type: "string", format: "date-time" },
+              to: { type: "string", format: "date-time" },
+              view: { type: "string", enum: ["day", "week", "month"] }
+            }
+          },
+          events: {
+            type: "array",
+            items: {
+              oneOf: [
+                { $ref: "#/components/schemas/MerchantEmployeeScheduleVisibleEvent" },
+                { $ref: "#/components/schemas/MerchantEmployeeScheduleRedactedEvent" }
+              ]
+            }
+          }
+        }
+      },
       MerchantEmployeeAffiliationInput: {
         type: "object",
         additionalProperties: false,
@@ -3759,6 +4824,797 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           expectedVersion: { type: "integer", minimum: 0 }
         }
       },
+      CarouselTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "locale",
+          "mediaAssetPublicId",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText"
+        ],
+        properties: {
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 }
+        }
+      },
+      CarouselReplacementTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "locale",
+          "mediaAssetPublicId",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText",
+          "sourceLocale",
+          "isInitialCopy"
+        ],
+        properties: {
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      CarouselProtectedTarget: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { const: "none" } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "shopId"],
+            properties: { type: { const: "shop" }, shopId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "technicianProfileId"],
+            properties: {
+              type: { const: "technician" },
+              technicianProfileId: { type: "integer", minimum: 1 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "serviceId"],
+            properties: { type: { const: "service" }, serviceId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "affiliateTaskId"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              affiliateTaskId: { type: ["integer", "null"], minimum: 1 }
+            }
+          }
+        ]
+      },
+      CarouselUserHomeTargetInput: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { const: "none" } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "shopId"],
+            properties: { type: { const: "shop" }, shopId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { const: "shop" },
+              publicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "technicianProfileId"],
+            properties: {
+              type: { const: "technician" },
+              technicianProfileId: { type: "integer", minimum: 1 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { const: "technician" },
+              publicId: { type: "string", pattern: "^s[0-9]{10}$" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "serviceId"],
+            properties: { type: { const: "service" }, serviceId: { type: "integer", minimum: 1 } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: { type: { const: "service" }, publicId: { type: "string", format: "uuid" } }
+          }
+        ]
+      },
+      CarouselAffiliateNoticeTargetInput: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "affiliateTaskId"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              affiliateTaskId: { type: ["integer", "null"], minimum: 1 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "taskCode"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              taskCode: { type: ["string", "null"], minLength: 1, maxLength: 80 }
+            }
+          }
+        ]
+      },
+      CarouselFiveTranslations: {
+        type: "array",
+        minItems: 5,
+        maxItems: 5,
+        items: { $ref: "#/components/schemas/CarouselReplacementTranslationInput" },
+        allOf: ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
+          contains: {
+            type: "object",
+            required: ["locale"],
+            properties: { locale: { const: locale } }
+          },
+          minContains: 1,
+          maxContains: 1
+        }))
+      },
+      CarouselUserHomeCreateSlideInput: carouselSlideInputSchema(
+        "CarouselUserHomeTargetInput",
+        false
+      ),
+      CarouselUserHomeReplaceSlideInput: carouselSlideInputSchema(
+        "CarouselUserHomeTargetInput",
+        true
+      ),
+      CarouselAffiliateNoticeCreateSlideInput: carouselSlideInputSchema(
+        "CarouselAffiliateNoticeTargetInput",
+        false
+      ),
+      CarouselAffiliateNoticeReplaceSlideInput: carouselSlideInputSchema(
+        "CarouselAffiliateNoticeTargetInput",
+        true
+      ),
+      CarouselUserHomeDraftCreate: carouselDraftInputSchema(
+        "CarouselUserHomeCreateSlideInput",
+        true
+      ),
+      CarouselUserHomeDraftReplace: carouselDraftInputSchema(
+        "CarouselUserHomeReplaceSlideInput",
+        false
+      ),
+      CarouselAffiliateNoticeDraftCreate: carouselDraftInputSchema(
+        "CarouselAffiliateNoticeCreateSlideInput",
+        true
+      ),
+      CarouselAffiliateNoticeDraftReplace: carouselDraftInputSchema(
+        "CarouselAffiliateNoticeReplaceSlideInput",
+        false
+      ),
+      CarouselLocaleUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "expectedLockVersion",
+          "mediaAssetPublicId",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText"
+        ],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 }
+        }
+      },
+      CarouselLocaleCopyCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["operation", "expectedLockVersion", "sourceLocale"],
+        properties: {
+          operation: { const: "copy_to_all" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+        }
+      },
+      CarouselLocaleMutation: {
+        oneOf: [
+          { $ref: "#/components/schemas/CarouselLocaleUpdate" },
+          { $ref: "#/components/schemas/CarouselLocaleCopyCommand" }
+        ]
+      },
+      CarouselCopyAll: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "sourceLocale"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+        }
+      },
+      CarouselTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "mediaAssetPublicId",
+          "imageUrl",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText",
+          "sourceLocale",
+          "isInitialCopy"
+        ],
+        properties: {
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
+          imageUrl: { type: "string", format: "uri-reference" },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      CarouselProtectedSlide: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "defaultMediaAssetPublicId",
+          "defaultImageUrl",
+          "sortOrder",
+          "isEnabled",
+          "visibleFrom",
+          "visibleUntil",
+          "target",
+          "translations"
+        ],
+        properties: {
+          id: { type: "string", format: "uuid" },
+          defaultMediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          defaultImageUrl: { type: "string", format: "uri-reference" },
+          sortOrder: { type: "integer", minimum: 0 },
+          isEnabled: { type: "boolean" },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" },
+          target: { $ref: "#/components/schemas/CarouselProtectedTarget" },
+          translations: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+            properties: Object.fromEntries(
+              ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+                locale,
+                { $ref: "#/components/schemas/CarouselTranslation" }
+              ])
+            )
+          }
+        }
+      },
+      CarouselProtectedPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "scene",
+          "releaseId",
+          "version",
+          "status",
+          "lockVersion",
+          "publishAt",
+          "activatedAt",
+          "disabledAt",
+          "archivedAt",
+          "sourceReleaseId",
+          "slides",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          scene: { type: "string", enum: ["USER_HOME", "AFFILIATE_HOME_NOTICE"] },
+          releaseId: { type: "integer", minimum: 1 },
+          version: { type: "integer", minimum: 1 },
+          status: {
+            type: "string",
+            enum: ["draft", "scheduled", "published", "disabled", "archived"]
+          },
+          lockVersion: { type: "integer", minimum: 1 },
+          publishAt: { type: ["string", "null"], format: "date-time" },
+          activatedAt: { type: ["string", "null"], format: "date-time" },
+          disabledAt: { type: ["string", "null"], format: "date-time" },
+          archivedAt: { type: ["string", "null"], format: "date-time" },
+          sourceReleaseId: { type: ["integer", "null"], minimum: 1 },
+          slides: {
+            type: "array",
+            items: { $ref: "#/components/schemas/CarouselProtectedSlide" }
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      CarouselProtectedPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/CarouselProtectedPayload" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      CarouselSceneState: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scene", "draft", "published", "scheduled"],
+        properties: {
+          scene: { type: "string", enum: ["USER_HOME", "AFFILIATE_HOME_NOTICE"] },
+          draft: {
+            anyOf: [{ $ref: "#/components/schemas/CarouselProtectedPayload" }, { type: "null" }]
+          },
+          published: {
+            anyOf: [{ $ref: "#/components/schemas/CarouselProtectedPayload" }, { type: "null" }]
+          },
+          scheduled: {
+            anyOf: [{ $ref: "#/components/schemas/CarouselProtectedPayload" }, { type: "null" }]
+          }
+        }
+      },
+      CarouselPickerTarget: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { type: "string", enum: ["shop", "technician", "service"] },
+              publicId: { type: "string" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "announcementPublicId", "taskCode"],
+            properties: {
+              type: { const: "affiliate_announcement" },
+              announcementPublicId: { type: "string", format: "uuid" },
+              taskCode: { type: ["string", "null"], maxLength: 80 }
+            }
+          }
+        ]
+      },
+      CarouselTargetSearchItem: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId", "label", "status", "target"],
+            properties: {
+              type: {
+                type: "string",
+                enum: ["shop", "technician", "service", "affiliate_announcement"]
+              },
+              publicId: { type: "string" },
+              label: { type: "string" },
+              status: { type: "string" },
+              target: { $ref: "#/components/schemas/CarouselPickerTarget" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "taskCode", "label", "status"],
+            properties: {
+              type: { const: "affiliate_task" },
+              taskCode: { type: "string" },
+              label: { type: "string" },
+              status: { type: "string" }
+            }
+          }
+        ]
+      },
+      CarouselTargetSearchPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/CarouselTargetSearchItem" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      PublishedCarouselTarget: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { const: "none" } }
+          },
+          ...["shop", "technician", "service", "affiliate_announcement"].map((type) => ({
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { const: type },
+              publicId: { type: "string" }
+            }
+          }))
+        ]
+      },
+      PublishedCarouselPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scene", "locale", "releaseVersion", "generatedAt", "slides"],
+        properties: {
+          scene: { type: "string", enum: ["USER_HOME", "AFFILIATE_HOME_NOTICE"] },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          releaseVersion: { type: ["integer", "null"], minimum: 1 },
+          generatedAt: { type: "string", format: "date-time" },
+          slides: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "id",
+                "badge",
+                "title",
+                "caption",
+                "ctaLabel",
+                "imageAltText",
+                "imageUrl",
+                "target"
+              ],
+              properties: {
+                id: { type: "string", format: "uuid" },
+                badge: { type: ["string", "null"] },
+                title: { type: "string" },
+                caption: { type: ["string", "null"] },
+                ctaLabel: { type: ["string", "null"] },
+                imageAltText: { type: "string" },
+                imageUrl: { type: "string", format: "uri-reference" },
+                target: { $ref: "#/components/schemas/PublishedCarouselTarget" }
+              }
+            }
+          }
+        }
+      },
+      OfficialAnnouncementTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "body"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 }
+        }
+      },
+      OfficialAnnouncementDraftCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "sourceLocale", "translation"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          affiliateTaskId: { type: ["integer", "null"], minimum: 1, default: null },
+          visibleFrom: { type: ["string", "null"], format: "date-time", default: null },
+          visibleUntil: { type: ["string", "null"], format: "date-time", default: null },
+          translation: { $ref: "#/components/schemas/OfficialAnnouncementTranslationInput" }
+        }
+      },
+      OfficialAnnouncementLocaleUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "locale", "title", "summary", "body"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 }
+        }
+      },
+      OfficialAnnouncementCopyAll: {
+        type: "object",
+        additionalProperties: false,
+        required: ["operation", "expectedLockVersion", "sourceLocale"],
+        properties: {
+          operation: { type: "string", enum: ["copy_to_all"] },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+        }
+      },
+      OfficialAnnouncementMetadataUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "operation",
+          "expectedLockVersion",
+          "affiliateTaskId",
+          "visibleFrom",
+          "visibleUntil"
+        ],
+        properties: {
+          operation: { type: "string", enum: ["update_metadata"] },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          affiliateTaskId: { type: ["integer", "null"], minimum: 1 },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      OfficialAnnouncementDraftMutation: {
+        oneOf: [
+          { $ref: "#/components/schemas/OfficialAnnouncementLocaleUpdate" },
+          { $ref: "#/components/schemas/OfficialAnnouncementCopyAll" },
+          { $ref: "#/components/schemas/OfficialAnnouncementMetadataUpdate" }
+        ]
+      },
+      OfficialAnnouncementProtectedTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "body", "sourceLocale", "isInitialCopy"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      ContentPublishCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedLockVersion"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      ContentScheduleCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedLockVersion", "publishAt"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          publishAt: {
+            type: "string",
+            format: "date-time",
+            description: "Future UTC instant ending in Z"
+          },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      ContentDisableCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedLockVersion", "reason"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      ContentRollbackCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedCurrentVersion", "reason"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedCurrentVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      OfficialAnnouncementProtectedPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "releaseId",
+          "version",
+          "status",
+          "lockVersion",
+          "announcementType",
+          "visibilityScope",
+          "affiliateTaskId",
+          "publishAt",
+          "visibleFrom",
+          "visibleUntil",
+          "activatedAt",
+          "disabledAt",
+          "archivedAt",
+          "sourceReleaseId",
+          "translations",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          releaseId: { type: "integer", minimum: 1 },
+          version: { type: "integer", minimum: 1 },
+          status: {
+            type: "string",
+            enum: ["draft", "scheduled", "published", "disabled", "archived"]
+          },
+          lockVersion: { type: "integer", minimum: 1 },
+          announcementType: { type: "string", enum: ["affiliate_notice"] },
+          visibilityScope: { type: "string", enum: ["all_affiliates"] },
+          affiliateTaskId: { type: ["integer", "null"], minimum: 1 },
+          publishAt: { type: ["string", "null"], format: "date-time" },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" },
+          activatedAt: { type: ["string", "null"], format: "date-time" },
+          disabledAt: { type: ["string", "null"], format: "date-time" },
+          archivedAt: { type: ["string", "null"], format: "date-time" },
+          sourceReleaseId: { type: ["integer", "null"], minimum: 1 },
+          translations: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+            properties: Object.fromEntries(
+              ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+                locale,
+                { $ref: "#/components/schemas/OfficialAnnouncementProtectedTranslation" }
+              ])
+            )
+          },
+          taskAction: { $ref: "#/components/schemas/OfficialAnnouncementTaskAction" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      OfficialAnnouncementProtectedPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      OfficialAnnouncementAffiliateTaskSearchItem: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "taskCode", "label", "status"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          taskCode: { type: "string", minLength: 1, maxLength: 80 },
+          label: { type: "string", minLength: 1, maxLength: 160 },
+          status: { type: "string", enum: ["scheduled", "active"] }
+        }
+      },
+      OfficialAnnouncementAffiliateTaskSearchPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OfficialAnnouncementAffiliateTaskSearchItem" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      OfficialAnnouncementTaskAction: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["taskCode", "label", "claimable"],
+        properties: {
+          taskCode: { type: "string" },
+          label: { type: "string" },
+          claimable: { type: "boolean" }
+        }
+      },
+      OfficialAnnouncementPublicPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "version",
+          "locale",
+          "title",
+          "summary",
+          "body",
+          "visibleFrom",
+          "visibleUntil",
+          "activatedAt",
+          "taskAction"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" },
+          activatedAt: { type: ["string", "null"], format: "date-time" },
+          taskAction: { $ref: "#/components/schemas/OfficialAnnouncementTaskAction" }
+        }
+      },
       OrderAcceptancePause: {
         type: "object",
         additionalProperties: false,
@@ -3859,6 +5715,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...createCarouselOpenApiPaths(config),
     [`${config.API_PREFIX}/backoffice/platform-fee-policy`]: {
       get: {
         tags: ["Platform Fee Policy"],
@@ -4136,6 +5993,95 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/schedule`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "Read a privacy-safe employee schedule projection",
+        description:
+          "The authenticated shop receives its own schedule details, technician-published partner availability, and time-only gray locks for another shop's confirmed or in-service bookings.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          merchantEmployeeNeedoIdParameter,
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "view",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["day", "week", "month"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Privacy-safe employee schedule projection", {
+            $ref: "#/components/schemas/MerchantEmployeeScheduleProjection"
+          }),
+          "400": merchantEmployeeErrorResponses["400"],
+          "401": merchantEmployeeErrorResponses["401"],
+          "403": merchantEmployeeErrorResponses["403"],
+          "404": merchantEmployeeErrorResponses["404"]
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/timeline`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "List semantic employee result events",
+        description:
+          "Returns only mutation outcomes for the authenticated shop affiliation. Read and preview audit actions, internal IDs, raw actions, and raw metadata are not exposed.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          merchantEmployeeNeedoIdParameter,
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated employee event timeline", {
+            $ref: "#/components/schemas/MerchantEmployeeTimelinePage"
+          }),
+          ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/timeline/comments`]: {
+      post: {
+        tags: ["Merchant Employees"],
+        summary: "Add an employee timeline comment",
+        description:
+          "Persists a scoped audit comment. It does not change payroll status or initiate a payment.",
+        security: [{ bearerAuth: [] }],
+        parameters: [merchantEmployeeNeedoIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantEmployeeTimelineCommentInput" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Employee timeline comment created", {
+            type: "object",
+            required: ["created"],
+            properties: { created: { type: "boolean", enum: [true] } }
+          }),
+          ...merchantEmployeeErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/profile`]: {
       patch: {
         tags: ["Merchant Employees"],
@@ -4279,6 +6225,128 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/affiliate/alliances/me/members`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List members of the authenticated owner's active alliance",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:members:list",
+        parameters: affiliateAllianceListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated alliance members", {
+            $ref: "#/components/schemas/AffiliateAllianceMemberPage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances/me/eligible-contacts`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List reciprocal NeeDo friends eligible for an alliance invitation",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:candidates:list",
+        parameters: affiliateAllianceListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated eligible reciprocal contacts", {
+            $ref: "#/components/schemas/AffiliateAllianceCandidatePage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances/me/invitations`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List invitations sent by the authenticated alliance owner",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:invitations:list",
+        parameters: affiliateAllianceInvitationListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated sent alliance invitations", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationPage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      },
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Invite an eligible reciprocal NeeDo friend",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:affiliate-alliance-invite",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateAllianceInvitationCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created alliance invitation", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationCreated"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliance-invitations/mine`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "List alliance invitations received by the authenticated Affiliate",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "affiliate-alliance:invitations:list",
+        parameters: affiliateAllianceInvitationListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated received alliance invitations", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationPage"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliance-invitations/{id}/accept`]: {
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Accept the authenticated Affiliate's pending alliance invitation",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:affiliate-alliance-invitation-respond",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/StrictEmptyBody" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Accepted invitation and created member", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationAccepted"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliance-invitations/{id}/reject`]: {
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Reject the authenticated Affiliate's pending alliance invitation",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:affiliate-alliance-invitation-respond",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/StrictEmptyBody" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Rejected alliance invitation", {
+            $ref: "#/components/schemas/AffiliateAllianceInvitationCreated"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/affiliate/alliances/me`]: {
       get: {
         tags: ["Affiliate Alliance"],
@@ -4376,6 +6444,36 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": jsonDataResponse("Updated affiliate task draft", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/tasks/{taskId}/locales/{locale}`]: {
+      put: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "Update one authored task language or explicitly synchronize it to all languages",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter("taskId"),
+          {
+            name: "locale",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: affiliateContentLocales }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateTaskTranslationUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated affiliate task language", {
             $ref: "#/components/schemas/AffiliateTask"
           }),
           ...affiliateTaskErrorResponses
@@ -6163,9 +8261,24 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Public service detail",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", format: "uuid" }
+              ]
+            }
+          }
+        ],
         responses: {
-          "200": { description: "Service detail" },
+          "200": jsonDataResponse("Service detail", {
+            $ref: "#/components/schemas/ServiceDetail"
+          }),
+          "400": { description: "error.validation" },
           "404": { description: "Service not found" }
         }
       }
@@ -6211,7 +8324,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Public shop detail",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", pattern: "^shop[0-9]{10}$" }
+              ]
+            }
+          }
+        ],
         responses: {
           "200": { description: "Shop detail" },
           "404": { description: "Shop not found" }
@@ -7534,6 +9659,53 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: { "200": { description: "Customer soft-deleted" } }
       }
     },
+    [`${config.API_PREFIX}/backoffice/customers/{id}/timeline`]: {
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated user activity timeline",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter(),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated user activity", {
+            $ref: "#/components/schemas/BackofficeAuditTimelinePage"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User profile not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/customers/{id}/membership`]: {
+      put: {
+        tags: ["Master Data"],
+        summary: "Assign a complimentary customer membership level and validity period",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeCustomerMembershipGrantInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Membership assigned" },
+          "400": { description: "Invalid membership grant" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Customer not found" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/services`]: {
       get: {
         tags: ["Master Data"],
@@ -8051,6 +10223,276 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/compensation-profile`]: {
+      get: {
+        tags: ["Finance Center"],
+        summary: "Read an employee compensation rule and latest payroll summary by NeeDoID",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s\\d{10}$" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Employee compensation and payroll summary", {
+            $ref: "#/components/schemas/EmployeeCompensationResult"
+          }),
+          "400": { description: "error.validation — malformed technician NeeDoID" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing compensation read permission or shop identity" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      },
+      put: {
+        tags: ["Finance Center"],
+        summary: "Create a versioned compensation override for a current-shop employee",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s\\d{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CompensationProfileInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated employee compensation and payroll summary", {
+            $ref: "#/components/schemas/EmployeeCompensationResult"
+          }),
+          "400": { description: "error.validation — invalid compensation profile" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing compensation write permission or shop identity" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/compensation-profile/preview`]: {
+      post: {
+        tags: ["Finance Center"],
+        summary: "Preview the effective current-shop employee compensation rule",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s\\d{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["serviceAmountJpy"],
+                properties: {
+                  serviceAmountJpy: { type: "integer", minimum: 0 },
+                  platformFeeNdp: { type: "integer", minimum: 0, default: 500 },
+                  workedMinutes: { type: "integer", minimum: 0, default: 60 },
+                  monthlyCompletedOrders: { type: "integer", minimum: 0, default: 0 },
+                  monthlyServiceGmvJpy: { type: "integer", minimum: 0, default: 0 },
+                  ratingAverage: { type: "number", minimum: 0, maximum: 5, default: 0 },
+                  lateCancellationCount: { type: "integer", minimum: 0, default: 0 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Employee compensation preview", {
+            $ref: "#/components/schemas/EmployeeCompensationPreviewResult"
+          }),
+          "400": { description: "error.validation — invalid preview input" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing compensation preview permission or shop identity" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/payroll-schedule-policy`]: {
+      get: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Read the authenticated shop payroll schedule policy and payment preview",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "referenceDate",
+            in: "query",
+            required: false,
+            schema: { type: "string", format: "date" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Shop payroll schedule policy", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid reference date" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "error.forbidden or error.identity.forbidden" }
+        }
+      },
+      put: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Create a new version of the authenticated shop payroll schedule policy",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "cadence",
+                  "weeklySettlementWeekday",
+                  "monthlySettlementDay",
+                  "holidayAdjustment",
+                  "timezone",
+                  "effectiveFrom"
+                ],
+                properties: {
+                  cadence: { type: "string", enum: ["daily", "weekly", "monthly"] },
+                  weeklySettlementWeekday: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 7
+                  },
+                  monthlySettlementDay: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 31
+                  },
+                  holidayAdjustment: {
+                    type: "string",
+                    enum: ["previous_business_day", "next_business_day"]
+                  },
+                  timezone: { type: "string", enum: ["Asia/Tokyo"] },
+                  effectiveFrom: { type: "string", format: "date" },
+                  effectiveTo: { type: ["string", "null"], format: "date" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Versioned shop payroll schedule policy", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid cadence or effective date" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant payroll write permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/payroll-schedule-policy`]: {
+      get: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Read an affiliated employee effective payroll schedule policy",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s[0-9]{10}$" }
+          },
+          {
+            name: "referenceDate",
+            in: "query",
+            required: false,
+            schema: { type: "string", format: "date" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Employee effective payroll schedule policy", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid technician NeeDoID" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant payroll read permission" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      },
+      put: {
+        tags: ["Payroll Schedule Policy"],
+        summary: "Create a versioned employee payroll schedule override",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "needoId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^s[0-9]{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "inheritShopPolicy",
+                  "cadence",
+                  "weeklySettlementWeekday",
+                  "monthlySettlementDay",
+                  "holidayAdjustment",
+                  "timezone",
+                  "effectiveFrom"
+                ],
+                properties: {
+                  inheritShopPolicy: { type: "boolean" },
+                  cadence: {
+                    type: ["string", "null"],
+                    enum: ["daily", "weekly", "monthly", null]
+                  },
+                  weeklySettlementWeekday: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 7
+                  },
+                  monthlySettlementDay: {
+                    type: ["integer", "null"],
+                    minimum: 1,
+                    maximum: 31
+                  },
+                  holidayAdjustment: {
+                    type: ["string", "null"],
+                    enum: ["previous_business_day", "next_business_day", null]
+                  },
+                  timezone: { type: ["string", "null"], enum: ["Asia/Tokyo", null] },
+                  effectiveFrom: { type: "string", format: "date" },
+                  effectiveTo: { type: ["string", "null"], format: "date" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Versioned employee payroll schedule override", {
+            $ref: "#/components/schemas/PayrollSchedulePolicyResult"
+          }),
+          "400": { description: "error.validation — invalid override or technician NeeDoID" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant payroll write permission" },
+          "404": { description: "error.technician_affiliation.not_found" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/pay-runs`]: {
       get: {
         tags: ["Payroll Center"],
@@ -8684,6 +11126,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/customers/{id}/timeline`]: {
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated user activity scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter(),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated scoped user activity", {
+            $ref: "#/components/schemas/BackofficeAuditTimelinePage"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User profile not visible to current shop" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/services`]: {
       get: {
         tags: ["Master Data"],
@@ -8931,6 +11397,301 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["expectedVersion", "contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
         )
       })
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements`]: {
+      get: announcementOperation(
+        "List localized Affiliate announcements",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: contentHistoryParameters,
+          responses: {
+            "200": jsonDataResponse("Paginated Affiliate announcements", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPage"
+            })
+          }
+        }
+      ),
+      post: announcementOperation(
+        "Create one localized Affiliate announcement draft",
+        "button:backoffice-affiliate-announcement-edit",
+        {
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OfficialAnnouncementDraftCreate" }
+              }
+            }
+          },
+          responses: {
+            "201": jsonDataResponse("Affiliate announcement draft created", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/affiliate-tasks`]: {
+      get: announcementOperation(
+        "Search visible AffiliateTasks for announcement metadata",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: [
+            ...contentHistoryParameters,
+            {
+              in: "query",
+              name: "q",
+              schema: { type: "string", minLength: 1, maxLength: 160 }
+            }
+          ],
+          responses: {
+            "200": jsonDataResponse("Paginated visible AffiliateTasks", {
+              $ref: "#/components/schemas/OfficialAnnouncementAffiliateTaskSearchPage"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/history`]: {
+      get: announcementOperation(
+        "List immutable Affiliate announcement release history",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: [announcementPublicIdParameter, ...contentHistoryParameters],
+          responses: {
+            "200": jsonDataResponse("Paginated announcement history", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPage"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}`]: {
+      get: announcementOperation(
+        "Read one protected Affiliate announcement release",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+          responses: {
+            "200": jsonDataResponse("Protected announcement release", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+            })
+          }
+        }
+      ),
+      patch: announcementOperation(
+        "Edit exactly one locale of a draft release",
+        "button:backoffice-affiliate-announcement-edit",
+        {
+          parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OfficialAnnouncementDraftMutation" }
+              }
+            }
+          },
+          responses: {
+            "200": jsonDataResponse("Draft locale updated", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/preview`]:
+      {
+        get: announcementOperation(
+          "Preview all five protected translations and redacted task action",
+          "page:backoffice-affiliate-announcement",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            responses: {
+              "200": jsonDataResponse("Protected announcement preview", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/publish`]:
+      {
+        post: announcementOperation(
+          "Publish a complete draft immediately",
+          "button:backoffice-affiliate-announcement-publish",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentPublishCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Announcement published", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/schedule`]:
+      {
+        post: announcementOperation(
+          "Schedule a complete draft for future UTC publication",
+          "button:backoffice-affiliate-announcement-publish",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentScheduleCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Announcement scheduled", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/disable`]:
+      {
+        post: announcementOperation(
+          "Disable a published or scheduled announcement release",
+          "button:backoffice-affiliate-announcement-publish",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentDisableCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Announcement disabled", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/rollback`]:
+      {
+        post: announcementOperation(
+          "Clone an immutable historical release into a new rollback draft",
+          "button:backoffice-affiliate-announcement-publish",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentRollbackCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Rollback draft cloned", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/affiliate/announcements/{publicId}`]: {
+      get: announcementOperation(
+        "Read the active localized announcement through Affiliate marketplace visibility",
+        "page:affiliate-marketplace",
+        {
+          description:
+            "Requires page:affiliate-marketplace and an active Affiliate identity (current identity type scout).",
+          parameters: [
+            announcementPublicIdParameter,
+            {
+              name: "locale",
+              in: "query",
+              required: true,
+              schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+            }
+          ],
+          responses: {
+            "200": jsonDataResponse("One-locale Affiliate announcement", {
+              $ref: "#/components/schemas/OfficialAnnouncementPublicPayload"
+            }),
+            "403": {
+              description:
+                "error.forbidden — missing page:affiliate-marketplace; error.affiliate_profile.identity_required — active Affiliate identity (current identity type scout) required"
+            }
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/content/media`]: {
+      post: {
+        tags: ["Content Publication"],
+        summary: "Upload immutable public publication media",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "alt_text",
+            in: "query",
+            required: false,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
+            "image/png": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
+            "image/webp": { schema: { type: "string", format: "binary", maxLength: 8388608 } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Public content media created", {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "publicId",
+              "mediaAssetId",
+              "url",
+              "mimeType",
+              "width",
+              "height",
+              "checksumSha256"
+            ],
+            properties: {
+              publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              mediaAssetId: { type: "integer", minimum: 1 },
+              url: {
+                type: "string",
+                pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$"
+              },
+              mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+              width: { type: "null" },
+              height: { type: "null" },
+              checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
+            }
+          }),
+          "400": { description: "error.content.media_invalid — invalid query or media bytes" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "error.forbidden — missing content media upload permission" },
+          "409": {
+            description: "error.content.lock_conflict — checksum lock acquisition timed out"
+          },
+          "413": { description: "error.content.media_too_large — upload exceeds 8 MiB" },
+          "415": { description: "error.content.media_invalid — unsupported media or encoding" }
+        }
+      }
     },
     [`${config.API_PREFIX}/identity-applications/{id}/media`]: {
       post: identityWorkflowOperation("Upload protected application JPEG or PNG media", {
@@ -9373,6 +12134,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     minItems: 1,
                     maxItems: 50,
                     items: { type: "integer", minimum: 1 }
+                  },
+                  privacyModeEnabled: { type: "boolean" },
+                  hideMemberProfiles: { type: "boolean" },
+                  disappearingTtlSeconds: {
+                    type: ["integer", "null"],
+                    minimum: 60,
+                    maximum: 34560000
+                  },
+                  disappearingStartMode: {
+                    type: "string",
+                    enum: ["sent", "read_by_all"]
                   }
                 }
               }
@@ -9438,6 +12210,104 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/privacy`]: {
+      patch: {
+        tags: ["Step 13 Realtime"],
+        summary: "Update group privacy as the current group owner",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["privacyModeEnabled"],
+                properties: {
+                  privacyModeEnabled: { type: "boolean" },
+                  hideMemberProfiles: { type: "boolean" },
+                  disappearingTtlSeconds: {
+                    type: ["integer", "null"],
+                    minimum: 60,
+                    maximum: 34560000
+                  },
+                  disappearingStartMode: {
+                    type: "string",
+                    enum: ["sent", "read_by_all"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated group privacy settings" },
+          "404": { description: "Group not found or current account is not the owner" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/leave`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Leave a group; owners must explicitly transfer ownership first",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  transferOwnerUserId: { type: "integer", minimum: 1 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description:
+              "Current participant left; groups with fewer than two remaining members are dissolved"
+          },
+          "400": { description: "Owner transfer is required or the selected successor is invalid" },
+          "404": { description: "Group not found for current participant" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/dissolve`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Dissolve a group as its current owner",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Group dissolved and removed for every participant" },
+          "404": { description: "Group not found or current account is not the owner" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/im/conversations/{conversationId}/messages`]: {
       get: {
         tags: ["Step 13 Realtime"],
@@ -9491,6 +12361,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": { description: "Created message" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Permanently clear message history for the current participant only",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Current participant history cleared through the latest message" },
+          "404": { description: "Conversation not found for current participant" }
         }
       }
     },
@@ -9600,6 +12487,55 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "400": { description: "Recall window expired or request mode invalid" },
           "403": { description: "Missing message:recall permission" },
           "404": { description: "Conversation or owned message not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}`]: {
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Delete one IM message only from the current user's history",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "messageId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Viewer-scoped message deletion persisted",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: {
+                      type: "object",
+                      required: ["conversationId", "messageId", "deleted"],
+                      properties: {
+                        conversationId: { type: "integer" },
+                        messageId: { type: "integer" },
+                        deleted: { type: "boolean", enum: [true] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing message:list permission" },
+          "404": { description: "Conversation or message not found for current participant" }
         }
       }
     },

@@ -18,7 +18,8 @@
 - 商户后台工资单闭环：生成 Pay Run 草稿、重算草稿、发布、审批、记录支付、锁定归档，并查看 Payslip 行项目。
 - 技师端工资单：读取个人 Payslip，查看 Money Timeline/行项目，确认或申诉。
 - 运营后台工资汇总：只读查看 Pay Run 总额、未支付、申诉和周期状态。
-- 商户后台员工列表：读取 `/api/v1/merchant-admin/technicians`。
+- 商户后台员工列表与详细信息卡：按 canonical 技师 NeeDoID 读取 `/api/v1/merchant-admin/employees`，维护本店员工基础资料、从属关系、日程、工资结算周期及薪酬规则，并显示最新正式工资单统计。
+- 商户后台门店设置：维护店铺默认工资结算周期，并由后端计算本期自然结算日与计划支付日。
 
 调度中心后端接口已提供：
 
@@ -37,18 +38,22 @@
 
 | 后台入口 | 页面路由 | 正式详情 URL |
 |---|---|---|
-| 商户员工列表 | `/merchant-admin/people?module=staff` | `GET /api/v1/merchant-admin/technicians/:id` |
-| 商户用户管理 | `/merchant-admin/people?module=customers` | `GET /api/v1/merchant-admin/customers/:id` |
+| 商户员工列表 | `/merchant-admin/people?module=staff` | `GET /api/v1/merchant-admin/employees/:needoId` |
+| 商户用户管理 | `/merchant-admin/people?module=users` | `GET /api/v1/merchant-admin/customers/:id` |
 | 运营技师管理 | `/admin/technicians` | `GET /api/v1/backoffice/technicians/:id` |
-| 运营客户资料 | `/admin/users?view=customers` | `GET /api/v1/backoffice/customers/:id` |
+| 运营用户资料 | `/admin/users?view=customers` | `GET /api/v1/backoffice/customers/:id` |
 
 列表行不包含完整详情，打开抽屉时先清空上一条详情并显示正式详情 loading；请求失败时保留当前所选 ID 和可用的“重试”，关闭抽屉会使未完成请求失效。资料保存或技师审核成功后，必须同时重新读取列表与当前打开的详情。禁止用列表行、旧 domain mapper、浏览器状态、local/session storage、mock 或静态记录补齐详情，也禁止在详情请求失败时回退显示列表摘要。
 
 商户详情由当前已认证的 `shop` identity 强制限定范围：技师必须属于当前店铺，客户必须与当前店铺存在正式预约关系；越权 ID 返回 not found。商户客户详情中的预约、技师详情中的店铺/排班/薪酬，以及账号的角色与身份只允许返回当前店铺范围或无店铺泄露风险的正式数据，不得包含其他店铺的预约、角色或身份。运营详情在平台 RBAC 允许时读取全局正式记录。
 
-技师详情使用统一七个 tab：`基础资料`、`状态与数据`、`技能与服务`、`排班偏好`、`薪酬设置`、`权限与账号`、`时间线`。正式字段包括技师与账号基础资料、店铺归属、验证/推荐状态、预约与完成/取消数、已完成服务收入、日/周/月排班分钟数、正式评价摘要、启用服务、近期排班、有效薪酬档案、当前范围角色/身份和审计事件。当前没有正式合同的接单率、迟到情况与排班偏好必须明确显示 `尚未接入正式数据`，不得推算为真实统计。
+运营后台技师详情保留平台范围的正式资料栏目。商户员工入口使用独立“员工详细信息卡”：path 只使用公开 NeeDoID，显示当前店铺从属、联系方式、账号状态、正式日程投影、薪酬与结算及工资结算周期；不得从旧全局技师详情或列表行补齐跨店资料。
 
-客户详情使用统一四个 tab：`基础资料`、`预约与消费`、`权限与账号`、`时间线`。正式字段包括客户与账号基础资料、会员等级与公开状态、预约状态汇总、已完成消费、下次与近期预约、正式评价摘要、当前范围角色/身份和审计事件。正式合同不存在或返回 `null` 的评价、下次预约等字段显示 `尚未接入正式数据`；正式空列表可显示明确的无记录状态，但不得用 demo 数值、列表行或 mock 关系补位。
+用户详情统一使用五个 tab：`基础资料`、`会员等级`、`预约与消费`、`权限与账号`、`用户动态`。头部只显示公开 NeeDoID 与业务状态，不显示内部 User/Profile 主键。用户动态通过独立分页 API 读取，每页可选 `10 / 30 / 50 / 100` 条，并复用正式联系人时间线视觉；正式空列表可显示明确的无记录状态，但不得用 demo 数值、列表行或 mock 关系补位。
+
+商户用户管理只读会员等级；运营后台可在独立“会员等级”插页调用 `PUT /api/v1/backoffice/customers/:id/membership` 免费赋予等级，期限支持永久、按天或按月。后端持久化赋予方式、期限、起止时间与操作人，写操作要求 `backoffice:customers:write` 并记录 `backoffice.customer.membership.assign` 审计。此操作不扣款、不自动续费，也不触发转账。
+
+会员授权 migration：`backend/prisma/migrations/20260829210000_customer_membership_grants/migration.sql`。既有用户默认保持 `self_service`，migration 不生成任何免费会员记录。
 
 ## 新增 API
 
@@ -62,6 +67,8 @@
 - `GET /api/v1/backoffice/finance/orders/:bookingOrderId`
 - `GET /api/v1/backoffice/technicians`
 - `GET /api/v1/backoffice/shops`
+- `GET /api/v1/backoffice/customers/:id/timeline`
+- `PUT /api/v1/backoffice/customers/:id/membership`
 
 商户后台：
 
@@ -81,6 +88,14 @@
 - `GET /api/v1/merchant-admin/technicians`
 - `GET /api/v1/merchant-admin/shop`
 - `PATCH /api/v1/merchant-admin/shop`
+- `GET /api/v1/merchant-admin/payroll-schedule-policy`
+- `PUT /api/v1/merchant-admin/payroll-schedule-policy`
+- `GET /api/v1/merchant-admin/employees/:needoId/payroll-schedule-policy`
+- `PUT /api/v1/merchant-admin/employees/:needoId/payroll-schedule-policy`
+- `GET /api/v1/merchant-admin/employees/:needoId/compensation-profile`
+- `PUT /api/v1/merchant-admin/employees/:needoId/compensation-profile`
+- `POST /api/v1/merchant-admin/employees/:needoId/compensation-profile/preview`
+- `GET /api/v1/merchant-admin/customers/:id/timeline`
 
 真实测试账号登录：
 
@@ -117,6 +132,8 @@
 - `merchant-admin:compensation-profile:preview`
 - `merchant-admin:technicians:list`
 - `merchant-admin:shop:read`
+- `merchant-admin:payroll:read`
+- `merchant-admin:payroll:write`
 
 每个 Step 12 后台接口都会通过 JWT + RBAC middleware。商户后台接口会从当前身份读取 `scopeType=shop` 与 `scopeId`，只返回该店铺范围内的数据。
 
@@ -145,7 +162,35 @@
 - `merchant_admin.compensation_profile.preview`
 - `merchant_admin.technicians.list`
 - `merchant_admin.shop.read`
+- `merchant_admin.payroll_schedule_policy.update`
+- `merchant_admin.employee_payroll_schedule_override.update`
 - `auth.test_login`
+
+## 商户工资结算周期
+
+工资结算周期与现有财务规则、收入模式、Pay Run 和 Payslip 分离：本模块只负责店铺默认周期、员工个人覆盖和计划支付日。正式支付是否完成仍由财务人员在财务结算页手工登记，本模块不触发资金转账，也不改变工资单支付状态。
+
+持久化使用版本化 `shop_payroll_schedule_policies` 与 `technician_payroll_schedule_overrides`。员工覆盖绑定当前店铺的 `TechnicianShopAffiliation`；默认继承店铺规则，关闭继承后才保存完整员工规则。所有范围来自 JWT 当前店铺，接口不接受客户端 `shopId`。
+
+结算频率支持每日、每周和每月。日期计算固定使用 `Asia/Tokyo`；月结算日 29–31 在短月落到当月最后一天。遇周末或日本法定节假日时按规则提前至前一个营业日，或顺延至下一个营业日。2025–2027 日本官方节假日固定导入 `business_calendar_dates`，来源版本为 `cabinet-office-2026-08-29`，官方源为 <https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv>。
+
+前端在“门店设置”显示店铺默认规则，在员工详细信息卡显示继承来源或个人规则，并只使用后端返回的本期范围、自然结算日和计划支付日。保存失败保留草稿；切换员工或关闭详情会使上一请求失效，不能串用其他员工的规则。
+
+## 员工薪酬与工资统计
+
+员工详细信息卡以 canonical 技师 NeeDoID 读取、编辑和预览当前 JWT 店铺范围的薪酬规则。服务端先验证该员工与当前店铺的有效从属，再复用版本化 `TechnicianCompensationProfile`、店铺默认规则和既有 `CompensationEngine`；客户端不提交 `shopId` 或 `technicianProfileId`。读取要求 `merchant_admin.compensation_profile.read`，更新和预览分别要求既有 update/preview 权限，更新写入 `merchant_admin.compensation_profile.update` 审计记录。
+
+卡内统计只读取当前店铺与当前员工最新、未删除的正式工资单；完成订单数按工资单引用订单去重，有效工时来自已完成预约，服务收入来自已上报或已确认的订单财务，基础工资、分成、奖金、补贴、扣款、NDP 分摊、净应付、已付和未付来自持久化工资单。响应只返回公开 NeeDoID、脱敏后的有效规则和汇总，不返回内部店铺、技师资料、从属或操作人 ID。
+
+本模块没有新增 schema 或 migration，也没有复制工资引擎。卡内预估不会保存工资单或登记支付；实际支付仍由财务人员在财务结算页手工登记，系统不提供自动转账。
+
+Migration：
+
+```text
+backend/prisma/migrations/20260829123000_employee_payroll_schedule_policy/migration.sql
+```
+
+2026-08-29 本地正式开发库在完整 SQL 备份后部署，专项 checker 结果为 `ready=true`、`officialJapanHolidayRows=54`、`issues=[]`。部署不会创建任何店铺或员工默认规则行。
 
 ## 财务口径
 

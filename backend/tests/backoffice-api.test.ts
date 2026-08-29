@@ -133,6 +133,8 @@ const createFixture = async () => {
     "backoffice:finance:export",
     "backoffice:technicians:list",
     "backoffice:technicians:write",
+    "backoffice:customers:list",
+    "backoffice:customers:write",
     "backoffice:shops:list",
     "backoffice:merchant-accounts:read",
     "merchant-admin:dashboard:read",
@@ -142,6 +144,7 @@ const createFixture = async () => {
     "merchant-admin:finance:export",
     "merchant-admin:technicians:list",
     "merchant-admin:technicians:write",
+    "merchant-admin:customers:list",
     "merchant-admin:shop:read",
     "merchant-admin:shop:write",
     "menu:dashboard",
@@ -391,6 +394,36 @@ const createFixture = async () => {
       page: 1,
       page_size: 20
     })),
+    listCustomerTimeline: jest.fn(async (input: { page: number; pageSize: number }) => ({
+      list: [
+        {
+          id: "audit-1",
+          action: "backoffice.customer.update",
+          actorName: "NeeDo Admin",
+          actorAvatarUrl: null,
+          createdAt: now.toISOString(),
+          metadata: { message: "updated" }
+        }
+      ],
+      total: 31,
+      page: input.page,
+      page_size: input.pageSize
+    })),
+    assignCustomerMembership: jest.fn(async (input: {
+      membershipLevel: string;
+      durationUnit: "forever" | "day" | "month";
+      durationValue: number | null;
+      startsAt: Date;
+      expiresAt: Date | null;
+    }) => ({
+      membershipLevel: input.membershipLevel,
+      membershipGrantMode: "operator_complimentary",
+      membershipDurationUnit: input.durationUnit,
+      membershipDurationValue: input.durationValue,
+      membershipStartsAt: input.startsAt.toISOString(),
+      membershipExpiresAt: input.expiresAt?.toISOString() ?? null,
+      membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" }
+    })),
     listTechnicianRankings: jest.fn(async () => ({
       list: [
         {
@@ -472,6 +505,99 @@ const createFixture = async () => {
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
+  it("assigns an audited complimentary user membership through the write permission", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+
+    const response = await request(fixture.app)
+      .put("/api/v1/backoffice/customers/44/membership")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        membershipLevel: "gold",
+        grantMode: "operator_complimentary",
+        durationUnit: "month",
+        durationValue: 3,
+        startsAt: "2026-08-29T00:00:00.000Z"
+      })
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      membershipLevel: "gold",
+      membershipGrantMode: "operator_complimentary",
+      membershipDurationUnit: "month",
+      membershipDurationValue: 3,
+      membershipExpiresAt: "2026-11-29T00:00:00.000Z"
+    });
+    expect(fixture.backofficeRepository.assignCustomerMembership).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerProfileId: 44,
+        membershipLevel: "gold",
+        durationUnit: "month",
+        durationValue: 3,
+        grantedById: expect.any(Number)
+      })
+    );
+    expect(fixture.auditLogs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: "backoffice.customer.membership.assign" })
+    ]));
+
+    await request(fixture.app)
+      .put("/api/v1/backoffice/customers/44/membership")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        membershipLevel: "gold",
+        grantMode: "operator_complimentary",
+        durationUnit: "forever",
+        durationValue: 30,
+        startsAt: "2026-08-29T00:00:00.000Z"
+      })
+      .expect(400);
+  });
+
+  it("serves paginated user timelines in platform and merchant scope without auditing the read", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const adminAuditCount = fixture.auditLogs.length;
+
+    const platformResponse = await request(fixture.app)
+      .get("/api/v1/backoffice/customers/44/timeline?page=2&pageSize=30")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(platformResponse.body.data).toMatchObject({
+      total: 31,
+      page: 2,
+      page_size: 30
+    });
+    expect(fixture.backofficeRepository.listCustomerTimeline).toHaveBeenCalledWith({
+      scope: "platform",
+      id: 44,
+      page: 2,
+      pageSize: 30
+    });
+    expect(fixture.auditLogs).toHaveLength(adminAuditCount);
+
+    const merchantToken = await fixture.login("merchant@example.com");
+    const merchantAuditCount = fixture.auditLogs.length;
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/customers/44/timeline?page=3&pageSize=50")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
+    expect(fixture.backofficeRepository.listCustomerTimeline).toHaveBeenLastCalledWith({
+      scope: "merchant",
+      shopId: 11,
+      id: 44,
+      page: 3,
+      pageSize: 50
+    });
+    expect(fixture.auditLogs).toHaveLength(merchantAuditCount);
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/customers/44/timeline?pageSize=101")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400);
+  });
+
   it("updates persisted employment through the protected technician API", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");

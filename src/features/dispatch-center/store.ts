@@ -136,6 +136,7 @@ export type DispatchScheduleDaySlot = {
   appointmentId?: string;
   eventType?: ScheduleEventType;
   isClickable?: boolean;
+  privacyVisibility?: "busy_redacted";
   detailTargetType?: ScheduleDetailTargetType;
   detailTargetId?: string;
   serviceStatus?: DispatchScheduleServiceStatus;
@@ -158,6 +159,7 @@ export type DispatchScheduleCell = {
   appointmentId?: string;
   eventType?: ScheduleEventType;
   isClickable?: boolean;
+  privacyVisibility?: "busy_redacted";
   detailTargetType?: ScheduleDetailTargetType;
   detailTargetId?: string;
   dayTimeline?: DispatchScheduleDaySlot[];

@@ -4,12 +4,18 @@ import { describe, expect, it } from "vitest";
 const timelineSource = readFileSync(new URL("./OperationTimelinePage.tsx", import.meta.url), "utf8");
 const exchangeSource = readFileSync(new URL("./NeedoExchangeAdminPage.tsx", import.meta.url), "utf8");
 const carouselSource = readFileSync(new URL("./CarouselPage.tsx", import.meta.url), "utf8");
+const affiliateCarouselSource = readFileSync(new URL("./AffiliateNoticeCarouselPage.tsx", import.meta.url), "utf8");
 const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.url), "utf8");
 const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
 const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
 const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapabilityGate.tsx", import.meta.url), "utf8");
 const dispatchSource = readFileSync(new URL("./AdminDispatchPage.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
+const translationsSource = readFileSync(
+  new URL("../../i18n/translations.ts", import.meta.url),
+  "utf8"
+);
 const affiliateSource = readFileSync(new URL("./AffiliateAdminPage.tsx", import.meta.url), "utf8");
 const affiliateCopySource = readFileSync(new URL("./affiliateAdminCopy.ts", import.meta.url), "utf8");
 const adminLayoutSource = readFileSync(
@@ -25,6 +31,15 @@ describe("removed admin design modules", () => {
     expect(appSource).not.toContain('./pages/merchant-admin/MerchantAdminDesignPage');
     expect(appSource).not.toContain('path="/admin/decoration"');
     expect(appSource).not.toContain('path="/merchant-admin/design"');
+  });
+
+  it("does not retain the deleted merchant editor styles or copy", () => {
+    expect(stylesSource).not.toContain("merchant-design-preview");
+    expect(stylesSource).not.toContain("merchant-phone-preview");
+    expect(stylesSource).not.toContain("merchant-live-preview");
+    expect(translationsSource).not.toContain("店铺展示设计");
+    expect(translationsSource).not.toContain("UI 装修配置");
+    expect(translationsSource).not.toContain("手机模拟器");
   });
 });
 
@@ -72,13 +87,39 @@ describe("platform content and media production capability gates", () => {
     expect(badgesSource).not.toContain("buildOrnamentsSeed");
   });
 
-  it("keeps the remaining routes behind explicit formal publication prerequisites", () => {
-    for (const pageSource of [carouselSource, badgesSource]) {
-      expect(pageSource).toContain("PlatformContentCapabilityGate");
-      expect(pageSource).toContain("当前不会展示模拟");
-    }
-    expect(carouselSource).toContain("CarouselScene、CarouselSlide 与 ContentVersion 表和 migration");
+  it("replaces the carousel capability gate with fixed-scene formal editors", () => {
+    expect(carouselSource).toMatch(/<LocalizedCarouselEditor\s+scene="user-home"/);
+    expect(affiliateCarouselSource).toMatch(/<LocalizedCarouselEditor\s+scene="affiliate-home-notice"/);
+    expect(affiliateCarouselSource).toContain("<AnnouncementEditor");
+    expect(carouselSource).not.toContain("PlatformContentCapabilityGate");
+    expect(affiliateCarouselSource).not.toMatch(/useSearchParams|location\.search|scene=\{/);
+  });
+
+  it("keeps the remaining ornament route behind explicit formal publication prerequisites", () => {
+    expect(badgesSource).toContain("PlatformContentCapabilityGate");
+    expect(badgesSource).toContain("当前不会展示模拟");
     expect(badgesSource).toContain("OrnamentDefinition、OrnamentGrant 与 RuleEvaluation 表和 migration");
+  });
+});
+
+describe("localized carousel backoffice routes", () => {
+  it("registers two independently permissioned routes", () => {
+    expect(appSource).toContain(
+      'path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/admin/afirieito/announcements/carousel" element={protectPermission("admin", "page:backoffice-affiliate-notice-carousel", <AffiliateNoticeCarouselPage />)}'
+    );
+  });
+
+  it("shows separate menu labels with separate read permissions under the expected sections", () => {
+    expect(adminLayoutSource).toContain('label: "用户端首页轮播图"');
+    expect(adminLayoutSource).toContain('permission: "page:backoffice-user-home-carousel"');
+    expect(adminLayoutSource).toContain('label: "联盟营销公告轮播"');
+    expect(adminLayoutSource).toContain('permission: "page:backoffice-affiliate-notice-carousel"');
+    expect(adminLayoutSource.indexOf('label: "联盟营销公告轮播"')).toBeGreaterThan(
+      adminLayoutSource.indexOf('badge: "TEST"')
+    );
   });
 });
 

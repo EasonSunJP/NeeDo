@@ -8,7 +8,9 @@ import {
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
+  conversationLeaveBodySchema,
   conversationListQuerySchema,
+  conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
   directorySearchQuerySchema,
   followCreateBodySchema,
@@ -17,6 +19,7 @@ import {
   friendRequestIdParamSchema,
   friendRequestListQuerySchema,
   messageCreateBodySchema,
+  messageDeleteParamSchema,
   messageListQuerySchema,
   messageRecallBodySchema,
   messageRecallParamSchema,
@@ -106,6 +109,12 @@ export class RealtimeController {
     });
   });
 
+  public deleteMessageForUser = this.createHandler((request, response) => {
+    const params = messageDeleteParamSchema.parse(request.params);
+
+    return this.service.deleteMessageForUser(getAuthenticatedAccess(response), params);
+  });
+
   public markConversationRead = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
 
@@ -132,9 +141,44 @@ export class RealtimeController {
     });
   });
 
+  public updateConversationPrivacy = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    const body = conversationPrivacyBodySchema.parse(request.body);
+    return this.service.updateConversationPrivacy(getAuthenticatedAccess(response), {
+      conversationId: params.conversationId,
+      ...body
+    });
+  });
+
+  public leaveConversation = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    const body = conversationLeaveBodySchema.parse(request.body ?? {});
+    return this.service.leaveConversation(
+      getAuthenticatedAccess(response),
+      params.conversationId,
+      body.transferOwnerUserId
+    );
+  });
+
+  public dissolveConversation = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.dissolveConversation(
+      getAuthenticatedAccess(response),
+      params.conversationId
+    );
+  });
+
   public hideConversation = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
     return this.service.hideConversation(
+      getAuthenticatedAccess(response),
+      params.conversationId
+    );
+  });
+
+  public clearConversationMessages = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.clearConversationMessages(
       getAuthenticatedAccess(response),
       params.conversationId
     );

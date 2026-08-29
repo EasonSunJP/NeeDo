@@ -26,6 +26,7 @@ export interface ParticipantPayload {
   needoId: string;
   username: string;
   avatarUrl: string | null;
+  role?: "owner" | "admin" | "member";
 }
 
 export interface ConversationPayload {
@@ -38,6 +39,11 @@ export interface ConversationPayload {
   isPinned: boolean;
   isMuted: boolean;
   isHidden: boolean;
+  privacyModeEnabled: boolean;
+  hideMemberProfiles: boolean;
+  disappearingTtlSeconds: number | null;
+  disappearingStartMode: "sent" | "read_by_all";
+  privacyPolicyVersion: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -172,7 +178,40 @@ export interface CreateConversationInput {
   type: ConversationTypePayload;
   title?: string | null;
   participantUserIds: number[];
+  privacyModeEnabled?: boolean;
+  hideMemberProfiles?: boolean;
+  disappearingTtlSeconds?: number | null;
+  disappearingStartMode?: "sent" | "read_by_all";
 }
+
+export interface UpdateConversationPrivacyInput {
+  actorUserId: number;
+  conversationId: number;
+  privacyModeEnabled: boolean;
+  hideMemberProfiles?: boolean;
+  disappearingTtlSeconds?: number | null;
+  disappearingStartMode?: "sent" | "read_by_all";
+}
+
+export interface LeaveConversationInput {
+  conversationId: number;
+  userId: number;
+  transferOwnerUserId?: number;
+}
+
+export interface LeaveConversationPayload {
+  conversationId: number;
+  removedUserId: number;
+  newOwnerUserId: number | null;
+  dissolved: boolean;
+  recipientUserIds: number[];
+}
+
+export type LeaveConversationOutcome =
+  | { status: "left"; result: LeaveConversationPayload }
+  | { status: "not_found" }
+  | { status: "transfer_required" }
+  | { status: "invalid_transfer" };
 
 export interface ListMessagesInput {
   conversationId: number;
@@ -205,6 +244,18 @@ export interface MessageReactionMutationInput {
   messageId: number;
   userId: number;
   emoji: string;
+}
+
+export interface DeleteMessageForUserInput {
+  conversationId: number;
+  messageId: number;
+  userId: number;
+}
+
+export interface DeleteMessageForUserPayload {
+  conversationId: number;
+  messageId: number;
+  deleted: true;
 }
 
 export interface UpdateConversationPreferencesInput {
@@ -270,6 +321,16 @@ export interface CreateOrderStatusNotificationInput {
 export interface RealtimeRepositoryPort {
   findActiveUserIds: (ids: number[]) => Promise<number[]>;
   createConversation: (input: CreateConversationInput) => Promise<ConversationPayload>;
+  updateConversationPrivacy: (
+    input: UpdateConversationPrivacyInput
+  ) => Promise<ConversationPayload | null>;
+  leaveConversation: (
+    input: LeaveConversationInput
+  ) => Promise<LeaveConversationOutcome>;
+  dissolveConversation: (input: {
+    conversationId: number;
+    ownerUserId: number;
+  }) => Promise<LeaveConversationPayload | null>;
   getConversationForUser: (
     conversationId: number,
     userId: number
@@ -282,6 +343,9 @@ export interface RealtimeRepositoryPort {
   isMessageSenderBlocked: (conversationId: number, senderUserId: number) => Promise<boolean>;
   recallMessage: (input: RecallMessageInput) => Promise<StandardRecallRepositoryOutcome>;
   listMessages: (input: ListMessagesInput) => Promise<MessageHistoryPayload | null>;
+  deleteMessageForUser: (
+    input: DeleteMessageForUserInput
+  ) => Promise<DeleteMessageForUserPayload | null>;
   setMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
   removeMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
   markConversationRead: (input: {
@@ -296,6 +360,10 @@ export interface RealtimeRepositoryPort {
     input: UpdateConversationPreferencesInput
   ) => Promise<ConversationPayload | null>;
   hideConversation: (input: {
+    conversationId: number;
+    userId: number;
+  }) => Promise<ConversationPayload | null>;
+  clearConversationMessages: (input: {
     conversationId: number;
     userId: number;
   }) => Promise<ConversationPayload | null>;
@@ -466,6 +534,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         type: this.conversationTypeToDb(input.type),
         title: input.title?.trim() || null,
         createdByUserId: input.creatorUserId,
+        privacyModeEnabled: input.type === "group" && Boolean(input.privacyModeEnabled),
+        hideMemberProfiles: input.type === "group" && Boolean(input.hideMemberProfiles),
+        disappearingTtlSeconds:
+          input.type === "group" && input.privacyModeEnabled
+            ? (input.disappearingTtlSeconds ?? null)
+            : null,
+        disappearingStartMode:
+          input.type === "group" && input.privacyModeEnabled
+            ? (input.disappearingStartMode ?? "sent")
+            : "sent",
+        privacyPolicyVersion: input.type === "group" && input.privacyModeEnabled ? 1 : 0,
+        privacyUpdatedAt: input.type === "group" && input.privacyModeEnabled ? new Date() : null,
+        privacyUpdatedByUserId:
+          input.type === "group" && input.privacyModeEnabled ? input.creatorUserId : null,
         participants: {
           create: participantUserIds.map((userId) => ({
             userId,
@@ -473,10 +555,255 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           }))
         }
       },
-      include: this.conversationInclude()
+      include: this.conversationInclude(input.creatorUserId)
     });
 
     return this.mapConversation(conversation, input.creatorUserId);
+  }
+
+  public async updateConversationPrivacy(
+    input: UpdateConversationPrivacyInput
+  ): Promise<ConversationPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const actor = await tx.conversationParticipant.findFirst({
+        where: {
+          conversationId: input.conversationId,
+          userId: input.actorUserId,
+          role: "owner",
+          deletedAt: null,
+          conversation: {
+            type: ConversationType.GROUP,
+            deletedAt: null
+          }
+        },
+        select: { id: true }
+      });
+
+      if (!actor) {
+        return null;
+      }
+
+      const updated = await tx.conversation.update({
+        where: { id: input.conversationId },
+        data: {
+          privacyModeEnabled: input.privacyModeEnabled,
+          hideMemberProfiles: input.hideMemberProfiles ?? false,
+          disappearingTtlSeconds: input.privacyModeEnabled
+            ? (input.disappearingTtlSeconds ?? null)
+            : null,
+          disappearingStartMode: input.privacyModeEnabled
+            ? (input.disappearingStartMode ?? "sent")
+            : "sent",
+          privacyPolicyVersion: { increment: 1 },
+          privacyUpdatedAt: new Date(),
+          privacyUpdatedByUserId: input.actorUserId
+        },
+        include: this.conversationInclude(input.actorUserId)
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: input.actorUserId,
+          action: "im.conversation.privacy_updated",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: {
+            privacyModeEnabled: input.privacyModeEnabled,
+            hideMemberProfiles: input.hideMemberProfiles ?? false,
+            disappearingTtlSeconds: input.privacyModeEnabled
+              ? (input.disappearingTtlSeconds ?? null)
+              : null,
+            disappearingStartMode: input.privacyModeEnabled
+              ? (input.disappearingStartMode ?? "sent")
+              : "sent"
+          }
+        }
+      });
+
+      return this.mapConversation(updated, input.actorUserId);
+    });
+  }
+
+  public async leaveConversation(
+    input: LeaveConversationInput
+  ): Promise<LeaveConversationOutcome> {
+    return this.client.$transaction(async (tx) => {
+      const conversation = await tx.conversation.findFirst({
+        where: {
+          id: input.conversationId,
+          type: ConversationType.GROUP,
+          deletedAt: null,
+          participants: {
+            some: { userId: input.userId, deletedAt: null }
+          }
+        },
+        include: {
+          participants: {
+            where: { deletedAt: null },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { id: true, userId: true, role: true }
+          }
+        }
+      });
+
+      if (!conversation) {
+        return { status: "not_found" } as const;
+      }
+
+      const leaving = conversation.participants.find(
+        (participant) => participant.userId === input.userId
+      );
+      if (!leaving) {
+        return { status: "not_found" } as const;
+      }
+
+      const remaining = conversation.participants.filter(
+        (participant) => participant.userId !== input.userId
+      );
+      const requestedOwner = input.transferOwnerUserId
+        ? remaining.find((participant) => participant.userId === input.transferOwnerUserId)
+        : undefined;
+      if (leaving.role === "owner" && !input.transferOwnerUserId) {
+        return { status: "transfer_required" } as const;
+      }
+      if (leaving.role === "owner" && !requestedOwner) {
+        return { status: "invalid_transfer" } as const;
+      }
+
+      const shouldDissolve = remaining.length < 2;
+      const nextOwner = leaving.role === "owner" && !shouldDissolve
+        ? (requestedOwner ?? null)
+        : null;
+      const now = new Date();
+
+      if (nextOwner) {
+        await tx.conversationParticipant.update({
+          where: { id: nextOwner.id },
+          data: { role: "owner" }
+        });
+      }
+
+      if (shouldDissolve) {
+        await tx.conversationParticipant.updateMany({
+          where: { conversationId: input.conversationId, deletedAt: null },
+          data: {
+            deletedAt: now,
+            hiddenAt: now,
+            unreadCount: 0,
+            isPinned: false
+          }
+        });
+        await tx.conversation.update({
+          where: { id: input.conversationId },
+          data: { deletedAt: now }
+        });
+      } else {
+        await tx.conversationParticipant.update({
+          where: { id: leaving.id },
+          data: {
+            deletedAt: now,
+            hiddenAt: now,
+            unreadCount: 0,
+            isPinned: false
+          }
+        });
+        await tx.conversation.update({
+          where: { id: input.conversationId },
+          data: { updatedAt: now }
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: input.userId,
+          action: "im.conversation.member_left",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: {
+            newOwnerUserId: nextOwner?.userId ?? null,
+            dissolved: shouldDissolve
+          }
+        }
+      });
+
+      return {
+        status: "left" as const,
+        result: {
+          conversationId: input.conversationId,
+          removedUserId: input.userId,
+          newOwnerUserId: nextOwner?.userId ?? null,
+          dissolved: shouldDissolve,
+          recipientUserIds: conversation.participants.map((participant) => participant.userId)
+        }
+      };
+    });
+  }
+
+  public async dissolveConversation(input: {
+    conversationId: number;
+    ownerUserId: number;
+  }): Promise<LeaveConversationPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const conversation = await tx.conversation.findFirst({
+        where: {
+          id: input.conversationId,
+          type: ConversationType.GROUP,
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: input.ownerUserId,
+              role: "owner",
+              deletedAt: null
+            }
+          }
+        },
+        include: {
+          participants: {
+            where: { deletedAt: null },
+            select: { userId: true }
+          }
+        }
+      });
+      if (!conversation) return null;
+
+      const now = new Date();
+      await tx.conversationParticipant.updateMany({
+        where: { conversationId: input.conversationId, deletedAt: null },
+        data: {
+          deletedAt: now,
+          hiddenAt: now,
+          unreadCount: 0,
+          isPinned: false
+        }
+      });
+      await tx.conversation.update({
+        where: { id: input.conversationId },
+        data: { deletedAt: now }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.ownerUserId,
+          action: "im.conversation.dissolved",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: { memberCount: conversation.participants.length }
+        }
+      });
+
+      return {
+        conversationId: input.conversationId,
+        removedUserId: input.ownerUserId,
+        newOwnerUserId: null,
+        dissolved: true,
+        recipientUserIds: conversation.participants.map((participant) => participant.userId)
+      };
+    });
   }
 
   public async getConversationForUser(
@@ -494,7 +821,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           }
         }
       },
-      include: this.conversationInclude()
+      include: this.conversationInclude(userId)
     });
 
     return conversation ? this.mapConversation(conversation, userId) : null;
@@ -518,7 +845,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.conversation.findMany({
         where,
-        include: this.conversationInclude(),
+        include: this.conversationInclude(userId),
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
@@ -791,7 +1118,19 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const where: Prisma.MessageWhereInput = {
       conversationId: input.conversationId,
       deletedAt: null,
-      ...(input.beforeId ? { id: { lt: input.beforeId } } : {})
+      userDeletions: {
+        none: { userId: input.userId, deletedAt: null }
+      },
+      ...(input.beforeId || participant.clearedThroughMessageId
+        ? {
+            id: {
+              ...(input.beforeId ? { lt: input.beforeId } : {}),
+              ...(participant.clearedThroughMessageId
+                ? { gt: participant.clearedThroughMessageId }
+                : {})
+            }
+          }
+        : {})
     };
     const [list, total] = await Promise.all([
       this.client.message.findMany({
@@ -810,6 +1149,60 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       page_size: pageSize,
       nextCursor: total > list.length ? (list[list.length - 1]?.id ?? null) : null
     };
+  }
+
+  public async deleteMessageForUser(
+    input: DeleteMessageForUserInput
+  ): Promise<DeleteMessageForUserPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const message = await tx.message.findFirst({
+        where: {
+          id: input.messageId,
+          conversationId: input.conversationId,
+          deletedAt: null,
+          conversation: {
+            deletedAt: null,
+            participants: {
+              some: { userId: input.userId, deletedAt: null }
+            }
+          }
+        },
+        select: { id: true }
+      });
+      if (!message) return null;
+
+      await tx.messageUserDeletion.upsert({
+        where: {
+          userId_messageId: {
+            userId: input.userId,
+            messageId: input.messageId
+          }
+        },
+        create: {
+          conversationId: input.conversationId,
+          messageId: input.messageId,
+          userId: input.userId
+        },
+        update: { deletedAt: null }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.userId,
+          action: "im.message.deleted_for_user",
+          targetType: "Message",
+          targetId: input.messageId,
+          ip: null,
+          userAgent: null,
+          metadata: { conversationId: input.conversationId }
+        }
+      });
+
+      return {
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        deleted: true
+      };
+    });
   }
 
   public async setMessageReaction(
@@ -957,6 +1350,56 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       data: { hiddenAt: new Date(), isPinned: false, unreadCount: 0 }
     });
     return this.getConversationForUser(input.conversationId, input.userId);
+  }
+
+  public async clearConversationMessages(input: {
+    conversationId: number;
+    userId: number;
+  }): Promise<ConversationPayload | null> {
+    const cleared = await this.client.$transaction(async (tx) => {
+      const participant = await tx.conversationParticipant.findFirst({
+        where: {
+          conversationId: input.conversationId,
+          userId: input.userId,
+          deletedAt: null,
+          conversation: { deletedAt: null }
+        },
+        select: { id: true }
+      });
+      if (!participant) return false;
+
+      const latestMessage = await tx.message.findFirst({
+        where: { conversationId: input.conversationId, deletedAt: null },
+        orderBy: { id: "desc" },
+        select: { id: true, createdAt: true }
+      });
+
+      await tx.conversationParticipant.update({
+        where: { id: participant.id },
+        data: {
+          clearedThroughMessageId: latestMessage?.id ?? null,
+          lastReadMessageId: latestMessage?.id ?? null,
+          lastReadAt: latestMessage?.createdAt ?? new Date(),
+          unreadCount: 0
+        }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.userId,
+          action: "im.conversation.messages_cleared",
+          targetType: "Conversation",
+          targetId: input.conversationId,
+          ip: null,
+          userAgent: null,
+          metadata: { clearedThroughMessageId: latestMessage?.id ?? null }
+        }
+      });
+      return true;
+    });
+
+    return cleared
+      ? this.getConversationForUser(input.conversationId, input.userId)
+      : null;
   }
 
   public async listContacts(
@@ -1586,7 +2029,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           }
         }
       },
-      include: this.conversationInclude()
+      include: this.conversationInclude(participantUserIds[0])
     });
 
     return (
@@ -1612,7 +2055,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         deletedAt: null,
         conversation: { deletedAt: null }
       },
-      select: { id: true }
+      select: { id: true, clearedThroughMessageId: true }
     });
   }
 
@@ -1680,7 +2123,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
-  private conversationInclude() {
+  private conversationInclude(viewerUserId?: number) {
     return {
       participants: {
         where: { deletedAt: null },
@@ -1696,7 +2139,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         }
       },
       messages: {
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          ...(viewerUserId
+            ? {
+                userDeletions: {
+                  none: { userId: viewerUserId, deletedAt: null }
+                }
+              }
+            : {})
+        },
         include: messageInclude,
         orderBy: { id: "desc" as const },
         take: 1
@@ -1717,15 +2169,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       type: this.conversationTypeFromDb(conversation.type),
       title: conversation.title,
       participants: conversation.participants.map((participant) =>
-        this.mapParticipant(participant.user)
+        this.mapParticipant(participant.user, participant.role)
       ),
       lastMessage: conversation.messages[0]
+        && conversation.messages[0].id > (viewer?.clearedThroughMessageId ?? 0)
         ? this.mapMessage(conversation.messages[0], viewerUserId)
         : null,
       unreadCount: viewer?.unreadCount ?? 0,
       isPinned: viewer?.isPinned ?? false,
       isMuted: viewer?.isMuted ?? false,
       isHidden: viewer?.hiddenAt !== null && viewer?.hiddenAt !== undefined,
+      privacyModeEnabled: conversation.privacyModeEnabled,
+      hideMemberProfiles: conversation.hideMemberProfiles,
+      disappearingTtlSeconds: conversation.disappearingTtlSeconds,
+      disappearingStartMode:
+        conversation.disappearingStartMode === "read_by_all" ? "read_by_all" : "sent",
+      privacyPolicyVersion: conversation.privacyPolicyVersion,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
     };
@@ -1801,12 +2260,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     needoId: string;
     username: string;
     avatarUrl: string | null;
-  }): ParticipantPayload {
+  }, role?: string): ParticipantPayload {
     return {
       userId: user.id,
       needoId: user.needoId,
       username: user.username,
-      avatarUrl: user.avatarUrl
+      avatarUrl: user.avatarUrl,
+      ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
   }
 

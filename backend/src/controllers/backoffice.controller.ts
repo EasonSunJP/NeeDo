@@ -3,9 +3,11 @@ import type { BackofficeService } from "../services/backoffice.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
+  backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
   backofficeServiceUpdateBodySchema,
   backofficeShopCreateBodySchema,
@@ -232,8 +234,32 @@ export class BackofficeController {
   public merchantCustomer = this.createListHandler((service, request, response) =>
     service.getMerchantCustomer(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
   );
+  public platformCustomerTimeline = this.createListHandler((service, request, response) =>
+    service.getPlatformCustomerTimeline(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeTimelineQuerySchema.parse(request.query)
+    )
+  );
+  public merchantCustomerTimeline = this.createListHandler((service, request, response) =>
+    service.getMerchantCustomerTimeline(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeTimelineQuerySchema.parse(request.query)
+    )
+  );
   public updatePlatformCustomer = this.createMutationHandler(200, (service, request, response) =>
     service.updatePlatformCustomer(this.getId(request), backofficeCustomerUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+  );
+  public assignPlatformCustomerMembership = this.createMutationHandler(200, (service, request, response) =>
+    service.assignPlatformCustomerMembership(
+      this.getId(request),
+      backofficeCustomerMembershipGrantBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public deletePlatformCustomer = this.createMutationHandler(200, (service, request, response) =>
     service.deletePlatformCustomer(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))

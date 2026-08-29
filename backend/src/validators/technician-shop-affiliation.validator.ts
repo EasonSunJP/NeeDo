@@ -21,6 +21,47 @@ export const merchantEmployeeListQuerySchema = z
   })
   .strict();
 
+export const merchantEmployeeTimelineQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20)
+  })
+  .strict();
+
+export const merchantEmployeeTimelineCommentBodySchema = z
+  .object({
+    message: z.string().trim().min(1).max(1000)
+  })
+  .strict();
+
+const employeeScheduleDateSchema = z
+  .union([z.date(), z.string().datetime({ offset: true })])
+  .transform((value) => (value instanceof Date ? value : new Date(value)));
+
+export const merchantEmployeeScheduleQuerySchema = z
+  .object({
+    from: employeeScheduleDateSchema,
+    to: employeeScheduleDateSchema,
+    view: z.enum(["day", "week", "month"])
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.from.getTime() >= value.to.getTime()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "from must be earlier than to",
+        path: ["to"]
+      });
+    }
+    if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "date range must not exceed 93 days",
+        path: ["to"]
+      });
+    }
+  });
+
 export const merchantEmployeeAffiliationBodySchema = z
   .object({
     relationshipType: z.enum(["exclusive", "partner"]),
@@ -67,7 +108,13 @@ export const merchantEmployeeProfileBodySchema = z
   });
 
 export type ParsedMerchantEmployeeListQuery = z.output<typeof merchantEmployeeListQuerySchema>;
+export type ParsedMerchantEmployeeTimelineQuery = z.output<
+  typeof merchantEmployeeTimelineQuerySchema
+>;
 export type ParsedMerchantEmployeeAffiliationBody = z.output<
   typeof merchantEmployeeAffiliationBodySchema
 >;
 export type ParsedMerchantEmployeeProfileBody = z.output<typeof merchantEmployeeProfileBodySchema>;
+export type ParsedMerchantEmployeeScheduleQuery = z.output<
+  typeof merchantEmployeeScheduleQuerySchema
+>;

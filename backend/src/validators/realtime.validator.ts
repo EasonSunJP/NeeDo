@@ -33,6 +33,10 @@ export const messageRecallParamSchema = conversationIdParamSchema.extend({
   messageId: z.coerce.number().int().positive()
 });
 
+export const messageDeleteParamSchema = conversationIdParamSchema.extend({
+  messageId: z.coerce.number().int().positive()
+});
+
 export const friendRequestIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
@@ -57,11 +61,41 @@ export const conversationListQuerySchema = z.object({
   ...paginationQuerySchema
 });
 
-export const conversationCreateBodySchema = z.object({
-  type: z.enum(["direct", "group"]).default("direct"),
-  title: z.string().trim().min(1).max(120).optional(),
-  participantUserIds: z.array(z.coerce.number().int().positive()).min(1).max(50)
-});
+const conversationPrivacyFields = {
+  privacyModeEnabled: z.boolean().optional(),
+  hideMemberProfiles: z.boolean().optional(),
+  disappearingTtlSeconds: z.coerce.number().int().min(60).max(34_560_000).nullable().optional(),
+  disappearingStartMode: z.enum(["sent", "read_by_all"]).optional()
+};
+
+export const conversationCreateBodySchema = z
+  .object({
+    type: z.enum(["direct", "group"]).default("direct"),
+    title: z.string().trim().min(1).max(120).optional(),
+    participantUserIds: z.array(z.coerce.number().int().positive()).min(1).max(50),
+    ...conversationPrivacyFields
+  })
+  .superRefine((value, context) => {
+    if (value.privacyModeEnabled && value.type !== "group") {
+      context.addIssue({ code: "custom", message: "Privacy mode is only available for groups" });
+    }
+    if (value.privacyModeEnabled && !value.disappearingTtlSeconds) {
+      context.addIssue({ code: "custom", message: "A disappearing countdown is required" });
+    }
+  });
+
+export const conversationPrivacyBodySchema = z
+  .object({
+    privacyModeEnabled: z.boolean(),
+    hideMemberProfiles: z.boolean().optional(),
+    disappearingTtlSeconds: conversationPrivacyFields.disappearingTtlSeconds,
+    disappearingStartMode: conversationPrivacyFields.disappearingStartMode
+  })
+  .superRefine((value, context) => {
+    if (value.privacyModeEnabled && !value.disappearingTtlSeconds) {
+      context.addIssue({ code: "custom", message: "A disappearing countdown is required" });
+    }
+  });
 
 export const conversationPreferencesBodySchema = z
   .object({
@@ -71,6 +105,10 @@ export const conversationPreferencesBodySchema = z
   .refine((value) => value.isPinned !== undefined || value.isMuted !== undefined, {
     message: "At least one conversation preference is required"
   });
+
+export const conversationLeaveBodySchema = z.object({
+  transferOwnerUserId: z.coerce.number().int().positive().optional()
+});
 
 export const messageListQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(100).optional(),
@@ -166,7 +204,9 @@ export const notificationListQuerySchema = z.object({
 });
 
 export type ConversationCreateBody = z.infer<typeof conversationCreateBodySchema>;
+export type ConversationPrivacyBody = z.infer<typeof conversationPrivacyBodySchema>;
 export type ConversationPreferencesBody = z.infer<typeof conversationPreferencesBodySchema>;
+export type ConversationLeaveBody = z.infer<typeof conversationLeaveBodySchema>;
 export type ConversationListQuery = z.infer<typeof conversationListQuerySchema>;
 export type MessageCreateBody = z.infer<typeof messageCreateBodySchema>;
 export type MessageListQuery = z.infer<typeof messageListQuerySchema>;

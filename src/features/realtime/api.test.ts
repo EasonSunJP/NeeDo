@@ -168,6 +168,19 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("deletes one message only from the authenticated user's history", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ conversationId: 91, messageId: 700, deleted: true })
+    );
+
+    await realtimeApi.deleteMessageForMe(91, 700);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/conversations/91/messages/700",
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+
   it("parses authenticated SSE events and sends the last event id on reconnect", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

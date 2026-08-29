@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
@@ -1247,6 +1248,7 @@ const contactSectionScrollMargin = "calc(env(safe-area-inset-top) + 5rem)";
 const contactIndexBottomGutter = "calc(6rem + env(safe-area-inset-bottom))";
 const contactIndexFixedRight = "max(0.5rem, calc((100vw - min(100vw, 880px)) / 2 + 0.5rem))";
 const contactIndexFixedBottom = "calc(7.5rem + env(safe-area-inset-bottom))";
+const imMessageLongPressActivationGuardMs = 800;
 const contactIndexBarClassName =
   "pointer-events-auto max-h-full touch-none select-none overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-1 py-2 shadow-[0_8px_18px_color-mix(in_srgb,var(--client-text)_10%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] backdrop-blur-xl";
 
@@ -1290,7 +1292,7 @@ function useRoomBackTarget() {
   };
 }
 
-function MessagePressable({
+export function MessagePressable({
   onOpenMenu,
   children
 }: {
@@ -1298,6 +1300,8 @@ function MessagePressable({
   children: ReactNode;
 }) {
   const timerRef = useRef<number | null>(null);
+  const activationGuardTimerRef = useRef<number | null>(null);
+  const suppressNextActivationRef = useRef(false);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const clearPress = () => {
@@ -1308,15 +1312,47 @@ function MessagePressable({
     pressStartRef.current = null;
   };
 
+  const clearActivationGuard = () => {
+    if (activationGuardTimerRef.current) {
+      window.clearTimeout(activationGuardTimerRef.current);
+      activationGuardTimerRef.current = null;
+    }
+    suppressNextActivationRef.current = false;
+  };
+
+  const releaseActivationGuardAfterPointerSequence = () => {
+    if (!suppressNextActivationRef.current) {
+      return;
+    }
+
+    if (activationGuardTimerRef.current) {
+      window.clearTimeout(activationGuardTimerRef.current);
+    }
+    activationGuardTimerRef.current = window.setTimeout(
+      clearActivationGuard,
+      imMessageLongPressActivationGuardMs,
+    );
+  };
+
+  useEffect(() => () => {
+    clearPress();
+    clearActivationGuard();
+  }, []);
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearPress();
+    clearActivationGuard();
 
     if (hasActiveImMessageTextSelection(event.currentTarget)) {
       return;
     }
 
     pressStartRef.current = { x: event.clientX, y: event.clientY };
-    timerRef.current = window.setTimeout(onOpenMenu, 380);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      suppressNextActivationRef.current = true;
+      onOpenMenu();
+    }, 380);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1333,18 +1369,36 @@ function MessagePressable({
 
   return (
     <div
+      onClickCapture={(event) => {
+        if (!suppressNextActivationRef.current) {
+          return;
+        }
+
+        clearActivationGuard();
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       onContextMenu={(event) => {
+        event.preventDefault();
         if (hasActiveImMessageTextSelection(event.currentTarget)) {
           return;
         }
-        event.preventDefault();
         onOpenMenu();
       }}
-      onPointerCancel={clearPress}
+      onPointerCancel={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
       onPointerDown={handlePointerDown}
-      onPointerLeave={clearPress}
+      onPointerLeave={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
       onPointerMove={handlePointerMove}
-      onPointerUp={clearPress}
+      onPointerUp={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
     >
       {children}
     </div>
@@ -3406,7 +3460,7 @@ export function ImSearchPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const conversationId = searchParams.get("conversationId") ?? undefined;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q")?.trim() ?? "");
   const deferredQuery = useDeferredValue(query);
   const [result, setResult] = useState<{ contacts: ContactRelation[]; conversations: Conversation[]; messages: ConversationMessage[] }>(emptySearchResult);
   const searching = deferredQuery.trim().length > 0;
@@ -4116,6 +4170,7 @@ export function ImConversationRoomPage({
   const [messageMenuExpanded, setMessageMenuExpanded] = useState(false);
   const [messageReactions, setMessageReactions] = useState<ImMessageReactionState>({});
   const [mediaPreview, setMediaPreview] = useState<ConversationMessage | null>(null);
+  const [mediaPreviewScale, setMediaPreviewScale] = useState(1);
   const [contactCardPickerOpen, setContactCardPickerOpen] = useState(false);
   const [contactCardQuery, setContactCardQuery] = useState("");
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
@@ -4130,7 +4185,6 @@ export function ImConversationRoomPage({
   const [scheduleInviteReminder, setScheduleInviteReminder] = useState(SCHEDULE_INVITE_DEFAULT_REMINDER);
   const [scheduleInviteExtraAttendeeIds, setScheduleInviteExtraAttendeeIds] = useState<string[]>([]);
   const [scheduleInviteAttendeePickerOpen, setScheduleInviteAttendeePickerOpen] = useState(false);
-  const [hiddenMessageIds, setHiddenMessageIds] = useState<string[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
   const [newMessageCount, setNewMessageCount] = useState(0);
@@ -4139,6 +4193,7 @@ export function ImConversationRoomPage({
   const listWasNearBottomRef = useRef(true);
   const listStateRef = useRef({ conversationId: "", messageCount: 0 });
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const reactionPendingKeysRef = useRef(new Set<string>());
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const recordingRef = useRef<VoiceRecordingState>(idleVoiceRecordingState);
   const recordingGestureStartYRef = useRef<number | null>(null);
@@ -4204,6 +4259,38 @@ export function ImConversationRoomPage({
   }, [messages]);
 
   useEffect(() => {
+    if (!mediaPreview) {
+      return;
+    }
+
+    const current = messages.find((message) => message.id === mediaPreview.id);
+    if (!current || current.type === "recalled" || current.serverState === "recalled") {
+      setMediaPreview(null);
+      setMediaPreviewScale(1);
+      return;
+    }
+
+    if (current !== mediaPreview) {
+      setMediaPreview(current);
+    }
+  }, [mediaPreview?.id, messages]);
+
+  useEffect(() => {
+    if (!mediaPreview) {
+      return undefined;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMediaPreview(null);
+        setMediaPreviewScale(1);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mediaPreview]);
+
+  useEffect(() => {
     if (!textareaRef.current) {
       return;
     }
@@ -4262,18 +4349,6 @@ export function ImConversationRoomPage({
   }, [conversationId, messages.length, searchParams, store.currentUserId]);
 
   useEffect(() => {
-    if (!menuState) {
-      return undefined;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      messageRefs.current[menuState.message.id]?.scrollIntoView({ block: "end", behavior: "smooth" });
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [menuState?.message.id, messageMenuExpanded]);
-
-  useEffect(() => {
     if (!recordingNotice || typeof window === "undefined") {
       return;
     }
@@ -4308,15 +4383,15 @@ export function ImConversationRoomPage({
   );
 
   const rows = useMemo(
-    () => buildTimeSeparatedMessages(messages.filter((message) => !hiddenMessageIds.includes(message.id)), store.config?.separatorThresholdMs ?? 300_000),
-    [hiddenMessageIds, messages, store.config?.separatorThresholdMs]
+    () => buildTimeSeparatedMessages(messages, store.config?.separatorThresholdMs ?? 300_000),
+    [messages, store.config?.separatorThresholdMs]
   );
   const pinnedMessages = useMemo(
     () =>
       pinnedMessageIds
         .map((messageId) => messages.find((message) => message.id === messageId))
-        .filter((message): message is ConversationMessage => message !== undefined && !hiddenMessageIds.includes(message.id) && message.type !== "recalled"),
-    [hiddenMessageIds, messages, pinnedMessageIds]
+        .filter((message): message is ConversationMessage => message !== undefined && message.type !== "recalled"),
+    [messages, pinnedMessageIds]
   );
   const nextDisappearingExpiresAt = useMemo(() => {
     const now = Date.now();
@@ -5116,11 +5191,16 @@ export function ImConversationRoomPage({
   };
 
   const handleConversationPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) {
+    const interactiveSelector = "[data-im-composer-root='true'], [data-im-message-action-sheet='true']";
+    const pathContainsInteractiveSurface = event.nativeEvent.composedPath().some((target) => (
+      target instanceof Element && Boolean(target.closest(interactiveSelector))
+    ));
+
+    if (pathContainsInteractiveSurface) {
       return;
     }
 
-    if (event.target.closest("[data-im-composer-root='true'], [data-im-message-action-sheet='true']")) {
+    if (!(event.target instanceof Element)) {
       return;
     }
 
@@ -5157,6 +5237,11 @@ export function ImConversationRoomPage({
   };
 
   const toggleMessageReaction = (message: ConversationMessage, reaction: string, closeAfter = true) => {
+    const pendingKey = `${message.id}:${reaction}`;
+    if (reactionPendingKeysRef.current.has(pendingKey)) {
+      return;
+    }
+    reactionPendingKeysRef.current.add(pendingKey);
     const previousState = messageReactions;
     const currentPeople = messageReactions[message.id]?.[reaction] ?? [];
     const reactedByMe = currentPeople.some((person) => person.id === currentReactionPerson.id);
@@ -5188,7 +5273,7 @@ export function ImConversationRoomPage({
       closeMessageMenu();
     }
 
-    void api
+    void store
       .setMessageReaction(conversationId, message.id, reaction, !reactedByMe)
       .then(({ message: savedMessage }) => {
         setMessageReactions((current) => {
@@ -5201,7 +5286,8 @@ export function ImConversationRoomPage({
           return next;
         });
       })
-      .catch(() => setMessageReactions(previousState));
+      .catch(() => setMessageReactions(previousState))
+      .finally(() => reactionPendingKeysRef.current.delete(pendingKey));
   };
 
   const getMessageReactionSummaries = (messageId: string): ImMessageReactionSummary[] =>
@@ -5224,15 +5310,25 @@ export function ImConversationRoomPage({
       reactedByMe: people.some((person) => person.id === currentReactionPerson.id)
     }));
 
-  const copyMessageContent = (message: ConversationMessage) => {
+  const copyMessageContent = async (message: ConversationMessage) => {
     const root = messageRefs.current[message.id];
     const selection = window.getSelection();
     const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
       ? selection.toString().trim()
       : "";
     const content = selectedContent || message.content || message.ext?.previewText || "媒体消息";
-    navigator.clipboard?.writeText(content).catch(() => undefined);
     closeMessageMenu();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("error.clipboard_unavailable");
+      }
+
+      await navigator.clipboard.writeText(content);
+      setActionNotice("已复制");
+    } catch {
+      setActionNotice("复制失败，请重试");
+    }
   };
 
   const scrollToMessage = (messageId: string) => {
@@ -5275,6 +5371,11 @@ export function ImConversationRoomPage({
         setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
         closeMessageMenu();
 
+        if (mediaPreview?.id === message.id) {
+          setMediaPreview(null);
+          setMediaPreviewScale(1);
+        }
+
         if (!originalContent) {
           return;
         }
@@ -5295,6 +5396,16 @@ export function ImConversationRoomPage({
         );
       })
       .finally(() => setRecallPending(false));
+  };
+
+  const openMediaPreview = (message: ConversationMessage) => {
+    setMediaPreviewScale(1);
+    setMediaPreview(message);
+  };
+
+  const closeMediaPreview = () => {
+    setMediaPreview(null);
+    setMediaPreviewScale(1);
   };
 
   const createMessageActions = (message: ConversationMessage) => {
@@ -5323,22 +5434,10 @@ export function ImConversationRoomPage({
         }
       },
       {
-        key: "translate",
-        label: "翻译",
-        icon: "translate",
-        onClick: closeMessageMenu
-      },
-      {
         key: "copy",
         label: "复制",
         icon: "copy",
-        onClick: () => copyMessageContent(message)
-      },
-      {
-        key: "multi-select",
-        label: "多选",
-        icon: "select",
-        onClick: closeMessageMenu
+        onClick: () => void copyMessageContent(message)
       },
       {
         key: "pin-message",
@@ -5361,9 +5460,16 @@ export function ImConversationRoomPage({
       icon: "delete",
       tone: "danger",
       onClick: () => {
-        setHiddenMessageIds((current) => [...current, message.id]);
-        setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
         closeMessageMenu();
+        setActionNotice(null);
+        void store.deleteMessage(message.conversationId, message.id)
+          .then(() => {
+            setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
+            if (mediaPreview?.id === message.id) {
+              closeMediaPreview();
+            }
+          })
+          .catch(() => setActionNotice("删除失败，请稍后重试"));
       }
     });
 
@@ -5477,7 +5583,7 @@ export function ImConversationRoomPage({
           ) : null}
 
           {pinnedMessages.length > 0 ? (
-            <section className={cn("relative z-10 border-b px-3 py-2", isNight ? "border-white/8 bg-[#1f1f20]/88" : "border-[color:color-mix(in_srgb,var(--client-line)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]")}>
+            <section className={cn("relative z-10 px-3 py-2", isNight ? "bg-[#1f1f20]/88" : "bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]")}>
               <div className="space-y-1.5">
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
@@ -5569,6 +5675,7 @@ export function ImConversationRoomPage({
                 <div
                   className={cn("relative rounded-3xl transition", menuState ? "z-20" : "z-10", flashMessageId === message.id && "bg-[#fff7d4]", menuState?.message.id === message.id && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]")}
                   data-im-message-selected={menuState?.message.id === message.id ? "true" : undefined}
+                  data-im-message-side={isMine ? "right" : "left"}
                   key={message.id}
                   ref={(element) => {
                     messageRefs.current[message.id] = element;
@@ -5598,7 +5705,7 @@ export function ImConversationRoomPage({
                           navigate(config.routes.contactDetail(targetContact.id));
                         }
                       }}
-                      onPreviewMedia={setMediaPreview}
+                      onPreviewMedia={openMediaPreview}
                       quotedMessage={quoted}
                       quotedSenderAvatar={quotedSenderAvatar}
                       quotedSenderName={quotedSenderName}
@@ -5657,6 +5764,7 @@ export function ImConversationRoomPage({
                   <ImMessageSelectionHandles active messageRoot={messageRefs.current[menuState.message.id]} />
                   <ImMessageActionSheet
                     actions={primaryActions}
+                    anchorElement={messageRefs.current[menuState.message.id]}
                     expanded={messageMenuExpanded}
                     isNight={isNight}
                     listActions={listActions}
@@ -6053,19 +6161,108 @@ export function ImConversationRoomPage({
         )}
       </ImBottomSheet>
 
-      <ImBottomSheet onClose={() => setMediaPreview(null)} open={Boolean(mediaPreview)}>
-        {mediaPreview ? (
-          <div className="pb-3">
+      {mediaPreview && typeof document !== "undefined" ? createPortal(
+        <div
+          aria-label="媒体查看器"
+          aria-modal="true"
+          className="fixed inset-0 z-[240] isolate flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-black text-white"
+          data-testid="im-media-viewer"
+          onClick={closeMediaPreview}
+          role="dialog"
+        >
+          <header className="flex min-h-16 items-center justify-between gap-3 px-3 pt-[max(8px,env(safe-area-inset-top))] sm:px-5">
+            <button
+              aria-label="关闭大图"
+              className="grid h-11 w-11 place-items-center rounded-full bg-white/12 text-2xl"
+              onClick={closeMediaPreview}
+              type="button"
+            >
+              ×
+            </button>
+            <p className="min-w-0 flex-1 truncate text-center text-sm font-bold">
+              {mediaPreview.ext?.fileName ?? (mediaPreview.type === "video" ? "视频" : "图片")}
+            </p>
+            <span className="w-11 text-center text-xs font-bold text-white/70">
+              {Math.round(mediaPreviewScale * 100)}%
+            </span>
+          </header>
+
+          <div
+            className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={() => setMediaPreviewScale((scale) => (scale > 1 ? 1 : 2))}
+          >
             {mediaPreview.type === "image" ? (
-              <img alt={mediaPreview.ext?.fileName ?? "图片"} className="w-full rounded-[24px]" src={mediaPreview.ext?.url ?? mediaPreview.content} />
+              <img
+                alt={mediaPreview.ext?.fileName ?? "图片"}
+                className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
+                draggable={false}
+                src={mediaPreview.ext?.url ?? mediaPreview.content}
+                style={{ transform: `scale(${mediaPreviewScale})` }}
+              />
             ) : mediaPreview.type === "video" ? (
-              <div className="overflow-hidden rounded-[24px] bg-black/90">
-                <img alt={mediaPreview.ext?.fileName ?? "视频"} className="w-full opacity-85" src={mediaPreview.ext?.thumbnailUrl ?? mediaPreview.content} />
-              </div>
+              <video
+                className="max-h-full max-w-full object-contain transition-transform duration-150"
+                controls
+                playsInline
+                poster={mediaPreview.ext?.thumbnailUrl}
+                src={mediaPreview.ext?.url ?? mediaPreview.content}
+                style={{ transform: `scale(${mediaPreviewScale})` }}
+              />
             ) : null}
           </div>
-        ) : null}
-      </ImBottomSheet>
+
+          <footer
+            className="grid grid-cols-5 gap-2 border-t border-white/12 bg-black/82 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 sm:px-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              aria-label="缩小"
+              className="min-h-11 rounded-full bg-white/12 text-lg font-black disabled:opacity-35"
+              disabled={mediaPreviewScale <= 1}
+              onClick={() => setMediaPreviewScale((scale) => Math.max(1, Number((scale - 0.25).toFixed(2))))}
+              type="button"
+            >
+              −
+            </button>
+            <button
+              aria-label="恢复适合屏幕"
+              className="min-h-11 rounded-full bg-white/12 text-xs font-black"
+              onClick={() => setMediaPreviewScale(1)}
+              type="button"
+            >
+              适屏
+            </button>
+            <button
+              aria-label="放大"
+              className="min-h-11 rounded-full bg-white/12 text-lg font-black disabled:opacity-35"
+              disabled={mediaPreviewScale >= 4}
+              onClick={() => setMediaPreviewScale((scale) => Math.min(4, Number((scale + 0.25).toFixed(2))))}
+              type="button"
+            >
+              +
+            </button>
+            <a
+              className="grid min-h-11 place-items-center rounded-full bg-white/12 text-xs font-black"
+              download={mediaPreview.ext?.fileName ?? (mediaPreview.type === "video" ? "needo-video" : "needo-image")}
+              href={mediaPreview.ext?.url ?? mediaPreview.content}
+            >
+              下载
+            </a>
+            <button
+              className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-2 text-xs font-black text-[color:var(--client-primary-contrast)]"
+              onClick={() => {
+                closeMediaPreview();
+                navigate(appendQuery(config.routes.newConversation, { mode: "forward", messageId: mediaPreview.id }));
+              }}
+              type="button"
+            >
+              转发
+            </button>
+          </footer>
+        </div>,
+        document.querySelector<HTMLElement>(".client-shell") ?? document.body
+      ) : null}
     </ImStandaloneShell>
   );
 }
@@ -6096,6 +6293,10 @@ export function ImConversationInfoPage() {
   const [conversationTagUiState, setConversationTagUiState] = useState<ImTagListUiState>(() => readImTagListUiState(scope));
   const toastIdRef = useRef(0);
   const [infoToast, setInfoToast] = useState<{ id: number; message: string } | null>(null);
+  const [leavingGroup, setLeavingGroup] = useState(false);
+  const [transferOwnerPickerOpen, setTransferOwnerPickerOpen] = useState(false);
+  const [dissolveConfirmOpen, setDissolveConfirmOpen] = useState(false);
+  const [dissolvingGroup, setDissolvingGroup] = useState(false);
   const infoRoleTagSet = useMemo(() => new Set(scope === "merchant" ? getMerchantOrganizationRoleTagNames() : []), [scope]);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
@@ -6154,7 +6355,7 @@ export function ImConversationInfoPage() {
           return;
         }
 
-        throw error;
+        showInfoToast("聊天信息加载失败，请稍后重试");
       });
     }
   }, [config.routes.messages, conversationId, navigate]);
@@ -6249,21 +6450,68 @@ export function ImConversationInfoPage() {
       return;
     }
 
-    await store.updateConversationPrivacy(
-      conversation.id,
-      privacyModeEnabled
-        ? {
-            privacyModeEnabled: true,
-            hideMemberProfiles: hideMemberProfilesEnabled,
-            disappearingCountdown: privacyCountdown,
-            disappearingStartMode: privacyStartMode
-          }
-        : {
-            privacyModeEnabled: false,
-            hideMemberProfiles: hideMemberProfilesEnabled
-          }
-    );
-    showInfoToast("隐私模式设置已保存");
+    try {
+      await store.updateConversationPrivacy(
+        conversation.id,
+        privacyModeEnabled
+          ? {
+              privacyModeEnabled: true,
+              hideMemberProfiles: hideMemberProfilesEnabled,
+              disappearingCountdown: privacyCountdown,
+              disappearingStartMode: privacyStartMode
+            }
+          : {
+              privacyModeEnabled: false,
+              hideMemberProfiles: hideMemberProfilesEnabled
+            }
+      );
+      showInfoToast("隐私模式设置已保存");
+    } catch {
+      showInfoToast("隐私模式设置失败，请稍后重试");
+    }
+  };
+
+  const leaveGroupConversation = async (transferOwnerUserId?: string) => {
+    if (!conversation || conversation.type !== "group" || !store.currentUserId || leavingGroup) {
+      return;
+    }
+
+    if (isGroupOwner && !transferOwnerUserId) {
+      setTransferOwnerPickerOpen(true);
+      return;
+    }
+
+    setLeavingGroup(true);
+    try {
+      await store.removeConversationMember(
+        conversation.id,
+        store.currentUserId,
+        transferOwnerUserId,
+      );
+      setTransferOwnerPickerOpen(false);
+      navigate(config.routes.messages, { replace: true });
+    } catch {
+      showInfoToast("退出群聊失败，请稍后重试");
+    } finally {
+      setLeavingGroup(false);
+    }
+  };
+
+  const dissolveGroupConversation = async () => {
+    if (!conversation || conversation.type !== "group" || !isGroupOwner || dissolvingGroup) {
+      return;
+    }
+
+    setDissolvingGroup(true);
+    try {
+      await store.dissolveConversation(conversation.id);
+      setDissolveConfirmOpen(false);
+      navigate(config.routes.messages, { replace: true });
+    } catch {
+      showInfoToast("解散群聊失败，请稍后重试");
+    } finally {
+      setDissolvingGroup(false);
+    }
   };
 
   const saveGroupInfoSettings = async () => {
@@ -6344,6 +6592,9 @@ export function ImConversationInfoPage() {
     .filter((member) => member.conversationId === conversation.id)
     .map((member) => ({ member, user: store.usersById[member.userId] }))
     .filter((item): item is { member: typeof item.member; user: ImUser } => Boolean(item.user));
+  const transferOwnerCandidates = members.filter(
+    ({ member }) => member.userId !== store.currentUserId,
+  );
   const groupOwner = members.find(({ member }) => member.role === "owner");
   const groupOwnerAnonymousIdentity = groupOwner ? anonymousMemberIdentityByUserId.get(groupOwner.member.userId) : undefined;
   const groupOwnerDisplayName = groupOwner ? groupOwnerAnonymousIdentity?.displayName ?? groupOwner.member.nicknameInGroup ?? groupOwner.user.nickname : "";
@@ -6719,9 +6970,25 @@ export function ImConversationInfoPage() {
           <Link className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-[15px] text-[color:var(--client-text)]" to={appendQuery(config.routes.search, { conversationId: conversation.id })}>查找聊天内容</Link>
           <button className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[color:var(--client-text)]" onClick={() => void store.clearConversation(conversation.id)} type="button">清空聊天记录</button>
           {conversation.type === "group" ? (
-            <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f]" onClick={() => void store.removeConversationMember(conversation.id, store.currentUserId ?? "")} type="button">
-              退出群聊
-            </button>
+            <>
+              {isGroupOwner ? (
+                <>
+                  <button className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup || dissolvingGroup} onClick={() => setTransferOwnerPickerOpen(true)} type="button">
+                    {leavingGroup ? "正在退出…" : "转让群主并退出"}
+                  </button>
+                  <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup || dissolvingGroup} onClick={() => setDissolveConfirmOpen(true)} type="button">
+                    {dissolvingGroup ? "正在解散…" : "解散群聊"}
+                  </button>
+                </>
+              ) : (
+                <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup} onClick={() => void leaveGroupConversation()} type="button">
+                  {leavingGroup ? "正在退出…" : "退出群聊"}
+                </button>
+              )}
+              <p className="border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">
+                群成员不足 2 人时将自动解散；退出后，该群和聊天内容会从你的聊天列表中删除。
+              </p>
+            </>
           ) : (
             <>
               {contact && config.messageActionConfig.detailToggles.includes("blacklist") ? (
@@ -6755,6 +7022,47 @@ export function ImConversationInfoPage() {
           </Link>
         </div>
       ) : null}
+      <ImBottomSheet
+        onClose={() => setTransferOwnerPickerOpen(false)}
+        open={transferOwnerPickerOpen}
+        title="选择新群主"
+      >
+        <div className="space-y-2 pb-2">
+          {transferOwnerCandidates.map(({ member, user }) => {
+            const anonymousIdentity = anonymousMemberIdentityByUserId.get(member.userId);
+            const displayName = anonymousIdentity?.displayName ?? member.nicknameInGroup ?? user.nickname;
+            const avatar = anonymousIdentity
+              ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code)
+              : user.avatar;
+
+            return (
+              <button
+                className="focus-ring flex min-h-14 w-full items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] px-3 py-2 text-left disabled:opacity-50"
+                disabled={leavingGroup}
+                key={member.id}
+                onClick={() => void leaveGroupConversation(member.userId)}
+                type="button"
+              >
+                <InteractiveAvatar alt={displayName} className="h-10 w-10" src={avatar} />
+                <span className="min-w-0 flex-1 truncate text-sm font-black text-[color:var(--client-text)]">{displayName}</span>
+                <span className="text-xs font-black text-[color:var(--client-primary)]">转让并退出</span>
+              </button>
+            );
+          })}
+        </div>
+      </ImBottomSheet>
+      <ClientActionDialog
+        actions={(
+          <div className="grid grid-cols-2 gap-3">
+            <button className="min-h-11 rounded-full border border-[color:var(--client-line)] text-sm font-black" disabled={dissolvingGroup} onClick={() => setDissolveConfirmOpen(false)} type="button">取消</button>
+            <button className="min-h-11 rounded-full bg-[#ef4f3f] text-sm font-black text-white disabled:opacity-50" disabled={dissolvingGroup} onClick={() => void dissolveGroupConversation()} type="button">{dissolvingGroup ? "正在解散…" : "确认解散"}</button>
+          </div>
+        )}
+        description="解散后，所有成员的聊天列表都会删除该群及其聊天内容，此操作不可恢复。"
+        onClose={() => setDissolveConfirmOpen(false)}
+        open={dissolveConfirmOpen}
+        title="解散群聊"
+      />
       <ImBottomSheet onClose={() => setTagPickerOpen(false)} open={tagPickerOpen} title="添加标签">
         <div className="space-y-4 pb-2">
           {availableInfoTags.length > 0 ? (

@@ -62,6 +62,8 @@ import { getLegalTermsDocument, getLegalTermsUiCopy } from "./legalTermsContent"
 import { TestOnlyBackendPortalEntries } from "./TestOnlyBackendPortalEntries";
 import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
 import { AuthVerificationPanel, type AuthVerificationLabels } from "../../pages/auth/AuthVerificationPanel";
+import { customerProfileApi } from "../core-read/customerProfileApi";
+import { useCustomerSelfProfile } from "../core-read/useCustomerSelfProfile";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -567,7 +569,11 @@ function getThemePreviewClasses(themeId: ClientThemeDefinition["id"]) {
   }
 }
 
-function summarizeUserProfileStatus(customer: Customer, technician?: Technician) {
+export function summarizeUserProfileStatus(customer?: Customer, technician?: Technician) {
+  if (!customer) {
+    return "未完善";
+  }
+
   let completedCount = 0;
 
   if ((customer.nickname?.trim() || customer.name.trim()).length > 0) {
@@ -601,7 +607,11 @@ function summarizeUserProfileStatus(customer: Customer, technician?: Technician)
   return "未完善";
 }
 
-function summarizeTechnicianProfileStatus(technician: Technician) {
+export function summarizeTechnicianProfileStatus(technician?: Technician) {
+  if (!technician) {
+    return "未完善";
+  }
+
   let completedCount = 0;
 
   if ((technician.nickname?.trim() || technician.name.trim()).length > 0) {
@@ -639,7 +649,11 @@ function summarizeTechnicianProfileStatus(technician: Technician) {
   return "未完善";
 }
 
-function summarizeStoreProfileStatus(store: Store) {
+export function summarizeStoreProfileStatus(store?: Store) {
+  if (!store) {
+    return "未完善";
+  }
+
   let completedCount = 0;
 
   if (store.name.trim()) {
@@ -677,16 +691,16 @@ function summarizeStoreProfileStatus(store: Store) {
   return "未完善";
 }
 
-function summarizeProfileStatus(
+export function summarizeProfileStatus(
   portal: UnifiedSettingsPortal,
   {
     customer,
     technician,
     store
   }: {
-    customer: Customer;
-    technician: Technician;
-    store: Store;
+    customer?: Customer;
+    technician?: Technician;
+    store?: Store;
   }
 ) {
   if (portal === "business") {
@@ -716,16 +730,16 @@ function summarizeServiceRange(areas: string[]) {
   return `${areas.slice(0, 2).join(" / ")} +${areas.length - 2}`;
 }
 
-function summarizeAccountStatus(portal: UnifiedSettingsPortal, customer: Customer, store: Store) {
+export function summarizeAccountStatus(portal: UnifiedSettingsPortal, customer?: Customer, store?: Store) {
   if (portal === "business") {
     return "Afirieito 账号";
   }
 
   if (portal === "merchant") {
-    return store.accountUsername ? "主体已绑定" : "待完善";
+    return store?.accountUsername ? "主体已绑定" : "待完善";
   }
 
-  return customer.phone ? "已绑定手机" : "需要完善";
+  return customer?.phone ? "已绑定手机" : "需要完善";
 }
 
 type AccountSecurityVerificationKind = "google-link" | "password-setup" | "google-unlink";
@@ -1677,7 +1691,12 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
   const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
-  const selectedHomeLocation = homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ?? homeLocationConfig.locations[0];
+  const selectedHomeLocation =
+    homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ??
+    homeLocationConfig.locations[0] ??
+    createManualHomeLocation("新宿");
+  const technicianServiceAreas = technician?.serviceAreas ?? [];
+  const storeArea = store?.area?.trim() ?? "";
   const t = (source: string) => translateText(source, language);
   const currentThemeLabel = t(clientThemes.find((item) => item.id === theme)?.label ?? "活力黑白版");
   const currentLanguageLabel = languages.find((item) => item.code === language)?.label ?? "简中";
@@ -1779,7 +1798,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             <SettingsListItem
               title={t("服务范围")}
               to={getSettingsPath(portal, "service-range")}
-              value={t(portal === "technician" ? summarizeServiceRange(technician.serviceAreas) : portal === "merchant" ? store.area : getHomeLocationAreaLabel(selectedHomeLocation))}
+              value={t(portal === "technician" ? summarizeServiceRange(technicianServiceAreas) : portal === "merchant" ? storeArea || "未设置" : getHomeLocationAreaLabel(selectedHomeLocation))}
             />
           </SettingsSection>
         )}
@@ -2042,6 +2061,39 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
   );
 }
 
+function SettingsProfileResourceState({
+  loading,
+  onRetry,
+  portal,
+  title = "资料编辑"
+}: {
+  loading: boolean;
+  onRetry?: () => void;
+  portal: UnifiedSettingsPortal;
+  title?: string;
+}) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} title={t(title)}>
+        <SurfacePanel className="space-y-4 text-center">
+          <p className="text-lg font-black text-[color:var(--client-text)]">{t(loading ? "正在读取客户正式详情..." : "资料不可用")}</p>
+          {loading ? null : (
+            <p className="text-sm leading-6 text-[color:var(--client-muted)]">{t("数据加载失败，请检查网络后重试")}</p>
+          )}
+          {!loading && onRetry ? (
+            <PrimaryButton className="mx-auto" onClick={onRetry}>
+              {t("重试")}
+            </PrimaryButton>
+          ) : null}
+        </SurfacePanel>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
 function UserProfileSettingsPage({
   portal,
   customer,
@@ -2052,7 +2104,12 @@ function UserProfileSettingsPage({
   technician?: Technician;
 }) {
   const navigate = useNavigate();
+  const { language } = useI18n();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const saveInFlightRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const t = (source: string) => translateText(source, language);
   const initialDraft = useMemo(
     () => ({
       avatar: customer.avatar,
@@ -2103,7 +2160,11 @@ function UserProfileSettingsPage({
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saveInFlightRef.current) {
+      return;
+    }
+
     const nextProfile = {
       avatar: draft.avatar.trim() || customer.avatar,
       nickname: draft.nickname.trim() || customer.name,
@@ -2113,27 +2174,41 @@ function UserProfileSettingsPage({
       bio: draft.bio.trim()
     };
 
-    updateCustomerEntity(customer.id, {
-      avatar: nextProfile.avatar,
-      nickname: nextProfile.nickname,
-      age: nextProfile.age,
-      height: nextProfile.height,
-      languages: [...nextProfile.languages],
-      bio: nextProfile.bio
-    });
+    const ageText = nextProfile.age.trim();
+    const heightText = nextProfile.height.replace(/cm$/i, "").trim();
+    const age = ageText ? Number(ageText) : null;
+    const heightCm = heightText ? Number(heightText) : null;
 
-    if (technician) {
-      updateTechnicianEntity(technician.id, {
-        avatar: nextProfile.avatar,
-        nickname: nextProfile.nickname,
-        age: nextProfile.age,
-        height: nextProfile.height,
-        languages: [...nextProfile.languages],
-        bio: nextProfile.bio
-      });
+    if (
+      (ageText && !/^\d+$/.test(ageText)) ||
+      (heightText && !/^\d+(?:\.\d+)?$/.test(heightText)) ||
+      (age !== null && (!Number.isInteger(age) || age < 0 || age > 150)) ||
+      (heightCm !== null && (!Number.isFinite(heightCm) || heightCm < 30 || heightCm > 250))
+    ) {
+      setSaveError(t("资料格式不正确，请检查后重试"));
+      return;
     }
 
-    navigate(getPortalMePath(portal), { replace: true });
+    saveInFlightRef.current = true;
+    setSaving(true);
+    setSaveError("");
+
+    try {
+      await customerProfileApi.updateMine({
+        displayName: nextProfile.nickname,
+        avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
+        age,
+        heightCm,
+        languages: nextProfile.languages,
+        bio: nextProfile.bio || null
+      });
+      navigate(getPortalMePath(portal), { replace: true });
+    } catch {
+      setSaveError(t("资料保存失败，请保留当前内容后重试"));
+    } finally {
+      saveInFlightRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (
@@ -2271,10 +2346,11 @@ function UserProfileSettingsPage({
 
         <StickyBottomBar>
           <div className="flex justify-center">
-            <PrimaryButton className="h-12 w-full max-w-[360px]" onClick={handleSave}>
-              保存并退出
+            <PrimaryButton className="h-12 w-full max-w-[360px]" onClick={() => void handleSave()}>
+              {saving ? t("保存中") : t("保存并退出")}
             </PrimaryButton>
           </div>
+          {saveError ? <p className="mt-2 text-center text-xs font-bold text-[color:var(--client-danger)]">{saveError}</p> : null}
         </StickyBottomBar>
       </div>
     </MobileShell>
@@ -3037,15 +3113,39 @@ function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSetting
   );
 }
 
+function FormalUserProfileSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { customer, error, loading, reload } = useCustomerSelfProfile();
+
+  if (loading) {
+    return <SettingsProfileResourceState loading portal={portal} />;
+  }
+
+  if (!customer || error) {
+    return <SettingsProfileResourceState loading={false} onRetry={reload} portal={portal} />;
+  }
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <UserProfileSettingsPage customer={customer} portal={portal} />
+    </PortalScopedSettingsPage>
+  );
+}
+
 export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettingsPortal }) {
   const { session } = useAuth();
-  const { customers, technicians, stores } = useEntityStore();
-  const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const { technicians, stores } = useEntityStore();
   const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
-  const linkedTechnician = technicians.find((item) => item.id === session?.linkedTechnicianId);
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
 
+  if (portal === "user") {
+    return <FormalUserProfileSettingsPage portal={portal} />;
+  }
+
   if (portal === "merchant") {
+    if (!store) {
+      return <SettingsProfileResourceState loading={false} portal={portal} />;
+    }
+
     return (
       <PortalScopedSettingsPage portal={portal}>
         <MerchantProfileSettingsPage portal={portal} store={store} />
@@ -3054,6 +3154,10 @@ export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettings
   }
 
   if (portal === "technician") {
+    if (!technician) {
+      return <SettingsProfileResourceState loading={false} portal={portal} />;
+    }
+
     return (
       <PortalScopedSettingsPage portal={portal}>
         <TechnicianProfileSettingsPage portal={portal} technician={technician} />
@@ -3061,11 +3165,7 @@ export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettings
     );
   }
 
-  return (
-    <PortalScopedSettingsPage portal={portal}>
-      <UserProfileSettingsPage customer={customer} portal={portal} technician={linkedTechnician} />
-    </PortalScopedSettingsPage>
-  );
+  return <SettingsProfileResourceState loading={false} portal={portal} />;
 }
 
 export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSettingsPortal }) {
@@ -3118,24 +3218,26 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
   const fallbackHomeLocation = homeLocationConfig.locations[0] ?? createManualHomeLocation("新宿");
   const selectedHomeLocation = homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ?? fallbackHomeLocation;
   const selectedHomeArea = getHomeLocationAreaLabel(selectedHomeLocation);
-  const technicianAreaKey = technician.serviceAreas.join("|");
+  const technicianAreas = technician?.serviceAreas ?? [];
+  const storeArea = store?.area?.trim() ?? "";
+  const technicianAreaKey = technicianAreas.join("|");
   const initialAreas = useMemo(() => {
     if (portal === "user") {
       return [selectedHomeArea];
     }
 
     if (portal === "merchant") {
-      return [store.area];
+      return storeArea ? [storeArea] : [];
     }
 
-    return technician.serviceAreas;
-  }, [portal, selectedHomeArea, store.area, technicianAreaKey]);
+    return technicianAreas;
+  }, [portal, selectedHomeArea, storeArea, technicianAreaKey]);
   const [areas, setAreas] = useState<string[]>(initialAreas);
   const [serviceRangeSearchQuery, setServiceRangeSearchQuery] = useState("");
   const t = (source: string) => translateText(source, language);
   const serviceRangeAreaOptions = useMemo(
-    () => buildServiceAreaOptions(initialAreas, portal === "merchant" ? store.area : undefined, portal === "technician" ? technician.serviceAreas : undefined),
-    [initialAreas, portal, store.area, technicianAreaKey]
+    () => buildServiceAreaOptions(initialAreas, portal === "merchant" ? storeArea : undefined, portal === "technician" ? technicianAreas : undefined),
+    [initialAreas, portal, storeArea, technicianAreaKey]
   );
   const filteredServiceAreas = useMemo(() => {
     const query = serviceRangeSearchQuery.trim().toLocaleLowerCase();
@@ -3180,6 +3282,10 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
     }
 
     if (portal === "merchant") {
+      if (!store) {
+        return;
+      }
+
       const selectedArea = areas[0] ?? store.area;
 
       updateStoreEntity(store.id, { area: selectedArea });
@@ -3187,9 +3293,17 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
       return;
     }
 
+    if (!technician) {
+      return;
+    }
+
     updateTechnicianEntity(technician.id, { serviceAreas: areas });
     closeServiceRangePage();
   };
+
+  if ((portal === "merchant" && !store) || (portal === "technician" && !technician)) {
+    return <SettingsProfileResourceState loading={false} portal={portal} title="服务范围" />;
+  }
 
   return (
     <PortalScopedSettingsPage portal={portal}>
@@ -3287,7 +3401,7 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
             </>
           ) : (
             <>
-              <SettingsListItem subtitle={customer.phone || "未设置手机号"} title={portal === "merchant" ? "管理员手机" : "手机绑定"} value={customer.phone ? "已绑定" : "未设置"} />
+              <SettingsListItem subtitle={customer?.phone || "未设置手机号"} title={portal === "merchant" ? "管理员手机" : "手机绑定"} value={customer?.phone ? "已绑定" : "未设置"} />
               {portal === "merchant" ? (
                 <>
                   <SettingsListItem subtitle="店铺主体、资质与结算信息已绑定到当前门店账号" title="绑定信息" value="主体已绑定" />

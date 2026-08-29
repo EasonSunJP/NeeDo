@@ -57,11 +57,44 @@ describe("backofficeRealDataApi master data writes", () => {
     await backofficeRealDataApi.technician("merchant-admin", 31);
     await backofficeRealDataApi.customer("backoffice", 41);
     await backofficeRealDataApi.customer("merchant-admin", 41);
+    await backofficeRealDataApi.customerTimeline("backoffice", 41, 2, 30);
+    await backofficeRealDataApi.customerTimeline("merchant-admin", 41, 3, 50);
+    await backofficeRealDataApi.assignCustomerMembership(41, {
+      membershipLevel: "gold",
+      grantMode: "operator_complimentary",
+      durationUnit: "month",
+      durationValue: 3,
+      startsAt: "2026-08-29T00:00:00.000Z"
+    });
 
     expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/technicians/31");
     expect(httpClient.request).toHaveBeenNthCalledWith(2, "/merchant-admin/technicians/31");
     expect(httpClient.request).toHaveBeenNthCalledWith(3, "/backoffice/customers/41");
     expect(httpClient.request).toHaveBeenNthCalledWith(4, "/merchant-admin/customers/41");
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      5,
+      "/backoffice/customers/41/timeline",
+      { query: { page: 2, pageSize: 30 } },
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      6,
+      "/merchant-admin/customers/41/timeline",
+      { query: { page: 3, pageSize: 50 } },
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      7,
+      "/backoffice/customers/41/membership",
+      {
+        body: {
+          membershipLevel: "gold",
+          grantMode: "operator_complimentary",
+          durationUnit: "month",
+          durationValue: 3,
+          startsAt: "2026-08-29T00:00:00.000Z"
+        },
+        method: "PUT"
+      }
+    );
   });
 
   it("loads and exports the operations technician ranking with the complete formal query", async () => {
@@ -235,12 +268,14 @@ describe("backofficeRealDataApi master data writes", () => {
       status: "confirmed",
       paymentStatus,
       customerUserId: 1,
+      customerProfileId: 1,
       customerName: "Customer",
       serviceId: 1,
       serviceName: "Service",
       shopId: 1,
       shopName: "Shop",
       technicianProfileId: null,
+      technicianNeedoId: null,
       technicianName: null,
       fulfillmentMode: "store",
       priceAmount: 9800,

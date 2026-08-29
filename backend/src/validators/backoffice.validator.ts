@@ -17,6 +17,13 @@ export const backofficeListQuerySchema = z.object({
   categoryId: z.coerce.number().int().positive().optional()
 });
 
+export const backofficeTimelineQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(10),
+  })
+  .strict();
+
 const calendarDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -140,9 +147,31 @@ export const backofficeCustomerUpdateBodySchema = z.object({
   displayName: z.string().trim().min(1).max(120).optional(),
   bio: z.string().trim().max(5000).nullable().optional(),
   city: z.string().trim().max(100).nullable().optional(),
-  membershipLevel: z.string().trim().min(1).max(50).optional(),
   isPublic: z.boolean().optional()
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+
+export const backofficeCustomerMembershipGrantBodySchema = z.object({
+  membershipLevel: z.string().trim().min(1).max(50),
+  grantMode: z.literal("operator_complimentary"),
+  durationUnit: z.enum(["forever", "day", "month"]),
+  durationValue: z.number().int().positive().max(1200).nullable(),
+  startsAt: z.string().datetime({ offset: true })
+}).strict().superRefine((value, context) => {
+  if (value.durationUnit === "forever" && value.durationValue !== null) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Forever membership must not define a duration value",
+      path: ["durationValue"]
+    });
+  }
+  if (value.durationUnit !== "forever" && value.durationValue === null) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Timed membership requires a duration value",
+      path: ["durationValue"]
+    });
+  }
+});
 
 const serviceFields = {
   categoryId: z.number().int().positive(),
@@ -174,6 +203,7 @@ export const backofficeServiceUpdateBodySchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
+export type BackofficeTimelineQuery = z.infer<typeof backofficeTimelineQuerySchema>;
 export type TechnicianRankingPeriod = z.infer<typeof technicianRankingPeriodSchema>;
 export type TechnicianRankingSort = z.infer<typeof technicianRankingSortSchema>;
 export type BackofficeTechnicianRankingQuery = z.infer<typeof technicianRankingQuerySchema>;
@@ -184,5 +214,6 @@ export type MerchantShopUpdateBody = z.infer<typeof merchantShopUpdateBodySchema
 export type BackofficeTechnicianUpdateBody = z.infer<typeof backofficeTechnicianUpdateBodySchema>;
 export type BackofficeTechnicianApproveBody = z.infer<typeof backofficeTechnicianApproveBodySchema>;
 export type BackofficeCustomerUpdateBody = z.infer<typeof backofficeCustomerUpdateBodySchema>;
+export type BackofficeCustomerMembershipGrantBody = z.infer<typeof backofficeCustomerMembershipGrantBodySchema>;
 export type BackofficeServiceCreateBody = z.infer<typeof backofficeServiceCreateBodySchema>;
 export type BackofficeServiceUpdateBody = z.infer<typeof backofficeServiceUpdateBodySchema>;

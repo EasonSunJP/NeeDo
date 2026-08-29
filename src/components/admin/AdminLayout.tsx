@@ -8,6 +8,8 @@ import { AdminThemeMenu } from "./AdminThemeMenu";
 import { CloseIconButton } from "../ui/CloseIconButton";
 import { LanguageSwitcher } from "../ui/LanguageSwitcher";
 import { NotificationBadge } from "../ui/NotificationBadge";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { contentPublicationEditorText } from "../../features/content-publication/i18n";
 
 const themeStorageKey = "needo.admin.theme";
 const themePreferenceModeStorageKey = "needo.admin.theme.mode";
@@ -50,7 +52,7 @@ const navSections: AdminNavSection[] = [
       { label: "分析中心", to: "/admin/analytics", icon: "◔" },
       { label: "数据中心", to: "/admin/data", icon: "▥" },
       { label: "动态管理", to: "/admin/data?module=moments", icon: "◎" },
-      { label: "轮播图", to: "/admin/carousel", icon: "播", children: ["3 张轮播", "日期区间", "时间区间"] },
+      { label: "用户端首页轮播图", to: "/admin/carousel", icon: "播", permission: "page:backoffice-user-home-carousel", children: ["五语言", "草稿与发布", "版本回滚"] },
       { label: "官方通知", to: "/admin/notifications", icon: "通", children: ["通知列表", "定时发送", "图文视频"] }
     ]
   },
@@ -102,7 +104,8 @@ const navSections: AdminNavSection[] = [
     title: "联盟营销",
     badge: "TEST",
     items: [
-      { label: "联盟营销任务", to: "/admin/afirieito", icon: "联", permission: "menu:backoffice-affiliate", children: ["任务审核", "预算状态", "范围快照"] }
+      { label: "联盟营销任务", to: "/admin/afirieito", icon: "联", permission: "menu:backoffice-affiliate", children: ["任务审核", "预算状态", "范围快照"] },
+      { label: "联盟营销公告轮播", to: "/admin/afirieito/announcements/carousel", icon: "告", permission: "page:backoffice-affiliate-notice-carousel", children: ["正式公告", "五语言", "发布与回滚"] }
     ]
   },
   {
@@ -110,9 +113,9 @@ const navSections: AdminNavSection[] = [
     title: "用户管理",
     items: [
       { label: "账号管理", to: "/admin/users", icon: "账", permission: "menu:user-management", children: ["真实账号", "状态", "角色分配"] },
-      { label: "客户资料", to: "/admin/users?view=customers", icon: "客", permission: "menu:user-management", children: ["客户档案", "会员等级", "公开状态"] },
-      { label: "客户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["客户档案", "会员等级", "公开状态"] },
-      { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式客户", "预约次数", "创建时间"] }
+      { label: "用户资料", to: "/admin/users?view=customers", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
+      { label: "用户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
+      { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式用户", "预约次数", "创建时间"] }
     ]
   },
   {
@@ -255,15 +258,26 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { canAccessMenu } = useAuth();
+  const { language } = useOptionalI18n();
   const visibleNavSections = useMemo(
     () =>
       navSections
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => !item.permission || canAccessMenu(item.permission))
+          items: section.items
+            .filter((item) => !item.permission || canAccessMenu(item.permission))
+            .map((item) => ({
+              ...item,
+              label:
+                item.to === "/admin/carousel"
+                  ? contentPublicationEditorText("userHomeMenu", language)
+                  : item.to === "/admin/afirieito/announcements/carousel"
+                    ? contentPublicationEditorText("affiliateNoticeMenu", language)
+                    : item.label
+            }))
         }))
         .filter((section) => section.items.length > 0),
-    [canAccessMenu]
+    [canAccessMenu, language]
   );
   const routeSectionKey = getSectionForRoute(location.pathname, location.search);
   const [activeSectionKey, setActiveSectionKey] = useState(routeSectionKey);
@@ -335,7 +349,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">全局搜索</p>
             <label className="admin-search flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm">
               <span className="text-ink/45">⌕</span>
-              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、客户、门店、技师" />
+              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、门店、技师" />
             </label>
           </section>
 
@@ -373,13 +387,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </nav>
 
-          <div className="admin-sidebar-note rounded-lg border border-line bg-paper p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold">东京城市组</p>
-              <span className="rounded-md bg-moss px-2 py-1 text-[11px] font-black text-white">实时</span>
-            </div>
-            <p className="mt-1 text-xs leading-5 text-ink/55">19 个待审核商家，36 个工单需要运营介入。</p>
-          </div>
         </div>
       </aside>
       {mobileNavOpen ? (

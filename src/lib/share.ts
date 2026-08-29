@@ -93,12 +93,22 @@ export function isNonFatalBrowserRuntimeError(error: Error) {
   const text = `${error.name} ${error.message} ${error.stack ?? ""}`.toLowerCase();
   const message = error.message.trim().toLowerCase();
   const stack = (error.stack ?? "").toLowerCase();
+  const expectedExpiredSessionErrors = new Set([
+    "error.auth.token_invalid",
+    "error.auth.token_expired",
+    "error.auth.token_blacklisted",
+    "error.auth.refresh_missing"
+  ]);
 
   if (isShareAbortError(error)) {
     return true;
   }
 
   if (isOpaqueBrowserScriptError(error)) {
+    return true;
+  }
+
+  if (expectedExpiredSessionErrors.has(message)) {
     return true;
   }
 

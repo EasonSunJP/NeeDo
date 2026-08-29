@@ -15,7 +15,10 @@ import {
   merchantEmployeeAffiliationBodySchema,
   merchantEmployeeListQuerySchema,
   merchantEmployeeParamSchema,
-  merchantEmployeeProfileBodySchema
+  merchantEmployeeProfileBodySchema,
+  merchantEmployeeScheduleQuerySchema,
+  merchantEmployeeTimelineCommentBodySchema,
+  merchantEmployeeTimelineQuerySchema
 } from "../validators/technician-shop-affiliation.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -58,6 +61,36 @@ export const createTechnicianShopAffiliationRoutes = (
     createAuthorizeMiddleware(EMPLOYEE_AFFILIATION_PERMISSIONS.read),
     validateRequest({ params: merchantEmployeeParamSchema }),
     controller.detail
+  );
+  router.get(
+    "/merchant-admin/employees/:needoId/schedule",
+    authenticate(),
+    createAuthorizeMiddleware(EMPLOYEE_AFFILIATION_PERMISSIONS.read),
+    validateRequest({
+      params: merchantEmployeeParamSchema,
+      query: merchantEmployeeScheduleQuerySchema
+    }),
+    controller.schedule
+  );
+  router.get(
+    "/merchant-admin/employees/:needoId/timeline",
+    authenticate(),
+    createAuthorizeMiddleware(EMPLOYEE_AFFILIATION_PERMISSIONS.read),
+    validateRequest({
+      params: merchantEmployeeParamSchema,
+      query: merchantEmployeeTimelineQuerySchema
+    }),
+    controller.timeline
+  );
+  router.post(
+    "/merchant-admin/employees/:needoId/timeline/comments",
+    authenticate(),
+    createAuthorizeMiddleware(EMPLOYEE_AFFILIATION_PERMISSIONS.write),
+    validateRequest({
+      params: merchantEmployeeParamSchema,
+      body: merchantEmployeeTimelineCommentBodySchema
+    }),
+    controller.addTimelineComment
   );
   router.put(
     "/merchant-admin/employees/:needoId/affiliation",

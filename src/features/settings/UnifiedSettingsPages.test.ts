@@ -2,7 +2,14 @@
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FormalAccountSecurityPanel, getPortalEntry, resolveSettingsSelectedPortal, shouldKeepSettingsRoutePortal } from "./UnifiedSettingsPages";
+import {
+  FormalAccountSecurityPanel,
+  getPortalEntry,
+  resolveSettingsSelectedPortal,
+  shouldKeepSettingsRoutePortal,
+  summarizeAccountStatus,
+  summarizeProfileStatus
+} from "./UnifiedSettingsPages";
 import { translateText, type Language } from "../../i18n/translations";
 import backendPortalSource from "./TestOnlyBackendPortalEntries.tsx?raw";
 import source from "./UnifiedSettingsPages.tsx?raw";
@@ -474,6 +481,39 @@ describe("UnifiedSettingsPage Xiaobai asset gate", () => {
     expect(settingsHomeSource).toContain("<SettingsPetAssetProgress");
     expect(settingsHomeSource).not.toContain("disabled={!petAssetReadiness.ready}");
   });
+
+  it("renders honest empty summaries when retired entity cache has no records", () => {
+    expect(
+      summarizeProfileStatus("user", {
+        customer: undefined,
+        technician: undefined,
+        store: undefined
+      })
+    ).toBe("未完善");
+    expect(
+      summarizeProfileStatus("technician", {
+        customer: undefined,
+        technician: undefined,
+        store: undefined
+      })
+    ).toBe("未完善");
+    expect(
+      summarizeProfileStatus("merchant", {
+        customer: undefined,
+        technician: undefined,
+        store: undefined
+      })
+    ).toBe("未完善");
+    expect(summarizeAccountStatus("user", undefined, undefined)).toBe("需要完善");
+    expect(summarizeAccountStatus("merchant", undefined, undefined)).toBe("待完善");
+  });
+
+  it("never dereferences retired entity rows on the settings home", () => {
+    expect(settingsHomeSource).toContain("technician?.serviceAreas ?? []");
+    expect(settingsHomeSource).toContain('store?.area?.trim() ?? ""');
+    expect(settingsHomeSource).not.toContain("technician.serviceAreas");
+    expect(settingsHomeSource).not.toContain("store.area : getHomeLocationAreaLabel");
+  });
 });
 
 describe("UnifiedSettingsThemePage", () => {
@@ -503,5 +543,28 @@ describe("UnifiedSettingsProfilePage", () => {
 
   it("opens the technician profile edit page without the main bottom navigation", () => {
     expect(technicianProfileSource).toContain("navItems={[]}");
+  });
+
+  it("loads and saves the user profile through the formal customer profile API", () => {
+    const profileRouteSource = source.slice(
+      source.indexOf("function FormalUserProfileSettingsPage"),
+      source.indexOf("export function UnifiedSettingsVerificationPage")
+    );
+
+    expect(profileRouteSource).toContain("useCustomerSelfProfile()");
+    expect(userProfileSource).toContain("customerProfileApi.updateMine");
+    expect(userProfileSource).not.toContain("updateCustomerEntity(customer.id");
+    expect(profileRouteSource).toContain("SettingsProfileResourceState");
+  });
+
+  it("guards technician and merchant profile routes when formal entities are absent", () => {
+    const profileRouteSource = source.slice(
+      source.indexOf("export function UnifiedSettingsProfilePage"),
+      source.indexOf("export function UnifiedSettingsVerificationPage")
+    );
+
+    expect(profileRouteSource).toContain('if (!store)');
+    expect(profileRouteSource).toContain('if (!technician)');
+    expect(profileRouteSource).toContain("SettingsProfileResourceState");
   });
 });

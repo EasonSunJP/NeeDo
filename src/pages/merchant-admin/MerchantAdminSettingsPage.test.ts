@@ -10,6 +10,9 @@ describe("MerchantAdminSettingsPage formal shop profile", () => {
     expect(source).not.toContain("useEntityStore");
     expect(source).not.toContain("updateStoreEntity");
     expect(source).not.toContain("merchantAdminDemo");
+    expect(source).toContain("payrollSchedulePolicyApi.getShop(");
+    expect(source).toContain("payrollSchedulePolicyApi.updateShop(");
+    expect(source).not.toContain("shopId:");
   });
 
   it("does not pretend unsupported media or presentation changes are persisted", () => {
@@ -19,7 +22,8 @@ describe("MerchantAdminSettingsPage formal shop profile", () => {
     expect(source).not.toContain("已同步前台");
     expect(source).toContain("图片与轮播尚未启用");
     expect(source).toContain("营业时段尚未启用");
-    expect(source).toContain("证照与展示装修尚未启用");
+    expect(source).toContain("证照管理尚未启用");
+    expect(source).not.toContain("展示装修");
     expect(source).toContain("地图、导航与 eKYC 尚未启用");
   });
 
@@ -35,5 +39,13 @@ describe("MerchantAdminSettingsPage formal shop profile", () => {
     expect(source).toContain("loadCoreReadWithTransientRetry(");
     expect(source).toContain("describeMerchantReadError(loadError, language)");
     expect(source).not.toContain("loadError instanceof Error ? loadError.message");
+  });
+
+  it("exposes a real shop payroll cycle editor without implying automatic transfer", () => {
+    expect(source).toContain("工资结算周期");
+    expect(source).toContain("PayrollSchedulePolicyEditor");
+    expect(source).toContain("计划支付日");
+    expect(source).toContain("财务人员仍需在财务结算页手动登记实际支付结果");
+    expect(source).not.toContain("自动转账");
   });
 });

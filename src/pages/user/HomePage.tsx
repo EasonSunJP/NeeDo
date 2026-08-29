@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
-import { FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import {
   FloatingHomeHeader,
@@ -26,12 +25,12 @@ import {
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
+import { PublishedCarousel } from "../../features/content-publication/PublishedCarousel";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
-import { getResolvedCarouselSlides, resolveCarouselTargetPath, useCarouselStore } from "../../state/homeCarouselStore";
 import { useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
 import { useUserOrders } from "../../state/userOrderStore";
@@ -663,7 +662,6 @@ export function HomePage() {
   const { session } = useAuth();
   const { config } = useHomeLayoutStore();
   const petSettings = useNeedoPetSettings();
-  const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
   const userOrders = useUserOrders();
   const formalCustomerProfileId = getFormalCustomerProfileId(session);
   const formalCustomerProfileQuery = useCoreReadQuery(
@@ -956,22 +954,6 @@ export function HomePage() {
   const activeReminderJumpTo =
     activeReminder && config.reminder.jumpTarget === "orders" ? "/orders" : activeReminder ? `/orders/${activeReminder.order.id}` : "/orders";
 
-  const carouselSlides = useMemo<FeatureCarouselSlide[]>(
-    () =>
-      getResolvedCarouselSlides("home", now, carouselScenes.home)
-        .filter((slide) => slide.status === "active")
-        .map((slot) => ({
-          id: slot.id,
-          badge: slot.badge,
-          title: slot.title,
-          caption: slot.caption,
-          cta: slot.cta,
-          image: slot.image,
-          to: resolveCarouselTargetPath(slot.target, "user")
-        })),
-    [carouselRevision, carouselScenes.home, now]
-  );
-
   const performanceMetrics = config.platformMetrics.filter((item) => item.enabled);
   const hasStaticHomeContent = apiServices.length > 0 || apiStores.length > 0 || apiTechnicians.length > 0;
   const homeCoreLoading = homeRecommendationsQuery.loading && !hasStaticHomeContent;
@@ -1017,7 +999,7 @@ export function HomePage() {
           />
         ) : null}
 
-        <FeatureCarousel cardHeightClassName="h-[204px]" slides={carouselSlides} />
+        <PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />
 
         <section className="py-0.5">
           <div className="grid grid-cols-4 gap-2">

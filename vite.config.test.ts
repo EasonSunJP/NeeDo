@@ -29,9 +29,14 @@ describe("Needo API proxy config", () => {
     ).toBe("http://127.0.0.1:3000");
   });
 
-  it("adds a dev and preview proxy for formal /api/v1 backend requests", () => {
+  it("adds dev and preview proxies for formal API and media requests", () => {
     expect(createNeedoApiProxyConfig("http://127.0.0.1:3000")).toEqual({
       "/api/v1": {
+        changeOrigin: true,
+        secure: false,
+        target: "http://127.0.0.1:3000"
+      },
+      "/media": {
         changeOrigin: true,
         secure: false,
         target: "http://127.0.0.1:3000"

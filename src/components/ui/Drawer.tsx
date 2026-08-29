@@ -41,7 +41,8 @@ export function Drawer({
   widthStorageKey = defaultDrawerWidthStorageKey,
   defaultWidth = defaultDrawerWidth,
   minWidth = defaultMinDrawerWidth,
-  maxWidth = defaultMaxDrawerWidth
+  maxWidth = defaultMaxDrawerWidth,
+  layer = "base"
 }: {
   open: boolean;
   title: string;
@@ -53,13 +54,14 @@ export function Drawer({
   defaultWidth?: number;
   minWidth?: number;
   maxWidth?: number;
+  layer?: "base" | "overlay";
 }) {
   const [drawerWidth, setDrawerWidth] = useState(() => getInitialDrawerWidth(widthStorageKey, defaultWidth, minWidth, maxWidth));
   const [isResizing, setIsResizing] = useState(false);
   const resolvedWidth = useMemo(() => clampDrawerWidth(drawerWidth, minWidth, maxWidth), [drawerWidth, maxWidth, minWidth]);
   const panelStyle = {
-    width: `min(${resolvedWidth}px, 100vw)`,
-    maxWidth: "100vw"
+    width: `min(${resolvedWidth}px, 100%)`,
+    maxWidth: "100%"
   } satisfies CSSProperties;
 
   useEffect(() => {
@@ -127,12 +129,17 @@ export function Drawer({
   };
 
   return (
-    <div className={cn("fixed inset-0 z-[80] transition", open ? "pointer-events-auto" : "pointer-events-none")}>
+    <div className={cn(
+      "fixed inset-0 overflow-hidden transition",
+      layer === "overlay" ? "z-[100]" : "z-[80]",
+      open ? "pointer-events-auto" : "pointer-events-none"
+    )}>
       <div
         className={cn("absolute inset-0 bg-ink/35 transition-opacity", open ? "opacity-100" : "opacity-0")}
         onClick={onClose}
       />
       <aside
+        aria-hidden={!open}
         className={cn(
           "drawer-panel absolute right-0 top-0 flex h-full w-full flex-col shadow-soft transition-transform duration-300",
           open ? "translate-x-0" : "translate-x-full"

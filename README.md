@@ -162,7 +162,7 @@ All portals require a formal authenticated session. Local preview, acceptance, a
 
 Merchant employee identity is now founded on one global technician profile, its canonical `s##########` NeeDoID, and shop-scoped `TechnicianShopAffiliation` rows. The protected `/api/v1/merchant-admin/employees` list/detail/profile/affiliation routes derive the shop only from the active authenticated identity; profile edits are field-limited and audited, while affiliation writes enforce exclusive-versus-partner rules inside a locked database transaction and preserve ended relationships as history.
 
-The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page.
+The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page. The same employee card reads, edits, and previews the current shop-scoped compensation rule through `/api/v1/merchant-admin/employees/:needoId/compensation-profile`, and shows the latest persisted payslip totals without exposing internal shop, technician, or actor IDs. Actual payment is still a manual finance record; this workflow never initiates a bank transfer.
 
 ## Operations Technician Ranking
 
@@ -278,11 +278,17 @@ The operations demand and information routes are explicit production exchange ca
 
 The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks; the formal affiliate marketplace can issue one stable promotion code and signed URL per task/user; Booking Checkout persists validated attribution, allocation, and customer-discount price snapshots; service completion settles fixed NDP rewards; and the backend automatically ends due tasks and releases only their unallocated frozen budget. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires completed-order reversal, fraud, aggregate, export, and UI microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
+### Formal Affiliate Alliance Invitations
+
+The user Affiliate alliance page now uses real APIs for reciprocal-contact candidate discovery, owner member lists, sent/received invitations, partner/subordinate hierarchy assignment, accept/reject, exact 72-hour expiry, least-privilege membership, and conditional wallet visibility. All transitions are persisted and audited; cross-alliance acceptance is protected by the single-active-membership constraint. See [the alliance foundation](docs/affiliate-alliance-foundation.md) and [the invitation workflow](docs/affiliate-alliance-invitations.md). This is one formal slice, not the completed Affiliate platform.
+
 ### Formal Affiliate Task Publishing and Review
 
 The formal alliance-marketing foundation persists tasks, explicit shop/service scope snapshots, claims, hashed signed-link tokens, touches, one-attribution-per-order records, fixed-NDP rewards, task budget reservations, ledger links, and risk events. It extends wallets to support merchant-account ownership and seeds role-specific affiliate menu/page/button permissions.
 
 Merchant accounts and current-shop identities now have formal paginated APIs to create and edit unfunded drafts, inspect their tasks, and submit a task for review. Drafts never mutate a wallet. Submit revalidates the publisher's active shop/service scope, refreshes immutable display snapshots, then atomically freezes the full integer-NDP budget, creates a budget reservation and ledger link, writes reconciliation/audit evidence, and moves the task to `pending_review`. A concurrent or repeated submit cannot duplicate the freeze.
+
+Every task now persists independent Japanese, English, Korean, Traditional Chinese, and Simplified Chinese name/description rows. Creating a draft from any selected source language copies that first value to all five rows; subsequent edits affect only the selected language unless the merchant explicitly requests synchronization to all languages. The optimistic task lock protects every language edit, and each change is audited. Submission requires publishable task content in at least one language; when every language is missing or blank, it returns `error.affiliate.task_content_required` before any NDP is frozen. Marketplace search matches every active language. Task cards and detail pages select the authored value for the user's current application language, and use the task's formal compatibility snapshot if that language is absent; they never machine-translate authored content.
 
 Operations users can list/detail tasks and approve or reject a pending task. Approval produces `scheduled` or `active` from the task window. Rejection atomically returns the complete unused frozen budget to available NDP, retains the historical reserved amount for budget conservation, marks the reservation released, and writes one release ledger/reconciliation/audit trail. Insufficient funds, stale optimistic locks, invalid merchant membership, invalid service scope, and transaction failures roll back without partial writes.
 
@@ -290,6 +296,7 @@ Formal endpoints:
 
 - `GET|POST /api/v1/merchant-admin/affiliate/tasks`
 - `GET|PATCH /api/v1/merchant-admin/affiliate/tasks/:taskId`
+- `PUT /api/v1/merchant-admin/affiliate/tasks/:taskId/locales/:locale`
 - `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit`
 - `GET /api/v1/backoffice/affiliate/tasks`
 - `GET /api/v1/backoffice/affiliate/tasks/:taskId`
@@ -301,11 +308,12 @@ Verify the complete transaction flow against a local non-production MySQL databa
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-localization-flow
 ```
 
 The check refuses production flags and remote database hosts, verifies draft/no-freeze, shop and merchant-account freezes, refreshed snapshots, insufficient-funds rollback, membership isolation, review state, full rejection release, idempotency, ledger/reconciliation/audit evidence, and removes only its uniquely identified rows.
 
-This task-publishing microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Checkout attribution/discount application, service-completion reward settlement, and automatic task-end release are implemented in later formal microsteps; manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and complete UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
+The localization checker refuses remote, staging, and production-looking targets; verifies initial five-language copy, independent editing, explicit synchronize-all, rejection with no freeze when every language lacks content, successful one-language submission with exactly one budget freeze, translation audit evidence, and exact marker-only cleanup. This task-localization microstep does not yet activate the merchant/shop task-management editor. Manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and the complete merchant UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
 
 ### Formal Affiliate Marketplace Claims And Signed Links
 
@@ -335,6 +343,8 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-marketplace-claim-flo
 ```
 
 The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. Claim creation itself does not allocate or settle reward budget; those changes occur only in Booking Checkout and the service-completion transaction.
+
+The protected mobile Affiliate experience now consumes those formal endpoints on `/afirieito`, `/afirieito/plan`, and `/afirieito/tasks/:taskId`. Its announcement carousel remains independent from the ordinary user-home carousel; recommended-task cards, search, server pagination, task detail, public store navigation, IM directory prefill, and idempotent participation all use persisted API data. See [Affiliate marketplace mobile UI](docs/affiliate-marketplace-mobile-ui.md) for the data/privacy boundary, verification evidence, and remaining formal microsteps.
 
 ### Formal Affiliate Checkout Attribution And Customer Discounts
 
@@ -426,7 +436,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
 - Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班、用户正式预约列表/详情、线下收款和 NDP 充值提现审核已迁移到 API/Prisma，禁止新增正式业务 mock。
-- 多语言：用户端与后台端支持中文、日本語、English 三语切换，语言偏好会保存在本地。
+- 多语言：用户端与后台端支持日本語、English、한국어、繁體中文、简体中文五语切换，语言偏好会保存在本地；正式公告、规则和预约/联盟营销等可发布内容使用独立的服务端语言版本。
 - 后台主题：运营控制台支持黑夜 / 白天两套视觉主题，可在后台顶部随时切换。
 
 ## 2026-04 Frontend UI Rebuild
@@ -1930,7 +1940,7 @@ npm test
 
 商户店铺基础资料现支持 `PATCH /api/v1/merchant-admin/shop`：店铺 ID 只从当前活动店铺身份取得，商户可更新名称、简介、城市、地址和电话，不能通过请求体切换店铺或修改平台推荐状态；每次修改都经过 Zod、RBAC 和审计日志。图片、营业时段、证件和展示装修仍需独立数据表及文件接口，当前不写入浏览器伪数据。
 
-商户后台“人员与顾客”的员工列表现使用当前店铺范围的 `/api/v1/merchant-admin/employees` 正式分页 API，并以员工 NeeDoID 打开“员工详细信息卡”。基础资料与本店从属关系均通过真实、受权限保护且有审计的接口编辑；商户页已移除旧技师全局审核、软删除和数字档案号展示。客户仍只显示后端已有档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
+商户后台“人员与顾客”的员工列表现使用当前店铺范围的 `/api/v1/merchant-admin/employees` 正式分页 API，并以员工 NeeDoID 打开“员工详细信息卡”。基础资料、本店从属关系、日程、工资结算周期和薪酬规则均通过真实、受权限保护且有审计的接口读写；卡内工资统计来自当前店铺该员工最新的正式工资单及其订单财务来源，不回填演示金额，也不暴露内部店铺或技师 ID。商户页已移除旧技师全局审核、软删除和数字档案号展示。实际支付仍由财务人员在财务结算页手工登记，系统不会发起自动转账。客户仍只显示后端已有档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
 
 运营“营销中心”已移除模拟优惠券、活动量、GMV、ROI、归因和页面内存创建。现有 `FeeCampaign` 只参与平台费用计算，不被冒充为用户营销模型；通用营销将在 Campaign/Coupon/Redemption 数据表、状态机、领取核销、归因审计和聚合导出合同完成后开放。
 

@@ -4,11 +4,13 @@ import type { AuthenticatedAccessContext } from "../services/auth.service";
 import { successResponse } from "../utils/api-response";
 import {
   affiliateTaskIdParamSchema,
+  affiliateTaskLocaleParamSchema,
   affiliateTaskListQuerySchema,
   backofficeAffiliateTaskListQuerySchema,
   createAffiliateTaskBodySchema,
   rejectAffiliateTaskBodySchema,
-  updateAffiliateTaskBodySchema
+  updateAffiliateTaskBodySchema,
+  updateAffiliateTaskTranslationBodySchema
 } from "../validators/affiliate-task.validator";
 
 export class AffiliateTaskController {
@@ -54,6 +56,20 @@ export class AffiliateTaskController {
           this.actor(response),
           affiliateTaskIdParamSchema.parse(request.params).taskId,
           updateAffiliateTaskBodySchema.parse(request.body)
+        )
+      )
+    );
+  });
+
+  public updateDraftLocale = this.handle(async (request, response) => {
+    const params = affiliateTaskLocaleParamSchema.parse(request.params);
+    response.status(200).json(
+      successResponse(
+        await this.service.updateDraftLocale(
+          this.actor(response),
+          params.taskId,
+          params.locale,
+          updateAffiliateTaskTranslationBodySchema.parse(request.body)
         )
       )
     );

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   authApi,
   type GoogleCredentialResult,
@@ -13,6 +13,7 @@ import {
   getStoredRefreshToken,
   setAccessToken,
   setAuthExpiredHandler,
+  setExpectedAuthUserId,
   setStoredRefreshToken
 } from "../api/httpClient";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
@@ -117,7 +118,12 @@ function normalizeStoredPortal(value: string | null | undefined): PortalScope {
 }
 
 function readStoredPortal() {
-  return normalizeStoredPortal(readBrowserStorage(portalStorageKey, { silent: true }));
+  const portal = readBrowserStorage(portalStorageKey, {
+    kind: "session",
+    silent: true
+  });
+  removeBrowserStorage(portalStorageKey, { silent: true });
+  return normalizeStoredPortal(portal);
 }
 
 function isStoredAuthSession(value: unknown): value is AuthSession {
@@ -152,8 +158,10 @@ function isStoredAuthSession(value: unknown): value is AuthSession {
 
 function readStoredAuthSession() {
   const rawSession = readBrowserStorage(legacySessionStorageKey, {
+    kind: "session",
     silent: true
   });
+  removeBrowserStorage(legacySessionStorageKey, { silent: true });
 
   if (!rawSession) {
     return null;
@@ -294,19 +302,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isRestoring, setIsRestoring] = useState(() => Boolean(getStoredRefreshToken()) && !getAccessToken());
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreRevision, setRestoreRevision] = useState(0);
+  const sessionRestoreInFlightRef = useRef<Promise<void> | null>(null);
 
   const clearSession = useCallback(() => {
     clearAuthTokens();
     setSession(null);
     setRestoreError(null);
     removeBrowserStorage(portalStorageKey, { silent: true });
+    removeBrowserStorage(portalStorageKey, { kind: "session", silent: true });
     removeBrowserStorage(legacySessionStorageKey, { silent: true });
+    removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true });
   }, []);
 
   const persistSession = useCallback((nextSession: AuthSession) => {
+    setExpectedAuthUserId(nextSession.id);
     setSession(nextSession);
-    writeBrowserStorage(portalStorageKey, nextSession.portal, { silent: true });
+    removeBrowserStorage(portalStorageKey, { silent: true });
+    removeBrowserStorage(legacySessionStorageKey, { silent: true });
+    writeBrowserStorage(portalStorageKey, nextSession.portal, {
+      kind: "session",
+      silent: true
+    });
     writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), {
+      kind: "session",
       silent: true
     });
     rememberPortalAuthorization(nextSession, getStoredRefreshToken());
@@ -343,7 +361,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           rememberedSession?.loginMethod ?? previousSession?.loginMethod ?? "password"
         );
 
-        if (!canAccessPortalFromSession(nextSession, portal)) {
+        if (
+          !canAccessPortalFromSession(nextSession, portal) ||
+          !isSessionAlignedWithPortal(nextSession, portal)
+        ) {
           throw new Error("error.auth.portal_forbidden");
         }
 
@@ -365,7 +386,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setSession(null);
           removeBrowserStorage(portalStorageKey, { silent: true });
+          removeBrowserStorage(portalStorageKey, { kind: "session", silent: true });
           removeBrowserStorage(legacySessionStorageKey, { silent: true });
+          removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true });
         }
 
         return { ok: false, message: normalizeApiError(error) };
@@ -422,28 +445,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession]);
 
   useEffect(() => {
-    let active = true;
+    const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();
 
-    const restoreSession = async () => {
-      const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();
+    if (session && !shouldRefreshAccessToken) {
+      setRestoreError(null);
+      setIsRestoring(false);
+      return;
+    }
 
-      if (session && !shouldRefreshAccessToken) {
-        setRestoreError(null);
-        setIsRestoring(false);
-        return;
+    if (!getStoredRefreshToken()) {
+      if (session && !getAccessToken()) {
+        clearSession();
       }
+      setRestoreError(null);
+      setIsRestoring(false);
+      return;
+    }
 
-      if (!getStoredRefreshToken()) {
-        if (session && !getAccessToken()) {
-          clearSession();
-        }
-        setRestoreError(null);
-        setIsRestoring(false);
-        return;
-      }
+    if (sessionRestoreInFlightRef.current) {
+      return;
+    }
 
+    setIsRestoring(true);
+    const restoreRequest = (async () => {
       try {
-        setIsRestoring(true);
         await authApi.refresh();
         const restorePortal = session?.portal ?? storedSessionForInitialRestore?.portal ?? readStoredPortal();
         const restoreLoginMethod = session?.loginMethod ?? storedSessionForInitialRestore?.loginMethod ?? "password";
@@ -454,9 +479,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           "error.api",
           true
         );
-        if (!active) {
-          return;
-        }
 
         if (!restored.ok) {
           if (getStoredRefreshToken()) {
@@ -467,25 +489,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setRestoreError(null);
       } catch (error) {
-        if (active) {
-          if (isTransientAuthRestoreError(error) && getStoredRefreshToken()) {
-            setRestoreError("error.auth.service_unavailable");
-          } else {
-            clearSession();
-          }
-        }
-      } finally {
-        if (active) {
-          setIsRestoring(false);
+        if (isTransientAuthRestoreError(error) && getStoredRefreshToken()) {
+          setRestoreError("error.auth.service_unavailable");
+        } else {
+          clearSession();
         }
       }
-    };
+    })();
 
-    restoreSession();
-
-    return () => {
-      active = false;
-    };
+    sessionRestoreInFlightRef.current = restoreRequest;
+    void restoreRequest.finally(() => {
+      if (sessionRestoreInFlightRef.current === restoreRequest) {
+        sessionRestoreInFlightRef.current = null;
+        setIsRestoring(false);
+      }
+    });
   }, [clearSession, completeAuthenticatedSession, restoreRevision, session, storedSessionForInitialRestore]);
 
   const retrySessionRestore = useCallback(() => {
@@ -501,6 +519,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (portal: PortalScope, email: string, password: string, captchaCode?: string): Promise<AuthActionResult> => {
+      setExpectedAuthUserId(null);
       try {
         const loginPayload = await authApi.login(email, password, captchaCode);
 
@@ -516,6 +535,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithFormalPassword = useCallback(
     async (portal: PortalScope, username: string, password: string): Promise<AuthActionResult> => {
+      setExpectedAuthUserId(null);
       try {
         const loginPayload = await authApi.loginFormal(username, password);
 
@@ -605,6 +625,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "error.auth.google_api_unavailable" };
       }
 
+      setExpectedAuthUserId(null);
       const completed = await completeAuthenticatedSession(requestedPortal, "google", undefined, "error.auth.google_api_unavailable");
 
       return completed.ok ? { ...completed, status: "authenticated" } : completed;
@@ -674,7 +695,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const portalIdentity = findIdentityForPortal(session.identities, portal);
-      if (!portalIdentity || portalIdentity.id === session.currentIdentity.id) {
+
+      if (!portalIdentity) {
+        return { ok: false, message: "error.auth.portal_forbidden" };
+      }
+
+      if (portalIdentity.id === session.currentIdentity.id) {
         const nextLocalSession = {
           ...session,
           portal

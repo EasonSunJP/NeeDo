@@ -30,10 +30,6 @@ const mocked = vi.hoisted(() => ({
     submitGoogleCredential: vi.fn(),
   },
   navigateToPortal: vi.fn(),
-  readBrowserSavedPassword: vi.fn(async () => null as {
-    id: string;
-    password: string;
-  } | null),
   requestBrowserPasswordSave: vi.fn(async () => undefined),
   requestGoogleCredential: vi.fn(),
 }));
@@ -60,7 +56,6 @@ vi.mock("../../auth/browserPasswordSave", async (importOriginal) => {
     await importOriginal<typeof import("../../auth/browserPasswordSave")>();
   return {
     ...actual,
-    readBrowserSavedPassword: mocked.readBrowserSavedPassword,
     requestBrowserPasswordSave: mocked.requestBrowserPasswordSave,
   };
 });
@@ -160,7 +155,6 @@ describe("LoginPage verified identity behavior", () => {
     mocked.auth.session = null;
     mocked.auth.canAccess.mockReturnValue(false);
     mocked.auth.hasRememberedPortalAuthorization.mockReturnValue(false);
-    mocked.readBrowserSavedPassword.mockResolvedValue(null);
     mocked.auth.login.mockResolvedValue({
       message: "error.auth.invalid_credentials",
       ok: false,
@@ -254,7 +248,7 @@ describe("LoginPage verified identity behavior", () => {
     expect(container.querySelector("main")?.style.maxWidth).toBe("440px");
   });
 
-  it("keeps browser password saving opt-in and stores only the portal preference", async () => {
+  it("defaults browser password saving on and keeps native autofill metadata after opt-out", async () => {
     await act(async () =>
       container
         .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
@@ -262,26 +256,26 @@ describe("LoginPage verified identity behavior", () => {
     );
 
     const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
-    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
     expect(
       container.querySelector<HTMLInputElement>(
         '[data-testid="login-identifier"]',
       )?.autocomplete,
-    ).toBe("off");
+    ).toBe("username");
     expect(
       container.querySelector<HTMLInputElement>(
         '[data-testid="login-password"]',
       )?.autocomplete,
-    ).toBe("off");
+    ).toBe("current-password");
 
     await act(async () => toggle?.click());
 
-    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
     expect(
       localStorage.getItem(
         "needo.auth.browser-password-save.frontend:user",
       ),
-    ).toBe("true");
+    ).toBe("false");
     expect(
       container.querySelector<HTMLInputElement>(
         '[data-testid="login-identifier"]',
@@ -294,33 +288,19 @@ describe("LoginPage verified identity behavior", () => {
     ).toBe("current-password");
   });
 
-  it("restores a saved browser credential after password saving is enabled", async () => {
-    mocked.readBrowserSavedPassword.mockResolvedValueOnce({
-      id: "saved@example.com",
-      password: "Saved.Password.2026",
-    });
+  it("uses a native password-manager form without reading protected credentials in script", async () => {
     await act(async () =>
       container
         .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
         ?.click(),
     );
 
-    await act(async () =>
-      container.querySelector<HTMLButtonElement>('[role="switch"]')?.click(),
+    const form = container.querySelector<HTMLFormElement>(
+      '[data-testid="password-login-form"]',
     );
-    await flushUi();
-
-    expect(mocked.readBrowserSavedPassword).toHaveBeenCalledTimes(1);
-    expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-identifier"]',
-      )?.value,
-    ).toBe("saved@example.com");
-    expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-password"]',
-      )?.value,
-    ).toBe("Saved.Password.2026");
+    expect(form?.method).toBe("post");
+    expect(form?.getAttribute("action")).toBe("/api/v1/auth/login");
+    expect(loginPageSource).not.toContain("readBrowserSavedPassword");
   });
 
   it("exposes standard credential field names to the browser password manager", async () => {
@@ -387,7 +367,6 @@ describe("LoginPage verified identity behavior", () => {
       '[data-testid="login-password"]',
     )!;
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[role="switch"]')?.click();
       setInput(identifier, "user@example.com");
       setInput(password, "Strong.Password.2026");
     });
@@ -796,6 +775,12 @@ describe("LoginPage formal flow guardrails", () => {
       resolveLoginErrorMessage("error.auth.invalid_credentials", "zh"),
     ).toContain("邮箱、NeeDo ID 或密码");
     expect(
+      resolveLoginErrorMessage("error.auth.portal_forbidden", "zh"),
+    ).toBe("当前账号没有此入口所需的身份，请切换账号后重试。");
+    expect(
+      resolveLoginErrorMessage("error.auth.portal_forbidden", "ja"),
+    ).toContain("アカウントを切り替えて");
+    expect(
       resolveLoginErrorMessage(
         "error.auth.verification_challenge_expired",
         "ja",
@@ -960,6 +945,7 @@ describe("LoginPage formal flow guardrails", () => {
 
   it("audits the current checkout instead of a hard-coded sibling workspace", () => {
     expect(i18nAuditSource).toContain("fileURLToPath(import.meta.url)");
+    expect(i18nAuditSource).toContain("affiliateMarketplaceTranslations");
     expect(i18nAuditSource).not.toContain(
       'const workspaceRoot = "/Users/eason/Documents/New project"',
     );

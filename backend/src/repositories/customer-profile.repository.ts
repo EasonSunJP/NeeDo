@@ -6,6 +6,7 @@ import {
 } from "./audit-log.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 
 export interface CustomerProfileMutation {
   displayName?: string;
@@ -162,7 +163,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       userId: profile.userId,
       displayName: profile.displayName,
       city: profile.city,
-      membershipLevel: profile.membershipLevel,
+      membershipLevel: resolveEffectiveCustomerMembershipLevel(profile),
       avatarUrl: profile.mediaAssets[0]?.url ?? null,
       gender: this.toGender(profile.gender),
       age: profile.age,

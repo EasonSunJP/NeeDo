@@ -46,6 +46,18 @@ import type { IdentityApplicationService } from "./services/identity-application
 import type { IdentityApplicationMediaRepositoryPort } from "./services/identity-application-media.service";
 import type { IdentityApplicationMediaService } from "./services/identity-application-media.service";
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
+import type { ContentMediaRepositoryPort } from "./services/content-media.service";
+import type { ContentMediaService } from "./services/content-media.service";
+import type { OfficialAnnouncementRepositoryPort } from "./services/official-announcement.service";
+import type { OfficialAnnouncementService } from "./services/official-announcement.service";
+import type {
+  CarouselPublicationRepositoryPort,
+  CarouselPublicationService
+} from "./services/carousel-publication.service";
+import {
+  assertContentMediaStorageIsolationSync,
+  type ContentMediaStoragePort
+} from "./services/content-media.storage";
 import type { AffiliateIdentityActivationRepositoryPort } from "./services/affiliate-identity-activation.service";
 import type { AffiliateIdentityActivationService } from "./services/affiliate-identity-activation.service";
 import type { AffiliateWithdrawalEligibilityRepositoryPort } from "./services/affiliate-withdrawal-eligibility.service";
@@ -73,6 +85,7 @@ import type {
 } from "./services/merchant-saas-billing.service";
 import type { OrderFinanceRepositoryPort } from "./services/order-finance.service";
 import type { PayrollRepositoryPort } from "./services/payroll.service";
+import type { PayrollSchedulePolicyRepositoryPort } from "./services/payroll-schedule-policy.service";
 import type { PermissionRepositoryPort } from "./repositories/permission.repository";
 import type { PricingModeRepositoryPort } from "./services/pricing-mode.service";
 import type { PublicIdentifierRepositoryPort } from "./services/public-identifier.service";
@@ -101,6 +114,9 @@ import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
 import { createImMediaRoutes } from "./routes/im-media.routes";
+import { createContentMediaRoutes } from "./routes/content-media.routes";
+import { createOfficialAnnouncementRoutes } from "./routes/official-announcement.routes";
+import { createCarouselPublicationRoutes } from "./routes/carousel-publication.routes";
 import { createIdentityActivationRoutes } from "./routes/identity-activation.routes";
 import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
 import { createOperationsMerchantApplicationRoutes } from "./routes/operations-merchant-application.routes";
@@ -109,6 +125,7 @@ import { createMerchantSaasBillingRoutes } from "./routes/merchant-saas-billing.
 import { createObservabilityRoutes } from "./routes/observability.routes";
 import { createOrderFinanceRoutes } from "./routes/order-finance.routes";
 import { createPayrollRoutes } from "./routes/payroll.routes";
+import { createPayrollSchedulePolicyRoutes } from "./routes/payroll-schedule-policy.routes";
 import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
@@ -160,6 +177,7 @@ export interface AppDependencies {
   paymentProvider?: PaymentProvider;
   orderFinanceRepository?: OrderFinanceRepositoryPort;
   payrollRepository?: PayrollRepositoryPort;
+  payrollSchedulePolicyRepository?: PayrollSchedulePolicyRepositoryPort;
   compensationProfileRepository?: CompensationProfileRepositoryPort;
   bookingRepository?: BookingRepositoryPort;
   ledgerRepository?: LedgerRepositoryPort;
@@ -168,6 +186,13 @@ export interface AppDependencies {
   identityApplicationMediaRepository?: IdentityApplicationMediaRepositoryPort;
   identityApplicationMediaService?: IdentityApplicationMediaService;
   identityApplicationMediaStorage?: IdentityApplicationMediaStoragePort;
+  contentMediaRepository?: ContentMediaRepositoryPort;
+  contentMediaService?: ContentMediaService;
+  contentMediaStorage?: ContentMediaStoragePort;
+  officialAnnouncementRepository?: OfficialAnnouncementRepositoryPort;
+  officialAnnouncementService?: OfficialAnnouncementService;
+  carouselPublicationRepository?: CarouselPublicationRepositoryPort;
+  carouselPublicationService?: CarouselPublicationService;
   affiliateIdentityActivationRepository?: AffiliateIdentityActivationRepositoryPort;
   affiliateIdentityActivationService?: AffiliateIdentityActivationService;
   affiliateProfileRepository?: AffiliateProfileRepositoryPort;
@@ -212,6 +237,10 @@ export const createApp = (
   config: AppConfig = env,
   dependencies: AppDependencies = createDefaultAppDependencies()
 ): Express => {
+  assertContentMediaStorageIsolationSync(
+    config.CONTENT_MEDIA_STORAGE_DIR,
+    config.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
+  );
   const app = express();
   const apiRouter = Router();
   const metricsService = dependencies.metricsService ?? new ObservabilityMetricsService(config);
@@ -259,10 +288,14 @@ export const createApp = (
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderFinanceRoutes(config, resolvedDependencies));
   apiRouter.use(createPayrollRoutes(config, resolvedDependencies));
+  apiRouter.use(createPayrollSchedulePolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createCompensationProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createContentMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createOfficialAnnouncementRoutes(config, resolvedDependencies));
+  apiRouter.use(createCarouselPublicationRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityActivationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateAllianceRoutes(config, resolvedDependencies));
@@ -286,6 +319,7 @@ export const createApp = (
     createCustomerAvatarStaticMiddleware(config.CUSTOMER_AVATAR_STORAGE_DIR)
   );
   app.use("/media/im", createImMediaStaticMiddleware(config.IM_MEDIA_STORAGE_DIR));
+  app.use("/media/content", createContentMediaStaticMiddleware(config.CONTENT_MEDIA_STORAGE_DIR));
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);
 
@@ -293,6 +327,31 @@ export const createApp = (
 };
 
 const customerAvatarFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+
+const createContentMediaStaticMiddleware = (directory: string) => {
+  const staticMiddleware = express.static(directory, {
+    index: false,
+    redirect: false,
+    setHeaders: (response) => {
+      response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      response.setHeader("Content-Disposition", "inline");
+      response.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    }
+  });
+
+  return (
+    request: express.Request,
+    response: express.Response,
+    next: express.NextFunction
+  ): void => {
+    if (!contentMediaFilenamePattern.test(request.path)) {
+      next();
+      return;
+    }
+    staticMiddleware(request, response, next);
+  };
+};
 
 const createCustomerAvatarStaticMiddleware = (directory: string) => {
   const staticMiddleware = express.static(directory, {

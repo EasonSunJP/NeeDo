@@ -248,6 +248,86 @@ export const migrateLifeDanceAdminOwnership = async (
       deletedAt: null
     }
   });
+  const merchantOrganizationIdentities = await tx.userIdentity.findMany({
+    where: {
+      userId: admin.id,
+      type: "merchant_organization",
+      deletedAt: null
+    },
+    orderBy: { id: "asc" }
+  });
+  assert(
+    merchantOrganizationIdentities.length <= 1,
+    "LifeDance administrator has duplicate merchant organization identities."
+  );
+  const merchantOrganizationIdentity = merchantOrganizationIdentities[0];
+  if (merchantOrganizationIdentity) {
+    await tx.userIdentity.update({
+      where: { id: merchantOrganizationIdentity.id },
+      data: {
+        scopeType: "merchant_account",
+        scopeId: merchantAccount.id,
+        displayName: merchantAccount.name,
+        isDefault: false,
+        isActive: true,
+        activeKey: activeIdentityKey(
+          admin.id,
+          "merchant_organization",
+          "merchant_account",
+          merchantAccount.id
+        ),
+        deletedAt: null
+      }
+    });
+  } else {
+    await ensureIdentity(
+      "merchant_organization",
+      "merchant_account",
+      merchantAccount.id,
+      merchantAccount.name,
+      false
+    );
+  }
+  const reconciledMerchantOrganizationIdentity = await tx.userIdentity.findFirst({
+    where: {
+      userId: admin.id,
+      type: "merchant_organization",
+      scopeType: "merchant_account",
+      scopeId: merchantAccount.id,
+      isActive: true,
+      deletedAt: null
+    },
+    select: { id: true }
+  });
+  assert(
+    reconciledMerchantOrganizationIdentity,
+    "LifeDance administrator merchant organization identity reconciliation failed."
+  );
+  const existingMerchantOrganizationAudit = await tx.auditLog.findFirst({
+    where: {
+      actorId: admin.id,
+      action: "seed.lifedance_admin.merchant_organization_scope_reconcile",
+      targetType: "UserIdentity",
+      targetId: reconciledMerchantOrganizationIdentity.id,
+      deletedAt: null
+    },
+    select: { id: true }
+  });
+  if (!existingMerchantOrganizationAudit) {
+    await tx.auditLog.create({
+      data: {
+        actorId: admin.id,
+        action: "seed.lifedance_admin.merchant_organization_scope_reconcile",
+        targetType: "UserIdentity",
+        targetId: reconciledMerchantOrganizationIdentity.id,
+        metadata: {
+          namespace: SIMULATION_NAMESPACE,
+          merchantAccountId: merchantAccount.id,
+          scopeType: "merchant_account"
+        }
+      }
+    });
+  }
   const membershipActiveKey = `merchant:${merchantAccount.id}:shop:${shop.id}`;
   const existingMembership = await tx.merchantShopMembership.findFirst({
     where: { merchantAccountId: merchantAccount.id, shopId: shop.id }

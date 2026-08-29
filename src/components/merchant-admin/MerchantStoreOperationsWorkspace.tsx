@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { backofficeRealDataApi, type BackofficeFinanceSettlementPayload } from "../../api/backofficeRealData";
 import {
   merchantFinanceCenterApi,
@@ -24,7 +25,8 @@ import {
   type PayrollAdjustmentCreateInput,
   type PayrollAdjustmentRequestPayload,
   type PayRunPayload,
-  type PayslipPayload
+  type PayslipPayload,
+  type PayoutMethod
 } from "../../api/merchantPayrollCenter";
 import { DetailGrid } from "../admin/DetailGrid";
 import { Badge } from "../ui/Badge";
@@ -114,6 +116,62 @@ const ndpBearerLabels: Record<ShopFinanceNdpBearer, string> = {
   split: "店铺/技师分摊"
 };
 
+const payoutMethodLabels: Record<PayoutMethod, string> = {
+  bank_transfer: "银行转账",
+  cash: "现金",
+  ndp: "NDP",
+  external: "外部支付平台",
+  mixed: "混合支付",
+  other: "其他"
+};
+
+type ManualPayoutForm = {
+  amountJpy: string;
+  payoutMethod: PayoutMethod;
+  payoutDate: string;
+  referenceNo: string;
+  proofUrl: string;
+  note: string;
+};
+
+function localDateInputValue(date = new Date()) {
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function createPayoutForm(payslip?: PayslipPayload | null): ManualPayoutForm {
+  return {
+    amountJpy: payslip?.unpaidAmountJpy ? String(payslip.unpaidAmountJpy) : "",
+    payoutMethod: "bank_transfer",
+    payoutDate: localDateInputValue(),
+    referenceNo: "",
+    proofUrl: "",
+    note: ""
+  };
+}
+
+function findPayrollSelection(
+  payRuns: PayRunPayload[],
+  employeeNeedoId?: string | null,
+  preferredPayslipId?: number | null
+) {
+  for (const payRun of payRuns) {
+    const payslip = payRun.payslips.find((item) =>
+      preferredPayslipId
+        ? item.id === preferredPayslipId
+        : Boolean(employeeNeedoId && item.technicianNeedoId === employeeNeedoId)
+    );
+    if (payslip) {
+      return { payRun, payslip };
+    }
+  }
+
+  return {
+    payRun: payRuns[0] ?? null,
+    payslip: payRuns[0]?.payslips[0] ?? null
+  };
+}
+
 function financeRuleToInput(rule: ShopFinanceRuleSetPayload): ShopFinanceRuleSetInput {
   return {
     name: rule.name,
@@ -161,6 +219,8 @@ function toNumberInput(value: string, fallback = 0) {
 }
 
 export function MerchantStoreOperationsWorkspace() {
+  const [searchParams] = useSearchParams();
+  const employeeNeedoId = searchParams.get("employee");
   const [realFinanceRows, setRealFinanceRows] = useState<BackofficeFinanceSettlementPayload[]>([]);
   const [merchantShopId, setMerchantShopId] = useState<number | null>(null);
   const [financeRule, setFinanceRule] = useState<ShopFinanceRuleSetPayload | null>(null);
@@ -176,6 +236,8 @@ export function MerchantStoreOperationsWorkspace() {
   const [payRuns, setPayRuns] = useState<PayRunPayload[]>([]);
   const [activePayRun, setActivePayRun] = useState<PayRunPayload | null>(null);
   const [activePayslip, setActivePayslip] = useState<PayslipPayload | null>(null);
+  const [payoutForm, setPayoutForm] = useState<ManualPayoutForm>(() => createPayoutForm());
+  const [payoutSuccess, setPayoutSuccess] = useState("");
   const [disputeResolutionNote, setDisputeResolutionNote] = useState("已复核工资单明细并重新发布确认。");
   const [payrollAdjustments, setPayrollAdjustments] = useState<PayrollAdjustmentRequestPayload[]>([]);
   const [activePayrollAdjustment, setActivePayrollAdjustment] = useState<PayrollAdjustmentRequestPayload | null>(null);
@@ -257,9 +319,10 @@ export function MerchantStoreOperationsWorkspace() {
         return;
       }
 
+      const selection = findPayrollSelection(response.list, employeeNeedoId);
       setPayRuns(response.list);
-      setActivePayRun(response.list[0] ?? null);
-      setActivePayslip(response.list[0]?.payslips[0] ?? null);
+      setActivePayRun(selection.payRun);
+      setActivePayslip(selection.payslip);
     }).catch(() => {
       if (activeRequest) {
         setPayrollError("工资单加载失败");
@@ -281,7 +344,12 @@ export function MerchantStoreOperationsWorkspace() {
     return () => {
       activeRequest = false;
     };
-  }, []);
+  }, [employeeNeedoId]);
+
+  useEffect(() => {
+    setPayoutForm(createPayoutForm(activePayslip));
+    setPayoutSuccess("");
+  }, [activePayslip?.id]);
 
   useEffect(() => {
     if (!merchantShopId || !currentSettlement?.technicianProfileId) {
@@ -450,11 +518,54 @@ export function MerchantStoreOperationsWorkspace() {
     }
   };
 
-  const refreshPayroll = async () => {
+  const refreshPayroll = async (preferredPayslipId?: number | null) => {
     const response = await merchantPayrollCenterApi.listPayRuns();
+    const selection = findPayrollSelection(
+      response.list,
+      preferredPayslipId ? null : employeeNeedoId,
+      preferredPayslipId
+    );
     setPayRuns(response.list);
-    setActivePayRun(response.list[0] ?? null);
-    setActivePayslip(response.list[0]?.payslips[0] ?? null);
+    setActivePayRun(selection.payRun);
+    setActivePayslip(selection.payslip);
+  };
+
+  const recordActivePayout = async () => {
+    if (!activePayslip) {
+      return;
+    }
+
+    const amountJpy = Math.round(Number(payoutForm.amountJpy));
+    if (!Number.isFinite(amountJpy) || amountJpy <= 0 || amountJpy > activePayslip.unpaidAmountJpy) {
+      setPayrollError(`本次支付金额必须大于 0 且不超过 ${yen(activePayslip.unpaidAmountJpy)}`);
+      return;
+    }
+    if (!payoutForm.payoutDate) {
+      setPayrollError("请选择实际支付日");
+      return;
+    }
+
+    setIsPayrollBusy(true);
+    setPayrollError(null);
+    setPayoutSuccess("");
+    try {
+      const updated = await merchantPayrollCenterApi.recordPayout(activePayslip.id, {
+        amountJpy,
+        payoutMethod: payoutForm.payoutMethod,
+        payoutDate: new Date(`${payoutForm.payoutDate}T00:00:00`).toISOString(),
+        referenceNo: payoutForm.referenceNo.trim() || null,
+        proofUrl: payoutForm.proofUrl.trim() || null,
+        note: payoutForm.note.trim() || null
+      });
+      setActivePayslip(updated);
+      await refreshPayroll(updated.id);
+      setPayoutForm(createPayoutForm(updated));
+      setPayoutSuccess(`已登记 ${yen(amountJpy)}，系统未发起自动转账`);
+    } catch {
+      setPayrollError("支付结果登记失败，请核对工资单状态和未支付金额");
+    } finally {
+      setIsPayrollBusy(false);
+    }
   };
 
   const runPayrollAction = async (action: () => Promise<PayRunPayload | PayslipPayload>) => {
@@ -1140,11 +1251,36 @@ export function MerchantStoreOperationsWorkspace() {
                   ]}
                   onView={(row) => {
                     setActivePayRun(row);
-                    setActivePayslip(row.payslips[0] ?? null);
+                    setActivePayslip(
+                      row.payslips.find((item) => item.technicianNeedoId === employeeNeedoId)
+                        ?? row.payslips[0]
+                        ?? null
+                    );
                   }}
                   pageSize={4}
                   rows={payRuns}
                 />
+                <div className="rounded-lg border border-line bg-paper p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-ink/45">员工工资单</p>
+                      <p className="mt-1 text-xs font-bold text-ink/60">
+                        {employeeNeedoId ? `从员工卡定位：${employeeNeedoId}` : "选择员工后登记实际支付结果"}
+                      </p>
+                    </div>
+                    <Badge tone="blue">{activePayRun?.payslips.length ?? 0} 人</Badge>
+                  </div>
+                  <DataTable<PayslipPayload>
+                    columns={[
+                      { key: "employee", title: "员工", render: (row) => `${row.technicianName} · ${row.technicianNeedoId ?? "NeeDoID 未绑定"}` },
+                      { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "paid" ? "green" : row.status === "disputed" ? "red" : "yellow"}>{row.status}</Badge> },
+                      { key: "unpaid", title: "未支付", render: (row) => yen(row.unpaidAmountJpy) }
+                    ]}
+                    onView={setActivePayslip}
+                    pageSize={6}
+                    rows={activePayRun?.payslips ?? []}
+                  />
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     className="rounded-full border border-line bg-paper px-4 py-2 text-xs font-black text-ink disabled:opacity-50"
@@ -1153,20 +1289,6 @@ export function MerchantStoreOperationsWorkspace() {
                     type="button"
                   >
                     审批工资单
-                  </button>
-                  <button
-                    className="rounded-full border border-line bg-paper px-4 py-2 text-xs font-black text-ink disabled:opacity-50"
-                    disabled={isPayrollBusy || !activePayslip || (activePayslip.status !== "approved" && activePayslip.status !== "scheduled")}
-                    onClick={() => activePayslip && void runPayrollAction(() => merchantPayrollCenterApi.recordPayout(activePayslip.id, {
-                      amountJpy: activePayslip.unpaidAmountJpy,
-                      payoutMethod: "bank_transfer",
-                      payoutDate: "2026-07-10T00:00:00.000Z",
-                      referenceNo: "STATIC-PAYOUT-001",
-                      note: "店铺工资支付记录"
-                    }))}
-                    type="button"
-                  >
-                    记录支付
                   </button>
                   <button
                     className="rounded-full border border-line bg-paper px-4 py-2 text-xs font-black text-ink disabled:opacity-50"
@@ -1200,6 +1322,116 @@ export function MerchantStoreOperationsWorkspace() {
                     { label: "申诉处理", value: activePayslip?.disputeResolutionNote ?? activePayslip?.disputeReason ?? "-" }
                   ]}
                 />
+                <div className="mt-3 rounded-lg border border-line bg-white p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-ink/45">人工支付登记</p>
+                      <h4 className="mt-1 text-sm font-black">仅登记已在 NeeDo 外部完成的支付结果，不会自动转账</h4>
+                    </div>
+                    <Badge tone={activePayslip?.unpaidAmountJpy === 0 ? "green" : "yellow"}>
+                      {activePayslip?.unpaidAmountJpy === 0 ? "已结清" : `待付 ${yen(activePayslip?.unpaidAmountJpy ?? 0)}`}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-bold text-ink/55">
+                      本次支付金额
+                      <input
+                        className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-black"
+                        max={activePayslip?.unpaidAmountJpy ?? 0}
+                        min={1}
+                        onChange={(event) => setPayoutForm((current) => ({ ...current, amountJpy: event.target.value }))}
+                        type="number"
+                        value={payoutForm.amountJpy}
+                      />
+                    </label>
+                    <label className="text-xs font-bold text-ink/55">
+                      支付方式
+                      <select
+                        className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-black"
+                        onChange={(event) => setPayoutForm((current) => ({ ...current, payoutMethod: event.target.value as PayoutMethod }))}
+                        value={payoutForm.payoutMethod}
+                      >
+                        {Object.entries(payoutMethodLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-bold text-ink/55">
+                      实际支付日
+                      <input
+                        className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-black"
+                        onChange={(event) => setPayoutForm((current) => ({ ...current, payoutDate: event.target.value }))}
+                        type="date"
+                        value={payoutForm.payoutDate}
+                      />
+                    </label>
+                    <label className="text-xs font-bold text-ink/55">
+                      外部凭证号
+                      <input
+                        className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm"
+                        onChange={(event) => setPayoutForm((current) => ({ ...current, referenceNo: event.target.value }))}
+                        placeholder="银行流水号、现金收据号等"
+                        value={payoutForm.referenceNo}
+                      />
+                    </label>
+                    <label className="text-xs font-bold text-ink/55 sm:col-span-2">
+                      凭证链接（可选）
+                      <input
+                        className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm"
+                        onChange={(event) => setPayoutForm((current) => ({ ...current, proofUrl: event.target.value }))}
+                        placeholder="https://"
+                        type="url"
+                        value={payoutForm.proofUrl}
+                      />
+                    </label>
+                    <label className="text-xs font-bold text-ink/55 sm:col-span-2">
+                      财务备注
+                      <textarea
+                        className="mt-1 min-h-20 w-full resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm"
+                        onChange={(event) => setPayoutForm((current) => ({ ...current, note: event.target.value }))}
+                        placeholder="例如：2026 年 8 月工资，线下已核对"
+                        value={payoutForm.note}
+                      />
+                    </label>
+                  </div>
+                  {payoutSuccess ? <p className="mt-3 text-xs font-black text-moss">{payoutSuccess}</p> : null}
+                  <button
+                    className="mt-3 w-full rounded-full bg-moss px-4 py-3 text-sm font-black text-white transition hover:bg-moss/90 disabled:opacity-50"
+                    disabled={isPayrollBusy || !activePayslip || activePayslip.unpaidAmountJpy <= 0 || (activePayslip.status !== "approved" && activePayslip.status !== "scheduled")}
+                    onClick={() => void recordActivePayout()}
+                    type="button"
+                  >
+                    {isPayrollBusy ? "正在登记…" : "记录支付"}
+                  </button>
+                </div>
+                <div className="mt-3 rounded-lg border border-line bg-white p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-ink/45">支付登记记录</p>
+                      <p className="mt-1 text-xs font-bold text-ink/60">每笔记录均保留登记人、方式、日期和员工确认状态</p>
+                    </div>
+                    <Badge tone="blue">{activePayslip?.payoutRecords.length ?? 0} 笔</Badge>
+                  </div>
+                  <div className="grid gap-2">
+                    {(activePayslip?.payoutRecords ?? []).map((record) => (
+                      <div className="rounded-lg bg-paper px-3 py-2" key={record.id}>
+                        <div className="flex items-center justify-between gap-3">
+                          <strong className="text-sm">{yen(record.amountJpy)}</strong>
+                          <Badge tone={record.status === "completed" ? "green" : "yellow"}>{record.status}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs font-bold text-ink/55">
+                          {payoutMethodLabels[record.payoutMethod]} · {record.payoutDate.slice(0, 10)} · {record.referenceNo ?? "无外部凭证号"}
+                        </p>
+                        <p className="mt-1 text-xs text-ink/45">
+                          {record.confirmedByTechnician ? "员工已确认收款" : "等待员工确认"}{record.note ? ` · ${record.note}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                    {activePayslip && activePayslip.payoutRecords.length === 0 ? (
+                      <p className="rounded-lg bg-paper px-3 py-4 text-center text-xs font-bold text-ink/45">尚无支付登记记录</p>
+                    ) : null}
+                  </div>
+                </div>
                 <div className="mt-3 rounded-lg border border-line bg-white p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>

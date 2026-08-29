@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { httpClient } from "../../api/httpClient";
 import { realtimeApi } from "../realtime/api";
-import { createFormalImApi, toFormalImStoreUpdate } from "./formal-api";
+import {
+  createFormalImApi,
+  shouldForwardFormalImEvent,
+  toFormalImStoreUpdate,
+} from "./formal-api";
 
 const now = "2026-08-25T10:00:00.000Z";
 
@@ -744,5 +748,140 @@ describe("formal IM adapter", () => {
       url: expect.stringContaining("/media/im/"),
     });
     expect(upload).toHaveBeenCalledWith(91, file);
+  });
+
+  it("persists group privacy and leave operations through formal realtime endpoints", async () => {
+    const conversation = {
+      id: 91,
+      type: "group" as const,
+      title: "隐私测试群",
+      participants: [
+        { userId: 100, needoId: "u0000000100", username: "群主", avatarUrl: null, role: "owner" as const },
+        { userId: 201, needoId: "u0000000201", username: "成员", avatarUrl: null, role: "member" as const },
+      ],
+      lastMessage: null,
+      unreadCount: 0,
+      privacyModeEnabled: true,
+      hideMemberProfiles: true,
+      disappearingTtlSeconds: 3_600,
+      disappearingStartMode: "sent" as const,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const updateConversationPrivacy = vi
+      .spyOn(realtimeApi, "updateConversationPrivacy")
+      .mockResolvedValue(conversation);
+    const leaveConversation = vi
+      .spyOn(realtimeApi, "leaveConversation")
+      .mockResolvedValue({ conversationId: 91, removedUserId: 100, newOwnerUserId: 201, dissolved: false });
+    const dissolveConversation = vi
+      .spyOn(realtimeApi, "dissolveConversation")
+      .mockResolvedValue({ conversationId: 91, removedUserId: 100, newOwnerUserId: null, dissolved: true });
+    const api = createFormalImApi({
+      currentUser: { id: 100, needoId: "u0000000100", username: "群主", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(
+      api.updateConversationPrivacy("91", {
+        privacyModeEnabled: true,
+        hideMemberProfiles: true,
+        disappearingCountdown: { months: 0, days: 0, hours: 1, minutes: 0 },
+        disappearingStartMode: "sent",
+      }),
+    ).resolves.toMatchObject({
+      conversation: {
+        id: "91",
+        privacyModeEnabled: true,
+        hideMemberProfiles: true,
+        disappearingCountdown: { months: 0, days: 0, hours: 1, minutes: 0 },
+        disappearingStartMode: "sent",
+      },
+    });
+    await expect(api.removeConversationMember("91", "100", "201")).resolves.toEqual({
+      conversationId: "91",
+      removedUserId: "100",
+      dissolved: false,
+    });
+    await expect(api.dissolveConversation("91")).resolves.toEqual({
+      conversationId: "91",
+      dissolved: true,
+    });
+
+    expect(updateConversationPrivacy).toHaveBeenCalledWith(91, {
+      privacyModeEnabled: true,
+      hideMemberProfiles: true,
+      disappearingTtlSeconds: 3_600,
+      disappearingStartMode: "sent",
+    });
+    expect(leaveConversation).toHaveBeenCalledWith(91, 201);
+    expect(dissolveConversation).toHaveBeenCalledWith(91);
+  });
+
+  it("persists a participant-only irreversible message clear through the formal endpoint", async () => {
+    const conversation = {
+      id: 91,
+      type: "direct" as const,
+      title: null,
+      participants: [
+        { userId: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null, role: "member" as const },
+        { userId: 201, needoId: "u0000000201", username: "对方", avatarUrl: null, role: "member" as const },
+      ],
+      lastMessage: null,
+      unreadCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const clearConversationMessages = vi
+      .spyOn(realtimeApi, "clearConversationMessages")
+      .mockResolvedValue(conversation);
+    const api = createFormalImApi({
+      currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(api.clearConversation("91")).resolves.toMatchObject({
+      conversation: { id: "91", lastMessageId: undefined },
+    });
+    expect(clearConversationMessages).toHaveBeenCalledWith(91);
+  });
+
+  it("persists one viewer-only message deletion through the formal endpoint", async () => {
+    const deleteMessageForMe = vi
+      .spyOn(realtimeApi, "deleteMessageForMe")
+      .mockResolvedValue({ conversationId: 91, messageId: 501, deleted: true });
+    const api = createFormalImApi({
+      currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(api.deleteMessage("91", "501")).resolves.toEqual({
+      conversationId: "91",
+      messageId: "501",
+      deleted: true,
+    });
+    expect(deleteMessageForMe).toHaveBeenCalledWith(91, 501);
+  });
+
+  it("does not turn a harmless SSE connected event into a three-request bootstrap refresh", () => {
+    expect(shouldForwardFormalImEvent({ id: "1", payload: {}, type: "connected" })).toBe(false);
+    const reactionEvent = {
+      id: "2",
+      payload: {
+        id: 501,
+        conversationId: 91,
+        senderUserId: 201,
+        type: "text" as const,
+        content: "ok",
+        metadata: null,
+        createdAt: now,
+      },
+      type: "message.reaction.updated",
+    };
+    expect(shouldForwardFormalImEvent(reactionEvent)).toBe(true);
+    expect(toFormalImStoreUpdate(reactionEvent)).toMatchObject({
+      type: "message.updated",
+      message: { id: "501" },
+    });
   });
 });

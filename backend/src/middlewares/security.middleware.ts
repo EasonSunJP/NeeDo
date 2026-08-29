@@ -1,9 +1,10 @@
 import cors from "cors";
 import rateLimit from "express-rate-limit";
-import type { Request, RequestHandler, Response } from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 import helmet from "helmet";
 import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
+import { AuthTokenService } from "../services/auth-token.service";
 import { errorResponse } from "../utils/api-response";
 import { AppError } from "../utils/app-error";
 
@@ -28,16 +29,51 @@ export const createCorsMiddleware = (config: AppConfig): RequestHandler =>
     }
   });
 
-export const createRateLimitMiddleware = (config: AppConfig): RequestHandler =>
-  rateLimit({
+const readBearerAccessToken = (request: Request): string | null => {
+  const authorization = request.header("authorization")?.trim();
+  const match = authorization ? /^Bearer\s+(\S+)$/i.exec(authorization) : null;
+  return match?.[1] ?? null;
+};
+
+export const createRateLimitMiddleware = (config: AppConfig): RequestHandler => {
+  const tokenService = new AuthTokenService(config);
+  const verifiedUserKeys = new WeakMap<Request, string>();
+  const handleRateLimit = (_request: Request, response: Response) => {
+    response.status(429).json(errorResponse(ERROR_CODES.RATE_LIMITED, "error.rate_limited"));
+  };
+  const perIpLimiter = rateLimit({
     windowMs: config.RATE_LIMIT_WINDOW_MS,
     limit: config.RATE_LIMIT_MAX,
     standardHeaders: "draft-7",
     legacyHeaders: false,
-    handler: (_request, response) => {
-      response.status(429).json(errorResponse(ERROR_CODES.RATE_LIMITED, "error.rate_limited"));
-    }
+    handler: handleRateLimit
   });
+  const perUserLimiter = rateLimit({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    limit: config.RATE_LIMIT_MAX,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: (request) => verifiedUserKeys.get(request) ?? "invalid-access-token",
+    handler: handleRateLimit
+  });
+
+  return (request: Request, response: Response, next: NextFunction) => {
+    const accessToken = readBearerAccessToken(request);
+
+    if (accessToken) {
+      try {
+        const payload = tokenService.verifyAccessToken(accessToken);
+        verifiedUserKeys.set(request, `user:${payload.sub}`);
+        perUserLimiter(request, response, next);
+        return;
+      } catch {
+        // Invalid or expired bearer tokens retain the anonymous per-IP limit.
+      }
+    }
+
+    perIpLimiter(request, response, next);
+  };
+};
 
 type AuthRateLimitName =
   | "registration"

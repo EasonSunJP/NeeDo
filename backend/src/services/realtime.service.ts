@@ -15,6 +15,7 @@ import type {
   NotificationListInput,
   RealtimeRepositoryPort,
   SocialPostListInput,
+  UpdateConversationPrivacyInput,
   UpdateConversationPreferencesInput
 } from "../repositories/realtime.repository";
 import type { AuthenticatedAccessContext } from "./auth.service";
@@ -64,8 +65,100 @@ export class RealtimeService implements OrderStatusNotificationPort {
       creatorUserId: auth.userId,
       type: input.type,
       title: input.title,
-      participantUserIds: input.participantUserIds
+      participantUserIds: input.participantUserIds,
+      privacyModeEnabled: input.privacyModeEnabled,
+      hideMemberProfiles: input.hideMemberProfiles,
+      disappearingTtlSeconds: input.disappearingTtlSeconds,
+      disappearingStartMode: input.disappearingStartMode
     });
+  }
+
+  public async updateConversationPrivacy(
+    auth: AuthenticatedAccessContext,
+    input: Omit<UpdateConversationPrivacyInput, "actorUserId">
+  ) {
+    const conversation = await this.repository.updateConversationPrivacy({
+      ...input,
+      actorUserId: auth.userId
+    });
+
+    if (!conversation) {
+      throw this.notFoundError("error.realtime.group_conversation_not_found");
+    }
+
+    for (const participant of conversation.participants) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "conversation.privacy.updated",
+        recipientUserId: participant.userId,
+        payload: conversation,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return conversation;
+  }
+
+  public async leaveConversation(
+    auth: AuthenticatedAccessContext,
+    conversationId: number,
+    transferOwnerUserId?: number
+  ) {
+    const outcome = await this.repository.leaveConversation({
+      conversationId,
+      userId: auth.userId,
+      transferOwnerUserId
+    });
+
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.group_conversation_not_found");
+    }
+    if (outcome.status === "transfer_required") {
+      throw this.validationError("error.realtime.group_owner_transfer_required");
+    }
+    if (outcome.status === "invalid_transfer") {
+      throw this.validationError("error.realtime.group_owner_transfer_invalid");
+    }
+
+    const { result } = outcome;
+
+    for (const recipientUserId of result.recipientUserIds) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: result.dissolved ? "conversation.dissolved" : "conversation.member.left",
+        recipientUserId,
+        payload: result,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return result;
+  }
+
+  public async dissolveConversation(
+    auth: AuthenticatedAccessContext,
+    conversationId: number
+  ) {
+    const result = await this.repository.dissolveConversation({
+      conversationId,
+      ownerUserId: auth.userId
+    });
+
+    if (!result) {
+      throw this.notFoundError("error.realtime.group_conversation_not_found");
+    }
+
+    for (const recipientUserId of result.recipientUserIds) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "conversation.dissolved",
+        recipientUserId,
+        payload: result,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return result;
   }
 
   public listConversations(auth: AuthenticatedAccessContext, input: PaginationInput) {
@@ -109,6 +202,18 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return messages;
+  }
+
+  public async deleteMessageForUser(
+    auth: AuthenticatedAccessContext,
+    input: { conversationId: number; messageId: number }
+  ) {
+    const deleted = await this.repository.deleteMessageForUser({
+      ...input,
+      userId: auth.userId
+    });
+    if (!deleted) throw this.notFoundError("error.realtime.message_not_found");
+    return deleted;
   }
 
   public async setMessageReaction(
@@ -231,6 +336,18 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async hideConversation(auth: AuthenticatedAccessContext, conversationId: number) {
     const conversation = await this.repository.hideConversation({
+      conversationId,
+      userId: auth.userId
+    });
+    if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
+    return conversation;
+  }
+
+  public async clearConversationMessages(
+    auth: AuthenticatedAccessContext,
+    conversationId: number
+  ) {
+    const conversation = await this.repository.clearConversationMessages({
       conversationId,
       userId: auth.userId
     });

@@ -56,12 +56,23 @@ export type ImApi = {
   ): Promise<{ conversation: Conversation; members: ConversationMember[] }>;
   updateConversationTags(conversationId: string, tags: string[]): Promise<{ conversation: Conversation }>;
   addConversationMembers(conversationId: string, userIds: string[]): Promise<{ conversation: Conversation }>;
-  removeConversationMember(conversationId: string, userId: string): Promise<{ conversation: Conversation }>;
+  removeConversationMember(
+    conversationId: string,
+    userId: string,
+    transferOwnerUserId?: string,
+  ): Promise<{ conversation?: Conversation; conversationId: string; removedUserId: string; dissolved: boolean }>;
+  dissolveConversation(
+    conversationId: string,
+  ): Promise<{ conversationId: string; dissolved: true }>;
   pinConversation(conversationId: string, isPinned: boolean): Promise<{ conversation: Conversation }>;
   muteConversation(conversationId: string, isMuted: boolean): Promise<{ conversation: Conversation }>;
   markConversationRead(conversationId: string, markUnread?: boolean): Promise<{ conversation: Conversation }>;
   deleteConversation(conversationId: string): Promise<{ conversation: Conversation }>;
   clearConversation(conversationId: string): Promise<{ conversation: Conversation }>;
+  deleteMessage(
+    conversationId: string,
+    messageId: string,
+  ): Promise<{ conversationId: string; messageId: string; deleted: true }>;
   sendMessage(
     type: ImMessageType,
     payload: { conversationId: string; content: string; quotedMessageId?: string; ext?: MessageExt },

@@ -35,7 +35,7 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
       "describeMerchantReadError(loadError, languageRef.current)",
     );
     expect(source).toContain('!loading && !error && module === "staff"');
-    expect(source).toContain('!loading && !error && module === "customers"');
+    expect(source).toContain('!loading && !error && module === "users"');
     expect(source).toMatch(
       /!loading\s*&&\s*!error\s*&&\s*module !== "reviews"\s*&&\s*total > 0/,
     );
@@ -81,6 +81,13 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain("selectedCustomerId");
     expect(source).not.toContain("selectedTechnicianId");
     expect(source).not.toContain("DetailGrid");
+    expect(source).toContain("payrollSchedulePolicyApi.getEmployee(");
+    expect(source).toContain("payrollSchedulePolicyApi.updateEmployee(");
+    expect(source).toContain("employeePayrollPolicyRequest");
+    expect(source).toContain("employeeCompensationApi.get(");
+    expect(source).toContain("employeeCompensationApi.update(");
+    expect(source).toContain("employeeCompensationApi.preview(");
+    expect(source).toContain("employeeCompensationRequest");
   });
 
   it("uses the shared request coordinator with canonical string employee identifiers", () => {
@@ -107,18 +114,21 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain('"员工详细信息卡读取失败"');
     expect(source).toContain("translateText(fallback, language)");
     expect(source).toContain(
-      'translateText("正在读取客户正式详情...", language)',
+      'translateText("正在读取用户详细信息...", language)',
     );
-    expect(source).toContain('"客户正式详情读取失败"');
+    expect(source).toContain('"用户详细信息读取失败"');
     expect(source).toContain('translateText("重试", language)');
     expect(source).not.toContain(">重试</Button>");
   });
 
-  it("does not invent reviews, payroll, schedule, or customer analytics", () => {
+  it("does not invent reviews, full payroll amounts, or customer analytics and uses the formal employee schedule", () => {
     expect(source).not.toContain("LTV");
     expect(source).not.toContain("churnRisk");
     expect(source).not.toContain("activeScore");
-    expect(source).not.toContain("薪酬设置");
+    expect(source).not.toContain('baseSalaryJpy: 230000');
+    expect(source).not.toContain('commissionRatePercent: 20');
+    expect(source).toContain("compensation={employeeCompensation}");
+    expect(source).toContain("工资结算周期");
     expect(source).not.toContain("时间线");
     expect(source).not.toContain("UnifiedUserCalendar");
     expect(source).toContain("正式评价功能尚未启用");
@@ -151,4 +161,18 @@ describe("employee detail drawer translations", () => {
       translateText("员工详细信息卡读取失败", language),
     ]).toEqual(expected);
   });
+
+  it.each([
+    ["zh", "薪酬与结算", "前往财务结算"],
+    ["zh-Hant", "薪酬與結算", "前往財務結算"],
+    ["ja", "報酬と給与精算", "給与精算へ"],
+    ["en", "Compensation and payroll", "Go to payroll settlement"],
+    ["ko", "보상 및 급여 정산", "급여 정산으로 이동"],
+  ] as Array<[Language, string, string]>)(
+    "localizes employee compensation copy for %s",
+    (language, title, financeLink) => {
+      expect(translateText("薪酬与结算", language)).toBe(title);
+      expect(translateText("前往财务结算", language)).toBe(financeLink);
+    },
+  );
 });
