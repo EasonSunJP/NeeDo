@@ -115,7 +115,20 @@ const createFixture = () => {
     history: jest.fn(async () => ({ list: [protectedPayload], total: 1, page: 1, page_size: 20 })),
     getRelease: jest.fn(async () => protectedPayload),
     updateLocale: jest.fn(async () => ({ ...protectedPayload, lockVersion: 2 })),
+    updateMetadata: jest.fn(async () => ({
+      ...protectedPayload,
+      affiliateTaskId: 29,
+      visibleFrom: new Date("2026-09-01T01:00:00.000Z"),
+      visibleUntil: new Date("2026-09-30T01:00:00.000Z"),
+      lockVersion: 2
+    })),
     copyLocaleToAll: jest.fn(async () => ({ ...protectedPayload, lockVersion: 2 })),
+    searchAffiliateTasks: jest.fn(async () => ({
+      list: [{ id: 29, taskCode: "AFF-PUBLIC-29", label: "Visible task", status: "active" }],
+      total: 1,
+      page: 1,
+      page_size: 10
+    })),
     preview: jest.fn(async () => ({ ...protectedPayload, taskAction: null })),
     publish: jest.fn(async () => ({ ...protectedPayload, status: "published" })),
     schedule: jest.fn(async () => ({ ...protectedPayload, status: "scheduled" })),
@@ -245,6 +258,20 @@ describe("official Affiliate announcement HTTP API", () => {
     const fixture = createFixture();
     const authorization = `Bearer ${fixture.tokens[7]}`;
     await request(fixture.app)
+      .get(
+        "/api/v1/backoffice/affiliate/announcements/affiliate-tasks?q=Visible&page=1&pageSize=10"
+      )
+      .set("Authorization", authorization)
+      .expect(200)
+      .expect((response) =>
+        expect(response.body.data.list[0]).toEqual({
+          id: 29,
+          taskCode: "AFF-PUBLIC-29",
+          label: "Visible task",
+          status: "active"
+        })
+      );
+    await request(fixture.app)
       .get(`/api/v1/backoffice/affiliate/announcements/${publicId}/history?page=1&pageSize=20`)
       .set("Authorization", authorization)
       .expect(200);
@@ -267,6 +294,17 @@ describe("official Affiliate announcement HTTP API", () => {
       .patch(`/api/v1/backoffice/affiliate/announcements/${publicId}/releases/71`)
       .set("Authorization", authorization)
       .send({ operation: "copy_to_all", expectedLockVersion: 2, sourceLocale: "en" })
+      .expect(200);
+    await request(fixture.app)
+      .patch(`/api/v1/backoffice/affiliate/announcements/${publicId}/releases/71`)
+      .set("Authorization", authorization)
+      .send({
+        operation: "update_metadata",
+        expectedLockVersion: 2,
+        affiliateTaskId: 29,
+        visibleFrom: "2026-09-01T01:00:00.000Z",
+        visibleUntil: "2026-09-30T01:00:00.000Z"
+      })
       .expect(200);
     await request(fixture.app)
       .get(`/api/v1/backoffice/affiliate/announcements/${publicId}/releases/71/preview`)
@@ -310,6 +348,22 @@ describe("official Affiliate announcement HTTP API", () => {
       publicId,
       71,
       { expectedLockVersion: 2, locale: "en" }
+    );
+    expect(fixture.service.updateMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7 }),
+      expect.any(Object),
+      publicId,
+      71,
+      {
+        expectedLockVersion: 2,
+        affiliateTaskId: 29,
+        visibleFrom: "2026-09-01T01:00:00.000Z",
+        visibleUntil: "2026-09-30T01:00:00.000Z"
+      }
+    );
+    expect(fixture.service.searchAffiliateTasks).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7 }),
+      { q: "Visible", page: 1, pageSize: 10 }
     );
   });
 

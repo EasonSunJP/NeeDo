@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   contentPublicationApi,
+  type AnnouncementAffiliateTaskSearchItem,
   type AnnouncementPreview,
   type AnnouncementRelease,
   type ContentLocaleCode,
@@ -23,6 +24,17 @@ const areaClass =
 
 function operationKey() {
   return globalThis.crypto.randomUUID();
+}
+
+function toDateTimeLocal(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+}
+
+function toUtcOrNull(value: string) {
+  return value ? new Date(value).toISOString() : null;
 }
 
 export function AnnouncementEditor({
@@ -49,6 +61,19 @@ export function AnnouncementEditor({
   const [notice, setNotice] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newBody, setNewBody] = useState("");
+  const [newAffiliateTaskId, setNewAffiliateTaskId] = useState("");
+  const [newVisibleFrom, setNewVisibleFrom] = useState("");
+  const [newVisibleUntil, setNewVisibleUntil] = useState("");
+  const [affiliateTaskId, setAffiliateTaskId] = useState("");
+  const [visibleFrom, setVisibleFrom] = useState("");
+  const [visibleUntil, setVisibleUntil] = useState("");
+  const [metadataDirty, setMetadataDirty] = useState(false);
+  const [taskQuery, setTaskQuery] = useState("");
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskTotal, setTaskTotal] = useState(0);
+  const [taskResults, setTaskResults] = useState<
+    AnnouncementAffiliateTaskSearchItem[]
+  >([]);
   const [publishAt, setPublishAt] = useState("");
   const [reason, setReason] = useState("");
   const [disableReason, setDisableReason] = useState("");
@@ -58,6 +83,15 @@ export function AnnouncementEditor({
   );
   const [conflict, setConflict] = useState(false);
   const [preview, setPreview] = useState<AnnouncementPreview | null>(null);
+
+  const syncMetadata = useCallback((release: AnnouncementRelease | null) => {
+    setAffiliateTaskId(
+      release?.affiliateTaskId ? String(release.affiliateTaskId) : "",
+    );
+    setVisibleFrom(toDateTimeLocal(release?.visibleFrom ?? null));
+    setVisibleUntil(toDateTimeLocal(release?.visibleUntil ?? null));
+    setMetadataDirty(false);
+  }, []);
 
   const loadList = useCallback(async () => {
     setLoad("loading");
@@ -70,6 +104,7 @@ export function AnnouncementEditor({
       setList(response.list);
       const next = response.list[0] ?? null;
       setSelected(next);
+      syncMetadata(next);
       if (next) {
         const releases = await contentPublicationApi.getAnnouncementHistory(
           next.publicId,
@@ -89,7 +124,7 @@ export function AnnouncementEditor({
       setLoad("error");
       setError(t("loadError"));
     }
-  }, [t]);
+  }, [syncMetadata, t]);
 
   useEffect(() => {
     void loadList();
@@ -97,6 +132,7 @@ export function AnnouncementEditor({
 
   async function selectAnnouncement(item: AnnouncementRelease) {
     setSelected(item);
+    syncMetadata(item);
     setDirtyLocales(new Set());
     setError("");
     try {
@@ -105,10 +141,29 @@ export function AnnouncementEditor({
         { page: 1, pageSize: 20 },
       );
       setHistory(response.list);
-      const source = response.list.find((release) => release.status !== "draft");
+      const source = response.list.find(
+        (release) => release.status !== "draft",
+      );
       setRollbackReleaseId(source ? String(source.releaseId) : "");
     } catch {
       setHistory([]);
+      setError(t("loadError"));
+    }
+  }
+
+  async function searchAffiliateTasks(page: number) {
+    try {
+      const response =
+        await contentPublicationApi.searchAnnouncementAffiliateTasks({
+          page,
+          pageSize: 10,
+          ...(taskQuery.trim() ? { q: taskQuery.trim() } : {}),
+        });
+      setTaskResults(response.list);
+      setTaskTotal(response.total);
+      setTaskPage(page);
+      setError("");
+    } catch {
       setError(t("loadError"));
     }
   }
@@ -133,9 +188,9 @@ export function AnnouncementEditor({
       await contentPublicationApi.createAnnouncementDraft({
         idempotencyKey: operationKey(),
         sourceLocale: locale,
-        affiliateTaskId: null,
-        visibleFrom: null,
-        visibleUntil: null,
+        affiliateTaskId: newAffiliateTaskId ? Number(newAffiliateTaskId) : null,
+        visibleFrom: toUtcOrNull(newVisibleFrom),
+        visibleUntil: toUtcOrNull(newVisibleUntil),
         translation: {
           title: newTitle.trim(),
           summary: null,
@@ -145,6 +200,9 @@ export function AnnouncementEditor({
       await loadList();
       setNewTitle("");
       setNewBody("");
+      setNewAffiliateTaskId("");
+      setNewVisibleFrom("");
+      setNewVisibleUntil("");
       setDirtyLocales(new Set());
       setNotice(t("saved"));
     } catch {
@@ -154,7 +212,7 @@ export function AnnouncementEditor({
 
   async function saveLocale(): Promise<AnnouncementRelease | null> {
     if (!draft) return null;
-    if (dirtyLocales.size === 0) return draft;
+    if (dirtyLocales.size === 0 && !metadataDirty) return draft;
     try {
       let saved = draft;
       for (const dirtyLocale of dirtyLocales) {
@@ -171,17 +229,29 @@ export function AnnouncementEditor({
           },
         );
       }
+      if (metadataDirty) {
+        saved = await contentPublicationApi.updateAnnouncementMetadata(
+          saved.publicId,
+          saved.releaseId,
+          {
+            expectedLockVersion: saved.lockVersion,
+            affiliateTaskId: affiliateTaskId ? Number(affiliateTaskId) : null,
+            visibleFrom: toUtcOrNull(visibleFrom),
+            visibleUntil: toUtcOrNull(visibleUntil),
+          },
+        );
+      }
       replaceSelected(saved);
+      syncMetadata(saved);
       setDirtyLocales(new Set());
       setConflict(false);
       setNotice(t("saved"));
       return saved;
     } catch (caught) {
-      const isConflict = caught instanceof ApiClientError && caught.status === 409;
+      const isConflict =
+        caught instanceof ApiClientError && caught.status === 409;
       setConflict(isConflict);
-      setError(
-        isConflict ? t("conflict") : t("failedSave"),
-      );
+      setError(isConflict ? t("conflict") : t("failedSave"));
       return null;
     }
   }
@@ -213,7 +283,8 @@ export function AnnouncementEditor({
 
   async function copyLocale() {
     if (!draft || !window.confirm(t("copyConfirm"))) return;
-    const savedDraft = dirtyLocales.size > 0 ? await saveLocale() : draft;
+    const savedDraft =
+      dirtyLocales.size > 0 || metadataDirty ? await saveLocale() : draft;
     if (!savedDraft) return;
     try {
       replaceSelected(
@@ -228,11 +299,10 @@ export function AnnouncementEditor({
       );
       setDirtyLocales(new Set());
     } catch (caught) {
-      const isConflict = caught instanceof ApiClientError && caught.status === 409;
+      const isConflict =
+        caught instanceof ApiClientError && caught.status === 409;
       setConflict(isConflict);
-      setError(
-        isConflict ? t("conflict") : t("failedSave"),
-      );
+      setError(isConflict ? t("conflict") : t("failedSave"));
     }
   }
 
@@ -242,16 +312,15 @@ export function AnnouncementEditor({
       await loadList();
       setNotice(t("saved"));
     } catch (caught) {
-      const isConflict = caught instanceof ApiClientError && caught.status === 409;
+      const isConflict =
+        caught instanceof ApiClientError && caught.status === 409;
       setConflict(isConflict);
-      setError(
-        isConflict ? t("conflict") : t("failedSave"),
-      );
+      setError(isConflict ? t("conflict") : t("failedSave"));
     }
   }
 
   async function ensureSaved() {
-    return dirtyLocales.size > 0 ? saveLocale() : draft;
+    return dirtyLocales.size > 0 || metadataDirty ? saveLocale() : draft;
   }
 
   async function previewDraft() {
@@ -343,20 +412,83 @@ export function AnnouncementEditor({
         ) : null}
 
         <PermissionGate permission={editPermission}>
-          <div className="mt-4 grid gap-3 rounded-lg border border-line bg-paper p-4 lg:grid-cols-[1fr_1.5fr_auto]">
+          <div className="mt-4 grid gap-3 rounded-lg border border-line bg-white p-4 md:grid-cols-[1fr_auto_auto]">
             <input
               className={inputClass}
+              name="announcementTaskQuery"
+              onChange={(event) => setTaskQuery(event.target.value)}
+              placeholder={t("affiliateTaskQuery")}
+              value={taskQuery}
+            />
+            <Button
+              onClick={() => void searchAffiliateTasks(1)}
+              variant="secondary"
+            >
+              {t("searchAffiliateTask")}
+            </Button>
+            <Button
+              disabled={taskPage * 10 >= taskTotal}
+              onClick={() => void searchAffiliateTasks(taskPage + 1)}
+              variant="secondary"
+            >
+              {t("nextPage")}
+            </Button>
+          </div>
+          <div className="mt-3 grid gap-3 rounded-lg border border-line bg-paper p-4 lg:grid-cols-2">
+            <input
+              className={inputClass}
+              name="newAnnouncementTitle"
               onChange={(event) => setNewTitle(event.target.value)}
               placeholder={t("title")}
               value={newTitle}
             />
             <input
               className={inputClass}
+              name="newAnnouncementBody"
               onChange={(event) => setNewBody(event.target.value)}
               placeholder={t("announcementBody")}
               value={newBody}
             />
+            <label className="text-sm font-black">
+              {t("affiliateTask")}
+              <select
+                className={`${inputClass} mt-2`}
+                name="newAnnouncementAffiliateTaskId"
+                onChange={(event) => setNewAffiliateTaskId(event.target.value)}
+                value={newAffiliateTaskId}
+              >
+                <option value="">{t("noAffiliateTask")}</option>
+                {taskResults.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.label} · {task.taskCode} · {task.status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm font-black">
+                {t("visibleFrom")}
+                <input
+                  className={`${inputClass} mt-2`}
+                  name="newAnnouncementVisibleFrom"
+                  onChange={(event) => setNewVisibleFrom(event.target.value)}
+                  type="datetime-local"
+                  value={newVisibleFrom}
+                />
+              </label>
+              <label className="text-sm font-black">
+                {t("visibleUntil")}
+                <input
+                  className={`${inputClass} mt-2`}
+                  name="newAnnouncementVisibleUntil"
+                  onChange={(event) => setNewVisibleUntil(event.target.value)}
+                  type="datetime-local"
+                  value={newVisibleUntil}
+                />
+              </label>
+            </div>
             <Button
+              className="lg:col-span-2"
               disabled={!newTitle.trim() || !newBody.trim()}
               onClick={() => void createDraft()}
             >
@@ -433,6 +565,61 @@ export function AnnouncementEditor({
                   fallback={<Badge className="mt-4">{t("editDenied")}</Badge>}
                   permission={editPermission}
                 >
+                  <div className="mt-4 grid gap-4 rounded-lg border border-line bg-paper p-4 md:grid-cols-3">
+                    <label className="text-sm font-black">
+                      {t("affiliateTask")}
+                      <select
+                        className={`${inputClass} mt-2`}
+                        name="announcementAffiliateTaskId"
+                        onChange={(event) => {
+                          setAffiliateTaskId(event.target.value);
+                          setMetadataDirty(true);
+                        }}
+                        value={affiliateTaskId}
+                      >
+                        <option value="">{t("noAffiliateTask")}</option>
+                        {draft.affiliateTaskId !== null &&
+                        !taskResults.some(
+                          (task) => task.id === draft.affiliateTaskId,
+                        ) ? (
+                          <option value={draft.affiliateTaskId}>
+                            #{draft.affiliateTaskId}
+                          </option>
+                        ) : null}
+                        {taskResults.map((task) => (
+                          <option key={task.id} value={task.id}>
+                            {task.label} · {task.taskCode} · {task.status}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-sm font-black">
+                      {t("visibleFrom")}
+                      <input
+                        className={`${inputClass} mt-2`}
+                        name="announcementVisibleFrom"
+                        onChange={(event) => {
+                          setVisibleFrom(event.target.value);
+                          setMetadataDirty(true);
+                        }}
+                        type="datetime-local"
+                        value={visibleFrom}
+                      />
+                    </label>
+                    <label className="text-sm font-black">
+                      {t("visibleUntil")}
+                      <input
+                        className={`${inputClass} mt-2`}
+                        name="announcementVisibleUntil"
+                        onChange={(event) => {
+                          setVisibleUntil(event.target.value);
+                          setMetadataDirty(true);
+                        }}
+                        type="datetime-local"
+                        value={visibleUntil}
+                      />
+                    </label>
+                  </div>
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <label className="text-sm font-black">
                       {t("title")}

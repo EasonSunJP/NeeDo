@@ -3,6 +3,7 @@ import {
   affiliateNoticeCarouselDraftCreateBodySchema,
   affiliateNoticeCarouselDraftUpdateBodySchema,
   announcementDraftCreateBodySchema,
+  announcementDraftMetadataUpdateBodySchema,
   announcementDraftMutationBodySchema,
   announcementDraftUpdateBodySchema,
   carouselSceneParamSchema,
@@ -125,7 +126,9 @@ describe("strict scene-specific carousel draft validators", () => {
     const allTranslations = ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
       ...translation,
       locale,
-      title: `Title ${locale}`
+      title: `Title ${locale}`,
+      sourceLocale: "en",
+      isInitialCopy: false
     }));
     expect(
       userHomeCarouselDraftUpdateBodySchema.safeParse({
@@ -154,6 +157,26 @@ describe("strict scene-specific carousel draft validators", () => {
           {
             ...userSlide,
             translations: [...allTranslations.slice(0, 4), allTranslations[0]]
+          }
+        ]
+      }).success
+    ).toBe(false);
+    expect(
+      userHomeCarouselDraftUpdateBodySchema.safeParse({
+        expectedLockVersion: 2,
+        sourceLocale: "ja",
+        slides: [
+          {
+            ...userSlide,
+            translations: allTranslations.map((value) => ({
+              locale: value.locale,
+              badge: value.badge,
+              title: value.title,
+              caption: value.caption,
+              ctaLabel: value.ctaLabel,
+              imageAltText: value.imageAltText,
+              isInitialCopy: value.isInitialCopy
+            }))
           }
         ]
       }).success
@@ -289,7 +312,9 @@ describe("strict scene-specific carousel draft validators", () => {
             ...userSlide,
             translations: ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
               ...translation,
-              locale
+              locale,
+              sourceLocale: "en",
+              isInitialCopy: false
             }))
           }
         ]
@@ -405,6 +430,33 @@ describe("announcement and lifecycle validators", () => {
         body: "Body"
       }).success
     ).toBe(true);
+  });
+
+  it("accepts a strict draft metadata update and rejects an inverted visibility window", () => {
+    expect(
+      announcementDraftMetadataUpdateBodySchema.parse({
+        operation: "update_metadata",
+        expectedLockVersion: 3,
+        affiliateTaskId: 29,
+        visibleFrom: "2026-09-01T01:00:00.000Z",
+        visibleUntil: "2026-09-30T01:00:00.000Z"
+      })
+    ).toEqual({
+      operation: "update_metadata",
+      expectedLockVersion: 3,
+      affiliateTaskId: 29,
+      visibleFrom: "2026-09-01T01:00:00.000Z",
+      visibleUntil: "2026-09-30T01:00:00.000Z"
+    });
+    expect(
+      announcementDraftMetadataUpdateBodySchema.safeParse({
+        operation: "update_metadata",
+        expectedLockVersion: 3,
+        affiliateTaskId: null,
+        visibleFrom: "2026-09-30T01:00:00.000Z",
+        visibleUntil: "2026-09-01T01:00:00.000Z"
+      }).success
+    ).toBe(false);
   });
 
   it("requires idempotency plus optimistic locking for publication mutations", () => {

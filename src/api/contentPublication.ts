@@ -5,8 +5,15 @@ export type PublishedCarouselScene = "USER_HOME" | "AFFILIATE_HOME_NOTICE";
 export type CarouselSceneSlug = "user-home" | "affiliate-home-notice";
 export type CarouselScene = PublishedCarouselScene | CarouselSceneSlug;
 export type UserHomeCarouselScene = "USER_HOME" | "user-home";
-export type AffiliateCarouselScene = "AFFILIATE_HOME_NOTICE" | "affiliate-home-notice";
-export type ContentPublicationStatus = "draft" | "scheduled" | "published" | "disabled" | "archived";
+export type AffiliateCarouselScene =
+  | "AFFILIATE_HOME_NOTICE"
+  | "affiliate-home-notice";
+export type ContentPublicationStatus =
+  | "draft"
+  | "scheduled"
+  | "published"
+  | "disabled"
+  | "archived";
 
 export type PublishedCarouselTarget =
   | { type: "shop"; publicId: string }
@@ -76,6 +83,11 @@ export type CarouselTranslation = Omit<CarouselTranslationInput, "locale"> & {
   isInitialCopy: boolean;
 };
 
+export type CarouselReplacementTranslationInput = CarouselTranslationInput & {
+  sourceLocale: ContentLocaleCode;
+  isInitialCopy: boolean;
+};
+
 export type UserHomeCarouselTargetInput =
   | { type: "shop"; shopId: number }
   | { type: "shop"; publicId: string }
@@ -103,7 +115,9 @@ export type CarouselTargetInput<TScene extends CarouselScene = CarouselScene> =
     ? UserHomeCarouselTargetInput
     : AffiliateCarouselTargetInput;
 
-export type CarouselDraftSlideInput<TScene extends CarouselScene = CarouselScene> = {
+export type CarouselDraftSlideInput<
+  TScene extends CarouselScene = CarouselScene,
+> = {
   publicId?: string;
   mediaAssetPublicId: string;
   sortOrder: number;
@@ -114,19 +128,30 @@ export type CarouselDraftSlideInput<TScene extends CarouselScene = CarouselScene
   translations: CarouselTranslationInput[];
 };
 
-export type CarouselDraftCreateInput<TScene extends CarouselScene = CarouselScene> = {
+export type CarouselDraftCreateInput<
+  TScene extends CarouselScene = CarouselScene,
+> = {
   idempotencyKey: string;
   sourceLocale: ContentLocaleCode;
   slides: CarouselDraftSlideInput<TScene>[];
 };
 
-export type CarouselDraftReplaceInput<TScene extends CarouselScene = CarouselScene> = {
+export type CarouselDraftReplaceInput<
+  TScene extends CarouselScene = CarouselScene,
+> = {
   expectedLockVersion: number;
   sourceLocale: ContentLocaleCode;
-  slides: CarouselDraftSlideInput<TScene>[];
+  slides: Array<
+    Omit<CarouselDraftSlideInput<TScene>, "translations"> & {
+      translations: CarouselReplacementTranslationInput[];
+    }
+  >;
 };
 
-export type CarouselLocaleUpdateInput = Omit<CarouselTranslationInput, "locale"> & {
+export type CarouselLocaleUpdateInput = Omit<
+  CarouselTranslationInput,
+  "locale"
+> & {
   expectedLockVersion: number;
 };
 
@@ -208,8 +233,11 @@ export type AffiliateTargetSearchQuery = ContentPageQuery & {
   type?: "announcement" | "affiliate_task";
 };
 
-export type CarouselTargetSearchQuery<TScene extends CarouselScene = CarouselScene> =
-  TScene extends UserHomeCarouselScene ? UserHomeTargetSearchQuery : AffiliateTargetSearchQuery;
+export type CarouselTargetSearchQuery<
+  TScene extends CarouselScene = CarouselScene,
+> = TScene extends UserHomeCarouselScene
+  ? UserHomeTargetSearchQuery
+  : AffiliateTargetSearchQuery;
 
 export type PublishContentInput = {
   idempotencyKey: string;
@@ -260,6 +288,24 @@ export type AnnouncementLocaleCopyInput = {
   operation: "copy_to_all";
   expectedLockVersion: number;
   sourceLocale: ContentLocaleCode;
+};
+
+export type AnnouncementMetadataUpdateInput = {
+  expectedLockVersion: number;
+  affiliateTaskId: number | null;
+  visibleFrom: string | null;
+  visibleUntil: string | null;
+};
+
+export type AnnouncementAffiliateTaskSearchItem = {
+  id: number;
+  taskCode: string;
+  label: string;
+  status: string;
+};
+
+export type AnnouncementAffiliateTaskSearchQuery = ContentPageQuery & {
+  q?: string;
 };
 
 export type AnnouncementRelease = {
@@ -316,43 +362,52 @@ function carouselLifecycle<TInput>(
   scene: CarouselScene,
   releaseId: number,
   action: "publish" | "schedule" | "disable" | "rollback",
-  body: TInput
+  body: TInput,
 ) {
-  return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases/${releaseId}/${action}`, {
-    body,
-    method: "POST"
-  });
+  return httpClient.request<CarouselRelease>(
+    `${carouselBase(scene)}/releases/${releaseId}/${action}`,
+    {
+      body,
+      method: "POST",
+    },
+  );
 }
 
 function announcementLifecycle<TInput>(
   publicId: string,
   releaseId: number,
   action: "publish" | "schedule" | "disable" | "rollback",
-  body: TInput
+  body: TInput,
 ) {
   return httpClient.request<AnnouncementRelease>(
     `${announcementBase(publicId)}/releases/${releaseId}/${action}`,
-    { body, method: "POST" }
+    { body, method: "POST" },
   );
 }
 
 export const contentPublicationApi = {
   getUserHomeCarousel(locale: ContentLocaleCode) {
-    return httpClient.request<PublishedCarouselPayload>("/content/carousels/user-home", {
-      query: { locale }
-    });
+    return httpClient.request<PublishedCarouselPayload>(
+      "/content/carousels/user-home",
+      {
+        query: { locale },
+      },
+    );
   },
 
   getAffiliateCarousel(locale: ContentLocaleCode) {
-    return httpClient.request<PublishedCarouselPayload>("/affiliate/content/carousel", {
-      query: { locale }
-    });
+    return httpClient.request<PublishedCarouselPayload>(
+      "/affiliate/content/carousel",
+      {
+        query: { locale },
+      },
+    );
   },
 
   getAffiliateAnnouncement(publicId: string, locale: ContentLocaleCode) {
     return httpClient.request<PublishedAnnouncementPayload>(
       `/affiliate/announcements/${encodeURIComponent(publicId)}`,
-      { query: { locale } }
+      { query: { locale } },
     );
   },
 
@@ -362,42 +417,56 @@ export const contentPublicationApi = {
 
   createCarouselDraft<TScene extends CarouselScene>(
     scene: TScene,
-    body: CarouselDraftCreateInput<NoInfer<TScene>>
+    body: CarouselDraftCreateInput<NoInfer<TScene>>,
   ) {
-    return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases`, {
-      body,
-      method: "POST"
-    });
+    return httpClient.request<CarouselRelease>(
+      `${carouselBase(scene)}/releases`,
+      {
+        body,
+        method: "POST",
+      },
+    );
   },
 
   getCarouselHistory(scene: CarouselScene, query: ContentPageQuery = {}) {
-    return httpClient.request<ContentPage<CarouselRelease>>(`${carouselBase(scene)}/history`, {
-      query
-    });
+    return httpClient.request<ContentPage<CarouselRelease>>(
+      `${carouselBase(scene)}/history`,
+      {
+        query,
+      },
+    );
   },
 
   searchCarouselTargets<TScene extends CarouselScene>(
     scene: TScene,
-    query: CarouselTargetSearchQuery<NoInfer<TScene>> = {}
+    query: CarouselTargetSearchQuery<NoInfer<TScene>> = {},
   ) {
-    return httpClient.request<ContentPage<CarouselTargetSearchItem>>(`${carouselBase(scene)}/targets`, {
-      query
-    });
+    return httpClient.request<ContentPage<CarouselTargetSearchItem>>(
+      `${carouselBase(scene)}/targets`,
+      {
+        query,
+      },
+    );
   },
 
   getCarouselRelease(scene: CarouselScene, releaseId: number) {
-    return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases/${releaseId}`);
+    return httpClient.request<CarouselRelease>(
+      `${carouselBase(scene)}/releases/${releaseId}`,
+    );
   },
 
   replaceCarouselDraft<TScene extends CarouselScene>(
     scene: TScene,
     releaseId: number,
-    body: CarouselDraftReplaceInput<NoInfer<TScene>>
+    body: CarouselDraftReplaceInput<NoInfer<TScene>>,
   ) {
-    return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases/${releaseId}`, {
-      body,
-      method: "PATCH"
-    });
+    return httpClient.request<CarouselRelease>(
+      `${carouselBase(scene)}/releases/${releaseId}`,
+      {
+        body,
+        method: "PATCH",
+      },
+    );
   },
 
   updateCarouselSlideLocale(
@@ -405,11 +474,11 @@ export const contentPublicationApi = {
     releaseId: number,
     slidePublicId: string,
     locale: ContentLocaleCode,
-    body: CarouselLocaleUpdateInput
+    body: CarouselLocaleUpdateInput,
   ) {
     return httpClient.request<CarouselRelease>(
       `${carouselBase(scene)}/releases/${releaseId}/slides/${encodeURIComponent(slidePublicId)}/locales/${locale}`,
-      { body, method: "PATCH" }
+      { body, method: "PATCH" },
     );
   },
 
@@ -417,98 +486,163 @@ export const contentPublicationApi = {
     scene: CarouselScene,
     releaseId: number,
     slidePublicId: string,
-    body: CarouselLocaleCopyInput
+    body: CarouselLocaleCopyInput,
   ) {
     return httpClient.request<CarouselRelease>(
       `${carouselBase(scene)}/releases/${releaseId}/slides/${encodeURIComponent(slidePublicId)}/copy-to-all`,
-      { body, method: "POST" }
+      { body, method: "POST" },
     );
   },
 
   previewCarousel(scene: CarouselScene, releaseId: number) {
-    return httpClient.request<CarouselRelease>(`${carouselBase(scene)}/releases/${releaseId}/preview`);
+    return httpClient.request<CarouselRelease>(
+      `${carouselBase(scene)}/releases/${releaseId}/preview`,
+    );
   },
 
-  publishCarousel(scene: CarouselScene, releaseId: number, body: PublishContentInput) {
+  publishCarousel(
+    scene: CarouselScene,
+    releaseId: number,
+    body: PublishContentInput,
+  ) {
     return carouselLifecycle(scene, releaseId, "publish", body);
   },
 
-  scheduleCarousel(scene: CarouselScene, releaseId: number, body: ScheduleContentInput) {
+  scheduleCarousel(
+    scene: CarouselScene,
+    releaseId: number,
+    body: ScheduleContentInput,
+  ) {
     return carouselLifecycle(scene, releaseId, "schedule", body);
   },
 
-  disableCarousel(scene: CarouselScene, releaseId: number, body: DisableContentInput) {
+  disableCarousel(
+    scene: CarouselScene,
+    releaseId: number,
+    body: DisableContentInput,
+  ) {
     return carouselLifecycle(scene, releaseId, "disable", body);
   },
 
-  rollbackCarousel(scene: CarouselScene, releaseId: number, body: RollbackContentInput) {
+  rollbackCarousel(
+    scene: CarouselScene,
+    releaseId: number,
+    body: RollbackContentInput,
+  ) {
     return carouselLifecycle(scene, releaseId, "rollback", body);
   },
 
   listAnnouncements(query: ContentPageQuery = {}) {
-    return httpClient.request<ContentPage<AnnouncementRelease>>("/backoffice/affiliate/announcements", {
-      query
-    });
+    return httpClient.request<ContentPage<AnnouncementRelease>>(
+      "/backoffice/affiliate/announcements",
+      {
+        query,
+      },
+    );
   },
 
   createAnnouncementDraft(body: AnnouncementDraftCreateInput) {
-    return httpClient.request<AnnouncementRelease>("/backoffice/affiliate/announcements", {
-      body,
-      method: "POST"
-    });
+    return httpClient.request<AnnouncementRelease>(
+      "/backoffice/affiliate/announcements",
+      {
+        body,
+        method: "POST",
+      },
+    );
+  },
+
+  searchAnnouncementAffiliateTasks(
+    query: AnnouncementAffiliateTaskSearchQuery = {},
+  ) {
+    return httpClient.request<ContentPage<AnnouncementAffiliateTaskSearchItem>>(
+      "/backoffice/affiliate/announcements/affiliate-tasks",
+      { query },
+    );
   },
 
   getAnnouncementHistory(publicId: string, query: ContentPageQuery = {}) {
-    return httpClient.request<ContentPage<AnnouncementRelease>>(`${announcementBase(publicId)}/history`, {
-      query
-    });
+    return httpClient.request<ContentPage<AnnouncementRelease>>(
+      `${announcementBase(publicId)}/history`,
+      {
+        query,
+      },
+    );
   },
 
   getAnnouncementRelease(publicId: string, releaseId: number) {
-    return httpClient.request<AnnouncementRelease>(`${announcementBase(publicId)}/releases/${releaseId}`);
+    return httpClient.request<AnnouncementRelease>(
+      `${announcementBase(publicId)}/releases/${releaseId}`,
+    );
   },
 
   updateAnnouncementLocale(
     publicId: string,
     releaseId: number,
-    body: AnnouncementLocaleUpdateInput
+    body: AnnouncementLocaleUpdateInput,
   ) {
     return httpClient.request<AnnouncementRelease>(
       `${announcementBase(publicId)}/releases/${releaseId}`,
-      { body, method: "PATCH" }
+      { body, method: "PATCH" },
     );
   },
 
   copyAnnouncementLocaleToAll(
     publicId: string,
     releaseId: number,
-    body: Omit<AnnouncementLocaleCopyInput, "operation">
+    body: Omit<AnnouncementLocaleCopyInput, "operation">,
   ) {
     return httpClient.request<AnnouncementRelease>(
       `${announcementBase(publicId)}/releases/${releaseId}`,
-      { body: { ...body, operation: "copy_to_all" }, method: "PATCH" }
+      { body: { ...body, operation: "copy_to_all" }, method: "PATCH" },
+    );
+  },
+
+  updateAnnouncementMetadata(
+    publicId: string,
+    releaseId: number,
+    body: AnnouncementMetadataUpdateInput,
+  ) {
+    return httpClient.request<AnnouncementRelease>(
+      `${announcementBase(publicId)}/releases/${releaseId}`,
+      { body: { ...body, operation: "update_metadata" }, method: "PATCH" },
     );
   },
 
   previewAnnouncement(publicId: string, releaseId: number) {
     return httpClient.request<AnnouncementPreview>(
-      `${announcementBase(publicId)}/releases/${releaseId}/preview`
+      `${announcementBase(publicId)}/releases/${releaseId}/preview`,
     );
   },
 
-  publishAnnouncement(publicId: string, releaseId: number, body: PublishContentInput) {
+  publishAnnouncement(
+    publicId: string,
+    releaseId: number,
+    body: PublishContentInput,
+  ) {
     return announcementLifecycle(publicId, releaseId, "publish", body);
   },
 
-  scheduleAnnouncement(publicId: string, releaseId: number, body: ScheduleContentInput) {
+  scheduleAnnouncement(
+    publicId: string,
+    releaseId: number,
+    body: ScheduleContentInput,
+  ) {
     return announcementLifecycle(publicId, releaseId, "schedule", body);
   },
 
-  disableAnnouncement(publicId: string, releaseId: number, body: DisableContentInput) {
+  disableAnnouncement(
+    publicId: string,
+    releaseId: number,
+    body: DisableContentInput,
+  ) {
     return announcementLifecycle(publicId, releaseId, "disable", body);
   },
 
-  rollbackAnnouncement(publicId: string, releaseId: number, body: RollbackContentInput) {
+  rollbackAnnouncement(
+    publicId: string,
+    releaseId: number,
+    body: RollbackContentInput,
+  ) {
     return announcementLifecycle(publicId, releaseId, "rollback", body);
   },
 
@@ -517,7 +651,7 @@ export const contentPublicationApi = {
       body: image,
       headers: { "Content-Type": image.type },
       method: "POST",
-      query: { alt_text: altText }
+      query: { alt_text: altText },
     });
-  }
+  },
 };

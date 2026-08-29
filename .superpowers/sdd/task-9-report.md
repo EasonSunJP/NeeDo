@@ -68,10 +68,20 @@ The follow-up implementation now:
 
 Dedicated `AnnouncementEditor.test.tsx` coverage was added. The expanded brief-focused suite covers multi-locale sequential locks and the structural provenance guard in addition to the original review cases. Final verification passed at 4 files / 54 tests focused, 5 files / 62 tests with the Task 8 frontend API contract, and 194 files / 1,089 tests across the full frontend suite.
 
+## Second review follow-up
+
+The second review exposed two formal-contract gaps. TDD RED was recorded before implementation: the frontend contract/editor run had 4 failures and 29 passes, while the backend focused run had 3 executable failures and 39 passes plus 2 suites that could not compile because the new repository/service contracts did not yet exist.
+
+The announcement editor now uses a formal, protected, paginated AffiliateTask search endpoint (`GET /api/v1/backoffice/affiliate/announcements/affiliate-tasks`) and persists `affiliateTaskId`, `visibleFrom`, and `visibleUntil` through the existing announcement mutation route with `operation: update_metadata`. The implementation follows Route → Controller → Service → Repository, validates query/body input with Zod, documents the endpoint and mutation in OpenAPI, enforces announcement read/edit RBAC, uses optimistic locking, and writes a `content.affiliate_announcement.metadata_updated` audit event. Task association is canonical on `OfficialAnnouncement`; visibility windows remain release metadata. Historical/published clones therefore inherit the canonical task and source release window and can then be explicitly changed on the new draft.
+
+The first follow-up's conservative non-self-provenance block is superseded. The formal carousel replacement contract now requires `sourceLocale` and `isInitialCopy` for every translation, validates them server-side, and persists them. Structural save is blocked only while `isInitialCopy === true`; an explicitly confirmed copy-to-all has `isInitialCopy === false` and retains its non-self `sourceLocale` through upload, reorder, and replace. A dedicated contract test covers copy-to-all → raw upload → reorder → save and asserts all five provenance records, while the initial-copy blocked test remains.
+
+Fresh post-format focused verification passed at 4 frontend files / 54 tests and 6 backend suites / 104 tests. The complete verification run passed at 194 frontend files / 1,092 tests and 225 backend suites / 1,526 tests (with the repository's existing skips), plus frontend TypeScript lint, backend ESLint, five-language i18n quality, backend build, production frontend build/audit, targeted Prettier checks, and `git diff --check`.
+
 ## Concerns / deferred acceptance
 
 - Browser interaction and visual acceptance are intentionally deferred to Task 12, as required by the plan.
 - The broader repository i18n audit still reports its pre-existing untranslated-string backlog; the Task 9 five-language quality gate is clean.
 - The production build retains pre-existing warnings for the SocialProfile mixed static/dynamic import and large chunks; neither warning originates in Task 9.
-- No project formatter is installed (`prettier` is absent from `node_modules` and the package manifest); targeted files were manually style-reviewed, TypeScript-checked, and verified with `git diff --check` instead of adding an unrelated tooling dependency.
-- The worktree contains unrelated concurrent changes, including existing `App.tsx` and `App.test.tsx` changes. Only the Task 9 import/route hunks from `App.tsx` are staged; `App.test.tsx` and all unrelated changes remain unstaged.
+- The root package does not install Prettier, so the existing backend Prettier dependency was used to format and check the exact Task 9 frontend and backend file list without adding tooling.
+- The worktree contains unrelated concurrent changes, including existing `App.tsx` and `App.test.tsx` changes. This follow-up does not stage either App file or any unrelated change.

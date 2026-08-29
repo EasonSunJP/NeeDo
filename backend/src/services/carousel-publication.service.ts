@@ -193,8 +193,7 @@ export interface RollbackCarouselMutation extends IdempotentCarouselMutation {
   reason: string;
 }
 
-export interface CarouselPublicationRepositoryPort
-  extends ContentPublicationActivationRepositoryPort {
+export interface CarouselPublicationRepositoryPort extends ContentPublicationActivationRepositoryPort {
   getScene(scene: CarouselSceneCode): Promise<{
     scene: CarouselSceneCode;
     draft: CarouselPublicationPayload | null;
@@ -248,6 +247,8 @@ interface AffiliateMarketplacePolicyPort {
 
 interface DraftTranslationBody extends CarouselTranslationInput {
   locale: ContentLocaleCode;
+  sourceLocale?: ContentLocaleCode;
+  isInitialCopy?: boolean;
 }
 
 interface DraftSlideBody {
@@ -605,13 +606,19 @@ export class CarouselPublicationService {
         CONTENT_LOCALES.map((locale) => {
           const value = byLocale.get(locale) ?? (initial ? source : undefined);
           if (!value) throw this.carouselError("error.content.incomplete_translations", 409);
+          if (!initial && (value.sourceLocale === undefined || value.isInitialCopy === undefined))
+            throw this.carouselError("error.content.incomplete_translations", 409);
           this.assertCompleteTranslation(value);
           return [
             locale,
             {
               ...this.cleanTranslation(value),
-              sourceLocale: byLocale.has(locale) ? locale : sourceLocale,
-              isInitialCopy: initial && locale !== sourceLocale
+              sourceLocale: initial
+                ? byLocale.has(locale)
+                  ? locale
+                  : sourceLocale
+                : (value.sourceLocale as ContentLocaleCode),
+              isInitialCopy: initial ? locale !== sourceLocale : (value.isInitialCopy as boolean)
             }
           ];
         })

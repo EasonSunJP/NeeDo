@@ -4117,6 +4117,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           imageAltText: { type: "string", minLength: 1, maxLength: 255 }
         }
       },
+      CarouselReplacementTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "locale",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText",
+          "sourceLocale",
+          "isInitialCopy"
+        ],
+        properties: {
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
       CarouselProtectedTarget: {
         oneOf: [
           {
@@ -4229,7 +4253,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "array",
         minItems: 5,
         maxItems: 5,
-        items: { $ref: "#/components/schemas/CarouselTranslationInput" },
+        items: { $ref: "#/components/schemas/CarouselReplacementTranslationInput" },
         allOf: ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
           contains: {
             type: "object",
@@ -4534,10 +4558,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
         }
       },
+      OfficialAnnouncementMetadataUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "operation",
+          "expectedLockVersion",
+          "affiliateTaskId",
+          "visibleFrom",
+          "visibleUntil"
+        ],
+        properties: {
+          operation: { type: "string", enum: ["update_metadata"] },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          affiliateTaskId: { type: ["integer", "null"], minimum: 1 },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" }
+        }
+      },
       OfficialAnnouncementDraftMutation: {
         oneOf: [
           { $ref: "#/components/schemas/OfficialAnnouncementLocaleUpdate" },
-          { $ref: "#/components/schemas/OfficialAnnouncementCopyAll" }
+          { $ref: "#/components/schemas/OfficialAnnouncementCopyAll" },
+          { $ref: "#/components/schemas/OfficialAnnouncementMetadataUpdate" }
         ]
       },
       OfficialAnnouncementProtectedTranslation: {
@@ -4663,6 +4706,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           list: {
             type: "array",
             items: { $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      OfficialAnnouncementAffiliateTaskSearchItem: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "taskCode", "label", "status"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          taskCode: { type: "string", minLength: 1, maxLength: 80 },
+          label: { type: "string", minLength: 1, maxLength: 160 },
+          status: { type: "string", enum: ["scheduled", "active"] }
+        }
+      },
+      OfficialAnnouncementAffiliateTaskSearchPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OfficialAnnouncementAffiliateTaskSearchItem" }
           },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
@@ -9647,6 +9715,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           responses: {
             "201": jsonDataResponse("Affiliate announcement draft created", {
               $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/affiliate-tasks`]: {
+      get: announcementOperation(
+        "Search visible AffiliateTasks for announcement metadata",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: [
+            ...contentHistoryParameters,
+            {
+              in: "query",
+              name: "q",
+              schema: { type: "string", minLength: 1, maxLength: 160 }
+            }
+          ],
+          responses: {
+            "200": jsonDataResponse("Paginated visible AffiliateTasks", {
+              $ref: "#/components/schemas/OfficialAnnouncementAffiliateTaskSearchPage"
             })
           }
         }

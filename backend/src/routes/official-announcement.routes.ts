@@ -13,6 +13,7 @@ import { AffiliateLinkTokenService } from "../services/affiliate-link-token.serv
 import { AffiliateMarketplaceService } from "../services/affiliate-marketplace.service";
 import { OfficialAnnouncementService } from "../services/official-announcement.service";
 import {
+  announcementAffiliateTaskSearchQuerySchema,
   announcementDraftCreateBodySchema,
   announcementDraftMutationBodySchema,
   contentHistoryQuerySchema,
@@ -88,6 +89,13 @@ export const createOfficialAnnouncementRoutes = (
     edit,
     validate({ body: announcementDraftCreateBodySchema }),
     controller.createDraft
+  );
+  router.get(
+    "/backoffice/affiliate/announcements/affiliate-tasks",
+    authenticate(),
+    read,
+    validate({ query: announcementAffiliateTaskSearchQuerySchema }),
+    controller.searchAffiliateTasks
   );
   router.get(
     "/backoffice/affiliate/announcements/:publicId/history",

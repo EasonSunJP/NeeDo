@@ -127,8 +127,15 @@ export const translationBodySchema = z
   })
   .strict();
 
+export const replacementTranslationBodySchema = translationBodySchema
+  .extend({
+    sourceLocale: localeSchema,
+    isInitialCopy: z.boolean()
+  })
+  .strict();
+
 const replacementTranslationsSchema = z
-  .array(translationBodySchema)
+  .array(replacementTranslationBodySchema)
   .length(5)
   .superRefine((translations, context) => {
     const seenLocales = new Set<string>();
@@ -302,9 +309,21 @@ export const announcementCopyAllBodySchema = z
   })
   .strict();
 
+export const announcementDraftMetadataUpdateBodySchema = z
+  .object({
+    operation: z.literal("update_metadata"),
+    expectedLockVersion: positiveVersionSchema,
+    affiliateTaskId: z.number().int().positive().nullable(),
+    visibleFrom: nullableUtcDateTimeSchema,
+    visibleUntil: nullableUtcDateTimeSchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
 export const announcementDraftMutationBodySchema = z.union([
   announcementDraftUpdateBodySchema,
-  announcementCopyAllBodySchema
+  announcementCopyAllBodySchema,
+  announcementDraftMetadataUpdateBodySchema
 ]);
 
 export const announcementDraftBodySchema = z.union([
@@ -354,6 +373,13 @@ const paginationShape = {
 };
 
 export const contentHistoryQuerySchema = z.object(paginationShape).strict();
+
+export const announcementAffiliateTaskSearchQuerySchema = z
+  .object({
+    ...paginationShape,
+    q: z.string().trim().min(1).max(160).optional()
+  })
+  .strict();
 
 const targetSearchBaseShape = {
   ...paginationShape,
@@ -416,12 +442,18 @@ export type CarouselDraftBody = z.infer<typeof carouselDraftBodySchema>;
 export type AnnouncementDraftBody = z.infer<typeof announcementDraftBodySchema>;
 export type AnnouncementDraftUpdateBody = z.infer<typeof announcementDraftUpdateBodySchema>;
 export type AnnouncementCopyAllBody = z.infer<typeof announcementCopyAllBodySchema>;
+export type AnnouncementDraftMetadataUpdateBody = z.infer<
+  typeof announcementDraftMetadataUpdateBodySchema
+>;
 export type AnnouncementDraftMutationBody = z.infer<typeof announcementDraftMutationBodySchema>;
 export type PublishBody = z.infer<typeof publishBodySchema>;
 export type ScheduleBody = z.infer<typeof scheduleBodySchema>;
 export type DisableBody = z.infer<typeof disableBodySchema>;
 export type RollbackBody = z.infer<typeof rollbackBodySchema>;
 export type ContentHistoryQuery = z.infer<typeof contentHistoryQuerySchema>;
+export type AnnouncementAffiliateTaskSearchQuery = z.infer<
+  typeof announcementAffiliateTaskSearchQuerySchema
+>;
 export type CarouselTargetSearchQuery =
   | z.infer<typeof userHomeCarouselTargetSearchQuerySchema>
   | z.infer<typeof affiliateNoticeCarouselTargetSearchQuerySchema>;

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import type {
   BackofficeCarouselScene,
+  CarouselDraftReplaceInput,
   CarouselRelease,
 } from "../../api/contentPublication";
 import { LocalizedCarouselEditor } from "./LocalizedCarouselEditor";
@@ -486,8 +487,12 @@ describe("LocalizedCarouselEditor", () => {
     expect(savedBody).not.toHaveProperty("scene");
     for (const slide of savedBody.slides) {
       for (const translation of slide.translations) {
-        expect(translation).not.toHaveProperty("sourceLocale");
-        expect(translation).not.toHaveProperty("isInitialCopy");
+        expect(translation).toEqual(
+          expect.objectContaining({
+            sourceLocale: translation.locale,
+            isInitialCopy: false,
+          }),
+        );
       }
     }
 
@@ -513,6 +518,70 @@ describe("LocalizedCarouselEditor", () => {
       ),
     );
     expect(apiMocks.replaceCarouselDraft).not.toHaveBeenCalled();
+  });
+
+  it("preserves explicit copy-to-all provenance through upload, reorder, and structural save", async () => {
+    const copiedDraft = {
+      ...draft,
+      lockVersion: 7,
+      slides: draft.slides.map((slide) => ({
+        ...slide,
+        translations: Object.fromEntries(
+          Object.entries(slide.translations).map(([locale, value]) => [
+            locale,
+            { ...value, sourceLocale: "en", isInitialCopy: false },
+          ]),
+        ) as CarouselRelease["slides"][number]["translations"],
+      })),
+    };
+    apiMocks.copyCarouselSlideLocaleToAll.mockResolvedValue(copiedDraft);
+    apiMocks.replaceCarouselDraft.mockResolvedValue({
+      ...copiedDraft,
+      lockVersion: 8,
+      slides: [...copiedDraft.slides].reverse().map((slide, sortOrder) => ({
+        ...slide,
+        sortOrder,
+      })),
+    });
+    await renderEditor();
+    await waitFor(() => expect(container.textContent).toContain("护理服务"));
+    await click(Array.from(container.querySelectorAll('[role="tab"]'))[2]);
+    await click(button("复制当前语言到其他语言"));
+    await waitFor(() =>
+      expect(apiMocks.copyCarouselSlideLocaleToAll).toHaveBeenCalled(),
+    );
+
+    const image = new File(["replacement"], "replacement.webp", {
+      type: "image/webp",
+    });
+    const fileInput =
+      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(fileInput, "files", {
+      configurable: true,
+      value: [image],
+    });
+    await act(async () =>
+      fileInput.dispatchEvent(new Event("change", { bubbles: true })),
+    );
+    await click(container.querySelector(`[aria-label="下移 ${SLIDE_A}"]`)!);
+    await click(button("保存草稿"));
+
+    await waitFor(() =>
+      expect(apiMocks.replaceCarouselDraft).toHaveBeenCalled(),
+    );
+    const body = apiMocks.replaceCarouselDraft.mock
+      .calls[0][2] as CarouselDraftReplaceInput;
+    expect(body.expectedLockVersion).toBe(7);
+    expect(body.slides[0].publicId).toBe(SLIDE_B);
+    expect(body.slides[1].mediaAssetPublicId).toBe(MEDIA_UPLOADED);
+    expect(
+      body.slides.every((slide) =>
+        slide.translations.every(
+          (value) =>
+            value.sourceLocale === "en" && value.isInitialCopy === false,
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("renders a server-backed read-only view when edit and publish permissions are absent", async () => {
@@ -651,13 +720,19 @@ describe("LocalizedCarouselEditor", () => {
     apiMocks.createCarouselDraft.mockResolvedValue(firstDraft);
 
     await renderEditor();
-    await waitFor(() => expect(container.textContent).toContain("创建首个草稿"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("创建首个草稿"),
+    );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="bootstrapTitle"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="bootstrapTitle"]',
+      )!,
       "首个正式轮播",
     );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="bootstrapImageAlt"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="bootstrapImageAlt"]',
+      )!,
       "首个轮播图说明",
     );
     const file = new File(["raw"], "first.webp", { type: "image/webp" });
@@ -672,7 +747,9 @@ describe("LocalizedCarouselEditor", () => {
       fileInput.dispatchEvent(new Event("change", { bubbles: true })),
     );
     await click(button("搜索目标"));
-    await waitFor(() => expect(container.textContent).toContain("正式护理服务"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("正式护理服务"),
+    );
     await click(button("正式护理服务"));
     await click(button("创建首个草稿"));
 
@@ -851,14 +928,18 @@ describe("LocalizedCarouselEditor", () => {
     await renderEditor();
     await waitFor(() => expect(container.textContent).toContain("护理服务"));
     await click(button("添加轮播项"));
-    expect(container.querySelectorAll('[data-testid="carousel-slide-card"]')).toHaveLength(3);
+    expect(
+      container.querySelectorAll('[data-testid="carousel-slide-card"]'),
+    ).toHaveLength(3);
     await click(button("停用此轮播项"));
     expect(
       container.querySelector<HTMLInputElement>('input[name="slideEnabled"]')
         ?.checked,
     ).toBe(false);
     await click(button("删除此轮播项"));
-    expect(container.querySelectorAll('[data-testid="carousel-slide-card"]')).toHaveLength(2);
+    expect(
+      container.querySelectorAll('[data-testid="carousel-slide-card"]'),
+    ).toHaveLength(2);
   });
 
   it("disables the selected active slot and rolls back the selected historical release", async () => {
@@ -889,7 +970,9 @@ describe("LocalizedCarouselEditor", () => {
     await renderEditor();
     await waitFor(() => expect(container.textContent).toContain("版本操作"));
     await setValue(
-      container.querySelector<HTMLSelectElement>('select[name="disableReleaseId"]')!,
+      container.querySelector<HTMLSelectElement>(
+        'select[name="disableReleaseId"]',
+      )!,
       "82",
     );
     await setValue(
@@ -904,11 +987,15 @@ describe("LocalizedCarouselEditor", () => {
     );
 
     await setValue(
-      container.querySelector<HTMLSelectElement>('select[name="rollbackReleaseId"]')!,
+      container.querySelector<HTMLSelectElement>(
+        'select[name="rollbackReleaseId"]',
+      )!,
       "70",
     );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="rollbackReason"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="rollbackReason"]',
+      )!,
       "恢复历史版本",
     );
     await click(button("回滚所选版本"));

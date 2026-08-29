@@ -7,6 +7,7 @@ import {
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   AnnouncementDraftBody,
+  AnnouncementDraftMetadataUpdateBody,
   AnnouncementDraftUpdateBody,
   DisableBody,
   PublishBody,
@@ -111,6 +112,23 @@ export interface UpdateAnnouncementLocaleMutation extends AnnouncementMutationAu
   translation?: OfficialAnnouncementTranslationInput;
 }
 
+export interface UpdateAnnouncementMetadataMutation extends AnnouncementMutationAuditInput {
+  publicId: string;
+  releaseId: number;
+  expectedLockVersion: number;
+  affiliateTaskId: number | null;
+  visibleFrom: Date | null;
+  visibleUntil: Date | null;
+  validateAffiliateTask?: () => Promise<void>;
+}
+
+export interface AnnouncementAffiliateTaskSearchItem {
+  id: number;
+  taskCode: string;
+  label: string;
+  status: string;
+}
+
 interface IdempotentReleaseMutation extends AnnouncementMutationAuditInput {
   publicId: string;
   releaseId: number;
@@ -151,6 +169,7 @@ export interface OfficialAnnouncementRepositoryPort extends ContentPublicationAc
   }>;
   findDraft(publicId: string, releaseId: number): Promise<OfficialAnnouncementPayload | null>;
   updateLocale(input: UpdateAnnouncementLocaleMutation): Promise<OfficialAnnouncementPayload>;
+  updateMetadata(input: UpdateAnnouncementMetadataMutation): Promise<OfficialAnnouncementPayload>;
   publish(input: PublishAnnouncementMutation): Promise<OfficialAnnouncementPayload>;
   schedule(input: ScheduleAnnouncementMutation): Promise<OfficialAnnouncementPayload>;
   disable(input: DisableAnnouncementMutation): Promise<OfficialAnnouncementPayload>;
@@ -165,6 +184,13 @@ export interface OfficialAnnouncementRepositoryPort extends ContentPublicationAc
     locale: ContentLocaleCode,
     now: Date
   ): Promise<PublishedAnnouncementPayload | null>;
+  searchAffiliateTasks(input: {
+    page: number;
+    pageSize: number;
+    q?: string;
+    now: Date;
+    validateAffiliateTask: (taskId: number) => Promise<void>;
+  }): Promise<{ list: AnnouncementAffiliateTaskSearchItem[]; total: number }>;
 }
 
 interface AffiliateMarketplacePolicyPort {
@@ -181,6 +207,7 @@ interface OfficialAnnouncementServiceOptions {
 
 type AnnouncementCreateBody = Extract<AnnouncementDraftBody, { idempotencyKey: string }>;
 type AnnouncementUpdateBody = AnnouncementDraftUpdateBody;
+type AnnouncementMetadataUpdateBody = Omit<AnnouncementDraftMetadataUpdateBody, "operation">;
 
 export class OfficialAnnouncementService {
   private readonly now: () => Date;
@@ -251,6 +278,25 @@ export class OfficialAnnouncementService {
     };
   }
 
+  public async searchAffiliateTasks(
+    actor: AuthenticatedAccessContext,
+    input: PaginationInput & { q?: string }
+  ): Promise<{
+    list: AnnouncementAffiliateTaskSearchItem[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> {
+    const pagination = normalizePagination(input);
+    const result = await this.repository.searchAffiliateTasks({
+      ...pagination,
+      q: input.q,
+      now: this.now(),
+      validateAffiliateTask: (taskId) => this.assertTaskVisible(actor, taskId)
+    });
+    return { ...result, page: pagination.page, page_size: pagination.pageSize };
+  }
+
   public async getRelease(
     _actor: AuthenticatedAccessContext,
     publicId: string,
@@ -275,6 +321,30 @@ export class OfficialAnnouncementService {
       copyToAll: false,
       translation: { title: input.title.trim(), summary: input.summary, body: input.body.trim() },
       actorUserId: _actor.userId,
+      context,
+      now: this.now()
+    });
+  }
+
+  public async updateMetadata(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    releaseId: number,
+    input: AnnouncementMetadataUpdateBody
+  ): Promise<OfficialAnnouncementPayload> {
+    return this.repository.updateMetadata({
+      publicId,
+      releaseId,
+      expectedLockVersion: input.expectedLockVersion,
+      affiliateTaskId: input.affiliateTaskId,
+      visibleFrom: input.visibleFrom ? new Date(input.visibleFrom) : null,
+      visibleUntil: input.visibleUntil ? new Date(input.visibleUntil) : null,
+      validateAffiliateTask:
+        input.affiliateTaskId === null
+          ? undefined
+          : () => this.assertTaskVisible(actor, input.affiliateTaskId as number),
+      actorUserId: actor.userId,
       context,
       now: this.now()
     });

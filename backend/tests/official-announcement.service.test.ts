@@ -107,12 +107,14 @@ const repository = (): jest.Mocked<OfficialAnnouncementRepositoryPort> => ({
   list: jest.fn(),
   findDraft: jest.fn(),
   updateLocale: jest.fn(),
+  updateMetadata: jest.fn(),
   publish: jest.fn(),
   schedule: jest.fn(),
   disable: jest.fn(),
   cloneForRollback: jest.fn(),
   listHistory: jest.fn(),
   findPublished: jest.fn(),
+  searchAffiliateTasks: jest.fn(),
   listDueScheduledReleases: jest.fn(),
   activateDueScheduledRelease: jest.fn(),
   recordDueScheduledReleaseFailure: jest.fn()
@@ -262,6 +264,75 @@ describe("OfficialAnnouncementService", () => {
     expect(edited.translations.en).toMatchObject({ sourceLocale: "en", isInitialCopy: false });
     expect(repo.updateLocale).toHaveBeenCalledWith(
       expect.objectContaining({ locale: "en", copyToAll: false, actorUserId: 41, context })
+    );
+  });
+
+  it("updates draft task and visibility metadata with validation, lock, and audit context", async () => {
+    const repo = repository();
+    const tasks = marketplace();
+    repo.updateMetadata.mockImplementation(async (input) => {
+      await input.validateAffiliateTask?.();
+      return payload({
+        affiliateTaskId: input.affiliateTaskId,
+        visibleFrom: input.visibleFrom,
+        visibleUntil: input.visibleUntil,
+        lockVersion: 2
+      });
+    });
+    const service = new OfficialAnnouncementService(repo, tasks, { now: () => now });
+
+    const result = await service.updateMetadata(
+      actor,
+      context,
+      payload().publicId,
+      payload().releaseId,
+      {
+        expectedLockVersion: 1,
+        affiliateTaskId: 29,
+        visibleFrom: "2026-09-01T01:00:00.000Z",
+        visibleUntil: "2026-09-30T01:00:00.000Z"
+      }
+    );
+
+    expect(result).toMatchObject({ affiliateTaskId: 29, lockVersion: 2 });
+    expect(tasks.getTask).toHaveBeenCalledWith(actor, 29);
+    expect(repo.updateMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({
+        publicId: payload().publicId,
+        releaseId: payload().releaseId,
+        expectedLockVersion: 1,
+        affiliateTaskId: 29,
+        visibleFrom: new Date("2026-09-01T01:00:00.000Z"),
+        visibleUntil: new Date("2026-09-30T01:00:00.000Z"),
+        actorUserId: 41,
+        context,
+        now
+      })
+    );
+  });
+
+  it("returns a standard paginated AffiliateTask search under announcement policy", async () => {
+    const repo = repository();
+    repo.searchAffiliateTasks.mockResolvedValue({
+      list: [{ id: 29, taskCode: "AFF-PUBLIC-29", label: "Visible task", status: "active" }],
+      total: 1
+    });
+    const service = new OfficialAnnouncementService(repo, marketplace(), { now: () => now });
+
+    const result = await service.searchAffiliateTasks(actor, {
+      page: 2,
+      pageSize: 10,
+      q: "Visible"
+    });
+
+    expect(result).toEqual({
+      list: [{ id: 29, taskCode: "AFF-PUBLIC-29", label: "Visible task", status: "active" }],
+      total: 1,
+      page: 2,
+      page_size: 10
+    });
+    expect(repo.searchAffiliateTasks).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 10, q: "Visible", now })
     );
   });
 

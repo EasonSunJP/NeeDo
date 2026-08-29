@@ -7,6 +7,7 @@ import { getRequestContext } from "../utils/request-context";
 import type {
   AnnouncementDraftBody,
   AnnouncementDraftMutationBody,
+  AnnouncementAffiliateTaskSearchQuery,
   ContentHistoryQuery,
   DisableBody,
   PublishBody,
@@ -46,6 +47,19 @@ export class OfficialAnnouncementController {
       );
   });
 
+  public searchAffiliateTasks = this.handle(async (request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.searchAffiliateTasks(
+            this.actor(response),
+            request.query as unknown as AnnouncementAffiliateTaskSearchQuery
+          )
+        )
+      );
+  });
+
   public history = this.handle(async (request, response) => {
     response
       .status(200)
@@ -76,6 +90,25 @@ export class OfficialAnnouncementController {
 
   public updateLocale = this.handle(async (request, response) => {
     const input = request.body as AnnouncementDraftMutationBody;
+    if ("operation" in input && input.operation === "update_metadata") {
+      response.status(200).json(
+        successResponse(
+          await this.service.updateMetadata(
+            this.actor(response),
+            getRequestContext(request),
+            request.params.publicId,
+            Number(request.params.releaseId),
+            {
+              expectedLockVersion: input.expectedLockVersion,
+              affiliateTaskId: input.affiliateTaskId,
+              visibleFrom: input.visibleFrom,
+              visibleUntil: input.visibleUntil
+            }
+          )
+        )
+      );
+      return;
+    }
     response.status(200).json(
       successResponse(
         "operation" in input

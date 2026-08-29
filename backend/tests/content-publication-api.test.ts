@@ -201,7 +201,9 @@ describe("formal carousel publication HTTP API", () => {
               title: `Title ${locale}`,
               caption: null,
               ctaLabel: null,
-              imageAltText: `Image ${locale}`
+              imageAltText: `Image ${locale}`,
+              sourceLocale: "en",
+              isInitialCopy: false
             }))
           }
         ]

@@ -102,12 +102,14 @@ describe("OfficialAnnouncementRepository", () => {
         list: expect.any(Function),
         findDraft: expect.any(Function),
         updateLocale: expect.any(Function),
+        updateMetadata: expect.any(Function),
         publish: expect.any(Function),
         schedule: expect.any(Function),
         disable: expect.any(Function),
         cloneForRollback: expect.any(Function),
         listHistory: expect.any(Function),
         findPublished: expect.any(Function),
+        searchAffiliateTasks: expect.any(Function),
         listDueScheduledReleases: expect.any(Function),
         activateDueScheduledRelease: expect.any(Function),
         recordDueScheduledReleaseFailure: expect.any(Function)
@@ -584,6 +586,107 @@ describe("OfficialAnnouncementRepository", () => {
       })
     ).rejects.toMatchObject({ message: "error.content.schedule_conflict", statusCode: 409 });
     expect(transaction.officialAnnouncementRelease.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("updates draft metadata with optimistic locking and audit in one transaction", async () => {
+    const visibleFrom = new Date("2026-09-01T01:00:00.000Z");
+    const visibleUntil = new Date("2026-09-30T01:00:00.000Z");
+    const release = {
+      id: 71,
+      announcementId: 12,
+      version: 1,
+      status: "DRAFT",
+      lockVersion: 1,
+      publishAt: null,
+      visibleFrom: null,
+      visibleUntil: null,
+      activatedAt: null,
+      disabledAt: null,
+      archivedAt: null,
+      sourceReleaseId: null,
+      createdAt: now,
+      updatedAt: now,
+      announcement: {
+        id: 12,
+        publicId: input.publicId,
+        announcementType: "affiliate_notice",
+        visibilityScope: "all_affiliates",
+        affiliateTaskId: null
+      },
+      translations: ["ZH_CN", "ZH_TW", "EN", "JA", "KO"].map((locale) => ({
+        locale,
+        title: `${locale} title`,
+        summary: null,
+        body: `${locale} body`,
+        sourceLocale: locale,
+        isInitialCopy: false
+      }))
+    };
+    const transaction = {
+      officialAnnouncement: { update: jest.fn(async () => ({})) },
+      officialAnnouncementRelease: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(release)
+          .mockResolvedValueOnce({
+            ...release,
+            lockVersion: 2,
+            visibleFrom,
+            visibleUntil,
+            announcement: { ...release.announcement, affiliateTaskId: 29 }
+          }),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const repository = new OfficialAnnouncementRepository({
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+
+    await expect(
+      repository.updateMetadata({
+        publicId: input.publicId,
+        releaseId: 71,
+        expectedLockVersion: 1,
+        affiliateTaskId: 29,
+        visibleFrom,
+        visibleUntil,
+        actorUserId: input.actorUserId,
+        context: input.context,
+        now,
+        validateAffiliateTask: jest.fn(async () => undefined)
+      })
+    ).resolves.toMatchObject({
+      affiliateTaskId: 29,
+      visibleFrom,
+      visibleUntil,
+      lockVersion: 2
+    });
+    expect(transaction.officialAnnouncement.update).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: { affiliateTaskId: 29, updatedAt: now }
+    });
+    expect(transaction.officialAnnouncementRelease.updateMany).toHaveBeenCalledWith({
+      where: { id: 71, status: "DRAFT", lockVersion: 1 },
+      data: {
+        visibleFrom,
+        visibleUntil,
+        lockVersion: { increment: 1 },
+        updatedById: input.actorUserId,
+        updatedAt: now
+      }
+    });
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "content.affiliate_announcement.metadata_updated",
+        targetType: "OfficialAnnouncement",
+        targetId: 12,
+        actorId: input.actorUserId,
+        metadata: expect.objectContaining({ affiliateTaskId: 29 })
+      })
+    });
   });
 
   it("reads only the actual current PUBLISHED slot for public projection", async () => {

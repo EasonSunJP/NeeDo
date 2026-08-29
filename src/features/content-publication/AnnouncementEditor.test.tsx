@@ -9,8 +9,9 @@ import type {
 } from "../../api/contentPublication";
 import { AnnouncementEditor } from "./AnnouncementEditor";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-  .IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const apiMocks = vi.hoisted(() => ({
   copyAnnouncementLocaleToAll: vi.fn(),
@@ -22,7 +23,9 @@ const apiMocks = vi.hoisted(() => ({
   publishAnnouncement: vi.fn(),
   rollbackAnnouncement: vi.fn(),
   scheduleAnnouncement: vi.fn(),
+  searchAnnouncementAffiliateTasks: vi.fn(),
   updateAnnouncementLocale: vi.fn(),
+  updateAnnouncementMetadata: vi.fn(),
 }));
 
 const allowedPermissions = vi.hoisted(() => new Set<string>());
@@ -215,10 +218,33 @@ describe("AnnouncementEditor", () => {
       status: "published",
       lockVersion: 5,
     });
-    apiMocks.rollbackAnnouncement.mockResolvedValue({ ...draft, lockVersion: 1 });
+    apiMocks.rollbackAnnouncement.mockResolvedValue({
+      ...draft,
+      lockVersion: 1,
+    });
     apiMocks.scheduleAnnouncement.mockResolvedValue({
       ...draft,
       status: "scheduled",
+      lockVersion: 5,
+    });
+    apiMocks.searchAnnouncementAffiliateTasks.mockResolvedValue({
+      list: [
+        {
+          id: 29,
+          taskCode: "AFF-PUBLIC-29",
+          label: "东京新客任务",
+          status: "active",
+        },
+      ],
+      total: 11,
+      page: 1,
+      page_size: 10,
+    });
+    apiMocks.updateAnnouncementMetadata.mockResolvedValue({
+      ...draft,
+      affiliateTaskId: 29,
+      visibleFrom: "2026-09-01T01:00:00.000Z",
+      visibleUntil: "2026-09-30T01:00:00.000Z",
       lockVersion: 5,
     });
     vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -232,13 +258,19 @@ describe("AnnouncementEditor", () => {
 
   it("edits only a draft and saves dirty locale input before preview and publish", async () => {
     await renderEditor();
-    await waitFor(() => expect(container.textContent).toContain("联盟公告-zh-CN"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("联盟公告-zh-CN"),
+    );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="announcementTitle"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTitle"]',
+      )!,
       "保存后的公告",
     );
     await click(button("预览"));
-    await waitFor(() => expect(apiMocks.previewAnnouncement).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(apiMocks.previewAnnouncement).toHaveBeenCalled(),
+    );
     expect(
       apiMocks.updateAnnouncementLocale.mock.invocationCallOrder[0],
     ).toBeLessThan(apiMocks.previewAnnouncement.mock.invocationCallOrder[0]);
@@ -264,7 +296,9 @@ describe("AnnouncementEditor", () => {
       page_size: 20,
     });
     await click(button("立即发布"));
-    await waitFor(() => expect(apiMocks.publishAnnouncement).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(apiMocks.publishAnnouncement).toHaveBeenCalled(),
+    );
     expect(apiMocks.publishAnnouncement).toHaveBeenCalledWith(
       PUBLIC_ID,
       31,
@@ -278,14 +312,20 @@ describe("AnnouncementEditor", () => {
       .mockResolvedValueOnce({ ...draft, lockVersion: 5 })
       .mockResolvedValueOnce({ ...draft, lockVersion: 6 });
     await renderEditor();
-    await waitFor(() => expect(container.textContent).toContain("联盟公告-zh-CN"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("联盟公告-zh-CN"),
+    );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="announcementTitle"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTitle"]',
+      )!,
       "简体编辑",
     );
     await click(Array.from(container.querySelectorAll('[role="tab"]'))[2]);
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="announcementTitle"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTitle"]',
+      )!,
       "English edit",
     );
     await click(button("保存草稿"));
@@ -337,8 +377,12 @@ describe("AnnouncementEditor", () => {
       page_size: 20,
     });
     await renderEditor();
-    await waitFor(() => expect(container.textContent).toContain("从历史版本创建草稿"));
-    expect(container.querySelector('input[name="announcementTitle"]')).toBeNull();
+    await waitFor(() =>
+      expect(container.textContent).toContain("从历史版本创建草稿"),
+    );
+    expect(
+      container.querySelector('input[name="announcementTitle"]'),
+    ).toBeNull();
     await setValue(
       container.querySelector<HTMLSelectElement>(
         'select[name="announcementRollbackReleaseId"]',
@@ -376,9 +420,13 @@ describe("AnnouncementEditor", () => {
       lockVersion: 8,
     });
     await renderEditor();
-    await waitFor(() => expect(container.textContent).toContain("联盟公告-zh-CN"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("联盟公告-zh-CN"),
+    );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="announcementTitle"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTitle"]',
+      )!,
       "复制前保存",
     );
     await click(button("复制当前语言到其他语言"));
@@ -397,11 +445,15 @@ describe("AnnouncementEditor", () => {
     );
 
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="announcementTitle"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTitle"]',
+      )!,
       "定时前保存",
     );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[type="datetime-local"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[aria-label="定时发布时间"]',
+      )!,
       "2026-09-02T10:00",
     );
     const scheduledV3 = {
@@ -423,7 +475,9 @@ describe("AnnouncementEditor", () => {
       page_size: 20,
     });
     await click(button("定时发布"));
-    await waitFor(() => expect(apiMocks.scheduleAnnouncement).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(apiMocks.scheduleAnnouncement).toHaveBeenCalled(),
+    );
     expect(
       apiMocks.updateAnnouncementLocale.mock.invocationCallOrder.at(-1),
     ).toBeLessThan(apiMocks.scheduleAnnouncement.mock.invocationCallOrder[0]);
@@ -432,7 +486,9 @@ describe("AnnouncementEditor", () => {
       31,
       expect.objectContaining({ expectedLockVersion: 7 }),
     );
-    await waitFor(() => expect(container.textContent).toContain("scheduled · v3"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("scheduled · v3"),
+    );
   });
 
   it("stops preview on failed dirty save and provides an explicit 409 reload", async () => {
@@ -442,9 +498,13 @@ describe("AnnouncementEditor", () => {
         new ApiClientError("error.content.lock_conflict", 40901, 409),
       );
     await renderEditor();
-    await waitFor(() => expect(container.textContent).toContain("联盟公告-zh-CN"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("联盟公告-zh-CN"),
+    );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="announcementTitle"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTitle"]',
+      )!,
       "未保存的公告",
     );
     await click(button("预览"));
@@ -453,12 +513,15 @@ describe("AnnouncementEditor", () => {
     );
     expect(apiMocks.previewAnnouncement).not.toHaveBeenCalled();
     expect(
-      container.querySelector<HTMLInputElement>('input[name="announcementTitle"]')
-        ?.value,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTitle"]',
+      )?.value,
     ).toBe("未保存的公告");
 
     await click(button("保存草稿"));
-    await waitFor(() => expect(container.textContent).toContain("服务器版本已更新"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("服务器版本已更新"),
+    );
     await click(button("重新读取服务器草稿"));
     expect(apiMocks.listAnnouncements).toHaveBeenCalledTimes(2);
   });
@@ -482,9 +545,13 @@ describe("AnnouncementEditor", () => {
       lockVersion: 6,
     });
     await renderEditor();
-    await waitFor(() => expect(container.textContent).toContain("联盟公告-zh-CN"));
+    await waitFor(() =>
+      expect(container.textContent).toContain("联盟公告-zh-CN"),
+    );
     await setValue(
-      container.querySelector<HTMLInputElement>('input[name="announcementDisableReason"]')!,
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementDisableReason"]',
+      )!,
       "公告结束",
     );
     await click(button("停用当前版本"));
@@ -492,6 +559,108 @@ describe("AnnouncementEditor", () => {
       PUBLIC_ID,
       30,
       expect.objectContaining({ expectedLockVersion: 5, reason: "公告结束" }),
+    );
+  });
+
+  it("searches paginated AffiliateTasks and persists task and visibility metadata for create and edit", async () => {
+    apiMocks.createAnnouncementDraft.mockResolvedValue(draft);
+    await renderEditor();
+    await waitFor(() =>
+      expect(container.textContent).toContain("联盟公告-zh-CN"),
+    );
+
+    await setValue(
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementTaskQuery"]',
+      )!,
+      "东京",
+    );
+    await click(button("搜索联盟任务"));
+    await waitFor(() =>
+      expect(apiMocks.searchAnnouncementAffiliateTasks).toHaveBeenCalledWith({
+        page: 1,
+        pageSize: 10,
+        q: "东京",
+      }),
+    );
+    await click(button("下一页"));
+    expect(apiMocks.searchAnnouncementAffiliateTasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 10, q: "东京" }),
+    );
+
+    await setValue(
+      container.querySelector<HTMLSelectElement>(
+        'select[name="newAnnouncementAffiliateTaskId"]',
+      )!,
+      "29",
+    );
+    await setValue(
+      container.querySelector<HTMLInputElement>(
+        'input[name="newAnnouncementVisibleFrom"]',
+      )!,
+      "2026-09-01T10:00",
+    );
+    await setValue(
+      container.querySelector<HTMLInputElement>(
+        'input[name="newAnnouncementVisibleUntil"]',
+      )!,
+      "2026-09-30T10:00",
+    );
+    await setValue(
+      container.querySelector<HTMLInputElement>(
+        'input[name="newAnnouncementTitle"]',
+      )!,
+      "任务公告",
+    );
+    await setValue(
+      container.querySelector<HTMLInputElement>(
+        'input[name="newAnnouncementBody"]',
+      )!,
+      "任务公告正文",
+    );
+    await click(button("创建公告草稿"));
+    await waitFor(() =>
+      expect(apiMocks.createAnnouncementDraft).toHaveBeenCalled(),
+    );
+    expect(apiMocks.createAnnouncementDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        affiliateTaskId: 29,
+        visibleFrom: "2026-09-01T01:00:00.000Z",
+        visibleUntil: "2026-09-30T01:00:00.000Z",
+      }),
+    );
+
+    await setValue(
+      container.querySelector<HTMLSelectElement>(
+        'select[name="announcementAffiliateTaskId"]',
+      )!,
+      "29",
+    );
+    await setValue(
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementVisibleFrom"]',
+      )!,
+      "2026-09-01T10:00",
+    );
+    await setValue(
+      container.querySelector<HTMLInputElement>(
+        'input[name="announcementVisibleUntil"]',
+      )!,
+      "2026-09-30T10:00",
+    );
+    await click(button("保存草稿"));
+    await waitFor(() =>
+      expect(apiMocks.updateAnnouncementMetadata).toHaveBeenCalled(),
+    );
+    expect(apiMocks.updateAnnouncementMetadata).toHaveBeenCalledWith(
+      PUBLIC_ID,
+      31,
+      {
+        expectedLockVersion: 4,
+        affiliateTaskId: 29,
+        visibleFrom: "2026-09-01T01:00:00.000Z",
+        visibleUntil: "2026-09-30T01:00:00.000Z",
+      },
     );
   });
 });

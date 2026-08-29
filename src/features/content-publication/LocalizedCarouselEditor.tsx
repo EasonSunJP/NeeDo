@@ -177,6 +177,8 @@ function draftBody(
           caption: value.caption,
           ctaLabel: value.ctaLabel,
           imageAltText: value.imageAltText,
+          sourceLocale: value.sourceLocale,
+          isInitialCopy: value.isInitialCopy,
         };
       }),
     })),
@@ -197,7 +199,9 @@ function preserveKnownProvenance(
   localDraft: CarouselRelease,
   serverDraft: CarouselRelease,
 ): CarouselRelease {
-  const localById = new Map(localDraft.slides.map((slide) => [slide.id, slide]));
+  const localById = new Map(
+    localDraft.slides.map((slide) => [slide.id, slide]),
+  );
   return {
     ...serverDraft,
     slides: serverDraft.slides.map((serverSlide) => {
@@ -425,7 +429,7 @@ export function LocalizedCarouselEditor({
       draft.slides.some((slide) =>
         contentEditorLocales.some((locale) => {
           const value = slide.translations[locale];
-          return value.isInitialCopy || value.sourceLocale !== locale;
+          return value.isInitialCopy;
         }),
       )
     ) {
@@ -626,22 +630,22 @@ export function LocalizedCarouselEditor({
       if (item.type === "affiliate_task") {
         if (current?.type !== "affiliate_announcement") return current;
         return {
-            type: "affiliate_announcement",
-            announcementPublicId: current.announcementPublicId,
-            taskCode: item.taskCode,
-          } as unknown as CarouselReleaseSlide["target"];
+          type: "affiliate_announcement",
+          announcementPublicId: current.announcementPublicId,
+          taskCode: item.taskCode,
+        } as unknown as CarouselReleaseSlide["target"];
       }
       if (item.type === "affiliate_announcement") {
         return {
-            type: "affiliate_announcement",
-            announcementPublicId: item.target.announcementPublicId,
-            taskCode: item.target.taskCode,
-          } as unknown as CarouselReleaseSlide["target"];
+          type: "affiliate_announcement",
+          announcementPublicId: item.target.announcementPublicId,
+          taskCode: item.target.taskCode,
+        } as unknown as CarouselReleaseSlide["target"];
       }
       return {
-          type: item.type,
-          publicId: item.publicId,
-        } as unknown as CarouselReleaseSlide["target"];
+        type: item.type,
+        publicId: item.publicId,
+      } as unknown as CarouselReleaseSlide["target"];
     };
     if (!selectedSlide) {
       setBootstrapTarget((current) => resolve(current));
@@ -871,7 +875,9 @@ export function LocalizedCarouselEditor({
   const versionOperations = (
     <PermissionGate permission={publishPermission}>
       <section className="mt-5 rounded-lg border border-line bg-white p-5 shadow-panel">
-        <h2 className="text-lg font-black text-ink">{t("versionOperations")}</h2>
+        <h2 className="text-lg font-black text-ink">
+          {t("versionOperations")}
+        </h2>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           <select
             aria-label={t("disable")}
@@ -897,12 +903,16 @@ export function LocalizedCarouselEditor({
             value={disableReason}
           />
           <Button
-            disabled={!disableReleaseId || !disableReason.trim() || state.saving}
+            disabled={
+              !disableReleaseId || !disableReason.trim() || state.saving
+            }
             onClick={() => {
               const active = [
                 state.sceneState?.scheduled,
                 state.sceneState?.published,
-              ].find((release) => release?.releaseId === Number(disableReleaseId));
+              ].find(
+                (release) => release?.releaseId === Number(disableReleaseId),
+              );
               if (!active) return;
               void performLifecycle(() =>
                 contentPublicationApi.disableCarousel(scene, active.releaseId, {
@@ -1031,7 +1041,10 @@ export function LocalizedCarouselEditor({
                     {state.history
                       .filter((release) => release.status !== "draft")
                       .map((release) => (
-                        <option key={release.releaseId} value={release.releaseId}>
+                        <option
+                          key={release.releaseId}
+                          value={release.releaseId}
+                        >
                           {release.status} · v{release.version}
                         </option>
                       ))}
@@ -1064,7 +1077,9 @@ export function LocalizedCarouselEditor({
                   <input
                     className={inputClass}
                     name="bootstrapImageAlt"
-                    onChange={(event) => setBootstrapImageAlt(event.target.value)}
+                    onChange={(event) =>
+                      setBootstrapImageAlt(event.target.value)
+                    }
                     placeholder={t("imageAlt")}
                     value={bootstrapImageAlt}
                   />

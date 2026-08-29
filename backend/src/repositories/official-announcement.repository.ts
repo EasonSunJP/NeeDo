@@ -18,7 +18,8 @@ import type {
   PublishAnnouncementMutation,
   RollbackAnnouncementMutation,
   ScheduleAnnouncementMutation,
-  UpdateAnnouncementLocaleMutation
+  UpdateAnnouncementLocaleMutation,
+  UpdateAnnouncementMetadataMutation
 } from "../services/official-announcement.service";
 import type {
   ContentPublicationActivationInput,
@@ -453,6 +454,53 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
     });
   }
 
+  public async updateMetadata(
+    input: UpdateAnnouncementMetadataMutation
+  ): Promise<OfficialAnnouncementPayload> {
+    return this.transaction(async (transaction) => {
+      const release = await this.findReleaseForMutation(
+        transaction,
+        input.publicId,
+        input.releaseId
+      );
+      this.assertDraftAndLock(release, input.expectedLockVersion);
+      await input.validateAffiliateTask?.();
+      await transaction.officialAnnouncement.update({
+        where: { id: release.announcementId },
+        data: { affiliateTaskId: input.affiliateTaskId, updatedAt: input.now }
+      });
+      const updated = await transaction.officialAnnouncementRelease.updateMany({
+        where: {
+          id: release.id,
+          status: ContentReleaseStatus.DRAFT,
+          lockVersion: input.expectedLockVersion
+        },
+        data: {
+          visibleFrom: input.visibleFrom,
+          visibleUntil: input.visibleUntil,
+          lockVersion: { increment: 1 },
+          updatedById: input.actorUserId,
+          updatedAt: input.now
+        }
+      });
+      if (updated.count !== 1) throw this.contentError("error.content.lock_conflict", 409);
+      await this.audit(
+        transaction,
+        input,
+        "content.affiliate_announcement.metadata_updated",
+        release.announcementId,
+        {
+          publicId: input.publicId,
+          releaseId: release.id,
+          affiliateTaskId: input.affiliateTaskId,
+          visibleFrom: input.visibleFrom?.toISOString() ?? null,
+          visibleUntil: input.visibleUntil?.toISOString() ?? null
+        }
+      );
+      return this.loadRelease(transaction, input.publicId, release.id);
+    });
+  }
+
   public publish(input: PublishAnnouncementMutation): Promise<OfficialAnnouncementPayload> {
     return this.publicationCommand(input, "publish", async (transaction, release) => {
       this.assertDraftAndLock(release, input.expectedLockVersion);
@@ -725,6 +773,52 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
       activatedAt: release.activatedAt,
       affiliateTaskId: release.announcement.affiliateTaskId
     };
+  }
+
+  public async searchAffiliateTasks(input: {
+    page: number;
+    pageSize: number;
+    q?: string;
+    now: Date;
+    validateAffiliateTask: (taskId: number) => Promise<void>;
+  }) {
+    const visible: Array<{ id: number; taskCode: string; label: string; status: string }> = [];
+    const contains = input.q?.trim() ? { contains: input.q.trim() } : undefined;
+    const batchSize = 100;
+    let skip = 0;
+    while (true) {
+      const rows = await this.client.affiliateTask.findMany({
+        where: {
+          deletedAt: null,
+          status: { in: ["SCHEDULED", "ACTIVE"] },
+          claimStartsAt: { lte: input.now },
+          claimEndsAt: { gt: input.now },
+          taskEndsAt: { gt: input.now },
+          ...(contains ? { OR: [{ name: contains }, { taskCode: contains }] } : {})
+        },
+        orderBy: [{ name: "asc" }, { taskCode: "asc" }, { id: "asc" }],
+        skip,
+        take: batchSize,
+        select: { id: true, taskCode: true, name: true, status: true }
+      });
+      for (const row of rows) {
+        try {
+          await input.validateAffiliateTask(row.id);
+        } catch {
+          continue;
+        }
+        visible.push({
+          id: row.id,
+          taskCode: row.taskCode,
+          label: row.name,
+          status: String(row.status).toLowerCase()
+        });
+      }
+      skip += rows.length;
+      if (rows.length < batchSize) break;
+    }
+    const start = (input.page - 1) * input.pageSize;
+    return { list: visible.slice(start, start + input.pageSize), total: visible.length };
   }
 
   private async publicationCommand(
@@ -1020,11 +1114,11 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
   ): boolean {
     return Boolean(
       release &&
-        release.status === ContentReleaseStatus.SCHEDULED &&
-        release.scheduledSlotKey === scheduledSlotKey &&
-        release.publishAt &&
-        release.publishAt <= input.now &&
-        release.activationAttempts < input.maxAttempts
+      release.status === ContentReleaseStatus.SCHEDULED &&
+      release.scheduledSlotKey === scheduledSlotKey &&
+      release.publishAt &&
+      release.publishAt <= input.now &&
+      release.activationAttempts < input.maxAttempts
     );
   }
 
@@ -1040,11 +1134,11 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
   ): release is NonNullable<typeof release> {
     return Boolean(
       release &&
-        release.status === ContentReleaseStatus.SCHEDULED &&
-        release.scheduledSlotKey === scheduledSlotKey &&
-        release.publishAt &&
-        release.publishAt <= input.now &&
-        release.activationAttempts < input.maxAttempts
+      release.status === ContentReleaseStatus.SCHEDULED &&
+      release.scheduledSlotKey === scheduledSlotKey &&
+      release.publishAt &&
+      release.publishAt <= input.now &&
+      release.activationAttempts < input.maxAttempts
     );
   }
 

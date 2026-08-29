@@ -271,6 +271,54 @@ describe("CarouselPublicationService", () => {
     expect(repo.createDraft).not.toHaveBeenCalled();
   });
 
+  it("preserves explicit copy-to-all provenance when replacing carousel structure", async () => {
+    const repo = repository();
+    repo.replaceDraft.mockImplementation(async (input) =>
+      payload({ lockVersion: 3, slides: input.slides as never })
+    );
+    const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
+    const explicitCopies = (["zh-CN", "zh-TW", "en", "ja", "ko"] as const).map((locale) => ({
+      locale,
+      badge: null,
+      title: `Copied ${locale}`,
+      caption: null,
+      ctaLabel: null,
+      imageAltText: `Copied image ${locale}`,
+      sourceLocale: "en" as const,
+      isInitialCopy: false
+    }));
+
+    await service.replaceDraft("USER_HOME", actor, context, 71, {
+      expectedLockVersion: 2,
+      sourceLocale: "en",
+      slides: [
+        {
+          publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          mediaAssetPublicId: mediaPublicId,
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "shop", shopId: 7 },
+          translations: explicitCopies
+        }
+      ]
+    });
+
+    expect(repo.replaceDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slides: [
+          expect.objectContaining({
+            translations: expect.objectContaining({
+              "zh-CN": expect.objectContaining({ sourceLocale: "en", isInitialCopy: false }),
+              ja: expect.objectContaining({ sourceLocale: "en", isInitialCopy: false })
+            })
+          })
+        ]
+      })
+    );
+  });
+
   it("keeps independent scenes and passes target revalidation into publish and schedule transactions", async () => {
     const repo = repository();
     repo.publish.mockResolvedValue(payload({ status: "published", lockVersion: 2 }));
