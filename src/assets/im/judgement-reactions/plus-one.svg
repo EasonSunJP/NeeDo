@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 28" role="img" aria-label="+1">
+  <defs>
+    <filter id="plus-one-shadow" x="-20%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#1D4ED8" flood-opacity="0.52"/>
+    </filter>
+  </defs>
+  <text x="50%" y="20" text-anchor="middle" fill="#3B82F6" stroke="#1D4ED8" stroke-width="0.65" paint-order="stroke" filter="url(#plus-one-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="19" font-style="italic" font-weight="900">+1</text>
+</svg>

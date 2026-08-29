@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImChatComposer, ImReturnToLatestButton } from "./components";
 import type { ImChatComposerPanel } from "./components";
+import { getRecentImReactionSnapshot } from "./reaction-catalog";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
@@ -38,6 +39,47 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
 }
 
 describe("ImChatComposer", () => {
+  it("uses the shared three-section catalog and inserts judgement text or Unicode", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onDraftChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="existing"
+          isNight
+          onDraftChange={onDraftChange}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel="emoji"
+        />
+      );
+    });
+
+    expect(
+      [...container.querySelectorAll("[data-im-reaction-heading]")].map((heading) => heading.textContent?.trim())
+    ).toEqual(["常用表情", "判断表情", "一般表情"]);
+    expect(container.querySelectorAll('[data-im-reaction-section="judgement"] img')).toHaveLength(8);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-im-reaction-value="Thanks"]')?.click();
+    });
+    expect(onDraftChange).toHaveBeenLastCalledWith("existingThanks");
+    expect(getRecentImReactionSnapshot()[0]).toBe("Thanks");
+
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("[data-im-reaction-value]")]
+        .find((button) => button.dataset.imReactionValue === "😂")
+        ?.click();
+    });
+    expect(onDraftChange).toHaveBeenLastCalledWith("existing😂");
+    expect(getRecentImReactionSnapshot()[0]).toBe("😂");
+
+    await act(async () => root.unmount());
+  });
+
   it("renders independent glass capsules and switches panels without breaking their actions", async () => {
     const actionRun = vi.fn();
     const container = document.createElement("div");
@@ -65,7 +107,7 @@ describe("ImChatComposer", () => {
     expect(inputShell!.compareDocumentPosition(emojiPanel!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await act(async () => {
-      emojiPanel?.querySelector<HTMLButtonElement>("[aria-label^='输入表情 ']")?.click();
+      emojiPanel?.querySelector<HTMLButtonElement>("[data-im-reaction-value]")?.click();
     });
     expect(container.querySelector("textarea")?.value).not.toBe("");
 

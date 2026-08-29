@@ -102,6 +102,14 @@ import {
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
+import { recordRecentImReaction } from "./reaction-catalog";
+import {
+  deriveCurrentUserReactionSlots,
+  getImReactionCategory,
+  getImReactionFailureMessage,
+  sortImReactionSummaries,
+  type ImReactionCategory
+} from "./reaction-policy";
 import {
   buildContactSections,
   buildConversationRowPreview,
@@ -4288,6 +4296,7 @@ export function ImConversationRoomPage({
   const listStateRef = useRef({ conversationId: "", messageCount: 0 });
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const reactionPendingKeysRef = useRef(new Set<string>());
+  const [reactionPendingKeys, setReactionPendingKeys] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const recordingRef = useRef<VoiceRecordingState>(idleVoiceRecordingState);
   const recordingGestureStartYRef = useRef<number | null>(null);
@@ -5434,41 +5443,18 @@ export function ImConversationRoomPage({
   };
 
   const toggleMessageReaction = (message: ConversationMessage, reaction: string, closeAfter = true) => {
-    const pendingKey = `${message.id}:${reaction}`;
+    const category = getImReactionCategory(reaction);
+    const pendingKey = `${message.id}:${category}`;
     if (reactionPendingKeysRef.current.has(pendingKey)) {
       return;
     }
     reactionPendingKeysRef.current.add(pendingKey);
-    const previousState = messageReactions;
-    const currentPeople = messageReactions[message.id]?.[reaction] ?? [];
-    const reactedByMe = currentPeople.some((person) => person.id === currentReactionPerson.id);
-    setMessageReactions((current) => {
-      const groups = current[message.id] ?? {};
-      const people = groups[reaction] ?? [];
-      const reactedByMe = people.some((person) => person.id === currentReactionPerson.id);
-      const nextPeople = reactedByMe
-        ? people.filter((person) => person.id !== currentReactionPerson.id)
-        : [...people, currentReactionPerson];
-      const nextGroups = { ...groups };
-      const nextState = { ...current };
-
-      if (nextPeople.length > 0) {
-        nextGroups[reaction] = nextPeople;
-      } else {
-        delete nextGroups[reaction];
-      }
-
-      if (Object.keys(nextGroups).length > 0) {
-        nextState[message.id] = nextGroups;
-      } else {
-        delete nextState[message.id];
-      }
-
-      return nextState;
-    });
-    if (closeAfter) {
-      closeMessageMenu();
-    }
+    setReactionPendingKeys((current) => new Set(current).add(pendingKey));
+    const selectedSlots = deriveCurrentUserReactionSlots(
+      messageReactions[message.id] ?? {},
+      currentReactionPerson.id
+    );
+    const reactedByMe = selectedSlots[category] === reaction;
 
     void store
       .setMessageReaction(conversationId, message.id, reaction, !reactedByMe)
@@ -5482,30 +5468,45 @@ export function ImConversationRoomPage({
           else delete next[message.id];
           return next;
         });
+        if (!reactedByMe) {
+          recordRecentImReaction(reaction);
+        }
+        if (closeAfter) {
+          closeMessageMenu();
+        }
       })
-      .catch(() => setMessageReactions(previousState))
-      .finally(() => reactionPendingKeysRef.current.delete(pendingKey));
+      .catch((error) => setActionNotice(getImReactionFailureMessage(error)))
+      .finally(() => {
+        reactionPendingKeysRef.current.delete(pendingKey);
+        setReactionPendingKeys((current) => {
+          const next = new Set(current);
+          next.delete(pendingKey);
+          return next;
+        });
+      });
   };
 
   const getMessageReactionSummaries = (messageId: string): ImMessageReactionSummary[] =>
-    Object.entries(messageReactions[messageId] ?? {}).map(([emoji, people]) => ({
-      emoji,
-      people: people.map((person) => {
-        if (person.id === currentReactionPerson.id) {
-          return currentReactionPerson;
-        }
+    sortImReactionSummaries(
+      Object.entries(messageReactions[messageId] ?? {}).map(([emoji, people]) => ({
+        emoji,
+        people: people.map((person) => {
+          if (person.id === currentReactionPerson.id) {
+            return currentReactionPerson;
+          }
 
-        const anonymousIdentity = getAnonymousMemberIdentity(person.id);
-        return anonymousIdentity
-          ? {
-              ...person,
-              name: anonymousIdentity.displayName,
-              avatar: buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code)
-            }
-          : person;
-      }),
-      reactedByMe: people.some((person) => person.id === currentReactionPerson.id)
-    }));
+          const anonymousIdentity = getAnonymousMemberIdentity(person.id);
+          return anonymousIdentity
+            ? {
+                ...person,
+                name: anonymousIdentity.displayName,
+                avatar: buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code)
+              }
+            : person;
+        }),
+        reactedByMe: people.some((person) => person.id === currentReactionPerson.id)
+      }))
+    );
 
   const copyMessageContent = async (message: ConversationMessage) => {
     const root = messageRefs.current[message.id];
@@ -5971,6 +5972,13 @@ export function ImConversationRoomPage({
           {menuState ? (
             (() => {
               const { primaryActions, listActions } = createMessageActions(menuState.message);
+              const selectedReactionSlots = deriveCurrentUserReactionSlots(
+                messageReactions[menuState.message.id] ?? {},
+                currentReactionPerson.id
+              );
+              const pendingCategory = (["judgement", "emoji"] as ImReactionCategory[]).find(
+                (category) => reactionPendingKeys.has(`${menuState.message.id}:${category}`)
+              );
 
               return (
                 <>
@@ -5984,6 +5992,9 @@ export function ImConversationRoomPage({
                     onClose={closeMessageMenu}
                     onExpandedChange={setMessageMenuExpanded}
                     onReact={(reaction) => toggleMessageReaction(menuState.message, reaction)}
+                    pendingCategory={pendingCategory}
+                    selectedEmoji={selectedReactionSlots.emoji}
+                    selectedJudgement={selectedReactionSlots.judgement}
                   />
                 </>
               );

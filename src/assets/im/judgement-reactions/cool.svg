@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54 28" role="img" aria-label="Cool">
+  <defs>
+    <filter id="cool-shadow" x="-20%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#0E7490" flood-opacity="0.52"/>
+    </filter>
+  </defs>
+  <text x="50%" y="20" text-anchor="middle" fill="#06B6D4" stroke="#0E7490" stroke-width="0.65" paint-order="stroke" filter="url(#cool-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="18" font-style="italic" font-weight="900">Cool</text>
+</svg>

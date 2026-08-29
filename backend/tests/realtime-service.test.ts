@@ -48,6 +48,124 @@ describe("RealtimeService fuzzy search", () => {
   });
 });
 
+describe("RealtimeService message reaction outcomes", () => {
+  const message = {
+    id: 41,
+    conversationId: 3,
+    senderUserId: 2,
+    type: "text" as const,
+    content: "收到",
+    metadata: null,
+    reactions: [],
+    createdAt: new Date("2026-08-30T00:00:00.000Z"),
+    recallDeadlineAt: new Date("2026-08-30T00:03:00.000Z"),
+    recalledAt: null,
+    recallMode: null,
+    contentPurgedAt: null,
+    lifecycleVersion: 0,
+    reactionVersion: 1,
+    availableRecallModes: []
+  };
+
+  function createFixture(
+    setOutcome: unknown,
+    removeOutcome: unknown = { status: "unchanged", message }
+  ) {
+    const repository = {
+      setMessageReaction: jest.fn(async () => setOutcome),
+      removeMessageReaction: jest.fn(async () => removeOutcome),
+      getConversationForUser: jest.fn(async () => ({ participants: [{ userId: 1 }] }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    return {
+      eventGateway,
+      repository,
+      service: new RealtimeService(repository as never, eventGateway)
+    };
+  }
+
+  it("returns and publishes an updated reaction", async () => {
+    const { eventGateway, service } = createFixture({ status: "updated", message });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(eventGateway.publish).toHaveBeenCalledTimes(1);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "message.reaction.updated", payload: message })
+    );
+  });
+
+  it("returns an unchanged reaction without publishing", async () => {
+    const { eventGateway, service } = createFixture({ status: "unchanged", message });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("maps an occupied reaction slot to the formal 409 error", async () => {
+    const { eventGateway, service } = createFixture({
+      status: "slot_occupied",
+      message,
+      activeEmoji: "OK"
+    });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "NO" }
+      )
+    ).rejects.toMatchObject({
+      code: 40946,
+      message: "error.im.reaction_slot_occupied",
+      statusCode: 409
+    });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps the existing not-found behavior", async () => {
+    const { service } = createFixture({ status: "not_found" });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).rejects.toMatchObject({ statusCode: 404, message: "error.realtime.message_not_found" });
+  });
+
+  it("publishes only a changed DELETE outcome", async () => {
+    const updated = createFixture({ status: "unchanged", message }, { status: "updated", message });
+    await expect(
+      updated.service.removeMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(updated.eventGateway.publish).toHaveBeenCalledTimes(1);
+
+    const unchanged = createFixture(
+      { status: "unchanged", message },
+      { status: "unchanged", message }
+    );
+    await expect(
+      unchanged.service.removeMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(unchanged.eventGateway.publish).not.toHaveBeenCalled();
+  });
+});
+
 describe("RealtimeService social events", () => {
   it("publishes a created post to followers and persisted reminders to their recipients", async () => {
     const post = {

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 28" role="img" aria-label="Good">
+  <defs>
+    <filter id="good-shadow" x="-20%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#7E22CE" flood-opacity="0.52"/>
+    </filter>
+  </defs>
+  <text x="50%" y="20" text-anchor="middle" fill="#A855F7" stroke="#7E22CE" stroke-width="0.65" paint-order="stroke" filter="url(#good-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="18" font-style="italic" font-weight="900">Good</text>
+</svg>

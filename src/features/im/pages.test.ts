@@ -377,14 +377,25 @@ describe("IM pages", () => {
     expect(componentSource).toContain('setActionNotice("复制失败，请重试")');
   });
 
-  it("routes quick reactions through the store and suppresses duplicate in-flight taps", () => {
+  it("keeps reaction mutations server-authoritative and suppresses same-category in-flight taps", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
     const componentSource = pagesSource.slice(componentStart, componentEnd);
 
     expect(componentSource).toContain("const reactionPendingKeysRef = useRef(new Set<string>());");
+    expect(componentSource).toContain("const [reactionPendingKeys, setReactionPendingKeys]");
+    expect(componentSource).toContain("const category = getImReactionCategory(reaction);");
+    expect(componentSource).toContain("`${message.id}:${category}`");
     expect(componentSource).toContain("if (reactionPendingKeysRef.current.has(pendingKey))");
     expect(componentSource).toContain(".setMessageReaction(conversationId, message.id, reaction, !reactedByMe)");
+    expect(componentSource).toContain("recordRecentImReaction(reaction)");
+    expect(componentSource).toContain("setActionNotice(getImReactionFailureMessage(error))");
+    expect(componentSource).toContain("deriveCurrentUserReactionSlots(");
+    expect(componentSource).toContain("sortImReactionSummaries(");
+    expect(componentSource).not.toContain("const previousState = messageReactions");
+    const toggleStart = componentSource.indexOf("const toggleMessageReaction");
+    const requestStart = componentSource.indexOf(".setMessageReaction(", toggleStart);
+    expect(componentSource.slice(toggleStart, requestStart)).not.toContain("setMessageReactions(");
     expect(componentSource).not.toContain("void api\n      .setMessageReaction");
   });
 
@@ -431,14 +442,15 @@ describe("IM pages", () => {
     expect(pagesSource).toContain("群成员不足 2 人时将自动解散");
   });
 
-  it("renders eight recent emojis before a scrollable complete emoji catalog", () => {
-    expect(componentsSource).toContain("loadRecentImEmojis");
-    expect(componentsSource).toContain("recordRecentImEmoji");
-    expect(componentsSource).toContain("saveRecentImEmojis");
-    expect(componentsSource).toContain("最近使用");
-    expect(componentsSource).toContain("所有表情");
-    expect(componentsSource).toContain("recentEmojis.map");
-    expect(componentsSource).toContain("IM_COMMON_EMOJIS.map");
+  it("uses one shared recent-first reaction catalog in the composer and message actions", () => {
+    expect(componentsSource).toContain("useSyncExternalStore(");
+    expect(componentsSource).toContain("subscribeRecentImReactions");
+    expect(componentsSource).toContain("getRecentImReactionSnapshot");
+    expect(componentsSource).toContain("recordRecentImReaction(value)");
+    expect(componentsSource.match(/<ReactionCatalog/g)).toHaveLength(2);
+    expect(componentsSource).not.toContain("loadRecentImEmojis");
+    expect(componentsSource).not.toContain("imQuickReactions");
+    expect(componentsSource).not.toContain("imDefaultReactions");
   });
 
   it("renders recall failures as a prominent alert above the composer", () => {
