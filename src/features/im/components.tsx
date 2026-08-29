@@ -1983,6 +1983,7 @@ export function ImMessageSelectionHandles({
 }
 
 const imQuickReactions = ["OK", "😂", "🤣", "👍", "🥹", "😭"];
+const imMessageActionBackdropOpeningGraceMs = 320;
 const imDefaultReactions = [
   "OK", "👍", "🙏", "💪", "🫰", "👏", "🙌", "+1",
   "😄", "😊", "😆", "😁", "😅", "😂", "🤣", "🥹",
@@ -2073,6 +2074,7 @@ export function ImMessageActionSheet({
   onReact: (emoji: string) => void;
 }) {
   const backdropPointerStartedRef = useRef(false);
+  const backdropInteractiveAtRef = useRef(Date.now() + imMessageActionBackdropOpeningGraceMs);
   const menuRef = useRef<HTMLElement | null>(null);
   const menuContentRef = useRef<HTMLDivElement | null>(null);
   const [menuPosition, setMenuPosition] = useState({
@@ -2287,8 +2289,12 @@ export function ImMessageActionSheet({
 
           const keyboardActivatedFocusedBackdrop =
             event.detail === 0 && document.activeElement === event.currentTarget;
+          const releaseFromOpeningLongPress = Date.now() < backdropInteractiveAtRef.current;
 
-          if (!pointerStartedOnBackdrop && !keyboardActivatedFocusedBackdrop) {
+          if (
+            releaseFromOpeningLongPress ||
+            (!pointerStartedOnBackdrop && !keyboardActivatedFocusedBackdrop)
+          ) {
             event.preventDefault();
             event.stopPropagation();
             return;
