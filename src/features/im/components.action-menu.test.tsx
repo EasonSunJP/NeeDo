@@ -237,6 +237,7 @@ describe("ImMessageActionSheet", () => {
   });
 
   it("ignores the release click from the long-press that opened the backdrop", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 });
 
@@ -298,6 +299,12 @@ describe("ImMessageActionSheet", () => {
     });
     expect(onClose).not.toHaveBeenCalled();
 
+    await act(async () => {
+      dispatchPointerActivation(backdrop!);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    now.mockReturnValue(1_400);
     await act(async () => {
       dispatchPointerActivation(backdrop!);
     });
