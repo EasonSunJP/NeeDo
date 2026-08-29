@@ -147,6 +147,7 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/identity-applications/{id}/media",
       "/api/v1/identity-applications/{id}/media/{mediaId}",
       "/api/v1/backoffice/content/media",
+      "/api/v1/social/media",
       "/api/v1/identity-applications/{id}/submit",
       "/api/v1/identity-applications/{id}/withdraw",
       "/api/v1/contracts/affiliate/current",
@@ -216,6 +217,43 @@ describe("GET /api/v1/openapi.json", () => {
         "401": expect.objectContaining({ description: expect.stringContaining("token_invalid") }),
         "403": expect.objectContaining({ description: expect.stringContaining("forbidden") }),
         "409": expect.objectContaining({ description: expect.stringContaining("lock_conflict") }),
+        "413": expect.objectContaining({ description: expect.stringContaining("media_too_large") }),
+        "415": expect.objectContaining({ description: expect.stringContaining("media_invalid") })
+      })
+    );
+    const socialMediaUpload = response.body.paths["/api/v1/social/media"].post;
+    expect(socialMediaUpload.security).toEqual([{ bearerAuth: [] }]);
+    expect(socialMediaUpload.parameters).toEqual([
+      expect.objectContaining({
+        name: "fileName",
+        in: "query",
+        required: true,
+        schema: expect.objectContaining({ minLength: 1, maxLength: 255 })
+      })
+    ]);
+    expect(Object.keys(socialMediaUpload.requestBody.content).sort()).toEqual([
+      "image/jpeg",
+      "image/png",
+      "image/webp"
+    ]);
+    expect(
+      socialMediaUpload.responses["201"].content["application/json"].schema.properties.data
+    ).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["publicId", "url", "mimeType", "fileSize"],
+      properties: {
+        publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        url: { type: "string", pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$" },
+        mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+        fileSize: { type: "integer", minimum: 1, maximum: 8388608 }
+      }
+    });
+    expect(socialMediaUpload.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.objectContaining({ description: expect.stringContaining("media_invalid") }),
+        "401": expect.objectContaining({ description: expect.stringContaining("token_invalid") }),
+        "403": expect.objectContaining({ description: expect.stringContaining("forbidden") }),
         "413": expect.objectContaining({ description: expect.stringContaining("media_too_large") }),
         "415": expect.objectContaining({ description: expect.stringContaining("media_invalid") })
       })

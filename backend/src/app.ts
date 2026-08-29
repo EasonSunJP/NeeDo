@@ -48,6 +48,8 @@ import type { IdentityApplicationMediaService } from "./services/identity-applic
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
 import type { ContentMediaRepositoryPort } from "./services/content-media.service";
 import type { ContentMediaService } from "./services/content-media.service";
+import type { SocialMediaRepositoryPort } from "./services/social-media.service";
+import type { SocialMediaService } from "./services/social-media.service";
 import type { OfficialAnnouncementRepositoryPort } from "./services/official-announcement.service";
 import type { OfficialAnnouncementService } from "./services/official-announcement.service";
 import type {
@@ -115,6 +117,7 @@ import { createIdentityApplicationRoutes } from "./routes/identity-application.r
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
 import { createImMediaRoutes } from "./routes/im-media.routes";
 import { createContentMediaRoutes } from "./routes/content-media.routes";
+import { createSocialMediaRoutes } from "./routes/social-media.routes";
 import { createOfficialAnnouncementRoutes } from "./routes/official-announcement.routes";
 import { createCarouselPublicationRoutes } from "./routes/carousel-publication.routes";
 import { createIdentityActivationRoutes } from "./routes/identity-activation.routes";
@@ -189,6 +192,9 @@ export interface AppDependencies {
   contentMediaRepository?: ContentMediaRepositoryPort;
   contentMediaService?: ContentMediaService;
   contentMediaStorage?: ContentMediaStoragePort;
+  socialMediaRepository?: SocialMediaRepositoryPort;
+  socialMediaService?: SocialMediaService;
+  socialMediaStorage?: ContentMediaStoragePort;
   officialAnnouncementRepository?: OfficialAnnouncementRepositoryPort;
   officialAnnouncementService?: OfficialAnnouncementService;
   carouselPublicationRepository?: CarouselPublicationRepositoryPort;
@@ -307,6 +313,7 @@ export const createApp = (
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
   apiRouter.use(createImMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {

@@ -11693,6 +11693,50 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/social/media`]: {
+      post: {
+        tags: ["Realtime"],
+        summary: "Upload an authenticated Social post image",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "fileName",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
+            "image/png": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
+            "image/webp": { schema: { type: "string", format: "binary", maxLength: 8388608 } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Social media uploaded", {
+            type: "object",
+            additionalProperties: false,
+            required: ["publicId", "url", "mimeType", "fileSize"],
+            properties: {
+              publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              url: {
+                type: "string",
+                pattern: "^/media/content/[a-f0-9]{64}\\.(jpg|png|webp)$"
+              },
+              mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+              fileSize: { type: "integer", minimum: 1, maximum: 8388608 }
+            }
+          }),
+          "400": { description: "error.social.media_invalid — invalid filename or media bytes" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "error.forbidden — missing social-post:create permission" },
+          "413": { description: "error.social.media_too_large — upload exceeds 8 MiB" },
+          "415": { description: "error.social.media_invalid — unsupported media or encoding" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/identity-applications/{id}/media`]: {
       post: identityWorkflowOperation("Upload protected application JPEG or PNG media", {
         parameters: [

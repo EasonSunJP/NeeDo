@@ -67,7 +67,6 @@ Create a test with a real temporary `ContentMediaFileStorage` and a repository s
 it("stores a validated Social image and persists its owner and audit context", async () => {
   const repository = { createUpload: jest.fn(async (input) => ({
     publicId: input.checksumSha256,
-    mediaAssetId: 91,
     url: `/media/content/${input.fileKey}`,
     mimeType: input.mimeType,
     fileSize: input.fileSize
@@ -79,7 +78,7 @@ it("stores a validated Social image and persists its owner and audit context", a
     fileName: "moment.png",
     mimeType: "image/png",
     now
-  })).resolves.toMatchObject({ mediaAssetId: 91, mimeType: "image/png" });
+  })).resolves.toMatchObject({ publicId: expect.any(String), mimeType: "image/png" });
   expect(repository.createUpload).toHaveBeenCalledWith(expect.objectContaining({
     ownerUserId: 41,
     entityType: "social_post_upload",
@@ -103,7 +102,6 @@ Define these exact contracts:
 ```ts
 export interface SocialMediaProjection {
   publicId: string;
-  mediaAssetId: number;
   url: string;
   mimeType: ContentMediaMimeType;
   fileSize: number;
@@ -420,7 +418,6 @@ Add:
 ```ts
 export type RealtimeSocialMediaUpload = {
   publicId: string;
-  mediaAssetId: number;
   url: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp";
   fileSize: number;
