@@ -1,4 +1,5 @@
 import {
+  ConversationAccessPolicy,
   ConversationType,
   FriendRequestStatus,
   ImDeletionAction,
@@ -23,6 +24,13 @@ export type MessageRecallModePayload = "standard" | "traceless";
 export type FriendRequestStatusPayload = "pending" | "accepted" | "rejected";
 export type SocialPostVisibilityPayload = "public" | "followers";
 export type NotificationTypePayload = "orderStatus" | "friendRequest" | "system" | "social";
+
+export function toFriendshipPairKey(leftUserId: number, rightUserId: number): string {
+  const [lowUserId, highUserId] = [leftUserId, rightUserId].sort(
+    (left, right) => left - right
+  );
+  return `${lowUserId}:${highUserId}`;
+}
 
 export interface ParticipantPayload {
   userId: number;
@@ -587,6 +595,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const conversation = await this.client.conversation.create({
       data: {
         type: this.conversationTypeToDb(input.type),
+        accessPolicy:
+          input.type === "group"
+            ? ConversationAccessPolicy.GROUP_MEMBERSHIP
+            : ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+        friendshipPairKey:
+          input.type === "direct"
+            ? toFriendshipPairKey(participantUserIds[0]!, participantUserIds[1]!)
+            : null,
         title: input.title?.trim() || null,
         createdByUserId: input.creatorUserId,
         privacyModeEnabled: input.type === "group" && Boolean(input.privacyModeEnabled),
@@ -1654,6 +1670,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const candidates = await transaction.conversation.findMany({
         where: {
           type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
           deletedAt: null,
           participants: {
             some: {
@@ -1685,6 +1702,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const created = await transaction.conversation.create({
         data: {
           type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
+          friendshipPairKey: null,
           createdByUserId: input.createdByUserId,
           participants: {
             create: [
@@ -1701,11 +1720,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async createFriendRequest(input: CreateFriendRequestInput): Promise<FriendRequestPayload> {
     return this.client.$transaction(async (tx) => {
+      const databaseClock = await tx.$queryRaw<Array<{ dbNow: Date }>>(
+        Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+      );
+      const dbNow = databaseClock[0]?.dbNow;
+      if (!dbNow) {
+        throw new Error("Database clock query returned no row");
+      }
+      const expiresAt = new Date(dbNow.getTime() + 72 * 60 * 60 * 1_000);
       const friendRequest = await tx.friendRequest.create({
         data: {
           requesterUserId: input.requesterUserId,
           targetUserId: input.targetUserId,
-          message: input.message?.trim() || null
+          message: input.message?.trim() || null,
+          expiresAt
         }
       });
       await tx.notification.create({
@@ -2479,33 +2507,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   private async findExistingDirectConversation(
     participantUserIds: number[]
   ): Promise<ConversationRecord | null> {
-    const candidates = await this.client.conversation.findMany({
+    if (participantUserIds.length !== 2) {
+      return null;
+    }
+
+    return this.client.conversation.findFirst({
       where: {
         type: ConversationType.DIRECT,
+        accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+        friendshipPairKey: toFriendshipPairKey(
+          participantUserIds[0]!,
+          participantUserIds[1]!
+        ),
         deletedAt: null,
-        participants: {
-          some: {
-            userId: participantUserIds[0],
-            deletedAt: null
-          }
-        }
       },
       include: this.conversationInclude(participantUserIds[0])
     });
-
-    return (
-      candidates.find((conversation) => {
-        const existingIds = conversation.participants
-          .filter((participant) => participant.deletedAt === null)
-          .map((participant) => participant.userId)
-          .sort((left, right) => left - right);
-
-        return (
-          existingIds.length === participantUserIds.length &&
-          existingIds.every((userId, index) => userId === participantUserIds[index])
-        );
-      }) ?? null
-    );
   }
 
   private async findConversationParticipant(conversationId: number, userId: number) {

@@ -404,6 +404,14 @@ enum ConversationType {
   @@map("conversation_type")
 }
 
+enum ConversationAccessPolicy {
+  FRIENDSHIP_REQUIRED @map("friendship_required")
+  BUSINESS_CONTEXT    @map("business_context")
+  GROUP_MEMBERSHIP    @map("group_membership")
+
+  @@map("conversation_access_policy")
+}
+
 enum MessageType {
   TEXT         @map("text")
   SYSTEM       @map("system")
@@ -429,6 +437,7 @@ enum FriendRequestStatus {
   PENDING  @map("pending")
   ACCEPTED @map("accepted")
   REJECTED @map("rejected")
+  EXPIRED  @map("expired")
 
   @@map("friend_request_status")
 }
@@ -1721,20 +1730,22 @@ model OrderStatusHistory {
 }
 
 model Conversation {
-  id                     Int              @id @default(autoincrement())
-  type                   ConversationType @default(DIRECT)
-  title                  String?          @db.VarChar(120)
-  createdByUserId        Int?             @map("created_by_user_id")
-  privacyModeEnabled     Boolean          @default(false) @map("privacy_mode_enabled")
-  hideMemberProfiles     Boolean          @default(false) @map("hide_member_profiles")
-  disappearingTtlSeconds Int?             @map("disappearing_ttl_seconds")
-  disappearingStartMode  String           @default("sent") @map("disappearing_start_mode") @db.VarChar(20)
-  privacyPolicyVersion   Int              @default(0) @map("privacy_policy_version")
-  privacyUpdatedAt       DateTime?        @map("privacy_updated_at")
-  privacyUpdatedByUserId Int?             @map("privacy_updated_by_user_id")
-  createdAt              DateTime         @default(now()) @map("created_at")
-  updatedAt              DateTime         @updatedAt @map("updated_at")
-  deletedAt              DateTime?        @map("deleted_at")
+  id                     Int                      @id @default(autoincrement())
+  type                   ConversationType         @default(DIRECT)
+  accessPolicy           ConversationAccessPolicy @map("access_policy")
+  friendshipPairKey      String?                  @unique(map: "conversations_friendship_pair_key_key") @map("friendship_pair_key") @db.VarChar(64)
+  title                  String?                  @db.VarChar(120)
+  createdByUserId        Int?                     @map("created_by_user_id")
+  privacyModeEnabled     Boolean                  @default(false) @map("privacy_mode_enabled")
+  hideMemberProfiles     Boolean                  @default(false) @map("hide_member_profiles")
+  disappearingTtlSeconds Int?                     @map("disappearing_ttl_seconds")
+  disappearingStartMode  String                   @default("sent") @map("disappearing_start_mode") @db.VarChar(20)
+  privacyPolicyVersion   Int                      @default(0) @map("privacy_policy_version")
+  privacyUpdatedAt       DateTime?                @map("privacy_updated_at")
+  privacyUpdatedByUserId Int?                     @map("privacy_updated_by_user_id")
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  deletedAt              DateTime?                @map("deleted_at")
 
   createdBy            User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   privacyUpdatedBy     User?                     @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
@@ -1927,6 +1938,8 @@ model FriendRequest {
   status          FriendRequestStatus @default(PENDING)
   message         String?             @db.VarChar(300)
   respondedAt     DateTime?           @map("responded_at")
+  expiresAt       DateTime            @map("expires_at")
+  expiredAt       DateTime?           @map("expired_at")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
   deletedAt       DateTime?           @map("deleted_at")
@@ -1937,6 +1950,8 @@ model FriendRequest {
   @@index([requesterUserId])
   @@index([targetUserId])
   @@index([status])
+  @@index([requesterUserId, targetUserId, status, expiresAt, deletedAt], map: "friend_request_direction_status_expiry_idx")
+  @@index([targetUserId, status, expiresAt, deletedAt], map: "friend_request_target_pending_expiry_idx")
   @@index([createdAt])
   @@index([deletedAt])
   @@map("friend_requests")
