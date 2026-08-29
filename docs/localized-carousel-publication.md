@@ -118,15 +118,17 @@ ENV_FILE=/absolute/local/path/backend/.env.dev \
 脚本启动前要求显式存在的 `ENV_FILE`，且只接受：
 
 - `NODE_ENV=development|test`
-- `DEPLOY_ENV=local|development|test`
-- 本机 MySQL 主机及名称包含 `dev`、`test` 或 `local` 的数据库
+- `DEPLOY_ENV=local|test`
+- 本机 MySQL 主机和显式允许的 `needo_dev|needo_test` 数据库
 - 本机 Redis
 
-它拒绝 production/staging 标志、远程 MySQL/Redis 和生产式数据库名。安全校验通过前不加载 Prisma 或业务 service。输出数据库目标时移除用户名和密码。
+数据库 pathname 会先执行 URL decode、Unicode NFKC normalize 和小写归一化，再压缩连接符检查任意 `prod`、`production`、`staging` 连写或编码变体；`needo_%70rod_dev`、`needoproduction_dev` 等均会被拒绝。它同时拒绝 production/staging 标志、远程 MySQL/Redis 和 allowlist 外数据库。实际安全函数调用完成前不加载 Prisma 或业务 service。输出数据库目标时移除用户名和密码。
 
 每次运行只生成一个唯一 marker，并通过正式 Service/Repository 创建真实媒体、账号/身份、公开标识、Shop、Technician、Service、联盟身份、Wallet、AffiliateTask、公告及两种轮播版本。执行内容为：五语言首存、英语独立编辑、公告发布、两场景立即发布、定时激活、停用、历史回滚、五语言公开读取、目标对账和审计对账。
 
-`finally` 只删除本次内存中捕获的精确 ID 和媒体文件。回滚版本的自关联先限定在本次 release ID 集合内置空，再按同一集合删除；没有空条件或全表 `deleteMany`。最终还查询 marker 相关残留并要求为零。
+`finally` 只删除本次捕获的精确 ID 和媒体文件。所有 Service 命令和 scheduler 的 `actor_user_id=null` 激活命令都先通过本次唯一 idempotency key 捕获 command ID，再只按该 ID 删除；不会按跨表可碰撞的裸 `release_id` 删除。回滚版本的自关联先限定在本次 release ID 集合内置空，再按同一集合删除；没有空条件或全表 `deleteMany`。
+
+完成前逐类核对 User、CustomerProfile、UserIdentity、PublicIdentifier、UserRole、Category、Shop、TechnicianProfile、Service、AffiliateProfile、Wallet、AffiliateTask、预算预留、任务店铺/服务关联、Announcement/Release/Translation、Carousel Release/Slide/Translation、MediaAsset、ContentPublicationCommand、AuditLog 的 captured IDs，并读取媒体文件确认物理文件不存在。任意一项非零都会使 checker 失败，不会输出 `cleanup: complete`。
 
 2026-08-29 的实际本地目标经脱敏确认为 `development/local`、`mysql://127.0.0.1:3307/needo_dev`、本机 Redis；`/api/v1/health` 与 `/api/v1/ready` 均返回 HTTP 200。真实运行输出：
 
@@ -138,7 +140,7 @@ PASS scheduled successor activated
 PASS published scene disabled
 PASS all five localized public projections reconciled
 PASS publication audit actions reconciled
-PASS marker cleanup left localized publication rows behind: 0
+PASS cleanup residue verification across all captured rows and media files: 0
 status: ok
 cleanup: complete
 ```
@@ -154,14 +156,15 @@ npm --prefix backend test -- --runInBand \
   tests/localized-carousel-publication-flow-script.test.ts
 ```
 
-最初 4 项失败，因为 checker 和 package command 尚不存在。实现后增加的 badge 长度及 release 自关联清理回归也分别先失败，再修复至 12/12 通过。
+最初 4 项失败，因为 checker 和 package command 尚不存在。实现后增加的 badge 长度及 release 自关联清理回归也分别先失败。安全 review 的修复先得到 6 个失败的 source/safety 契约和 1 个缺少 exact-ID helper 的真实 MySQL RED，再修复为 GREEN。
 
 最终结果：
 
-- checker 契约：1 suite / 12 tests，通过。
-- 计划 focused backend：16 suites / 180 tests，通过。
+- checker 契约：1 suite / 18 tests，通过。
+- exact command cleanup 真实 MySQL 回归：1 suite / 1 test，通过；同 numeric `release_id` 的异聚合命令被保留。
+- 计划 focused backend：16 suites / 186 tests，通过。
 - 计划 focused frontend：10 files / 149 tests，通过。
-- 完整 backend：226 suites / 1,542 tests 通过；另有仓库既有条件跳过 8 suites / 36 tests。
+- 完整 backend：226 suites / 1,548 tests 通过；另有条件跳过 9 suites / 37 tests，其中包含默认关闭、只在显式本地 ENV_FILE 下运行的 exact cleanup integration。
 - 完整 frontend：195 files / 1,113 tests，通过。
 - `npm --prefix backend run lint`：通过。
 - `npm --prefix backend run build`：通过。
@@ -199,7 +202,7 @@ npm --prefix backend test -- --runInBand \
 3. 首次日语输入出现在五个草稿页签；独立修改英语后日语不变。
 4. preview、立即发布、定时发布、停用、历史回滚都发出真实 API 请求且结果正确。
 5. 用户首页轮播位于提醒和快捷操作之间；Shop、Technician、Service 分别打开真实详情。
-6. 联盟营销首页显示独立公告轮播；公告详情可打开，任务按钮只在服务端返回 `available=true` 时出现。
+6. 联盟营销首页显示独立公告轮播；公告详情可打开，任务按钮只在服务端返回 `claimable=true` 时出现。
 7. 刷新、退出再登录和 backend 重启后内容仍在。
 8. `viewer` 可以读取，但编辑和发布由后端返回 403。
 9. API 失败时首页其他功能仍可使用，不进入 root recovery page。

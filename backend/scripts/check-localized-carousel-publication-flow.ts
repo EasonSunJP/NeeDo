@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const LOCAL_DATABASES = new Set(["needo_dev", "needo_test"]);
 const CONTENT_LOCALES = ["zh-CN", "zh-TW", "en", "ja", "ko"] as const;
 const USER_SCENE = "USER_HOME" as const;
 const AFFILIATE_SCENE = "AFFILIATE_HOME_NOTICE" as const;
@@ -50,8 +51,8 @@ export const assertSafeLocalizedCarouselPublicationEnvironment = (
     "localized publication check requires NODE_ENV=development or test"
   );
   assert(
-    deployEnv === "local" || deployEnv === "test" || deployEnv === "development",
-    "localized publication check requires DEPLOY_ENV=local, development, or test"
+    deployEnv === "local" || deployEnv === "test",
+    "localized publication check requires DEPLOY_ENV=local or test"
   );
 
   const databaseUrl = parseRequiredUrl(input.databaseUrl, "DATABASE_URL");
@@ -60,15 +61,23 @@ export const assertSafeLocalizedCarouselPublicationEnvironment = (
     LOCAL_HOSTS.has(databaseUrl.hostname),
     "localized publication check only accepts a local MySQL host"
   );
-  const databaseName = databaseUrl.pathname.replace(/^\/+/, "");
+  let databaseName: string;
+  try {
+    databaseName = decodeURIComponent(databaseUrl.pathname.replace(/^\/+/, ""))
+      .normalize("NFKC")
+      .toLowerCase();
+  } catch {
+    throw new Error("DATABASE_URL database name must use valid URL encoding");
+  }
   assert(databaseName.length > 0, "DATABASE_URL must include a database name");
+  const condensedDatabaseName = databaseName.replace(/[^a-z0-9]/gu, "");
   assert(
-    !/(^|[_-])(prod|production|staging)([_-]|$)/iu.test(databaseName),
+    !/(?:production|staging|prod)/u.test(condensedDatabaseName),
     "localized publication check rejects production-looking database names"
   );
   assert(
-    /(^|[_-])(dev|test|local)([_-]|$)/iu.test(databaseName),
-    "localized publication check requires a local/test database name"
+    LOCAL_DATABASES.has(databaseName),
+    "localized publication check requires database needo_dev or needo_test"
   );
 
   const redisUrl = parseRequiredUrl(input.redisUrl, "REDIS_URL");
@@ -93,6 +102,36 @@ const parseRequiredUrl = (value: string | undefined, name: string): URL => {
     return new URL(value);
   } catch {
     throw new Error(`${name} must be a valid URL`);
+  }
+};
+
+interface ExactContentPublicationCommandDeleteClient {
+  contentPublicationCommand: {
+    deleteMany(input: { where: { id: { in: number[] } } }): Promise<{ count: number }>;
+  };
+}
+
+export const deleteLocalizedPublicationCommandsByExactId = async (
+  client: ExactContentPublicationCommandDeleteClient,
+  commandIds: number[]
+): Promise<number> => {
+  if (commandIds.length === 0) return 0;
+  const deleted = await client.contentPublicationCommand.deleteMany({
+    where: { id: { in: commandIds } }
+  });
+  return deleted.count;
+};
+
+const storedMediaFileExists = async (
+  storage: { read(fileKey: string): Promise<Buffer> },
+  fileKey: string
+): Promise<boolean> => {
+  try {
+    await storage.read(fileKey);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return false;
+    throw error;
   }
 };
 
@@ -162,8 +201,10 @@ const main = async (): Promise<void> => {
   const context = { ip: "127.0.0.1", userAgent: "localized-carousel-publication-check" };
   const created = {
     userIds: [] as number[],
+    customerProfileIds: [] as number[],
     identityIds: [] as number[],
     publicIdentifierIds: [] as number[],
+    userRoleIds: [] as number[],
     categoryIds: [] as number[],
     shopIds: [] as number[],
     technicianProfileIds: [] as number[],
@@ -171,13 +212,31 @@ const main = async (): Promise<void> => {
     affiliateProfileIds: [] as number[],
     walletIds: [] as number[],
     affiliateTaskIds: [] as number[],
+    affiliateBudgetReservationIds: [] as number[],
+    affiliateTaskShopIds: [] as number[],
+    affiliateTaskServiceIds: [] as number[],
     announcementIds: [] as number[],
     announcementReleaseIds: [] as number[],
+    announcementTranslationIds: [] as number[],
     carouselReleaseIds: [] as number[],
+    carouselSlideIds: [] as number[],
+    carouselSlideTranslationIds: [] as number[],
     mediaAssetIds: [] as number[],
-    mediaFileKeys: [] as string[]
+    mediaFileKeys: [] as string[],
+    contentPublicationCommandKeys: [] as string[],
+    contentPublicationCommandIds: [] as number[],
+    auditLogIds: [] as number[]
   };
   const cleanupErrors: unknown[] = [];
+  const captureIds = (target: number[], ids: number[]): void => {
+    const seen = new Set(target);
+    for (const id of ids) {
+      if (!seen.has(id)) {
+        target.push(id);
+        seen.add(id);
+      }
+    }
+  };
   let operationError: unknown;
   let evidence: Record<string, unknown> | undefined;
   let clock = new Date();
@@ -208,6 +267,22 @@ const main = async (): Promise<void> => {
       username: `${marker} technician`
     });
     created.userIds.push(technician.id);
+    for (const user of [operator, technician]) {
+      created.identityIds.push(...user.identities.map((identity) => identity.id));
+      created.publicIdentifierIds.push(
+        ...user.identities.flatMap((identity) =>
+          identity.publicIdentifier ? [identity.publicIdentifier.id] : []
+        )
+      );
+      created.customerProfileIds.push(
+        ...user.identities.flatMap((identity) =>
+          identity.scopeType === "customer_profile" && identity.scopeId !== null
+            ? [identity.scopeId]
+            : []
+        )
+      );
+      created.userRoleIds.push(...user.userRoles.map((role) => role.id));
+    }
 
     const scoutIdentity = await prisma.userIdentity.create({
       data: {
@@ -362,6 +437,23 @@ const main = async (): Promise<void> => {
       }
     });
     created.affiliateTaskIds.push(affiliateTask.id);
+    const [budgetReservation, taskShops, taskServices] = await Promise.all([
+      prisma.affiliateBudgetReservation.findUniqueOrThrow({
+        where: { taskId: affiliateTask.id },
+        select: { id: true }
+      }),
+      prisma.affiliateTaskShop.findMany({
+        where: { taskId: affiliateTask.id },
+        select: { id: true }
+      }),
+      prisma.affiliateTaskService.findMany({
+        where: { taskId: affiliateTask.id },
+        select: { id: true }
+      })
+    ]);
+    created.affiliateBudgetReservationIds.push(budgetReservation.id);
+    created.affiliateTaskShopIds.push(...taskShops.map((row) => row.id));
+    created.affiliateTaskServiceIds.push(...taskServices.map((row) => row.id));
 
     const operatorActor = {
       userId: operator.id,
@@ -386,6 +478,11 @@ const main = async (): Promise<void> => {
       ...operatorActor,
       currentIdentityId: scoutIdentity.id,
       currentIdentityType: "scout"
+    };
+    const commandIdempotencyKey = (salt: string): string => {
+      const key = markerUuid(marker, salt);
+      created.contentPublicationCommandKeys.push(key);
+      return key;
     };
 
     const marketplaceRepository = new AffiliateMarketplaceRepository(prisma);
@@ -434,7 +531,7 @@ const main = async (): Promise<void> => {
     created.mediaFileKeys.push(media.url.split("/").at(-1)!);
 
     const announcementDraft = await announcementService.createDraft(operatorActor, context, {
-      idempotencyKey: markerUuid(marker, "announcement-create"),
+      idempotencyKey: commandIdempotencyKey("announcement-create"),
       sourceLocale: "ja",
       affiliateTaskId: affiliateTask.id,
       visibleFrom: null,
@@ -478,7 +575,7 @@ const main = async (): Promise<void> => {
       announcementDraft.publicId,
       announcementDraft.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "announcement-publish"),
+        idempotencyKey: commandIdempotencyKey("announcement-publish"),
         expectedLockVersion: announcementEnglish.lockVersion,
         reason: `${marker} immediate publish`
       }
@@ -499,7 +596,7 @@ const main = async (): Promise<void> => {
       operatorActor,
       context,
       {
-        idempotencyKey: markerUuid(marker, "user-carousel-create"),
+        idempotencyKey: commandIdempotencyKey("user-carousel-create"),
         sourceLocale: "ja",
         slides: [
           {
@@ -539,7 +636,7 @@ const main = async (): Promise<void> => {
       context,
       userDraft.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "user-carousel-publish"),
+        idempotencyKey: commandIdempotencyKey("user-carousel-publish"),
         expectedLockVersion: userDraft.lockVersion,
         reason: `${marker} immediate publish`
       }
@@ -550,7 +647,7 @@ const main = async (): Promise<void> => {
       operatorActor,
       context,
       {
-        idempotencyKey: markerUuid(marker, "affiliate-carousel-create"),
+        idempotencyKey: commandIdempotencyKey("affiliate-carousel-create"),
         sourceLocale: "ja",
         slides: [
           {
@@ -576,7 +673,7 @@ const main = async (): Promise<void> => {
       context,
       affiliateDraft.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "affiliate-carousel-publish"),
+        idempotencyKey: commandIdempotencyKey("affiliate-carousel-publish"),
         expectedLockVersion: affiliateDraft.lockVersion,
         reason: `${marker} immediate publish`
       }
@@ -593,7 +690,7 @@ const main = async (): Promise<void> => {
       publishedAnnouncement.publicId,
       publishedAnnouncement.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "announcement-rollback"),
+        idempotencyKey: commandIdempotencyKey("announcement-rollback"),
         expectedCurrentVersion: publishedAnnouncement.version,
         reason: `${marker} scheduled successor source`
       }
@@ -612,7 +709,7 @@ const main = async (): Promise<void> => {
       publishedAnnouncement.publicId,
       scheduledAnnouncementDraft.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "announcement-schedule"),
+        idempotencyKey: commandIdempotencyKey("announcement-schedule"),
         expectedLockVersion: scheduledAnnouncementDraft.lockVersion,
         publishAt: publishAt.toISOString(),
         reason: `${marker} scheduled activation`
@@ -650,6 +747,9 @@ const main = async (): Promise<void> => {
       new AuditLogRepository(prisma),
       env.CONTENT_PUBLICATION_MAX_ACTIVATION_ATTEMPTS
     );
+    created.contentPublicationCommandKeys.push(
+      `content-publication:official_announcement:${scheduledAnnouncement.publicId}:release:${scheduledAnnouncement.releaseId}:activate`
+    );
     const activation = await scheduler.activateDue({ now: clock, batchSize: 1 });
     const activatedAnnouncement = await announcementService.getRelease(
       operatorActor,
@@ -670,7 +770,7 @@ const main = async (): Promise<void> => {
       context,
       publishedUser.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "user-carousel-disable"),
+        idempotencyKey: commandIdempotencyKey("user-carousel-disable"),
         expectedLockVersion: publishedUser.lockVersion,
         reason: `${marker} disable verification`
       }
@@ -683,7 +783,7 @@ const main = async (): Promise<void> => {
       context,
       publishedUser.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "user-carousel-rollback"),
+        idempotencyKey: commandIdempotencyKey("user-carousel-rollback"),
         expectedCurrentVersion: disabledUser.version,
         reason: `${marker} rollback verification`
       }
@@ -700,7 +800,7 @@ const main = async (): Promise<void> => {
       context,
       rollbackUser.releaseId,
       {
-        idempotencyKey: markerUuid(marker, "user-carousel-republish"),
+        idempotencyKey: commandIdempotencyKey("user-carousel-republish"),
         expectedLockVersion: rollbackUser.lockVersion,
         reason: `${marker} publish rollback`
       }
@@ -767,20 +867,12 @@ const main = async (): Promise<void> => {
     ]) {
       assert(auditActions.has(action), `missing publication audit action: ${action}`);
     }
-    const commandActions = new Set(
-      (
-        await prisma.contentPublicationCommand.findMany({
-          where: {
-            OR: [
-              { actorUserId: operator.id },
-              { releaseId: { in: created.announcementReleaseIds } },
-              { releaseId: { in: created.carouselReleaseIds } }
-            ]
-          },
-          select: { action: true }
-        })
-      ).map((row) => row.action)
-    );
+    const commandRows = await prisma.contentPublicationCommand.findMany({
+      where: { idempotencyKey: { in: created.contentPublicationCommandKeys } },
+      select: { id: true, action: true }
+    });
+    created.contentPublicationCommandIds.push(...commandRows.map((row) => row.id));
+    const commandActions = new Set(commandRows.map((row) => row.action));
     for (const action of ["publish", "schedule", "activate", "disable", "rollback"]) {
       assert(commandActions.has(action), `missing publication command action: ${action}`);
     }
@@ -811,38 +903,168 @@ const main = async (): Promise<void> => {
   } finally {
     try {
       await prisma.$transaction(async (transaction) => {
+        if (created.userIds.length > 0) {
+          const [identities, customerProfiles, userRoles] = await Promise.all([
+            transaction.userIdentity.findMany({
+              where: { userId: { in: created.userIds } },
+              select: { id: true }
+            }),
+            transaction.customerProfile.findMany({
+              where: { userId: { in: created.userIds } },
+              select: { id: true }
+            }),
+            transaction.userRole.findMany({
+              where: { userId: { in: created.userIds } },
+              select: { id: true }
+            })
+          ]);
+          captureIds(
+            created.identityIds,
+            identities.map((row) => row.id)
+          );
+          captureIds(
+            created.customerProfileIds,
+            customerProfiles.map((row) => row.id)
+          );
+          captureIds(
+            created.userRoleIds,
+            userRoles.map((row) => row.id)
+          );
+          const identityPublicIdentifiers = await transaction.publicIdentifier.findMany({
+            where: { userIdentityId: { in: created.identityIds } },
+            select: { id: true }
+          });
+          captureIds(
+            created.publicIdentifierIds,
+            identityPublicIdentifiers.map((row) => row.id)
+          );
+        }
+        if (created.shopIds.length > 0) {
+          const shopPublicIdentifiers = await transaction.publicIdentifier.findMany({
+            where: { shopId: { in: created.shopIds } },
+            select: { id: true }
+          });
+          captureIds(
+            created.publicIdentifierIds,
+            shopPublicIdentifiers.map((row) => row.id)
+          );
+        }
+        if (created.affiliateTaskIds.length > 0) {
+          const [budgetReservations, taskShops, taskServices] = await Promise.all([
+            transaction.affiliateBudgetReservation.findMany({
+              where: { taskId: { in: created.affiliateTaskIds } },
+              select: { id: true }
+            }),
+            transaction.affiliateTaskShop.findMany({
+              where: { taskId: { in: created.affiliateTaskIds } },
+              select: { id: true }
+            }),
+            transaction.affiliateTaskService.findMany({
+              where: { taskId: { in: created.affiliateTaskIds } },
+              select: { id: true }
+            })
+          ]);
+          captureIds(
+            created.affiliateBudgetReservationIds,
+            budgetReservations.map((row) => row.id)
+          );
+          captureIds(
+            created.affiliateTaskShopIds,
+            taskShops.map((row) => row.id)
+          );
+          captureIds(
+            created.affiliateTaskServiceIds,
+            taskServices.map((row) => row.id)
+          );
+        }
         if (created.carouselReleaseIds.length > 0) {
           const slideRows = await transaction.carouselSlide.findMany({
             where: { releaseId: { in: created.carouselReleaseIds } },
-            select: { id: true }
+            select: { id: true, translations: { select: { id: true } } }
           });
-          const slideIds = slideRows.map((row) => row.id);
-          if (slideIds.length > 0) {
+          captureIds(
+            created.carouselSlideIds,
+            slideRows.map((row) => row.id)
+          );
+          captureIds(
+            created.carouselSlideTranslationIds,
+            slideRows.flatMap((row) => row.translations.map((translation) => translation.id))
+          );
+          if (created.carouselSlideTranslationIds.length > 0) {
             await transaction.carouselSlideTranslation.deleteMany({
-              where: { slideId: { in: slideIds } }
+              where: { id: { in: created.carouselSlideTranslationIds } }
             });
-            await transaction.carouselSlide.deleteMany({ where: { id: { in: slideIds } } });
+          }
+          if (created.carouselSlideIds.length > 0) {
+            await transaction.carouselSlide.deleteMany({
+              where: { id: { in: created.carouselSlideIds } }
+            });
           }
         }
         if (created.announcementReleaseIds.length > 0) {
-          await transaction.officialAnnouncementTranslation.deleteMany({
-            where: { releaseId: { in: created.announcementReleaseIds } }
+          const translationRows = await transaction.officialAnnouncementTranslation.findMany({
+            where: { releaseId: { in: created.announcementReleaseIds } },
+            select: { id: true }
           });
+          captureIds(
+            created.announcementTranslationIds,
+            translationRows.map((row) => row.id)
+          );
+          if (created.announcementTranslationIds.length > 0) {
+            await transaction.officialAnnouncementTranslation.deleteMany({
+              where: { id: { in: created.announcementTranslationIds } }
+            });
+          }
         }
-        const allReleaseIds = [
-          ...created.carouselReleaseIds,
-          ...created.announcementReleaseIds
-        ];
-        if (allReleaseIds.length > 0 || created.userIds.length > 0) {
-          await transaction.contentPublicationCommand.deleteMany({
-            where: {
-              OR: [
-                ...(allReleaseIds.length > 0 ? [{ releaseId: { in: allReleaseIds } }] : []),
-                ...(created.userIds.length > 0
-                  ? [{ actorUserId: { in: created.userIds } }]
-                  : [])
-              ]
-            }
+        if (created.contentPublicationCommandKeys.length > 0) {
+          const commandRows = await transaction.contentPublicationCommand.findMany({
+            where: { idempotencyKey: { in: created.contentPublicationCommandKeys } },
+            select: { id: true }
+          });
+          captureIds(
+            created.contentPublicationCommandIds,
+            commandRows.map((row) => row.id)
+          );
+        }
+        await deleteLocalizedPublicationCommandsByExactId(
+          transaction,
+          created.contentPublicationCommandIds
+        );
+        const auditRows = await transaction.auditLog.findMany({
+          where: {
+            OR: [
+              ...(created.userIds.length > 0 ? [{ actorId: { in: created.userIds } }] : []),
+              ...(created.announcementReleaseIds.length > 0
+                ? [
+                    {
+                      actorId: null,
+                      action: "content_publication.schedule_failed",
+                      targetType: "OfficialAnnouncementRelease",
+                      targetId: { in: created.announcementReleaseIds }
+                    }
+                  ]
+                : []),
+              ...(created.carouselReleaseIds.length > 0
+                ? [
+                    {
+                      actorId: null,
+                      action: "content_publication.schedule_failed",
+                      targetType: "CarouselRelease",
+                      targetId: { in: created.carouselReleaseIds }
+                    }
+                  ]
+                : [])
+            ]
+          },
+          select: { id: true }
+        });
+        captureIds(
+          created.auditLogIds,
+          auditRows.map((row) => row.id)
+        );
+        if (created.auditLogIds.length > 0) {
+          await transaction.auditLog.deleteMany({
+            where: { id: { in: created.auditLogIds } }
           });
         }
         if (created.carouselReleaseIds.length > 0) {
@@ -872,15 +1094,21 @@ const main = async (): Promise<void> => {
           await transaction.mediaAsset.deleteMany({ where: { id: { in: created.mediaAssetIds } } });
         }
         if (created.affiliateTaskIds.length > 0) {
-          await transaction.affiliateBudgetReservation.deleteMany({
-            where: { taskId: { in: created.affiliateTaskIds } }
-          });
-          await transaction.affiliateTaskService.deleteMany({
-            where: { taskId: { in: created.affiliateTaskIds } }
-          });
-          await transaction.affiliateTaskShop.deleteMany({
-            where: { taskId: { in: created.affiliateTaskIds } }
-          });
+          if (created.affiliateBudgetReservationIds.length > 0) {
+            await transaction.affiliateBudgetReservation.deleteMany({
+              where: { id: { in: created.affiliateBudgetReservationIds } }
+            });
+          }
+          if (created.affiliateTaskServiceIds.length > 0) {
+            await transaction.affiliateTaskService.deleteMany({
+              where: { id: { in: created.affiliateTaskServiceIds } }
+            });
+          }
+          if (created.affiliateTaskShopIds.length > 0) {
+            await transaction.affiliateTaskShop.deleteMany({
+              where: { id: { in: created.affiliateTaskShopIds } }
+            });
+          }
           await transaction.affiliateTask.deleteMany({
             where: { id: { in: created.affiliateTaskIds } }
           });
@@ -913,7 +1141,6 @@ const main = async (): Promise<void> => {
           });
         }
         if (created.userIds.length > 0) {
-          await transaction.auditLog.deleteMany({ where: { actorId: { in: created.userIds } } });
           await deleteFormalTestUserFoundations(transaction, created.userIds);
           await transaction.user.deleteMany({ where: { id: { in: created.userIds } } });
         }
@@ -929,25 +1156,56 @@ const main = async (): Promise<void> => {
       }
     }
     try {
-      const cleanupCounts = await Promise.all([
+      const cleanupResidue = await Promise.all([
         prisma.user.count({ where: { id: { in: created.userIds } } }),
+        prisma.customerProfile.count({ where: { id: { in: created.customerProfileIds } } }),
+        prisma.userIdentity.count({ where: { id: { in: created.identityIds } } }),
+        prisma.publicIdentifier.count({ where: { id: { in: created.publicIdentifierIds } } }),
+        prisma.userRole.count({ where: { id: { in: created.userRoleIds } } }),
+        prisma.category.count({ where: { id: { in: created.categoryIds } } }),
+        prisma.shop.count({ where: { id: { in: created.shopIds } } }),
+        prisma.technicianProfile.count({
+          where: { id: { in: created.technicianProfileIds } }
+        }),
+        prisma.service.count({ where: { id: { in: created.serviceIds } } }),
+        prisma.affiliateProfile.count({ where: { id: { in: created.affiliateProfileIds } } }),
+        prisma.wallet.count({ where: { id: { in: created.walletIds } } }),
+        prisma.affiliateTask.count({ where: { id: { in: created.affiliateTaskIds } } }),
+        prisma.affiliateBudgetReservation.count({
+          where: { id: { in: created.affiliateBudgetReservationIds } }
+        }),
+        prisma.affiliateTaskShop.count({
+          where: { id: { in: created.affiliateTaskShopIds } }
+        }),
+        prisma.affiliateTaskService.count({
+          where: { id: { in: created.affiliateTaskServiceIds } }
+        }),
         prisma.mediaAsset.count({ where: { id: { in: created.mediaAssetIds } } }),
         prisma.officialAnnouncement.count({ where: { id: { in: created.announcementIds } } }),
         prisma.officialAnnouncementRelease.count({
           where: { id: { in: created.announcementReleaseIds } }
         }),
+        prisma.officialAnnouncementTranslation.count({
+          where: { id: { in: created.announcementTranslationIds } }
+        }),
         prisma.carouselRelease.count({ where: { id: { in: created.carouselReleaseIds } } }),
-        prisma.affiliateTask.count({ where: { id: { in: created.affiliateTaskIds } } }),
-        prisma.shop.count({ where: { id: { in: created.shopIds } } }),
-        prisma.service.count({ where: { id: { in: created.serviceIds } } }),
-        prisma.contentPublicationCommand.count({ where: { actorUserId: { in: created.userIds } } }),
-        prisma.auditLog.count({ where: { actorId: { in: created.userIds } } })
+        prisma.carouselSlide.count({ where: { id: { in: created.carouselSlideIds } } }),
+        prisma.carouselSlideTranslation.count({
+          where: { id: { in: created.carouselSlideTranslationIds } }
+        }),
+        prisma.contentPublicationCommand.count({
+          where: { id: { in: created.contentPublicationCommandIds } }
+        }),
+        prisma.auditLog.count({ where: { id: { in: created.auditLogIds } } }),
+        Promise.all(
+          created.mediaFileKeys.map((fileKey) => storedMediaFileExists(mediaStorage, fileKey))
+        ).then((exists) => exists.filter(Boolean).length)
       ]);
       assert(
-        cleanupCounts.every((count) => count === 0),
-        "marker cleanup left localized publication rows behind"
+        cleanupResidue.every((count) => count === 0),
+        "cleanup residue verification failed"
       );
-      console.log("PASS marker cleanup left localized publication rows behind: 0");
+      console.log("PASS cleanup residue verification across all captured rows and media files: 0");
     } catch (error) {
       cleanupErrors.push(error);
     }

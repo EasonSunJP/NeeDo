@@ -36,6 +36,11 @@ describe("localized carousel publication real-database checker", () => {
       "rejects production and staging"
     ],
     [
+      "development deployment alias",
+      { ...safeEnvironment, deployEnv: "development" },
+      "requires DEPLOY_ENV=local or test"
+    ],
+    [
       "remote MySQL",
       { ...safeEnvironment, databaseUrl: "mysql://needo:secret@db.example.com/needo_dev" },
       "only accepts a local MySQL host"
@@ -44,6 +49,38 @@ describe("localized carousel publication real-database checker", () => {
       "production-looking database",
       { ...safeEnvironment, databaseUrl: "mysql://needo:secret@127.0.0.1/needo-prod" },
       "rejects production-looking database names"
+    ],
+    [
+      "percent-encoded production database",
+      {
+        ...safeEnvironment,
+        databaseUrl: "mysql://needo:secret@127.0.0.1/needo_%70rod_dev"
+      },
+      "rejects production-looking database names"
+    ],
+    [
+      "concatenated production database",
+      {
+        ...safeEnvironment,
+        databaseUrl: "mysql://needo:secret@127.0.0.1/needoproduction_dev"
+      },
+      "rejects production-looking database names"
+    ],
+    [
+      "encoded concatenated staging database",
+      {
+        ...safeEnvironment,
+        databaseUrl: "mysql://needo:secret@127.0.0.1/needo%73taging_test"
+      },
+      "rejects production-looking database names"
+    ],
+    [
+      "non-allowlisted development database",
+      {
+        ...safeEnvironment,
+        databaseUrl: "mysql://needo:secret@127.0.0.1/needo_feature_dev"
+      },
+      "requires database needo_dev or needo_test"
     ],
     [
       "remote Redis",
@@ -89,7 +126,7 @@ describe("localized carousel publication real-database checker", () => {
     }
 
     const guardPosition = source.indexOf(
-      "assertSafeLocalizedCarouselPublicationEnvironment"
+      "const safeTarget = assertSafeLocalizedCarouselPublicationEnvironment("
     );
     const prismaImportPosition = source.indexOf('import("../src/prisma/client")');
     expect(guardPosition).toBeGreaterThan(-1);
@@ -114,10 +151,18 @@ describe("localized carousel publication real-database checker", () => {
     expect(source).not.toContain('badge: `${marker} TEST`');
     expect(source).toContain("try {");
     expect(source).toContain("finally {");
-    expect(source).toContain("marker cleanup left localized publication rows behind");
+    expect(source).toContain("cleanup residue verification across all captured rows and media files");
     expect(source).toContain("created.carouselReleaseIds");
     expect(source).toContain("created.announcementReleaseIds");
     expect(source).toContain("created.mediaAssetIds");
+    expect(source).toContain("created.contentPublicationCommandIds");
+    expect(source).toContain("deleteLocalizedPublicationCommandsByExactId(");
+    expect(source).toMatch(
+      /contentPublicationCommand\.deleteMany\(\{\s*where:\s*\{\s*id:\s*\{\s*in:\s*commandIds/u
+    );
+    expect(source).not.toMatch(
+      /contentPublicationCommand\.deleteMany\([\s\S]{0,500}releaseId:\s*\{\s*in:/u
+    );
     expect(source).toMatch(
       /carouselRelease\.updateMany\([\s\S]{0,260}sourceReleaseId: null[\s\S]{0,260}carouselRelease\.deleteMany/u
     );
@@ -125,6 +170,42 @@ describe("localized carousel publication real-database checker", () => {
       /officialAnnouncementRelease\.updateMany\([\s\S]{0,260}sourceReleaseId: null[\s\S]{0,260}officialAnnouncementRelease\.deleteMany/u
     );
     expect(source).not.toMatch(/deleteMany\(\{\s*\}\)/u);
+  });
+
+  it("verifies every marker-owned table and stored media file before cleanup success", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    for (const residue of [
+      "userIds",
+      "customerProfileIds",
+      "identityIds",
+      "publicIdentifierIds",
+      "userRoleIds",
+      "categoryIds",
+      "shopIds",
+      "technicianProfileIds",
+      "serviceIds",
+      "affiliateProfileIds",
+      "walletIds",
+      "affiliateTaskIds",
+      "affiliateBudgetReservationIds",
+      "affiliateTaskShopIds",
+      "affiliateTaskServiceIds",
+      "announcementIds",
+      "announcementReleaseIds",
+      "announcementTranslationIds",
+      "carouselReleaseIds",
+      "carouselSlideIds",
+      "carouselSlideTranslationIds",
+      "mediaAssetIds",
+      "contentPublicationCommandIds",
+      "auditLogIds"
+    ]) {
+      expect(source).toContain(`${residue}:`);
+    }
+    expect(source).toContain("storedMediaFileExists(mediaStorage, fileKey)");
+    expect(source).toContain("cleanup residue verification failed");
+    expect(source).toContain("cleanupResidue.every((count) => count === 0)");
   });
 
   it("proves both scenes, all locales and the complete publication lifecycle", () => {

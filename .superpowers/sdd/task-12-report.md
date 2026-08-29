@@ -21,18 +21,23 @@ Two defects found while executing the real database lifecycle were converted int
 1. A unique run marker exceeded the 40-character `badge` column. The source contract first failed, then the checker switched to fixed `badge: "TEST"` while retaining the marker in marker-safe fields.
 2. Historical rollback releases refer to source releases through `source_release_id`. The cleanup contract first failed, then cleanup was changed to null only the captured release ID sets before exact-ID deletion.
 
-Final checker contract: 1 suite, 12 tests passed.
+The safety review remediation added six independently observed RED contract failures for deploy/database normalization, exact command IDs and complete residue checks. The gated real-MySQL regression was separately RED because the exact-ID cleanup helper did not exist.
+
+Final safety-focused results: checker contract 1 suite / 18 tests passed; exact cleanup real-MySQL regression 1 suite / 1 test passed.
+
+The final integration rerun first hit a sandbox-only Prisma pool timeout because the restricted process could not open the local database socket. The same guarded command was rerun with approved local-database access and passed in 109 ms; no product assertion failed in the approved run.
 
 ## Safety and architecture review
 
 - Explicit `ENV_FILE` is required and must exist.
-- The checker accepts only development/test runtime, local/development/test deploy flags, local MySQL/Redis, and a local/test/dev database name.
-- Production/staging flags, remote hosts and production-looking database names fail closed before Prisma and business services are dynamically imported.
+- The checker accepts only development/test runtime, `DEPLOY_ENV=local|test`, local MySQL/Redis, and the exact database allowlist `needo_dev|needo_test`.
+- The database pathname is URL-decoded, NFKC-normalized and lowercased before connector-insensitive `prod|production|staging` detection. Encoded and concatenated variants fail closed before Prisma and business services are dynamically imported.
 - Console output contains a credential-free database target only; credentials, access/refresh tokens and bank data are not logged.
 - One unique marker is generated per run.
 - Real `ContentMediaService`, `OfficialAnnouncementService`, `CarouselPublicationService`, `ContentPublicationSchedulerService`, Affiliate marketplace policy and repositories are used. There is no mock/fallback/browser storage path.
 - Before changing either fixed carousel scene, the checker refuses to run if that scene already contains releases. It does not archive or overwrite pre-existing local content.
-- `finally` deletes only IDs/file keys captured during that run, and a final marker query must return zero.
+- Every Service and scheduler command is resolved from its unique run-owned idempotency key to a command ID; `finally` deletes commands only by those exact IDs, never a cross-aggregate numeric release ID.
+- `finally` verifies captured IDs for every created root/translation/slide/profile/wallet/identity/link/audit/command table plus the physical media file. Any residue prevents `cleanup=complete`.
 
 ## Real database lifecycle
 
@@ -64,7 +69,7 @@ PASS scheduled successor activated
 PASS published scene disabled
 PASS all five localized public projections reconciled
 PASS publication audit actions reconciled
-PASS marker cleanup left localized publication rows behind: 0
+PASS cleanup residue verification across all captured rows and media files: 0
 status=ok
 cleanup=complete
 ```
@@ -73,11 +78,17 @@ The run covered `zh-CN`, `zh-TW`, `en`, `ja`, `ko`; `USER_HOME` and `AFFILIATE_H
 
 One earlier run failed during cleanup at the newly discovered self-FK ordering boundary. A read-only exact-marker query found exactly two marker users and their marker-owned rows. A temporary exact-ID cleanup script nulled only their captured source release IDs, removed exactly that cohort and its media file, reported two users/three carousel releases/two announcement releases cleaned, and was then deleted. The final checker rerun completed with marker residue zero.
 
+## Safety review remediation evidence
+
+Before changing cleanup, a read-only query of the explicit local `needo_dev` target returned zero `content_publication_commands`, zero announcement releases, zero carousel releases and zero `content.*` audit rows. This proves there is no current surviving publication cohort to repair, but it cannot prove that an older unsafe run never deleted an opposite-aggregate command, and no absent row can be reconstructed without a backup or prior immutable log. No recovery write was attempted.
+
+The real-MySQL regression then created two unique commands with the same numeric `release_id`, one Carousel and one OfficialAnnouncement. Deleting the captured Carousel command ID left the opposite aggregate command unchanged; test cleanup subsequently deleted both test IDs exactly. After the fixed full checker, a second read-only query again returned zero commands, announcements, announcement releases, carousels and content audits.
+
 ## Automated verification
 
 Focused backend command from the implementation plan:
 
-- 16 suites passed, 180 tests passed.
+- 16 suites passed, 186 tests passed.
 - The first sandboxed attempt hit `listen EPERM 0.0.0.0` in Supertest; an approved local rerun outside the binding sandbox passed. This was an execution-policy boundary, not a product assertion failure.
 
 Focused frontend command from the implementation plan:
@@ -86,7 +97,7 @@ Focused frontend command from the implementation plan:
 
 Repository gates:
 
-- Full backend: 226 suites / 1,542 tests passed; 8 suites / 36 tests conditionally skipped.
+- Full backend: 226 suites / 1,548 tests passed; 9 suites / 37 tests conditionally skipped, including the explicitly gated local-MySQL cleanup integration.
 - Full frontend: 195 files / 1,113 tests passed.
 - Backend lint: passed.
 - Backend build: passed.
