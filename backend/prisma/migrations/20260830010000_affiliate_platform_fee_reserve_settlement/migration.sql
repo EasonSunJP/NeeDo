@@ -166,3 +166,75 @@ ALTER TABLE `affiliate_rewards`
   ADD CONSTRAINT `affiliate_rewards_platform_wallet_id_fkey`
   FOREIGN KEY (`platform_wallet_id`) REFERENCES `wallets`(`id`)
   ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Keep the new protected routes deployable when migrations run without a complete seed.
+INSERT INTO `permissions` (
+  `name`,
+  `code`,
+  `type`,
+  `module`,
+  `description`,
+  `is_system`,
+  `created_at`,
+  `updated_at`,
+  `deleted_at`
+)
+VALUES
+  ('联盟营销抽成规则', 'page:backoffice-affiliate-fee-rule', 'page', 'backoffice-affiliate', '分页查看联盟营销平台抽成规则及历史版本', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('新建联盟营销抽成版本', 'button:backoffice-affiliate-fee-rule-create', 'button', 'backoffice-affiliate', '创建全局或店铺范围的联盟营销平台抽成规则版本', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL)
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `type` = VALUES(`type`),
+  `module` = VALUES(`module`),
+  `description` = VALUES(`description`),
+  `is_system` = VALUES(`is_system`),
+  `updated_at` = VALUES(`updated_at`),
+  `deleted_at` = NULL;
+
+-- Admin, operations, finance, and viewer may read fee-rule history.
+INSERT INTO `role_permissions` (
+  `role_id`,
+  `permission_id`,
+  `created_at`,
+  `updated_at`,
+  `deleted_at`
+)
+SELECT
+  `roles`.`id`,
+  `permissions`.`id`,
+  CURRENT_TIMESTAMP(3),
+  CURRENT_TIMESTAMP(3),
+  NULL
+FROM `roles`
+CROSS JOIN `permissions`
+WHERE `roles`.`code` IN ('admin', 'operator', 'finance', 'viewer')
+  AND `roles`.`deleted_at` IS NULL
+  AND `permissions`.`code` = 'page:backoffice-affiliate-fee-rule'
+  AND `permissions`.`deleted_at` IS NULL
+ON DUPLICATE KEY UPDATE
+  `updated_at` = VALUES(`updated_at`),
+  `deleted_at` = NULL;
+
+-- Only admin and finance may create a new immutable fee-rule version.
+INSERT INTO `role_permissions` (
+  `role_id`,
+  `permission_id`,
+  `created_at`,
+  `updated_at`,
+  `deleted_at`
+)
+SELECT
+  `roles`.`id`,
+  `permissions`.`id`,
+  CURRENT_TIMESTAMP(3),
+  CURRENT_TIMESTAMP(3),
+  NULL
+FROM `roles`
+CROSS JOIN `permissions`
+WHERE `roles`.`code` IN ('admin', 'finance')
+  AND `roles`.`deleted_at` IS NULL
+  AND `permissions`.`code` = 'button:backoffice-affiliate-fee-rule-create'
+  AND `permissions`.`deleted_at` IS NULL
+ON DUPLICATE KEY UPDATE
+  `updated_at` = VALUES(`updated_at`),
+  `deleted_at` = NULL;

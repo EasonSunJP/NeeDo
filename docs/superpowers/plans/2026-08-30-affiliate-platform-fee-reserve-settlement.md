@@ -96,7 +96,7 @@ Run: `npm test -- affiliate-platform-fee-schema.test.ts affiliate-platform-fee-m
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/prisma/schema.prisma backend/prisma/migrations/20260830010000_affiliate_platform_fee_reserve_settlement backend/tests/affiliate-platform-fee-schema.test.ts backend/tests/affiliate-platform-fee-migration.test.ts
@@ -126,7 +126,7 @@ git commit -m "feat: add affiliate platform fee snapshots"
 - Produces routes: `GET /api/v1/backoffice/affiliate/fee-rules` and `POST /api/v1/backoffice/affiliate/fee-rules`.
 - Consumes permissions `page:backoffice-affiliate-fee-rule` and `button:backoffice-affiliate-fee-rule-create`.
 
-- [ ] **Step 1: Write failing service and API tests**
+- [x] **Step 1: Write failing service and API tests**
 
 ```ts
 await expect(service.resolveForTask([8], now)).resolves.toMatchObject({
@@ -140,13 +140,13 @@ await expect(service.resolveForTask([8, 9], now)).rejects.toMatchObject({
 
 API tests must prove pagination, Zod strictness, operations identity, least-privilege permissions, optimistic `expectedVersion`, reason capture, audit metadata, and soft-deleted rule exclusion.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `npm test -- affiliate-platform-fee.service.test.ts affiliate-platform-fee.repository.test.ts affiliate-platform-fee-api.test.ts affiliate-permissions.test.ts`
 
 Expected: FAIL because the policy module and permissions do not exist.
 
-- [ ] **Step 3: Implement deterministic policy resolution**
+- [x] **Step 3: Implement deterministic policy resolution**
 
 Use this contract:
 
@@ -168,17 +168,23 @@ resolveForTask(
 
 For each shop, choose its effective shop rule first and otherwise the effective global rule. Reject missing global policy, duplicate shops, inactive/deleted shops, and differing rates. A rule update closes the current active row and creates the next version in one transaction; it never edits an old row.
 
-- [ ] **Step 4: Register RBAC, routes, audit, and seed assignments**
+- [x] **Step 4: Register RBAC, routes, audit, and seed assignments**
+
+`prisma/seed.ts` already consumes `SYSTEM_PERMISSIONS` and
+`buildRolePermissionAssignments`; adding the definitions and assignments to the
+shared constants therefore updates seed behavior without a separate seed-file
+branch. The migration also inserts the two permissions and least-privilege role
+links so migration-only deployments do not expose unusable protected routes.
 
 Admin and finance receive read/write; operator receives read; viewer receives read-only. Every write records prior and next rate/version, scope, reason, actor, and effective time.
 
-- [ ] **Step 5: Run the focused tests and verify GREEN**
+- [x] **Step 5: Run the focused tests and verify GREEN**
 
 Run: `npm test -- affiliate-platform-fee.service.test.ts affiliate-platform-fee.repository.test.ts affiliate-platform-fee-api.test.ts affiliate-permissions.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/src/services/affiliate-platform-fee.service.ts backend/src/repositories/affiliate-platform-fee.repository.ts backend/src/validators/affiliate-platform-fee.validator.ts backend/src/controllers/affiliate-platform-fee.controller.ts backend/src/routes/affiliate-platform-fee.routes.ts backend/src/app.ts backend/src/constants/permissions.constants.ts backend/prisma/seed.ts backend/tests/affiliate-platform-fee.service.test.ts backend/tests/affiliate-platform-fee.repository.test.ts backend/tests/affiliate-platform-fee-api.test.ts backend/tests/affiliate-permissions.test.ts
