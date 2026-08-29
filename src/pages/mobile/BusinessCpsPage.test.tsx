@@ -18,16 +18,18 @@ describe("BusinessCpsPage affiliate name", () => {
     expect(source).not.toContain("<MobileFullscreenHeader");
   });
 
-  it("places the independent formal Affiliate notice carousel before the marketplace boundary", () => {
+  it("places the independent formal Affiliate notice carousel before real recommended tasks", () => {
     const carousel = '<PublishedCarousel scene="affiliate-home-notice" />';
     const carouselIndex = source.indexOf(carousel);
-    const boundaryIndex = source.indexOf("<ExistingAffiliateCapabilityBoundary");
+    const marketplaceIndex = source.indexOf("<AffiliateMarketplaceSection");
 
     expect(source).toContain(
       'import { PublishedCarousel } from "../../features/content-publication/PublishedCarousel";'
     );
     expect(carouselIndex).toBeGreaterThan(-1);
-    expect(boundaryIndex).toBeGreaterThan(carouselIndex);
+    expect(marketplaceIndex).toBeGreaterThan(carouselIndex);
+    expect(source).toContain("推荐任务");
+    expect(source).not.toContain("ExistingAffiliateCapabilityBoundary");
     expect(source).not.toContain("homeCarouselStore");
     expect(source).not.toContain("localStorage");
   });
