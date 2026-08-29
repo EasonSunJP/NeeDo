@@ -23,6 +23,7 @@ export type RealtimeMessage = {
   createdAt: string;
   id: number;
   lifecycleVersion?: number;
+  reactionVersion?: number;
   metadata: unknown;
   reactions?: RealtimeMessageReaction[];
   recallDeadlineAt?: string | null;
@@ -103,6 +104,14 @@ export type RealtimeContact = {
   isBlocked: boolean;
 };
 
+export type RealtimeDeletedContact = {
+  contactId: number;
+  contactUserId: number;
+  deleted: true;
+  deletedAt: string;
+  ownerUserId: number;
+};
+
 export type RealtimeFriendRequest = {
   createdAt: string;
   id: number;
@@ -128,7 +137,9 @@ export type RealtimeSocialPost = {
   createdAt: string;
   id: number;
   media: unknown;
+  updatedAt?: string;
   viewerFollowsAuthor?: boolean;
+  viewerIsFriend?: boolean;
   visibility: "public" | "followers";
 };
 
@@ -195,6 +206,8 @@ export type RealtimeSocialCreatePostInput = {
   mentionUserIds?: number[];
   visibility?: RealtimeSocialPost["visibility"];
 };
+
+export type RealtimeSocialUpdatePostInput = RealtimeSocialCreatePostInput;
 
 export const realtimeApi = {
   listConversations(query: PageQuery = {}) {
@@ -323,6 +336,9 @@ export const realtimeApi = {
   unblockContact(contactId: number) {
     return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "DELETE" });
   },
+  deleteContact(contactId: number) {
+    return httpClient.request<RealtimeDeletedContact>(`/im/contacts/${contactId}`, { method: "DELETE" });
+  },
   listFriendRequests(query: PageQuery & { direction?: "incoming" | "outgoing" | "all"; status?: RealtimeFriendRequest["status"] } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeFriendRequest>>("/im/friend-requests", { query });
   },
@@ -346,6 +362,9 @@ export const realtimeApi = {
   },
   createSocialPost(input: RealtimeSocialCreatePostInput) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });
+  },
+  updateSocialPost(id: number, input: RealtimeSocialUpdatePostInput) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { body: input, method: "PATCH" });
   },
   follow(targetUserId: number) {
     return httpClient.request<{ id: number }>("/social/follows", { body: { targetUserId }, method: "POST" });

@@ -22,6 +22,7 @@ type FormalSocialCounters = {
 
 export type FormalSocialMediaEnvelope = {
   items: SocialMediaItem[];
+  mentionUserIds?: number[];
   quotePostId?: number | string;
   replyToPostId?: number | string;
   repostPostId?: number | string;
@@ -48,9 +49,30 @@ function isSocialMediaItem(value: unknown): value is SocialMediaItem {
   );
 }
 
+function readMediaAssetPublicId(item: SocialMediaItem) {
+  if (item.mediaAssetPublicId && /^[a-f0-9]{64}$/u.test(item.mediaAssetPublicId)) {
+    return item.mediaAssetPublicId;
+  }
+
+  return item.url.match(/\/media\/content\/([a-f0-9]{64})\.(?:jpg|png|webp)(?:[?#].*)?$/u)?.[1];
+}
+
+function toEditableSocialMediaItem(item: SocialMediaItem): SocialMediaItem {
+  const mediaAssetPublicId = readMediaAssetPublicId(item);
+  return mediaAssetPublicId ? { ...item, mediaAssetPublicId } : item;
+}
+
+function readMentionUserIds(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const ids = value.filter(
+    (item): item is number => typeof item === "number" && Number.isSafeInteger(item) && item > 0
+  );
+  return ids.length === value.length ? Array.from(new Set(ids)) : undefined;
+}
+
 function readMediaEnvelope(value: unknown): FormalSocialMediaEnvelope {
   if (Array.isArray(value)) {
-    return { items: value.filter(isSocialMediaItem) };
+    return { items: value.filter(isSocialMediaItem).map(toEditableSocialMediaItem) };
   }
 
   if (!isRecord(value)) {
@@ -59,7 +81,10 @@ function readMediaEnvelope(value: unknown): FormalSocialMediaEnvelope {
 
   const counters = isRecord(value.counters) ? value.counters : undefined;
   return {
-    items: Array.isArray(value.items) ? value.items.filter(isSocialMediaItem) : [],
+    items: Array.isArray(value.items)
+      ? value.items.filter(isSocialMediaItem).map(toEditableSocialMediaItem)
+      : [],
+    mentionUserIds: readMentionUserIds(value.mentionUserIds),
     quotePostId:
       typeof value.quotePostId === "number" || typeof value.quotePostId === "string"
         ? value.quotePostId
@@ -114,10 +139,12 @@ export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
     media: envelope.items,
     hashtags: extractFormalHashtags(post.content),
     mentions: [],
+    mentionUserIds: envelope.mentionUserIds ?? [],
     quotePostId: envelope.quotePostId === undefined ? undefined : String(envelope.quotePostId),
     replyToPostId: envelope.replyToPostId === undefined ? undefined : String(envelope.replyToPostId),
     repostPostId: envelope.repostPostId === undefined ? undefined : String(envelope.repostPostId),
     createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
     likeCount: counters?.likes ?? 0,
     replyCount: counters?.replies ?? 0,
     repostCount: counters?.reposts ?? 0,

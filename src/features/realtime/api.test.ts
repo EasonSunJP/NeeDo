@@ -140,6 +140,39 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("updates a published Social post through the formal PATCH route", async () => {
+    const checksum = "c".repeat(64);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ id: 701 }, 200));
+
+    await realtimeApi.updateSocialPost(701, {
+      content: "Edited formal moment",
+      media: {
+        items: [{ id: "m1", type: "image", mediaAssetPublicId: checksum }],
+        locationLabel: "东京 银座",
+        postType: "post"
+      },
+      mentionUserIds: [52],
+      visibility: "followers"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/social/posts/701",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "Edited formal moment",
+          media: {
+            items: [{ id: "m1", type: "image", mediaAssetPublicId: checksum }],
+            locationLabel: "东京 银座",
+            postType: "post"
+          },
+          mentionUserIds: [52],
+          visibility: "followers"
+        }),
+        method: "PATCH"
+      })
+    );
+  });
+
   it("loads one friend's rolling activity status without listing or downloading post media", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       status: "recent_posts",

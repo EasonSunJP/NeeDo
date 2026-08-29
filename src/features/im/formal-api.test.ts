@@ -250,6 +250,37 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("soft-deletes an owned formal contact through the persisted API", async () => {
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      contactId: 31,
+      contactUserId: 201,
+      deleted: true,
+      deletedAt: now,
+      ownerUserId: 100,
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "n0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.deleteContact("31")).resolves.toEqual({
+      contact: expect.objectContaining({
+        id: "31",
+        ownerUserId: "100",
+        relationStatus: "deleted",
+        targetUserId: "201",
+      }),
+    });
+    expect(request).toHaveBeenCalledWith("/im/contacts/31", {
+      method: "DELETE",
+    });
+  });
+
   it("loads published merchant technicians as real organization members", async () => {
     vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
       list: [],

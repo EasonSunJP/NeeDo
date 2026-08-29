@@ -501,6 +501,7 @@ export function SocialComposerPage() {
           includeRelatedPeople,
           commentPermission,
           locationLabel: locationLabel || undefined,
+          mentionUserIds,
           postType: editPost?.postType ?? postType
           })
         : createPost({
@@ -728,7 +729,7 @@ function createComposerSnapshot({
     includeRelatedPeople: editPost?.includeRelatedPeople ?? draft?.includeRelatedPeople ?? false,
     commentPermission: editPost?.commentPermission ?? draft?.commentPermission ?? "everyone",
     locationLabel: editPost?.locationLabel ?? draft?.locationLabel ?? "",
-    mentionUserIds: draft?.mentionUserIds ?? [],
+    mentionUserIds: editPost?.mentionUserIds ?? draft?.mentionUserIds ?? [],
     postType: editPost?.postType ?? draft?.postType ?? fallbackPostType
   };
 }

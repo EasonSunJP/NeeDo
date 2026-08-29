@@ -19,7 +19,8 @@ const testState = vi.hoisted(() => ({
   loginMethod: "password",
   currentIdentityScopeId: 41 as number | null,
   currentIdentityType: "customer",
-  previewCustomer: null as Record<string, unknown> | null
+  previewCustomer: null as Record<string, unknown> | null,
+  writeClipboardText: vi.fn()
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
@@ -161,6 +162,11 @@ describe("UserCenterPage inline profile editing", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.clearAllMocks();
+    testState.writeClipboardText.mockResolvedValue(undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: testState.writeClipboardText }
+    });
     testState.loginMethod = "password";
     testState.currentIdentityScopeId = 41;
     testState.currentIdentityType = "customer";
@@ -289,6 +295,32 @@ describe("UserCenterPage inline profile editing", () => {
     expect(nickname).not.toBeNull();
     expect(nickname?.className).toContain("text-lg");
     expect(container.textContent).toContain("ID u3141592653");
+  });
+
+  it("copies only the formal NeeDo ID when the complete ID row is clicked", async () => {
+    await renderUserCenter();
+
+    const idRow = container.querySelector<HTMLButtonElement>('button[aria-label="复制 NeeDo ID"]');
+
+    expect(idRow).not.toBeNull();
+    expect(idRow?.textContent).toContain("ID u3141592653");
+    await click(idRow!);
+
+    await waitFor(() => expect(testState.writeClipboardText).toHaveBeenCalledWith("u3141592653"));
+    expect(testState.writeClipboardText).not.toHaveBeenCalledWith("ID u3141592653");
+    await waitFor(() => expect(container.textContent).toContain("已复制"));
+  });
+
+  it("shows an explicit failure when the NeeDo ID cannot be copied", async () => {
+    testState.writeClipboardText.mockRejectedValueOnce(new Error("clipboard denied"));
+    await renderUserCenter();
+
+    const idRow = container.querySelector<HTMLButtonElement>('button[aria-label="复制 NeeDo ID"]');
+
+    expect(idRow).not.toBeNull();
+    await click(idRow!);
+
+    await waitFor(() => expect(container.textContent).toContain("复制失败，请手动复制"));
   });
 
   it("does not reserve an empty membership badge slot before the level label", async () => {

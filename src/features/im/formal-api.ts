@@ -321,6 +321,7 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
     recallMode: message.recallMode ?? undefined,
     contentPurgedAt: message.contentPurgedAt ?? undefined,
     lifecycleVersion: message.lifecycleVersion,
+    reactionVersion: message.reactionVersion,
     availableRecallModes: isRecalled
       ? []
       : (message.availableRecallModes ?? []).filter(
@@ -686,7 +687,23 @@ export function createFormalImApi({
         ),
       };
     },
-    deleteContact: featureUnavailable,
+    async deleteContact(contactId: string) {
+      const deleted = await realtimeApi.deleteContact(toNumericId(contactId));
+      return {
+        contact: {
+          id: String(deleted.contactId),
+          ownerUserId: String(deleted.ownerUserId),
+          targetUserId: String(deleted.contactUserId),
+          relationStatus: "deleted",
+          source: "formal_api",
+          tags: [],
+          isStarred: false,
+          isBlocked: false,
+          createdAt: deleted.deletedAt,
+          updatedAt: deleted.deletedAt,
+        },
+      };
+    },
     async listFriendRequests() {
       const friendRequests = await loadFriendRequests();
       const bootstrapPayload = await bootstrap();

@@ -2510,20 +2510,9 @@ export function ImFriendRequestsPage() {
   const pending = store.friendRequests
     .slice()
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
-  const syncAcceptedFriendFollow = (request: FriendRequest, fromUser: ImUser) => {
-    const currentUser = store.usersById[store.currentUserId ?? request.toUserId] ?? store.usersById[request.toUserId];
-    const currentSocialKey = resolveImUserSocialKey(currentUser);
-    const fromSocialKey = resolveImUserSocialKey(fromUser);
-
-    if (!currentSocialKey || !fromSocialKey || !social.profiles[currentSocialKey] || !social.profiles[fromSocialKey]) {
-      return;
-    }
-
-    social.ensureMutualFollow(currentSocialKey, fromSocialKey);
-  };
-  const handleAcceptFriendRequest = async (request: FriendRequest, fromUser: ImUser) => {
+  const handleAcceptFriendRequest = async (request: FriendRequest) => {
     await store.acceptFriendRequest(request.id);
-    syncAcceptedFriendFollow(request, fromUser);
+    social.refreshFeeds();
   };
 
   return (
@@ -2554,7 +2543,7 @@ export function ImFriendRequestsPage() {
                 {request.status === "pending" ? (
                   <>
                     <Button onClick={() => void store.rejectFriendRequest(request.id)} size="sm" variant="secondary">拒绝</Button>
-                    <Button onClick={() => void handleAcceptFriendRequest(request, user)} size="sm">接受</Button>
+                    <Button onClick={() => void handleAcceptFriendRequest(request)} size="sm">接受</Button>
                   </>
                 ) : (
                   <span className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_64%,transparent)] px-3 py-2 text-xs font-semibold text-[color:var(--client-soft-muted)]">

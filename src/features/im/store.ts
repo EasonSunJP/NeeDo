@@ -70,6 +70,15 @@ export function preferTerminalMessage(
     return current;
   }
 
+  if (
+    current &&
+    current.serverState !== "recalled" &&
+    incoming.serverState !== "recalled" &&
+    (current.reactionVersion ?? 0) > (incoming.reactionVersion ?? 0)
+  ) {
+    return current;
+  }
+
   return incoming;
 }
 

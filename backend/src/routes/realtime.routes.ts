@@ -36,6 +36,7 @@ import {
   socialPostCreateBodySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialPostUpdateBodySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -60,12 +61,14 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   searchDirectory: "contact:list",
   addContact: "contact:list",
   blockContact: "contact:block",
+  deleteContact: "contact:delete",
   listFriendRequests: "friend-request:list",
   createFriendRequest: "friend-request:create",
   respondFriendRequest: "friend-request:respond",
   listSocialPosts: "social-post:list",
   getSocialPost: "social-post:list",
   createSocialPost: "social-post:create",
+  updateSocialPost: "social-post:create",
   writeFollow: "follow:write",
   listNotifications: "notification:list",
   readNotification: "notification:read",
@@ -239,6 +242,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     validateRequest({ params: contactIdParamSchema }),
     controller.unblockContact
   );
+  router.delete(
+    "/im/contacts/:contactId",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.deleteContact),
+    validateRequest({ params: contactIdParamSchema }),
+    controller.deleteContact
+  );
   router.get(
     "/im/friend-requests",
     authenticate(),
@@ -294,6 +304,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.getSocialPost),
     validateRequest({ params: socialPostIdParamSchema }),
     controller.getSocialPost
+  );
+  router.patch(
+    "/social/posts/:id",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.updateSocialPost),
+    validateRequest({ params: socialPostIdParamSchema, body: socialPostUpdateBodySchema }),
+    controller.updateSocialPost
   );
   router.post(
     "/social/follows",

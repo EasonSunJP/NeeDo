@@ -30,6 +30,7 @@ import {
   socialPostCreateBodySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialPostUpdateBodySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
 
@@ -224,6 +225,11 @@ export class RealtimeController {
     );
   });
 
+  public deleteContact = this.createHandler((request, response) => {
+    const params = contactIdParamSchema.parse(request.params);
+    return this.service.deleteContact(getAuthenticatedAccess(response), params.contactId);
+  });
+
   public listFriendRequests = this.createHandler((request, response) =>
     this.service.listFriendRequests(
       getAuthenticatedAccess(response),
@@ -276,6 +282,17 @@ export class RealtimeController {
       ),
     201
   );
+
+  public updateSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+
+    return this.service.updateSocialPost(
+      getAuthenticatedAccess(response),
+      params.id,
+      socialPostUpdateBodySchema.parse(request.body),
+      getRequestContext(request)
+    );
+  });
 
   public getSocialPost = this.createHandler((request, response) => {
     const params = socialPostIdParamSchema.parse(request.params);

@@ -289,6 +289,18 @@ describe("GET /api/v1/openapi.json", () => {
         }
       }
     });
+    const socialPostUpdate = response.body.paths["/api/v1/social/posts/{id}"].patch;
+    expect(socialPostUpdate).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      requestBody: expect.any(Object),
+      responses: expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object),
+        "409": expect.any(Object)
+      })
+    });
     expect(socialPostCreate.responses).toEqual(
       expect.objectContaining({
         "201": expect.any(Object),
@@ -700,6 +712,14 @@ describe("GET /api/v1/openapi.json", () => {
     ).toMatchObject({ put: expect.any(Object), delete: expect.any(Object) });
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations/{conversationId}/read");
     expect(response.body.paths).toHaveProperty("/api/v1/im/contacts");
+    expect(response.body.paths["/api/v1/im/contacts/{contactId}"].delete).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      responses: expect.objectContaining({
+        "200": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      })
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests");
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/accept");
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/reject");

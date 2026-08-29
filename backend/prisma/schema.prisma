@@ -1824,6 +1824,7 @@ model Message {
   contentPurgedAt            DateTime?          @map("content_purged_at")
   privacyPolicyVersionAtSend Int?               @map("privacy_policy_version_at_send")
   lifecycleVersion           Int                @default(0) @map("lifecycle_version")
+  reactionVersion            Int                @default(0) @map("reaction_version")
   createdAt                  DateTime           @default(now()) @map("created_at")
   updatedAt                  DateTime           @updatedAt @map("updated_at")
   deletedAt                  DateTime?          @map("deleted_at")

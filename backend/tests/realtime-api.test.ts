@@ -182,6 +182,7 @@ const realtimePermissions = [
   "message:read",
   "contact:list",
   "contact:block",
+  "contact:delete",
   "friend-request:list",
   "friend-request:create",
   "friend-request:respond",
@@ -886,6 +887,23 @@ const createFixture = async () => {
         return contact;
       }
     ),
+    deleteContact: jest.fn(
+      async (input: { contactId: number; ownerUserId: number }) => {
+        const index = contacts.findIndex(
+          (item) => item.id === input.contactId && item.ownerUserId === input.ownerUserId
+        );
+        if (index === -1) return null;
+        const [contact] = contacts.splice(index, 1);
+        if (!contact) return null;
+        return {
+          contactId: contact.id,
+          contactUserId: contact.contactUserId,
+          deleted: true as const,
+          deletedAt: now,
+          ownerUserId: contact.ownerUserId
+        };
+      }
+    ),
     createFriendRequest: jest.fn(
       async (input: { requesterUserId: number; targetUserId: number; message?: string | null }) => {
         const friendRequest = {
@@ -975,6 +993,25 @@ const createFixture = async () => {
         socialPosts.push(socialPost);
 
         return { post: socialPost, notifications: [] };
+      }
+    ),
+    updateSocialPost: jest.fn(
+      async (input: {
+        postId: number;
+        authorUserId: number;
+        content: string;
+        media?: unknown;
+        mentionUserIds: number[];
+        visibility: string;
+      }) => {
+        const post = socialPosts.find(
+          (candidate) => candidate.id === input.postId && candidate.authorUserId === input.authorUserId
+        );
+        if (!post) return null;
+        post.content = input.content;
+        post.media = input.media ?? null;
+        post.visibility = input.visibility;
+        return { post, notifications: [] };
       }
     ),
     listSocialPosts: jest.fn(async () => listPage(socialPosts)),
@@ -1242,6 +1279,48 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
     }
   });
 
+  it("updates only the authenticated author's published post through the strict PATCH contract", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    const created = await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "Before", visibility: "public" })
+      .expect(201);
+    const postId = created.body.data.id as number;
+
+    const updated = await request(fixture.app)
+      .patch(`/api/v1/social/posts/${postId}`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "After", mentionUserIds: [2], visibility: "followers" })
+      .expect(200);
+
+    expect(updated.body.data).toMatchObject({ id: postId, content: "After", visibility: "followers" });
+    expect(fixture.realtimeRepository.updateSocialPost).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        postId,
+        authorUserId: 1,
+        content: "After",
+        mentionUserIds: [2],
+        context: expect.objectContaining({ ip: expect.any(String) })
+      })
+    );
+
+    await request(fixture.app)
+      .patch(`/api/v1/social/posts/${postId}`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ content: "Hijack", visibility: "public" })
+      .expect(404);
+
+    await request(fixture.app)
+      .patch(`/api/v1/social/posts/${postId}`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "", media: { items: [] }, visibility: "public" })
+      .expect(400);
+  });
+
   it("returns a protected 30-day friend activity status without media payloads", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");
@@ -1330,6 +1409,48 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(200)
       .expect((response) => {
         expect(response.body.data).toMatchObject({ id: 1, isBlocked: false });
+      });
+  });
+
+  it("soft-deletes only a contact owned by the authenticated user", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/friend-requests")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ targetUserId: 2 })
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/im/friend-requests/1/accept")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200);
+
+    await request(fixture.app)
+      .delete("/api/v1/im/contacts/1")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(404);
+
+    await request(fixture.app)
+      .delete("/api/v1/im/contacts/1")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          contactId: 1,
+          contactUserId: 2,
+          deleted: true,
+          ownerUserId: 1
+        });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/im/contacts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.list).toEqual([]);
       });
   });
 

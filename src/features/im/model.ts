@@ -271,6 +271,7 @@ export type ConversationMessage = {
   editedAt?: string;
   contentPurgedAt?: string;
   lifecycleVersion?: number;
+  reactionVersion?: number;
   recallDeadlineAt?: string;
   recalledAt?: string;
   recallMode?: "standard" | "traceless";

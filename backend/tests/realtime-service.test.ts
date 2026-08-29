@@ -127,6 +127,52 @@ describe("RealtimeService social events", () => {
     expect(repository.listFollowerUserIds).not.toHaveBeenCalled();
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
+
+  it("publishes a post update and only the new reminder notifications returned by the transaction", async () => {
+    const post = {
+      id: 44,
+      authorUserId: 1,
+      content: "edited",
+      media: null,
+      visibility: "followers" as const,
+      createdAt: new Date("2026-08-25T00:00:00.000Z")
+    };
+    const notification = {
+      id: 502,
+      recipientUserId: 5,
+      actorUserId: 1,
+      type: "social" as const,
+      title: "动态提醒",
+      body: "提醒你查看一条动态。",
+      payload: { kind: "post_mention", postId: 44 },
+      readAt: null,
+      createdAt: post.createdAt
+    };
+    const repository = {
+      updateSocialPost: jest.fn(async () => ({ post, notifications: [notification] })),
+      listFollowerUserIds: jest.fn(async () => [2])
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(service.updateSocialPost(
+      { userId: 1 } as never,
+      44,
+      { content: "edited", mentionUserIds: [5], visibility: "followers" },
+      { ip: "127.0.0.1" }
+    )).resolves.toBe(post);
+
+    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: "social.post.updated",
+      recipientUserId: 2,
+      payload: post
+    }));
+    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: "notification.created",
+      recipientUserId: 5,
+      payload: notification
+    }));
+  });
 });
 
 describe("RealtimeService standard message recall", () => {

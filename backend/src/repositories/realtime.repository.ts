@@ -65,6 +65,7 @@ export interface MessagePayload {
   recallMode: MessageRecallModePayload | null;
   contentPurgedAt: Date | null;
   lifecycleVersion: number;
+  reactionVersion: number;
   availableRecallModes: MessageRecallModePayload[];
 }
 
@@ -99,6 +100,19 @@ export interface SetContactBlockedInput {
   contactId: number;
   ownerUserId: number;
   isBlocked: boolean;
+}
+
+export interface DeleteContactInput {
+  contactId: number;
+  ownerUserId: number;
+}
+
+export interface DeletedContactPayload {
+  contactId: number;
+  ownerUserId: number;
+  contactUserId: number;
+  deleted: true;
+  deletedAt: Date;
 }
 
 export interface DirectorySearchInput extends PaginationInput {
@@ -145,10 +159,17 @@ export interface SocialPostPayload {
   media: unknown;
   visibility: SocialPostVisibilityPayload;
   createdAt: Date;
+  updatedAt: Date;
   author: SocialPostAuthorPayload;
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
+  viewerIsFriend: boolean;
 }
+
+type SocialRelationshipMap = {
+  follows: Set<string>;
+  friendUserIds: Set<number>;
+};
 
 export interface FollowPayload {
   id: number;
@@ -315,6 +336,12 @@ export interface CreateSocialPostResult {
   notifications: NotificationPayload[];
 }
 
+export interface UpdateSocialPostInput extends CreateSocialPostInput {
+  postId: number;
+}
+
+export type UpdateSocialPostResult = CreateSocialPostResult;
+
 export interface SocialPostListInput extends PaginationInput {
   authorUserId?: number;
 }
@@ -403,6 +430,7 @@ export interface RealtimeRepositoryPort {
   ) => Promise<PaginatedResponse<ParticipantPayload>>;
   addContact: (input: AddContactInput) => Promise<ContactPayload>;
   setContactBlocked: (input: SetContactBlockedInput) => Promise<ContactPayload | null>;
+  deleteContact: (input: DeleteContactInput) => Promise<DeletedContactPayload | null>;
   ensureDirectContactConversation: (
     input: EnsureTechnicianApplicationContactInput
   ) => Promise<{ conversationId: number }>;
@@ -415,6 +443,7 @@ export interface RealtimeRepositoryPort {
     input: RespondFriendRequestInput
   ) => Promise<FriendRequestPayload | null>;
   createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
+  updateSocialPost: (input: UpdateSocialPostInput) => Promise<UpdateSocialPostResult | null>;
   listSocialPosts: (
     userId: number,
     input: SocialPostListInput
@@ -1235,8 +1264,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: MessageReactionMutationInput
   ): Promise<MessagePayload | null> {
     return this.client.$transaction(async (tx) => {
-      const message = await this.findMessageForParticipant(tx, input);
-      if (!message) return null;
+      const messageLocked = await this.lockMessageForParticipant(tx, input);
+      if (!messageLocked) return null;
 
       await tx.messageReaction.upsert({
         where: {
@@ -1254,11 +1283,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         update: { deletedAt: null }
       });
 
-      const updated = await tx.message.findUnique({
+      const updated = await tx.message.update({
         where: { id: input.messageId },
+        data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return updated ? this.mapMessage(updated, input.userId) : null;
+      return this.mapMessage(updated, input.userId);
     });
   }
 
@@ -1266,8 +1296,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: MessageReactionMutationInput
   ): Promise<MessagePayload | null> {
     return this.client.$transaction(async (tx) => {
-      const message = await this.findMessageForParticipant(tx, input);
-      if (!message) return null;
+      const messageLocked = await this.lockMessageForParticipant(tx, input);
+      if (!messageLocked) return null;
 
       await tx.messageReaction.updateMany({
         where: {
@@ -1279,11 +1309,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         data: { deletedAt: new Date() }
       });
 
-      const updated = await tx.message.findUnique({
+      const updated = await tx.message.update({
         where: { id: input.messageId },
+        data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return updated ? this.mapMessage(updated, input.userId) : null;
+      return this.mapMessage(updated, input.userId);
     });
   }
 
@@ -1560,6 +1591,49 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return this.mapContact(updated);
   }
 
+  public async deleteContact(input: DeleteContactInput): Promise<DeletedContactPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const contact = await tx.contact.findFirst({
+        where: {
+          id: input.contactId,
+          ownerUserId: input.ownerUserId,
+          deletedAt: null,
+          contactUser: {
+            deletedAt: null,
+            isActive: true
+          }
+        },
+        select: { id: true, contactUserId: true }
+      });
+      if (!contact) return null;
+
+      const deletedAt = new Date();
+      await tx.contact.update({
+        where: { id: contact.id },
+        data: { blockedAt: null, deletedAt }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.ownerUserId,
+          action: "im.contact.deleted",
+          targetType: "Contact",
+          targetId: contact.id,
+          ip: null,
+          userAgent: null,
+          metadata: { contactUserId: contact.contactUserId }
+        }
+      });
+
+      return {
+        contactId: contact.id,
+        ownerUserId: input.ownerUserId,
+        contactUserId: contact.contactUserId,
+        deleted: true,
+        deletedAt
+      };
+    });
+  }
+
   public ensureDirectContactConversation(
     input: EnsureTechnicianApplicationContactInput
   ): Promise<{ conversationId: number }> {
@@ -1814,9 +1888,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
                 id: item.id,
                 type: item.type,
                 url: mediaAsset.url,
+                mediaAssetPublicId: item.mediaAssetPublicId,
                 ...(item.alt ? { alt: item.alt } : {})
               };
             }),
+            mentionUserIds,
             counters: { likes: 0, replies: 0, reposts: 0, views: 1, bookmarks: 0 }
           }
         : undefined;
@@ -1885,6 +1961,203 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
       return {
         post: this.mapSocialPost(socialPost, input.authorUserId, input.authorUserId),
+        notifications
+      };
+    });
+  }
+
+  public async updateSocialPost(input: UpdateSocialPostInput): Promise<UpdateSocialPostResult | null> {
+    return this.client.$transaction(async (transaction) => {
+      const existingPost = await transaction.socialPost.findFirst({
+        where: {
+          id: input.postId,
+          authorUserId: input.authorUserId,
+          deletedAt: null
+        },
+        include: socialPostInclude
+      });
+      if (!existingPost) {
+        return null;
+      }
+
+      const mentionUserIds = Array.from(new Set(input.mentionUserIds));
+      if (
+        mentionUserIds.length !== input.mentionUserIds.length ||
+        mentionUserIds.length > 50 ||
+        mentionUserIds.includes(input.authorUserId)
+      ) {
+        throw this.socialPostConflict("error.social.invalid_mention_contact");
+      }
+
+      if (mentionUserIds.length > 0) {
+        const contacts = await transaction.contact.findMany({
+          where: {
+            ownerUserId: input.authorUserId,
+            contactUserId: { in: mentionUserIds },
+            blockedAt: null,
+            deletedAt: null,
+            contactUser: { isActive: true, deletedAt: null }
+          },
+          select: { contactUserId: true }
+        });
+        const matchedContactIds = new Set(contacts.map((contact) => contact.contactUserId));
+        if (
+          matchedContactIds.size !== mentionUserIds.length ||
+          mentionUserIds.some((userId) => !matchedContactIds.has(userId))
+        ) {
+          throw this.socialPostConflict("error.social.invalid_mention_contact");
+        }
+      }
+
+      const requestedMediaItems = input.media?.items ?? [];
+      const mediaPublicIds = requestedMediaItems.map((item) => item.mediaAssetPublicId);
+      if (new Set(mediaPublicIds).size !== mediaPublicIds.length) {
+        throw this.socialPostConflict("error.social.media_not_owned");
+      }
+
+      const selectedMediaByPublicId = new Map<
+        string,
+        { id: number; checksumSha256: string | null; url: string; entityType: string; entityId: number }
+      >();
+      if (mediaPublicIds.length > 0) {
+        const mediaAssets = await transaction.mediaAsset.findMany({
+          where: {
+            ownerUserId: input.authorUserId,
+            usageType: "social_post_public",
+            isActive: true,
+            deletedAt: null,
+            purgedAt: null,
+            checksumSha256: { in: mediaPublicIds },
+            OR: [
+              { entityType: "social_post_upload" },
+              { entityType: "social_post", entityId: input.postId }
+            ]
+          },
+          select: {
+            id: true,
+            checksumSha256: true,
+            url: true,
+            entityType: true,
+            entityId: true,
+            createdAt: true
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        });
+        for (const mediaAsset of mediaAssets) {
+          if (mediaAsset.checksumSha256 && !selectedMediaByPublicId.has(mediaAsset.checksumSha256)) {
+            selectedMediaByPublicId.set(mediaAsset.checksumSha256, mediaAsset);
+          }
+        }
+        if (
+          selectedMediaByPublicId.size !== mediaPublicIds.length ||
+          mediaPublicIds.some((publicId) => !selectedMediaByPublicId.has(publicId))
+        ) {
+          throw this.socialPostConflict("error.social.media_not_owned");
+        }
+      }
+
+      const existingEnvelope = this.jsonRecord(existingPost.media);
+      const existingCounters = this.jsonRecord(existingEnvelope?.counters);
+      const counters = {
+        likes: this.jsonCounter(existingCounters?.likes, 0),
+        replies: this.jsonCounter(existingCounters?.replies, 0),
+        reposts: this.jsonCounter(existingCounters?.reposts, 0),
+        views: this.jsonCounter(existingCounters?.views, 1),
+        bookmarks: this.jsonCounter(existingCounters?.bookmarks, 0)
+      };
+      const existingMentionUserIds = this.jsonPositiveIntegerArray(existingEnvelope?.mentionUserIds);
+      const media = input.media
+        ? {
+            ...(input.media.quotePostId !== undefined ? { quotePostId: input.media.quotePostId } : {}),
+            ...(input.media.replyToPostId !== undefined ? { replyToPostId: input.media.replyToPostId } : {}),
+            ...(input.media.repostPostId !== undefined ? { repostPostId: input.media.repostPostId } : {}),
+            ...(input.media.postType !== undefined ? { postType: input.media.postType } : {}),
+            ...(input.media.locationLabel !== undefined ? { locationLabel: input.media.locationLabel } : {}),
+            items: requestedMediaItems.map((item) => {
+              const mediaAsset = selectedMediaByPublicId.get(item.mediaAssetPublicId);
+              if (!mediaAsset) {
+                throw this.socialPostConflict("error.social.media_not_owned");
+              }
+              return {
+                id: item.id,
+                type: item.type,
+                url: mediaAsset.url,
+                mediaAssetPublicId: item.mediaAssetPublicId,
+                ...(item.alt ? { alt: item.alt } : {})
+              };
+            }),
+            mentionUserIds,
+            counters
+          }
+        : undefined;
+
+      const updatedPost = await transaction.socialPost.update({
+        where: { id: existingPost.id },
+        data: {
+          content: input.content,
+          media: this.toJsonValue(media),
+          visibility: this.socialPostVisibilityToDb(input.visibility)
+        },
+        include: socialPostInclude
+      });
+
+      const pendingMediaAssetIds = mediaPublicIds
+        .map((publicId) => selectedMediaByPublicId.get(publicId)!)
+        .filter((mediaAsset) => mediaAsset.entityType === "social_post_upload")
+        .map((mediaAsset) => mediaAsset.id);
+      if (pendingMediaAssetIds.length > 0) {
+        const updateResult = await transaction.mediaAsset.updateMany({
+          where: {
+            id: { in: pendingMediaAssetIds },
+            ownerUserId: input.authorUserId,
+            entityType: "social_post_upload",
+            usageType: "social_post_public",
+            isActive: true,
+            deletedAt: null,
+            purgedAt: null
+          },
+          data: { entityType: "social_post", entityId: existingPost.id }
+        });
+        if (updateResult.count !== pendingMediaAssetIds.length) {
+          throw this.socialPostConflict("error.social.media_not_owned");
+        }
+      }
+
+      const previousMentionUserIds = new Set(existingMentionUserIds);
+      const notifications: NotificationPayload[] = [];
+      for (const recipientUserId of mentionUserIds.filter((userId) => !previousMentionUserIds.has(userId))) {
+        const notification = await transaction.notification.create({
+          data: {
+            recipientUserId,
+            actorUserId: input.authorUserId,
+            type: NotificationType.SOCIAL,
+            title: "动态提醒",
+            body: "提醒你查看一条动态。",
+            payload: { kind: "post_mention", postId: updatedPost.id }
+          }
+        });
+        notifications.push(this.mapNotification(notification));
+      }
+
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.authorUserId,
+          action: "social.post.updated",
+          targetType: "SocialPost",
+          targetId: updatedPost.id,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: {
+            previousMentionUserIds: existingMentionUserIds,
+            mentionUserIds,
+            mediaAssetPublicIds: mediaPublicIds,
+            visibility: input.visibility
+          } satisfies Prisma.InputJsonValue
+        }
+      });
+
+      return {
+        post: this.mapSocialPost(updatedPost, input.authorUserId, input.authorUserId),
         notifications
       };
     });
@@ -2247,27 +2520,32 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
-  private findMessageForParticipant(
+  private async lockMessageForParticipant(
     tx: Prisma.TransactionClient,
     input: MessageReactionMutationInput
-  ) {
-    return tx.message.findFirst({
-      where: {
-        id: input.messageId,
-        conversationId: input.conversationId,
-        deletedAt: null,
-        conversation: {
-          deletedAt: null,
-          participants: {
-            some: {
-              userId: input.userId,
-              deletedAt: null
-            }
-          }
-        }
-      },
-      select: { id: true }
-    });
+  ): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`
+        SELECT m.id
+        FROM messages AS m
+        INNER JOIN conversations AS c
+          ON c.id = m.conversation_id
+          AND c.deleted_at IS NULL
+        WHERE m.id = ${input.messageId}
+          AND m.conversation_id = ${input.conversationId}
+          AND m.deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM conversation_participants AS cp
+            WHERE cp.conversation_id = m.conversation_id
+              AND cp.user_id = ${input.userId}
+              AND cp.deleted_at IS NULL
+          )
+        FOR UPDATE
+      `
+    );
+
+    return rows.length > 0;
   }
 
   private upsertContact(tx: Prisma.TransactionClient, ownerUserId: number, contactUserId: number) {
@@ -2426,6 +2704,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       recallMode,
       contentPurgedAt: message.contentPurgedAt,
       lifecycleVersion: message.lifecycleVersion,
+      reactionVersion: message.reactionVersion,
       availableRecallModes: canRecall ? ["standard"] : []
     };
   }
@@ -2473,37 +2752,62 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   private async loadSocialRelationshipMap(
     viewerUserId: number,
     authorUserIds: number[]
-  ): Promise<Set<string>> {
+  ): Promise<SocialRelationshipMap> {
     const uniqueAuthorUserIds = [...new Set(authorUserIds)];
     if (uniqueAuthorUserIds.length === 0) {
-      return new Set();
+      return { follows: new Set(), friendUserIds: new Set() };
     }
 
-    const relationships = await this.client.follow.findMany({
-      where: {
-        deletedAt: null,
-        OR: [
-          {
-            followerUserId: viewerUserId,
-            followingUserId: { in: uniqueAuthorUserIds }
-          },
-          {
-            followerUserId: { in: uniqueAuthorUserIds },
-            followingUserId: viewerUserId
-          }
-        ]
-      },
-      select: {
-        followerUserId: true,
-        followingUserId: true
-      }
-    });
-
-    return new Set(
+    const [relationships, contacts] = await Promise.all([
+      this.client.follow.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            {
+              followerUserId: viewerUserId,
+              followingUserId: { in: uniqueAuthorUserIds }
+            },
+            {
+              followerUserId: { in: uniqueAuthorUserIds },
+              followingUserId: viewerUserId
+            }
+          ]
+        },
+        select: {
+          followerUserId: true,
+          followingUserId: true
+        }
+      }),
+      this.client.contact.findMany({
+        where: {
+          blockedAt: null,
+          deletedAt: null,
+          OR: [
+            { ownerUserId: viewerUserId, contactUserId: { in: uniqueAuthorUserIds } },
+            { ownerUserId: { in: uniqueAuthorUserIds }, contactUserId: viewerUserId }
+          ]
+        },
+        select: { ownerUserId: true, contactUserId: true }
+      })
+    ]);
+    const follows = new Set(
       relationships.map(
         (relationship) => `${relationship.followerUserId}:${relationship.followingUserId}`
       )
     );
+    const contactPairs = new Set(
+      contacts.map((contact) => `${contact.ownerUserId}:${contact.contactUserId}`)
+    );
+    const friendUserIds = new Set(
+      uniqueAuthorUserIds.filter(
+        (authorUserId) =>
+          authorUserId !== viewerUserId &&
+          contactPairs.has(`${viewerUserId}:${authorUserId}`) &&
+          contactPairs.has(`${authorUserId}:${viewerUserId}`)
+      )
+    );
+
+    return { follows, friendUserIds };
   }
 
   private mapSocialAuthor(author: SocialAuthorRecord): SocialPostAuthorPayload {
@@ -2536,7 +2840,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     socialPost: SocialPostRecord,
     viewerUserId: number,
     authorUserId: number,
-    relationshipMap: Set<string> = new Set()
+    relationshipMap: SocialRelationshipMap = {
+      follows: new Set(),
+      friendUserIds: new Set()
+    }
   ): SocialPostPayload {
     return {
       id: socialPost.id,
@@ -2545,10 +2852,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       media: socialPost.media,
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
       createdAt: socialPost.createdAt,
+      updatedAt: socialPost.updatedAt,
       viewerFollowsAuthor:
-        viewerUserId === authorUserId || relationshipMap.has(`${viewerUserId}:${authorUserId}`),
+        viewerUserId === authorUserId ||
+        relationshipMap.follows.has(`${viewerUserId}:${authorUserId}`),
       authorFollowsViewer:
-        viewerUserId === authorUserId || relationshipMap.has(`${authorUserId}:${viewerUserId}`),
+        viewerUserId === authorUserId ||
+        relationshipMap.follows.has(`${authorUserId}:${viewerUserId}`),
+      viewerIsFriend: relationshipMap.friendUserIds.has(authorUserId),
       author: this.mapSocialAuthor(socialPost.author)
     };
   }
@@ -2676,6 +2987,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       message,
       statusCode: 409
     });
+  }
+
+  private jsonRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : undefined;
+  }
+
+  private jsonCounter(value: unknown, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
+  private jsonPositiveIntegerArray(value: unknown): number[] {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(value.filter(
+      (item): item is number => typeof item === "number" && Number.isSafeInteger(item) && item > 0
+    )));
   }
 
   private toJsonValue(value: unknown): Prisma.InputJsonValue | undefined {

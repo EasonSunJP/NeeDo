@@ -79,14 +79,18 @@ describe("SocialTimelinePage", () => {
   ];
 
   it("keeps the mine filter inside the timeline instead of navigating to profile or me", () => {
-    expect(source).toContain('raw === "nearby" || raw === "friends" || raw === "mine"');
+    expect(source).toContain('mine: {');
     expect(source).toMatch(/const handleTimelineFilterChange = \(nextFilter: SocialTimelineFilterTab\) => \{\s*setTimelineFilter\(nextFilter\);\s*\};/);
     expect(source).not.toMatch(/nextFilter === "mine"[\s\S]*navigate\(/);
   });
 
-  it("defaults to the populated friends timeline while preserving the nearby and mine filters", () => {
-    expect(source).toMatch(/typeof window === "undefined"\) \{\s*return "friends";/);
-    expect(source).toContain('? raw : "friends"');
+  it("enters the populated friends timeline instead of restoring a stale filter", () => {
+    expect(source).toContain(
+      'useState<SocialTimelineFilterTab>("friends")'
+    );
+    expect(source).toMatch(/\[scope\][\s\S]*setTimelineFilter\("friends"\)/);
+    expect(source).not.toContain("timelineFilterStorageKey");
+    expect(source).not.toContain("needo.social.timeline.filter");
   });
 
   it("filters timeline posts by typed text, hashtags, mentions, and author profile without leaving the page", () => {

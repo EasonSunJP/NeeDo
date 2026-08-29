@@ -15,6 +15,7 @@ import type {
   NotificationListInput,
   RealtimeRepositoryPort,
   SocialPostListInput,
+  UpdateSocialPostInput,
   UpdateConversationPrivacyInput,
   UpdateConversationPreferencesInput
 } from "../repositories/realtime.repository";
@@ -406,6 +407,23 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return contact;
   }
 
+  public async deleteContact(auth: AuthenticatedAccessContext, contactId: number) {
+    const contact = await this.repository.deleteContact({
+      contactId,
+      ownerUserId: auth.userId
+    });
+    if (!contact) throw this.notFoundError("error.realtime.contact_not_found");
+
+    this.eventGateway.publish({
+      id: this.createEventId(),
+      type: "contact.updated",
+      recipientUserId: auth.userId,
+      payload: contact,
+      createdAt: new Date().toISOString()
+    });
+    return contact;
+  }
+
   public async createFriendRequest(
     auth: AuthenticatedAccessContext,
     input: Omit<CreateFriendRequestInput, "requesterUserId">
@@ -492,6 +510,50 @@ export class RealtimeService implements OrderStatusNotificationPort {
       this.eventGateway.publish({
         id: this.createEventId(),
         type: "social.post.created",
+        recipientUserId,
+        payload: result.post,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return result.post;
+  }
+
+  public async updateSocialPost(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    input: Omit<UpdateSocialPostInput, "postId" | "authorUserId" | "context">,
+    context: AuthRequestContext
+  ) {
+    const result = await this.repository.updateSocialPost({
+      postId,
+      authorUserId: auth.userId,
+      content: input.content,
+      media: input.media,
+      mentionUserIds: input.mentionUserIds,
+      visibility: input.visibility,
+      context
+    });
+    if (!result) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+
+    const recipientUserIds = Array.from(
+      new Set([auth.userId, ...(await this.repository.listFollowerUserIds(auth.userId))])
+    );
+    for (const notification of result.notifications) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "notification.created",
+        recipientUserId: notification.recipientUserId,
+        payload: notification,
+        createdAt: new Date().toISOString()
+      });
+    }
+    for (const recipientUserId of recipientUserIds) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "social.post.updated",
         recipientUserId,
         payload: result.post,
         createdAt: new Date().toISOString()

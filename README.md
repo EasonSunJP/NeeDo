@@ -1257,6 +1257,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 正式发动态页只接受 JPEG、PNG、WebP 图片；单张上限 8 MiB，一条动态最多 9 张
 - 用户选择图片后立即通过 `POST /api/v1/social/media` 上传；上传完成前不可发布，失败项保留预览并支持重试或删除
 - 发布请求只提交服务端返回的 `mediaAssetPublicId`，不得提交 `blob:` 预览地址或任意媒体 URL
+- 编辑已发布动态时，原动态绑定的规范图片资产可直接复用；新增图片仍需先完成正式上传，保存通过 `PATCH /api/v1/social/posts/:id` 提交
 - 已上传媒体统一显示为圆角缩略图块
 - 媒体区始终保留一个 `+` 添加位，结构与缩略图块尺寸一致
 - 每个媒体块支持删除，点击缩略图可直接预览原图
@@ -1285,6 +1286,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
   - 有内容时提示“放弃或保留草稿后退出”
 - 再次进入同一路径时，会恢复对应草稿
 - 编辑已有动态时仍会提示是否放弃修改，但不会覆盖正式草稿列表
+- 编辑保存只允许动态作者本人；正文、图片、地点、可见范围和提醒联系人均以正式接口成功结果为准，失败时停留在编辑页
 
 ### Icon 规范
 
@@ -1642,7 +1644,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 
 三端 IM 当前统一走 `/api/im/*` mock 接口，后端未接入时也可以完整跑通。
 
-正式运行模式不使用上述旧 mock 写入路径：聊天搜索只查询当前设备已加载的 IM store；添加好友通过分页 `/api/v1/im/directory` 和 `/api/v1/im/contacts`；图片消息通过会话成员校验后的 `/api/v1/im/conversations/:conversationId/media` 上传；消息到达由每标签页共享的 SSE 连接即时合并，断线或标签页恢复时只做一次受控补拉。联系人拉黑状态持久化在 `contacts.blocked_at`，并由服务端阻止被拉黑发送方继续写入直接会话消息。
+正式运行模式不使用上述旧 mock 写入路径：聊天搜索只查询当前设备已加载的 IM store；添加好友通过分页 `/api/v1/im/directory` 和 `/api/v1/im/contacts`；删除好友通过 owner-scoped `DELETE /api/v1/im/contacts/:contactId` 软删除当前账号自己的联系人关系，不影响对方通讯录或共享聊天记录；图片消息通过会话成员校验后的 `/api/v1/im/conversations/:conversationId/media` 上传；消息到达由每标签页共享的 SSE 连接即时合并，断线或标签页恢复时只做一次受控补拉。联系人拉黑状态持久化在 `contacts.blocked_at`，并由服务端阻止被拉黑发送方继续写入直接会话消息。
 
 正式 SSE 在每个可见浏览器标签页只保留一条共享连接。后端每个实例只使用一个 Redis Pub/Sub 订阅和一个发布连接，把定向事件转发到其他实例，不按用户轮询或创建 Redis 订阅；消息正文和未读状态继续以 MySQL 为权威。Redis 短暂异常时同实例投递继续可用，断线客户端通过既有 REST 补拉恢复；慢 SSE 客户端触发背压时会被主动断开，防止服务端无界缓存。
 

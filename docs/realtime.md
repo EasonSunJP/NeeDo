@@ -9,7 +9,7 @@ New tables:
 - `conversations`: direct or group conversation shell.
 - `conversation_participants`: membership, role, `unread_count`, last-read marker, per-user pin/mute preferences, and personal list hiding.
 - `messages`: durable message history with cursor pagination by message id.
-- `contacts`: user-to-user contact rows with owner-scoped `blocked_at` state.
+- `contacts`: user-to-user contact rows with owner-scoped `blocked_at` state and soft deletion.
 - `friend_requests`: pending, accepted, and rejected friend requests.
 - `social_posts`: basic text/media social posts with `public` or `followers` visibility.
 - `follows`: user follow graph.
@@ -34,6 +34,7 @@ IM:
 - `GET /im/contacts`
 - `POST /im/contacts/:contactId/block`
 - `DELETE /im/contacts/:contactId/block`
+- `DELETE /im/contacts/:contactId`
 - `GET /im/friend-requests`
 - `POST /im/friend-requests`
 - `POST /im/friend-requests/:id/accept`
@@ -45,6 +46,7 @@ Social:
 - `GET /social/posts/:id`
 - `POST /social/media?fileName=photo.png`（JPEG/PNG/WebP 原始字节，单张最多 8 MiB，需要 `social-post:create`）
 - `POST /social/posts`
+- `PATCH /social/posts/:id`（仅作者本人；沿用 `social-post:create` 权限）
 - `POST /social/follows`
 - `DELETE /social/follows/:targetUserId`
 
@@ -56,7 +58,7 @@ Notifications and realtime:
 - `GET /realtime/unread-counts`
 - `GET /realtime/events`
 
-Messages use cursor pagination through `beforeId`. The first page returns newest messages. If `nextCursor` is present, pass it as the next `beforeId`.
+Messages use cursor pagination through `beforeId`. The first page returns newest messages. If `nextCursor` is present, pass it as the next `beforeId`. Contact deletion is owner-scoped: it soft-deletes only the current account's contact row, writes an audit record in the same transaction, and leaves the other account's contacts and shared conversation history unchanged.
 
 ## Unread Counts
 

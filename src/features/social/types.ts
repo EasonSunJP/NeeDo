@@ -83,6 +83,7 @@ export interface SocialPost {
   media: SocialMediaItem[];
   hashtags: string[];
   mentions: string[];
+  mentionUserIds?: number[];
   quotePostId?: string;
   repostPostId?: string;
   replyToPostId?: string;
@@ -168,6 +169,7 @@ export interface SocialProfileOverrides {
 export interface SocialState {
   posts: SocialPost[];
   follows: Record<string, string[]>;
+  friends: Record<string, string[]>;
   interactions: Record<string, Record<string, Omit<PostInteractionState, "followingAuthor">>>;
   drafts: Record<string, SocialComposerDraft>;
   notifications: SocialNotification[];
@@ -209,6 +211,7 @@ export interface SocialUpdatePostInput {
   includeRelatedPeople?: boolean;
   commentPermission: SocialCommentPermission;
   locationLabel?: string;
+  mentionUserIds?: number[];
   audienceProfileKeys?: string[];
   postType: SocialPostType;
 }

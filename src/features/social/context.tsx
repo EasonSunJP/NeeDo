@@ -75,7 +75,6 @@ type SocialContextValue = {
   toggleRepost: (postId: string, actorKey: string) => SocialPost | undefined;
   markShared: (postId: string, actorKey: string) => void;
   toggleFollow: (actorKey: string, targetKey: string) => void;
-  ensureMutualFollow: (leftKey: string, rightKey: string) => void;
   togglePinPost: (postId: string, actorKey: string) => void;
   updateProfileOverride: (profileKeyValue: string, overrides: SocialProfileOverrides) => void;
   incrementView: (postId: string) => void;
@@ -88,6 +87,7 @@ const SocialContext = createContext<SocialContextValue | null>(null);
 const emptyFormalSocialState: SocialState = {
   drafts: {},
   follows: {},
+  friends: {},
   interactions: {},
   notifications: [],
   posts: [],
@@ -168,6 +168,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         setState((current) => {
           const mappedPostIds = new Set(mappedPosts.map((post) => post.id));
           const nextFollows = { ...current.follows };
+          const nextFriends = { ...current.friends };
 
           postPage.list.forEach((post, index) => {
             const authorKey = postAuthorKey(mappedPosts[index]);
@@ -177,11 +178,16 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
             if (post.authorFollowsViewer) {
               nextFollows[authorKey] = unique([...(nextFollows[authorKey] ?? []), actorKey]);
             }
+            if (post.viewerIsFriend) {
+              nextFriends[actorKey] = unique([...(nextFriends[actorKey] ?? []), authorKey]);
+              nextFriends[authorKey] = unique([...(nextFriends[authorKey] ?? []), actorKey]);
+            }
           });
 
           return {
             ...current,
             follows: nextFollows,
+            friends: nextFriends,
             posts: sortPostsByNewest([
               ...mappedPosts,
               ...current.posts.filter((post) => !mappedPostIds.has(post.id))
@@ -231,11 +237,16 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     nextProfiles[profileKey(actor)] = actor;
     const actorKey = profileKey(actor);
     const follows: SocialState["follows"] = {};
+    const friends: SocialState["friends"] = {};
     rawPosts.forEach((post) => {
       const mapped = mapFormalSocialPost(post);
       const authorKey = postAuthorKey(mapped);
       if (post.viewerFollowsAuthor) follows[actorKey] = unique([...(follows[actorKey] ?? []), authorKey]);
       if (post.authorFollowsViewer) follows[authorKey] = unique([...(follows[authorKey] ?? []), actorKey]);
+      if (post.viewerIsFriend) {
+        friends[actorKey] = unique([...(friends[actorKey] ?? []), authorKey]);
+        friends[authorKey] = unique([...(friends[authorKey] ?? []), actorKey]);
+      }
     });
     const notifications = notificationPage.list.map((notification) =>
       mapFormalNotification(notification, nextProfiles)
@@ -245,6 +256,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       ...current,
       posts: nextPosts,
       follows,
+      friends,
       notifications,
       refreshedAt: new Date().toISOString()
     }));
@@ -263,7 +275,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
     return subscribeRealtimeEvents({
       onEvent: (event) => {
-        if (event.type === "social.post.created" || event.type === "notification.created" || event.type === "follow.created") {
+        if (event.type === "social.post.created" || event.type === "social.post.updated" || event.type === "notification.created" || event.type === "follow.created") {
           void loadFormalSocial();
         }
       }
@@ -310,7 +322,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((left, right) => right.count - left.count);
     };
     const getTimelineFeed = (filter: SocialTimelineFilterTab, key: string, locationContext?: SocialTimelineLocationContext) =>
-      filterTimelinePosts({ posts: state.posts, profiles, follows: state.follows, actorKey: key, filter, locationContext });
+      filterTimelinePosts({ posts: state.posts, profiles, follows: state.follows, friends: state.friends, actorKey: key, filter, locationContext });
     const createPost = async (input: SocialCreatePostInput) => {
       if (!session || input.authorKey !== actorKey) throw new Error("error.auth.forbidden");
       if (input.visibility && !["public", "followers"].includes(input.visibility)) {
@@ -331,6 +343,36 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       const mapped = mapFormalSocialPost(created);
       setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([created]) }));
       setState((current) => ({ ...current, posts: sortPostsByNewest([mapped, ...current.posts.filter((post) => post.id !== mapped.id)]) }));
+      return mapped;
+    };
+    const updatePost = async (input: SocialUpdatePostInput) => {
+      if (!session || input.actorKey !== actorKey) throw new Error("error.auth.forbidden");
+      const currentPost = getPostById(input.postId);
+      if (!currentPost || postAuthorKey(currentPost) !== actorKey) {
+        throw new Error("error.realtime.social_post_not_found");
+      }
+      if (!["public", "followers"].includes(input.visibility)) {
+        throw new Error("error.social.visibility_unavailable");
+      }
+      const updated = await realtimeApi.updateSocialPost(Number(input.postId), {
+        content: input.text.trim(),
+        media: buildFormalSocialCreateMediaEnvelope({
+          media: input.media,
+          quotePostId: currentPost.quotePostId,
+          replyToPostId: currentPost.replyToPostId,
+          repostPostId: currentPost.repostPostId,
+          postType: input.postType,
+          locationLabel: input.locationLabel
+        }),
+        mentionUserIds: input.mentionUserIds ?? [],
+        visibility: input.visibility === "followers" ? "followers" : "public"
+      });
+      const mapped = mapFormalSocialPost(updated);
+      setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([updated]) }));
+      setState((current) => ({
+        ...current,
+        posts: sortPostsByNewest(current.posts.map((post) => post.id === mapped.id ? mapped : post))
+      }));
       return mapped;
     };
     const search = (query: string): SocialSearchResult => {
@@ -380,7 +422,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       saveDraft,
       clearDraft,
       createPost,
-      updatePost: formalSocialMutationUnavailable,
+      updatePost,
       deletePost: formalSocialMutationUnavailable,
       toggleLike: formalSocialMutationUnavailable,
       toggleBookmark: formalSocialMutationUnavailable,
@@ -392,7 +434,6 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         const currentlyFollowing = (state.follows[actorKey] ?? []).includes(targetKey);
         void (currentlyFollowing ? realtimeApi.unfollow(Number(target.id)) : realtimeApi.follow(Number(target.id))).then(() => loadFormalSocial());
       },
-      ensureMutualFollow: formalSocialMutationUnavailable,
       togglePinPost: formalSocialMutationUnavailable,
       updateProfileOverride: formalSocialMutationUnavailable,
       incrementView: () => undefined,

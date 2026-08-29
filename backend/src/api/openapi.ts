@@ -50,6 +50,80 @@ const authJsonBody = (properties: Record<string, unknown>, required: string[] = 
   }
 });
 
+const socialPostWriteRequestBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["content"],
+        anyOf: [
+          {
+            required: ["content"],
+            properties: { content: { type: "string", minLength: 1 } }
+          },
+          {
+            required: ["media"],
+            properties: {
+              media: {
+                type: "object",
+                required: ["items"],
+                properties: { items: { type: "array", minItems: 1 } }
+              }
+            }
+          }
+        ],
+        properties: {
+          content: {
+            type: "string",
+            maxLength: 5000,
+            description: "Trimmed content; may be empty only when at least one image is attached"
+          },
+          media: {
+            type: "object",
+            additionalProperties: false,
+            required: ["items"],
+            properties: {
+              items: {
+                type: "array",
+                maxItems: 9,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["id", "type", "mediaAssetPublicId"],
+                  properties: {
+                    id: { type: "string", minLength: 1, maxLength: 120 },
+                    type: { type: "string", enum: ["image"] },
+                    mediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+                    alt: { type: "string", maxLength: 255 }
+                  }
+                }
+              },
+              quotePostId: { type: "integer", minimum: 1 },
+              replyToPostId: { type: "integer", minimum: 1 },
+              repostPostId: { type: "integer", minimum: 1 },
+              postType: {
+                type: "string",
+                enum: ["post", "reply", "quote", "repost", "announcement", "technician-daily"]
+              },
+              locationLabel: { type: "string", maxLength: 160 }
+            }
+          },
+          mentionUserIds: {
+            type: "array",
+            maxItems: 50,
+            uniqueItems: true,
+            items: { type: "integer", minimum: 1 },
+            default: []
+          },
+          visibility: { type: "string", enum: ["public", "followers"], default: "public" }
+        }
+      }
+    }
+  }
+};
+
 const authActionErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": {
@@ -1319,6 +1393,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "recallMode",
           "contentPurgedAt",
           "lifecycleVersion",
+          "reactionVersion",
           "availableRecallModes",
           "createdAt"
         ],
@@ -1341,6 +1416,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           contentPurgedAt: { type: ["string", "null"], format: "date-time" },
           lifecycleVersion: { type: "integer", minimum: 0 },
+          reactionVersion: { type: "integer", minimum: 0 },
           availableRecallModes: {
             type: "array",
             items: { type: "string", enum: ["standard"] }
@@ -1454,7 +1530,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       SocialPost: {
         type: "object",
-        required: ["id", "authorUserId", "content", "media", "visibility", "createdAt", "author"],
+        required: [
+          "id",
+          "authorUserId",
+          "content",
+          "media",
+          "visibility",
+          "createdAt",
+          "updatedAt",
+          "author",
+          "viewerFollowsAuthor",
+          "authorFollowsViewer",
+          "viewerIsFriend"
+        ],
         properties: {
           id: { type: "integer" },
           authorUserId: { type: "integer" },
@@ -1462,6 +1550,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           media: {},
           visibility: { type: "string", enum: ["public", "followers"] },
           createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          viewerFollowsAuthor: { type: "boolean" },
+          authorFollowsViewer: { type: "boolean" },
+          viewerIsFriend: {
+            type: "boolean",
+            description:
+              "True when the viewer and author have active, unblocked Contact rows in both directions."
+          },
           author: { $ref: "#/components/schemas/SocialProfileSummary" }
         }
       },
@@ -13198,6 +13294,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/im/contacts/{contactId}`]: {
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Soft-delete one contact owned by the current user",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "contactId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Soft-deleted contact relation" },
+          "403": { description: "Missing contact:delete permission" },
+          "404": { description: "Contact not found for current user" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/im/friend-requests`]: {
       get: {
         tags: ["Step 13 Realtime"],
@@ -13433,6 +13549,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Visible social post" },
           "404": { description: "Post is missing or not visible to the current user" }
+        }
+      },
+      patch: {
+        tags: ["Step 13 Realtime"],
+        summary: "Update the authenticated author's published social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: socialPostWriteRequestBody,
+        responses: {
+          "200": { description: "Updated social post and persisted newly added contact reminders" },
+          "400": { description: "Strict Social post request validation failed" },
+          "401": { description: "Missing or invalid access token" },
+          "403": { description: "Missing social-post:create permission" },
+          "404": { description: "Post is missing or is not owned by the current user" },
+          "409": {
+            description:
+              "error.social.invalid_mention_contact or error.social.media_not_owned — contact or media ownership changed"
+          }
         }
       }
     },
