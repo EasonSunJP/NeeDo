@@ -15,6 +15,17 @@ const marketplaceTaskRow = (id: number) => ({
   publisherType: "PLATFORM",
   publisherMerchantAccountId: null,
   publisherShopId: null,
+  translations: [
+    {
+      id,
+      locale: "JA",
+      name: `公開タスク ${id}`,
+      description: `正式なタスク ${id}`,
+      sourceLocale: "JA",
+      isInitialCopy: false,
+      deletedAt: null
+    }
+  ],
   name: `Visible task ${id}`,
   description: null,
   coverMediaAssetId: id,
@@ -185,6 +196,8 @@ describe("AffiliateMarketplaceRepository contract", () => {
     expect(eligibilitySql).toContain("reservation.total_frozen_ndp");
     expect(eligibilitySql).toContain("EXISTS");
     expect(eligibilitySql).toContain("task.name LIKE");
+    expect(eligibilitySql).toContain("affiliate_task_translations");
+    expect(eligibilitySql).toContain("translation.name LIKE");
     expect((idQuery as { values?: unknown[] }).values).toEqual(
       expect.arrayContaining([10, 100, "%Visible%"])
     );

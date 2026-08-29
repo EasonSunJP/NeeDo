@@ -34,6 +34,13 @@ vi.mock("../../theme/ClientThemeProvider", () => ({
 const formalTask: AffiliateMarketplaceTask = {
   id: 22,
   taskCode: "AFF-PUBLIC-22",
+  translations: {
+    "zh-CN": { name: "涩谷芳香护理推广", description: "到店体验芳香护理并分享真实体验。" },
+    "zh-TW": { name: "澀谷芳香護理推廣", description: "到店體驗芳香護理並分享真實體驗。" },
+    en: { name: "Shibuya aroma campaign", description: "Share your real aroma treatment experience." },
+    ja: { name: "渋谷アロマ体験キャンペーン", description: "アロマ施術の実体験を紹介してください。" },
+    ko: { name: "시부야 아로마 체험", description: "아로마 시술의 실제 경험을 공유해 주세요." }
+  },
   name: "涩谷芳香护理推广",
   description: "到店体验芳香护理并分享真实体验。",
   coverMediaAssetId: null,

@@ -2072,9 +2072,12 @@ export function ImMessageActionSheet({
   onExpandedChange: (expanded: boolean) => void;
   onReact: (emoji: string) => void;
 }) {
+  const backdropPointerStartedRef = useRef(false);
   const menuRef = useRef<HTMLElement | null>(null);
+  const menuContentRef = useRef<HTMLDivElement | null>(null);
   const [menuPosition, setMenuPosition] = useState({
     arrowLeft: 28,
+    contentWidth: 0,
     left: 12,
     maxHeight: 360,
     placement: "above" as "above" | "below",
@@ -2105,6 +2108,8 @@ export function ImMessageActionSheet({
       const viewportMargin = 12;
       const anchorGap = 10;
       const menuRect = menu.getBoundingClientRect();
+      const contentWidth = menuContentRef.current?.getBoundingClientRect().width
+        ?? Math.max(0, menuRect.width - 16);
       const roomAbove = Math.max(0, anchorRect.top - viewportTop - viewportMargin - anchorGap);
       const roomBelow = Math.max(0, viewportBottom - anchorRect.bottom - viewportMargin - anchorGap);
       const wantedHeight = Math.min(menu.scrollHeight, viewportHeight - viewportMargin * 2);
@@ -2140,7 +2145,21 @@ export function ImMessageActionSheet({
             : anchorRect.left + anchorRect.width / 2;
       const arrowLeft = Math.min(Math.max(anchorCenter - left, 24), menuRect.width - 24);
 
-      setMenuPosition({ arrowLeft, left, maxHeight, placement, ready: true, top });
+      setMenuPosition((current) => {
+        if (
+          current.arrowLeft === arrowLeft
+          && current.contentWidth === contentWidth
+          && current.left === left
+          && current.maxHeight === maxHeight
+          && current.placement === placement
+          && current.ready
+          && current.top === top
+        ) {
+          return current;
+        }
+
+        return { arrowLeft, contentWidth, left, maxHeight, placement, ready: true, top };
+      });
     };
 
     updatePosition();
@@ -2169,11 +2188,20 @@ export function ImMessageActionSheet({
     top: menuPosition.top,
     width: "min(520px, calc(100vw - 32px))"
   };
+  const actionsFitOneRow = menuPosition.contentWidth >= 304;
+  const reactionsFitFullRow = menuPosition.contentWidth >= 336;
+  const visibleQuickReactions = reactionsFitFullRow
+    ? imQuickReactions
+    : imQuickReactions.slice(0, 4);
 
   const quickReactionRow = (
-    <div className="grid grid-cols-5 items-center gap-0.5 px-1 py-1.5 min-[480px]:grid-cols-7" data-im-message-reaction-row="quick">
-      {imQuickReactions.map((emoji, index) => (
-        <ImReactionButton className={index >= 4 ? "hidden min-[480px]:grid" : undefined} emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
+    <div
+      className={cn("grid items-center gap-0.5 px-1 py-1.5", reactionsFitFullRow ? "grid-cols-7" : "grid-cols-5")}
+      data-im-message-reaction-density={reactionsFitFullRow ? "full" : "compact"}
+      data-im-message-reaction-row="quick"
+    >
+      {visibleQuickReactions.map((emoji) => (
+        <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
       ))}
       <button
         aria-label={expanded ? "收起默认表情" : "展开默认表情"}
@@ -2214,7 +2242,12 @@ export function ImMessageActionSheet({
   );
 
   const actionSection = actions.length > 0 ? (
-    <div className="grid grid-cols-3 gap-1 min-[480px]:grid-cols-6" data-im-message-action-section="actions" key="actions">
+    <div
+      className={cn("grid gap-1", actionsFitOneRow ? "grid-cols-6" : "grid-cols-3")}
+      data-im-message-action-layout={actionsFitOneRow ? "single-row" : "two-row"}
+      data-im-message-action-section="actions"
+      key="actions"
+    >
       {actions.map((item) => (
         <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
       ))}
@@ -2248,7 +2281,24 @@ export function ImMessageActionSheet({
       <button
         aria-label="关闭消息操作菜单"
         className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
-        onClick={onClose}
+        onClick={(event) => {
+          const pointerStartedOnBackdrop = backdropPointerStartedRef.current;
+          backdropPointerStartedRef.current = false;
+
+          if (!pointerStartedOnBackdrop && event.detail !== 0) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+
+          onClose();
+        }}
+        onPointerCancel={() => {
+          backdropPointerStartedRef.current = false;
+        }}
+        onPointerDown={() => {
+          backdropPointerStartedRef.current = true;
+        }}
         type="button"
       />
       <div className="z-[201]" style={menuStyle}>
@@ -2264,10 +2314,21 @@ export function ImMessageActionSheet({
         <section
           className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[20px] border backdrop-blur-xl", sheetClass)}
           data-im-message-action-sheet="true"
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
           ref={menuRef}
           style={{ maxHeight: menuPosition.maxHeight }}
         >
-          <div className="touch-pan-y p-2 [-webkit-overflow-scrolling:touch]">
+          <div
+            className="touch-pan-y p-2 [-webkit-overflow-scrolling:touch]"
+            data-im-message-action-content="true"
+            ref={menuContentRef}
+          >
             {menuPosition.placement === "below" ? reactionSection : null}
             {actionSection}
             {listActionSection}

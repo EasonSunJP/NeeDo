@@ -3111,6 +3111,9 @@ const main = async (): Promise<void> => {
         });
         await transaction.affiliateTaskService.deleteMany({ where: { taskId: { in: taskIds } } });
         await transaction.affiliateTaskShop.deleteMany({ where: { taskId: { in: taskIds } } });
+        await transaction.affiliateTaskTranslation.deleteMany({
+          where: { taskId: { in: taskIds } }
+        });
         await transaction.affiliateTask.deleteMany({ where: { id: { in: taskIds } } });
       }
       if (ledgerTransactionIds.length > 0) {
@@ -3153,6 +3156,7 @@ const main = async (): Promise<void> => {
       prisma.affiliateTask.count({ where: { taskCode: { startsWith: marker } } }),
       prisma.affiliateTaskShop.count({ where: { taskId: { in: taskIds } } }),
       prisma.affiliateTaskService.count({ where: { taskId: { in: taskIds } } }),
+      prisma.affiliateTaskTranslation.count({ where: { taskId: { in: taskIds } } }),
       prisma.affiliateClaim.count({ where: { id: { in: claimIds } } }),
       prisma.affiliateTouch.count({ where: { taskId: { in: taskIds } } }),
       prisma.affiliateAttribution.count({ where: { taskId: { in: taskIds } } }),

@@ -14,6 +14,17 @@ const task = {
   publisherType: "shop",
   publisherMerchantAccountId: null,
   publisherShopId: 11,
+  translations: Object.fromEntries(
+    ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+      locale,
+      {
+        name: "Shibuya completed-service campaign",
+        description: "Formal affiliate task",
+        sourceLocale: "ja",
+        isInitialCopy: locale !== "ja"
+      }
+    ])
+  ),
   name: "Shibuya completed-service campaign",
   description: "Formal affiliate task",
   coverMediaAssetId: null,
@@ -202,6 +213,7 @@ const createFixture = () => {
     createDraft: jest.fn(async () => task),
     getPublisherTask: jest.fn(async () => task),
     updateDraft: jest.fn(async () => task),
+    updateDraftLocale: jest.fn(async () => task),
     submit: jest.fn(async () => ({ ...task, status: "pending_review" })),
     listBackofficeTasks: jest.fn(async () => ({
       list: [task],
@@ -240,7 +252,7 @@ const createFixture = () => {
 };
 
 describe("affiliate task publishing HTTP API", () => {
-  it("exposes the five merchant/shop task endpoints with validated envelopes", async () => {
+  it("exposes the merchant/shop task endpoints with validated envelopes", async () => {
     const fixture = createFixture();
     const authorization = `Bearer ${fixture.tokens[7]}`;
 
@@ -259,12 +271,13 @@ describe("affiliate task publishing HTTP API", () => {
     await request(fixture.app)
       .post("/api/v1/merchant-admin/affiliate/tasks")
       .set("Authorization", authorization)
-      .send({ publisherType: "shop", ...editableBody })
+      .send({ publisherType: "shop", sourceLocale: "ja", ...editableBody })
       .expect(201);
     expect(fixture.affiliateTaskService.createDraft).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 7, currentIdentityScopeId: 11 }),
       expect.objectContaining({
         publisherType: "shop",
+        sourceLocale: "ja",
         claimStartsAt: task.claimStartsAt,
         selectedServiceIds: [101]
       })
@@ -279,6 +292,27 @@ describe("affiliate task publishing HTTP API", () => {
       .set("Authorization", authorization)
       .send({ ...editableBody, lockVersion: 2 })
       .expect(200);
+    await request(fixture.app)
+      .put(`/api/v1/merchant-admin/affiliate/tasks/${task.id}/locales/en`)
+      .set("Authorization", authorization)
+      .send({
+        lockVersion: 2,
+        name: "English campaign",
+        description: "English instructions",
+        syncToAll: false
+      })
+      .expect(200);
+    expect(fixture.affiliateTaskService.updateDraftLocale).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentIdentityScopeId: 11 }),
+      task.id,
+      "en",
+      {
+        lockVersion: 2,
+        name: "English campaign",
+        description: "English instructions",
+        syncToAll: false
+      }
+    );
     await request(fixture.app)
       .post(`/api/v1/merchant-admin/affiliate/tasks/${task.id}/submit`)
       .set("Authorization", authorization)
@@ -376,17 +410,37 @@ describe("affiliate task publishing HTTP API", () => {
       .get("/api/v1/merchant-admin/affiliate/tasks/not-an-id")
       .set("Authorization", authorization)
       .expect(400);
+    await request(fixture.app)
+      .put(`/api/v1/merchant-admin/affiliate/tasks/${task.id}/locales/fr`)
+      .set("Authorization", authorization)
+      .send({
+        lockVersion: 2,
+        name: "Unsupported locale",
+        description: null,
+        syncToAll: false
+      })
+      .expect(400);
+    await request(fixture.app)
+      .put(`/api/v1/merchant-admin/affiliate/tasks/${task.id}/locales/en`)
+      .set("Authorization", authorization)
+      .send({ lockVersion: 2, name: "", description: null, syncToAll: false })
+      .expect(400);
     expect(fixture.affiliateTaskService.createDraft).not.toHaveBeenCalled();
     expect(fixture.affiliateTaskService.getPublisherTask).not.toHaveBeenCalled();
+    expect(fixture.affiliateTaskService.updateDraftLocale).not.toHaveBeenCalled();
   });
 });
 
 describe("affiliate task OpenAPI contract", () => {
   it("documents every runtime route", () => {
-    const document = createOpenApiDocument(env) as { paths: Record<string, unknown> };
+    const document = createOpenApiDocument(env) as {
+      paths: Record<string, Record<string, unknown>>;
+      components: { schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }> };
+    };
     const paths = [
       "/api/v1/merchant-admin/affiliate/tasks",
       "/api/v1/merchant-admin/affiliate/tasks/{taskId}",
+      "/api/v1/merchant-admin/affiliate/tasks/{taskId}/locales/{locale}",
       "/api/v1/merchant-admin/affiliate/tasks/{taskId}/submit",
       "/api/v1/backoffice/affiliate/tasks",
       "/api/v1/backoffice/affiliate/tasks/{taskId}",
@@ -401,5 +455,13 @@ describe("affiliate task OpenAPI contract", () => {
     expect(document.paths[paths[1]]).toEqual(
       expect.objectContaining({ get: expect.any(Object), patch: expect.any(Object) })
     );
+    expect(document.paths[paths[2]]).toEqual(
+      expect.objectContaining({ put: expect.any(Object) })
+    );
+    expect(document.components.schemas.AffiliateTask.required).toContain("translations");
+    expect(document.components.schemas.AffiliateMarketplaceTask.required).toContain(
+      "translations"
+    );
+    expect(document.components.schemas).toHaveProperty("AffiliateTaskTranslation");
   });
 });

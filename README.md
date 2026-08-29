@@ -278,12 +278,15 @@ The formal alliance-marketing foundation persists tasks, explicit shop/service s
 
 Merchant accounts and current-shop identities now have formal paginated APIs to create and edit unfunded drafts, inspect their tasks, and submit a task for review. Drafts never mutate a wallet. Submit revalidates the publisher's active shop/service scope, refreshes immutable display snapshots, then atomically freezes the full integer-NDP budget, creates a budget reservation and ledger link, writes reconciliation/audit evidence, and moves the task to `pending_review`. A concurrent or repeated submit cannot duplicate the freeze.
 
+Every task now persists independent Japanese, English, Korean, Traditional Chinese, and Simplified Chinese name/description rows. Creating a draft from any selected source language copies that first value to all five rows; subsequent edits affect only the selected language unless the merchant explicitly requests synchronization to all languages. The optimistic task lock protects every language edit, each change is audited, and submission rejects an incomplete five-language set before any NDP is frozen. Marketplace search matches every active language, while task cards and detail pages select the authored value for the user's current application language without machine translation.
+
 Operations users can list/detail tasks and approve or reject a pending task. Approval produces `scheduled` or `active` from the task window. Rejection atomically returns the complete unused frozen budget to available NDP, retains the historical reserved amount for budget conservation, marks the reservation released, and writes one release ledger/reconciliation/audit trail. Insufficient funds, stale optimistic locks, invalid merchant membership, invalid service scope, and transaction failures roll back without partial writes.
 
 Formal endpoints:
 
 - `GET|POST /api/v1/merchant-admin/affiliate/tasks`
 - `GET|PATCH /api/v1/merchant-admin/affiliate/tasks/:taskId`
+- `PUT /api/v1/merchant-admin/affiliate/tasks/:taskId/locales/:locale`
 - `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit`
 - `GET /api/v1/backoffice/affiliate/tasks`
 - `GET /api/v1/backoffice/affiliate/tasks/:taskId`
@@ -295,11 +298,12 @@ Verify the complete transaction flow against a local non-production MySQL databa
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-localization-flow
 ```
 
 The check refuses production flags and remote database hosts, verifies draft/no-freeze, shop and merchant-account freezes, refreshed snapshots, insufficient-funds rollback, membership isolation, review state, full rejection release, idempotency, ledger/reconciliation/audit evidence, and removes only its uniquely identified rows.
 
-This task-publishing microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Checkout attribution/discount application, service-completion reward settlement, and automatic task-end release are implemented in later formal microsteps; manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and complete UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
+The localization checker refuses remote, staging, and production-looking targets; verifies initial five-language copy, independent editing, explicit synchronize-all, incomplete-submit rollback, one complete budget freeze, translation audit evidence, and exact marker-only cleanup. This task-localization microstep does not yet activate the merchant/shop task-management editor. Manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and the complete merchant UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
 
 ### Formal Affiliate Marketplace Claims And Signed Links
 
@@ -422,7 +426,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
 - Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班、用户正式预约列表/详情、线下收款和 NDP 充值提现审核已迁移到 API/Prisma，禁止新增正式业务 mock。
-- 多语言：用户端与后台端支持中文、日本語、English 三语切换，语言偏好会保存在本地。
+- 多语言：用户端与后台端支持日本語、English、한국어、繁體中文、简体中文五语切换，语言偏好会保存在本地；正式公告、规则和预约/联盟营销等可发布内容使用独立的服务端语言版本。
 - 后台主题：运营控制台支持黑夜 / 白天两套视觉主题，可在后台顶部随时切换。
 
 ## 2026-04 Frontend UI Rebuild

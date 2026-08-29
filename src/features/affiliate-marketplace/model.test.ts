@@ -3,6 +3,7 @@ import type { AffiliateMarketplaceTask } from "../../api/affiliateMarketplace";
 import {
   getDiscountPresentation,
   getMaximumRewardNdp,
+  getLocalizedTaskContent,
   getRemainingPercent,
   getTaskDateWindow,
   getTaskTags
@@ -11,6 +12,13 @@ import {
 const task = (overrides: Partial<AffiliateMarketplaceTask> = {}): AffiliateMarketplaceTask => ({
   id: 22,
   taskCode: "AFF-PUBLIC-22",
+  translations: {
+    "zh-CN": { name: "涩谷服务完成奖励", description: "完成服务后获得奖励。" },
+    "zh-TW": { name: "澀谷服務完成獎勵", description: "完成服務後獲得獎勵。" },
+    en: { name: "Shibuya completed-service reward", description: "Earn after the referred service is completed." },
+    ja: { name: "渋谷サービス完了報酬", description: "サービス完了後に報酬を獲得できます。" },
+    ko: { name: "시부야 서비스 완료 보상", description: "서비스 완료 후 보상을 받습니다." }
+  },
   name: "Shibuya completed-service reward",
   description: "Earn after the referred service is completed.",
   coverMediaAssetId: null,
@@ -59,6 +67,24 @@ const task = (overrides: Partial<AffiliateMarketplaceTask> = {}): AffiliateMarke
 });
 
 describe("affiliate marketplace display model", () => {
+  it("resolves authored task content from the active application language", () => {
+    const localizedTask = task({
+      translations: {
+        "zh-CN": { name: "简体任务", description: "简体说明" },
+        "zh-TW": { name: "繁體任務", description: "繁體說明" },
+        en: { name: "English task", description: "English detail" },
+        ja: { name: "日本語タスク", description: "日本語の説明" },
+        ko: { name: "한국어 작업", description: "한국어 설명" }
+      }
+    } as never);
+
+    expect(getLocalizedTaskContent(localizedTask, "ja")).toEqual({
+      name: "日本語タスク",
+      description: "日本語の説明"
+    });
+    expect(getLocalizedTaskContent(localizedTask, "zh-Hant").name).toBe("繁體任務");
+  });
+
   it("derives remaining percentage and maximum reward from server-authoritative values", () => {
     expect(getRemainingPercent(task())).toBe(35);
     expect(getMaximumRewardNdp(task())).toBe(200_000);
