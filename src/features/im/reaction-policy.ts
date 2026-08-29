@@ -1,3 +1,5 @@
+import { ApiClientError } from "../../api/httpClient";
+
 export const IM_JUDGEMENT_REPLIES = [
   "OK",
   "NO",
@@ -58,4 +60,19 @@ export function sortImReactionSummaries<T extends { emoji: string }>(
       Number(getImReactionCategory(left.emoji) === "emoji") -
       Number(getImReactionCategory(right.emoji) === "emoji")
   );
+}
+
+export function getImReactionFailureMessage(error: unknown): string {
+  if (
+    error instanceof ApiClientError &&
+    (error.code === 40946 || error.message === "error.im.reaction_slot_occupied")
+  ) {
+    return "请先取消已发送的同类回复";
+  }
+
+  if (error instanceof ApiClientError && error.status === 429) {
+    return "操作过于频繁，请稍后重试";
+  }
+
+  return "回复操作失败，请稍后重试";
 }

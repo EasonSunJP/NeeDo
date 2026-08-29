@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { ApiClientError } from "../../api/httpClient";
 
 import {
   deriveCurrentUserReactionSlots,
   getImReactionCategory,
+  getImReactionFailureMessage,
   isImReactionChoiceDisabled,
   sortImReactionSummaries
 } from "./reaction-policy";
@@ -34,5 +36,19 @@ describe("IM reaction policy", () => {
       { emoji: "😂" }
     ]);
     expect(getImReactionCategory("+1")).toBe("judgement");
+  });
+
+  it("maps occupied slots, rate limits, and unknown failures to explicit copy", () => {
+    expect(
+      getImReactionFailureMessage(
+        new ApiClientError("error.im.reaction_slot_occupied", 40946, 409)
+      )
+    ).toBe("请先取消已发送的同类回复");
+    expect(
+      getImReactionFailureMessage(new ApiClientError("error.rate_limit", 42903, 429))
+    ).toBe("操作过于频繁，请稍后重试");
+    expect(getImReactionFailureMessage(new Error("network"))).toBe(
+      "回复操作失败，请稍后重试"
+    );
   });
 });
