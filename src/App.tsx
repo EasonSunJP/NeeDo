@@ -178,6 +178,7 @@ import {
   ImContactTagsPage,
   ImConversationInfoPage,
   ImConversationRoomRoutePage,
+  ImDirectoryProfilePage,
   ImFriendRequestsPage,
   ImMediaRecordsPage,
   ImMessagesEntryPage,
@@ -1115,6 +1116,7 @@ export default function App() {
               <Route path="/messages/:conversationId" element={protect("user", <ImScopeProvider scope="user"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
               <Route path="/contacts" element={protect("user", <ContactsPage />)} />
               <Route path="/contacts/requests" element={protect("user", <ImScopeProvider scope="user"><ImFriendRequestsPage /></ImScopeProvider>)} />
+              <Route path="/contacts/directory/:userId" element={protect("user", <ImScopeProvider scope="user"><ImDirectoryProfilePage /></ImScopeProvider>)} />
               <Route path="/contacts/blacklist" element={protect("user", <ImScopeProvider scope="user"><ImBlacklistPage /></ImScopeProvider>)} />
               <Route path="/contacts/tags" element={protect("user", <ImScopeProvider scope="user"><ImContactTagsPage /></ImScopeProvider>)} />
               <Route path="/contacts/service-accounts" element={protect("user", <ImScopeProvider scope="user"><ImServiceAccountsPage /></ImScopeProvider>)} />
@@ -1205,6 +1207,7 @@ export default function App() {
               <Route path="/merchant/messages/:conversationId" element={protect("merchant", <ImScopeProvider scope="merchant"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
               <Route path="/merchant/contacts" element={protect("merchant", <ImScopeProvider scope="merchant"><ImContactsListPage /></ImScopeProvider>)} />
               <Route path="/merchant/contacts/requests" element={protect("merchant", <ImScopeProvider scope="merchant"><ImFriendRequestsPage /></ImScopeProvider>)} />
+              <Route path="/merchant/contacts/directory/:userId" element={protect("merchant", <ImScopeProvider scope="merchant"><ImDirectoryProfilePage /></ImScopeProvider>)} />
               <Route path="/merchant/contacts/organization" element={protect("merchant", <ImScopeProvider scope="merchant"><ImOrganizationContactsPage /></ImScopeProvider>)} />
               <Route path="/merchant/contacts/blacklist" element={protect("merchant", <ImScopeProvider scope="merchant"><ImBlacklistPage /></ImScopeProvider>)} />
               <Route path="/merchant/contacts/tags" element={protect("merchant", <ImScopeProvider scope="merchant"><ImContactTagsPage /></ImScopeProvider>)} />
@@ -1334,6 +1337,7 @@ export default function App() {
               <Route path="/technician/messages/:conversationId" element={protect("technician", <ImScopeProvider scope="technician"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
               <Route path="/technician/contacts" element={protect("technician", <ImScopeProvider scope="technician"><ImContactsListPage /></ImScopeProvider>)} />
               <Route path="/technician/contacts/requests" element={protect("technician", <ImScopeProvider scope="technician"><ImFriendRequestsPage /></ImScopeProvider>)} />
+              <Route path="/technician/contacts/directory/:userId" element={protect("technician", <ImScopeProvider scope="technician"><ImDirectoryProfilePage /></ImScopeProvider>)} />
               <Route path="/technician/contacts/organization" element={protect("technician", <ImScopeProvider scope="technician"><ImOrganizationContactsPage /></ImScopeProvider>)} />
               <Route path="/technician/contacts/blacklist" element={protect("technician", <ImScopeProvider scope="technician"><ImBlacklistPage /></ImScopeProvider>)} />
               <Route path="/technician/contacts/tags" element={protect("technician", <ImScopeProvider scope="technician"><ImContactTagsPage /></ImScopeProvider>)} />

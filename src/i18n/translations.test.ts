@@ -5,6 +5,40 @@ import { affiliateMarketplaceTranslations } from "../features/affiliate-marketpl
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes the complete friend-verification flow in all five languages", () => {
+    const friendVerificationCopy = [
+      "取消",
+      "添加好友",
+      "拒绝",
+      "关闭",
+      "等待对方验证",
+      "待处理",
+      "成功添加",
+      "被拒绝",
+      "已拒绝",
+      "已过期",
+      "对方不是你的好友，信息发送失败",
+      "点击账号查看资料并发送好友申请",
+      "申请状态已变化，请刷新后重试",
+      "删除好友失败，请稍后重试",
+      "好友申请发送失败，请稍后重试",
+      "好友申请已过期",
+      "你们已经是好友",
+      "查看账号资料和好友关系状态",
+      "好友申请会显示在这里",
+      "暂无好友申请",
+    ];
+
+    friendVerificationCopy.forEach((source) => {
+      expect(translations[source], source).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String),
+      });
+    });
+  });
+
   it("localizes every Affiliate marketplace chrome string in all five languages", () => {
     Object.values(affiliateMarketplaceTranslations).forEach((entry) => {
       expect(entry).toMatchObject({

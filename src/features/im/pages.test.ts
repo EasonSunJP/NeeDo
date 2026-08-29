@@ -204,6 +204,14 @@ describe("IM pages", () => {
     expect(pagesSource).not.toContain("function ImCurrentActorHeader");
   });
 
+  it("drives both friend-request entry state and message failure copy from formal state", () => {
+    expect(pagesSource).toContain("getIncomingPendingFriendRequestCount(");
+    expect(pagesSource).toContain("selectLatestFriendRequestsByCounterpart(");
+    expect(pagesSource).toContain("config.routes.directoryProfile(counterpartId)");
+    expect(componentsSource).toContain('message.failureReason === "not_friends"');
+    expect(componentsSource).toContain("对方不是你的好友，信息发送失败");
+  });
+
   it("lets conversation wallpaper sit behind the fixed glass top bar", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");

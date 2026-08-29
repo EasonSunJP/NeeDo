@@ -11,11 +11,13 @@ const sizeClassName: Record<NotificationBadgeSize, string> = {
 export function NotificationBadge({
   count,
   className,
-  size = "md"
+  size = "md",
+  dot = false,
 }: {
   count: number;
   className?: string;
   size?: NotificationBadgeSize;
+  dot?: boolean;
 }) {
   const displayCount = count > 99 ? "99+" : String(count);
 
@@ -23,11 +25,11 @@ export function NotificationBadge({
     <span
       className={cn(
         "inline-flex items-center justify-center rounded-full border border-white/75 bg-[linear-gradient(180deg,#ff8b7f_0%,#ff5f58_48%,#ff453f_100%)] font-black leading-none text-white shadow-[0_5px_14px_rgba(255,86,79,0.28)]",
-        sizeClassName[size],
+        dot ? "h-3 w-3 min-w-0 p-0" : sizeClassName[size],
         className
       )}
     >
-      {displayCount}
+      {dot ? null : displayCount}
     </span>
   );
 }
