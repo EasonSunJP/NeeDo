@@ -1,12 +1,9 @@
 # Affiliate Platform Fee Reserve And Settlement Implementation Plan
 
-> **Paused checkpoint (2026-08-30):** Work is intentionally parked on branch
-> `codex/affiliate-merchant-task-ui` so other `main` integrations can proceed. The
-> repository baseline passed the full frontend and backend suites before this
-> slice began. Task 1 Steps 1-2 are complete: the two focused contract tests are
-> committed in RED and fail only because the additive schema and migration in
-> Step 3 do not exist yet. Resume from Task 1 Step 3; do not merge this branch
-> while those focused tests remain RED.
+> **Resumed checkpoint (2026-08-30):** Work remains isolated on branch
+> `codex/affiliate-merchant-task-ui`. Task 1 now has a generated Prisma Client
+> and 6/6 focused schema/migration assertions passing. Do not merge this branch
+> until Tasks 2-5 and the final verification matrix are complete.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -61,7 +58,7 @@ Run: `npm test -- affiliate-platform-fee-schema.test.ts affiliate-platform-fee-m
 
 Expected: FAIL because the model, migration, and columns do not exist.
 
-- [ ] **Step 3: Add the schema and additive migration**
+- [x] **Step 3: Add the schema and additive migration**
 
 Add a versioned rule with this API-facing shape:
 
@@ -83,7 +80,7 @@ interface AffiliatePlatformFeeRuleRecord {
 
 The migration must:
 
-1. Create `affiliate_platform_fee_rules` with soft deletion, actor relations, `(scope_type, shop_id, version)` uniqueness, effective-time indexes, and nullable unique `active_key`.
+1. Create `affiliate_platform_fee_rules` with soft deletion, actor relations, the reporting index `(scope_type, shop_id, version)`, a non-null `scope_key` plus `(scope_key, version)` uniqueness (required because MySQL unique indexes treat `NULL` values as distinct), effective-time indexes, and nullable unique `active_key`.
 2. Insert one active global version at 1,000 bps.
 3. Add to `affiliate_tasks`: nullable rule ID, `platform_fee_bps`, `platform_fee_reserve_ndp`, `settled_platform_fee_ndp`, and `released_platform_fee_ndp`.
 4. Add to `affiliate_budget_reservations`: `commission_frozen_ndp`, `platform_fee_frozen_ndp`, `platform_fee_captured_ndp`, and `platform_fee_released_ndp`.
@@ -91,7 +88,7 @@ The migration must:
 6. Backfill every existing reservation with `commission_frozen_ndp = total_frozen_ndp`, fee fields zero, and every existing task/reward with a zero-fee compatibility snapshot.
 7. Preserve every existing wallet, ledger, task, reservation, attribution, and reward amount.
 
-- [ ] **Step 4: Generate Prisma Client and verify GREEN**
+- [x] **Step 4: Generate Prisma Client and verify GREEN**
 
 Run: `npm run prisma:generate`
 

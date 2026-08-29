@@ -35,6 +35,7 @@ describe("affiliate platform fee migration", () => {
   it("enforces fee bounds and indexed version history", () => {
     expect(migration).toMatch(/CHECK\s*\(`fee_bps` BETWEEN 0 AND 10000\)/i);
     expect(migration).toContain("affiliate_platform_fee_rules_scope_shop_version_key");
+    expect(migration).toContain("affiliate_platform_fee_rules_scope_key_version_key");
     expect(migration).toContain("affiliate_platform_fee_rules_active_key_key");
     expect(migration).toContain("affiliate_platform_fee_rules_effective_idx");
   });
