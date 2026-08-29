@@ -5252,15 +5252,25 @@ export function ImConversationRoomPage({
       reactedByMe: people.some((person) => person.id === currentReactionPerson.id)
     }));
 
-  const copyMessageContent = (message: ConversationMessage) => {
+  const copyMessageContent = async (message: ConversationMessage) => {
     const root = messageRefs.current[message.id];
     const selection = window.getSelection();
     const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
       ? selection.toString().trim()
       : "";
     const content = selectedContent || message.content || message.ext?.previewText || "媒体消息";
-    navigator.clipboard?.writeText(content).catch(() => undefined);
     closeMessageMenu();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("error.clipboard_unavailable");
+      }
+
+      await navigator.clipboard.writeText(content);
+      setActionNotice("已复制");
+    } catch {
+      setActionNotice("复制失败，请重试");
+    }
   };
 
   const scrollToMessage = (messageId: string) => {
@@ -5366,22 +5376,10 @@ export function ImConversationRoomPage({
         }
       },
       {
-        key: "translate",
-        label: "翻译",
-        icon: "translate",
-        onClick: closeMessageMenu
-      },
-      {
         key: "copy",
         label: "复制",
         icon: "copy",
-        onClick: () => copyMessageContent(message)
-      },
-      {
-        key: "multi-select",
-        label: "多选",
-        icon: "select",
-        onClick: closeMessageMenu
+        onClick: () => void copyMessageContent(message)
       },
       {
         key: "pin-message",

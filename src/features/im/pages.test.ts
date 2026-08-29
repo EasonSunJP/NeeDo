@@ -215,6 +215,21 @@ describe("IM pages", () => {
     expect(componentsSource).not.toContain('style={{ height: expanded ? "min(76dvh, 620px)" : "min(43dvh, 360px)" }}');
   });
 
+  it("does not expose legacy message actions that only close the menu", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const actionStart = componentSource.indexOf("const createMessageActions");
+    const actionEnd = componentSource.indexOf("const availableMoreActions", actionStart);
+    const actionSource = componentSource.slice(actionStart, actionEnd);
+
+    expect(actionSource).not.toContain('key: "translate"');
+    expect(actionSource).not.toContain('key: "multi-select"');
+    expect(actionSource).not.toContain("onClick: closeMessageMenu");
+    expect(componentSource).toContain('setActionNotice("已复制")');
+    expect(componentSource).toContain('setActionNotice("复制失败，请重试")');
+  });
+
   it("routes quick reactions through the store and suppresses duplicate in-flight taps", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
