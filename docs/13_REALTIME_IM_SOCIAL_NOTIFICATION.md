@@ -159,6 +159,17 @@
 - 用户查看历史消息时不会因新消息到达被强制拉到底部；点击按钮或手动回到底部后按钮自动消失，消息菜单和媒体全屏预览期间不会遮挡操作。
 - 该能力仅维护前端瞬时滚动状态，不新增接口、轮询、mock 或浏览器持久化业务数据。
 
+## 6.11 Social 联系人提醒、图片上传与共享玻璃头部（2026-08-30）
+
+- 新增受 Bearer 鉴权和 `social-post:create` 权限保护的 `POST /api/v1/social/media?fileName=...`。请求体为原始图片字节，只接受 JPEG、PNG、WebP，单张上限 8 MiB；服务端同时校验 Content-Type 与文件魔数，磁盘文件名不可由客户端控制。
+- 图片先写入当前用户自己的待绑定 `MediaAsset`，成功后写入不含图片内容的审计记录。数据库写入失败会补偿删除磁盘文件；接口只返回 `publicId / url / mimeType / fileSize`，不暴露内部数据库主键。
+- `POST /api/v1/social/posts` 新增可选 `mentionUserIds`，最多 50 个且去重。服务端只接受当前认证用户拥有、未删除、未拉黑且目标账号仍有效的联系人；任一联系人失效时整次发布返回冲突，不产生部分动态或部分通知。
+- 动态、图片资产绑定、每位联系人的 `NotificationType.SOCIAL` 通知和审计记录在同一数据库事务中完成。提交的图片项只包含 `mediaAssetPublicId`，服务端校验资产所有权与待绑定状态，并在持久化动态中替换为规范媒体 URL。
+- 事务成功后发布既有 `social.post.created`，并为每条提醒通知发布 `notification.created`；失败时不发送成功事件。提醒通知标题为“动态提醒”，payload 只保存 `kind=post_mention` 与动态 ID 等必要字段。
+- “提醒谁看”候选项从分页 `GET /api/v1/im/contacts` 读取，排除本人、拉黑和无效账号；支持联系人备注、用户名与 NeeDoID 搜索，不再回退到 Social 时间线作者列表。
+- 正式发布页在选择图片后立即上传，上传中禁止发布；失败图片保留本地预览并可重试或删除。当前切片明确不开放视频上传，避免继续制造无法持久化的媒体成功状态。
+- Social 的地点、提醒、可见范围和评论权限选择页复用聊天窗口同源的 `MobileFullscreenHeader` 与 `needo-composer-glass-header`，不再渲染独立实色顶栏或容器外返回按钮。
+
 ---
 
 ## 7. 给 Codex 的命令

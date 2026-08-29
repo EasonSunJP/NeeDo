@@ -43,6 +43,7 @@ Social:
 
 - `GET /social/posts`
 - `GET /social/posts/:id`
+- `POST /social/media?fileName=photo.png`（JPEG/PNG/WebP 原始字节，单张最多 8 MiB，需要 `social-post:create`）
 - `POST /social/posts`
 - `POST /social/follows`
 - `DELETE /social/follows/:targetUserId`
@@ -84,7 +85,7 @@ Each backend process owns one Redis channel subscription and one dedicated publi
 
 If the process-wide Redis subscription cannot be established, the gateway retries only that one subscription with bounded exponential delays from 5 to 30 seconds. This retry is independent of the number of users and does not query MySQL or create browser polling.
 
-Creating a social post publishes `social.post.created` to the author and current followers. Public discovery by users who do not follow the author remains REST-paginated and does not require global event fan-out.
+Creating a social post publishes `social.post.created` to the author and current followers. When `mentionUserIds` contains valid owner-scoped, unblocked contacts, the same database transaction creates durable Social notifications and the service publishes `notification.created` only after commit. Public discovery by users who do not follow the author remains REST-paginated and does not require global event fan-out.
 
 ## High-Frequency Event Boundary
 
@@ -100,4 +101,4 @@ Legacy IM/Social pages and browser databases remain available only to an explici
 
 For a formal merchant identity, the organization directory is hydrated separately from the paginated `GET /api/v1/merchant-admin/technicians?status=published` source. It uses the shop-scoped persisted technician profile, account, and avatar fields and does not create or imply a reciprocal IM contact relationship.
 
-The first production slice supports text IM, conversation list preferences, persisted contact blocking, merchant technician organization contacts, and basic text Social posts. File/media upload, cross-device drafts, reply/like/repost/quote/bookmark state, relationship lists, other organization directory types, contact tags, service accounts, and advanced group settings remain capability-gated until their database, storage, RBAC, moderation, and audit contracts are implemented.
+The current production slice supports text IM, conversation image upload, conversation list preferences, persisted contact blocking, merchant technician organization contacts, Social text posts, and audited Social JPEG/PNG/WebP image upload. Social create requests may carry up to 50 `mentionUserIds`; every id must still be an active contact owned by the authenticated user, and the post, image bindings, mention notifications, and audit record commit atomically. The composer loads its reminder candidates only from paginated formal contacts, keeps failed image previews retryable, and shares the chat-style glass fullscreen header. Social video upload, cross-device drafts, reply/like/repost/quote/bookmark state, relationship lists, other organization directory types, contact tags, service accounts, and advanced group settings remain capability-gated until their database, storage, RBAC, moderation, and audit contracts are implemented.
