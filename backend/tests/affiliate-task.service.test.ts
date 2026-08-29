@@ -11,7 +11,8 @@ import {
   type AffiliateTaskRepositoryPort,
   type AffiliateTaskTransactionClient,
   type CreateAffiliateTaskInput,
-  type UpdateAffiliateTaskPersistenceInput
+  type UpdateAffiliateTaskPersistenceInput,
+  type UpdateAffiliateTaskTranslationPersistenceInput
 } from "../src/services/affiliate-task.service";
 import type {
   AffiliateBudgetLedgerResult,
@@ -240,6 +241,33 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     return task;
   }
 
+  public async updateDraftTranslation(
+    input: UpdateAffiliateTaskTranslationPersistenceInput
+  ): Promise<AffiliateTaskRecord | null> {
+    const task = this.tasks.get(input.taskId);
+    if (!task || task.status !== "draft" || task.lockVersion !== input.lockVersion) {
+      return null;
+    }
+    const locales = input.syncToAll
+      ? (["zh-CN", "zh-TW", "en", "ja", "ko"] as const)
+      : ([input.locale] as const);
+    for (const locale of locales) {
+      task.translations[locale] = {
+        name: input.name,
+        description: input.description,
+        sourceLocale: input.locale,
+        isInitialCopy: locale !== input.locale
+      };
+    }
+    if (input.locale === "zh-CN" || input.syncToAll) {
+      task.name = input.name;
+      task.description = input.description;
+    }
+    task.lockVersion += 1;
+    task.updatedAt = now;
+    return task;
+  }
+
   public async replaceTaskScopeSnapshots(input: {
     taskId: number;
     shops: AffiliateShopScopeRecord[];
@@ -429,6 +457,102 @@ const createShopDraft = async (
   } as CreateAffiliateTaskInput);
 
 describe("AffiliateTaskService drafts", () => {
+  it("copies the selected source language into all five task translations", async () => {
+    const { service } = createFixture();
+
+    const created = await createShopDraft(service, {
+      sourceLocale: "ja"
+    } as Partial<CreateAffiliateTaskInput>);
+    const translations = (
+      created as AffiliateTaskRecord & {
+        translations: Record<
+          "zh-CN" | "zh-TW" | "en" | "ja" | "ko",
+          {
+            name: string;
+            description: string | null;
+            sourceLocale: string;
+            isInitialCopy: boolean;
+          }
+        >;
+      }
+    ).translations;
+
+    expect(Object.keys(translations)).toHaveLength(5);
+    expect(translations.ja).toMatchObject({
+      name: taskFields.name,
+      description: taskFields.description,
+      sourceLocale: "ja",
+      isInitialCopy: false
+    });
+    expect(translations.en).toMatchObject({
+      name: taskFields.name,
+      description: taskFields.description,
+      sourceLocale: "ja",
+      isInitialCopy: true
+    });
+  });
+
+  it("edits one task language without changing the other versions", async () => {
+    const { service } = createFixture();
+    const created = await createShopDraft(service, { sourceLocale: "ja" });
+    const initialLockVersion = created.lockVersion;
+
+    const updated = await (
+      service as AffiliateTaskService & {
+        updateDraftLocale: (
+          actor: AuthenticatedAccessContext,
+          taskId: number,
+          locale: "en",
+          input: {
+            lockVersion: number;
+            name: string;
+            description: string | null;
+            syncToAll: boolean;
+          }
+        ) => Promise<AffiliateTaskRecord>;
+      }
+    ).updateDraftLocale(shopActor, created.id, "en", {
+      lockVersion: initialLockVersion,
+      name: "English campaign",
+      description: "English instructions",
+      syncToAll: false
+    });
+
+    expect(updated.translations.en).toMatchObject({
+      name: "English campaign",
+      description: "English instructions",
+      sourceLocale: "en",
+      isInitialCopy: false
+    });
+    expect(updated.translations.ja.name).toBe(taskFields.name);
+    expect(updated.lockVersion).toBe(initialLockVersion + 1);
+  });
+
+  it("synchronizes one edited language to all five task translations", async () => {
+    const { service } = createFixture();
+    const created = await createShopDraft(service, { sourceLocale: "ja" });
+
+    const updated = await service.updateDraftLocale(shopActor, created.id, "en", {
+      lockVersion: created.lockVersion,
+      name: "Shared campaign",
+      description: "Shared instructions",
+      syncToAll: true
+    });
+
+    expect(Object.values(updated.translations)).toHaveLength(5);
+    expect(
+      Object.values(updated.translations).every(
+        (translation) =>
+          translation.name === "Shared campaign" &&
+          translation.description === "Shared instructions" &&
+          translation.sourceLocale === "en"
+      )
+    ).toBe(true);
+    expect(updated.translations.en.isInitialCopy).toBe(false);
+    expect(updated.translations.ja.isInitialCopy).toBe(true);
+    expect(updated.name).toBe("Shared campaign");
+  });
+
   it("infers the current shop publisher and never freezes a draft", async () => {
     const { repository, ledger, service } = createFixture();
 
@@ -533,6 +657,18 @@ describe("AffiliateTaskService drafts", () => {
 });
 
 describe("AffiliateTaskService submission and review", () => {
+  it("rejects submission before freezing funds when any task language is missing", async () => {
+    const { ledger, service } = createFixture();
+    const draft = await createShopDraft(service);
+    Reflect.deleteProperty(draft.translations, "ko");
+
+    await expect(service.submit(shopActor, draft.id)).rejects.toMatchObject({
+      code: ERROR_CODES.AFFILIATE_TASK_INVALID_STATE,
+      message: "error.affiliate.task_translations_incomplete"
+    });
+    expect(ledger.freezeCalls).toHaveLength(0);
+  });
+
   it("atomically refreshes snapshots, freezes the full budget, and submits once", async () => {
     const { repository, ledger, service } = createFixture();
     const draft = await createShopDraft(service);
