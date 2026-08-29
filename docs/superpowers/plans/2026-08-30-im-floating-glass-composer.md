@@ -8,6 +8,15 @@
 
 **Tech Stack:** React 19, TypeScript, Tailwind utility classes, shared CSS theme variables, Vitest with jsdom, Vite.
 
+## Accepted scope extensions during implementation
+
+- [x] Let the message scroller extend behind both fixed glass bars while preserving dynamic top and bottom terminal padding.
+- [x] Keep the latest message above the composer after delayed image or video layout changes.
+- [x] Render quoted image/video media as reduced previews with optional captions, never as raw attachment URLs.
+- [x] Stage a selected album image locally inside the composer, allow text entry and removal, and upload only on explicit send.
+- [x] Compact the composer controls and replace the voice/emoji controls with the approved capsule-microphone and smile-chat icons.
+- [x] Keep the original rounded pinned-message container as a 50%-transparent blurred glass surface, leave its positioning wrapper invisible, and let messages continue behind the container.
+
 ## Global Constraints
 
 - Modify only the formal IM composer, its styles, and focused tests; do not change APIs, database schema, message persistence, SSE, media upload, recall, delete, quick reactions, home carousel, or bottom navigation behavior.

@@ -51,9 +51,11 @@ export function ImIcon({
     | "group"
     | "video"
     | "call"
-    | "emoji"
-    | "plus"
-    | "mic"
+	    | "emoji"
+	    | "emoji-chat"
+	    | "plus"
+	    | "mic"
+	    | "voice-input"
     | "message"
     | "photo"
     | "camera"
@@ -201,10 +203,30 @@ export function ImIcon({
     );
   }
 
+  if (name === "emoji-chat") {
+    return (
+      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+        <path d="M20.4 11.1a8.4 8.4 0 0 1-9 8.4 8.8 8.8 0 0 1-2.9-.7L4 20l1.5-4.1A8.1 8.1 0 0 1 3.6 11a8.4 8.4 0 0 1 16.8.1Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+        <circle cx="9" cy="10" fill="currentColor" r="1" />
+        <circle cx="15" cy="10" fill="currentColor" r="1" />
+        <path d="M8.7 13.3c.9 1.2 2 1.8 3.3 1.8s2.4-.6 3.3-1.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
   if (name === "mic") {
     return (
       <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
         <path d="M12 5.5a3 3 0 0 1 3 3v3a3 3 0 1 1-6 0v-3a3 3 0 0 1 3-3ZM7.5 11.5a4.5 4.5 0 0 0 9 0M12 16v2.5M9 19.5h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  if (name === "voice-input") {
+    return (
+      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+        <rect height="14" rx="5" stroke="currentColor" strokeWidth="1.8" width="8" x="8" y="2.5" />
+        <path d="M8.3 8h3M8.3 11h3M12.7 8h3M12.7 11h3M5 11.5v.8a7 7 0 0 0 14 0v-.8M12 19.3v2.2M9.5 21.5h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
       </svg>
     );
   }
@@ -428,6 +450,10 @@ export type ImChatComposerRecordingState = {
   cancel: boolean;
   durationSeconds: number;
 };
+export type ImChatComposerPendingImage = {
+  fileName: string;
+  previewUrl: string;
+};
 
 export function ImChatComposer({
   actions = [],
@@ -440,12 +466,15 @@ export function ImChatComposer({
   onEndRecording,
   onMoveRecording,
   onPanelChange,
+  onRemovePendingImage,
   onSend,
   onStartRecording,
   onToggleVoice,
   panel,
+  pendingImage,
   placeholder = "发送消息",
   recording = { active: false, cancel: false, durationSeconds: 0 },
+  sending = false,
   textareaRef,
   voiceMode = false
 }: {
@@ -459,16 +488,65 @@ export function ImChatComposer({
   onEndRecording?: () => void;
   onMoveRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onPanelChange: (panel: ImChatComposerPanel | ((value: ImChatComposerPanel) => ImChatComposerPanel)) => void;
+  onRemovePendingImage?: () => void;
   onSend: () => void;
   onStartRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onToggleVoice?: () => void;
   panel: ImChatComposerPanel;
+  pendingImage?: ImChatComposerPendingImage;
   placeholder?: string;
   recording?: ImChatComposerRecordingState;
+  sending?: boolean;
   textareaRef?: Ref<HTMLTextAreaElement>;
   voiceMode?: boolean;
 }) {
+  const composerRootRef = useRef<HTMLDivElement | null>(null);
   const [recentEmojis, setRecentEmojis] = useState(loadRecentImEmojis);
+
+  useLayoutEffect(() => {
+    const root = composerRootRef.current;
+    const conversationLayout = root?.closest<HTMLElement>("[data-im-conversation-layout='true']");
+
+    if (!root || !conversationLayout) {
+      return undefined;
+    }
+
+    let frame: number | undefined;
+    const updateComposerInset = () => {
+      const messageScroller = conversationLayout.querySelector<HTMLElement>(".im-conversation-scroll");
+      const shouldKeepLatestMessageVisible = messageScroller
+        ? messageScroller.scrollHeight - messageScroller.scrollTop - messageScroller.clientHeight < 120
+        : false;
+
+      conversationLayout.style.setProperty(
+        "--im-composer-overlay-height",
+        `${Math.ceil(root.getBoundingClientRect().height)}px`
+      );
+
+      if (messageScroller && shouldKeepLatestMessageVisible) {
+        if (frame !== undefined) {
+          cancelAnimationFrame(frame);
+        }
+        frame = requestAnimationFrame(() => {
+          messageScroller.scrollTop = messageScroller.scrollHeight;
+        });
+      }
+    };
+    updateComposerInset();
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateComposerInset);
+    resizeObserver?.observe(root);
+
+    return () => {
+      resizeObserver?.disconnect();
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame);
+      }
+      conversationLayout.style.removeProperty("--im-composer-overlay-height");
+    };
+  }, [draft, panel, pendingImage, voiceMode]);
+
   const selectEmoji = (emoji: string) => {
     onDraftChange(`${draft}${emoji}`);
     setRecentEmojis((current) => {
@@ -477,17 +555,12 @@ export function ImChatComposer({
       return next;
     });
   };
-  const composerShellClass = isNight
-    ? "border-t border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] backdrop-blur-md"
-    : "border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] backdrop-blur-md";
-  const composerInputShellClass = isNight
-    ? "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,var(--client-bg)_28%)] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]"
-    : "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(21,33,27,0.12)]";
-  const composerIconButtonClass = "shrink-0 text-[color:var(--client-muted)]";
+  const composerInputShellClass =
+    "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
+  const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
   const composerTextareaClass =
     "max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
-  const composerPanelClass =
-    "mt-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,var(--client-bg)_14%)] p-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-text)_16%,transparent)] backdrop-blur-xl";
+  const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
   const composerEmojiButtonClass =
     "rounded-xl py-2 transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]";
   const composerActionButtonClass =
@@ -497,121 +570,149 @@ export function ImChatComposer({
 
   return (
     <div
-      className={cn("relative z-10 max-w-full overflow-x-hidden px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]", composerShellClass)}
+      className="im-chat-composer-root relative z-10 max-w-full px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]"
       data-im-composer-root="true"
+      ref={composerRootRef}
     >
-      <div className="flex min-w-0 max-w-full items-end gap-2">
-        <button
-          className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-          onClick={() => {
-            onToggleVoice?.();
-            onPanelChange(null);
-          }}
-          type="button"
+      <div className="im-chat-composer-stack mx-auto flex min-w-0 max-w-full flex-col" data-im-composer-stack="true">
+        <div
+          className="client-liquid-glass-surface im-composer-glass im-composer-input-shell flex min-w-0 max-w-full items-end gap-1 px-1.5 py-2"
+          data-im-composer-input-shell="true"
+          data-im-composer-tone={isNight ? "night" : "day"}
         >
-          <ImIcon name="mic" />
-        </button>
-        <div className={composerInputShellClass}>
-          {voiceMode ? (
-            <button
-              className={cn(
-                "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
-                recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
-              )}
-              disabled={blocked}
-              onPointerCancel={onCancelRecording}
-              onPointerDown={onStartRecording}
-              onPointerMove={onMoveRecording}
-              onPointerUp={onEndRecording}
-              type="button"
-            >
-              {recording.active
-                ? recording.cancel
-                  ? `松开取消发送 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                  : `松开发送，上滑取消 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
-            </button>
-          ) : (
-            <textarea
-              className={composerTextareaClass}
-              onChange={(event) => onDraftChange(event.target.value)}
-              placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
-              ref={textareaRef}
-              rows={1}
-              value={draft}
-            />
-          )}
-        </div>
-        <button
-          className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-          onClick={() => onPanelChange((value) => (value === "emoji" ? null : "emoji"))}
-          type="button"
-        >
-          <ImIcon name="emoji" />
-        </button>
-        {draft.trim() && !voiceMode ? (
-          <Button className="h-10 shrink-0 rounded-full px-4 text-sm" disabled={blocked} onClick={onSend}>
-            发送
-          </Button>
-        ) : (
           <button
-            className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-            onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
+            aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
+            className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+            data-im-composer-control="voice-input"
+            onClick={() => {
+              onToggleVoice?.();
+              onPanelChange(null);
+            }}
             type="button"
           >
-            <ImIcon name="plus" />
+            <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
           </button>
-        )}
+          <div className={composerInputShellClass}>
+            {pendingImage && !voiceMode ? (
+              <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
+                <div className="relative w-fit max-w-full">
+                  <img alt={pendingImage.fileName} className="h-16 w-16 rounded-[14px] object-cover" src={pendingImage.previewUrl} />
+                  <button
+                    aria-label={`移除待发送图片 ${pendingImage.fileName}`}
+                    className="focus-ring absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-white/20 bg-black/72 text-sm font-black leading-none text-white shadow-lg"
+                    disabled={sending}
+                    onClick={onRemovePendingImage}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {voiceMode ? (
+              <button
+                className={cn(
+                  "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
+                  recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
+                )}
+                disabled={blocked}
+                onPointerCancel={onCancelRecording}
+                onPointerDown={onStartRecording}
+                onPointerMove={onMoveRecording}
+                onPointerUp={onEndRecording}
+                type="button"
+              >
+                {recording.active
+                  ? recording.cancel
+                    ? `松开取消发送 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
+                    : `松开发送，上滑取消 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
+                  : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
+              </button>
+            ) : (
+              <textarea
+                className={composerTextareaClass}
+                onChange={(event) => onDraftChange(event.target.value)}
+                placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
+                ref={textareaRef}
+                rows={1}
+                value={draft}
+              />
+            )}
+          </div>
+          <button
+            aria-label={panel === "emoji" ? "关闭表情面板" : "打开表情面板"}
+            className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+            data-im-composer-control="emoji-chat"
+            onClick={() => onPanelChange((value) => (value === "emoji" ? null : "emoji"))}
+            type="button"
+          >
+            <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
+          </button>
+          {(draft.trim() || pendingImage) && !voiceMode ? (
+            <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={blocked || sending} onClick={onSend}>
+              {sending ? "发送中" : "发送"}
+            </Button>
+          ) : (
+            <button
+              aria-label={panel === "more" ? "关闭更多功能" : "打开更多功能"}
+              className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+              onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
+              type="button"
+            >
+              <ImIcon name="plus" />
+            </button>
+          )}
+        </div>
+
+        {panel === "emoji" ? (
+          <div className={cn(composerPanelClass, "overscroll-contain")} data-im-composer-panel="emoji">
+            <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">最近使用</p>
+            <div className="grid grid-cols-8 gap-2 text-center text-[24px]">
+              {recentEmojis.map((emoji) => (
+                <button
+                  aria-label={`输入表情 ${emoji}`}
+                  className={composerEmojiButtonClass}
+                  key={emoji}
+                  onClick={() => selectEmoji(emoji)}
+                  type="button"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <div className="my-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]" />
+            <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">所有表情</p>
+            <div className="grid grid-cols-8 gap-1 text-center text-[24px]">
+              {IM_COMMON_EMOJIS.map((emoji) => (
+                <button
+                  aria-label={`输入表情 ${emoji}`}
+                  className={composerEmojiButtonClass}
+                  key={emoji}
+                  onClick={() => selectEmoji(emoji)}
+                  type="button"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {panel === "more" && actions.length > 0 ? (
+          <div className={composerPanelClass} data-im-composer-panel="more">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+              {actions.map((action) => (
+                <button className={composerActionButtonClass} key={action.key} onClick={action.run} type="button">
+                  <span className={composerActionIconClass}>
+                    <ImIcon name={action.icon} />
+                  </span>
+                  <span className="mt-2 block truncate text-[11px] font-medium text-[color:var(--client-muted)] sm:text-xs">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
-
-      {panel === "emoji" ? (
-        <div className={cn(composerPanelClass, "max-h-[42dvh] overflow-y-auto overscroll-contain")}>
-          <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">最近使用</p>
-          <div className="grid grid-cols-8 gap-2 text-center text-[24px]">
-            {recentEmojis.map((emoji) => (
-              <button
-                aria-label={`输入表情 ${emoji}`}
-                className={composerEmojiButtonClass}
-                key={emoji}
-                onClick={() => selectEmoji(emoji)}
-                type="button"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-          <div className="my-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]" />
-          <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">所有表情</p>
-          <div className="grid grid-cols-8 gap-1 text-center text-[24px]">
-            {IM_COMMON_EMOJIS.map((emoji) => (
-              <button
-                aria-label={`输入表情 ${emoji}`}
-                className={composerEmojiButtonClass}
-                key={emoji}
-                onClick={() => selectEmoji(emoji)}
-                type="button"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {panel === "more" && actions.length > 0 ? (
-        <div className={composerPanelClass}>
-          <div className="grid grid-cols-4 gap-2 sm:gap-3">
-            {actions.map((action) => (
-              <button className={composerActionButtonClass} key={action.key} onClick={action.run} type="button">
-                <span className={composerActionIconClass}>
-                  <ImIcon name={action.icon} />
-                </span>
-                <span className="mt-2 block truncate text-[11px] font-medium text-[color:var(--client-muted)] sm:text-xs">{action.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -2526,6 +2627,69 @@ function contactCardKindLabel(profileKind: NonNullable<MessageExt["contactCard"]
   return "服务号名片";
 }
 
+export function ImQuotedMessagePreview({
+  message,
+  className
+}: {
+  message: ConversationMessage;
+  className?: string;
+}) {
+  const caption = message.ext?.caption?.trim() ?? "";
+
+  if (message.type === "image" || message.type === "video") {
+    const thumbnailUrl = message.ext?.thumbnailUrl ?? (message.type === "image" ? message.ext?.url ?? message.content : undefined);
+
+    return (
+      <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
+        <span className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-black/10">
+          {thumbnailUrl ? (
+            <img
+              alt={message.ext?.fileName || caption || previewLabel(message.type)}
+              className="h-full w-full object-cover"
+              src={thumbnailUrl}
+            />
+          ) : (
+            <ImIcon className="h-5 w-5 opacity-80" name={message.type === "video" ? "video" : "photo"} />
+          )}
+          {message.type === "video" ? (
+            <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
+              <ImIcon className="h-4 w-4" name="video" />
+            </span>
+          ) : null}
+        </span>
+        {caption ? (
+          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
+            {caption}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (message.type === "voice" || message.type === "file") {
+    const label = caption || (message.type === "file" ? message.ext?.fileName?.trim() ?? "" : "");
+
+    return (
+      <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-black/10">
+          <ImIcon className="h-5 w-5 opacity-80" name={message.type === "voice" ? "mic" : "file"} />
+        </span>
+        {label ? (
+          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
+            {label}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <p className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}>
+      {message.content || previewLabel(message.type)}
+    </p>
+  );
+}
+
 export function MessageBubble({
   message,
   isMine,
@@ -2563,7 +2727,6 @@ export function MessageBubble({
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const disappearing = message.ext?.disappearing;
-  const quotedPreview = quotedMessage?.content || (quotedMessage ? previewLabel(quotedMessage.type) : "");
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
   if (message.type === "system" || message.type === "recalled") {
@@ -2764,7 +2927,7 @@ export function MessageBubble({
         )}
         <div className="min-w-0 flex-1">
           <p className="line-clamp-1 text-[13px] font-black">{quotedAuthor}</p>
-          <p className="mt-0.5 line-clamp-1 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]">{quotedPreview}</p>
+          <ImQuotedMessagePreview message={quotedMessage} />
         </div>
       </div>
     </div>

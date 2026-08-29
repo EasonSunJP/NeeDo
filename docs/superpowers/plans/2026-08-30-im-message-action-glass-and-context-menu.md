@@ -1,6 +1,6 @@
 # IM Message Action Menu Repair Implementation Plan
 
-> **For Codex:** Execute this plan inline with the `executing-plans` skill. Keep unrelated work intact; do not stage or overwrite unrelated hunks.
+> **For Codex:** Execute this plan inline with the `executing-plans` skill. Keep the existing uncommitted `HomePage` work and the in-progress `ImChatComposer` glass work intact; do not stage or overwrite unrelated hunks.
 
 **Goal:** Restore every message action and quick reaction, match the action menu to the navigation glass surface, suppress the browser context menu on every NeeDo page, and keep the chat composer mounted except while the media viewer is fullscreen.
 
@@ -61,7 +61,7 @@
 
 1. Add assertions that both the bottom-navigation panel and action sheet carry `client-liquid-glass-surface`, and that the sheet no longer carries the opaque elevated background utility.
 2. Run the focused component tests and confirm the new shared-surface assertions fail.
-3. Add `client-liquid-glass-surface` to the navigation panel and message action sheet.
+3. Add `client-liquid-glass-surface` to the navigation panel and message action sheet. Alias the existing composer glass rules to the same shared surface while preserving the current uncommitted composer implementation.
 4. Move common border, translucent gradient, shadow, blur, and theme variants into the shared selector. Give the menu arrow a token-based glass background/border matching its parent surface.
 5. Re-run the focused component tests and confirm they pass.
 
@@ -70,9 +70,17 @@
 **Files:**
 - Verify only; do not modify unrelated files.
 
-1. Run the full focused regression set.
+1. Run the full focused regression set:
+   `npm test -- src/lib/nativeContextMenuGuard.test.ts src/features/im/components.action-menu.test.tsx src/features/im/pages.message-pressable.test.tsx src/features/im/pages.test.ts src/features/im/components.composer.test.tsx src/components/mobile/MobileShell.test.ts`
 2. Run `npm run lint`.
 3. Run `npm run verify:production-build`.
-4. Verify desktop and mobile-width behavior in the real local application: browser menus stay suppressed, the NeeDo menu opens, all actions/reactions work, the composer stays present except in fullscreen media, and the glass menu does not overflow.
-5. Inspect console errors during the acceptance flow and record unrelated pre-existing extension noise separately.
-6. Review `git diff` and `git status`; commit only task-owned changes.
+4. In the real local application at `http://127.0.0.1:5180/user.html#/messages/2561`, verify desktop and mobile-width behavior:
+   - right-click anywhere never opens the browser menu;
+   - right-click/long-press on a message opens only the NeeDo action menu;
+   - all six action buttons execute their expected path;
+   - each quick reaction persists visibly, including after reload where practical;
+   - the composer remains visible and retains its draft/panel while the menu is open;
+   - the composer is absent only in fullscreen media preview and returns with its prior state after close;
+   - the action container visually matches the active navigation glass theme and does not overflow.
+5. Inspect console errors during the acceptance flow and record any unrelated pre-existing extension noise separately.
+6. Review `git diff` and `git status`; report task-owned changes separately from the preserved pre-existing `HomePage` and composer edits. Do not commit overlapping dirty files unless ownership is unambiguous.

@@ -1,11 +1,14 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ImContactActivityEntry, getConversationInfoStartChatTarget, imConversationQuickSearchItems } from "./pages";
 import { getImRoleConfig } from "./role-config";
 import pagesSource from "./pages.tsx?raw";
 import componentsSource from "./components.tsx?raw";
+const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
   it("renders the recent friend activity state as a text-only link", () => {
@@ -120,6 +123,22 @@ describe("IM pages", () => {
     expect(componentSource).toContain("im-conversation-wallpaper pointer-events-none absolute inset-0");
   });
 
+  it("keeps the message viewport behind both glass bars while preserving terminal insets", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentSource).toContain('data-im-conversation-layout="true"');
+    expect(componentSource).toContain("im-conversation-scroll--glass-underlay");
+    expect(componentsSource).toContain("const composerRootRef = useRef<HTMLDivElement | null>(null)");
+    expect(componentsSource).toContain("new ResizeObserver(updateComposerInset)");
+    expect(componentsSource).toContain("--im-composer-overlay-height");
+    expect(componentSource).toContain("const keepTerminalMessageAboveComposer = () =>");
+    expect(componentSource).toContain("listWasNearBottomRef.current");
+    expect(componentSource).toContain('list.addEventListener("load", keepTerminalMessageAboveComposer, true)');
+    expect(componentSource).toContain('list.addEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true)');
+  });
+
   it("uses confirmed standard recall and restores text only after success", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
@@ -220,11 +239,22 @@ describe("IM pages", () => {
     const sectionStart = pagesSource.indexOf("<section", trayStart);
     const sectionEnd = pagesSource.indexOf(">", sectionStart);
     const sectionOpening = pagesSource.slice(sectionStart, sectionEnd);
+    const rowStart = pagesSource.indexOf('<div className="im-pinned-message-container', sectionEnd);
+    const rowEnd = pagesSource.indexOf(">", rowStart);
+    const rowOpening = pagesSource.slice(rowStart, rowEnd);
 
     expect(trayStart).toBeGreaterThan(-1);
     expect(sectionStart).toBeGreaterThan(trayStart);
     expect(sectionEnd).toBeGreaterThan(sectionStart);
     expect(sectionOpening).not.toContain("border-b");
+    expect(sectionOpening).toContain("z-20");
+    expect(sectionOpening).toContain("absolute inset-x-0");
+    expect(sectionOpening).toContain("im-pinned-message-tray");
+    expect(rowOpening).not.toContain("bg-");
+    expect(rowOpening).toContain("im-pinned-message-container");
+    expect(stylesSource).toContain(".im-pinned-message-container");
+    expect(stylesSource).toContain("var(--client-elevated) 50%");
+    expect(stylesSource).toContain("backdrop-filter: blur(12px)");
   });
 
   it("does not expose legacy message actions that only close the menu", () => {
@@ -344,6 +374,33 @@ describe("IM pages", () => {
     expect(componentSource.slice(menuStart, composerGateStart)).toContain(") : null}");
     expect(composerSource).toContain("<ImChatComposer");
     expect(composerSource).toContain("quotedMessage ?");
+  });
+
+  it("uses the same media-aware preview for the reply composer instead of exposing attachment URLs", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const quotedBarStart = componentSource.indexOf("{quotedMessage ? (");
+    const composerStart = componentSource.indexOf("<ImChatComposer", quotedBarStart);
+    const quotedBarSource = componentSource.slice(quotedBarStart, composerStart);
+
+    expect(quotedBarSource).toContain("<ImQuotedMessagePreview message={quotedMessage} />");
+    expect(quotedBarSource).not.toContain('quotedMessage.content || "媒体消息"');
+  });
+
+  it("stages a selected image in the composer and uploads it only when the combined message is sent", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentSource).toContain("const [pendingImage, setPendingImage]");
+    expect(componentSource).toContain("const prepareSelectedImage = async (file?: File) =>");
+    expect(componentSource).not.toContain("const sendSelectedImage = async (file?: File) =>");
+    expect(componentSource).toContain("pendingImage={pendingImage}");
+    expect(componentSource).toContain("onRemovePendingImage={clearPendingImage}");
+    expect(componentSource).toContain("const upload = await api.uploadImage(conversationId, pendingImage.file)");
+    expect(componentSource).toContain("caption: messageText || undefined");
+    expect(componentSource).toContain("void prepareSelectedImage(file)");
   });
 
   it("keeps the hide member profiles switch independent from privacy mode in group creation", () => {

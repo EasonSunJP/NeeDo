@@ -2,6 +2,7 @@ import {
   startTransition,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -77,6 +78,7 @@ import {
   ImIcon,
   ImMessageActionSheet,
   ImMessageSelectionHandles,
+  ImQuotedMessagePreview,
   hasActiveImMessageTextSelection,
   type ImMessageActionSheetItem,
   type ImMessageReactionSummary,
@@ -4206,9 +4208,33 @@ export function ImConversationRoomPage({
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [imageSending, setImageSending] = useState(false);
+  const pendingImagePreviewUrlRef = useRef<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<{
+    file: File;
+    fileName: string;
+    previewUrl: string;
+  }>();
 
   useDocumentScrollLock(true);
   useIosScrollContainer(listRef, Boolean(menuState));
+
+  useEffect(
+    () => () => {
+      if (pendingImagePreviewUrlRef.current) {
+        URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+        pendingImagePreviewUrlRef.current = null;
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (pendingImagePreviewUrlRef.current) {
+      URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+      pendingImagePreviewUrlRef.current = null;
+    }
+    setPendingImage(undefined);
+  }, [conversationId]);
 
   useEffect(() => {
     recordingRef.current = recording;
@@ -4302,6 +4328,32 @@ export function ImConversationRoomPage({
   const updateListNearBottom = (element: HTMLDivElement) => {
     listWasNearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
   };
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+
+    if (!list) {
+      return undefined;
+    }
+
+    const keepTerminalMessageAboveComposer = () => {
+      if (!listWasNearBottomRef.current) {
+        return;
+      }
+
+      list.scrollTop = list.scrollHeight;
+      updateListNearBottom(list);
+    };
+    const frame = window.requestAnimationFrame(keepTerminalMessageAboveComposer);
+    list.addEventListener("load", keepTerminalMessageAboveComposer, true);
+    list.addEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      list.removeEventListener("load", keepTerminalMessageAboveComposer, true);
+      list.removeEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true);
+    };
+  }, [conversationId, draft, messages.length, panel, pendingImage, quotedMessageId, voiceMode]);
 
   useEffect(() => {
     if (!listRef.current) {
@@ -4716,10 +4768,70 @@ export function ImConversationRoomPage({
     }, 250);
   };
 
+  const clearPendingImage = () => {
+    if (pendingImagePreviewUrlRef.current) {
+      URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+      pendingImagePreviewUrlRef.current = null;
+    }
+    setPendingImage(undefined);
+  };
+
+  const prepareSelectedImage = async (file?: File) => {
+    if (!file || imageSending) {
+      return;
+    }
+
+    if (pendingImagePreviewUrlRef.current) {
+      URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+    }
+    const previewUrl = URL.createObjectURL(file);
+    pendingImagePreviewUrlRef.current = previewUrl;
+    setPendingImage({
+      file,
+      fileName: file.name || "待发送图片",
+      previewUrl
+    });
+    setVoiceMode(false);
+    setPanel(null);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
   const sendText = async () => {
     const messageText = clampMessageText(draft.trim());
 
-    if (!messageText) {
+    if (!messageText && !pendingImage) {
+      return;
+    }
+
+    if (pendingImage) {
+      setImageSending(true);
+      setActionNotice(null);
+      try {
+        const size = await readImageSize(pendingImage.previewUrl).catch(() => undefined);
+        const upload = await api.uploadImage(conversationId, pendingImage.file);
+        await store.sendMessage(conversationId, "image", upload.url, {
+          quotedMessageId,
+          ext: {
+            url: upload.url,
+            thumbnailUrl: upload.url,
+            fileName: upload.fileName,
+            fileSize: upload.fileSize,
+            mimeType: upload.mimeType,
+            width: size?.width,
+            height: size?.height,
+            caption: messageText || undefined
+          }
+        });
+        setDraft("");
+        store.setDraft(conversationId, "");
+        clearPendingImage();
+        setQuotedMessageId(undefined);
+        setPanel(null);
+      } catch {
+        setActionNotice("图片发送失败，请重试");
+      } finally {
+        setImageSending(false);
+      }
       return;
     }
 
@@ -4728,6 +4840,7 @@ export function ImConversationRoomPage({
         quotedMessageId
       });
       setDraft("");
+      store.setDraft(conversationId, "");
       setQuotedMessageId(undefined);
       setPanel(null);
     } catch {
@@ -5043,37 +5156,6 @@ export function ImConversationRoomPage({
       setPanel(null);
       setContactCardQuery("");
       setContactCardPickerOpen(true);
-    }
-  };
-
-  const sendSelectedImage = async (file?: File) => {
-    if (!file || imageSending) {
-      return;
-    }
-
-    setImageSending(true);
-    setActionNotice(null);
-    try {
-      const previewUrl = URL.createObjectURL(file);
-      const size = await readImageSize(previewUrl).catch(() => undefined);
-      URL.revokeObjectURL(previewUrl);
-      const upload = await api.uploadImage(conversationId, file);
-      await store.sendMessage(conversationId, "image", upload.url, {
-        ext: {
-          url: upload.url,
-          thumbnailUrl: upload.url,
-          fileName: upload.fileName,
-          fileSize: upload.fileSize,
-          mimeType: upload.mimeType,
-          width: size?.width,
-          height: size?.height
-        }
-      });
-      setPanel(null);
-    } catch {
-      setActionNotice("图片发送失败，请重试");
-    } finally {
-      setImageSending(false);
     }
   };
 
@@ -5558,7 +5640,10 @@ export function ImConversationRoomPage({
           }
         />
 
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]">
+        <div
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]"
+          data-im-conversation-layout="true"
+        >
           <div aria-hidden="true" className="im-conversation-wallpaper pointer-events-none absolute inset-0 overflow-hidden">
             <img
               alt=""
@@ -5581,7 +5666,7 @@ export function ImConversationRoomPage({
           ) : null}
 
           {pinnedMessages.length > 0 ? (
-            <section className={cn("relative z-10 px-3 py-2", isNight ? "bg-[#1f1f20]/88" : "bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]")}>
+            <section className="im-pinned-message-tray absolute inset-x-0 top-[calc(env(safe-area-inset-top)+70px)] z-20 px-3 py-2">
               <div className="space-y-1.5">
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
@@ -5589,7 +5674,7 @@ export function ImConversationRoomPage({
                   const preview = buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
 
                   return (
-                    <div className={cn("flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2", isNight ? "bg-white/[0.05]" : "bg-black/[0.035]")} key={message.id}>
+                    <div className="im-pinned-message-container flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2" key={message.id}>
                       <button
                         className="focus-ring flex min-w-0 flex-1 items-center gap-2 text-left"
                         onClick={() => scrollToMessage(message.id)}
@@ -5619,7 +5704,7 @@ export function ImConversationRoomPage({
           ) : null}
 
           <div
-            className={cn("im-conversation-scroll scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1 py-3", menuState && "im-conversation-scroll--text-selecting")}
+            className={cn("im-conversation-scroll im-conversation-scroll--glass-underlay scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1", menuState && "im-conversation-scroll--text-selecting")}
             data-page-drag-ignore="true"
             data-scroll-drag-ignore="true"
             onClick={() => {
@@ -5782,7 +5867,7 @@ export function ImConversationRoomPage({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">回复消息</p>
-                      <p className="mt-1 truncate">{quotedMessage.content || "媒体消息"}</p>
+                      <ImQuotedMessagePreview message={quotedMessage} />
                     </div>
                     <button className="text-ink/32" onClick={() => setQuotedMessageId(undefined)} type="button">
                       取消
@@ -5806,6 +5891,7 @@ export function ImConversationRoomPage({
                 onEndRecording={() => void endRecording()}
                 onMoveRecording={moveRecording}
                 onPanelChange={setPanel}
+                onRemovePendingImage={clearPendingImage}
                 onSend={() => void sendText()}
                 onStartRecording={(event) => void startRecording(event)}
                 onToggleVoice={() => {
@@ -5816,7 +5902,9 @@ export function ImConversationRoomPage({
                   setVoiceMode((value) => !value);
                 }}
                 panel={panel}
+                pendingImage={pendingImage}
                 recording={recording}
+                sending={imageSending}
                 textareaRef={textareaRef}
                 voiceMode={voiceMode}
               />
@@ -5827,7 +5915,7 @@ export function ImConversationRoomPage({
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
                   event.currentTarget.value = "";
-                  void sendSelectedImage(file);
+                  void prepareSelectedImage(file);
                 }}
                 ref={imageInputRef}
                 type="file"

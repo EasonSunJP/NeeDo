@@ -138,8 +138,8 @@ describe("ImMessageActionSheet", () => {
     expect(menuPositioner?.style.position).toBe("fixed");
     expect(menuPositioner?.style.left).toBe("12px");
     expect(menuPositioner?.style.top).toBe("210px");
-    expect(arrow?.className).toContain("-bottom-2");
     expect(arrow?.className).toContain("client-liquid-glass-arrow");
+    expect(arrow?.className).toContain("-bottom-2");
     expect(actionGrid?.compareDocumentPosition(reactions!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(actionGrid?.className).toContain("grid-cols-6");
     expect(actionGrid?.className).not.toContain("min-[480px]");
@@ -462,6 +462,89 @@ describe("MessageBubble reactions", () => {
     expect([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("第一位、第二位"))).toBe(false);
     expect(container.querySelector('img[alt="第一位"]')).toBeNull();
     expect(container.querySelector('img[alt="第二位"]')).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+});
+
+describe("MessageBubble quoted media", () => {
+  const message: ConversationMessage = {
+    id: "reply-1",
+    localId: "reply-1",
+    conversationId: "conversation-1",
+    senderId: "sender-1",
+    type: "text",
+    content: "收到",
+    quotedMessageId: "image-1",
+    status: "sent",
+    sentAt: "2026-08-30T00:00:00.000Z",
+    clientSeq: 2
+  };
+
+  it("renders a reduced media thumbnail and caption without exposing the media URL", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const quotedMessage: ConversationMessage = {
+      id: "image-1",
+      localId: "image-1",
+      conversationId: "conversation-1",
+      senderId: "sender-2",
+      type: "image",
+      content: "http://localhost:3000/media/im/original.jpg",
+      status: "sent",
+      sentAt: "2026-08-29T00:00:00.000Z",
+      clientSeq: 1,
+      ext: {
+        caption: "活动海报",
+        thumbnailUrl: "http://localhost:3000/media/im/thumbnail.jpg"
+      }
+    };
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, {
+        message,
+        isMine: true,
+        quotedMessage,
+        quotedSenderName: "松本 琴音"
+      }));
+    });
+
+    expect(container.textContent).toContain("活动海报");
+    expect(container.textContent).not.toContain(quotedMessage.content);
+    expect(container.querySelector('[data-im-quoted-media="image"] img')?.getAttribute("src")).toBe(quotedMessage.ext?.thumbnailUrl);
+
+    await act(async () => root.unmount());
+  });
+
+  it("renders only the reduced media when the quoted media has no caption", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const quotedMessage: ConversationMessage = {
+      id: "image-2",
+      localId: "image-2",
+      conversationId: "conversation-1",
+      senderId: "sender-2",
+      type: "image",
+      content: "http://localhost:3000/media/im/only-media.jpg",
+      status: "sent",
+      sentAt: "2026-08-29T00:01:00.000Z",
+      clientSeq: 1
+    };
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, {
+        message,
+        isMine: true,
+        quotedMessage,
+        quotedSenderName: "松本 琴音"
+      }));
+    });
+
+    expect(container.querySelector('[data-im-quoted-media="image"] img')).not.toBeNull();
+    expect(container.textContent).not.toContain(quotedMessage.content);
+    expect(container.querySelector('[data-im-quoted-media-caption="true"]')).toBeNull();
 
     await act(async () => root.unmount());
   });
