@@ -17,7 +17,18 @@ const marketplaceTaskRow = (id: number) => ({
   publisherShopId: null,
   name: `Visible task ${id}`,
   description: null,
-  coverMediaAssetId: null,
+  coverMediaAssetId: id,
+  coverMediaAsset: {
+    id,
+    url: `https://cdn.needo.test/task-${id}.jpg`,
+    mimeType: "image/jpeg",
+    usageType: "cover",
+    altText: `Task ${id}`,
+    sortOrder: 0,
+    isActive: true,
+    purgedAt: null,
+    deletedAt: null
+  },
   rewardNdpPerCompletedOrder: 100,
   totalBudgetNdp: 10000,
   reservedBudgetNdp: 10000,
@@ -45,7 +56,36 @@ const marketplaceTaskRow = (id: number) => ({
   activatedAt: new Date("2026-08-01T00:00:00.000Z"),
   createdAt: new Date("2026-07-01T00:00:00.000Z"),
   updatedAt: new Date("2026-08-01T00:00:00.000Z"),
-  shops: [{ id, shopId: id, shopNameSnapshot: `Shop ${id}`, deletedAt: null }],
+  shops: [
+    {
+      id,
+      shopId: id,
+      shopNameSnapshot: `Shop ${id}`,
+      deletedAt: null,
+      shop: {
+        city: "Tokyo",
+        address: `Shibuya ${id}`,
+        publicIdentifier: {
+          publicId: `shop${String(id).padStart(10, "0")}`,
+          status: "ACTIVE",
+          deletedAt: null
+        },
+        mediaAssets: [
+          {
+            id,
+            url: `https://cdn.needo.test/shop-${id}.jpg`,
+            mimeType: "image/jpeg",
+            usageType: "cover",
+            altText: `Shop ${id}`,
+            sortOrder: 0,
+            isActive: true,
+            purgedAt: null,
+            deletedAt: null
+          }
+        ]
+      }
+    }
+  ],
   services: [
     {
       id,
@@ -97,12 +137,39 @@ describe("AffiliateMarketplaceRepository contract", () => {
       total: 105,
       page: 11,
       page_size: 10,
-      list: ids.map((id) => ({ id, taskCode: `AFF-PUBLIC-${id}`, status: "active" }))
+      list: ids.map((id) => ({
+        id,
+        taskCode: `AFF-PUBLIC-${id}`,
+        status: "active",
+        coverImageUrl: `https://cdn.needo.test/task-${id}.jpg`,
+        shops: [
+          expect.objectContaining({
+            publicId: `shop${String(id).padStart(10, "0")}`,
+            city: "Tokyo",
+            address: `Shibuya ${id}`,
+            mediaAssets: [
+              {
+                url: `https://cdn.needo.test/shop-${id}.jpg`,
+                altText: `Shop ${id}`,
+                sortOrder: 0
+              }
+            ]
+          })
+        ]
+      }))
     });
     expect(queryRaw).toHaveBeenCalledTimes(2);
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: ids }, deletedAt: null } })
+      expect.objectContaining({
+        where: { id: { in: ids }, deletedAt: null },
+        include: expect.objectContaining({
+          coverMediaAsset: true,
+          shops: expect.objectContaining({
+            include: expect.objectContaining({ shop: expect.any(Object) })
+          })
+        })
+      })
     );
     const idQuery = queryRaw.mock.calls
       .map(([query]) => query)

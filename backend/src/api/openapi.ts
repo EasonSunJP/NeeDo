@@ -74,7 +74,9 @@ const authActionErrorResponses = {
 const platformFeePolicyErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
-  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or scope" },
+  "403": {
+    description: "error.forbidden or error.identity.forbidden — denied permission or scope"
+  },
   "404": { description: "error.shop.not_found — shop does not exist" },
   "409": {
     description:
@@ -1362,12 +1364,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           list: {
             type: "array",
-            items: { $ref: "#/components/schemas/BackofficeAuditEvent" },
+            items: { $ref: "#/components/schemas/BackofficeAuditEvent" }
           },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
-          page_size: { type: "integer", minimum: 1, maximum: 100 },
-        },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
       },
       BackofficeReviewSummary: {
         type: "object",
@@ -1806,13 +1808,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       BackofficeCustomerMembershipGrantInput: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "membershipLevel",
-          "grantMode",
-          "durationUnit",
-          "durationValue",
-          "startsAt"
-        ],
+        required: ["membershipLevel", "grantMode", "durationUnit", "durationValue", "startsAt"],
         properties: {
           membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
           grantMode: { type: "string", enum: ["operator_complimentary"] },
@@ -4187,6 +4183,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      AffiliateMarketplaceMediaAsset: {
+        type: "object",
+        additionalProperties: false,
+        required: ["url", "altText", "sortOrder"],
+        properties: {
+          url: { type: "string", minLength: 1 },
+          altText: { type: ["string", "null"], maxLength: 200 },
+          sortOrder: { type: "integer", minimum: 0 }
+        }
+      },
+      AffiliateMarketplaceShop: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "shopId",
+          "shopNameSnapshot",
+          "publicId",
+          "city",
+          "address",
+          "mediaAssets"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", minimum: 1 },
+          shopNameSnapshot: { type: "string", maxLength: 160 },
+          publicId: { type: ["string", "null"], pattern: "^shop[0-9]{10}$" },
+          city: { type: "string", maxLength: 120 },
+          address: { type: "string", maxLength: 500 },
+          mediaAssets: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateMarketplaceMediaAsset" }
+          }
+        }
+      },
       AffiliateMarketplaceTask: {
         type: "object",
         additionalProperties: false,
@@ -4196,7 +4227,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "name",
           "description",
           "coverMediaAssetId",
+          "coverImageUrl",
           "rewardNdpPerCompletedOrder",
+          "totalBudgetNdp",
+          "remainingBudgetNdp",
+          "remainingBudgetBps",
           "customerDiscountType",
           "fixedDiscountJpy",
           "discountRateBps",
@@ -4222,7 +4257,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           name: affiliateEditableTaskProperties.name,
           description: affiliateEditableTaskProperties.description,
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
+          coverImageUrl: { type: ["string", "null"] },
           rewardNdpPerCompletedOrder: affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
+          totalBudgetNdp: affiliateEditableTaskProperties.totalBudgetNdp,
+          remainingBudgetNdp: { type: "integer", minimum: 0 },
+          remainingBudgetBps: { type: "integer", minimum: 0, maximum: 10000 },
           customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
           fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
           discountRateBps: affiliateEditableTaskProperties.discountRateBps,
@@ -4241,7 +4280,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shops: {
             type: "array",
             minItems: 1,
-            items: { $ref: "#/components/schemas/AffiliateTaskShopSnapshot" }
+            items: { $ref: "#/components/schemas/AffiliateMarketplaceShop" }
           },
           services: {
             type: "array",
@@ -4563,13 +4602,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           employee: {
             type: "object",
             additionalProperties: false,
-            required: [
-              "needoId",
-              "displayName",
-              "avatarUrl",
-              "relationshipType",
-              "workStatus"
-            ],
+            required: ["needoId", "displayName", "avatarUrl", "relationshipType", "workStatus"],
             properties: {
               needoId: { type: "string", pattern: "^s[0-9]{10}$" },
               displayName: { type: "string" },
@@ -9203,17 +9236,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           idPathParameter(),
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 10 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 }
+          }
         ],
         responses: {
           "200": jsonDataResponse("Paginated user activity", {
-            $ref: "#/components/schemas/BackofficeAuditTimelinePage",
+            $ref: "#/components/schemas/BackofficeAuditTimelinePage"
           }),
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
-          "404": { description: "User profile not found" },
-        },
-      },
+          "404": { description: "User profile not found" }
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/customers/{id}/membership`]: {
       put: {
@@ -10666,17 +10703,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           idPathParameter(),
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 10 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 }
+          }
         ],
         responses: {
           "200": jsonDataResponse("Paginated scoped user activity", {
-            $ref: "#/components/schemas/BackofficeAuditTimelinePage",
+            $ref: "#/components/schemas/BackofficeAuditTimelinePage"
           }),
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
-          "404": { description: "User profile not visible to current shop" },
-        },
-      },
+          "404": { description: "User profile not visible to current shop" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/services`]: {
       get: {
@@ -11808,7 +11849,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "200": { description: "Current participant left; groups with fewer than two remaining members are dissolved" },
+          "200": {
+            description:
+              "Current participant left; groups with fewer than two remaining members are dissolved"
+          },
           "400": { description: "Owner transfer is required or the selected successor is invalid" },
           "404": { description: "Group not found for current participant" }
         }
@@ -12212,7 +12256,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Fuzzy-search active non-contact accounts by display name or immutable NeeDoID",
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: "query", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 100 } },
+          {
+            name: "query",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],

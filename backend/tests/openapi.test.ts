@@ -243,7 +243,8 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths["/api/v1/im/contacts"].post).toBeDefined();
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations/{conversationId}/media");
     expect(
-      response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody.content
+      response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody
+        .content
     ).toHaveProperty("image/png");
     expect(response.body.paths).toHaveProperty("/api/v1/shops/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
@@ -471,8 +472,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/employees/{needoId}/compensation-profile/preview"
     );
-    const employeeCompensationSchema =
-      response.body.components.schemas.EmployeeCompensationProfile;
+    const employeeCompensationSchema = response.body.components.schemas.EmployeeCompensationProfile;
     expect(employeeCompensationSchema.properties).not.toHaveProperty("shopId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("technicianProfileId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("createdById");
@@ -483,9 +483,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/publish");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/approve");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/lock");
-    expect(response.body.paths).toHaveProperty(
-      "/api/v1/merchant-admin/payroll-schedule-policy"
-    );
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/payroll-schedule-policy");
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/employees/{needoId}/payroll-schedule-policy"
     );
@@ -506,9 +504,8 @@ describe("GET /api/v1/openapi.json", () => {
       })
     );
     expect(
-      response.body.paths[
-        "/api/v1/merchant-admin/employees/{needoId}/payroll-schedule-policy"
-      ].get.parameters
+      response.body.paths["/api/v1/merchant-admin/employees/{needoId}/payroll-schedule-policy"].get
+        .parameters
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -678,6 +675,19 @@ describe("GET /api/v1/openapi.json", () => {
     );
     expect(response.body.components.schemas).toHaveProperty("FinanceReconciliation");
     expect(response.body.components.schemas).toHaveProperty("AffiliateMarketplaceTask");
+    expect(response.body.components.schemas).toHaveProperty("AffiliateMarketplaceShop");
+    expect(response.body.components.schemas).toHaveProperty("AffiliateMarketplaceMediaAsset");
+    expect(response.body.components.schemas.AffiliateMarketplaceTask.required).toEqual(
+      expect.arrayContaining([
+        "coverImageUrl",
+        "totalBudgetNdp",
+        "remainingBudgetNdp",
+        "remainingBudgetBps"
+      ])
+    );
+    expect(
+      response.body.components.schemas.AffiliateMarketplaceTask.properties.shops.items.$ref
+    ).toBe("#/components/schemas/AffiliateMarketplaceShop");
     expect(response.body.components.schemas).toHaveProperty("AffiliateClaim");
     expect(response.body.components.schemas).toHaveProperty("AffiliateResolvedLink");
     expect(response.body.components.schemas).toHaveProperty("AffiliateCodeValidation");
@@ -1506,7 +1516,6 @@ describe("GET /api/v1/openapi.json", () => {
       }
     });
   });
-
 
   it("documents the formal platform fee policy contracts", () => {
     type Operation = {
