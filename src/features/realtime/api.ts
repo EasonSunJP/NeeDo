@@ -23,6 +23,7 @@ export type RealtimeMessage = {
   createdAt: string;
   id: number;
   lifecycleVersion?: number;
+  reactionVersion?: number;
   metadata: unknown;
   reactions?: RealtimeMessageReaction[];
   recallDeadlineAt?: string | null;
@@ -101,6 +102,14 @@ export type RealtimeContact = {
   ownerUserId: number;
   source: string;
   isBlocked: boolean;
+};
+
+export type RealtimeDeletedContact = {
+  contactId: number;
+  contactUserId: number;
+  deleted: true;
+  deletedAt: string;
+  ownerUserId: number;
 };
 
 export type RealtimeFriendRequest = {
@@ -325,6 +334,9 @@ export const realtimeApi = {
   },
   unblockContact(contactId: number) {
     return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "DELETE" });
+  },
+  deleteContact(contactId: number) {
+    return httpClient.request<RealtimeDeletedContact>(`/im/contacts/${contactId}`, { method: "DELETE" });
   },
   listFriendRequests(query: PageQuery & { direction?: "incoming" | "outgoing" | "all"; status?: RealtimeFriendRequest["status"] } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeFriendRequest>>("/im/friend-requests", { query });

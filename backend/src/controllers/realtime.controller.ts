@@ -225,6 +225,11 @@ export class RealtimeController {
     );
   });
 
+  public deleteContact = this.createHandler((request, response) => {
+    const params = contactIdParamSchema.parse(request.params);
+    return this.service.deleteContact(getAuthenticatedAccess(response), params.contactId);
+  });
+
   public listFriendRequests = this.createHandler((request, response) =>
     this.service.listFriendRequests(
       getAuthenticatedAccess(response),

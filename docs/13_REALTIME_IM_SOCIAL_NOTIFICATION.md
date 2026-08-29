@@ -177,6 +177,13 @@
 - REST 响应与 `message.reaction.updated` SSE 都携带单调递增的 `reactionVersion`；前端拒绝以较旧版本覆盖较新表情状态，因此网络响应或实时事件乱序时，第二个表情不会短暂出现后消失。
 - 新增 additive migration `20260830043000_message_reaction_version`；不新增接口、轮询、mock 或平行业务状态。
 
+## 6.13 通讯录好友软删除（2026-08-30）
+
+- 正式 IM adapter 的 `deleteContact` 不再返回 `error.feature_unavailable`，而是调用受 Bearer 鉴权与 `contact:delete` 权限保护的 `DELETE /api/v1/im/contacts/:contactId`。
+- 后端只允许软删除当前认证账号拥有且仍有效的联系人行；其他账号的联系人、共享会话与消息均不受影响，越权目标统一返回安全的未找到错误。
+- 软删除与 `im.contact.deleted` 审计写入同一事务，成功后发送 `contact.updated`，前端立即把该关系标记为 deleted，并通过后续正式联系人重读保持刷新后的状态一致。
+- 新增 deployment migration `20260830060000_contact_delete_permission`，为 admin、merchant owner/staff、technician 与 customer 恢复 `contact:delete` 角色权限；不新增数据表、轮询、mock 或平行联系人状态。
+
 ## 6.13 已发布动态正式编辑保存（2026-08-30）
 
 - 新增 `PATCH /api/v1/social/posts/:id`，沿用 Bearer 鉴权与 `social-post:create` 权限；仓储层同时匹配动态 ID、当前作者和未删除状态，非作者统一返回未找到，避免泄露或越权修改。

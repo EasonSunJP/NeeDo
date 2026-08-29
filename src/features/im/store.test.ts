@@ -190,6 +190,28 @@ describe("formal IM send failure reason", () => {
 });
 
 describe("formal IM quick reactions", () => {
+  it("does not let an older reaction snapshot remove a newer emoji", () => {
+    const current = {
+      ...message({
+        reactions: [
+          { emoji: "OK", people: [{ id: "100", name: "当前用户" }] },
+          { emoji: "😂", people: [{ id: "100", name: "当前用户" }] }
+        ]
+      }),
+      reactionVersion: 2
+    } as ConversationMessage;
+    const stale = {
+      ...message({
+        reactions: [
+          { emoji: "OK", people: [{ id: "100", name: "当前用户" }] }
+        ]
+      }),
+      reactionVersion: 1
+    } as ConversationMessage;
+
+    expect(preferTerminalMessage(current, stale)).toBe(current);
+  });
+
   it("upserts the authoritative reaction response into the shared message store", () => {
     const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
     const start = source.indexOf("async function setMessageReaction");

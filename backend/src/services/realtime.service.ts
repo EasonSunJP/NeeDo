@@ -407,6 +407,23 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return contact;
   }
 
+  public async deleteContact(auth: AuthenticatedAccessContext, contactId: number) {
+    const contact = await this.repository.deleteContact({
+      contactId,
+      ownerUserId: auth.userId
+    });
+    if (!contact) throw this.notFoundError("error.realtime.contact_not_found");
+
+    this.eventGateway.publish({
+      id: this.createEventId(),
+      type: "contact.updated",
+      recipientUserId: auth.userId,
+      payload: contact,
+      createdAt: new Date().toISOString()
+    });
+    return contact;
+  }
+
   public async createFriendRequest(
     auth: AuthenticatedAccessContext,
     input: Omit<CreateFriendRequestInput, "requesterUserId">

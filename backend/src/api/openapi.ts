@@ -979,6 +979,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "recallMode",
           "contentPurgedAt",
           "lifecycleVersion",
+          "reactionVersion",
           "availableRecallModes",
           "createdAt"
         ],
@@ -1001,6 +1002,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           contentPurgedAt: { type: ["string", "null"], format: "date-time" },
           lifecycleVersion: { type: "integer", minimum: 0 },
+          reactionVersion: { type: "integer", minimum: 0 },
           availableRecallModes: {
             type: "array",
             items: { type: "string", enum: ["standard"] }
@@ -12853,6 +12855,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Unblocked contact" },
           "403": { description: "Missing contact:block permission" },
+          "404": { description: "Contact not found for current user" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/contacts/{contactId}`]: {
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Soft-delete one contact owned by the current user",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "contactId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Soft-deleted contact relation" },
+          "403": { description: "Missing contact:delete permission" },
           "404": { description: "Contact not found for current user" }
         }
       }

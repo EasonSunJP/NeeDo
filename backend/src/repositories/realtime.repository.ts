@@ -65,6 +65,7 @@ export interface MessagePayload {
   recallMode: MessageRecallModePayload | null;
   contentPurgedAt: Date | null;
   lifecycleVersion: number;
+  reactionVersion: number;
   availableRecallModes: MessageRecallModePayload[];
 }
 
@@ -99,6 +100,19 @@ export interface SetContactBlockedInput {
   contactId: number;
   ownerUserId: number;
   isBlocked: boolean;
+}
+
+export interface DeleteContactInput {
+  contactId: number;
+  ownerUserId: number;
+}
+
+export interface DeletedContactPayload {
+  contactId: number;
+  ownerUserId: number;
+  contactUserId: number;
+  deleted: true;
+  deletedAt: Date;
 }
 
 export interface DirectorySearchInput extends PaginationInput {
@@ -410,6 +424,7 @@ export interface RealtimeRepositoryPort {
   ) => Promise<PaginatedResponse<ParticipantPayload>>;
   addContact: (input: AddContactInput) => Promise<ContactPayload>;
   setContactBlocked: (input: SetContactBlockedInput) => Promise<ContactPayload | null>;
+  deleteContact: (input: DeleteContactInput) => Promise<DeletedContactPayload | null>;
   ensureDirectContactConversation: (
     input: EnsureTechnicianApplicationContactInput
   ) => Promise<{ conversationId: number }>;
@@ -1243,8 +1258,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: MessageReactionMutationInput
   ): Promise<MessagePayload | null> {
     return this.client.$transaction(async (tx) => {
-      const message = await this.findMessageForParticipant(tx, input);
-      if (!message) return null;
+      const messageLocked = await this.lockMessageForParticipant(tx, input);
+      if (!messageLocked) return null;
 
       await tx.messageReaction.upsert({
         where: {
@@ -1262,11 +1277,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         update: { deletedAt: null }
       });
 
-      const updated = await tx.message.findUnique({
+      const updated = await tx.message.update({
         where: { id: input.messageId },
+        data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return updated ? this.mapMessage(updated, input.userId) : null;
+      return this.mapMessage(updated, input.userId);
     });
   }
 
@@ -1274,8 +1290,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: MessageReactionMutationInput
   ): Promise<MessagePayload | null> {
     return this.client.$transaction(async (tx) => {
-      const message = await this.findMessageForParticipant(tx, input);
-      if (!message) return null;
+      const messageLocked = await this.lockMessageForParticipant(tx, input);
+      if (!messageLocked) return null;
 
       await tx.messageReaction.updateMany({
         where: {
@@ -1287,11 +1303,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         data: { deletedAt: new Date() }
       });
 
-      const updated = await tx.message.findUnique({
+      const updated = await tx.message.update({
         where: { id: input.messageId },
+        data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return updated ? this.mapMessage(updated, input.userId) : null;
+      return this.mapMessage(updated, input.userId);
     });
   }
 
@@ -1566,6 +1583,49 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       include: contactInclude
     });
     return this.mapContact(updated);
+  }
+
+  public async deleteContact(input: DeleteContactInput): Promise<DeletedContactPayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const contact = await tx.contact.findFirst({
+        where: {
+          id: input.contactId,
+          ownerUserId: input.ownerUserId,
+          deletedAt: null,
+          contactUser: {
+            deletedAt: null,
+            isActive: true
+          }
+        },
+        select: { id: true, contactUserId: true }
+      });
+      if (!contact) return null;
+
+      const deletedAt = new Date();
+      await tx.contact.update({
+        where: { id: contact.id },
+        data: { blockedAt: null, deletedAt }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.ownerUserId,
+          action: "im.contact.deleted",
+          targetType: "Contact",
+          targetId: contact.id,
+          ip: null,
+          userAgent: null,
+          metadata: { contactUserId: contact.contactUserId }
+        }
+      });
+
+      return {
+        contactId: contact.id,
+        ownerUserId: input.ownerUserId,
+        contactUserId: contact.contactUserId,
+        deleted: true,
+        deletedAt
+      };
+    });
   }
 
   public ensureDirectContactConversation(
@@ -2454,27 +2514,32 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
-  private findMessageForParticipant(
+  private async lockMessageForParticipant(
     tx: Prisma.TransactionClient,
     input: MessageReactionMutationInput
-  ) {
-    return tx.message.findFirst({
-      where: {
-        id: input.messageId,
-        conversationId: input.conversationId,
-        deletedAt: null,
-        conversation: {
-          deletedAt: null,
-          participants: {
-            some: {
-              userId: input.userId,
-              deletedAt: null
-            }
-          }
-        }
-      },
-      select: { id: true }
-    });
+  ): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`
+        SELECT m.id
+        FROM messages AS m
+        INNER JOIN conversations AS c
+          ON c.id = m.conversation_id
+          AND c.deleted_at IS NULL
+        WHERE m.id = ${input.messageId}
+          AND m.conversation_id = ${input.conversationId}
+          AND m.deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM conversation_participants AS cp
+            WHERE cp.conversation_id = m.conversation_id
+              AND cp.user_id = ${input.userId}
+              AND cp.deleted_at IS NULL
+          )
+        FOR UPDATE
+      `
+    );
+
+    return rows.length > 0;
   }
 
   private upsertContact(tx: Prisma.TransactionClient, ownerUserId: number, contactUserId: number) {
@@ -2633,6 +2698,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       recallMode,
       contentPurgedAt: message.contentPurgedAt,
       lifecycleVersion: message.lifecycleVersion,
+      reactionVersion: message.reactionVersion,
       availableRecallModes: canRecall ? ["standard"] : []
     };
   }

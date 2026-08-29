@@ -61,6 +61,7 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   searchDirectory: "contact:list",
   addContact: "contact:list",
   blockContact: "contact:block",
+  deleteContact: "contact:delete",
   listFriendRequests: "friend-request:list",
   createFriendRequest: "friend-request:create",
   respondFriendRequest: "friend-request:respond",
@@ -240,6 +241,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.blockContact),
     validateRequest({ params: contactIdParamSchema }),
     controller.unblockContact
+  );
+  router.delete(
+    "/im/contacts/:contactId",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.deleteContact),
+    validateRequest({ params: contactIdParamSchema }),
+    controller.deleteContact
   );
   router.get(
     "/im/friend-requests",
