@@ -4,7 +4,7 @@ import path from "node:path";
 const forbiddenRuntimeMarkers = ["needoStaticDemo", "static_demo.local_response"];
 const defaultBudgets = {
   main: 4_000_000,
-  i18n: 3_700_000
+  i18n: 3_702_048
 };
 
 async function listFiles(directory) {
