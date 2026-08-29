@@ -534,7 +534,19 @@ describe("MessageBubble reactions", () => {
     expect([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("第一位、第二位"))).toBe(false);
     expect(container.querySelector('img[alt="第一位"]')).toBeNull();
     expect(container.querySelector('img[alt="第二位"]')).toBeNull();
-    expect(container.querySelector('button img[alt="Thanks"]')).not.toBeNull();
+    const thanksImage = container.querySelector<HTMLImageElement>('button img[alt="Thanks"]');
+    expect(thanksImage).not.toBeNull();
+    const thanksImageClasses = thanksImage?.className.split(/\s+/) ?? [];
+    expect(thanksImageClasses).toContain("h-[22px]");
+    expect(thanksImageClasses).toContain("max-w-none");
+    expect(thanksImageClasses).not.toContain("max-w-full");
+
+    const ordinaryEmojiButton = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent?.trim() === "😂"
+    );
+    expect(
+      ordinaryEmojiButton?.querySelector("span")?.className.split(/\s+/) ?? []
+    ).not.toContain("h-[22px]");
     expect([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("😂"))).toBe(true);
 
     await act(async () => root.unmount());

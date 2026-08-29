@@ -10,6 +10,7 @@ import { cn } from "../../lib/utils";
 import { getImReactionCategory, IM_JUDGEMENT_REPLIES } from "./reaction-policy";
 
 type JudgementReactionValue = (typeof IM_JUDGEMENT_REPLIES)[number];
+type JudgementReactionDisplay = "catalog" | "summary";
 
 const judgementIconUrl: Record<JudgementReactionValue, string> = {
   OK: okIcon,
@@ -24,23 +25,43 @@ const judgementIconUrl: Record<JudgementReactionValue, string> = {
 
 export function JudgementReactionIcon({
   value,
-  className
+  className,
+  display = "catalog"
 }: {
   value: JudgementReactionValue;
   className?: string;
+  display?: JudgementReactionDisplay;
 }) {
   return (
     <img
       alt={value}
-      className={cn("block h-auto max-h-[26px] max-w-full", className)}
+      className={cn(
+        "block",
+        display === "summary"
+          ? "h-[22px] w-auto max-w-none"
+          : "h-auto max-h-[26px] max-w-full",
+        className
+      )}
       src={judgementIconUrl[value]}
     />
   );
 }
 
-export function ImReactionValue({ value, className }: { value: string; className?: string }) {
+export function ImReactionValue({
+  value,
+  className,
+  judgementDisplay = "catalog"
+}: {
+  value: string;
+  className?: string;
+  judgementDisplay?: JudgementReactionDisplay;
+}) {
   return getImReactionCategory(value) === "judgement" ? (
-    <JudgementReactionIcon className={className} value={value as JudgementReactionValue} />
+    <JudgementReactionIcon
+      className={className}
+      display={judgementDisplay}
+      value={value as JudgementReactionValue}
+    />
   ) : (
     <span className={className}>{value}</span>
   );
