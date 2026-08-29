@@ -1,6 +1,6 @@
 # Task 12 Report: Localized carousel publication verification
 
-Status: AUTOMATED AND REAL-DB GATES PASS; ROOT BROWSER ACCEPTANCE PENDING
+Status: COMPLETE; AUTOMATED, REAL-DB, RBAC, FAILURE-DEGRADATION AND ROOT BROWSER GATES PASS
 
 ## Delivered files
 
@@ -9,6 +9,8 @@ Status: AUTOMATED AND REAL-DB GATES PASS; ROOT BROWSER ACCEPTANCE PENDING
 - `backend/package.json` (`check:localized-carousel-publication-flow` only)
 - `docs/localized-carousel-publication.md`
 - `.superpowers/sdd/task-12-report.md`
+- `src/pages/user/ServiceDetailPage.tsx`
+- `src/pages/user/ServiceDetailPage.test.ts`
 
 All pre-existing auth, profile, Social, settings, translation and share changes in the worktree were preserved and are excluded from this Task 12 commit.
 
@@ -112,27 +114,23 @@ Repository gates:
 
 Second-review focused gates after error-composition remediation: source contract 1 suite / 21 tests passed; backend lint passed; backend TypeScript build passed; `git diff --check` passed. The full-suite counts above are the immediately preceding Task 12 repository-gate run; the second review changed only the checker helper, its focused tests and documentation.
 
-## Browser handoff to root
+## Root browser acceptance
 
-No checker records survive cleanup, so there are no checker IDs to reuse. Root should use formal local fixtures selected through the actual picker.
+Root independently completed the ten-item acceptance workflow against isolated formal services on backend `3002` and frontend `5181`, with MySQL `3307` and Redis `6379` ready. The password was read only from ignored local environment data and was never emitted.
 
-Prerequisites:
+Observed browser evidence:
 
-- backend `3000`, frontend `5180`, MySQL `3307`, Redis `6379` ready;
-- `admin@lifedance.com` with password read only from ignored local environment;
-- a formal `viewer` role account for 403 checks;
-- a formal customer account;
-- an activated Affiliate/scout account with marketplace read permission;
-- valid published Shop, Technician, Service and visible AffiliateTask targets.
+- separate `USER_HOME` and `AFFILIATE_HOME_NOTICE` editors and public scenes;
+- exact five locale tabs, initial-copy provenance and an independent English edit that did not alter Japanese;
+- real media upload, preview, immediate publish, v2 disable, rollback clone and final published v3;
+- user-home click-through to the real `AC Cleaning Diagnostics` UUID service;
+- formal affiliate announcement plus independent affiliate carousel and public announcement detail;
+- affiliate header and same-session user/affiliate identity switching;
+- viewer page read plus formal API HTTP 200 read and HTTP 403/code `40301` edit/publish denial, followed by restoration of the original operator role;
+- local API outage contained to the carousel region while search, recommendations and bottom navigation remained usable;
+- backend restart and retry restored the persisted v3 carousel;
+- clean final pages for user home, service detail, affiliate home, announcement detail and backoffice editor with zero relevant console warnings/errors.
 
-Routes:
+The browser run exposed one duplicate React key when a Service contained `Tokyo` in both `serviceAreas` and `tags`. A RED regression test was added, `buildServiceTagLabels` now deduplicates those combined chips, the focused test passed, and a fresh browser page confirmed the Service detail console is clean.
 
-- `/pf-admin.html#/admin/carousel`
-- `/pf-admin.html#/admin/afirieito/announcements/carousel`
-- `/user.html#/`
-- `/afirieito.html#/afirieito`
-- `/afirieito.html#/afirieito/announcements/:announcementPublicId`
-
-Acceptance is the ten-item checklist in `docs/localized-carousel-publication.md`: both separate editors/scenes, initial copy and independent locale edit, lifecycle controls, real target navigation, announcement/task behavior, persistence across refresh/login/restart, viewer 403, contained API failure, and zero console warnings/errors.
-
-This report does not claim those browser actions were performed by this subtask. Root must independently review the commit and record browser evidence afterward.
+The real-database checker remains the direct evidence for native datetime scheduling/scheduler activation and all target-kind/claimable projections. The browser automation could not reliably drive Chromium's segmented `datetime-local` control, so the report does not mislabel a DOM-only value change as a browser schedule action. Full browser evidence and this limitation are recorded in `docs/localized-carousel-publication.md`.

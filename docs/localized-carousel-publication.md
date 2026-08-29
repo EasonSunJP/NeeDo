@@ -4,7 +4,7 @@
 >
 > 范围：用户端首页轮播、联盟营销首页带图公告轮播、联盟正式公告
 >
-> 状态：自动化与本地真实数据库 checker 已通过；实际浏览器验收由主代理独立执行，本文不把组件测试等同于浏览器验收
+> 状态：自动化、本地真实数据库 checker 与主代理实际浏览器验收均已完成；本文分别记录各层证据，不把组件测试等同于浏览器验收
 
 ## 1. 已实现边界
 
@@ -178,39 +178,31 @@ npm --prefix backend test -- --runInBand \
 
 组件/API 测试和 checker 证明代码、正式 service、事务、数据库与清理边界，不证明实际页面视觉和交互已完成浏览器验收。
 
-## 7. 浏览器交接
+## 7. 实际浏览器验收
 
-前置服务：backend `3000`、frontend `5180`、MySQL `3307`、Redis `6379`；health 和 readiness 都必须为 200/ready。账号使用：
+主代理在隔离服务 backend `3002`、frontend `5181`、MySQL `3307`、Redis `6379` 上完成验收，避免干扰主 checkout 的既有端口。`/api/v1/health` 与 `/api/v1/ready` 均为 200/ready。所有密码仅从 ignored 本地环境读取，没有写入文档、命令输出或浏览器存储检查。
 
-- 可写运营账号：本地正式 seed 的 `admin@lifedance.com`，密码只从 ignored 本地环境读取，不写入文档或命令。
-- 只读账号：任一真实账号必须在数据库中正式绑定 `viewer` 角色；如果当前 fixture 没有该账号，先由正式管理流程创建/分配，不得临时绕过 permission。
-- 客户端：一个可正式登录的 customer 身份。
-- 联盟端：一个已正式开通 Affiliate/scout 身份且具有联盟市场读取权限的账号。
-
-内容目标必须已有有效公开 Shop、Technician、Service 和可见 AffiliateTask。Task 12 checker 数据已精确清理，所以浏览器没有必须复用的 checker public ID；创建内容时通过后台正式 picker 选择当前本地有效记录。
-
-验收路由：
+实际路由：
 
 - `/pf-admin.html#/admin/carousel`
 - `/pf-admin.html#/admin/afirieito/announcements/carousel`
 - `/user.html#/`
+- `/user.html#/services/f2315c0a-a30c-11f1-b188-7c2544e7baed`
 - `/afirieito.html#/afirieito`
-- `/afirieito.html#/afirieito/announcements/:announcementPublicId`
+- `/afirieito.html#/afirieito/announcements/96cf30ba-2bc0-4dbe-9259-2ea04948df61`
 
-主代理逐项验收并保留截图/API/console 证据：
+观察到的真实浏览器结果：
 
-1. 用户轮播后台创建并发布 `USER_HOME`。
-2. 联盟后台创建正式公告并发布独立的 `AFFILIATE_HOME_NOTICE`。
-3. 首次日语输入出现在五个草稿页签；独立修改英语后日语不变。
-4. preview、立即发布、定时发布、停用、历史回滚都发出真实 API 请求且结果正确。
-5. 用户首页轮播位于提醒和快捷操作之间；Shop、Technician、Service 分别打开真实详情。
-6. 联盟营销首页显示独立公告轮播；公告详情可打开，任务按钮只在服务端返回 `claimable=true` 时出现。
-7. 刷新、退出再登录和 backend 重启后内容仍在。
-8. `viewer` 可以读取，但编辑和发布由后端返回 403。
-9. API 失败时首页其他功能仍可使用，不进入 root recovery page。
-10. 最终相关浏览器 console warning/error 数为 0。
-
-截至本文首次提交，上述浏览器步骤尚未由本 Task 12 子任务执行，不得标记为已通过。
+1. 运营后台存在两个分开的入口与编辑器：用户端首页轮播为 `USER_HOME`，联盟营销带图公告为 `AFFILIATE_HOME_NOTICE`；运营顶部导航显示“联盟营销 TEST”。
+2. 用户轮播通过正式上传接口保存真实图片并选择正式 Service `#14 / AC Cleaning Diagnostics`。初始简体中文保存后，繁体中文、英语、日语、韩语都具有初始复制及来源提示；英语独立改为 `NeeDo Local Life Picks` 后，日语仍保持简体中文来源内容。
+3. 用户轮播 preview 和立即发布成功。浏览器继续创建 v2、立即发布、停用 v2、从归档 v1 回滚生成 v3，再发布 v3；最终后台显示 `published v3 / disabled v2 / archived v1`。
+4. 用户首页显示 `NeeDo 本地生活精选`，点击轮播进入真实 Service UUID 详情并显示 `AC Cleaning Diagnostics`。后端重启后点击“重试”，同一 v3 内容恢复，证明内容不是 localStorage 或静态数组。
+5. 联盟后台正式发布公告 `联盟营销公测公告`；英语正文可独立修改，日语保留初始复制来源。独立联盟轮播发布后，联盟首页显示 `联盟营销公测现已开放`，点击打开正式公告详情及正文。
+6. 联盟首页头部实际显示头像、`当前身份 · <NeeDo ID>`、`联盟营销`、`切换其他身份` 和任务搜索；身份选择页可见用户、技师、店铺、联盟营销，商户正式账号在用户与联盟营销身份之间切换无需重新登录。
+7. 定时发布、scheduler 激活、Shop/Technician/Service/Announcement/AffiliateTask 全目标解析及 `claimable` 任务动作由第 5 节真实数据库 checker 完整执行。浏览器自动化无法可靠驱动 Chromium 原生 `datetime-local` 分段控件，因此没有把仅改变 DOM 值冒充为浏览器定时发布证据。
+8. 只读验收使用已有平台身份账号，通过正式“账号管理”临时把角色从 `operator` 改为 `viewer`；页面可读取 `已发布 v3`，写入控件不可见，同时同一账号对正式 API 的读取为 HTTP 200、创建草稿和发布均为 HTTP 403 / code `40301`。验收后已通过正式界面恢复 `operator` 角色。为确认流程曾创建的临时普通账号也已通过正式界面软删除，没有留下额外可登录账号。
+9. 人为停止 backend 后，在保持用户端会话的同一 SPA 中离开再返回首页：轮播区域显示“轮播内容读取失败 / 重试”，搜索、推荐内容和底部导航仍可用，没有进入 NeeDo root recovery page。重启 backend 后重试成功且轮播恢复。
+10. 清洁页面重新检查用户首页、真实 Service 详情、联盟首页、联盟公告详情及运营轮播编辑器时，相关 console warning/error 都为 0。验收最初在 Service 详情发现 `Tokyo` 服务区域与标签重复导致 React duplicate-key error；已新增 `buildServiceTagLabels` 去重和回归测试，修复后重新打开详情页确认 console 为 0。
 
 ## 8. 回滚与延期范围
 

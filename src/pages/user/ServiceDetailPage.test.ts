@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
 import { coreReadApi, coreReadIdFromRoute } from "../../features/core-read/api";
+import { buildServiceTagLabels } from "./ServiceDetailPage";
 import serviceDetailSource from "./ServiceDetailPage.tsx?raw";
 
 vi.mock("../../api/httpClient", () => ({
@@ -37,5 +38,13 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(serviceDetailSource).toContain("if (!apiId)");
     expect(serviceDetailSource).toContain("serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null");
     expect(serviceDetailSource).toContain("服务链接不可用");
+  });
+
+  it("deduplicates overlapping service areas and tags before rendering keyed chips", () => {
+    expect(buildServiceTagLabels(["Tokyo", "Minato"], ["Tokyo", "cleaning"])).toEqual([
+      "Tokyo",
+      "Minato",
+      "cleaning"
+    ]);
   });
 });
