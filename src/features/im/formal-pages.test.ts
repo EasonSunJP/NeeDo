@@ -27,6 +27,8 @@ describe("formal IM routes", () => {
     );
     expect(pages).toContain("store.organizationContacts !== undefined");
     expect(pages).toContain('contact.source === "merchant_technician_profile"');
+    expect(pages).toContain('`/merchant/staff/${encodeURIComponent(user.entityId)}`');
+    expect(pages).toContain("avatarTo={contactInfoTarget}");
   });
 
   it("routes every authenticated mode through the original rich pages", () => {

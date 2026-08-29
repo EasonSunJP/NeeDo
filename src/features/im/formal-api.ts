@@ -529,11 +529,11 @@ function buildBootstrap(
       userMap.set(String(participant.userId), toImUser(participant));
     });
   });
-  organizationTechnicians?.forEach((technician) => {
-    userMap.set(String(technician.userId), toOrganizationUser(technician));
-  });
   contacts.forEach((contact) => {
     userMap.set(String(contact.contactUserId), toImUser(contact.contactUser));
+  });
+  organizationTechnicians?.forEach((technician) => {
+    userMap.set(String(technician.userId), toOrganizationUser(technician));
   });
   friendRequests.forEach((friendRequest) => {
     [friendRequest.requesterUserId, friendRequest.targetUserId].forEach(

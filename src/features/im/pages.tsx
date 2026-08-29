@@ -3863,13 +3863,13 @@ export function ImOrganizationContactsPage() {
           <div className="overflow-hidden rounded-[24px] bg-[color:var(--client-surface)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)]">
             {contacts.map((contact) => {
               const user = store.usersById[contact.targetUserId];
-              const contactInfoTarget = user && contact.source === "merchant_technician_profile"
-                ? resolveImProfilePath(scope, user)
+              const contactInfoTarget = user && contact.source === "merchant_technician_profile" && scope === "merchant" && user.entityId
+                ? `/merchant/staff/${encodeURIComponent(user.entityId)}`
                 : getContactInfoSettingsTarget(config, contact);
 
               return user ? (
                 <ContactRow
-                  avatarTo={resolveImProfilePath(scope, user)}
+                  avatarTo={contactInfoTarget}
                   caption={buildOrganizationStaffCaption(user, contact, entityStore)}
                   contact={contact}
                   key={contact.id}

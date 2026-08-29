@@ -54,6 +54,17 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(staffDetailSource).toContain('<div className="space-y-3">');
   });
 
+  it("hydrates a directly opened staff detail from the formal merchant API", () => {
+    const staffDetailSource = merchantSource.slice(
+      merchantSource.indexOf("export function MerchantStaffDetailRoutePage"),
+      merchantSource.indexOf("function MerchantOrdersHeader")
+    );
+
+    expect(staffDetailSource).toContain('backofficeRealDataApi.technician("merchant-admin", technicianApiId)');
+    expect(staffDetailSource).toContain("<FormalTechnicianDetailPanel detail={formalDetail} />");
+    expect(staffDetailSource).toContain("正在读取员工资料");
+  });
+
   it("adds the floating privacy menu to the merchant service card only", () => {
     expect(merchantSource).toContain('{ label: "服务展示", value: "service" }');
     expect(merchantSource).toContain('{ label: "数据中心", value: "data" }');

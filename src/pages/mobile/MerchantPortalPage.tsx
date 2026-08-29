@@ -2,7 +2,12 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
-import { backofficeRealDataApi, type BackofficeTechnicianPayload } from "../../api/backofficeRealData";
+import {
+  backofficeRealDataApi,
+  type BackofficeTechnicianDetailPayload,
+  type BackofficeTechnicianPayload
+} from "../../api/backofficeRealData";
+import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
 import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import {
@@ -1074,8 +1079,38 @@ export function MerchantStaffDetailRoutePage() {
   const { staffId } = useParams();
   const navigate = useNavigate();
   const { technicians } = useEntityStore();
-  const technician = technicians.find((tech) => tech.id === staffId);
-  const displayName = technician ? (technician.nickname ? `${technician.nickname} / ${technician.name}` : technician.name) : "员工详情";
+  const entityTechnician = technicians.find((tech) => tech.id === staffId);
+  const technicianApiId = staffId ? getMerchantTechnicianApiId(staffId) : null;
+  const [formalDetail, setFormalDetail] = useState<BackofficeTechnicianDetailPayload | null>(null);
+  const [formalDetailStatus, setFormalDetailStatus] = useState<"error" | "idle" | "loading" | "ready">("idle");
+  const technician = technicianApiId === null ? entityTechnician : undefined;
+
+  useEffect(() => {
+    if (technicianApiId === null) {
+      setFormalDetailStatus(entityTechnician ? "ready" : "error");
+      return undefined;
+    }
+
+    let active = true;
+    setFormalDetailStatus("loading");
+    setFormalDetail(null);
+    backofficeRealDataApi.technician("merchant-admin", technicianApiId)
+      .then((detail) => {
+        if (!active) return;
+        setFormalDetail(detail);
+        setFormalDetailStatus("ready");
+      })
+      .catch(() => {
+        if (!active) return;
+        setFormalDetailStatus("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [entityTechnician, technicianApiId]);
+
+  const displayName = formalDetail?.displayName ?? (technician ? (technician.nickname ? `${technician.nickname} / ${technician.name}` : technician.name) : "员工详情");
   const closePage = () => {
     if (typeof window !== "undefined") {
       const historyState = window.history.state as { idx?: number } | null;
@@ -1094,11 +1129,13 @@ export function MerchantStaffDetailRoutePage() {
       <MobileFullscreenHeader
         onBack={closePage}
         showSpacer={false}
-        subtitle={technician ? "员工详细信息卡" : "员工资料不可用"}
+        subtitle={formalDetail || technician ? "员工详细信息卡" : formalDetailStatus === "loading" ? "正在读取员工资料" : "员工资料不可用"}
         title={displayName}
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+124px)] pt-[calc(env(safe-area-inset-top)+86px)]">
-        {technician ? (
+        {formalDetail ? (
+          <FormalTechnicianDetailPanel detail={formalDetail} />
+        ) : technician ? (
           <div className="space-y-3">
             <SocialProfileMiniCard
               showAction={false}
@@ -1107,6 +1144,11 @@ export function MerchantStaffDetailRoutePage() {
             />
             <TechnicianProfilePanel context="merchant" showSummaryCard={false} technician={technician} />
           </div>
+        ) : formalDetailStatus === "loading" ? (
+          <section className="rounded-[24px] border border-line bg-white p-5 text-center shadow-panel">
+            <h2 className="text-base font-black text-ink">正在读取员工资料</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-ink/55">正在从店铺正式员工档案加载，请稍候。</p>
+          </section>
         ) : (
           <section className="rounded-[24px] border border-line bg-white p-5 text-center shadow-panel">
             <h2 className="text-base font-black text-ink">员工不存在</h2>

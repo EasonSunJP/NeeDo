@@ -258,8 +258,24 @@ describe("formal IM adapter", () => {
       page_size: 100,
     });
     vi.spyOn(realtimeApi, "listContacts").mockResolvedValue({
-      list: [],
-      total: 0,
+      list: [
+        {
+          id: 41,
+          ownerUserId: 16,
+          contactUserId: 201,
+          contactUser: {
+            userId: 201,
+            needoId: "u0000000201",
+            username: "legacy-contact-name",
+            avatarUrl: null,
+          },
+          nickname: null,
+          source: "simulation_seed",
+          isBlocked: false,
+          createdAt: now,
+        },
+      ],
+      total: 1,
       page: 1,
       page_size: 100,
     });
@@ -329,7 +345,7 @@ describe("formal IM adapter", () => {
       pageSize: 100,
       status: "published",
     });
-    expect(bootstrap.contacts).toEqual([]);
+    expect(bootstrap.contacts).toHaveLength(1);
     expect(bootstrap.organizationContacts).toEqual([
       expect.objectContaining({
         targetUserId: "201",
