@@ -58,6 +58,7 @@ export type RealtimeMessageReaction = {
 
 export type RealtimeConversation = {
   createdAt: string;
+  directPeer?: RealtimeParticipant | null;
   id: number;
   lastMessage: RealtimeMessage | null;
   participants: RealtimeParticipant[];

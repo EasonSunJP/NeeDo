@@ -122,6 +122,82 @@ describe("formal IM adapter", () => {
     );
   });
 
+  it("keeps a deleted friendship peer as the title of the retained direct history", async () => {
+    vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
+      list: [
+        {
+          id: 91,
+          type: "direct",
+          title: null,
+          participants: [
+            {
+              userId: 100,
+              needoId: "u0000000100",
+              username: "保留历史的一方",
+              avatarUrl: null,
+            },
+          ],
+          directPeer: {
+            userId: 201,
+            needoId: "u0000000201",
+            username: "已删除好友关系的一方",
+            avatarUrl: "/avatars/former-peer.png",
+          },
+          lastMessage: {
+            id: 501,
+            conversationId: 91,
+            senderUserId: 201,
+            type: "text",
+            content: "删除前的历史消息",
+            metadata: null,
+            createdAt: now,
+          },
+          unreadCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listContacts").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listFriendRequests").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+
+    const bootstrap = await createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "保留历史的一方",
+        avatarUrl: null,
+      },
+      scope: "user",
+    }).bootstrap();
+
+    expect(bootstrap.conversations[0]).toMatchObject({
+      id: "91",
+      type: "single",
+      contactUserId: "201",
+      title: "已删除好友关系的一方",
+      avatar: "/avatars/former-peer.png",
+      lastMessagePreview: "删除前的历史消息",
+    });
+    expect(bootstrap.users.find((user) => user.id === "201")).toMatchObject({
+      nickname: "已删除好友关系的一方",
+      avatar: "/avatars/former-peer.png",
+    });
+  });
+
   it("maps rich formal last messages to safe conversation previews", async () => {
     const participants = [
       {

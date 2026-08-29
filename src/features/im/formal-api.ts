@@ -378,8 +378,10 @@ function getOtherParticipant(
   conversation: RealtimeConversation,
   currentUserId: number,
 ) {
-  return conversation.participants.find(
-    (participant) => participant.userId !== currentUserId,
+  return (
+    conversation.participants.find(
+      (participant) => participant.userId !== currentUserId,
+    ) ?? conversation.directPeer ?? undefined
   );
 }
 
@@ -402,8 +404,11 @@ function toConversation(
     type: isDirect ? "single" : "group",
     title,
     avatar: isDirect ? (otherParticipant?.avatarUrl ?? "") : "",
-    memberIds: conversation.participants.map((participant) =>
-      String(participant.userId),
+    memberIds: Array.from(
+      new Set([
+        ...conversation.participants.map((participant) => String(participant.userId)),
+        ...(isDirect && otherParticipant ? [String(otherParticipant.userId)] : []),
+      ]),
     ),
     contactUserId:
       isDirect && otherParticipant
@@ -512,6 +517,12 @@ function buildBootstrap(
     conversation.participants.forEach((participant) => {
       userMap.set(String(participant.userId), toImUser(participant));
     });
+    if (conversation.directPeer) {
+      userMap.set(
+        String(conversation.directPeer.userId),
+        toImUser(conversation.directPeer),
+      );
+    }
   });
   contacts.forEach((contact) => {
     userMap.set(String(contact.contactUserId), toImUser(contact.contactUser));
@@ -608,7 +619,10 @@ export function createFormalImApi({
 
   const getConversation = async (conversationId: string) => {
     const conversation = await findConversation(conversationId);
-    const users = conversation.participants.map(toImUser);
+    const users = [
+      ...conversation.participants,
+      ...(conversation.directPeer ? [conversation.directPeer] : []),
+    ].map(toImUser);
 
     return {
       conversation: toConversation(conversation, currentUser.id),
@@ -760,7 +774,10 @@ export function createFormalImApi({
           toConversation(conversation, currentUser.id),
         ),
         users: conversations.flatMap((conversation) =>
-          conversation.participants.map(toImUser),
+          [
+            ...conversation.participants,
+            ...(conversation.directPeer ? [conversation.directPeer] : []),
+          ].map(toImUser),
         ),
       };
     },

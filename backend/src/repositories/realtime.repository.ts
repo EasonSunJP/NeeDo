@@ -45,6 +45,7 @@ export interface ConversationPayload {
   type: ConversationTypePayload;
   title: string | null;
   participants: ParticipantPayload[];
+  directPeer?: ParticipantPayload | null;
   lastMessage: MessagePayload | null;
   unreadCount: number;
   isPinned: boolean;
@@ -1080,7 +1081,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       include: this.conversationInclude(userId)
     });
 
-    return conversation ? this.mapConversation(conversation, userId) : null;
+    if (!conversation) return null;
+    const directPeers = await this.loadMissingDirectPeers([conversation], userId);
+    return this.mapConversation(conversation, userId, directPeers.get(conversation.id));
   }
 
   public async listConversations(
@@ -1109,8 +1112,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       this.client.conversation.count({ where })
     ]);
 
+    const directPeers = await this.loadMissingDirectPeers(list, userId);
+
     return buildPaginatedResponse(
-      list.map((conversation) => this.mapConversation(conversation, userId)),
+      list.map((conversation) =>
+        this.mapConversation(conversation, userId, directPeers.get(conversation.id))
+      ),
       total,
       pagination
     );
@@ -3397,11 +3404,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   private mapConversation(
     conversation: ConversationRecord,
-    viewerUserId: number
+    viewerUserId: number,
+    missingDirectPeer?: ParticipantPayload
   ): ConversationPayload {
     const viewer = conversation.participants.find(
       (participant) => participant.userId === viewerUserId
     );
+    const activeDirectPeer =
+      conversation.type === ConversationType.DIRECT
+        ? conversation.participants.find((participant) => participant.userId !== viewerUserId)
+        : undefined;
 
     return {
       id: conversation.id,
@@ -3410,6 +3422,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       participants: conversation.participants.map((participant) =>
         this.mapParticipant(participant.user, participant.role)
       ),
+      directPeer:
+        conversation.type === ConversationType.DIRECT
+          ? activeDirectPeer
+            ? this.mapParticipant(activeDirectPeer.user, activeDirectPeer.role)
+            : (missingDirectPeer ?? null)
+          : null,
       lastMessage: conversation.messages[0]
         && conversation.messages[0].id > (viewer?.clearedThroughMessageId ?? 0)
         && conversation.messages[0].createdAt.getTime() >= (viewer?.createdAt.getTime() ?? 0)
@@ -3428,6 +3446,62 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
     };
+  }
+
+  private getMissingDirectPeerUserId(
+    conversation: ConversationRecord,
+    viewerUserId: number
+  ): number | null {
+    if (
+      conversation.type !== ConversationType.DIRECT ||
+      conversation.participants.some((participant) => participant.userId !== viewerUserId) ||
+      !conversation.friendshipPairKey
+    ) {
+      return null;
+    }
+
+    const pairUserIds = conversation.friendshipPairKey
+      .split(":")
+      .map((value) => Number(value));
+    if (
+      pairUserIds.length !== 2 ||
+      pairUserIds.some((userId) => !Number.isInteger(userId) || userId <= 0) ||
+      !pairUserIds.includes(viewerUserId)
+    ) {
+      return null;
+    }
+
+    return pairUserIds.find((userId) => userId !== viewerUserId) ?? null;
+  }
+
+  private async loadMissingDirectPeers(
+    conversations: ConversationRecord[],
+    viewerUserId: number
+  ): Promise<Map<number, ParticipantPayload>> {
+    const missingPeerIdByConversationId = new Map<number, number>();
+    for (const conversation of conversations) {
+      const peerUserId = this.getMissingDirectPeerUserId(conversation, viewerUserId);
+      if (peerUserId) missingPeerIdByConversationId.set(conversation.id, peerUserId);
+    }
+    if (missingPeerIdByConversationId.size === 0) return new Map();
+
+    const users = await this.client.user.findMany({
+      where: {
+        id: { in: Array.from(new Set(missingPeerIdByConversationId.values())) },
+        isActive: true,
+        deletedAt: null
+      },
+      select: { id: true, needoId: true, username: true, avatarUrl: true }
+    });
+    const participantByUserId = new Map(
+      users.map((user) => [user.id, this.mapParticipant(user)] as const)
+    );
+    const peerByConversationId = new Map<number, ParticipantPayload>();
+    for (const [conversationId, peerUserId] of missingPeerIdByConversationId) {
+      const participant = participantByUserId.get(peerUserId);
+      if (participant) peerByConversationId.set(conversationId, participant);
+    }
+    return peerByConversationId;
   }
 
   private mapMessage(

@@ -1047,6 +1047,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: { $ref: "#/components/schemas/RealtimeParticipant" }
           },
+          directPeer: {
+            anyOf: [{ $ref: "#/components/schemas/RealtimeParticipant" }, { type: "null" }],
+            description:
+              "Read-only display peer for a direct conversation whose former contact removed their own participant record. This does not grant membership or send permission."
+          },
           lastMessage: {
             anyOf: [{ $ref: "#/components/schemas/RealtimeMessage" }, { type: "null" }]
           },
