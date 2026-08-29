@@ -17,6 +17,9 @@ const taskRecord = (overrides: Record<string, unknown> = {}) => ({
   allocatedBudgetNdp: 0,
   settledBudgetNdp: 0,
   releasedBudgetNdp: 0,
+  platformFeeReserveNdp: 0,
+  settledPlatformFeeNdp: 0,
+  releasedPlatformFeeNdp: 0,
   endedAt: null,
   ...overrides
 });
@@ -26,9 +29,13 @@ const reservationRecord = (overrides: Record<string, unknown> = {}) => ({
   taskId: 71,
   walletId: 501,
   totalFrozenNdp: 1_000,
+  commissionFrozenNdp: 1_000,
+  platformFeeFrozenNdp: 0,
   allocatedNdp: 0,
   capturedNdp: 0,
+  platformFeeCapturedNdp: 0,
   releasedNdp: 0,
+  platformFeeReleasedNdp: 0,
   status: "ACTIVE",
   idempotencyKey: "affiliate-task:71:reservation",
   frozenAt: new Date("2026-09-01T00:00:00.000Z"),
@@ -111,10 +118,15 @@ describe("AffiliateTaskExpiryRepository", () => {
     expect(query).toContain("task.deleted_at IS NULL");
     expect(query).toContain("reservation.deleted_at IS NULL");
     expect(query).toContain("task.id >");
-    expect(query).toMatch(/task\.status IN \('scheduled', 'active', 'paused', 'budget_exhausted'\)/);
+    expect(query).toMatch(
+      /task\.status IN \('scheduled', 'active', 'paused', 'budget_exhausted'\)/
+    );
     expect(query).toContain("task.status = 'ended'");
     expect(query).toContain(
-      "reservation.total_frozen_ndp > reservation.allocated_ndp + reservation.captured_ndp + reservation.released_ndp"
+      "reservation.commission_frozen_ndp > reservation.allocated_ndp + reservation.captured_ndp + reservation.released_ndp"
+    );
+    expect(query).toContain(
+      "reservation.platform_fee_frozen_ndp > reservation.platform_fee_captured_ndp + reservation.platform_fee_released_ndp"
     );
     expect(query).toContain("ORDER BY task.id ASC");
     expect(query).toContain("LIMIT");
@@ -174,7 +186,10 @@ describe("AffiliateTaskExpiryRepository", () => {
     const updateReservation = jest.fn().mockResolvedValue({ count: 1 });
     const repository = new AffiliateTaskExpiryRepository({
       $queryRaw: queryRaw,
-      affiliateTask: { findFirst: jest.fn().mockResolvedValue(taskRecord()), updateMany: updateTask },
+      affiliateTask: {
+        findFirst: jest.fn().mockResolvedValue(taskRecord()),
+        updateMany: updateTask
+      },
       affiliateBudgetReservation: {
         findFirst: jest.fn().mockResolvedValue(reservationRecord()),
         updateMany: updateReservation
@@ -188,6 +203,7 @@ describe("AffiliateTaskExpiryRepository", () => {
       taskId: 71,
       reservationId: 13,
       releasedAfterNdp: 1_000,
+      platformFeeReleasedAfterNdp: 0,
       reservationStatus: "released",
       releasedAt: now
     });
@@ -209,7 +225,10 @@ describe("AffiliateTaskExpiryRepository", () => {
       2,
       expect.objectContaining({
         where: expect.objectContaining({ status: "ENDED", releasedBudgetNdp: 0 }),
-        data: { releasedBudgetNdp: { increment: 1_000 } }
+        data: {
+          releasedBudgetNdp: { increment: 1_000 },
+          releasedPlatformFeeNdp: { increment: 0 }
+        }
       })
     );
     expect(updateReservation).toHaveBeenCalledWith(
@@ -219,13 +238,18 @@ describe("AffiliateTaskExpiryRepository", () => {
           taskId: 71,
           status: "ACTIVE",
           totalFrozenNdp: 1_000,
+          commissionFrozenNdp: 1_000,
+          platformFeeFrozenNdp: 0,
           allocatedNdp: 0,
           capturedNdp: 0,
+          platformFeeCapturedNdp: 0,
           releasedNdp: 0,
+          platformFeeReleasedNdp: 0,
           deletedAt: null
         }),
         data: {
           releasedNdp: { increment: 1_000 },
+          platformFeeReleasedNdp: { increment: 0 },
           status: "RELEASED",
           releasedAt: now
         }
@@ -242,14 +266,21 @@ describe("AffiliateTaskExpiryRepository", () => {
     const repository = new AffiliateTaskExpiryRepository({
       $queryRaw: queryRaw,
       affiliateTask: {
-        findFirst: jest.fn().mockResolvedValue(taskRecord({ status: "ENDED", releasedBudgetNdp: 100 })),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(taskRecord({ status: "ENDED", releasedBudgetNdp: 100 })),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       affiliateBudgetReservation: {
         findFirst: jest
           .fn()
           .mockResolvedValue(
-            reservationRecord({ allocatedNdp: 300, capturedNdp: 100, releasedNdp: 100, status: "EXHAUSTED" })
+            reservationRecord({
+              allocatedNdp: 300,
+              capturedNdp: 100,
+              releasedNdp: 100,
+              status: "EXHAUSTED"
+            })
           ),
         updateMany: updateReservation
       }
@@ -261,13 +292,19 @@ describe("AffiliateTaskExpiryRepository", () => {
       taskId: 71,
       reservationId: 13,
       releasedAfterNdp: 600,
+      platformFeeReleasedAfterNdp: 0,
       reservationStatus: "exhausted",
       releasedAt: null
     });
 
     expect(updateReservation).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { releasedNdp: { increment: 500 }, status: "EXHAUSTED", releasedAt: null }
+        data: {
+          releasedNdp: { increment: 500 },
+          platformFeeReleasedNdp: { increment: 0 },
+          status: "EXHAUSTED",
+          releasedAt: null
+        }
       })
     );
   });
@@ -342,6 +379,7 @@ describe("AffiliateTaskExpiryRepository", () => {
         taskId: 71,
         reservationId: 13,
         releasedAfterNdp: 1_000,
+        platformFeeReleasedAfterNdp: 0,
         reservationStatus: "released",
         releasedAt: now
       })

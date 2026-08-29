@@ -29,6 +29,9 @@ export interface AffiliateTaskExpiryTaskRecord {
   allocatedBudgetNdp: number;
   settledBudgetNdp: number;
   releasedBudgetNdp: number;
+  platformFeeReserveNdp: number;
+  settledPlatformFeeNdp: number;
+  releasedPlatformFeeNdp: number;
   endedAt: Date | null;
 }
 
@@ -55,6 +58,7 @@ export interface AffiliateTaskExpiryRepositoryPort {
     taskId: number;
     reservationId: number;
     releasedAfterNdp: number;
+    platformFeeReleasedAfterNdp: number;
     reservationStatus: AffiliateBudgetStatus;
     releasedAt: Date | null;
   }) => Promise<void>;
@@ -270,9 +274,22 @@ export class AffiliateTaskExpiryService {
         return this.noop();
       }
 
-      const releaseAmount = calculateAffiliateUnallocatedBudget(reservation);
-      const releasedAfterNdp = reservation.releasedNdp + releaseAmount;
-      const reservationStatus = this.resolveReservationStatus(reservation, releasedAfterNdp);
+      const commissionReleaseNdp = calculateAffiliateUnallocatedBudget({
+        totalFrozenNdp: reservation.commissionFrozenNdp,
+        allocatedNdp: reservation.allocatedNdp,
+        capturedNdp: reservation.capturedNdp,
+        releasedNdp: reservation.releasedNdp
+      });
+      const platformFeeReleaseNdp = this.calculateUncapturedPlatformFee(reservation);
+      const releaseAmount = commissionReleaseNdp + platformFeeReleaseNdp;
+      const commissionReleasedAfterNdp = reservation.releasedNdp + commissionReleaseNdp;
+      const platformFeeReleasedAfterNdp =
+        reservation.platformFeeReleasedNdp + platformFeeReleaseNdp;
+      const reservationStatus = this.resolveReservationStatus(
+        reservation,
+        commissionReleasedAfterNdp,
+        platformFeeReleasedAfterNdp
+      );
 
       if (releaseAmount === 0) {
         if (
@@ -282,7 +299,8 @@ export class AffiliateTaskExpiryService {
           await repository.recordBudgetRelease({
             taskId: task.id,
             reservationId: reservation.id,
-            releasedAfterNdp,
+            releasedAfterNdp: commissionReleasedAfterNdp,
+            platformFeeReleasedAfterNdp,
             reservationStatus,
             releasedAt: reservationStatus === "released" ? now : reservation.releasedAt
           });
@@ -294,7 +312,8 @@ export class AffiliateTaskExpiryService {
         task,
         reservation,
         releaseAmount,
-        releasedAfterNdp
+        commissionReleasedAfterNdp,
+        platformFeeReleasedAfterNdp
       );
       const ledgerResult = await this.ledger.releaseAffiliateTaskBudget(ledgerInput, {
         transactionClient
@@ -308,7 +327,8 @@ export class AffiliateTaskExpiryService {
       await repository.recordBudgetRelease({
         taskId: task.id,
         reservationId: reservation.id,
-        releasedAfterNdp,
+        releasedAfterNdp: commissionReleasedAfterNdp,
+        platformFeeReleasedAfterNdp,
         reservationStatus,
         releasedAt: reservationStatus === "released" ? now : reservation.releasedAt
       });
@@ -320,8 +340,12 @@ export class AffiliateTaskExpiryService {
           taskId: task.id,
           reservationId: reservation.id,
           releaseAmountNdp: releaseAmount,
+          commissionReleaseNdp,
+          platformFeeReleaseNdp,
           releasedBeforeNdp: reservation.releasedNdp,
-          releasedAfterNdp,
+          releasedAfterNdp: commissionReleasedAfterNdp,
+          platformFeeReleasedBeforeNdp: reservation.platformFeeReleasedNdp,
+          platformFeeReleasedAfterNdp,
           allocatedNdp: reservation.allocatedNdp,
           capturedNdp: reservation.capturedNdp,
           ledgerTransactionId: ledgerResult.transaction.id
@@ -346,7 +370,12 @@ export class AffiliateTaskExpiryService {
       startsAt: task.taskStartsAt,
       endsAt: task.taskEndsAt,
       rewardNdpPerCompletedOrder: task.rewardNdpPerCompletedOrder,
-      budget: reservation
+      budget: {
+        totalFrozenNdp: reservation.commissionFrozenNdp,
+        allocatedNdp: reservation.allocatedNdp,
+        capturedNdp: reservation.capturedNdp,
+        releasedNdp: reservation.releasedNdp
+      }
     });
     if (!transition.ok || transition.status !== "ended") {
       return false;
@@ -376,31 +405,50 @@ export class AffiliateTaskExpiryService {
       task.allocatedBudgetNdp,
       task.settledBudgetNdp,
       task.releasedBudgetNdp,
+      task.platformFeeReserveNdp,
+      task.settledPlatformFeeNdp,
+      task.releasedPlatformFeeNdp,
       reservation.totalFrozenNdp,
+      reservation.commissionFrozenNdp,
+      reservation.platformFeeFrozenNdp,
       reservation.allocatedNdp,
       reservation.capturedNdp,
-      reservation.releasedNdp
+      reservation.platformFeeCapturedNdp,
+      reservation.releasedNdp,
+      reservation.platformFeeReleasedNdp
     ];
     if (!counters.every(isNonNegativeSafeInteger)) {
       throw new Error("error.affiliate.invalid_budget_snapshot");
     }
     if (
-      task.totalBudgetNdp !== reservation.totalFrozenNdp ||
+      task.totalBudgetNdp !== reservation.commissionFrozenNdp ||
       task.reservedBudgetNdp !== reservation.totalFrozenNdp ||
       task.allocatedBudgetNdp !== reservation.allocatedNdp ||
       task.settledBudgetNdp !== reservation.capturedNdp ||
-      task.releasedBudgetNdp !== reservation.releasedNdp
+      task.releasedBudgetNdp !== reservation.releasedNdp ||
+      task.platformFeeReserveNdp !== reservation.platformFeeFrozenNdp ||
+      task.settledPlatformFeeNdp !== reservation.platformFeeCapturedNdp ||
+      task.releasedPlatformFeeNdp !== reservation.platformFeeReleasedNdp ||
+      reservation.totalFrozenNdp !==
+        reservation.commissionFrozenNdp + reservation.platformFeeFrozenNdp
     ) {
       throw new Error("error.affiliate.invalid_budget_snapshot");
     }
-    calculateAffiliateUnallocatedBudget(reservation);
+    calculateAffiliateUnallocatedBudget({
+      totalFrozenNdp: reservation.commissionFrozenNdp,
+      allocatedNdp: reservation.allocatedNdp,
+      capturedNdp: reservation.capturedNdp,
+      releasedNdp: reservation.releasedNdp
+    });
+    this.calculateUncapturedPlatformFee(reservation);
   }
 
   private releaseLedgerInput(
     task: AffiliateTaskExpiryTaskRecord,
     reservation: AffiliateBudgetReservationRecord,
     amountNdp: number,
-    releasedAfterNdp: number
+    releasedAfterNdp: number,
+    platformFeeReleasedAfterNdp: number
   ): ReleaseAffiliateTaskBudgetInput {
     return {
       taskId: task.id,
@@ -408,7 +456,7 @@ export class AffiliateTaskExpiryService {
       ownerType: task.publisherType,
       ownerId: this.publisherOwnerId(task),
       amountNdp,
-      idempotencyKey: `affiliate-task:${task.id}:expiry-release:to:${releasedAfterNdp}`,
+      idempotencyKey: `affiliate-task:${task.id}:expiry-release:commission:${releasedAfterNdp}:fee:${platformFeeReleasedAfterNdp}`,
       actorUserId: null
     };
   }
@@ -426,11 +474,14 @@ export class AffiliateTaskExpiryService {
 
   private resolveReservationStatus(
     reservation: AffiliateBudgetReservationRecord,
-    releasedAfterNdp: number
+    releasedAfterNdp: number,
+    platformFeeReleasedAfterNdp: number
   ): AffiliateBudgetStatus {
     if (
       reservation.allocatedNdp === 0 &&
-      reservation.capturedNdp + releasedAfterNdp === reservation.totalFrozenNdp
+      reservation.capturedNdp + releasedAfterNdp === reservation.commissionFrozenNdp &&
+      reservation.platformFeeCapturedNdp + platformFeeReleasedAfterNdp ===
+        reservation.platformFeeFrozenNdp
     ) {
       return "released";
     }
@@ -438,6 +489,22 @@ export class AffiliateTaskExpiryService {
       return reservation.status;
     }
     throw new Error("error.affiliate.invalid_budget_snapshot");
+  }
+
+  private calculateUncapturedPlatformFee(reservation: AffiliateBudgetReservationRecord): number {
+    const values = [
+      reservation.platformFeeFrozenNdp,
+      reservation.platformFeeCapturedNdp,
+      reservation.platformFeeReleasedNdp
+    ];
+    const remaining =
+      reservation.platformFeeFrozenNdp -
+      reservation.platformFeeCapturedNdp -
+      reservation.platformFeeReleasedNdp;
+    if (!values.every(isNonNegativeSafeInteger) || remaining < 0) {
+      throw new Error("error.affiliate.invalid_budget_snapshot");
+    }
+    return remaining;
   }
 
   private validateInput(input: AffiliateTaskExpiryInput): void {

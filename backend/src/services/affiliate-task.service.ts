@@ -13,6 +13,7 @@ import {
   type AffiliateTaskStatus
 } from "./affiliate-state-machine.service";
 import type { AuthenticatedAccessContext } from "./auth.service";
+import type { AffiliateTaskFeeSnapshot } from "./affiliate-platform-fee.service";
 import type {
   AffiliateBudgetLedgerResult,
   FreezeAffiliateTaskBudgetInput,
@@ -69,9 +70,13 @@ export interface AffiliateBudgetReservationRecord {
   taskId: number;
   walletId: number;
   totalFrozenNdp: number;
+  commissionFrozenNdp: number;
+  platformFeeFrozenNdp: number;
   allocatedNdp: number;
   capturedNdp: number;
+  platformFeeCapturedNdp: number;
   releasedNdp: number;
+  platformFeeReleasedNdp: number;
   status: AffiliateBudgetStatus;
   idempotencyKey: string;
   frozenAt: Date;
@@ -163,6 +168,11 @@ export interface AffiliateTaskRecord extends AffiliateTaskPersistenceInput {
   allocatedBudgetNdp: number;
   settledBudgetNdp: number;
   releasedBudgetNdp: number;
+  platformFeeRuleId: number | null;
+  platformFeeBps: number;
+  platformFeeReserveNdp: number;
+  settledPlatformFeeNdp: number;
+  releasedPlatformFeeNdp: number;
   reviewedById: number | null;
   reviewedAt: Date | null;
   rejectionReason: string | null;
@@ -195,6 +205,14 @@ export interface AffiliateBudgetLedgerPort {
     input: ReleaseAffiliateTaskBudgetInput,
     context?: LedgerMutationContext
   ) => Promise<AffiliateBudgetLedgerResult>;
+}
+
+export interface AffiliateTaskPlatformFeePort {
+  resolveForTask: (
+    shopIds: number[],
+    effectiveAt: Date,
+    transactionClient?: unknown
+  ) => Promise<AffiliateTaskFeeSnapshot>;
 }
 
 export interface AffiliateTaskRepositoryPort {
@@ -245,11 +263,16 @@ export interface AffiliateTaskRepositoryPort {
     taskId: number;
     submittedAt: Date;
     reservedBudgetNdp: number;
+    platformFeeRuleId: number;
+    platformFeeBps: number;
+    platformFeeReserveNdp: number;
   }) => Promise<void>;
   createBudgetReservation: (input: {
     taskId: number;
     walletId: number;
     totalFrozenNdp: number;
+    commissionFrozenNdp: number;
+    platformFeeFrozenNdp: number;
     idempotencyKey: string;
   }) => Promise<AffiliateBudgetReservationRecord>;
   createBudgetTransactionLink: (input: {
@@ -272,10 +295,12 @@ export interface AffiliateTaskRepositoryPort {
     reviewedAt: Date;
     rejectionReason: string;
     releasedBudgetNdp: number;
+    releasedPlatformFeeNdp: number;
   }) => Promise<void>;
   releaseBudgetReservation: (input: {
     reservationId: number;
     releasedNdp: number;
+    platformFeeReleasedNdp: number;
     releasedAt: Date;
   }) => Promise<void>;
   createAuditLog: (input: {
@@ -289,6 +314,7 @@ export interface AffiliateTaskRepositoryPort {
 interface AffiliateTaskServiceOptions {
   now?: () => Date;
   createTaskCode?: () => string;
+  platformFeeService?: AffiliateTaskPlatformFeePort;
 }
 
 interface ResolvedTaskScope {
@@ -303,6 +329,7 @@ const MAX_PAGE_SIZE = 100;
 export class AffiliateTaskService {
   private readonly now: () => Date;
   private readonly createTaskCode: () => string;
+  private readonly platformFeeService?: AffiliateTaskPlatformFeePort;
 
   public constructor(
     private readonly repository: AffiliateTaskRepositoryPort,
@@ -311,6 +338,7 @@ export class AffiliateTaskService {
   ) {
     this.now = options.now ?? (() => new Date());
     this.createTaskCode = options.createTaskCode ?? (() => `AFF-${randomUUID()}`);
+    this.platformFeeService = options.platformFeeService;
   }
 
   public createDraft(
@@ -522,6 +550,20 @@ export class AffiliateTaskService {
       });
       await repository.replaceTaskScopeSnapshots({ taskId, ...scope });
 
+      const feeSnapshot = await this.requirePlatformFeeService().resolveForTask(
+        shopIds,
+        currentTime,
+        transactionClient
+      );
+      const platformFeeReserveNdp = this.calculatePlatformFeeReserve(
+        task.totalBudgetNdp,
+        feeSnapshot.feeBps
+      );
+      const grossReserveNdp = task.totalBudgetNdp + platformFeeReserveNdp;
+      if (!Number.isSafeInteger(grossReserveNdp)) {
+        throw this.validationError("error.affiliate.budget_invalid");
+      }
+
       const transition = transitionAffiliateTask(
         task.status,
         "submit",
@@ -542,7 +584,7 @@ export class AffiliateTaskService {
           taskId: task.id,
           ownerType: task.publisherType,
           ownerId: this.publisherOwnerId(task),
-          amountNdp: task.totalBudgetNdp,
+          amountNdp: grossReserveNdp,
           idempotencyKey: `affiliate-task:${task.id}:v${task.version}:freeze`,
           actorUserId: actor.userId
         },
@@ -551,19 +593,24 @@ export class AffiliateTaskService {
       const reservation = await repository.createBudgetReservation({
         taskId,
         walletId: ledgerResult.walletId,
-        totalFrozenNdp: task.totalBudgetNdp,
+        totalFrozenNdp: grossReserveNdp,
+        commissionFrozenNdp: task.totalBudgetNdp,
+        platformFeeFrozenNdp: platformFeeReserveNdp,
         idempotencyKey: reservationKey
       });
       await repository.createBudgetTransactionLink({
         reservationId: reservation.id,
         ledgerTransactionId: ledgerResult.transaction.id,
         kind: "freeze",
-        amountNdp: task.totalBudgetNdp
+        amountNdp: grossReserveNdp
       });
       await repository.markTaskSubmitted({
         taskId,
         submittedAt: currentTime,
-        reservedBudgetNdp: task.totalBudgetNdp
+        reservedBudgetNdp: grossReserveNdp,
+        platformFeeRuleId: feeSnapshot.ruleId,
+        platformFeeBps: feeSnapshot.feeBps,
+        platformFeeReserveNdp
       });
       await repository.createAuditLog({
         actorUserId: actor.userId,
@@ -572,7 +619,12 @@ export class AffiliateTaskService {
         metadata: {
           reservationId: reservation.id,
           ledgerTransactionId: ledgerResult.transaction.id,
-          totalBudgetNdp: task.totalBudgetNdp
+          commissionReserveNdp: task.totalBudgetNdp,
+          platformFeeReserveNdp,
+          grossReserveNdp,
+          platformFeeBps: feeSnapshot.feeBps,
+          platformFeeRuleId: feeSnapshot.ruleId,
+          platformFeeRuleIds: feeSnapshot.ruleIds
         }
       });
 
@@ -644,15 +696,20 @@ export class AffiliateTaskService {
       if (!reservation || reservation.status !== "active") {
         throw this.invalidStateError("error.affiliate.budget_reservation_invalid");
       }
-      const releaseAmount = calculateAffiliateUnallocatedBudget({
-        totalFrozenNdp: reservation.totalFrozenNdp,
+      const commissionReleaseNdp = calculateAffiliateUnallocatedBudget({
+        totalFrozenNdp: reservation.commissionFrozenNdp,
         allocatedNdp: reservation.allocatedNdp,
         capturedNdp: reservation.capturedNdp,
         releasedNdp: reservation.releasedNdp
       });
-      if (releaseAmount !== reservation.totalFrozenNdp) {
+      const platformFeeReleaseNdp = this.calculateUncapturedPlatformFee(reservation);
+      if (
+        commissionReleaseNdp !== reservation.commissionFrozenNdp ||
+        platformFeeReleaseNdp !== reservation.platformFeeFrozenNdp
+      ) {
         throw this.invalidStateError("error.affiliate.review_requires_unallocated_budget");
       }
+      const releaseAmount = commissionReleaseNdp + platformFeeReleaseNdp;
 
       const transition = transitionAffiliateTask(
         task.status,
@@ -684,7 +741,8 @@ export class AffiliateTaskService {
       });
       await repository.releaseBudgetReservation({
         reservationId: reservation.id,
-        releasedNdp: releaseAmount,
+        releasedNdp: commissionReleaseNdp,
+        platformFeeReleasedNdp: platformFeeReleaseNdp,
         releasedAt: reviewedAt
       });
       await repository.markTaskRejected({
@@ -692,7 +750,8 @@ export class AffiliateTaskService {
         reviewedById: actor.userId,
         reviewedAt,
         rejectionReason: reason,
-        releasedBudgetNdp: releaseAmount
+        releasedBudgetNdp: commissionReleaseNdp,
+        releasedPlatformFeeNdp: platformFeeReleaseNdp
       });
       await repository.createAuditLog({
         actorUserId: actor.userId,
@@ -700,7 +759,9 @@ export class AffiliateTaskService {
         taskId,
         metadata: {
           reason,
-          releasedBudgetNdp: releaseAmount,
+          releasedBudgetNdp: commissionReleaseNdp,
+          releasedPlatformFeeNdp: platformFeeReleaseNdp,
+          grossReleasedNdp: releaseAmount,
           ledgerTransactionId: ledgerResult.transaction.id
         }
       });
@@ -961,6 +1022,44 @@ export class AffiliateTaskService {
       rewardNdpPerCompletedOrder: task.rewardNdpPerCompletedOrder,
       budget
     };
+  }
+
+  private calculatePlatformFeeReserve(totalBudgetNdp: number, feeBps: number): number {
+    if (
+      !Number.isSafeInteger(totalBudgetNdp) ||
+      totalBudgetNdp < 0 ||
+      !Number.isSafeInteger(feeBps) ||
+      feeBps < 0 ||
+      feeBps > 10_000
+    ) {
+      throw this.validationError("error.affiliate.budget_invalid");
+    }
+    const reserve = Math.ceil((totalBudgetNdp * feeBps) / 10_000);
+    if (!Number.isSafeInteger(reserve)) {
+      throw this.validationError("error.affiliate.budget_invalid");
+    }
+    return reserve;
+  }
+
+  private calculateUncapturedPlatformFee(reservation: AffiliateBudgetReservationRecord): number {
+    const values = [
+      reservation.platformFeeFrozenNdp,
+      reservation.platformFeeCapturedNdp,
+      reservation.platformFeeReleasedNdp
+    ];
+    const remaining =
+      reservation.platformFeeFrozenNdp -
+      reservation.platformFeeCapturedNdp -
+      reservation.platformFeeReleasedNdp;
+    if (!values.every((value) => Number.isSafeInteger(value) && value >= 0) || remaining < 0) {
+      throw this.invalidStateError("error.affiliate.budget_reservation_invalid");
+    }
+    return remaining;
+  }
+
+  private requirePlatformFeeService(): AffiliateTaskPlatformFeePort {
+    if (this.platformFeeService) return this.platformFeeService;
+    throw new Error("error.affiliate.platform_fee_service_missing");
   }
 
   private publisherOwnerId(task: AffiliateTaskRecord): number {

@@ -32,6 +32,9 @@ const task = (
   allocatedBudgetNdp: 0,
   settledBudgetNdp: 0,
   releasedBudgetNdp: 0,
+  platformFeeReserveNdp: 0,
+  settledPlatformFeeNdp: 0,
+  releasedPlatformFeeNdp: 0,
   endedAt: null,
   ...overrides
 });
@@ -43,9 +46,13 @@ const reservation = (
   taskId: 71,
   walletId: 501,
   totalFrozenNdp: 1_000,
+  commissionFrozenNdp: 1_000,
+  platformFeeFrozenNdp: 0,
   allocatedNdp: 0,
   capturedNdp: 0,
+  platformFeeCapturedNdp: 0,
   releasedNdp: 0,
+  platformFeeReleasedNdp: 0,
   status: "active",
   idempotencyKey: "affiliate-task:71:reservation",
   frozenAt: new Date("2026-09-01T00:00:00.000Z"),
@@ -72,7 +79,10 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
   public candidateInputs: Array<{ now: Date; batchSize: number; afterTaskId: number }> = [];
   public afterCandidateScan: (() => void) | undefined;
 
-  public seed(inputTask: AffiliateTaskExpiryTaskRecord, inputReservation: AffiliateBudgetReservationRecord) {
+  public seed(
+    inputTask: AffiliateTaskExpiryTaskRecord,
+    inputReservation: AffiliateBudgetReservationRecord
+  ) {
     this.tasks.set(inputTask.id, inputTask);
     this.reservations.set(inputTask.id, inputReservation);
     this.candidateIds.push(inputTask.id);
@@ -140,6 +150,7 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
     taskId: number;
     reservationId: number;
     releasedAfterNdp: number;
+    platformFeeReleasedAfterNdp: number;
     reservationStatus: "active" | "released" | "exhausted";
     releasedAt: Date | null;
   }): Promise<void> {
@@ -149,7 +160,9 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
       throw new Error("missing budget reservation");
     }
     currentTask.releasedBudgetNdp = input.releasedAfterNdp;
+    currentTask.releasedPlatformFeeNdp = input.platformFeeReleasedAfterNdp;
     currentReservation.releasedNdp = input.releasedAfterNdp;
+    currentReservation.platformFeeReleasedNdp = input.platformFeeReleasedAfterNdp;
     currentReservation.status = input.reservationStatus;
     currentReservation.releasedAt = input.releasedAt;
   }
@@ -211,8 +224,7 @@ const createFixture = (
   return { repository, ledger, service };
 };
 
-const expire = (service: AffiliateTaskExpiryService) =>
-  service.expireDue({ now, batchSize: 20 });
+const expire = (service: AffiliateTaskExpiryService) => service.expireDue({ now, batchSize: 20 });
 
 describe("AffiliateTaskExpiryService", () => {
   it("ends a due active task and releases its complete unallocated budget", async () => {
@@ -236,7 +248,7 @@ describe("AffiliateTaskExpiryService", () => {
       expect.objectContaining({
         amountNdp: 1_000,
         actorUserId: null,
-        idempotencyKey: "affiliate-task:71:expiry-release:to:1000"
+        idempotencyKey: "affiliate-task:71:expiry-release:commission:1000:fee:0"
       })
     ]);
     expect(repository.audits.map((audit) => audit.action)).toEqual([
@@ -246,12 +258,43 @@ describe("AffiliateTaskExpiryService", () => {
     expect(repository.audits.every((audit) => audit.actorUserId === null)).toBe(true);
   });
 
-  it("releases only the remainder after captured NDP", async () => {
+  it("releases remaining commission and platform fee as one gross ledger amount", async () => {
     const { repository, ledger, service } = createFixture();
     repository.seed(
-      task({ settledBudgetNdp: 200 }),
-      reservation({ capturedNdp: 200 })
+      task({
+        reservedBudgetNdp: 1_100,
+        settledBudgetNdp: 200,
+        platformFeeReserveNdp: 100,
+        settledPlatformFeeNdp: 20
+      }),
+      reservation({
+        totalFrozenNdp: 1_100,
+        commissionFrozenNdp: 1_000,
+        platformFeeFrozenNdp: 100,
+        capturedNdp: 200,
+        platformFeeCapturedNdp: 20
+      })
     );
+
+    await expect(expire(service)).resolves.toMatchObject({
+      released: 1,
+      releasedNdp: 880
+    });
+    expect(ledger.calls[0]).toMatchObject({ amountNdp: 880 });
+    expect(repository.tasks.get(71)).toMatchObject({
+      releasedBudgetNdp: 800,
+      releasedPlatformFeeNdp: 80
+    });
+    expect(repository.reservations.get(71)).toMatchObject({
+      releasedNdp: 800,
+      platformFeeReleasedNdp: 80,
+      status: "released"
+    });
+  });
+
+  it("releases only the remainder after captured NDP", async () => {
+    const { repository, ledger, service } = createFixture();
+    repository.seed(task({ settledBudgetNdp: 200 }), reservation({ capturedNdp: 200 }));
 
     await expire(service);
 
@@ -261,10 +304,7 @@ describe("AffiliateTaskExpiryService", () => {
 
   it("preserves allocated NDP and releases only the unallocated remainder", async () => {
     const { repository, ledger, service } = createFixture();
-    repository.seed(
-      task({ allocatedBudgetNdp: 300 }),
-      reservation({ allocatedNdp: 300 })
-    );
+    repository.seed(task({ allocatedBudgetNdp: 300 }), reservation({ allocatedNdp: 300 }));
 
     await expire(service);
 
@@ -278,10 +318,7 @@ describe("AffiliateTaskExpiryService", () => {
 
   it("ends a task with no unallocated NDP without creating a zero ledger release", async () => {
     const { repository, ledger, service } = createFixture();
-    repository.seed(
-      task({ settledBudgetNdp: 1_000 }),
-      reservation({ capturedNdp: 1_000 })
-    );
+    repository.seed(task({ settledBudgetNdp: 1_000 }), reservation({ capturedNdp: 1_000 }));
 
     await expect(expire(service)).resolves.toEqual({
       scanned: 1,
@@ -379,23 +416,26 @@ describe("AffiliateTaskExpiryService", () => {
       inputTask: task({ releasedBudgetNdp: 100 }),
       inputReservation: reservation({ releasedNdp: 0 })
     }
-  ])("rolls back $name before wallet or domain mutation", async ({ inputTask, inputReservation }) => {
-    const { repository, ledger, service } = createFixture();
-    repository.seed(inputTask, inputReservation);
+  ])(
+    "rolls back $name before wallet or domain mutation",
+    async ({ inputTask, inputReservation }) => {
+      const { repository, ledger, service } = createFixture();
+      repository.seed(inputTask, inputReservation);
 
-    await expect(expire(service)).resolves.toEqual({
-      scanned: 1,
-      ended: 0,
-      released: 0,
-      failed: 1,
-      releasedNdp: 0
-    });
-    expect(ledger.calls).toHaveLength(0);
-    expect(repository.tasks.get(71)).toEqual(inputTask);
-    expect(repository.reservations.get(71)).toEqual(inputReservation);
-    expect(repository.links).toHaveLength(0);
-    expect(repository.audits).toHaveLength(0);
-  });
+      await expect(expire(service)).resolves.toEqual({
+        scanned: 1,
+        ended: 0,
+        released: 0,
+        failed: 1,
+        releasedNdp: 0
+      });
+      expect(ledger.calls).toHaveLength(0);
+      expect(repository.tasks.get(71)).toEqual(inputTask);
+      expect(repository.reservations.get(71)).toEqual(inputReservation);
+      expect(repository.links).toHaveLength(0);
+      expect(repository.audits).toHaveLength(0);
+    }
+  );
 
   it("uses the cumulative release amount in the expiry idempotency key", async () => {
     const { repository, ledger, service } = createFixture();
@@ -408,7 +448,7 @@ describe("AffiliateTaskExpiryService", () => {
 
     expect(ledger.calls[0]).toMatchObject({
       amountNdp: 700,
-      idempotencyKey: "affiliate-task:71:expiry-release:to:800"
+      idempotencyKey: "affiliate-task:71:expiry-release:commission:800:fee:0"
     });
   });
 
@@ -427,10 +467,7 @@ describe("AffiliateTaskExpiryService", () => {
   it("advances past a full poisoned page and wraps later so failures remain retryable", async () => {
     const { repository, ledger, service } = createFixture();
     for (const taskId of [71, 72, 73, 74]) {
-      repository.seed(
-        task({ id: taskId }),
-        reservation({ id: taskId - 58, taskId })
-      );
+      repository.seed(task({ id: taskId }), reservation({ id: taskId - 58, taskId }));
     }
     ledger.failTaskIds.add(71);
     ledger.failTaskIds.add(72);
@@ -454,10 +491,7 @@ describe("AffiliateTaskExpiryService", () => {
     });
 
     expect(repository.candidateInputs.map(({ afterTaskId }) => afterTaskId)).toEqual([
-      0,
-      72,
-      74,
-      0
+      0, 72, 74, 0
     ]);
     expect(repository.tasks.get(73)?.status).toBe("ended");
     expect(repository.tasks.get(74)?.status).toBe("ended");
@@ -488,11 +522,7 @@ describe("AffiliateTaskExpiryService", () => {
     await service.expireDue({ now, batchSize: 2 });
 
     expect(repository.candidateInputs.map(({ afterTaskId }) => afterTaskId)).toEqual([
-      0,
-      72,
-      74,
-      0,
-      76
+      0, 72, 74, 0, 76
     ]);
     expect(repository.reservations.get(71)).toMatchObject({
       releasedNdp: 1_000,
@@ -541,15 +571,7 @@ describe("AffiliateTaskExpiryService", () => {
     await service.expireDue({ now, batchSize: 1 });
 
     expect(repository.candidateInputs.map(({ afterTaskId }) => afterTaskId)).toEqual([
-      0,
-      71,
-      72,
-      0,
-      73,
-      74,
-      75,
-      71,
-      76
+      0, 71, 72, 0, 73, 74, 75, 71, 76
     ]);
     expect(repository.reservations.get(72)).toMatchObject({
       releasedNdp: 1_000,

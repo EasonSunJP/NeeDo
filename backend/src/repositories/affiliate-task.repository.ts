@@ -45,8 +45,9 @@ type AffiliateTaskDbRecord = Prisma.AffiliateTaskGetPayload<{
   include: typeof taskInclude;
 }>;
 
-type AffiliateBudgetReservationDbRecord =
-  Prisma.AffiliateBudgetReservationGetPayload<Record<string, never>>;
+type AffiliateBudgetReservationDbRecord = Prisma.AffiliateBudgetReservationGetPayload<
+  Record<string, never>
+>;
 
 export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
   public constructor(private readonly client: AffiliatePrismaClient = prisma) {}
@@ -65,9 +66,7 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       );
     }
     if (this.canStartTransaction(this.client)) {
-      return this.client.$transaction((tx) =>
-        handler(new AffiliateTaskRepository(tx), tx)
-      );
+      return this.client.$transaction((tx) => handler(new AffiliateTaskRepository(tx), tx));
     }
     return handler(this, this.client);
   }
@@ -86,9 +85,7 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       },
       select: { scopeId: true }
     });
-    const scopedIds = scopedRoles.flatMap((role) =>
-      role.scopeId === null ? [] : [role.scopeId]
-    );
+    const scopedIds = scopedRoles.flatMap((role) => (role.scopeId === null ? [] : [role.scopeId]));
     const accounts = await this.client.merchantAccount.findMany({
       where: {
         deletedAt: null,
@@ -362,9 +359,7 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     const where: Prisma.AffiliateTaskWhereInput = {
       deletedAt: null,
       ...this.taskFilters(input),
-      ...(input.merchantAccountId
-        ? { publisherMerchantAccountId: input.merchantAccountId }
-        : {}),
+      ...(input.merchantAccountId ? { publisherMerchantAccountId: input.merchantAccountId } : {}),
       ...(input.shopId ? { publisherShopId: input.shopId } : {})
     };
     return this.listTasks(where, input);
@@ -374,6 +369,9 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     taskId: number;
     submittedAt: Date;
     reservedBudgetNdp: number;
+    platformFeeRuleId: number;
+    platformFeeBps: number;
+    platformFeeReserveNdp: number;
   }): Promise<void> {
     await this.client.affiliateTask.update({
       where: { id: input.taskId },
@@ -381,6 +379,9 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
         status: "PENDING_REVIEW",
         submittedAt: input.submittedAt,
         reservedBudgetNdp: input.reservedBudgetNdp,
+        platformFeeRuleId: input.platformFeeRuleId,
+        platformFeeBps: input.platformFeeBps,
+        platformFeeReserveNdp: input.platformFeeReserveNdp,
         lockVersion: { increment: 1 }
       }
     });
@@ -390,6 +391,8 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     taskId: number;
     walletId: number;
     totalFrozenNdp: number;
+    commissionFrozenNdp: number;
+    platformFeeFrozenNdp: number;
     idempotencyKey: string;
   }): Promise<AffiliateBudgetReservationRecord> {
     const reservation = await this.client.affiliateBudgetReservation.create({
@@ -455,6 +458,7 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     reviewedAt: Date;
     rejectionReason: string;
     releasedBudgetNdp: number;
+    releasedPlatformFeeNdp: number;
   }): Promise<void> {
     await this.client.affiliateTask.update({
       where: { id: input.taskId },
@@ -464,6 +468,7 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
         reviewedAt: input.reviewedAt,
         rejectionReason: input.rejectionReason,
         releasedBudgetNdp: input.releasedBudgetNdp,
+        releasedPlatformFeeNdp: input.releasedPlatformFeeNdp,
         lockVersion: { increment: 1 }
       }
     });
@@ -472,12 +477,14 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
   public async releaseBudgetReservation(input: {
     reservationId: number;
     releasedNdp: number;
+    platformFeeReleasedNdp: number;
     releasedAt: Date;
   }): Promise<void> {
     await this.client.affiliateBudgetReservation.update({
       where: { id: input.reservationId },
       data: {
         releasedNdp: input.releasedNdp,
+        platformFeeReleasedNdp: input.platformFeeReleasedNdp,
         releasedAt: input.releasedAt,
         status: "RELEASED"
       }
@@ -516,7 +523,11 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       }),
       this.client.affiliateTask.count({ where })
     ]);
-    return buildPaginatedResponse(tasks.map((task) => this.mapTask(task)), total, input);
+    return buildPaginatedResponse(
+      tasks.map((task) => this.mapTask(task)),
+      total,
+      input
+    );
   }
 
   private taskFilters(input: AffiliateTaskListInput): Prisma.AffiliateTaskWhereInput {
@@ -589,6 +600,11 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       allocatedBudgetNdp: task.allocatedBudgetNdp,
       settledBudgetNdp: task.settledBudgetNdp,
       releasedBudgetNdp: task.releasedBudgetNdp,
+      platformFeeRuleId: task.platformFeeRuleId,
+      platformFeeBps: task.platformFeeBps,
+      platformFeeReserveNdp: task.platformFeeReserveNdp,
+      settledPlatformFeeNdp: task.settledPlatformFeeNdp,
+      releasedPlatformFeeNdp: task.releasedPlatformFeeNdp,
       customerDiscountType: task.customerDiscountType.toLowerCase() as AffiliateDiscountType,
       fixedDiscountJpy: task.fixedDiscountJpy,
       discountRateBps: task.discountRateBps,
@@ -637,9 +653,13 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       taskId: reservation.taskId,
       walletId: reservation.walletId,
       totalFrozenNdp: reservation.totalFrozenNdp,
+      commissionFrozenNdp: reservation.commissionFrozenNdp,
+      platformFeeFrozenNdp: reservation.platformFeeFrozenNdp,
       allocatedNdp: reservation.allocatedNdp,
       capturedNdp: reservation.capturedNdp,
+      platformFeeCapturedNdp: reservation.platformFeeCapturedNdp,
       releasedNdp: reservation.releasedNdp,
+      platformFeeReleasedNdp: reservation.platformFeeReleasedNdp,
       status: reservation.status.toLowerCase() as AffiliateBudgetReservationRecord["status"],
       idempotencyKey: reservation.idempotencyKey,
       frozenAt: reservation.frozenAt,
