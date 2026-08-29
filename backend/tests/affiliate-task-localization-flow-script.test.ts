@@ -43,9 +43,9 @@ describe("affiliate task localization real-database checker", () => {
   });
 
   it("registers one guarded local-only checker command", () => {
-    const packageJson = JSON.parse(
-      readFileSync(join(backendRoot, "package.json"), "utf8")
-    ) as { scripts: Record<string, string> };
+    const packageJson = JSON.parse(readFileSync(join(backendRoot, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
 
     expect(existsSync(scriptPath)).toBe(true);
     expect(packageJson.scripts["check:affiliate-task-localization-flow"]).toBe(
@@ -53,16 +53,17 @@ describe("affiliate task localization real-database checker", () => {
     );
   });
 
-  it("covers five-copy, independent edit, synchronization, submit rollback and exact cleanup", () => {
+  it("covers five-copy, independent edit, one-language submission and exact cleanup", () => {
     const source = existsSync(scriptPath) ? readFileSync(scriptPath, "utf8") : "";
 
     for (const evidence of [
       "assertSafeAffiliateTaskLocalizationEnvironment",
       "CONTENT_LOCALES",
-      "sourceLocale: \"ja\"",
+      'sourceLocale: "ja"',
       "syncToAll: false",
       "syncToAll: true",
-      "error.affiliate.task_translations_incomplete",
+      "error.affiliate.task_content_required",
+      "oneLanguageContentAccepted: true",
       "freezeAffiliateTaskBudget",
       "affiliate.task.translation_updated",
       "affiliateTaskTranslation.deleteMany",

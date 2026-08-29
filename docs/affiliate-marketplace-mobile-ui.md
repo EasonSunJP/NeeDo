@@ -25,7 +25,7 @@ Affiliate task authoring:
 
 - `POST /api/v1/merchant-admin/affiliate/tasks` accepts an optional source locale.
 - `PUT /api/v1/merchant-admin/affiliate/tasks/:taskId/locales/:locale` edits one language with an optimistic lock; `syncToAll=true` is the only operation that copies the selected version to every language.
-- `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit` requires all five active language rows before it can freeze NDP or enter review.
+- `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit` requires publishable task content in at least one active language before it can freeze NDP or enter review.
 
 Store navigation:
 
@@ -51,9 +51,9 @@ Claim creation does not pay or allocate a reward. Booking attribution performs t
 
 ## Languages
 
-Marketplace chrome and status text have independent Simplified Chinese, Traditional Chinese, Japanese, English, and Korean values. AffiliateTask names/descriptions are stored as five independent database rows and returned as one complete translation map. Creating from any source language initially copies the same value to all five versions; later versions remain independent unless the publisher explicitly uses synchronize-all. Recommended cards and task detail select the authored value for the current application language, never machine-translate it, and search can match any active language.
+Marketplace chrome and status text have independent Simplified Chinese, Traditional Chinese, Japanese, English, and Korean values. AffiliateTask names/descriptions are stored as independent database rows and returned as an available translation map. Creating from any source language initially copies the same value to all five versions; later versions remain independent unless the publisher explicitly uses synchronize-all. Recommended cards and task detail select the authored value for the current application language, fall back to the task's formal compatibility snapshot when that language is absent, never machine-translate it, and search can match any active language.
 
-The five-language set is one coordinated review/publication boundary: missing or blank task names prevent submission before the Wallet/Ledger freeze. Each locale edit reuses publisher scope, draft status, optimistic locking, RBAC and `affiliate.task.translation_updated` audit evidence.
+All five languages remain independently editable, but they are not all mandatory for submission. At least one active language must have a non-blank task name within the supported length; a missing or blank set returns `error.affiliate.task_content_required` before the Wallet/Ledger freeze. Each locale edit reuses publisher scope, draft status, optimistic locking, RBAC and `affiliate.task.translation_updated` audit evidence.
 
 ## Verification
 
@@ -67,7 +67,7 @@ Fresh verification on 2026-08-29:
 - focused backend task-localization/marketplace/OpenAPI regression: 6 suites and 40 tests passed;
 - full backend regression: 260 suites and 1,780 tests passed, with the repository-configured 9 suites / 37 tests skipped;
 - migration `20260829223000_affiliate_task_translations` applied successfully to local `needo_dev`; Prisma reports all 59 migrations up to date;
-- the guarded real-database AffiliateTask localization flow passed initial five-language copy, independent edit, explicit synchronize-all, incomplete-submit no-freeze rollback, one complete NDP freeze, translation audit evidence, and exact temporary-row cleanup with zero residue;
+- the guarded real-database AffiliateTask localization flow passed initial five-language copy, independent edit, explicit synchronize-all, all-content-missing rejection with no freeze, one-language submission with one exact NDP freeze, translation audit evidence, and exact temporary-row cleanup with zero residue;
 - the existing guarded Affiliate task-publishing flow passed again after the schema change, including shop and merchant-account freezes, scope isolation, approval/rejection, reconciliation, idempotency, and cleanup;
 - isolated formal runtime on backend `3003` and frontend `5183`: `/health`, `/ready`, and frontend HTTP returned healthy/ready/200 with real local MySQL and Redis;
 - the existing formal `affiliate@example.com` account passed password-login, 25-permission, RBAC, and Affiliate-portal checks against the isolated backend;

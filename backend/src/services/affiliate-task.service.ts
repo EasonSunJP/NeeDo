@@ -34,9 +34,8 @@ export interface AffiliateTaskTranslationPayload {
   isInitialCopy: boolean;
 }
 
-export type AffiliateTaskTranslations = Record<
-  ContentLocaleCode,
-  AffiliateTaskTranslationPayload
+export type AffiliateTaskTranslations = Partial<
+  Record<ContentLocaleCode, AffiliateTaskTranslationPayload>
 >;
 
 export interface AffiliateShopScopeRecord {
@@ -464,9 +463,7 @@ export class AffiliateTaskService {
     actor: AuthenticatedAccessContext,
     input: AffiliateTaskListInput
   ): Promise<PaginatedResponse<AffiliateTaskRecord>> {
-    const merchantAccountIds = await this.repository.getManageableMerchantAccountIds(
-      actor.userId
-    );
+    const merchantAccountIds = await this.repository.getManageableMerchantAccountIds(actor.userId);
     const shopId =
       actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId
         ? actor.currentIdentityScopeId
@@ -492,10 +489,7 @@ export class AffiliateTaskService {
     return task;
   }
 
-  public submit(
-    actor: AuthenticatedAccessContext,
-    taskId: number
-  ): Promise<AffiliateTaskRecord> {
+  public submit(actor: AuthenticatedAccessContext, taskId: number): Promise<AffiliateTaskRecord> {
     return this.repository.runInTransaction(async (repository, transactionClient) => {
       const task = this.requireTask(await repository.lockTask(taskId));
       await this.assertPublisherAccess(repository, actor, task);
@@ -506,8 +500,8 @@ export class AffiliateTaskService {
       if (task.status !== "draft") {
         throw this.invalidStateError();
       }
-      if (!this.hasCompleteTranslations(task.translations)) {
-        throw this.invalidStateError("error.affiliate.task_translations_incomplete");
+      if (!this.hasPublishableTranslation(task.translations)) {
+        throw this.invalidStateError("error.affiliate.task_content_required");
       }
 
       const currentTime = this.now();
@@ -586,10 +580,7 @@ export class AffiliateTaskService {
     });
   }
 
-  public approve(
-    actor: AuthenticatedAccessContext,
-    taskId: number
-  ): Promise<AffiliateTaskRecord> {
+  public approve(actor: AuthenticatedAccessContext, taskId: number): Promise<AffiliateTaskRecord> {
     this.assertBackofficeActor(actor);
     return this.repository.runInTransaction(async (repository) => {
       const task = this.requireTask(await repository.lockTask(taskId));
@@ -607,10 +598,7 @@ export class AffiliateTaskService {
         "approve",
         this.transitionContext(task, reviewedAt, task.budgetReservation)
       );
-      if (
-        !transition.ok ||
-        (transition.status !== "scheduled" && transition.status !== "active")
-      ) {
+      if (!transition.ok || (transition.status !== "scheduled" && transition.status !== "active")) {
         throw this.invalidStateError("error.affiliate.task_window_expired");
       }
 
@@ -787,10 +775,7 @@ export class AffiliateTaskService {
     }
 
     const selectedServiceIds = this.uniquePositiveIds(input.selectedServiceIds);
-    if (
-      input.serviceScopeMode === "all_current_services" &&
-      selectedServiceIds.length > 0
-    ) {
+    if (input.serviceScopeMode === "all_current_services" && selectedServiceIds.length > 0) {
       throw this.validationError("error.affiliate.service_scope_invalid");
     }
     if (
@@ -805,9 +790,7 @@ export class AffiliateTaskService {
 
     const services = await repository.findEligibleServices({
       shopIds,
-      ...(input.serviceScopeMode === "selected_services"
-        ? { selectedServiceIds }
-        : {})
+      ...(input.serviceScopeMode === "selected_services" ? { selectedServiceIds } : {})
     });
     if (
       services.length === 0 ||
@@ -929,16 +912,12 @@ export class AffiliateTaskService {
     }
     if (fields.customerDiscountType === "none") {
       return (
-        fields.fixedDiscountJpy === 0 &&
-        fields.discountRateBps === 0 &&
-        fields.discountCapJpy === 0
+        fields.fixedDiscountJpy === 0 && fields.discountRateBps === 0 && fields.discountCapJpy === 0
       );
     }
     if (fields.customerDiscountType === "fixed_jpy") {
       return (
-        fields.fixedDiscountJpy > 0 &&
-        fields.discountRateBps === 0 &&
-        fields.discountCapJpy === 0
+        fields.fixedDiscountJpy > 0 && fields.discountRateBps === 0 && fields.discountCapJpy === 0
       );
     }
     return (
@@ -949,11 +928,11 @@ export class AffiliateTaskService {
     );
   }
 
-  private hasCompleteTranslations(translations: AffiliateTaskTranslations): boolean {
-    return CONTENT_LOCALES.every((locale) => {
+  private hasPublishableTranslation(translations: AffiliateTaskTranslations): boolean {
+    return CONTENT_LOCALES.some((locale) => {
       const translation = translations[locale];
+      if (!translation) return false;
       return (
-        Boolean(translation) &&
         Boolean(translation.name.trim()) &&
         translation.name.length <= 160 &&
         (translation.description?.length ?? 0) <= 10_000

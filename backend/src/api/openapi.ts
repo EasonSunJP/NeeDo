@@ -4189,7 +4189,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       AffiliateTaskTranslations: {
         type: "object",
         additionalProperties: false,
-        required: affiliateContentLocales,
+        minProperties: 1,
         properties: Object.fromEntries(
           affiliateContentLocales.map((locale) => [
             locale,

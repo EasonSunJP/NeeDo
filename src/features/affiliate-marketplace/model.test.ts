@@ -85,6 +85,23 @@ describe("affiliate marketplace display model", () => {
     expect(getLocalizedTaskContent(localizedTask, "zh-Hant").name).toBe("繁體任務");
   });
 
+  it("falls back to the formal task snapshot when the selected language is absent", () => {
+    const oneLanguageTask = task({
+      translations: {
+        ja: { name: "日本語だけのタスク", description: "日本語だけの説明" }
+      }
+    });
+
+    expect(getLocalizedTaskContent(oneLanguageTask, "ja")).toEqual({
+      name: "日本語だけのタスク",
+      description: "日本語だけの説明"
+    });
+    expect(getLocalizedTaskContent(oneLanguageTask, "en")).toEqual({
+      name: oneLanguageTask.name,
+      description: oneLanguageTask.description
+    });
+  });
+
   it("derives remaining percentage and maximum reward from server-authoritative values", () => {
     expect(getRemainingPercent(task())).toBe(35);
     expect(getMaximumRewardNdp(task())).toBe(200_000);

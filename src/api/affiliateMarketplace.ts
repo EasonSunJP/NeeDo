@@ -37,7 +37,7 @@ export interface AffiliateMarketplaceService {
 export interface AffiliateMarketplaceTask {
   id: number;
   taskCode: string;
-  translations: Record<AffiliateContentLocale, AffiliateTaskTranslation>;
+  translations: Partial<Record<AffiliateContentLocale, AffiliateTaskTranslation>>;
   name: string;
   description: string | null;
   coverMediaAssetId: number | null;
