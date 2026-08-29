@@ -182,7 +182,7 @@ const socialCreateMediaEnvelopeSchema = z.object({
 
 export const socialPostCreateBodySchema = z
   .object({
-    content: z.string().trim().min(1).max(5000),
+    content: z.string().trim().max(5000),
     media: socialCreateMediaEnvelopeSchema.optional(),
     mentionUserIds: z
       .array(z.number().int().positive())
@@ -193,7 +193,11 @@ export const socialPostCreateBodySchema = z
       .default([]),
     visibility: z.enum(["public", "followers"]).default("public")
   })
-  .strict();
+  .strict()
+  .refine((value) => value.content.length > 0 || (value.media?.items.length ?? 0) > 0, {
+    message: "error.social.post_empty",
+    path: ["content"]
+  });
 
 export const followCreateBodySchema = z.object({
   targetUserId: z.coerce.number().int().positive()

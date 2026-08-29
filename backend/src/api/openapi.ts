@@ -12917,8 +12917,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 additionalProperties: false,
                 required: ["content"],
+                anyOf: [
+                  {
+                    required: ["content"],
+                    properties: { content: { type: "string", minLength: 1 } }
+                  },
+                  {
+                    required: ["media"],
+                    properties: {
+                      media: {
+                        type: "object",
+                        required: ["items"],
+                        properties: {
+                          items: { type: "array", minItems: 1 }
+                        }
+                      }
+                    }
+                  }
+                ],
                 properties: {
-                  content: { type: "string", minLength: 1, maxLength: 5000 },
+                  content: {
+                    type: "string",
+                    maxLength: 5000,
+                    description: "Trimmed content; may be empty only when at least one image is attached"
+                  },
                   media: {
                     type: "object",
                     additionalProperties: false,
