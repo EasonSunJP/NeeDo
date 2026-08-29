@@ -1,5 +1,13 @@
 # Affiliate Platform Fee Reserve And Settlement Implementation Plan
 
+> **Paused checkpoint (2026-08-30):** Work is intentionally parked on branch
+> `codex/affiliate-merchant-task-ui` so other `main` integrations can proceed. The
+> repository baseline passed the full frontend and backend suites before this
+> slice began. Task 1 Steps 1-2 are complete: the two focused contract tests are
+> committed in RED and fail only because the additive schema and migration in
+> Step 3 do not exist yet. Resume from Task 1 Step 3; do not merge this branch
+> while those focused tests remain RED.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make every newly submitted Affiliate task snapshot the effective platform fee, freeze commission plus fee, and settle each completed order to the promoter and platform wallets in one auditable transaction.
@@ -36,7 +44,7 @@
 - Produces: `AffiliatePlatformFeeRule`, task fee snapshot columns, reward platform allocation columns, and reservation commission/fee accounting columns.
 - Consumes: existing `AffiliateTask`, `AffiliateReward`, `AffiliateBudgetReservation`, `Wallet`, `Shop`, and `User` models.
 
-- [ ] **Step 1: Write failing schema tests**
+- [x] **Step 1: Write failing schema tests**
 
 ```ts
 expect(schema).toContain("model AffiliatePlatformFeeRule");
@@ -47,7 +55,7 @@ expect(schema).toContain("platformFeeCapturedNdp");
 expect(schema).toContain("platformWalletId");
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `npm test -- affiliate-platform-fee-schema.test.ts affiliate-platform-fee-migration.test.ts`
 
