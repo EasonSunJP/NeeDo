@@ -117,6 +117,18 @@ export const CONTENT_PUBLICATION_PERMISSIONS = {
   contentMediaUpload: "button:backoffice-content-media-upload"
 } as const;
 
+export const EXCHANGE_PERMISSIONS = {
+  postList: "exchange:posts:list",
+  postDetail: "exchange:posts:detail",
+  createDemand: "exchange:posts:create-demand",
+  createIntelligence: "exchange:posts:create-intelligence",
+  withdrawOwn: "exchange:posts:withdraw-own",
+  commentList: "exchange:comments:list",
+  commentCreate: "exchange:comments:create",
+  likeWrite: "exchange:likes:write",
+  shareCreate: "exchange:shares:create"
+} as const;
+
 export const SYSTEM_PERMISSIONS = [
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
   createPermission("auth:refresh", "刷新访问令牌", "api", "auth", "使用刷新令牌续期访问令牌"),
@@ -1197,12 +1209,96 @@ export const SYSTEM_PERMISSIONS = [
     "button",
     "content-publication",
     "上传正式内容发布媒体资源"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.postList,
+    "需求情报列表",
+    "api",
+    "exchange",
+    "分页读取正式需求与情报"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.postDetail,
+    "需求情报详情",
+    "api",
+    "exchange",
+    "读取正式需求或情报详情"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.createDemand,
+    "发布需求",
+    "api",
+    "exchange",
+    "以当前顾客身份发布正式需求"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.createIntelligence,
+    "发布情报",
+    "api",
+    "exchange",
+    "以当前技师或店铺身份发布正式情报"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.withdrawOwn,
+    "撤回本人发布",
+    "api",
+    "exchange",
+    "撤回当前账号发布的正式需求或情报"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.commentList,
+    "需求情报评论列表",
+    "api",
+    "exchange",
+    "分页读取正式需求与情报评论"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.commentCreate,
+    "需求情报评论",
+    "api",
+    "exchange",
+    "以当前身份发布正式评论"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.likeWrite,
+    "需求情报点赞",
+    "api",
+    "exchange",
+    "写入或撤销当前账号的正式点赞"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.shareCreate,
+    "需求情报分享",
+    "api",
+    "exchange",
+    "记录当前账号已完成的正式分享"
   )
 ] as const satisfies readonly SystemPermissionDefinition[];
 
 export type SystemPermissionCode = (typeof SYSTEM_PERMISSIONS)[number]["code"];
 
 export const SYSTEM_PERMISSION_CODES = SYSTEM_PERMISSIONS.map((permission) => permission.code);
+
+const EXCHANGE_COMMON_PERMISSION_CODES = [
+  EXCHANGE_PERMISSIONS.postList,
+  EXCHANGE_PERMISSIONS.postDetail,
+  EXCHANGE_PERMISSIONS.commentList,
+  EXCHANGE_PERMISSIONS.commentCreate,
+  EXCHANGE_PERMISSIONS.likeWrite,
+  EXCHANGE_PERMISSIONS.shareCreate
+] as const satisfies readonly SystemPermissionCode[];
+
+const EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES = [
+  ...EXCHANGE_COMMON_PERMISSION_CODES,
+  EXCHANGE_PERMISSIONS.createDemand,
+  EXCHANGE_PERMISSIONS.withdrawOwn
+] as const satisfies readonly SystemPermissionCode[];
+
+const EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES = [
+  ...EXCHANGE_COMMON_PERMISSION_CODES,
+  EXCHANGE_PERMISSIONS.createIntelligence,
+  EXCHANGE_PERMISSIONS.withdrawOwn
+] as const satisfies readonly SystemPermissionCode[];
 
 const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
   "auth:me",
@@ -1528,6 +1624,7 @@ export const buildRolePermissionAssignments = (): Record<
   merchant_owner: [
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
+    ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
@@ -1537,6 +1634,7 @@ export const buildRolePermissionAssignments = (): Record<
   merchant_staff: [
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
+    ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
@@ -1548,6 +1646,7 @@ export const buildRolePermissionAssignments = (): Record<
     "menu:technician-schedule",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
+    ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",
@@ -1560,6 +1659,7 @@ export const buildRolePermissionAssignments = (): Record<
   customer: [
     ...CUSTOMER_BOOKING_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
+    ...EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
   ],

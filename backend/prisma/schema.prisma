@@ -485,7 +485,7 @@ enum CustomerSupportAccountType {
 }
 
 enum CustomerMembershipGrantMode {
-  SELF_SERVICE            @map("self_service")
+  SELF_SERVICE           @map("self_service")
   OPERATOR_COMPLIMENTARY @map("operator_complimentary")
 
   @@map("customer_membership_grant_mode")
@@ -516,6 +516,29 @@ enum ContentLocale {
   KO    @map("ko")
 
   @@map("content_locale")
+}
+
+enum ExchangePostType {
+  DEMAND       @map("demand")
+  INTELLIGENCE @map("intelligence")
+
+  @@map("exchange_post_type")
+}
+
+enum ExchangePostStatus {
+  PUBLISHED @map("published")
+  WITHDRAWN @map("withdrawn")
+  EXPIRED   @map("expired")
+
+  @@map("exchange_post_status")
+}
+
+enum ExchangeServiceMode {
+  STORE    @map("store")
+  ONSITE   @map("onsite")
+  FLEXIBLE @map("flexible")
+
+  @@map("exchange_service_mode")
 }
 
 enum CarouselScene {
@@ -574,7 +597,7 @@ model User {
   userRoles                             UserRole[]
   loginLogs                             LoginLog[]                          @relation("LoginLogUser")
   auditLogs                             AuditLog[]                          @relation("AuditLogActor")
-  grantedCustomerMemberships            CustomerProfile[]                  @relation("CustomerMembershipGrantedBy")
+  grantedCustomerMemberships            CustomerProfile[]                   @relation("CustomerMembershipGrantedBy")
   ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
   requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
@@ -618,6 +641,10 @@ model User {
   socialPosts                           SocialPost[]                        @relation("SocialPostAuthor")
   following                             Follow[]                            @relation("FollowFollower")
   followers                             Follow[]                            @relation("FollowFollowing")
+  exchangePosts                         ExchangePost[]                      @relation("ExchangePostAuthor")
+  exchangeComments                      ExchangeComment[]                   @relation("ExchangeCommentAuthor")
+  exchangeLikes                         ExchangeLike[]                      @relation("ExchangeLikeActor")
+  exchangeShares                        ExchangeShare[]                     @relation("ExchangeShareActor")
   receivedNotifications                 Notification[]                      @relation("NotificationRecipient")
   actedNotifications                    Notification[]                      @relation("NotificationActor")
   ownedMerchantAccounts                 MerchantAccount[]                   @relation("MerchantAccountOwner")
@@ -1177,15 +1204,15 @@ model MediaAsset {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  category             Category?                  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  service              Service?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  shop                 Shop?                      @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  technicianProfile    TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  customerProfile      CustomerProfile?           @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
-  ownerUser            User?                      @relation("ApplicationMediaOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  affiliateTaskCovers  AffiliateTask[]            @relation("AffiliateTaskCover")
-  identityApplications IdentityApplicationMedia[]
-  carouselSlides       CarouselSlide[]
+  category                  Category?                  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  service                   Service?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  shop                      Shop?                      @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  technicianProfile         TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  customerProfile           CustomerProfile?           @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
+  ownerUser                 User?                      @relation("ApplicationMediaOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  affiliateTaskCovers       AffiliateTask[]            @relation("AffiliateTaskCover")
+  identityApplications      IdentityApplicationMedia[]
+  carouselSlides            CarouselSlide[]
   carouselSlideTranslations CarouselSlideTranslation[] @relation("CarouselSlideTranslationMedia")
 
   @@index([entityType, entityId])
@@ -2020,6 +2047,10 @@ model UserIdentity {
 
   user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
   publicIdentifier PublicIdentifier?
+  exchangePosts    ExchangePost[]    @relation("ExchangePostAuthorIdentity")
+  exchangeComments ExchangeComment[] @relation("ExchangeCommentAuthorIdentity")
+  exchangeLikes    ExchangeLike[]    @relation("ExchangeLikeActorIdentity")
+  exchangeShares   ExchangeShare[]   @relation("ExchangeShareActorIdentity")
 
   @@index([userId])
   @@index([type])
@@ -2027,6 +2058,148 @@ model UserIdentity {
   @@index([isActive])
   @@index([deletedAt])
   @@map("user_identities")
+}
+
+model ExchangePost {
+  id                    Int                @id @default(autoincrement())
+  authorUserId          Int                @map("author_user_id")
+  authorIdentityId      Int                @map("author_identity_id")
+  publisherPublicId     String             @map("publisher_public_id") @db.VarChar(32)
+  publisherIdentityType String             @map("publisher_identity_type") @db.VarChar(50)
+  publisherDisplayName  String             @map("publisher_display_name") @db.VarChar(100)
+  publisherAvatarUrl    String?            @map("publisher_avatar_url") @db.VarChar(500)
+  type                  ExchangePostType
+  status                ExchangePostStatus @default(PUBLISHED)
+  title                 String             @db.VarChar(120)
+  detail                String             @db.Text
+  contentLocale         ContentLocale      @map("content_locale")
+  areaLabel             String             @map("area_label") @db.VarChar(120)
+  serviceStartAt        DateTime           @map("service_start_at")
+  serviceEndAt          DateTime           @map("service_end_at")
+  expiresAt             DateTime           @map("expires_at")
+  idempotencyKey        String             @unique @map("idempotency_key") @db.VarChar(191)
+  withdrawnAt           DateTime?          @map("withdrawn_at")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+  deletedAt             DateTime?          @map("deleted_at")
+
+  author         User                  @relation("ExchangePostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorIdentity UserIdentity          @relation("ExchangePostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+  demand         ExchangeDemand?
+  intelligence   ExchangeIntelligence?
+  comments       ExchangeComment[]
+  likes          ExchangeLike[]
+  shares         ExchangeShare[]
+
+  @@index([type, status, expiresAt, createdAt])
+  @@index([authorUserId, createdAt])
+  @@index([authorIdentityId, createdAt])
+  @@index([areaLabel, type, status])
+  @@index([deletedAt])
+  @@map("exchange_posts")
+}
+
+model ExchangeDemand {
+  id           Int       @id @default(autoincrement())
+  postId       Int       @unique @map("post_id")
+  budgetMinJpy Int       @map("budget_min_jpy")
+  budgetMaxJpy Int       @map("budget_max_jpy")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  post ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+
+  @@index([deletedAt])
+  @@map("exchange_demands")
+}
+
+model ExchangeIntelligence {
+  id               Int                 @id @default(autoincrement())
+  postId           Int                 @unique @map("post_id")
+  serviceMode      ExchangeServiceMode @map("service_mode")
+  addressLabel     String?             @map("address_label") @db.VarChar(255)
+  serviceAreas     Json                @map("service_areas")
+  originalPriceJpy Int?                @map("original_price_jpy")
+  campaignPriceJpy Int                 @map("campaign_price_jpy")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  deletedAt        DateTime?           @map("deleted_at")
+
+  post ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+
+  @@index([serviceMode, deletedAt])
+  @@index([deletedAt])
+  @@map("exchange_intelligences")
+}
+
+model ExchangeComment {
+  id                 Int       @id @default(autoincrement())
+  postId             Int       @map("post_id")
+  authorUserId       Int       @map("author_user_id")
+  authorIdentityId   Int       @map("author_identity_id")
+  authorPublicId     String    @map("author_public_id") @db.VarChar(32)
+  authorIdentityType String    @map("author_identity_type") @db.VarChar(50)
+  authorDisplayName  String    @map("author_display_name") @db.VarChar(100)
+  authorAvatarUrl    String?   @map("author_avatar_url") @db.VarChar(500)
+  content            String    @db.Text
+  idempotencyKey     String    @unique @map("idempotency_key") @db.VarChar(191)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  post           ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+  author         User         @relation("ExchangeCommentAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorIdentity UserIdentity @relation("ExchangeCommentAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+
+  @@index([postId, createdAt, id])
+  @@index([authorUserId, createdAt])
+  @@index([authorIdentityId, createdAt])
+  @@index([deletedAt])
+  @@map("exchange_comments")
+}
+
+model ExchangeLike {
+  id              Int       @id @default(autoincrement())
+  postId          Int       @map("post_id")
+  actorUserId     Int       @map("actor_user_id")
+  actorIdentityId Int       @map("actor_identity_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  post          ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+  actor         User         @relation("ExchangeLikeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorIdentity UserIdentity @relation("ExchangeLikeActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
+
+  @@unique([postId, actorUserId])
+  @@index([postId, deletedAt])
+  @@index([actorUserId, createdAt])
+  @@index([actorIdentityId, createdAt])
+  @@index([deletedAt])
+  @@map("exchange_likes")
+}
+
+model ExchangeShare {
+  id              Int       @id @default(autoincrement())
+  postId          Int       @map("post_id")
+  actorUserId     Int       @map("actor_user_id")
+  actorIdentityId Int       @map("actor_identity_id")
+  idempotencyKey  String    @unique @map("idempotency_key") @db.VarChar(191)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  post          ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+  actor         User         @relation("ExchangeShareActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorIdentity UserIdentity @relation("ExchangeShareActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
+
+  @@unique([postId, actorUserId])
+  @@index([postId, deletedAt])
+  @@index([actorUserId, createdAt])
+  @@index([actorIdentityId, createdAt])
+  @@index([deletedAt])
+  @@map("exchange_shares")
 }
 
 model CustomerSupportAccount {
