@@ -125,5 +125,11 @@ export function PublishedCarousel({
     };
   });
 
-  return <FeatureCarousel cardHeightClassName={resolvedCardHeightClassName} slides={slides} />;
+  return (
+    <FeatureCarousel
+      cardHeightClassName={resolvedCardHeightClassName}
+      dataNoI18n
+      slides={slides}
+    />
+  );
 }

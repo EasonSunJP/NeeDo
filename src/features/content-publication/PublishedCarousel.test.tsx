@@ -193,6 +193,7 @@ describe("PublishedCarousel", () => {
     await renderCarousel("user-home");
     await waitFor(() => expect(container.textContent).toContain("东京护理"));
 
+    expect(container.querySelector('section[data-no-i18n="true"]')).not.toBeNull();
     const slide = container.querySelector<HTMLAnchorElement>('a[href*="/services/"]');
     expect(slide?.getAttribute("href")).toBe(
       "/services/46969a0f-2c2c-4b7b-b986-88e406393255"
