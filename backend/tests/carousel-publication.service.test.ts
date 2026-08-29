@@ -24,6 +24,8 @@ const mediaPublicId = "a".repeat(64);
 
 const translations = {
   "zh-CN": {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "首页",
     caption: null,
@@ -33,6 +35,8 @@ const translations = {
     isInitialCopy: true
   },
   "zh-TW": {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "首頁",
     caption: null,
@@ -42,6 +46,8 @@ const translations = {
     isInitialCopy: true
   },
   en: {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "Home",
     caption: null,
@@ -51,6 +57,8 @@ const translations = {
     isInitialCopy: true
   },
   ja: {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "ホーム",
     caption: null,
@@ -60,6 +68,8 @@ const translations = {
     isInitialCopy: false
   },
   ko: {
+    mediaAssetPublicId: null,
+    imageUrl: "/media/content/a.png",
     badge: null,
     title: "홈",
     caption: null,
@@ -86,8 +96,8 @@ const payload = (
   slides: [
     {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      mediaAssetPublicId: mediaPublicId,
-      imageUrl: "/media/content/a.png",
+      defaultMediaAssetPublicId: mediaPublicId,
+      defaultImageUrl: "/media/content/a.png",
       sortOrder: 0,
       isEnabled: true,
       visibleFrom: null,
@@ -126,6 +136,7 @@ const marketplace = () => ({
 describe("CarouselPublicationService", () => {
   it("enforces the exact target matrix for the two fixed scenes", () => {
     const service = new CarouselPublicationService(repository(), marketplace());
+    expect(() => service.assertTarget("USER_HOME", { type: "none" })).not.toThrow();
     expect(() => service.assertTarget("USER_HOME", { type: "shop", shopId: 7 })).not.toThrow();
     expect(() =>
       service.assertTarget("USER_HOME", {
@@ -137,6 +148,43 @@ describe("CarouselPublicationService", () => {
     expect(() =>
       service.assertTarget("AFFILIATE_HOME_NOTICE", { type: "service", serviceId: 4 })
     ).toThrow("error.carousel.target_invalid");
+    expect(() => service.assertTarget("AFFILIATE_HOME_NOTICE", { type: "none" })).toThrow(
+      "error.carousel.target_invalid"
+    );
+  });
+
+  it("rejects CTA copy on a non-clickable user-home slide", async () => {
+    const repo = repository();
+    const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
+
+    await expect(
+      service.createDraft("USER_HOME", actor, context, {
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [
+          {
+            defaultMediaAssetPublicId: mediaPublicId,
+            sortOrder: 0,
+            isEnabled: true,
+            visibleFrom: null,
+            visibleUntil: null,
+            target: { type: "none" },
+            translations: [
+              {
+                locale: "ja",
+                mediaAssetPublicId: null,
+                badge: null,
+                title: "NeeDoへようこそ",
+                caption: null,
+                ctaLabel: "見る",
+                imageAltText: "ウェルカム画像"
+              }
+            ]
+          }
+        ]
+      })
+    ).rejects.toMatchObject({ message: "error.carousel.target_invalid" });
+    expect(repo.createDraft).not.toHaveBeenCalled();
   });
 
   it("initializes all five locales with provenance and contiguous slide order", async () => {
@@ -146,7 +194,13 @@ describe("CarouselPublicationService", () => {
         slides: input.slides.map((slide) => ({
           ...slide,
           id: slide.publicId,
-          imageUrl: "/media/content/a.png",
+          defaultImageUrl: "/media/content/a.png",
+          translations: Object.fromEntries(
+            Object.entries(slide.translations).map(([locale, value]) => [
+              locale,
+              { ...value, imageUrl: "/media/content/a.png" }
+            ])
+          ) as CarouselPublicationPayload["slides"][number]["translations"],
           target: { type: "shop", shopId: 7 }
         }))
       })
@@ -161,7 +215,7 @@ describe("CarouselPublicationService", () => {
       sourceLocale: "ja",
       slides: [
         {
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -170,6 +224,7 @@ describe("CarouselPublicationService", () => {
           translations: [
             {
               locale: "ja",
+              mediaAssetPublicId: null,
               badge: null,
               title: "ホーム",
               caption: null,
@@ -189,6 +244,7 @@ describe("CarouselPublicationService", () => {
       isInitialCopy: false
     });
     expect(result.slides[0].translations.en).toMatchObject({
+      mediaAssetPublicId: null,
       sourceLocale: "ja",
       isInitialCopy: true
     });
@@ -200,6 +256,7 @@ describe("CarouselPublicationService", () => {
         slides: [
           expect.objectContaining({
             publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            defaultMediaAssetPublicId: mediaPublicId,
             sortOrder: 0
           })
         ]
@@ -214,7 +271,7 @@ describe("CarouselPublicationService", () => {
       sourceLocale: "ja" as const,
       slides: [
         {
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 1,
           isEnabled: false,
           visibleFrom: null,
@@ -223,6 +280,7 @@ describe("CarouselPublicationService", () => {
           translations: [
             {
               locale: "ja" as const,
+              mediaAssetPublicId: null,
               badge: null,
               title: " ",
               caption: null,
@@ -244,7 +302,7 @@ describe("CarouselPublicationService", () => {
     const publicId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const slide = (sortOrder: number) => ({
       publicId,
-      mediaAssetPublicId: mediaPublicId,
+      defaultMediaAssetPublicId: mediaPublicId,
       sortOrder,
       isEnabled: true,
       visibleFrom: null,
@@ -253,6 +311,7 @@ describe("CarouselPublicationService", () => {
       translations: [
         {
           locale: "ja" as const,
+          mediaAssetPublicId: null,
           badge: null,
           title: `ホーム-${sortOrder}`,
           caption: null,
@@ -280,6 +339,7 @@ describe("CarouselPublicationService", () => {
     const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
     const explicitCopies = (["zh-CN", "zh-TW", "en", "ja", "ko"] as const).map((locale) => ({
       locale,
+      mediaAssetPublicId: null,
       badge: null,
       title: `Copied ${locale}`,
       caption: null,
@@ -295,7 +355,7 @@ describe("CarouselPublicationService", () => {
       slides: [
         {
           publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -325,6 +385,7 @@ describe("CarouselPublicationService", () => {
     const localeInput = ["zh-CN", "zh-TW", "en", "ja", "ko"] as const;
     const explicitTranslations = localeInput.map((locale, index) => ({
       locale,
+      mediaAssetPublicId: null,
       badge: null,
       title: `Round trip ${locale}`,
       caption: null,
@@ -336,6 +397,8 @@ describe("CarouselPublicationService", () => {
     const storedTranslations = dbLocales.map((locale) => ({
       id: dbLocales.indexOf(locale) + 1,
       slideId: 901,
+      mediaAssetId: null,
+      mediaAsset: null,
       locale,
       badge: null,
       title: `Before ${locale}`,
@@ -447,7 +510,7 @@ describe("CarouselPublicationService", () => {
       slides: [
         {
           publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -512,6 +575,7 @@ describe("CarouselPublicationService", () => {
       {
         expectedLockVersion: 1,
         locale: "en",
+        mediaAssetPublicId: null,
         badge: null,
         title: "Changed",
         caption: null,
@@ -579,7 +643,7 @@ describe("CarouselPublicationService", () => {
       sourceLocale: "ja",
       slides: [
         {
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -588,6 +652,7 @@ describe("CarouselPublicationService", () => {
           translations: [
             {
               locale: "ja",
+              mediaAssetPublicId: null,
               badge: null,
               title: "ホーム",
               caption: null,

@@ -10,6 +10,7 @@ export type CarouselSceneCode = "USER_HOME" | "AFFILIATE_HOME_NOTICE";
 export type CarouselStatus = "draft" | "scheduled" | "published" | "disabled" | "archived";
 
 export type CarouselTarget =
+  | { type: "none" }
   | { type: "shop"; shopId: number }
   | { type: "technician"; technicianProfileId: number }
   | { type: "service"; serviceId: number }
@@ -31,12 +32,14 @@ export type CarouselTargetInput =
     };
 
 export type PublishedCarouselTarget =
+  | { type: "none" }
   | { type: "shop"; publicId: string }
   | { type: "technician"; publicId: string }
   | { type: "service"; publicId: string }
   | { type: "affiliate_announcement"; publicId: string };
 
 export interface CarouselTranslationInput {
+  mediaAssetPublicId: string | null;
   badge: string | null;
   title: string;
   caption: string | null;
@@ -45,14 +48,15 @@ export interface CarouselTranslationInput {
 }
 
 export interface CarouselTranslationPayload extends CarouselTranslationInput {
+  imageUrl: string;
   sourceLocale: ContentLocaleCode;
   isInitialCopy: boolean;
 }
 
 export interface CarouselSlidePayload {
   id: string;
-  mediaAssetPublicId: string;
-  imageUrl: string;
+  defaultMediaAssetPublicId: string;
+  defaultImageUrl: string;
   sortOrder: number;
   isEnabled: boolean;
   visibleFrom: Date | null;
@@ -130,13 +134,19 @@ interface MutationBase {
 
 export interface StoredCarouselSlide {
   publicId: string;
-  mediaAssetPublicId: string;
+  defaultMediaAssetPublicId: string;
   sortOrder: number;
   isEnabled: boolean;
   visibleFrom: Date | null;
   visibleUntil: Date | null;
   target: CarouselTargetInput;
-  translations: Record<ContentLocaleCode, CarouselTranslationPayload>;
+  translations: Record<
+    ContentLocaleCode,
+    CarouselTranslationInput & {
+      sourceLocale: ContentLocaleCode;
+      isInitialCopy: boolean;
+    }
+  >;
 }
 
 export interface CreateCarouselDraftMutation extends MutationBase {
@@ -253,7 +263,7 @@ interface DraftTranslationBody extends CarouselTranslationInput {
 
 interface DraftSlideBody {
   publicId?: string;
-  mediaAssetPublicId: string;
+  defaultMediaAssetPublicId: string;
   sortOrder: number;
   isEnabled: boolean;
   visibleFrom: string | null;
@@ -309,7 +319,7 @@ export class CarouselPublicationService {
 
   public assertTarget(scene: CarouselSceneCode, target: CarouselTargetInput): void {
     const valid =
-      (scene === "USER_HOME" && ["shop", "technician", "service"].includes(target.type)) ||
+      (scene === "USER_HOME" && ["none", "shop", "technician", "service"].includes(target.type)) ||
       (scene === "AFFILIATE_HOME_NOTICE" && target.type === "affiliate_announcement");
     if (!valid) throw this.carouselError("error.carousel.target_invalid", 409);
   }
@@ -591,6 +601,12 @@ export class CarouselPublicationService {
     const normalized = sorted.map((slide) => {
       this.assertTarget(scene, slide.target);
       if (
+        slide.target.type === "none" &&
+        slide.translations.some(({ ctaLabel }) => ctaLabel !== null)
+      ) {
+        throw this.carouselError("error.carousel.target_invalid", 409);
+      }
+      if (
         slide.visibleFrom &&
         slide.visibleUntil &&
         Date.parse(slide.visibleFrom) >= Date.parse(slide.visibleUntil)
@@ -625,7 +641,7 @@ export class CarouselPublicationService {
       ) as Record<ContentLocaleCode, CarouselTranslationPayload>;
       return {
         publicId: slide.publicId ?? this.createPublicId(),
-        mediaAssetPublicId: slide.mediaAssetPublicId,
+        defaultMediaAssetPublicId: slide.defaultMediaAssetPublicId,
         sortOrder: slide.sortOrder,
         isEnabled: slide.isEnabled,
         visibleFrom: slide.visibleFrom ? new Date(slide.visibleFrom) : null,
@@ -646,6 +662,7 @@ export class CarouselPublicationService {
 
   private cleanTranslation(value: CarouselTranslationInput): CarouselTranslationInput {
     return {
+      mediaAssetPublicId: value.mediaAssetPublicId ?? null,
       badge: value.badge,
       title: value.title.trim(),
       caption: value.caption,

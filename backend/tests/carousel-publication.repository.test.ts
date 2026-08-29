@@ -179,6 +179,131 @@ describe("CarouselPublicationRepository", () => {
     );
   });
 
+  it("publishes a non-clickable user-home slide with the requested locale image", async () => {
+    const defaultMedia = {
+      id: 1,
+      isActive: true,
+      purgedAt: null,
+      deletedAt: null,
+      entityType: "content_publication_upload",
+      usageType: "content_publication_public",
+      url: "/media/content/default.png",
+      checksumSha256: "a".repeat(64)
+    };
+    const japaneseMedia = {
+      ...defaultMedia,
+      id: 2,
+      url: "/media/content/welcome-ja.png",
+      checksumSha256: "b".repeat(64)
+    };
+    const repository = new CarouselPublicationRepository({
+      carouselRelease: {
+        findFirst: jest.fn(async () => ({
+          version: 9,
+          slides: [
+            {
+              publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              isEnabled: true,
+              visibleFrom: null,
+              visibleUntil: null,
+              targetType: "NONE",
+              shopId: null,
+              technicianProfileId: null,
+              serviceId: null,
+              announcementId: null,
+              affiliateTaskId: null,
+              shop: null,
+              technicianProfile: null,
+              service: null,
+              announcement: null,
+              mediaAsset: defaultMedia,
+              translations: [
+                {
+                  locale: "JA",
+                  badge: "ようこそ",
+                  title: "NeeDoへようこそ",
+                  caption: null,
+                  ctaLabel: null,
+                  imageAltText: "NeeDoへようこそ",
+                  mediaAsset: japaneseMedia
+                }
+              ]
+            }
+          ]
+        }))
+      }
+    } as never);
+
+    await expect(
+      repository.findPublishedScene("USER_HOME", "ja", createInput.actor, now)
+    ).resolves.toMatchObject({
+      releaseVersion: 9,
+      slides: [
+        {
+          imageUrl: "/media/content/welcome-ja.png",
+          ctaLabel: null,
+          target: { type: "none" }
+        }
+      ]
+    });
+  });
+
+  it("falls back to the default slide image when the requested locale has no override", async () => {
+    const defaultMedia = {
+      id: 1,
+      isActive: true,
+      purgedAt: null,
+      deletedAt: null,
+      entityType: "content_publication_upload",
+      usageType: "content_publication_public",
+      url: "/media/content/default.png",
+      checksumSha256: "a".repeat(64)
+    };
+    const repository = new CarouselPublicationRepository({
+      carouselRelease: {
+        findFirst: jest.fn(async () => ({
+          version: 10,
+          slides: [
+            {
+              publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+              isEnabled: true,
+              visibleFrom: null,
+              visibleUntil: null,
+              targetType: "NONE",
+              shopId: null,
+              technicianProfileId: null,
+              serviceId: null,
+              announcementId: null,
+              affiliateTaskId: null,
+              shop: null,
+              technicianProfile: null,
+              service: null,
+              announcement: null,
+              mediaAsset: defaultMedia,
+              translations: [
+                {
+                  locale: "ZH_CN",
+                  badge: "欢迎",
+                  title: "欢迎进入 NeeDo",
+                  caption: null,
+                  ctaLabel: null,
+                  imageAltText: "欢迎进入 NeeDo",
+                  mediaAsset: null
+                }
+              ]
+            }
+          ]
+        }))
+      }
+    } as never);
+
+    await expect(
+      repository.findPublishedScene("USER_HOME", "zh-CN", createInput.actor, now)
+    ).resolves.toMatchObject({
+      slides: [{ imageUrl: "/media/content/default.png", target: { type: "none" } }]
+    });
+  });
+
   it("enumerates due carousel releases in deterministic publishAt/id order", async () => {
     const publishAt = new Date("2026-08-29T05:00:00.000Z");
     const findMany = jest.fn(async () => [{ id: 71, scene: "USER_HOME", publishAt }]);
@@ -440,10 +565,13 @@ describe("CarouselPublicationRepository", () => {
   });
 
   it("resolves same-checksum media to the acting uploader and carries that exact asset ID", async () => {
-    const mediaFindFirst = jest.fn(async () => ({ id: 222 }));
+    const defaultChecksum = "c".repeat(64);
+    const japaneseChecksum = "d".repeat(64);
+    const mediaFindFirst = jest.fn(async ({ where }: { where: { checksumSha256: string } }) => ({
+      id: where.checksumSha256 === japaneseChecksum ? 333 : 222
+    }));
     const transaction = {
-      mediaAsset: { findFirst: mediaFindFirst },
-      shop: { findFirst: jest.fn(async () => ({ id: 7 })) }
+      mediaAsset: { findFirst: mediaFindFirst }
     };
     const repository = new CarouselPublicationRepository({} as never);
     const resolver = repository as unknown as {
@@ -455,7 +583,13 @@ describe("CarouselPublicationRepository", () => {
         effectiveAt: Date,
         validateAffiliateTask: (taskId: number) => Promise<void>,
         scopeShopId: number | null
-      ) => Promise<Array<{ mediaAssetId: number; target: { type: "shop"; shopId: number } }>>;
+      ) => Promise<
+        Array<{
+          mediaAssetId: number;
+          target: { type: "none" };
+          translations: Record<string, { mediaAssetId: number | null }>;
+        }>
+      >;
     };
     const result = await resolver.resolveSlides(
       transaction,
@@ -463,24 +597,31 @@ describe("CarouselPublicationRepository", () => {
       [
         {
           publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          mediaAssetPublicId: "c".repeat(64),
+          defaultMediaAssetPublicId: defaultChecksum,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
           visibleUntil: null,
-          target: { type: "shop", publicId: "shop0000000007" },
-          translations: {} as CreateCarouselDraftMutation["slides"][number]["translations"]
+          target: { type: "none" },
+          translations: {
+            "zh-CN": { mediaAssetPublicId: null },
+            "zh-TW": { mediaAssetPublicId: null },
+            en: { mediaAssetPublicId: null },
+            ja: { mediaAssetPublicId: japaneseChecksum },
+            ko: { mediaAssetPublicId: null }
+          }
         }
-      ],
+      ] as never,
       41,
       now,
       jest.fn(async () => undefined),
       null
     );
-    expect(mediaFindFirst).toHaveBeenCalledWith(
+    expect(mediaFindFirst).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         where: expect.objectContaining({
-          checksumSha256: "c".repeat(64),
+          checksumSha256: defaultChecksum,
           entityType: "content_publication_upload",
           usageType: "content_publication_public",
           ownerUserId: 41,
@@ -491,9 +632,91 @@ describe("CarouselPublicationRepository", () => {
         orderBy: { id: "desc" }
       })
     );
+    expect(mediaFindFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          checksumSha256: japaneseChecksum,
+          ownerUserId: 41
+        })
+      })
+    );
     expect(result[0]).toMatchObject({
       mediaAssetId: 222,
-      target: { type: "shop", shopId: 7 }
+      target: { type: "none" },
+      translations: { ja: { mediaAssetId: 333 }, "zh-CN": { mediaAssetId: null } }
+    });
+  });
+
+  it("stores a none target without any business target foreign key", () => {
+    const repository = new CarouselPublicationRepository({} as never);
+    const scalarData = (
+      repository as unknown as {
+        slideScalarData: (slide: unknown) => Record<string, unknown>;
+      }
+    ).slideScalarData({
+      publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      defaultMediaAssetPublicId: "a".repeat(64),
+      mediaAssetId: 1,
+      sortOrder: 0,
+      isEnabled: true,
+      visibleFrom: null,
+      visibleUntil: null,
+      target: { type: "none" },
+      translations: {}
+    });
+
+    expect(scalarData).toMatchObject({
+      targetType: "NONE",
+      shopId: null,
+      technicianProfileId: null,
+      serviceId: null,
+      announcementId: null,
+      affiliateTaskId: null
+    });
+  });
+
+  it("preserves localized media overrides when preparing a rollback clone", () => {
+    const repository = new CarouselPublicationRepository({} as never);
+    const cloneSlides = (
+      repository as unknown as {
+        cloneSlides: (release: unknown) => CreateCarouselDraftMutation["slides"];
+      }
+    ).cloneSlides.bind(repository);
+    const slides = cloneSlides({
+      slides: [
+        {
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          targetType: "NONE",
+          shopId: null,
+          technicianProfileId: null,
+          serviceId: null,
+          announcementId: null,
+          affiliateTaskId: null,
+          mediaAsset: { checksumSha256: "a".repeat(64) },
+          translations: [
+            {
+              locale: "JA",
+              mediaAsset: { checksumSha256: "b".repeat(64) },
+              badge: null,
+              title: "NeeDoへようこそ",
+              caption: null,
+              ctaLabel: null,
+              imageAltText: "NeeDoへようこそ",
+              sourceLocale: "JA"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(slides[0]).toMatchObject({
+      defaultMediaAssetPublicId: "a".repeat(64),
+      target: { type: "none" },
+      translations: { ja: { mediaAssetPublicId: "b".repeat(64) } }
     });
   });
 

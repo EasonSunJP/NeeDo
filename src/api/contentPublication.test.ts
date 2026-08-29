@@ -17,6 +17,7 @@ vi.mock("./httpClient", () => ({
 const idempotencyKey = "11111111-1111-4111-8111-111111111111";
 const translation = {
   locale: "ja" as ContentLocaleCode,
+  mediaAssetPublicId: null,
   badge: null,
   title: "Tokyo",
   caption: null,
@@ -25,7 +26,7 @@ const translation = {
 };
 
 const userSlide = {
-  mediaAssetPublicId: "a".repeat(64),
+  defaultMediaAssetPublicId: "a".repeat(64),
   sortOrder: 0,
   isEnabled: true,
   visibleFrom: null,
@@ -35,6 +36,11 @@ const userSlide = {
     publicId: "46969a0f-2c2c-4b7b-b986-88e406393255",
   },
   translations: [translation],
+};
+
+const welcomeSlide = {
+  ...userSlide,
+  target: { type: "none" as const },
 };
 
 const affiliateSlide = {
@@ -65,6 +71,11 @@ describe("contentPublicationApi", () => {
       sourceLocale: "ja",
       slides: [userSlide],
     } satisfies CarouselDraftCreateInput<"USER_HOME">;
+    const welcomeDraft = {
+      idempotencyKey,
+      sourceLocale: "ja",
+      slides: [welcomeSlide],
+    } satisfies CarouselDraftCreateInput<"USER_HOME">;
     const affiliateReplacement = {
       expectedLockVersion: 2,
       sourceLocale: "ja",
@@ -81,6 +92,7 @@ describe("contentPublicationApi", () => {
     } satisfies CarouselDraftReplaceInput<"affiliate-home-notice">;
 
     await contentPublicationApi.createCarouselDraft("USER_HOME", userDraft);
+    await contentPublicationApi.createCarouselDraft("user-home", welcomeDraft);
     await contentPublicationApi.replaceCarouselDraft(
       "affiliate-home-notice",
       81,
@@ -100,6 +112,11 @@ describe("contentPublicationApi", () => {
     );
     expect(httpClient.request).toHaveBeenNthCalledWith(
       2,
+      "/backoffice/content/carousels/user-home/releases",
+      { body: welcomeDraft, method: "POST" },
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      3,
       "/backoffice/content/carousels/affiliate-home-notice/releases/81",
       { body: affiliateReplacement, method: "PATCH" },
     );
@@ -206,6 +223,7 @@ describe("contentPublicationApi", () => {
     } satisfies import("./contentPublication").CarouselDraftReplaceInput;
     const locale = {
       expectedLockVersion: 3,
+      mediaAssetPublicId: null,
       badge: null,
       title: "Tokyo",
       caption: null,

@@ -16,6 +16,31 @@ export type FeatureCarouselSlide = {
   to?: string;
 };
 
+export function resolveCarouselScrollLeft(currentScrollLeft: number, slideLeft: number, viewportLeft: number) {
+  return Math.max(currentScrollLeft + slideLeft - viewportLeft, 0);
+}
+
+export function resolveCarouselActiveIndex(scrollLeft: number, slideOffsets: number[]) {
+  if (slideOffsets.length === 0) {
+    return 0;
+  }
+
+  const firstSlideOffset = slideOffsets[0] ?? 0;
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  slideOffsets.forEach((offset, index) => {
+    const distance = Math.abs(Math.max(offset - firstSlideOffset, 0) - scrollLeft);
+
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  });
+
+  return closestIndex;
+}
+
 export function FeatureCarousel({
   slides,
   className,
@@ -27,7 +52,8 @@ export function FeatureCarousel({
   showIndicators = true,
   viewportClassName,
   slideClassName,
-  renderSlide
+  renderSlide,
+  dataNoI18n = false
 }: {
   slides: FeatureCarouselSlide[];
   className?: string;
@@ -40,6 +66,7 @@ export function FeatureCarousel({
   viewportClassName?: string;
   slideClassName?: string;
   renderSlide?: (args: { slide: FeatureCarouselSlide; index: number; isActive: boolean }) => React.ReactNode;
+  dataNoI18n?: boolean;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
@@ -65,24 +92,10 @@ export function FeatureCarousel({
       return 0;
     }
 
-    const currentScrollLeft = viewport.scrollLeft;
-    let closestIndex = 0;
-    let closestDistance = Number.POSITIVE_INFINITY;
-
-    slideRefs.current.forEach((slide, index) => {
-      if (!slide) {
-        return;
-      }
-
-      const distance = Math.abs(slide.offsetLeft - currentScrollLeft);
-
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestIndex = index;
-      }
-    });
-
-    return closestIndex;
+    return resolveCarouselActiveIndex(
+      viewport.scrollLeft,
+      slideRefs.current.flatMap((slide) => (slide ? [slide.offsetLeft] : []))
+    );
   };
 
   const updateActiveIndex = (nextIndex: number | ((current: number) => number)) => {
@@ -127,9 +140,12 @@ export function FeatureCarousel({
       return;
     }
 
+    const currentSlideRect = currentSlide.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+
     viewport.scrollTo({
-      left: currentSlide.offsetLeft,
-      behavior: "smooth"
+      behavior: "smooth",
+      left: resolveCarouselScrollLeft(viewport.scrollLeft, currentSlideRect.left, viewportRect.left)
     });
   }, [resolvedActiveIndex]);
 
@@ -175,7 +191,10 @@ export function FeatureCarousel({
   );
 
   return (
-    <section className={cn(featureCarouselFrameClassName, className)}>
+    <section
+      className={cn(featureCarouselFrameClassName, className)}
+      data-no-i18n={dataNoI18n || undefined}
+    >
       <div
         className={cn("scrollbar-none flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain", viewportClassName)}
         onScroll={() => {

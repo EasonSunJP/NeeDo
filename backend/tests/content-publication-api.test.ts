@@ -109,8 +109,11 @@ const fixture = () => {
           caption: null,
           ctaLabel: null,
           imageAltText: "Image",
-          imageUrl: "/media/content/a.png",
-          target: { type: "shop", publicId: "shop0000000001" }
+          imageUrl: locale === "ja" ? "/media/content/ja.png" : "/media/content/a.png",
+          target:
+            scene === "USER_HOME"
+              ? { type: "none" }
+              : { type: "affiliate_announcement", publicId: "notice-public-id" }
         }
       ]
     }))
@@ -189,7 +192,7 @@ describe("formal carousel publication HTTP API", () => {
         slides: [
           {
             publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            mediaAssetPublicId: "a".repeat(64),
+            defaultMediaAssetPublicId: "a".repeat(64),
             sortOrder: 0,
             isEnabled: true,
             visibleFrom: null,
@@ -197,6 +200,7 @@ describe("formal carousel publication HTTP API", () => {
             target: { type: "shop", publicId: "shop0000000007" },
             translations: ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => ({
               locale,
+              mediaAssetPublicId: locale === "ja" ? "b".repeat(64) : null,
               badge: null,
               title: `Title ${locale}`,
               caption: null,
@@ -214,6 +218,7 @@ describe("formal carousel publication HTTP API", () => {
       .set("Authorization", auth)
       .send({
         expectedLockVersion: 1,
+        mediaAssetPublicId: null,
         badge: null,
         title: "Title",
         caption: null,
@@ -287,8 +292,12 @@ describe("formal carousel publication HTTP API", () => {
       .get("/api/v1/affiliate/content/carousel?locale=ja")
       .set("Authorization", auth)
       .expect(200);
+    expect(user.body.data.slides[0]).toMatchObject({
+      imageUrl: "/media/content/ja.png",
+      target: { type: "none" }
+    });
+    expect(affiliate.body.data.slides[0].target).toHaveProperty("publicId");
     for (const response of [user, affiliate]) {
-      expect(response.body.data.slides[0].target).toHaveProperty("publicId");
       expect(JSON.stringify(response.body.data)).not.toMatch(
         /shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId|releaseId/
       );
@@ -393,8 +402,7 @@ describe("formal carousel publication HTTP API", () => {
       /releaseId|publishedSlotKey|translations|sourceLocale|isInitialCopy|createdBy|updatedBy|publishedBy|disabledBy|userId|shopId|technicianProfileId|serviceId|announcementId|affiliateTaskId/
     );
     expect(response.body.data.slides[0].target).toEqual({
-      type: "shop",
-      publicId: "shop0000000001"
+      type: "none"
     });
   });
 });

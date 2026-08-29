@@ -13,7 +13,8 @@ import {
   type PublishedCarouselUiScene
 } from "./usePublishedCarousel";
 
-export function carouselTargetPath(target: PublishedCarouselTarget): string {
+export function carouselTargetPath(target: PublishedCarouselTarget): string | null {
+  if (target.type === "none") return null;
   if (target.type === "shop") {
     return `/stores/${encodeURIComponent(target.publicId)}`;
   }
@@ -110,16 +111,25 @@ export function PublishedCarousel({
     );
   }
 
-  const slides: FeatureCarouselSlide[] = data.slides.map((slide) => ({
-    id: slide.id,
-    badge: slide.badge ?? undefined,
-    title: slide.title,
-    caption: slide.caption ?? undefined,
-    cta: slide.ctaLabel,
-    image: slide.imageUrl,
-    imageAlt: slide.imageAltText,
-    to: carouselTargetPath(slide.target)
-  }));
+  const slides: FeatureCarouselSlide[] = data.slides.map((slide) => {
+    const targetPath = carouselTargetPath(slide.target);
+    return {
+      id: slide.id,
+      badge: slide.badge ?? undefined,
+      title: slide.title,
+      caption: slide.caption ?? undefined,
+      cta: slide.ctaLabel,
+      image: slide.imageUrl,
+      imageAlt: slide.imageAltText,
+      to: targetPath ?? undefined
+    };
+  });
 
-  return <FeatureCarousel cardHeightClassName={resolvedCardHeightClassName} slides={slides} />;
+  return (
+    <FeatureCarousel
+      cardHeightClassName={resolvedCardHeightClassName}
+      dataNoI18n
+      slides={slides}
+    />
+  );
 }

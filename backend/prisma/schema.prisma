@@ -524,6 +524,7 @@ enum CarouselTargetType {
   TECHNICIAN             @map("technician")
   SERVICE                @map("service")
   AFFILIATE_ANNOUNCEMENT @map("affiliate_announcement")
+  NONE                   @map("none")
 
   @@map("carousel_target_type")
 }
@@ -1166,6 +1167,7 @@ model MediaAsset {
   affiliateTaskCovers  AffiliateTask[]            @relation("AffiliateTaskCover")
   identityApplications IdentityApplicationMedia[]
   carouselSlides       CarouselSlide[]
+  carouselSlideTranslations CarouselSlideTranslation[] @relation("CarouselSlideTranslationMedia")
 
   @@index([entityType, entityId])
   @@index([categoryId])
@@ -1357,6 +1359,7 @@ model CarouselSlide {
 model CarouselSlideTranslation {
   id            Int           @id @default(autoincrement())
   slideId       Int           @map("slide_id")
+  mediaAssetId  Int?          @map("media_asset_id")
   locale        ContentLocale
   badge         String?       @db.VarChar(40)
   title         String        @db.VarChar(160)
@@ -1369,9 +1372,11 @@ model CarouselSlideTranslation {
   updatedAt     DateTime      @updatedAt @map("updated_at")
   deletedAt     DateTime?     @map("deleted_at")
 
-  slide CarouselSlide @relation(fields: [slideId], references: [id], onDelete: Restrict)
+  slide      CarouselSlide @relation(fields: [slideId], references: [id], onDelete: Restrict)
+  mediaAsset MediaAsset?   @relation("CarouselSlideTranslationMedia", fields: [mediaAssetId], references: [id], onDelete: Restrict)
 
   @@unique([slideId, locale])
+  @@index([mediaAssetId])
   @@index([locale, deletedAt])
   @@map("carousel_slide_translations")
 }

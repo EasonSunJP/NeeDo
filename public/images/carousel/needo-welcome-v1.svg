@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="720" viewBox="0 0 1120 720">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071016"/>
+      <stop offset="0.55" stop-color="#0d1b20"/>
+      <stop offset="1" stop-color="#15272b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.76" cy="0.27" r="0.58">
+      <stop offset="0" stop-color="#a7ff32" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#a7ff32" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1120" height="720" fill="url(#bg)"/>
+  <rect width="1120" height="720" fill="url(#glow)"/>
+  <g fill="none" stroke="#a7ff32" stroke-opacity="0.18" stroke-width="3">
+    <path d="M620 90C790 150 870 250 1030 270M570 180C720 245 810 365 1005 410M610 335C760 385 835 520 1020 575"/>
+    <circle cx="850" cy="305" r="150"/><circle cx="850" cy="305" r="235"/>
+  </g>
+  <g transform="translate(760 170)">
+    <path d="M90 0c-55 0-100 43-100 97 0 74 100 190 100 190S190 171 190 97C190 43 145 0 90 0Z" fill="#a7ff32"/>
+    <circle cx="90" cy="96" r="38" fill="#0b171c"/>
+  </g>
+  <text x="72" y="455" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="132" font-weight="800" letter-spacing="-8">NeeDo</text>
+  <rect x="74" y="500" width="180" height="14" rx="7" fill="#a7ff32"/>
+</svg>

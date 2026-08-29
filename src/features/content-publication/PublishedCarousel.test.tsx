@@ -193,6 +193,7 @@ describe("PublishedCarousel", () => {
     await renderCarousel("user-home");
     await waitFor(() => expect(container.textContent).toContain("东京护理"));
 
+    expect(container.querySelector('section[data-no-i18n="true"]')).not.toBeNull();
     const slide = container.querySelector<HTMLAnchorElement>('a[href*="/services/"]');
     expect(slide?.getAttribute("href")).toBe(
       "/services/46969a0f-2c2c-4b7b-b986-88e406393255"
@@ -202,6 +203,23 @@ describe("PublishedCarousel", () => {
     );
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe(
       "/services/46969a0f-2c2c-4b7b-b986-88e406393255"
+    );
+  });
+
+  it("renders a none target without a card link or CTA and leaves the route unchanged", async () => {
+    const welcome = payload("USER_HOME", { type: "none" });
+    welcome.slides[0].ctaLabel = null;
+    apiMocks.getUserHomeCarousel.mockResolvedValue(welcome);
+
+    await renderCarousel("user-home");
+    await waitFor(() => expect(container.textContent).toContain("东京护理"));
+
+    expect(container.querySelector("a[href]")).toBeNull();
+    expect(
+      container.querySelector('[data-feature-carousel-cta="true"]'),
+    ).toBeNull();
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe(
+      "/",
     );
   });
 

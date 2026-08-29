@@ -394,7 +394,7 @@ const carouselSlideInputSchema = (targetSchema: string, replace: boolean) => ({
   type: "object",
   additionalProperties: false,
   required: [
-    "mediaAssetPublicId",
+    "defaultMediaAssetPublicId",
     "sortOrder",
     "isEnabled",
     "visibleFrom",
@@ -404,7 +404,7 @@ const carouselSlideInputSchema = (targetSchema: string, replace: boolean) => ({
   ],
   properties: {
     publicId: { type: "string", format: "uuid" },
-    mediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    defaultMediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
     sortOrder: { type: "integer", minimum: 0 },
     isEnabled: { type: "boolean" },
     visibleFrom: { type: ["string", "null"], format: "date-time" },
@@ -4797,9 +4797,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       CarouselTranslationInput: {
         type: "object",
         additionalProperties: false,
-        required: ["locale", "badge", "title", "caption", "ctaLabel", "imageAltText"],
+        required: [
+          "locale",
+          "mediaAssetPublicId",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText"
+        ],
         properties: {
           locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
           badge: { type: ["string", "null"], maxLength: 40 },
           title: { type: "string", minLength: 1, maxLength: 160 },
           caption: { type: ["string", "null"], maxLength: 500 },
@@ -4812,6 +4825,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: [
           "locale",
+          "mediaAssetPublicId",
           "badge",
           "title",
           "caption",
@@ -4822,6 +4836,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
           badge: { type: ["string", "null"], maxLength: 40 },
           title: { type: "string", minLength: 1, maxLength: 160 },
           caption: { type: ["string", "null"], maxLength: 500 },
@@ -4833,6 +4852,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       CarouselProtectedTarget: {
         oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { const: "none" } }
+          },
           {
             type: "object",
             additionalProperties: false,
@@ -4868,6 +4893,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       CarouselUserHomeTargetInput: {
         oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { const: "none" } }
+          },
           {
             type: "object",
             additionalProperties: false,
@@ -4989,9 +5020,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       CarouselLocaleUpdate: {
         type: "object",
         additionalProperties: false,
-        required: ["expectedLockVersion", "badge", "title", "caption", "ctaLabel", "imageAltText"],
+        required: [
+          "expectedLockVersion",
+          "mediaAssetPublicId",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText"
+        ],
         properties: {
           expectedLockVersion: { type: "integer", minimum: 1 },
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
           badge: { type: ["string", "null"], maxLength: 40 },
           title: { type: "string", minLength: 1, maxLength: 160 },
           caption: { type: ["string", "null"], maxLength: 500 },
@@ -5022,6 +5066,72 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           expectedLockVersion: { type: "integer", minimum: 1 },
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+        }
+      },
+      CarouselTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "mediaAssetPublicId",
+          "imageUrl",
+          "badge",
+          "title",
+          "caption",
+          "ctaLabel",
+          "imageAltText",
+          "sourceLocale",
+          "isInitialCopy"
+        ],
+        properties: {
+          mediaAssetPublicId: {
+            type: "string",
+            nullable: true,
+            pattern: "^[a-f0-9]{64}$"
+          },
+          imageUrl: { type: "string", format: "uri-reference" },
+          badge: { type: ["string", "null"], maxLength: 40 },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          caption: { type: ["string", "null"], maxLength: 500 },
+          ctaLabel: { type: ["string", "null"], maxLength: 60 },
+          imageAltText: { type: "string", minLength: 1, maxLength: 255 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      CarouselProtectedSlide: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "defaultMediaAssetPublicId",
+          "defaultImageUrl",
+          "sortOrder",
+          "isEnabled",
+          "visibleFrom",
+          "visibleUntil",
+          "target",
+          "translations"
+        ],
+        properties: {
+          id: { type: "string", format: "uuid" },
+          defaultMediaAssetPublicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          defaultImageUrl: { type: "string", format: "uri-reference" },
+          sortOrder: { type: "integer", minimum: 0 },
+          isEnabled: { type: "boolean" },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" },
+          target: { $ref: "#/components/schemas/CarouselProtectedTarget" },
+          translations: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+            properties: Object.fromEntries(
+              ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+                locale,
+                { $ref: "#/components/schemas/CarouselTranslation" }
+              ])
+            )
+          }
         }
       },
       CarouselProtectedPayload: {
@@ -5056,7 +5166,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           disabledAt: { type: ["string", "null"], format: "date-time" },
           archivedAt: { type: ["string", "null"], format: "date-time" },
           sourceReleaseId: { type: ["integer", "null"], minimum: 1 },
-          slides: { type: "array", items: { type: "object" } },
+          slides: {
+            type: "array",
+            items: { $ref: "#/components/schemas/CarouselProtectedSlide" }
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
         }
@@ -5154,16 +5267,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       },
       PublishedCarouselTarget: {
-        type: "object",
-        additionalProperties: false,
-        required: ["type", "publicId"],
-        properties: {
-          type: {
-            type: "string",
-            enum: ["shop", "technician", "service", "affiliate_announcement"]
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { const: "none" } }
           },
-          publicId: { type: "string" }
-        }
+          ...["shop", "technician", "service", "affiliate_announcement"].map((type) => ({
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "publicId"],
+            properties: {
+              type: { const: type },
+              publicId: { type: "string" }
+            }
+          }))
+        ]
       },
       PublishedCarouselPayload: {
         type: "object",

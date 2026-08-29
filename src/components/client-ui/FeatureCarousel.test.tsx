@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import { FeatureCarousel, type FeatureCarouselSlide } from "./FeatureCarousel";
+import {
+  FeatureCarousel,
+  resolveCarouselActiveIndex,
+  resolveCarouselScrollLeft,
+  type FeatureCarouselSlide
+} from "./FeatureCarousel";
 import featureCarouselSource from "./FeatureCarousel.tsx?raw";
 
 function renderSlide(slide: FeatureCarouselSlide) {
@@ -13,6 +18,28 @@ function renderSlide(slide: FeatureCarouselSlide) {
 }
 
 describe("FeatureCarousel indicators", () => {
+  it("aligns programmatic indicator navigation to full-width slide boundaries", () => {
+    expect(resolveCarouselScrollLeft(0, 16, 16)).toBe(0);
+    expect(resolveCarouselScrollLeft(0, 840, 16)).toBe(824);
+    expect(resolveCarouselScrollLeft(3232, 66, 16)).toBe(3282);
+  });
+
+  it("aligns the selected slide within its real scroll container", () => {
+    expect(featureCarouselSource).toContain("currentSlide.getBoundingClientRect()");
+    expect(featureCarouselSource).toContain("viewport.getBoundingClientRect()");
+    expect(featureCarouselSource).toContain("viewport.scrollTo({");
+    expect(featureCarouselSource).not.toContain("currentSlide.scrollIntoView({");
+  });
+
+  it("resolves a settled horizontal scroll to the nearest full-width slide", () => {
+    const offsets = [16, 840, 1664, 2488, 3312];
+
+    expect(resolveCarouselActiveIndex(0, offsets)).toBe(0);
+    expect(resolveCarouselActiveIndex(823, offsets)).toBe(1);
+    expect(resolveCarouselActiveIndex(1649, offsets)).toBe(2);
+    expect(resolveCarouselActiveIndex(9999, offsets)).toBe(4);
+  });
+
   it("keeps the active capsule and makes inactive dots visible on image carousels", () => {
     expect(featureCarouselSource).toContain("feature-carousel-indicator-pill");
     expect(featureCarouselSource).toContain("feature-carousel-indicator-dot");

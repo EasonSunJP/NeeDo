@@ -945,6 +945,7 @@ describe("LoginPage formal flow guardrails", () => {
 
   it("audits the current checkout instead of a hard-coded sibling workspace", () => {
     expect(i18nAuditSource).toContain("fileURLToPath(import.meta.url)");
+    expect(i18nAuditSource).toContain("affiliateMarketplaceTranslations");
     expect(i18nAuditSource).not.toContain(
       'const workspaceRoot = "/Users/eason/Documents/New project"',
     );

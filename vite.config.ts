@@ -89,6 +89,11 @@ export function createNeedoApiProxyConfig(target: string): Record<string, ProxyO
       changeOrigin: true,
       secure: false,
       target
+    },
+    "/media": {
+      changeOrigin: true,
+      secure: false,
+      target
     }
   };
 }
