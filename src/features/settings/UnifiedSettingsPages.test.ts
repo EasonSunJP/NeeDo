@@ -379,7 +379,7 @@ describe("UnifiedSettingsServiceRangePage", () => {
     expect(serviceRangeSource).toContain("simple");
     expect(source).toContain("fixed inset-x-0 bottom-0");
     expect(source).toContain("bg-gradient-to-t");
-    expect(serviceRangeSource).toContain('saveLabel={t("保存并关闭")}');
+    expect(serviceRangeSource).toContain('saveLabel={t(serviceRangeSaving ? "保存中" : "保存并关闭")}');
     expect(serviceRangeSource).not.toContain("保存并返回设置中心");
   });
 
@@ -387,7 +387,9 @@ describe("UnifiedSettingsServiceRangePage", () => {
     expect(serviceRangeSource).toContain('portal === "user"');
     expect(serviceRangeSource).toContain("selectHomeLocationManually");
     expect(serviceRangeSource).toContain("updateStoreEntity(store.id");
-    expect(serviceRangeSource).toContain("updateTechnicianEntity(technician.id");
+    expect(serviceRangeSource).toContain("technicianProfileApi.getMine()");
+    expect(serviceRangeSource).toContain("technicianProfileApi.updateMine({ serviceAreas: areas })");
+    expect(serviceRangeSource).not.toContain("updateTechnicianEntity");
     expect(serviceRangeSource).not.toContain('portal !== "technician"');
     expect(serviceRangeSource).not.toContain("当前不可用");
   });
@@ -509,9 +511,10 @@ describe("UnifiedSettingsPage Xiaobai asset gate", () => {
   });
 
   it("never dereferences retired entity rows on the settings home", () => {
-    expect(settingsHomeSource).toContain("technician?.serviceAreas ?? []");
+    expect(settingsHomeSource).toContain("technicianProfileApi.getMine()");
+    expect(settingsHomeSource).toContain("technicianProfileQuery.data?.serviceAreas ?? []");
     expect(settingsHomeSource).toContain('store?.area?.trim() ?? ""');
-    expect(settingsHomeSource).not.toContain("technician.serviceAreas");
+    expect(settingsHomeSource).not.toContain("technicians.find");
     expect(settingsHomeSource).not.toContain("store.area : getHomeLocationAreaLabel");
   });
 });
@@ -557,14 +560,25 @@ describe("UnifiedSettingsProfilePage", () => {
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
   });
 
-  it("guards technician and merchant profile routes when formal entities are absent", () => {
+  it("loads and saves the technician profile through the formal technician profile API", () => {
+    const profileRouteSource = source.slice(
+      source.indexOf("function FormalTechnicianProfileSettingsPage"),
+      source.indexOf("export function UnifiedSettingsVerificationPage")
+    );
+
+    expect(profileRouteSource).toContain("technicianProfileApi.getMine()");
+    expect(technicianProfileSource).toContain("technicianProfileApi.updateMine");
+    expect(technicianProfileSource).not.toContain("updateTechnicianEntity");
+    expect(profileRouteSource).toContain("SettingsProfileResourceState");
+  });
+
+  it("guards the merchant profile route when its formal entity is absent", () => {
     const profileRouteSource = source.slice(
       source.indexOf("export function UnifiedSettingsProfilePage"),
       source.indexOf("export function UnifiedSettingsVerificationPage")
     );
 
     expect(profileRouteSource).toContain('if (!store)');
-    expect(profileRouteSource).toContain('if (!technician)');
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
   });
 });

@@ -18,13 +18,13 @@ describe("SharedHomeHeader location entry", () => {
   });
 
   it("shows the current service area caption above the technician task header location", () => {
-    const taskHeaderStart = technicianSource.indexOf('{activeView === "tasks"');
-    const taskHeaderEnd = technicianSource.indexOf('{activeView === "me"', taskHeaderStart);
+    const taskHeaderStart = technicianSource.indexOf("function TasksView");
+    const taskHeaderEnd = technicianSource.indexOf("type TechnicianProfileDraft", taskHeaderStart);
     const taskHeaderSource = technicianSource.slice(taskHeaderStart, taskHeaderEnd);
 
     expect(taskHeaderSource).toContain("<SharedHomeHeader");
     expect(taskHeaderSource).toContain('locationCaption="当前服务区域"');
-    expect(taskHeaderSource).toContain('locationLabel={activeOrder?.area ? `东京 · ${activeOrder.area}` : "东京 · 新宿区"}');
+    expect(taskHeaderSource).toContain('locationLabel={profile.serviceAreas[0] ?? profile.city ?? "服务区域未设置"}');
     expect(taskHeaderSource).toContain('locationTo="/technician/settings/service-range"');
   });
 

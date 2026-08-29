@@ -6,8 +6,10 @@ import userScheduleSource from "../pages/user/UserSchedulePage.tsx?raw";
 import userTechnicianScheduleSource from "../pages/user/UserTechnicianScheduleDetailPage.tsx?raw";
 import technicianScheduleRoutesSource from "../features/technician-schedule/route-pages.tsx?raw";
 import technicianScheduleResourceSource from "../features/technician-schedule/formal-resource.tsx?raw";
+import technicianScheduleWorkspaceSource from "../features/technician-schedule/FormalTechnicianScheduleWorkspace.tsx?raw";
 import technicianScheduleInventorySource from "../components/scheduling/FormalScheduleInventoryPanel.tsx?raw";
 import technicianOrdersSource from "../components/technician/FormalTechnicianOrdersPanel.tsx?raw";
+import technicianPortalSource from "../pages/mobile/TechnicianPortalPage.tsx?raw";
 
 const sourceRoot = fileURLToPath(new URL("..", import.meta.url));
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -38,6 +40,7 @@ describe("legacy mock retirement", () => {
     for (const source of [
       technicianScheduleRoutesSource,
       technicianScheduleResourceSource,
+      technicianScheduleWorkspaceSource,
       technicianScheduleInventorySource,
       technicianOrdersSource
     ]) {
@@ -49,6 +52,15 @@ describe("legacy mock retirement", () => {
     expect(technicianScheduleRoutesSource).toContain("parsePositiveRouteId");
     expect(technicianScheduleRoutesSource).toContain("重新加载");
     expect(technicianScheduleRoutesSource).toContain("班次转让暂未开放");
+  });
+
+  it("keeps the restored technician portal free of simplified or browser-backed fallbacks", () => {
+    expect(technicianPortalSource).toContain("technicianProfileApi.getMine()");
+    expect(technicianPortalSource).toContain("technicianProfileApi.updateMine(input)");
+    expect(technicianPortalSource).toContain("<FormalTechnicianOrdersPanel />");
+    expect(technicianPortalSource).not.toMatch(
+      /formalRuntimeFallbacks|entityStore|scheduleStore|technicianScheduleStore|shiftPlanningStore|dispatch-center\/store|localStorage|customers\[0\]|technicians\[0\]|updateTechnicianEntity|isStaticDemoMode|false\s*&&/
+    );
   });
 
   it("has no production import of the old mock dataset", () => {

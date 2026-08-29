@@ -2030,6 +2030,7 @@ export const translations: TranslationMap = {
   "保存并发送": { "zh-Hant": "保存並發送", ja: "保存して送信", en: "Save Send", ko: "저장 전송" },
   "保存并返回设置中心": { "zh-Hant": "儲存並返回設定中心", ja: "保存して設定センターへ戻る", en: "Save and return to Settings", ko: "저장하고 설정 센터로 돌아가기" },
   "保存并关闭": { "zh-Hant": "儲存並關閉", ja: "保存して閉じる", en: "Save and close", ko: "저장하고 닫기" },
+  "请至少保留一个服务区域": { "zh-Hant": "請至少保留一個服務區域", ja: "サービスエリアを1件以上残してください", en: "Keep at least one service area", ko: "서비스 지역을 하나 이상 유지해 주세요" },
   "保存并开卡": { "zh-Hant": "保存並開卡", ja: "保存してカード発行", en: "Save Issue Card", ko: "저장 카드 발급" },
   "保存并同步": { "zh-Hant": "保存並同步", ja: "保存して同期", en: "Save Sync", ko: "저장 동기화" },
   "保存并退出": { "zh-Hant": "儲存並退出", ja: "保存して終了", en: "Save and Exit", ko: "저장하고 종료" },

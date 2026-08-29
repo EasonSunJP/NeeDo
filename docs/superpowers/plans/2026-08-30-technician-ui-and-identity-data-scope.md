@@ -16,6 +16,15 @@
 - Preserve all existing records and migration history; use only additive migrations and fail-closed backfill checks.
 - Do not push, deploy, publish, or mutate production data.
 
+## Execution Evidence (2026-08-30)
+
+- Tasks 1-3 are complete in commits `6b51bcab`, `ec70204d`, and `70a11e93`.
+- Tasks 4-7 are implemented in the current branch: the technician portal and schedule use formal APIs only; the formal self-profile API, customer/Affiliate canonical scope, Exchange ownership scope, and regression scans are present.
+- Frontend: 233 test files / 1389 tests passed; focused final rerun 7 files / 54 tests passed; lint and production build/bundle audit passed.
+- Backend: full run reached 291 suites / 1944 tests passed with one transient Supertest socket parse failure that passed alone; the corrected focused identity/profile run passed 13 suites / 99 tests; lint and build passed.
+- `git diff --check` passed. The committed `20260830110000_personal_identity_scope` migration is unchanged; subsequent schema work is in separate additive migrations.
+- Browser entry and login redirect were checked without console errors. Authenticated browser acceptance and migration application are intentionally blocked until the earlier Affiliate migrations are merged into this worktree; no shared local database was mutated or bypassed.
+
 ---
 
 ### Task 1: Canonical personal identity scope
@@ -183,4 +192,3 @@
 - [ ] Verify desktop, 390px, and 440px technician routes; click day/week/month, detail, edit/save/reload, order state actions allowed by test data, contacts, chat, social, schedule, and Exchange.
 - [ ] Record console errors, failed network calls, horizontal overflow, hidden panel state, and exact evidence. Fix failures through new red-green cycles.
 - [ ] Run `git diff --check` and `git status --short`; report local branch/commit status separately from push/deployment.
-

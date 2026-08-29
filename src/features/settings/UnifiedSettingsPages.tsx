@@ -41,7 +41,7 @@ import {
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { formatCustomerCreditScore } from "../../shared/profile-card/customerProfileLabels";
-import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
+import { updateCustomerEntity, updateStoreEntity, useEntityStore } from "../../state/entityStore";
 import { selectHomeLocationManually } from "../../state/homeLocationStore";
 import { updateHomeLayoutConfig, useHomeLayoutStore, type HomeLocationOption } from "../../state/homeLayoutStore";
 import { getNeedoPetAssetProgress, preloadNeedoPetAssets, useNeedoPetAssetReadiness, type NeedoPetAssetReadiness } from "../../state/needoPetAssets";
@@ -63,6 +63,12 @@ import { TestOnlyBackendPortalEntries } from "./TestOnlyBackendPortalEntries";
 import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
 import { AuthVerificationPanel, type AuthVerificationLabels } from "../../pages/auth/AuthVerificationPanel";
 import { customerProfileApi } from "../core-read/customerProfileApi";
+import { useCoreReadQuery } from "../core-read/hooks";
+import {
+  technicianProfileApi,
+  type TechnicianSelfProfile,
+  type TechnicianProfilePaymentMethod
+} from "../core-read/technicianProfileApi";
 import { useCustomerSelfProfile } from "../core-read/useCustomerSelfProfile";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
@@ -1678,24 +1684,26 @@ function ThemeOptionRow({
 export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, session } = useAuth();
   const { language } = useI18n();
   const { theme } = useClientTheme();
   const petSettings = useNeedoPetSettings();
   const petAssetReadiness = useNeedoPetAssetReadiness();
   const [portalSettings] = usePortalSettingsState(portal);
   const profileCardBackgroundSettings = useProfileCardBackgroundSettings();
-  const { customers, technicians, stores } = useEntityStore();
+  const { customers, stores } = useEntityStore();
   const { config: homeLocationConfig } = useHomeLayoutStore();
-  const { session } = useAuth();
+  const technicianProfileQuery = useCoreReadQuery(
+    () => portal === "technician" ? technicianProfileApi.getMine() : null,
+    [portal, session?.currentIdentity.scopeId]
+  );
   const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
-  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const selectedHomeLocation =
     homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ??
     homeLocationConfig.locations[0] ??
     createManualHomeLocation("新宿");
-  const technicianServiceAreas = technician?.serviceAreas ?? [];
+  const technicianServiceAreas = technicianProfileQuery.data?.serviceAreas ?? [];
   const storeArea = store?.area?.trim() ?? "";
   const t = (source: string) => translateText(source, language);
   const currentThemeLabel = t(clientThemes.find((item) => item.id === theme)?.label ?? "活力黑白版");
@@ -1784,7 +1792,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             <SettingsListItem
               title={t(getProfileEntryTitle(portal))}
               to={getSettingsPath(portal, "profile")}
-              value={t(summarizeProfileStatus(portal, { customer, technician, store }))}
+              value={t(portal === "technician" ? (technicianProfileQuery.data ? "已完善" : technicianProfileQuery.loading ? "加载中" : "未完善") : summarizeProfileStatus(portal, { customer, store }))}
             />
             {portal !== "merchant" && profileCardBackgroundSettings.editEntryEnabled ? (
               <SettingsListItem
@@ -2079,7 +2087,7 @@ function SettingsProfileResourceState({
     <PortalScopedSettingsPage portal={portal}>
       <SettingsDetailPage backTo={getSettingsBasePath(portal)} title={t(title)}>
         <SurfacePanel className="space-y-4 text-center">
-          <p className="text-lg font-black text-[color:var(--client-text)]">{t(loading ? "正在读取客户正式详情..." : "资料不可用")}</p>
+          <p className="text-lg font-black text-[color:var(--client-text)]">{t(loading ? "正在读取正式资料..." : "资料不可用")}</p>
           {loading ? null : (
             <p className="text-sm leading-6 text-[color:var(--client-muted)]">{t("数据加载失败，请检查网络后重试")}</p>
           )}
@@ -2357,14 +2365,18 @@ function UserProfileSettingsPage({
   );
 }
 
-function TechnicianProfileSettingsPage({ portal, technician }: { portal: UnifiedSettingsPortal; technician: Technician }) {
+function TechnicianProfileSettingsPage({
+  portal,
+  profile
+}: {
+  portal: UnifiedSettingsPortal;
+  profile: TechnicianSelfProfile;
+}) {
   const navigate = useNavigate();
-  type TechnicianPaymentOption = NonNullable<Technician["paymentMethods"]>[number];
+  type TechnicianPaymentOption = TechnicianProfilePaymentMethod;
   type TechnicianProfileDraft = {
     avatar: string;
     nickname: string;
-    identityLabel: NonNullable<Technician["identityLabel"]>;
-    gender: NonNullable<Technician["gender"]>;
     age: string;
     height: string;
     languages: string[];
@@ -2418,25 +2430,23 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
   const toggleValue = (values: string[], value: string) => (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
   const togglePaymentMethod = (values: TechnicianPaymentOption[], value: TechnicianPaymentOption) =>
     values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-  const buildDraft = (current: Technician): TechnicianProfileDraft => ({
-    avatar: current.avatar,
-    nickname: current.nickname?.trim() || current.name,
-    identityLabel: current.identityLabel ?? "店铺所属技师",
-    gender: current.gender ?? "private",
-    age: current.age ?? "",
-    height: (current.height ?? "").replace(/[^\d]/g, ""),
-    languages: current.languages.length ? [...current.languages] : ["日本語"],
-    bio: current.bio ?? "可在这里补充服务偏好、擅长项目和接单说明。",
-    serviceAreas: current.serviceAreas.filter((item) => allowedServiceAreas.has(item)).length
-      ? current.serviceAreas.filter((item) => allowedServiceAreas.has(item))
-      : ["銀座", "新宿", "渋谷"],
-    profileTags: current.profileTags?.length ? [...current.profileTags] : [...(current.skills.length ? current.skills : ["💆 肩颈调理", "🤝 亲和"])],
-    canServeForeigners: current.canServeForeigners ?? true,
-    bidBudgetMin: current.bidBudgetMin ?? "12000",
-    bidBudgetMax: current.bidBudgetMax ?? "28000",
-    paymentMethods: current.paymentMethods?.length ? [...current.paymentMethods] : ["platform", "offline", "cash"]
+  const buildDraft = (current: TechnicianSelfProfile): TechnicianProfileDraft => ({
+    avatar: current.avatarUrl ?? "",
+    nickname: current.displayName,
+    age: current.age === null ? "" : String(current.age),
+    height: current.heightCm === null ? "" : String(current.heightCm),
+    languages: [...current.languages],
+    bio: current.bio ?? "",
+    serviceAreas: current.serviceAreas.filter((item) => allowedServiceAreas.has(item)),
+    profileTags: [...current.profileTags],
+    canServeForeigners: current.canServeForeigners,
+    bidBudgetMin: current.bidBudgetMinJpy === null ? "" : String(current.bidBudgetMinJpy),
+    bidBudgetMax: current.bidBudgetMaxJpy === null ? "" : String(current.bidBudgetMaxJpy),
+    paymentMethods: [...current.paymentMethods]
   });
-  const [draft, setDraft] = useState<TechnicianProfileDraft>(() => buildDraft(technician));
+  const [draft, setDraft] = useState<TechnicianProfileDraft>(() => buildDraft(profile));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const adminAreaGroups = useMemo(
     () =>
@@ -2455,8 +2465,8 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
     []
   );
   useEffect(() => {
-    setDraft(buildDraft(technician));
-  }, [technician]);
+    setDraft(buildDraft(profile));
+  }, [profile]);
 
   const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2477,24 +2487,31 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
     event.target.value = "";
   };
 
-  const handleSave = () => {
-    updateTechnicianEntity(technician.id, {
-      avatar: draft.avatar,
-      nickname: draft.nickname.trim() || technician.nickname?.trim() || technician.name,
-      identityLabel: draft.identityLabel,
-      gender: draft.gender,
-      age: draft.age.trim() || undefined,
-      height: draft.height.trim() ? `${draft.height.trim()}cm` : undefined,
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await technicianProfileApi.updateMine({
+      displayName: draft.nickname.trim() || profile.displayName,
+      ...(draft.avatar.startsWith("data:image/") ? { avatarDataUrl: draft.avatar } : {}),
+      age: draft.age.trim() ? Number(draft.age) : null,
+      heightCm: draft.height.trim() ? Number(draft.height) : null,
       languages: Array.from(new Set(draft.languages)),
-      bio: draft.bio.trim(),
+      bio: draft.bio.trim() || null,
       serviceAreas: Array.from(new Set(draft.serviceAreas)),
       profileTags: Array.from(new Set(draft.profileTags)),
       canServeForeigners: draft.canServeForeigners,
-      bidBudgetMin: draft.bidBudgetMin.trim() || undefined,
-      bidBudgetMax: draft.bidBudgetMax.trim() || undefined,
+      bidBudgetMinJpy: draft.bidBudgetMin.trim() ? Number(draft.bidBudgetMin) : null,
+      bidBudgetMaxJpy: draft.bidBudgetMax.trim() ? Number(draft.bidBudgetMax) : null,
       paymentMethods: Array.from(new Set(draft.paymentMethods))
-    });
-    navigate(getSettingsBasePath(portal));
+      });
+      navigate(getSettingsBasePath(portal));
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "error.technician_profile.update_failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const chipClassName = (active: boolean, _tone: "primary" | "accent" | "warm" = "primary") =>
@@ -2539,16 +2556,6 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
                 onChange={(event) => setDraft((current) => ({ ...current, nickname: event.target.value }))}
                 value={draft.nickname}
               />
-              <span className="mb-2 mt-3 block text-xs font-black text-[color:var(--client-muted)]">性别</span>
-              <select
-                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
-                onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as TechnicianProfileDraft["gender"] }))}
-                value={draft.gender}
-              >
-                <option value="male">男</option>
-                <option value="female">女</option>
-                <option value="private">保密</option>
-              </select>
             </label>
             <label className="block">
               <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">年龄</span>
@@ -2574,7 +2581,7 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
             <span className="block text-xs font-black text-[color:var(--client-muted)]">身份显示</span>
             <div className="grid gap-3 md:grid-cols-2">
               {(["店铺所属技师", "个人技师"] as const).map((value) => {
-                const active = draft.identityLabel === value;
+                const active = value === (profile.employmentType === "independent" ? "个人技师" : "店铺所属技师");
 
                 return (
                   <button
@@ -2585,7 +2592,7 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
                         : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]"
                     )}
                     key={value}
-                    onClick={() => setDraft((current) => ({ ...current, identityLabel: value }))}
+                    disabled={!active}
                     type="button"
                   >
                     <div className="flex items-start gap-3">
@@ -2771,7 +2778,16 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
         </div>
       </SettingsSection>
 
-      <StickySaveBar onCancel={() => navigate(-1)} onSave={handleSave} />
+      {saveError ? (
+        <p className="text-center text-xs font-bold text-[color:var(--client-danger)]" role="alert">
+          技师资料保存失败：{saveError}
+        </p>
+      ) : null}
+      <StickySaveBar
+        onCancel={() => navigate(-1)}
+        onSave={() => void handleSave()}
+        saveLabel={saving ? "保存中…" : "保存并返回设置中心"}
+      />
     </SettingsDetailPage>
   );
 }
@@ -3131,10 +3147,27 @@ function FormalUserProfileSettingsPage({ portal }: { portal: UnifiedSettingsPort
   );
 }
 
+function FormalTechnicianProfileSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const profileQuery = useCoreReadQuery(() => technicianProfileApi.getMine(), []);
+
+  if (profileQuery.loading) {
+    return <SettingsProfileResourceState loading portal={portal} />;
+  }
+
+  if (!profileQuery.data || profileQuery.error) {
+    return <SettingsProfileResourceState loading={false} portal={portal} />;
+  }
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <TechnicianProfileSettingsPage portal={portal} profile={profileQuery.data} />
+    </PortalScopedSettingsPage>
+  );
+}
+
 export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettingsPortal }) {
   const { session } = useAuth();
-  const { technicians, stores } = useEntityStore();
-  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
+  const { stores } = useEntityStore();
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
 
   if (portal === "user") {
@@ -3154,15 +3187,7 @@ export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettings
   }
 
   if (portal === "technician") {
-    if (!technician) {
-      return <SettingsProfileResourceState loading={false} portal={portal} />;
-    }
-
-    return (
-      <PortalScopedSettingsPage portal={portal}>
-        <TechnicianProfileSettingsPage portal={portal} technician={technician} />
-      </PortalScopedSettingsPage>
-    );
+    return <FormalTechnicianProfileSettingsPage portal={portal} />;
   }
 
   return <SettingsProfileResourceState loading={false} portal={portal} />;
@@ -3211,14 +3236,17 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
   const navigate = useNavigate();
   const { language } = useI18n();
   const { session } = useAuth();
-  const { stores, technicians } = useEntityStore();
+  const { stores } = useEntityStore();
   const { config: homeLocationConfig } = useHomeLayoutStore();
-  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
+  const technicianProfileQuery = useCoreReadQuery(
+    () => portal === "technician" ? technicianProfileApi.getMine() : null,
+    [portal, session?.currentIdentity.scopeId]
+  );
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const fallbackHomeLocation = homeLocationConfig.locations[0] ?? createManualHomeLocation("新宿");
   const selectedHomeLocation = homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ?? fallbackHomeLocation;
   const selectedHomeArea = getHomeLocationAreaLabel(selectedHomeLocation);
-  const technicianAreas = technician?.serviceAreas ?? [];
+  const technicianAreas = technicianProfileQuery.data?.serviceAreas ?? [];
   const storeArea = store?.area?.trim() ?? "";
   const technicianAreaKey = technicianAreas.join("|");
   const initialAreas = useMemo(() => {
@@ -3234,6 +3262,8 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
   }, [portal, selectedHomeArea, storeArea, technicianAreaKey]);
   const [areas, setAreas] = useState<string[]>(initialAreas);
   const [serviceRangeSearchQuery, setServiceRangeSearchQuery] = useState("");
+  const [serviceRangeSaving, setServiceRangeSaving] = useState(false);
+  const [serviceRangeError, setServiceRangeError] = useState("");
   const t = (source: string) => translateText(source, language);
   const serviceRangeAreaOptions = useMemo(
     () => buildServiceAreaOptions(initialAreas, portal === "merchant" ? storeArea : undefined, portal === "technician" ? technicianAreas : undefined),
@@ -3263,7 +3293,7 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
 
     navigate(getSettingsBasePath(portal), { replace: true });
   };
-  const handleSaveServiceRange = () => {
+  const handleSaveServiceRange = async () => {
     if (portal === "user") {
       const selectedArea = areas[0] ?? selectedHomeArea;
       const existingLocation = findHomeLocationForArea(homeLocationConfig.locations, selectedArea);
@@ -3293,15 +3323,32 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
       return;
     }
 
-    if (!technician) {
+    if (!technicianProfileQuery.data || serviceRangeSaving) {
       return;
     }
 
-    updateTechnicianEntity(technician.id, { serviceAreas: areas });
-    closeServiceRangePage();
+    if (areas.length === 0) {
+      setServiceRangeError(t("请至少保留一个服务区域"));
+      return;
+    }
+
+    setServiceRangeSaving(true);
+    setServiceRangeError("");
+    try {
+      await technicianProfileApi.updateMine({ serviceAreas: areas });
+      closeServiceRangePage();
+    } catch (error) {
+      setServiceRangeError(error instanceof Error ? error.message : "error.technician_profile.update_failed");
+    } finally {
+      setServiceRangeSaving(false);
+    }
   };
 
-  if ((portal === "merchant" && !store) || (portal === "technician" && !technician)) {
+  if (portal === "technician" && technicianProfileQuery.loading) {
+    return <SettingsProfileResourceState loading portal={portal} title="服务范围" />;
+  }
+
+  if ((portal === "merchant" && !store) || (portal === "technician" && (!technicianProfileQuery.data || technicianProfileQuery.error))) {
     return <SettingsProfileResourceState loading={false} portal={portal} title="服务范围" />;
   }
 
@@ -3355,13 +3402,14 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
           {filteredServiceAreas.length === 0 ? (
             <p className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("没有匹配结果")}</p>
           ) : null}
+          {serviceRangeError ? <p className="px-1 text-sm font-bold text-red-500" role="alert">{t("保存失败。")} {serviceRangeError}</p> : null}
         </div>
 
         <StickySaveBar
           cancelLabel={t("取消")}
           onCancel={closeServiceRangePage}
-          onSave={handleSaveServiceRange}
-          saveLabel={t("保存并关闭")}
+          onSave={() => { void handleSaveServiceRange(); }}
+          saveLabel={t(serviceRangeSaving ? "保存中" : "保存并关闭")}
           simple
         />
       </SettingsDetailPage>
