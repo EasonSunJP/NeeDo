@@ -309,6 +309,7 @@ describe("AffiliateMarketplaceService", () => {
         budgetReservation: {
           ...task().budgetReservation!,
           totalFrozenNdp: 10_000,
+          commissionFrozenNdp: 10_000,
           allocatedNdp: 2_000,
           capturedNdp: 1_000,
           releasedNdp: 0

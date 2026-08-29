@@ -17,6 +17,7 @@ const taskRecord = (overrides: Record<string, unknown> = {}) => ({
   allocatedBudgetNdp: 0,
   settledBudgetNdp: 0,
   releasedBudgetNdp: 0,
+  platformFeeBps: 0,
   platformFeeReserveNdp: 0,
   settledPlatformFeeNdp: 0,
   releasedPlatformFeeNdp: 0,
@@ -125,8 +126,10 @@ describe("AffiliateTaskExpiryRepository", () => {
     expect(query).toContain(
       "reservation.commission_frozen_ndp > reservation.allocated_ndp + reservation.captured_ndp + reservation.released_ndp"
     );
+    expect(query).toContain("reservation.platform_fee_frozen_ndp >");
+    expect(query).toContain("reservation.allocated_ndp DIV task.reward_ndp_per_completed_order");
     expect(query).toContain(
-      "reservation.platform_fee_frozen_ndp > reservation.platform_fee_captured_ndp + reservation.platform_fee_released_ndp"
+      "FLOOR(task.reward_ndp_per_completed_order * task.platform_fee_bps / 10000)"
     );
     expect(query).toContain("ORDER BY task.id ASC");
     expect(query).toContain("LIMIT");
@@ -272,16 +275,14 @@ describe("AffiliateTaskExpiryRepository", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       affiliateBudgetReservation: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue(
-            reservationRecord({
-              allocatedNdp: 300,
-              capturedNdp: 100,
-              releasedNdp: 100,
-              status: "EXHAUSTED"
-            })
-          ),
+        findFirst: jest.fn().mockResolvedValue(
+          reservationRecord({
+            allocatedNdp: 300,
+            capturedNdp: 100,
+            releasedNdp: 100,
+            status: "EXHAUSTED"
+          })
+        ),
         updateMany: updateReservation
       }
     } as never);

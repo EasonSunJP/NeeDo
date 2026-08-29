@@ -29,6 +29,7 @@ export interface AffiliateTaskExpiryTaskRecord {
   allocatedBudgetNdp: number;
   settledBudgetNdp: number;
   releasedBudgetNdp: number;
+  platformFeeBps: number;
   platformFeeReserveNdp: number;
   settledPlatformFeeNdp: number;
   releasedPlatformFeeNdp: number;
@@ -280,7 +281,7 @@ export class AffiliateTaskExpiryService {
         capturedNdp: reservation.capturedNdp,
         releasedNdp: reservation.releasedNdp
       });
-      const platformFeeReleaseNdp = this.calculateUncapturedPlatformFee(reservation);
+      const platformFeeReleaseNdp = this.calculateUncapturedPlatformFee(task, reservation);
       const releaseAmount = commissionReleaseNdp + platformFeeReleaseNdp;
       const commissionReleasedAfterNdp = reservation.releasedNdp + commissionReleaseNdp;
       const platformFeeReleasedAfterNdp =
@@ -405,6 +406,7 @@ export class AffiliateTaskExpiryService {
       task.allocatedBudgetNdp,
       task.settledBudgetNdp,
       task.releasedBudgetNdp,
+      task.platformFeeBps,
       task.platformFeeReserveNdp,
       task.settledPlatformFeeNdp,
       task.releasedPlatformFeeNdp,
@@ -440,7 +442,7 @@ export class AffiliateTaskExpiryService {
       capturedNdp: reservation.capturedNdp,
       releasedNdp: reservation.releasedNdp
     });
-    this.calculateUncapturedPlatformFee(reservation);
+    this.calculateUncapturedPlatformFee(task, reservation);
   }
 
   private releaseLedgerInput(
@@ -491,17 +493,40 @@ export class AffiliateTaskExpiryService {
     throw new Error("error.affiliate.invalid_budget_snapshot");
   }
 
-  private calculateUncapturedPlatformFee(reservation: AffiliateBudgetReservationRecord): number {
+  private calculateUncapturedPlatformFee(
+    task: AffiliateTaskExpiryTaskRecord,
+    reservation: AffiliateBudgetReservationRecord
+  ): number {
     const values = [
       reservation.platformFeeFrozenNdp,
       reservation.platformFeeCapturedNdp,
       reservation.platformFeeReleasedNdp
     ];
+    if (
+      task.rewardNdpPerCompletedOrder <= 0 ||
+      reservation.allocatedNdp % task.rewardNdpPerCompletedOrder !== 0 ||
+      task.platformFeeBps < 0 ||
+      task.platformFeeBps > 10_000
+    ) {
+      throw new Error("error.affiliate.invalid_budget_snapshot");
+    }
+    const feeProduct = task.rewardNdpPerCompletedOrder * task.platformFeeBps;
+    if (!Number.isSafeInteger(feeProduct)) {
+      throw new Error("error.affiliate.invalid_budget_snapshot");
+    }
+    const feePerAllocatedReward = Math.floor(feeProduct / 10_000);
+    const allocatedRewardCount = reservation.allocatedNdp / task.rewardNdpPerCompletedOrder;
+    const allocatedFeeReserveNdp = allocatedRewardCount * feePerAllocatedReward;
     const remaining =
       reservation.platformFeeFrozenNdp -
       reservation.platformFeeCapturedNdp -
-      reservation.platformFeeReleasedNdp;
-    if (!values.every(isNonNegativeSafeInteger) || remaining < 0) {
+      reservation.platformFeeReleasedNdp -
+      allocatedFeeReserveNdp;
+    if (
+      !values.every(isNonNegativeSafeInteger) ||
+      !isNonNegativeSafeInteger(allocatedFeeReserveNdp) ||
+      remaining < 0
+    ) {
       throw new Error("error.affiliate.invalid_budget_snapshot");
     }
     return remaining;

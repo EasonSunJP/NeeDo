@@ -46,6 +46,11 @@ const marketplaceTaskRow = (id: number) => ({
   allocatedBudgetNdp: 0,
   settledBudgetNdp: 0,
   releasedBudgetNdp: 0,
+  platformFeeRuleId: null,
+  platformFeeBps: 0,
+  platformFeeReserveNdp: 0,
+  settledPlatformFeeNdp: 0,
+  releasedPlatformFeeNdp: 0,
   customerDiscountType: "NONE",
   fixedDiscountJpy: 0,
   discountRateBps: 0,
@@ -112,9 +117,13 @@ const marketplaceTaskRow = (id: number) => ({
     taskId: id,
     walletId: id,
     totalFrozenNdp: 10000,
+    commissionFrozenNdp: 10000,
+    platformFeeFrozenNdp: 0,
     allocatedNdp: 0,
     capturedNdp: 0,
+    platformFeeCapturedNdp: 0,
     releasedNdp: 0,
+    platformFeeReleasedNdp: 0,
     status: "ACTIVE",
     idempotencyKey: `reservation-${id}`,
     frozenAt: new Date("2026-07-31T00:00:00.000Z"),
@@ -193,7 +202,7 @@ describe("AffiliateMarketplaceRepository contract", () => {
     expect(eligibilitySql).toContain("task.claim_ends_at >");
     expect(eligibilitySql).toContain("task.task_ends_at >");
     expect(eligibilitySql).toContain("reservation.status = 'active'");
-    expect(eligibilitySql).toContain("reservation.total_frozen_ndp");
+    expect(eligibilitySql).toContain("reservation.commission_frozen_ndp");
     expect(eligibilitySql).toContain("EXISTS");
     expect(eligibilitySql).toContain("task.name LIKE");
     expect(eligibilitySql).toContain("affiliate_task_translations");

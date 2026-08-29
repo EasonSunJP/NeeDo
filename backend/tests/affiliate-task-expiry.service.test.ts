@@ -32,6 +32,7 @@ const task = (
   allocatedBudgetNdp: 0,
   settledBudgetNdp: 0,
   releasedBudgetNdp: 0,
+  platformFeeBps: 0,
   platformFeeReserveNdp: 0,
   settledPlatformFeeNdp: 0,
   releasedPlatformFeeNdp: 0,
@@ -312,6 +313,37 @@ describe("AffiliateTaskExpiryService", () => {
     expect(repository.reservations.get(71)).toMatchObject({
       allocatedNdp: 300,
       releasedNdp: 700,
+      status: "active"
+    });
+  });
+
+  it("preserves the platform fee reserve required by allocated rewards", async () => {
+    const { repository, ledger, service } = createFixture();
+    repository.seed(
+      task({
+        reservedBudgetNdp: 1_100,
+        allocatedBudgetNdp: 300,
+        platformFeeBps: 1_000,
+        platformFeeReserveNdp: 100
+      }),
+      reservation({
+        totalFrozenNdp: 1_100,
+        commissionFrozenNdp: 1_000,
+        platformFeeFrozenNdp: 100,
+        allocatedNdp: 300
+      })
+    );
+
+    await expire(service);
+
+    expect(ledger.calls[0]).toMatchObject({ amountNdp: 770 });
+    expect(repository.tasks.get(71)).toMatchObject({
+      releasedBudgetNdp: 700,
+      releasedPlatformFeeNdp: 70
+    });
+    expect(repository.reservations.get(71)).toMatchObject({
+      releasedNdp: 700,
+      platformFeeReleasedNdp: 70,
       status: "active"
     });
   });
