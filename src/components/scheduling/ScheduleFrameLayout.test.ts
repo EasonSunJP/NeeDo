@@ -37,9 +37,10 @@ describe("shared schedule frame layout", () => {
     expect(cycleBoardSource).toContain("function buildCyclePeriodGridData(");
     expect(cycleBoardSource).toContain("<ScheduleGrid");
     expect(cycleBoardSource).toContain('stickyHeaderLabel="技师"');
-    expect(cycleBoardSource).toContain('view === "threeDay" || view === "week" || view === "month"');
+    expect(cycleBoardSource).toContain('view === "threeDay" || view === "week"');
+    expect(cycleBoardSource).toContain('view === "month"');
+    expect(cycleBoardSource).toContain("<UnifiedCalendarMonthGrid");
     expect(cycleBoardSource).not.toContain("<UnifiedCalendarMultiDayTimeline");
-    expect(cycleBoardSource).not.toContain("<UnifiedCalendarMonthGrid");
   });
 
   it("keeps merchant matrix technician headers as square avatar plus name buttons", () => {

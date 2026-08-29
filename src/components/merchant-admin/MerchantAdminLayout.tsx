@@ -64,7 +64,7 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     items: [
       { label: "门店总览", to: "/merchant-admin", icon: "总", children: ["门店表现", "快捷入口", "经营提醒"] },
       { label: "数据 / 经营驾驶舱", to: "/merchant-admin/analytics", icon: "数", children: ["KPI", "订单漏斗", "NDP", "异常预警"] },
-      { label: "订单中心", to: "/merchant-admin/orders", icon: "单", children: ["预约处理", "改期", "联系顾客"] },
+      { label: "订单中心", to: "/merchant-admin/orders", icon: "单", children: ["预约处理", "改期", "联系用户"] },
       { label: "点单 / オーダー", to: "/merchant-admin/dine/orders", icon: "点", children: ["新单", "KDS", "上菜", "收银"], permission: "store.dine-in.order.view" },
       { label: "菜单 / メニュー", to: "/merchant-admin/menu", icon: "菜", children: ["商品", "售罄", "制作区", "设施限定"], permission: "store.dine-in.menu.view" },
       { label: "场控 / 店内", to: "/merchant-admin/floor", icon: "店", children: ["桌台", "包厢", "床位", "QR"], permission: "store.dine-in.floor.view" },
@@ -83,11 +83,17 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     ]
   },
   {
-    key: "people",
-    title: "人员与顾客",
+    key: "staff",
+    title: "员工管理",
     items: [
-      { label: "员工列表", to: "/merchant-admin/people?module=staff", icon: "员", children: ["正式技师", "状态", "店铺范围"] },
-      { label: "用户管理", to: "/merchant-admin/people?module=customers", icon: "客", children: ["正式客户", "预约次数", "公开状态"] },
+      { label: "员工列表", to: "/merchant-admin/people?module=staff", icon: "员", children: ["正式员工", "状态", "店铺范围"] }
+    ]
+  },
+  {
+    key: "users",
+    title: "用户管理",
+    items: [
+      { label: "用户列表", to: "/merchant-admin/people?module=users", icon: "用", children: ["正式用户", "预约次数", "公开状态"] },
       { label: "评价中心", to: "/merchant-admin/people?module=reviews", icon: "评", children: ["能力门禁", "Review 表", "回复审计"] }
     ]
   },
@@ -353,7 +359,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">店铺搜索</p>
             <label className="admin-search flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm">
               <span className="text-ink/45">⌕</span>
-              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、顾客、员工、套餐" />
+              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、员工、套餐" />
             </label>
           </section>
 
@@ -388,13 +394,6 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
             </div>
           </nav>
 
-          <div className="admin-sidebar-note rounded-lg border border-line bg-paper p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold">本店经营提醒</p>
-              <span className="rounded-md bg-moss px-2 py-1 text-[11px] font-black text-white">实时</span>
-            </div>
-            <p className="mt-1 text-xs leading-5 text-ink/55">高频入口只保留本店自己能处理的事务，不显示平台运营后台模块。</p>
-          </div>
         </div>
       </aside>
 
@@ -471,7 +470,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
                 </div>
                 <label className="admin-search flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm xl:max-w-[320px]">
                   <span className="text-ink/45">⌕</span>
-                  <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、顾客、员工、财务" />
+                  <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、员工、财务" />
                 </label>
               </div>
               <div className="flex items-center gap-2 text-sm">

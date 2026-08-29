@@ -1316,6 +1316,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       BackofficeAccount: {
         type: "object",
         required: [
+          "needoId",
           "username",
           "email",
           "phone",
@@ -1326,6 +1327,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "identities"
         ],
         properties: {
+          needoId: { type: "string", pattern: "^[usm][0-9]{10}$" },
           username: { type: "string" },
           email: { type: "string", format: "email" },
           phone: { type: ["string", "null"] },
@@ -1353,6 +1355,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           createdAt: { type: "string", format: "date-time" },
           metadata: { type: ["object", "null"], additionalProperties: true }
         }
+      },
+      BackofficeAuditTimelinePage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeAuditEvent" },
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 },
+        },
       },
       BackofficeReviewSummary: {
         type: "object",
@@ -1473,12 +1488,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "status",
           "paymentStatus",
           "customerUserId",
+          "customerProfileId",
           "customerName",
           "serviceId",
           "serviceName",
           "shopId",
           "shopName",
           "technicianProfileId",
+          "technicianNeedoId",
           "technicianName",
           "fulfillmentMode",
           "priceAmount",
@@ -1499,12 +1516,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["pending", "confirmed", "refundPending", "refunded"]
           },
           customerUserId: { type: "integer" },
+          customerProfileId: { type: ["integer", "null"] },
           customerName: { type: "string" },
           serviceId: { type: ["integer", "null"] },
           serviceName: { type: "string" },
           shopId: { type: "integer" },
           shopName: { type: "string" },
           technicianProfileId: { type: ["integer", "null"] },
+          technicianNeedoId: { type: ["string", "null"] },
           technicianName: { type: ["string", "null"] },
           fulfillmentMode: { type: "string" },
           priceAmount: { type: "number" },
@@ -1636,7 +1655,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "nextBooking",
               "recentBookings",
               "reviewSummary",
-              "timeline"
+              "timeline",
+              "membershipGrantMode",
+              "membershipDurationUnit",
+              "membershipDurationValue",
+              "membershipStartsAt",
+              "membershipExpiresAt",
+              "membershipGrantedBy"
             ],
             properties: {
               bio: { type: ["string", "null"] },
@@ -1660,6 +1685,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               timeline: {
                 type: "array",
                 items: { $ref: "#/components/schemas/BackofficeAuditEvent" }
+              },
+              membershipGrantMode: {
+                type: "string",
+                enum: ["self_service", "operator_complimentary"]
+              },
+              membershipDurationUnit: {
+                type: ["string", "null"],
+                enum: ["forever", "day", "month", null]
+              },
+              membershipDurationValue: { type: ["integer", "null"], minimum: 1 },
+              membershipStartsAt: { type: ["string", "null"], format: "date-time" },
+              membershipExpiresAt: { type: ["string", "null"], format: "date-time" },
+              membershipGrantedBy: {
+                anyOf: [
+                  {
+                    type: "object",
+                    required: ["needoId", "username"],
+                    properties: {
+                      needoId: { type: "string" },
+                      username: { type: "string" }
+                    }
+                  },
+                  { type: "null" }
+                ]
               }
             }
           }
@@ -1751,8 +1800,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           displayName: { type: "string", minLength: 1, maxLength: 120 },
           bio: { type: ["string", "null"], maxLength: 5000 },
           city: { type: ["string", "null"], maxLength: 100 },
-          membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
           isPublic: { type: "boolean" }
+        }
+      },
+      BackofficeCustomerMembershipGrantInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "membershipLevel",
+          "grantMode",
+          "durationUnit",
+          "durationValue",
+          "startsAt"
+        ],
+        properties: {
+          membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
+          grantMode: { type: "string", enum: ["operator_complimentary"] },
+          durationUnit: { type: "string", enum: ["forever", "day", "month"] },
+          durationValue: { type: ["integer", "null"], minimum: 1, maximum: 1200 },
+          startsAt: { type: "string", format: "date-time" }
         }
       },
       BackofficeServiceInputFields: {
@@ -4397,7 +4463,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           actorAvatarUrl: { type: ["string", "null"], format: "uri-reference" },
           actorRole: { type: "string" },
           message: { type: "string" },
-          tone: { type: "string", enum: ["accent", "red", "neutral"] }
+          tone: { type: "string", enum: ["accent", "green", "red", "neutral"] }
         }
       },
       MerchantEmployeeTimelinePage: {
@@ -9129,6 +9195,49 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: { "200": { description: "Customer soft-deleted" } }
       }
     },
+    [`${config.API_PREFIX}/backoffice/customers/{id}/timeline`]: {
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated user activity timeline",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter(),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 10 } },
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated user activity", {
+            $ref: "#/components/schemas/BackofficeAuditTimelinePage",
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User profile not found" },
+        },
+      },
+    },
+    [`${config.API_PREFIX}/backoffice/customers/{id}/membership`]: {
+      put: {
+        tags: ["Master Data"],
+        summary: "Assign a complimentary customer membership level and validity period",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeCustomerMembershipGrantInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Membership assigned" },
+          "400": { description: "Invalid membership grant" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Customer not found" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/services`]: {
       get: {
         tags: ["Master Data"],
@@ -10548,6 +10657,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "404": { description: "Customer not visible to current shop" }
         }
       }
+    },
+    [`${config.API_PREFIX}/merchant-admin/customers/{id}/timeline`]: {
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated user activity scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          idPathParameter(),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 10 } },
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated scoped user activity", {
+            $ref: "#/components/schemas/BackofficeAuditTimelinePage",
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User profile not visible to current shop" },
+        },
+      },
     },
     [`${config.API_PREFIX}/merchant-admin/services`]: {
       get: {

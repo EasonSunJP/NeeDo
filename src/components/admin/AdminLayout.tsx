@@ -113,9 +113,9 @@ const navSections: AdminNavSection[] = [
     title: "用户管理",
     items: [
       { label: "账号管理", to: "/admin/users", icon: "账", permission: "menu:user-management", children: ["真实账号", "状态", "角色分配"] },
-      { label: "客户资料", to: "/admin/users?view=customers", icon: "客", permission: "menu:user-management", children: ["客户档案", "会员等级", "公开状态"] },
-      { label: "客户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["客户档案", "会员等级", "公开状态"] },
-      { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式客户", "预约次数", "创建时间"] }
+      { label: "用户资料", to: "/admin/users?view=customers", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
+      { label: "用户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
+      { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式用户", "预约次数", "创建时间"] }
     ]
   },
   {
@@ -349,7 +349,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">全局搜索</p>
             <label className="admin-search flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm">
               <span className="text-ink/45">⌕</span>
-              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、客户、门店、技师" />
+              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、门店、技师" />
             </label>
           </section>
 
@@ -387,13 +387,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </nav>
 
-          <div className="admin-sidebar-note rounded-lg border border-line bg-paper p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold">东京城市组</p>
-              <span className="rounded-md bg-moss px-2 py-1 text-[11px] font-black text-white">实时</span>
-            </div>
-            <p className="mt-1 text-xs leading-5 text-ink/55">19 个待审核商家，36 个工单需要运营介入。</p>
-          </div>
         </div>
       </aside>
       {mobileNavOpen ? (

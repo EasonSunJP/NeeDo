@@ -39,9 +39,9 @@
 | 后台入口 | 页面路由 | 正式详情 URL |
 |---|---|---|
 | 商户员工列表 | `/merchant-admin/people?module=staff` | `GET /api/v1/merchant-admin/employees/:needoId` |
-| 商户用户管理 | `/merchant-admin/people?module=customers` | `GET /api/v1/merchant-admin/customers/:id` |
+| 商户用户管理 | `/merchant-admin/people?module=users` | `GET /api/v1/merchant-admin/customers/:id` |
 | 运营技师管理 | `/admin/technicians` | `GET /api/v1/backoffice/technicians/:id` |
-| 运营客户资料 | `/admin/users?view=customers` | `GET /api/v1/backoffice/customers/:id` |
+| 运营用户资料 | `/admin/users?view=customers` | `GET /api/v1/backoffice/customers/:id` |
 
 列表行不包含完整详情，打开抽屉时先清空上一条详情并显示正式详情 loading；请求失败时保留当前所选 ID 和可用的“重试”，关闭抽屉会使未完成请求失效。资料保存或技师审核成功后，必须同时重新读取列表与当前打开的详情。禁止用列表行、旧 domain mapper、浏览器状态、local/session storage、mock 或静态记录补齐详情，也禁止在详情请求失败时回退显示列表摘要。
 
@@ -49,7 +49,11 @@
 
 运营后台技师详情保留平台范围的正式资料栏目。商户员工入口使用独立“员工详细信息卡”：path 只使用公开 NeeDoID，显示当前店铺从属、联系方式、账号状态、正式日程投影、薪酬与结算及工资结算周期；不得从旧全局技师详情或列表行补齐跨店资料。
 
-客户详情使用统一四个 tab：`基础资料`、`预约与消费`、`权限与账号`、`时间线`。正式字段包括客户与账号基础资料、会员等级与公开状态、预约状态汇总、已完成消费、下次与近期预约、正式评价摘要、当前范围角色/身份和审计事件。正式合同不存在或返回 `null` 的评价、下次预约等字段显示 `尚未接入正式数据`；正式空列表可显示明确的无记录状态，但不得用 demo 数值、列表行或 mock 关系补位。
+用户详情统一使用五个 tab：`基础资料`、`会员等级`、`预约与消费`、`权限与账号`、`用户动态`。头部只显示公开 NeeDoID 与业务状态，不显示内部 User/Profile 主键。用户动态通过独立分页 API 读取，每页可选 `10 / 30 / 50 / 100` 条，并复用正式联系人时间线视觉；正式空列表可显示明确的无记录状态，但不得用 demo 数值、列表行或 mock 关系补位。
+
+商户用户管理只读会员等级；运营后台可在独立“会员等级”插页调用 `PUT /api/v1/backoffice/customers/:id/membership` 免费赋予等级，期限支持永久、按天或按月。后端持久化赋予方式、期限、起止时间与操作人，写操作要求 `backoffice:customers:write` 并记录 `backoffice.customer.membership.assign` 审计。此操作不扣款、不自动续费，也不触发转账。
+
+会员授权 migration：`backend/prisma/migrations/20260829210000_customer_membership_grants/migration.sql`。既有用户默认保持 `self_service`，migration 不生成任何免费会员记录。
 
 ## 新增 API
 
@@ -63,6 +67,8 @@
 - `GET /api/v1/backoffice/finance/orders/:bookingOrderId`
 - `GET /api/v1/backoffice/technicians`
 - `GET /api/v1/backoffice/shops`
+- `GET /api/v1/backoffice/customers/:id/timeline`
+- `PUT /api/v1/backoffice/customers/:id/membership`
 
 商户后台：
 
@@ -89,6 +95,7 @@
 - `GET /api/v1/merchant-admin/employees/:needoId/compensation-profile`
 - `PUT /api/v1/merchant-admin/employees/:needoId/compensation-profile`
 - `POST /api/v1/merchant-admin/employees/:needoId/compensation-profile/preview`
+- `GET /api/v1/merchant-admin/customers/:id/timeline`
 
 真实测试账号登录：
 

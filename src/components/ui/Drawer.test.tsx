@@ -21,6 +21,16 @@ async function renderDrawer(open: boolean) {
   });
 }
 
+async function renderOverlayDrawer() {
+  await act(async () => {
+    root.render(
+      <Drawer layer="overlay" onClose={vi.fn()} open title="用户详细信息">
+        资料
+      </Drawer>,
+    );
+  });
+}
+
 describe("Drawer", () => {
   beforeEach(() => {
     container = document.createElement("div");
@@ -50,5 +60,11 @@ describe("Drawer", () => {
     const panel = container.querySelector("aside");
     expect(panel?.getAttribute("aria-hidden")).toBe("false");
     expect(panel?.className).toContain("translate-x-0");
+  });
+
+  it("renders a stacked detail drawer above the base order drawer", async () => {
+    await renderOverlayDrawer();
+
+    expect(container.firstElementChild?.className).toContain("z-[100]");
   });
 });

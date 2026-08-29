@@ -17,14 +17,23 @@ const booking = (id: number, status: string, shopId = 11) => ({
   status,
   paymentStatus: "CONFIRMED",
   customerUserId: 51,
-  customer: { username: "Customer", email: "customer@example.com" },
+  customer: {
+    username: "Customer",
+    email: "customer@example.com",
+    customerProfile: { id: 41 }
+  },
   serviceId: 71,
   serviceNameSnapshot: "Formal care",
   service: { name: "Formal care" },
   shopId,
   shop: { name: "Aoyama Care Studio" },
   technicianProfileId: 31,
-  technicianProfile: { displayName: "Technician" },
+  technicianProfile: {
+    displayName: "Technician",
+    user: {
+      identities: [{ publicIdentifier: { publicId: "s0000000031" } }]
+    }
+  },
   fulfillmentMode: "store",
   priceAmount: money(9000),
   currency: "JPY",
@@ -104,11 +113,18 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
     bio: "Formal customer profile",
     city: "Tokyo",
     membershipLevel: "standard",
+    membershipGrantMode: "SELF_SERVICE",
+    membershipDurationUnit: null,
+    membershipDurationValue: null,
+    membershipStartsAt: null,
+    membershipExpiresAt: null,
+    membershipGrantedBy: null,
     isPublic: true,
     createdAt: date("2026-08-01T00:00:00.000Z"),
     updatedAt: date("2026-08-24T00:00:00.000Z"),
     reviewSummary: null,
     user: {
+      needoId: "u0000000051",
       username: "Customer account",
       email: "customer@example.com",
       phone: null,

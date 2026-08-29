@@ -34,6 +34,7 @@ import { Button } from "../ui/Button";
 
 type EmployeeSchedulePanelProps = {
   employee: MerchantEmployee;
+  readOnly?: boolean;
 };
 
 const statusPriority: Record<DispatchScheduleCellStatus, number> = {
@@ -190,6 +191,7 @@ export function createEmployeeScheduleCalendarData(
   projection: EmployeeScheduleProjection,
   employee: MerchantEmployee,
   dates: string[],
+  readOnly = false,
 ): ScheduleCycleCalendarBoardDataOverride {
   const cellByEventId = new Map<string, DispatchScheduleCell>();
   const events: UnifiedCalendarEvent[] = projection.events.map((event) => {
@@ -224,7 +226,7 @@ export function createEmployeeScheduleCalendarData(
             : event.kind === "booking"
               ? "本店预约"
               : "本店排班",
-      readOnly: !event.isEditable,
+      readOnly: readOnly || !event.isEditable,
       orderId:
         event.kind === "booking" && event.orderId
           ? String(event.orderId)
@@ -269,7 +271,7 @@ export function createEmployeeScheduleCalendarData(
   };
 }
 
-export function EmployeeSchedulePanel({ employee }: EmployeeSchedulePanelProps) {
+export function EmployeeSchedulePanel({ employee, readOnly = false }: EmployeeSchedulePanelProps) {
   const { language } = useOptionalI18n();
   const t = (source: string) => translateText(source, language);
   const [dateKey, setDateKey] = useState(getTodayDateKey());
@@ -307,9 +309,9 @@ export function EmployeeSchedulePanel({ employee }: EmployeeSchedulePanelProps) 
   const dataOverride = useMemo(
     () =>
       projection
-        ? createEmployeeScheduleCalendarData(projection, employee, dates)
+        ? createEmployeeScheduleCalendarData(projection, employee, dates, readOnly)
         : null,
-    [dates, employee, projection],
+    [dates, employee, projection, readOnly],
   );
   const changeView = useCallback((next: ScheduleCycleCalendarBoardView) => {
     if (next === "day" || next === "week" || next === "month") {

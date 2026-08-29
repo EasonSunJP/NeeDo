@@ -4,6 +4,10 @@ import { ApiClientError } from "../../api/httpClient";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
+import {
+  MerchantOrderParticipantDetailDrawer,
+  type MerchantOrderParticipant,
+} from "../../components/merchant-admin/MerchantOrderParticipantDetailDrawer";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
@@ -52,6 +56,7 @@ function paymentTone(status: BackofficeOrderPayload["paymentStatus"]) {
 export function MerchantAdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderPayload | null>(null);
+  const [participant, setParticipant] = useState<MerchantOrderParticipant>(null);
   const [orderRows, setOrderRows] = useState<BackofficeOrderPayload[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -94,17 +99,20 @@ export function MerchantAdminOrdersPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const openOrder = (order: BackofficeOrderPayload) => {
     setSelectedOrder(order);
+    setParticipant(null);
     setMutationError("");
     setConfirmIntent(null);
     setPaymentReference("");
   };
   const closeOrder = () => {
     if (mutationStatus === "saving") return;
+    setParticipant(null);
     setSelectedOrder(null);
     setMutationError("");
     setConfirmIntent(null);
   };
   const finishMutation = () => {
+    setParticipant(null);
     setSelectedOrder(null);
     setConfirmIntent(null);
     setMutationError("");
@@ -220,7 +228,7 @@ export function MerchantAdminOrdersPage() {
             <DataTable<BackofficeOrderPayload>
               columns={[
                 { key: "orderNo", title: "订单号", render: (row) => row.orderNo },
-                { key: "customer", title: "顾客", render: (row) => row.customerName },
+                { key: "customer", title: "用户", render: (row) => row.customerName },
                 { key: "service", title: "服务 / 技师", render: (row) => `${row.serviceName} / ${row.technicianName ?? "待安排"}` },
                 { key: "time", title: "预约时间", render: (row) => new Date(row.startsAt).toLocaleString("ja-JP") },
                 { key: "payment", title: "支付", render: (row) => <Badge tone={paymentTone(row.paymentStatus)}>{paymentLabel(row.paymentStatus)}</Badge> },
@@ -259,10 +267,42 @@ export function MerchantAdminOrdersPage() {
             </section>
 
             <DetailGrid items={[
-              { label: "顾客", value: selectedOrder.customerName },
+              {
+                label: "用户",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.customerName}</span>
+                    <Button
+                      aria-label="查看用户资料"
+                      disabled={!selectedOrder.customerProfileId}
+                      onClick={() => setParticipant("customer")}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      查看
+                    </Button>
+                  </span>
+                )
+              },
               { label: "预约方式", value: selectedOrder.fulfillmentMode === "store" ? "到店服务" : "技师上门" },
               { label: "门店", value: selectedOrder.shopName },
-              { label: "技师", value: selectedOrder.technicianName ?? "待安排" },
+              {
+                label: "技师",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.technicianName ?? "待安排"}</span>
+                    <Button
+                      aria-label="查看员工资料"
+                      disabled={!selectedOrder.technicianNeedoId}
+                      onClick={() => setParticipant("technician")}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      查看
+                    </Button>
+                  </span>
+                )
+              },
               { label: "支付状态", value: <Badge tone={paymentTone(selectedOrder.paymentStatus)}>{paymentLabel(selectedOrder.paymentStatus)}</Badge> },
               { label: "订单金额", value: yen(selectedOrder.priceAmount) },
               { label: "预约结束", value: new Date(selectedOrder.endsAt).toLocaleString("ja-JP") },
@@ -316,6 +356,11 @@ export function MerchantAdminOrdersPage() {
           </div>
         ) : null}
       </Drawer>
+      <MerchantOrderParticipantDetailDrawer
+        onClose={() => setParticipant(null)}
+        order={selectedOrder}
+        participant={participant}
+      />
     </MerchantAdminLayout>
   );
 }

@@ -112,7 +112,7 @@ describe("EmployeeCompensationPanel", () => {
     container.remove();
   });
 
-  it("shows the persisted rule, current payroll metrics and manual-payment boundary", async () => {
+  it("shows the persisted salary and commission rule with the manual-payment boundary", async () => {
     await renderPanel();
 
     expect(container.textContent).toContain("薪酬与结算");
@@ -120,14 +120,8 @@ describe("EmployeeCompensationPanel", () => {
     expect(container.textContent).toContain("固定工资 + 分成");
     expect(container.textContent).toContain("230,000");
     expect(container.textContent).toContain("20%");
-    expect(container.textContent).toContain("273,500");
-    expect(container.textContent).toContain("100,000");
-    expect(container.textContent).toContain("173,500");
     expect(container.textContent).toContain("财务人员手动登记");
-    const financeLink = container.querySelector<HTMLAnchorElement>(
-      'a[href="#/merchant-admin/finance?employee=s0000000047"]',
-    );
-    expect(financeLink?.textContent).toContain("前往财务结算");
+    expect(container.textContent).not.toContain("最近工资单统计");
   });
 
   it("submits salary and commission edits without changing the server snapshot on failure", async () => {

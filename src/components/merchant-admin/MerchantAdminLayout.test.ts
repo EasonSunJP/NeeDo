@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import source from "./MerchantAdminLayout.tsx?raw";
 
 describe("MerchantAdminLayout formal shop summary", () => {
+  it("does not render the obstructive bottom-left store notice", () => {
+    expect(source).not.toContain("本店经营提醒");
+    expect(source).not.toContain("高频入口只保留本店自己能处理的事务，不显示平台运营后台模块。");
+    expect(source).not.toContain("admin-sidebar-note");
+  });
+
   it("does not render the shared merchant shell from demo data", () => {
     expect(source).not.toContain("merchantAdminDemo");
     expect(source).not.toContain("store-admin@needo.jp");
@@ -48,5 +54,19 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).not.toContain('title: "UI装修"');
     expect(source).not.toContain('to: "/merchant-admin/design"');
     expect(source).not.toContain('to: "/merchant-admin/design?module=cards"');
+  });
+
+  it("uses independent employee and user management navigation sections", () => {
+    expect(source).toContain('key: "staff"');
+    expect(source).toContain('title: "员工管理"');
+    expect(source).toContain('key: "users"');
+    expect(source).toContain('title: "用户管理"');
+    expect(source).toContain('to: "/merchant-admin/people?module=users"');
+    expect(source).not.toContain('title: "人员与顾客"');
+    expect(source).not.toContain('module=customers');
+    expect(source).toContain('children: ["预约处理", "改期", "联系用户"]');
+    expect(source.match(/placeholder="搜索订单、用户、员工/g)?.length).toBe(2);
+    expect(source).not.toContain("联系顾客");
+    expect(source).not.toContain("搜索订单、顾客");
   });
 });

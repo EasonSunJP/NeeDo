@@ -57,14 +57,23 @@ describe("BackofficeRepository keyword filters", () => {
       status: "CONFIRMED",
       paymentStatus,
       customerUserId: 7,
-      customer: { username: "Customer", email: "customer@example.com" },
+      customer: {
+        username: "Customer",
+        email: "customer@example.com",
+        customerProfile: { id: 41 }
+      },
       serviceId: 3,
       serviceNameSnapshot: "Formal Service",
       service: { name: "Formal Service" },
       shopId: 11,
       shop: { name: "Aoyama Care Studio" },
       technicianProfileId: 17,
-      technicianProfile: { displayName: "Mika" },
+      technicianProfile: {
+        displayName: "Mika",
+        user: {
+          identities: [{ publicIdentifier: { publicId: "s0000000017" } }]
+        }
+      },
       fulfillmentMode: "store",
       priceAmount: { toString: () => "9800" },
       currency: "JPY",
@@ -86,5 +95,9 @@ describe("BackofficeRepository keyword filters", () => {
     const response = await repository.listOrders({ scope: "platform", page: 1, pageSize: 20 });
 
     expect(response.list[0]?.paymentStatus).toBe(expected);
+    expect(response.list[0]).toMatchObject({
+      customerProfileId: 41,
+      technicianNeedoId: "s0000000017"
+    });
   });
 });

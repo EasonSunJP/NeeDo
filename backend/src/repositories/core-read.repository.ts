@@ -11,6 +11,7 @@ import type {
   TechnicianProfile
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -645,7 +646,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       city: customer.city,
       bio: customer.bio,
       avatarUrl: this.findMediaUrl(customer.mediaAssets, "avatar"),
-      membershipLevel: customer.membershipLevel,
+      membershipLevel: resolveEffectiveCustomerMembershipLevel(customer),
       reviewSummary: this.mapReviewSummary(customer.reviewSummary),
       createdAt: customer.createdAt,
       updatedAt: customer.updatedAt

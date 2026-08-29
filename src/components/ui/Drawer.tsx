@@ -41,7 +41,8 @@ export function Drawer({
   widthStorageKey = defaultDrawerWidthStorageKey,
   defaultWidth = defaultDrawerWidth,
   minWidth = defaultMinDrawerWidth,
-  maxWidth = defaultMaxDrawerWidth
+  maxWidth = defaultMaxDrawerWidth,
+  layer = "base"
 }: {
   open: boolean;
   title: string;
@@ -53,6 +54,7 @@ export function Drawer({
   defaultWidth?: number;
   minWidth?: number;
   maxWidth?: number;
+  layer?: "base" | "overlay";
 }) {
   const [drawerWidth, setDrawerWidth] = useState(() => getInitialDrawerWidth(widthStorageKey, defaultWidth, minWidth, maxWidth));
   const [isResizing, setIsResizing] = useState(false);
@@ -127,7 +129,11 @@ export function Drawer({
   };
 
   return (
-    <div className={cn("fixed inset-0 z-[80] overflow-hidden transition", open ? "pointer-events-auto" : "pointer-events-none")}>
+    <div className={cn(
+      "fixed inset-0 overflow-hidden transition",
+      layer === "overlay" ? "z-[100]" : "z-[80]",
+      open ? "pointer-events-auto" : "pointer-events-none"
+    )}>
       <div
         className={cn("absolute inset-0 bg-ink/35 transition-opacity", open ? "opacity-100" : "opacity-0")}
         onClick={onClose}

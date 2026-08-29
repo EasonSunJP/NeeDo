@@ -468,6 +468,21 @@ enum CustomerSupportAccountType {
   @@map("customer_support_account_type")
 }
 
+enum CustomerMembershipGrantMode {
+  SELF_SERVICE            @map("self_service")
+  OPERATOR_COMPLIMENTARY @map("operator_complimentary")
+
+  @@map("customer_membership_grant_mode")
+}
+
+enum CustomerMembershipDurationUnit {
+  FOREVER @map("forever")
+  DAY     @map("day")
+  MONTH   @map("month")
+
+  @@map("customer_membership_duration_unit")
+}
+
 enum VanityNumberRuleKind {
   REPEATED_DIGIT      @map("repeated_digit")
   ASCENDING_SEQUENCE  @map("ascending_sequence")
@@ -542,6 +557,7 @@ model User {
   userRoles                             UserRole[]
   loginLogs                             LoginLog[]                          @relation("LoginLogUser")
   auditLogs                             AuditLog[]                          @relation("AuditLogActor")
+  grantedCustomerMemberships            CustomerProfile[]                  @relation("CustomerMembershipGrantedBy")
   ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
   requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
@@ -986,23 +1002,30 @@ model BusinessCalendarDate {
 }
 
 model CustomerProfile {
-  id              Int       @id @default(autoincrement())
-  userId          Int       @unique @map("user_id")
-  displayName     String    @map("display_name") @db.VarChar(120)
-  bio             String?   @db.Text
-  city            String?   @db.VarChar(100)
-  membershipLevel String    @default("standard") @map("membership_level") @db.VarChar(50)
-  isPublic        Boolean   @default(true) @map("is_public")
-  gender          String    @default("private") @db.VarChar(20)
-  age             Int?
-  heightCm        Decimal?  @map("height_cm") @db.Decimal(5, 2)
-  languages       Json?
-  visibility      String    @default("public") @db.VarChar(20)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                      Int                             @id @default(autoincrement())
+  userId                  Int                             @unique @map("user_id")
+  displayName             String                          @map("display_name") @db.VarChar(120)
+  bio                     String?                         @db.Text
+  city                    String?                         @db.VarChar(100)
+  membershipLevel         String                          @default("standard") @map("membership_level") @db.VarChar(50)
+  membershipGrantMode     CustomerMembershipGrantMode     @default(SELF_SERVICE) @map("membership_grant_mode")
+  membershipDurationUnit  CustomerMembershipDurationUnit? @map("membership_duration_unit")
+  membershipDurationValue Int?                            @map("membership_duration_value")
+  membershipStartsAt      DateTime?                       @map("membership_starts_at")
+  membershipExpiresAt     DateTime?                       @map("membership_expires_at")
+  membershipGrantedById   Int?                            @map("membership_granted_by_id")
+  isPublic                Boolean                         @default(true) @map("is_public")
+  gender                  String                          @default("private") @db.VarChar(20)
+  age                     Int?
+  heightCm                Decimal?                        @map("height_cm") @db.Decimal(5, 2)
+  languages               Json?
+  visibility              String                          @default("public") @db.VarChar(20)
+  createdAt               DateTime                        @default(now()) @map("created_at")
+  updatedAt               DateTime                        @updatedAt @map("updated_at")
+  deletedAt               DateTime?                       @map("deleted_at")
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  membershipGrantedBy   User?                  @relation("CustomerMembershipGrantedBy", fields: [membershipGrantedById], references: [id], onDelete: SetNull)
   mediaAssets           MediaAsset[]
   reviewSummary         ReviewSummary?
   receivedOrderReviews  OrderReview[]          @relation("OrderReviewCustomer")
@@ -1011,6 +1034,8 @@ model CustomerProfile {
   @@index([city])
   @@index([isPublic])
   @@index([visibility])
+  @@index([membershipGrantMode, membershipExpiresAt, deletedAt], map: "customer_profiles_membership_status_idx")
+  @@index([membershipGrantedById], map: "customer_profiles_membership_granted_by_idx")
   @@index([deletedAt])
   @@map("customer_profiles")
 }
