@@ -132,6 +132,7 @@ import { createPayrollSchedulePolicyRoutes } from "./routes/payroll-schedule-pol
 import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
+import { createExchangeRoutes } from "./routes/exchange.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
@@ -140,6 +141,7 @@ import type { AuthSessionStore } from "./services/auth-session.store";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
+import type { ExchangeService } from "./services/exchange.service";
 import {
   SseRealtimeEventGateway,
   type RealtimeEventGatewayPort
@@ -232,6 +234,7 @@ export interface AppDependencies {
   realtimeService?: RealtimeService;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  exchangeService?: ExchangeService;
 }
 
 const createDefaultAppDependencies = (): AppDependencies => ({
@@ -315,6 +318,7 @@ export const createApp = (
   apiRouter.use(createImMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
+  apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));

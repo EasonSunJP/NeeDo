@@ -8,8 +8,20 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
 import type {
+  ExchangeActorLookup,
+  ExchangeActorRecord,
+  ExchangeCommentRepositoryInput,
+  ExchangeLikeRepositoryInput,
+  ExchangeMutationResult,
+  ExchangePublishRepositoryInput,
+  ExchangeRepositoryPort,
+  ExchangeShareRepositoryInput,
+  ExchangeWithdrawRepositoryInput
+} from "../services/exchange.service";
+import type {
   ExchangeCommentPage,
   ExchangeCommentPayload,
+  ExchangeInteractionCounts,
   ExchangeListInput,
   ExchangePostPage,
   ExchangePostPayload,
@@ -18,8 +30,7 @@ import type {
   ExchangeServiceMode
 } from "../types/exchange.types";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
-
-type ExchangeClient = PrismaClient | Prisma.TransactionClient;
+import { toAuditLogCreateData } from "./audit-log.repository";
 
 const typeToDatabase: Record<ExchangePostType, DatabaseExchangePostType> = {
   demand: DatabaseExchangePostType.DEMAND,
@@ -51,6 +62,20 @@ const localeFromDatabase: Record<ContentLocale, ContentLocaleCode> = {
   [ContentLocale.KO]: "ko"
 };
 
+const localeToDatabase: Record<ContentLocaleCode, ContentLocale> = {
+  "zh-CN": ContentLocale.ZH_CN,
+  "zh-TW": ContentLocale.ZH_TW,
+  en: ContentLocale.EN,
+  ja: ContentLocale.JA,
+  ko: ContentLocale.KO
+};
+
+const serviceModeToDatabase: Record<ExchangeServiceMode, DatabaseExchangeServiceMode> = {
+  store: DatabaseExchangeServiceMode.STORE,
+  onsite: DatabaseExchangeServiceMode.ONSITE,
+  flexible: DatabaseExchangeServiceMode.FLEXIBLE
+};
+
 const postInclude = (viewerUserId: number) =>
   ({
     demand: { where: { deletedAt: null } },
@@ -76,8 +101,47 @@ type ExchangePostRecord = Prisma.ExchangePostGetPayload<{
 const isServiceAreaList = (value: Prisma.JsonValue): value is string[] =>
   Array.isArray(value) && value.every((area) => typeof area === "string");
 
-export class ExchangePostRepository {
-  public constructor(private readonly client: ExchangeClient = prisma) {}
+export class ExchangePostRepository implements ExchangeRepositoryPort {
+  public constructor(private readonly client: PrismaClient = prisma) {}
+
+  public async resolveActor(input: ExchangeActorLookup): Promise<ExchangeActorRecord | null> {
+    const identity = await this.client.userIdentity.findFirst({
+      where: {
+        id: input.identityId,
+        userId: input.userId,
+        type: input.identityType,
+        scopeType: input.scopeType,
+        scopeId: input.scopeId,
+        isActive: true,
+        deletedAt: null,
+        user: { is: { isActive: true, deletedAt: null } },
+        publicIdentifier: {
+          is: { publicId: input.publicId, status: "ACTIVE", deletedAt: null }
+        }
+      },
+      select: {
+        id: true,
+        userId: true,
+        type: true,
+        scopeType: true,
+        scopeId: true,
+        displayName: true,
+        publicIdentifier: { select: { publicId: true } },
+        user: { select: { username: true, avatarUrl: true } }
+      }
+    });
+    if (!identity?.publicIdentifier) return null;
+    return {
+      userId: identity.userId,
+      identityId: identity.id,
+      identityType: identity.type,
+      scopeType: identity.scopeType,
+      scopeId: identity.scopeId,
+      publicId: identity.publicIdentifier.publicId,
+      displayName: identity.displayName ?? identity.user.username,
+      avatarUrl: identity.user.avatarUrl
+    };
+  }
 
   public async listPosts(input: ExchangeListInput): Promise<ExchangePostPage> {
     const pagination = toPrismaPagination({ page: input.page, pageSize: input.pageSize });
@@ -142,8 +206,313 @@ export class ExchangePostRepository {
     );
   }
 
+  public async publishPost(
+    input: ExchangePublishRepositoryInput
+  ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
+    try {
+      return await this.client.$transaction(async (transaction) => {
+        const existing = await transaction.exchangePost.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+          include: postInclude(input.actor.userId)
+        });
+        if (existing) {
+          return {
+            kind: "replayed",
+            value: this.mapPost(existing, input.actor.userId, input.now)
+          };
+        }
+
+        const created = await transaction.exchangePost.create({
+          data: {
+            authorUserId: input.actor.userId,
+            authorIdentityId: input.actor.identityId,
+            publisherPublicId: input.actor.publicId,
+            publisherIdentityType: input.actor.identityType,
+            publisherDisplayName: input.actor.displayName,
+            publisherAvatarUrl: input.actor.avatarUrl,
+            type: typeToDatabase[input.input.type],
+            status: DatabaseExchangePostStatus.PUBLISHED,
+            title: input.input.title,
+            detail: input.input.detail,
+            contentLocale: localeToDatabase[input.input.contentLocale],
+            areaLabel: input.input.areaLabel,
+            serviceStartAt: input.input.serviceStartAt,
+            serviceEndAt: input.input.serviceEndAt,
+            expiresAt: input.input.expiresAt,
+            idempotencyKey: input.idempotencyKey,
+            createdAt: input.now,
+            updatedAt: input.now,
+            ...(input.input.type === "demand"
+              ? {
+                  demand: {
+                    create: {
+                      budgetMinJpy: input.input.budgetMinJpy,
+                      budgetMaxJpy: input.input.budgetMaxJpy
+                    }
+                  }
+                }
+              : {
+                  intelligence: {
+                    create: {
+                      serviceMode: serviceModeToDatabase[input.input.serviceMode],
+                      addressLabel: input.input.addressLabel,
+                      serviceAreas: input.input.serviceAreas,
+                      originalPriceJpy: input.input.originalPriceJpy,
+                      campaignPriceJpy: input.input.campaignPriceJpy
+                    }
+                  }
+                })
+          },
+          include: postInclude(input.actor.userId)
+        });
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({ ...input.audit, targetId: created.id })
+        });
+        return {
+          kind: "success",
+          value: this.mapPost(created, input.actor.userId, input.now)
+        };
+      });
+    } catch (error) {
+      if (!this.isUniqueConflict(error)) throw error;
+      const existing = await this.client.exchangePost.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+        include: postInclude(input.actor.userId)
+      });
+      if (!existing) throw error;
+      return {
+        kind: "replayed",
+        value: this.mapPost(existing, input.actor.userId, input.now)
+      };
+    }
+  }
+
+  public withdrawPost(
+    input: ExchangeWithdrawRepositoryInput
+  ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
+    return this.client.$transaction(async (transaction) => {
+      const current = await transaction.exchangePost.findFirst({
+        where: { id: input.postId, deletedAt: null },
+        include: postInclude(input.actor.userId)
+      });
+      if (!current) return { kind: "not_found" };
+      if (current.authorUserId !== input.actor.userId) return { kind: "forbidden" };
+      if (current.status === DatabaseExchangePostStatus.WITHDRAWN) {
+        return {
+          kind: "replayed",
+          value: this.mapPost(current, input.actor.userId, input.now)
+        };
+      }
+      if (
+        current.status !== DatabaseExchangePostStatus.PUBLISHED ||
+        current.expiresAt.getTime() <= input.now.getTime()
+      ) {
+        return { kind: "unavailable" };
+      }
+      const updated = await transaction.exchangePost.update({
+        where: { id: current.id },
+        data: {
+          status: DatabaseExchangePostStatus.WITHDRAWN,
+          withdrawnAt: input.now,
+          updatedAt: input.now
+        },
+        include: postInclude(input.actor.userId)
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({ ...input.audit, targetId: updated.id })
+      });
+      return {
+        kind: "success",
+        value: this.mapPost(updated, input.actor.userId, input.now)
+      };
+    });
+  }
+
+  public async createComment(
+    input: ExchangeCommentRepositoryInput
+  ): Promise<ExchangeMutationResult<ExchangeCommentPayload>> {
+    try {
+      return await this.client.$transaction(async (transaction) => {
+        const existing = await transaction.exchangeComment.findUnique({
+          where: { idempotencyKey: input.idempotencyKey }
+        });
+        if (existing) return { kind: "replayed", value: this.mapComment(existing) };
+        const availability = await this.postAvailability(transaction, input.postId, input.now);
+        if (availability !== "available") return { kind: availability };
+        const created = await transaction.exchangeComment.create({
+          data: {
+            postId: input.postId,
+            authorUserId: input.actor.userId,
+            authorIdentityId: input.actor.identityId,
+            authorPublicId: input.actor.publicId,
+            authorIdentityType: input.actor.identityType,
+            authorDisplayName: input.actor.displayName,
+            authorAvatarUrl: input.actor.avatarUrl,
+            content: input.input.content,
+            idempotencyKey: input.idempotencyKey,
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({ ...input.audit, targetId: input.postId })
+        });
+        return { kind: "success", value: this.mapComment(created) };
+      });
+    } catch (error) {
+      if (!this.isUniqueConflict(error)) throw error;
+      const existing = await this.client.exchangeComment.findUnique({
+        where: { idempotencyKey: input.idempotencyKey }
+      });
+      if (!existing) throw error;
+      return { kind: "replayed", value: this.mapComment(existing) };
+    }
+  }
+
+  public setLike(
+    input: ExchangeLikeRepositoryInput
+  ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
+    return this.client.$transaction(async (transaction) => {
+      const availability = await this.postAvailability(transaction, input.postId, input.now);
+      if (availability !== "available") return { kind: availability };
+      const existing = await transaction.exchangeLike.findUnique({
+        where: {
+          postId_actorUserId: { postId: input.postId, actorUserId: input.actor.userId }
+        }
+      });
+      let changed = false;
+      if (input.liked && !existing) {
+        await transaction.exchangeLike.create({
+          data: {
+            postId: input.postId,
+            actorUserId: input.actor.userId,
+            actorIdentityId: input.actor.identityId,
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+        changed = true;
+      } else if (input.liked && existing?.deletedAt) {
+        await transaction.exchangeLike.update({
+          where: { id: existing.id },
+          data: {
+            actorIdentityId: input.actor.identityId,
+            deletedAt: null,
+            updatedAt: input.now
+          }
+        });
+        changed = true;
+      } else if (!input.liked && existing && !existing.deletedAt) {
+        await transaction.exchangeLike.update({
+          where: { id: existing.id },
+          data: { deletedAt: input.now, updatedAt: input.now }
+        });
+        changed = true;
+      }
+      if (changed) {
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({ ...input.audit, targetId: input.postId })
+        });
+      }
+      return {
+        kind: changed ? "success" : "replayed",
+        value: await this.countInteractions(transaction, input.postId)
+      };
+    });
+  }
+
+  public async recordShare(
+    input: ExchangeShareRepositoryInput
+  ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
+    try {
+      return await this.client.$transaction(async (transaction) => {
+        const replay = await transaction.exchangeShare.findFirst({
+          where: {
+            OR: [
+              { idempotencyKey: input.idempotencyKey },
+              { postId: input.postId, actorUserId: input.actor.userId }
+            ],
+            deletedAt: null
+          },
+          select: { id: true }
+        });
+        if (replay) {
+          return {
+            kind: "replayed",
+            value: await this.countInteractions(transaction, input.postId)
+          };
+        }
+        const availability = await this.postAvailability(transaction, input.postId, input.now);
+        if (availability !== "available") return { kind: availability };
+        await transaction.exchangeShare.create({
+          data: {
+            postId: input.postId,
+            actorUserId: input.actor.userId,
+            actorIdentityId: input.actor.identityId,
+            idempotencyKey: input.idempotencyKey,
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({ ...input.audit, targetId: input.postId })
+        });
+        return {
+          kind: "success",
+          value: await this.countInteractions(transaction, input.postId)
+        };
+      });
+    } catch (error) {
+      if (!this.isUniqueConflict(error)) throw error;
+      return this.client.$transaction(async (transaction) => ({
+        kind: "replayed" as const,
+        value: await this.countInteractions(transaction, input.postId)
+      }));
+    }
+  }
+
+  public expireDue(now: Date, batchSize: number): Promise<number> {
+    return this.client.$transaction(async (transaction) => {
+      const due = await transaction.exchangePost.findMany({
+        where: {
+          status: DatabaseExchangePostStatus.PUBLISHED,
+          expiresAt: { lte: now },
+          deletedAt: null
+        },
+        orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+        take: Math.max(1, Math.floor(batchSize)),
+        select: { id: true }
+      });
+      if (due.length === 0) return 0;
+      const ids = due.map(({ id }) => id);
+      const updated = await transaction.exchangePost.updateMany({
+        where: {
+          id: { in: ids },
+          status: DatabaseExchangePostStatus.PUBLISHED,
+          expiresAt: { lte: now },
+          deletedAt: null
+        },
+        data: { status: DatabaseExchangePostStatus.EXPIRED, updatedAt: now }
+      });
+      for (const id of ids.slice(0, updated.count)) {
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({
+            actorId: null,
+            action: "exchange.post.expire",
+            targetType: "ExchangePost",
+            targetId: id,
+            metadata: { expiredAt: now.toISOString() }
+          })
+        });
+      }
+      return updated.count;
+    });
+  }
+
   private mapPost(row: ExchangePostRecord, viewerUserId: number, now: Date): ExchangePostPayload {
-    const expired = row.expiresAt.getTime() <= now.getTime();
+    const expired =
+      row.status === DatabaseExchangePostStatus.PUBLISHED &&
+      row.expiresAt.getTime() <= now.getTime();
     const status = expired ? "expired" : statusFromDatabase[row.status];
     const intelligence = row.intelligence
       ? (() => {
@@ -219,5 +588,44 @@ export class ExchangePostRepository {
       content: row.content,
       createdAt: row.createdAt.toISOString()
     };
+  }
+
+  private async postAvailability(
+    transaction: Prisma.TransactionClient,
+    postId: number,
+    now: Date
+  ): Promise<"available" | "not_found" | "unavailable"> {
+    const live = await transaction.exchangePost.findFirst({
+      where: {
+        id: postId,
+        status: DatabaseExchangePostStatus.PUBLISHED,
+        expiresAt: { gt: now },
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    if (live) return "available";
+    const exists = await transaction.exchangePost.findFirst({
+      where: { id: postId, deletedAt: null },
+      select: { id: true }
+    });
+    return exists ? "unavailable" : "not_found";
+  }
+
+  private async countInteractions(
+    transaction: Prisma.TransactionClient,
+    postId: number
+  ): Promise<ExchangeInteractionCounts> {
+    const where = { postId, deletedAt: null };
+    const [comments, likes, shares] = await Promise.all([
+      transaction.exchangeComment.count({ where }),
+      transaction.exchangeLike.count({ where }),
+      transaction.exchangeShare.count({ where })
+    ]);
+    return { comments, likes, shares };
+  }
+
+  private isUniqueConflict(error: unknown): boolean {
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 }

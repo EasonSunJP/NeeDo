@@ -30,6 +30,67 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  it("resolves only the exact active identity and public NeeDo id", async () => {
+    const findFirst = jest.fn(async () => ({
+      id: 17,
+      userId: 7,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 27,
+      displayName: "佐藤 美咲",
+      publicIdentifier: { publicId: "NC12345678" },
+      user: { username: "fallback", avatarUrl: null }
+    }));
+    const repository = new ExchangePostRepository({
+      userIdentity: { findFirst }
+    } as never);
+
+    await expect(
+      repository.resolveActor({
+        userId: 7,
+        identityId: 17,
+        identityType: "customer",
+        scopeType: "customer_profile",
+        scopeId: 27,
+        publicId: "NC12345678"
+      })
+    ).resolves.toEqual({
+      userId: 7,
+      identityId: 17,
+      identityType: "customer",
+      scopeType: "customer_profile",
+      scopeId: 27,
+      publicId: "NC12345678",
+      displayName: "佐藤 美咲",
+      avatarUrl: null
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 17,
+        userId: 7,
+        type: "customer",
+        scopeType: "customer_profile",
+        scopeId: 27,
+        isActive: true,
+        deletedAt: null,
+        user: { is: { isActive: true, deletedAt: null } },
+        publicIdentifier: {
+          is: { publicId: "NC12345678", status: "ACTIVE", deletedAt: null }
+        }
+      },
+      select: {
+        id: true,
+        userId: true,
+        type: true,
+        scopeType: true,
+        scopeId: true,
+        displayName: true,
+        publicIdentifier: { select: { publicId: true } },
+        user: { select: { username: true, avatarUrl: true } }
+      }
+    });
+  });
+
   it("lists a filtered page with persisted counts and no internal identity ids", async () => {
     const findMany = jest.fn(async () => [demandRow]);
     const count = jest.fn(async () => 20);
@@ -246,5 +307,149 @@ describe("ExchangePostRepository", () => {
     expect(count).toHaveBeenCalledWith({ where: { postId: 41, deletedAt: null } });
     expect(JSON.stringify(result)).not.toContain("authorUserId");
     expect(JSON.stringify(result)).not.toContain("authorIdentityId");
+  });
+
+  it("publishes the matching subtype and audit in one transaction, then replays by key", async () => {
+    const created = demandRow;
+    const transaction = {
+      exchangePost: {
+        findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(created),
+        create: jest.fn(async () => created)
+      },
+      auditLog: { create: jest.fn(async () => ({ id: 1 })) }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    };
+    const repository = new ExchangePostRepository(client as never);
+    const input = {
+      actor: {
+        userId: 7,
+        identityId: 17,
+        identityType: "customer",
+        scopeType: "customer_profile",
+        scopeId: 27,
+        publicId: "NC12345678",
+        displayName: "佐藤 美咲",
+        avatarUrl: null
+      },
+      input: {
+        type: "demand" as const,
+        title: demandRow.title,
+        detail: demandRow.detail,
+        contentLocale: "ja" as const,
+        areaLabel: demandRow.areaLabel,
+        serviceStartAt: demandRow.serviceStartAt,
+        serviceEndAt: demandRow.serviceEndAt,
+        expiresAt: demandRow.expiresAt,
+        budgetMinJpy: 8_000,
+        budgetMaxJpy: 12_000
+      },
+      idempotencyKey: "publish-demand-0001",
+      audit: {
+        actorId: 7,
+        action: "exchange.post.publish",
+        targetType: "ExchangePost"
+      },
+      now
+    };
+
+    await expect(repository.publishPost(input)).resolves.toEqual({
+      kind: "success",
+      value: expect.objectContaining({
+        id: 41,
+        demand:
+          input.input.type === "demand"
+            ? {
+                budgetMinJpy: 8_000,
+                budgetMaxJpy: 12_000
+              }
+            : null
+      })
+    });
+    expect(transaction.exchangePost.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          authorUserId: 7,
+          authorIdentityId: 17,
+          publisherPublicId: "NC12345678",
+          type: "DEMAND",
+          status: "PUBLISHED",
+          idempotencyKey: "publish-demand-0001",
+          demand: { create: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 } }
+        }),
+        include: expect.any(Object)
+      })
+    );
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: 7,
+        action: "exchange.post.publish",
+        targetType: "ExchangePost",
+        targetId: 41
+      })
+    });
+
+    await expect(repository.publishPost(input)).resolves.toEqual({
+      kind: "replayed",
+      value: expect.objectContaining({ id: 41 })
+    });
+    expect(transaction.exchangePost.create).toHaveBeenCalledTimes(1);
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores a soft-deleted like and returns persisted live counts atomically", async () => {
+    const transaction = {
+      exchangePost: {
+        findFirst: jest.fn(async () => ({ id: 41 }))
+      },
+      exchangeLike: {
+        findUnique: jest.fn(async () => ({ id: 91, deletedAt: now })),
+        update: jest.fn(async () => ({ id: 91 })),
+        count: jest.fn(async () => 21)
+      },
+      exchangeComment: { count: jest.fn(async () => 4) },
+      exchangeShare: { count: jest.fn(async () => 5) },
+      auditLog: { create: jest.fn(async () => ({ id: 1 })) }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    };
+    const repository = new ExchangePostRepository(client as never);
+
+    await expect(
+      repository.setLike({
+        actor: {
+          userId: 7,
+          identityId: 17,
+          identityType: "customer",
+          scopeType: "customer_profile",
+          scopeId: 27,
+          publicId: "NC12345678",
+          displayName: "佐藤 美咲",
+          avatarUrl: null
+        },
+        postId: 41,
+        liked: true,
+        idempotencyKey: "relike-key-000001",
+        audit: {
+          actorId: 7,
+          action: "exchange.post.like",
+          targetType: "ExchangePost",
+          targetId: 41
+        },
+        now
+      })
+    ).resolves.toEqual({ kind: "success", value: { comments: 4, likes: 21, shares: 5 } });
+    expect(transaction.exchangeLike.update).toHaveBeenCalledWith({
+      where: { id: 91 },
+      data: { actorIdentityId: 17, deletedAt: null, updatedAt: now }
+    });
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
   });
 });

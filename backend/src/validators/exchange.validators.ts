@@ -6,9 +6,8 @@ const MAX_MONEY_JPY = 1_000_000_000;
 const authoredText = (maximum: number) => z.string().trim().min(1).max(maximum);
 const moneyJpy = z.coerce.number().int().nonnegative().max(MAX_MONEY_JPY);
 const explicitOffsetDate = z
-  .string()
-  .datetime({ offset: true })
-  .transform((value) => new Date(value));
+  .union([z.date(), z.string().datetime({ offset: true })])
+  .transform((value) => (value instanceof Date ? value : new Date(value)));
 
 const commonPostShape = {
   title: authoredText(120),
@@ -62,6 +61,13 @@ export const exchangeListQuerySchema = z
   })
   .strict();
 
+export const exchangeCommentListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    page_size: z.coerce.number().int().positive().max(100).default(20)
+  })
+  .strict();
+
 export const exchangePostIdParamSchema = z
   .object({ id: z.coerce.number().int().positive() })
   .strict();
@@ -108,6 +114,7 @@ export const publishExchangePostSchema = z
 export const createExchangeCommentSchema = z.object({ content: authoredText(1_000) }).strict();
 
 export type ExchangeListQuery = z.infer<typeof exchangeListQuerySchema>;
+export type ExchangeCommentListQuery = z.infer<typeof exchangeCommentListQuerySchema>;
 export type ExchangePostIdParams = z.infer<typeof exchangePostIdParamSchema>;
 export type PublishExchangePostBody = z.infer<typeof publishExchangePostSchema>;
 export type CreateExchangeCommentBody = z.infer<typeof createExchangeCommentSchema>;
