@@ -76,6 +76,7 @@ export interface ExchangeRepositoryPort {
     page: number;
     pageSize: number;
     viewerUserId: number;
+    authorUserId?: number;
     now: Date;
   }): Promise<ExchangePostPage>;
   findPostById(
@@ -112,6 +113,13 @@ const INTELLIGENCE_PUBLISHER_IDENTITIES = new Set([
   "merchant_staff"
 ]);
 
+const DEMAND_AUDIENCE_IDENTITIES = new Set([
+  "technician",
+  "merchant",
+  "merchant_owner",
+  "merchant_staff"
+]);
+
 export class ExchangeService {
   public constructor(
     private readonly repository: ExchangeRepositoryPort,
@@ -123,9 +131,14 @@ export class ExchangeService {
     input: ExchangeFeedListInput
   ): Promise<ExchangePostPage> {
     const actor = await this.resolveActor(access);
+    const privateAuthorUserId =
+      input.type === "demand" && !DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)
+        ? actor.userId
+        : undefined;
     return this.repository.listPosts({
       ...input,
       viewerUserId: actor.userId,
+      ...(privateAuthorUserId ? { authorUserId: privateAuthorUserId } : {}),
       now: this.now()
     });
   }
@@ -137,6 +150,7 @@ export class ExchangeService {
     const actor = await this.resolveActor(access);
     const post = await this.repository.findPostById(postId, actor.userId, this.now());
     if (!post) throw this.postNotFound();
+    this.assertCanReadPost(actor, post);
     return post;
   }
 
@@ -185,7 +199,8 @@ export class ExchangeService {
     postId: number,
     input: PaginationInput
   ): Promise<ExchangeCommentPage> {
-    await this.resolveActor(access);
+    const actor = await this.resolveActor(access);
+    await this.assertPostReadable(actor, postId);
     return this.repository.listComments(postId, {
       page: input.page ?? 1,
       pageSize: input.pageSize ?? 20
@@ -199,6 +214,7 @@ export class ExchangeService {
     key: string
   ): Promise<ExchangeCommentPayload> {
     const actor = await this.resolveActor(access);
+    await this.assertPostReadable(actor, postId);
     const result = await this.repository.createComment({
       actor,
       postId,
@@ -234,6 +250,7 @@ export class ExchangeService {
     key: string
   ): Promise<ExchangeInteractionCounts> {
     const actor = await this.resolveActor(access);
+    await this.assertPostReadable(actor, postId);
     const result = await this.repository.recordShare({
       actor,
       postId,
@@ -257,6 +274,7 @@ export class ExchangeService {
     liked: boolean
   ): Promise<ExchangeInteractionCounts> {
     const actor = await this.resolveActor(access);
+    await this.assertPostReadable(actor, postId);
     const result = await this.repository.setLike({
       actor,
       postId,
@@ -302,6 +320,18 @@ export class ExchangeService {
       (identityType === "customer" && postType === "demand") ||
       (INTELLIGENCE_PUBLISHER_IDENTITIES.has(identityType) && postType === "intelligence");
     if (!allowed) throw this.identityForbidden();
+  }
+
+  private async assertPostReadable(actor: ExchangeActorRecord, postId: number): Promise<void> {
+    const post = await this.repository.findPostById(postId, actor.userId, this.now());
+    if (!post) throw this.postNotFound();
+    this.assertCanReadPost(actor, post);
+  }
+
+  private assertCanReadPost(actor: ExchangeActorRecord, post: ExchangePostPayload): void {
+    if (post.type !== "demand") return;
+    if (post.viewer.canWithdraw || DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)) return;
+    throw this.postNotFound();
   }
 
   private unwrapMutation<TValue>(result: ExchangeMutationResult<TValue>): TValue {

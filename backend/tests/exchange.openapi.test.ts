@@ -15,6 +15,7 @@ interface OpenApiParameter {
 }
 
 interface OpenApiOperation {
+  description?: string;
   security: Array<{ bearerAuth: never[] }>;
   parameters: OpenApiParameter[];
   "x-required-permission"?: string;
@@ -97,6 +98,16 @@ describe("formal Exchange OpenAPI contract", () => {
         ])
       );
     }
+  });
+
+  it("documents customer demand privacy on list and detail routes", () => {
+    const paths = document().paths;
+    expect(paths["/api/v1/exchange/posts"].get.description).toContain(
+      "customers receive only demand posts authored by their active account"
+    );
+    expect(paths["/api/v1/exchange/posts/{id}"].get.description).toContain(
+      "other customers receive 404"
+    );
   });
 
   it("publishes lowercase public enums and never exposes internal actor ids", () => {

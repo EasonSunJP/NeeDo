@@ -108,7 +108,7 @@ describe("ExchangeService", () => {
     const repository = createRepository();
     const service = new ExchangeService(repository, () => now);
 
-    await service.listPosts(access, { type: "demand", page: 1, pageSize: 20 });
+    await service.listPosts(access, { type: "intelligence", page: 1, pageSize: 20 });
 
     expect(repository.resolveActor).toHaveBeenCalledWith({
       userId: 7,
@@ -124,6 +124,78 @@ describe("ExchangeService", () => {
       message: "error.identity.forbidden",
       statusCode: 403
     });
+  });
+
+  it("lists only the current user's own demand while keeping the supply-side demand feed", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+
+    await expect(
+      service.listPosts(access, { type: "demand", page: 1, pageSize: 20 })
+    ).resolves.toEqual(expect.objectContaining({ total: 1 }));
+    expect(repository.listPosts).toHaveBeenLastCalledWith({
+      type: "demand",
+      page: 1,
+      pageSize: 20,
+      viewerUserId: 7,
+      authorUserId: 7,
+      now
+    });
+
+    repository.resolveActor.mockResolvedValueOnce({ ...actor, identityType: "merchant_owner" });
+    await expect(
+      service.listPosts(
+        { ...access, currentIdentityType: "merchant_owner" },
+        { type: "demand", page: 1, pageSize: 20 }
+      )
+    ).resolves.toEqual(expect.objectContaining({ total: 1 }));
+    expect(repository.listPosts).toHaveBeenLastCalledWith({
+      type: "demand",
+      page: 1,
+      pageSize: 20,
+      viewerUserId: 7,
+      now
+    });
+
+    repository.findPostById.mockResolvedValueOnce({
+      ...post,
+      viewer: { liked: false, canWithdraw: false }
+    });
+    await expect(service.getPost(access, 41)).rejects.toMatchObject({
+      message: "error.exchange.post_not_found",
+      statusCode: 404
+    });
+
+    repository.findPostById.mockResolvedValueOnce(post);
+    await expect(service.getPost(access, 41)).resolves.toEqual(post);
+  });
+
+  it("returns not found before exposing or mutating another customer's demand interactions", async () => {
+    const repository = createRepository();
+    repository.findPostById.mockResolvedValue({
+      ...post,
+      viewer: { liked: false, canWithdraw: false }
+    });
+    const service = new ExchangeService(repository, () => now);
+
+    const attempts = [
+      () => service.listComments(access, 41, { page: 1, pageSize: 20 }),
+      () => service.comment(access, 41, { content: "private" }, "comment-key-00001"),
+      () => service.like(access, 41, "like-key-00000001"),
+      () => service.unlike(access, 41, "unlike-key-000001"),
+      () => service.share(access, 41, "share-key-0000001")
+    ];
+
+    for (const attempt of attempts) {
+      await expect(attempt()).rejects.toMatchObject({
+        message: "error.exchange.post_not_found",
+        statusCode: 404
+      });
+    }
+    expect(repository.listComments).not.toHaveBeenCalled();
+    expect(repository.createComment).not.toHaveBeenCalled();
+    expect(repository.setLike).not.toHaveBeenCalled();
+    expect(repository.recordShare).not.toHaveBeenCalled();
   });
 
   it("allows customers to publish demand and rejects forged intelligence fields", async () => {

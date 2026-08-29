@@ -114,10 +114,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         scopeId: input.scopeId,
         isActive: true,
         deletedAt: null,
-        user: { is: { isActive: true, deletedAt: null } },
-        publicIdentifier: {
-          is: { publicId: input.publicId, status: "ACTIVE", deletedAt: null }
-        }
+        user: { is: { isActive: true, deletedAt: null } }
       },
       select: {
         id: true,
@@ -126,18 +123,26 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         scopeType: true,
         scopeId: true,
         displayName: true,
-        publicIdentifier: { select: { publicId: true } },
-        user: { select: { username: true, avatarUrl: true } }
+        publicIdentifier: { select: { publicId: true, status: true, deletedAt: true } },
+        user: { select: { username: true, avatarUrl: true, needoId: true } }
       }
     });
-    if (!identity?.publicIdentifier) return null;
+    if (!identity) return null;
+    const directPublicId =
+      identity.publicIdentifier?.status === "ACTIVE" &&
+      identity.publicIdentifier.deletedAt === null
+        ? identity.publicIdentifier.publicId
+        : null;
+    const effectivePublicId = directPublicId ??
+      (["customer", "user", "u"].includes(identity.type) ? identity.user.needoId : null);
+    if (effectivePublicId !== input.publicId) return null;
     return {
       userId: identity.userId,
       identityId: identity.id,
       identityType: identity.type,
       scopeType: identity.scopeType,
       scopeId: identity.scopeId,
-      publicId: identity.publicIdentifier.publicId,
+      publicId: effectivePublicId,
       displayName: identity.displayName ?? identity.user.username,
       avatarUrl: identity.user.avatarUrl
     };
@@ -149,6 +154,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       type: typeToDatabase[input.type],
       status: DatabaseExchangePostStatus.PUBLISHED,
       expiresAt: { gt: input.now },
+      ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
       deletedAt: null
     } satisfies Prisma.ExchangePostWhereInput;
 

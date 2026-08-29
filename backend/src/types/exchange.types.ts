@@ -68,6 +68,7 @@ export interface ExchangeListInput {
   page: number;
   pageSize: number;
   viewerUserId: number;
+  authorUserId?: number;
   now: Date;
 }
 

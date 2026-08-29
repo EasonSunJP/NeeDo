@@ -748,6 +748,8 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
   return {
     [base]: {
       get: exchangeOperation("List live demand or intelligence posts", "exchange:posts:list", {
+        description:
+          "For type=demand, customers receive only demand posts authored by their active account; merchant and technician identities receive the live demand marketplace. Intelligence posts follow the normal live feed scope.",
         parameters: [
           {
             name: "type",
@@ -781,6 +783,8 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
     },
     [`${base}/{id}`]: {
       get: exchangeOperation("Read one persisted Exchange post", "exchange:posts:detail", {
+        description:
+          "Demand posts are readable by their customer owner and by merchant or technician identities; other customers receive 404. Intelligence posts follow the normal live feed scope.",
         parameters: [postId],
         responses: {
           "200": jsonDataResponse("Exchange post", {

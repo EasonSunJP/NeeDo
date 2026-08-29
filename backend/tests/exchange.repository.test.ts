@@ -38,8 +38,8 @@ describe("ExchangePostRepository", () => {
       scopeType: "customer_profile",
       scopeId: 27,
       displayName: "佐藤 美咲",
-      publicIdentifier: { publicId: "NC12345678" },
-      user: { username: "fallback", avatarUrl: null }
+      publicIdentifier: { publicId: "NC12345678", status: "ACTIVE", deletedAt: null },
+      user: { username: "fallback", avatarUrl: null, needoId: "NC12345678" }
     }));
     const repository = new ExchangePostRepository({
       userIdentity: { findFirst }
@@ -74,9 +74,6 @@ describe("ExchangePostRepository", () => {
         isActive: true,
         deletedAt: null,
         user: { is: { isActive: true, deletedAt: null } },
-        publicIdentifier: {
-          is: { publicId: "NC12345678", status: "ACTIVE", deletedAt: null }
-        }
       },
       select: {
         id: true,
@@ -85,9 +82,45 @@ describe("ExchangePostRepository", () => {
         scopeType: true,
         scopeId: true,
         displayName: true,
-        publicIdentifier: { select: { publicId: true } },
-        user: { select: { username: true, avatarUrl: true } }
+        publicIdentifier: { select: { publicId: true, status: true, deletedAt: true } },
+        user: { select: { username: true, avatarUrl: true, needoId: true } }
       }
+    });
+  });
+
+  it("accepts the authenticated shared primary NeeDo id for a customer identity", async () => {
+    const findFirst = jest.fn(async () => ({
+      id: 18,
+      userId: 7,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 27,
+      displayName: "佐藤 美咲",
+      publicIdentifier: null,
+      user: { username: "fallback", avatarUrl: null, needoId: "needo0000000041" }
+    }));
+    const repository = new ExchangePostRepository({
+      userIdentity: { findFirst }
+    } as never);
+
+    await expect(
+      repository.resolveActor({
+        userId: 7,
+        identityId: 18,
+        identityType: "customer",
+        scopeType: "customer_profile",
+        scopeId: 27,
+        publicId: "needo0000000041"
+      })
+    ).resolves.toEqual({
+      userId: 7,
+      identityId: 18,
+      identityType: "customer",
+      scopeType: "customer_profile",
+      scopeId: 27,
+      publicId: "needo0000000041",
+      displayName: "佐藤 美咲",
+      avatarUrl: null
     });
   });
 
