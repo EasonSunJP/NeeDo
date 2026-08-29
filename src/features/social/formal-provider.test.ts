@@ -42,4 +42,11 @@ describe("formal social provider gate", () => {
     expect(source).toContain("accountProfileRequestsRef.current.set(userId, request)");
     expect(source).toContain("accountProfileRequestsRef.current.delete(userId)");
   });
+
+  it("keeps draft actions stable so composer autosave cannot trigger an update-depth loop", () => {
+    expect(source).toContain("const saveDraft = useCallback(");
+    expect(source).toContain("const clearDraft = useCallback(");
+    expect(source).toMatch(/\n\s+saveDraft,\n\s+clearDraft,/u);
+    expect(source).not.toContain("saveDraft: (draftKey, draft) => setState");
+  });
 });

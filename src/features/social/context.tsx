@@ -270,6 +270,25 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     });
   }, [isRestoring, loadFormalSocial, sessionUserId]);
 
+  const saveDraft = useCallback((draftKey: string, draft: SocialComposerDraft) => {
+    setState((current) => ({
+      ...current,
+      drafts: { ...current.drafts, [draftKey]: draft }
+    }));
+  }, []);
+
+  const clearDraft = useCallback((draftKey: string) => {
+    setState((current) => {
+      if (!(draftKey in current.drafts)) {
+        return current;
+      }
+
+      const drafts = { ...current.drafts };
+      delete drafts[draftKey];
+      return { ...current, drafts };
+    });
+  }, []);
+
   const value = useMemo<SocialContextValue>(() => {
     const profileList = Object.values(profiles);
     const ownProfile = session
@@ -358,12 +377,8 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       search,
       getTagFeed: (tag) => state.posts.filter((post) => post.hashtags.some((item) => item.toLowerCase() === tag.toLowerCase())),
       getTrendingTags,
-      saveDraft: (draftKey, draft) => setState((current) => ({ ...current, drafts: { ...current.drafts, [draftKey]: draft } })),
-      clearDraft: (draftKey) => setState((current) => {
-        const drafts = { ...current.drafts };
-        delete drafts[draftKey];
-        return { ...current, drafts };
-      }),
+      saveDraft,
+      clearDraft,
       createPost,
       updatePost: formalSocialMutationUnavailable,
       deletePost: formalSocialMutationUnavailable,
@@ -385,7 +400,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       refreshFeeds: () => { void loadFormalSocial(); },
       ensureAccountProfile
     };
-  }, [ensureAccountProfile, loadFormalSocial, profiles, session, state]);
+  }, [clearDraft, ensureAccountProfile, loadFormalSocial, profiles, saveDraft, session, state]);
 
   return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;
 }
