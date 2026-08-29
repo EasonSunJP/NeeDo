@@ -49,7 +49,15 @@ describe("SocialMediaService", () => {
     const service = new SocialMediaService(
       repository,
       new ContentMediaFileStorage(directory),
-      { resolve: jest.fn(async () => ({ identityId: 71, userId: 41, identityType: "technician" })) }
+      {
+        resolve: jest.fn(async () => ({
+          identityId: 71,
+          userId: 41,
+          identityType: "technician",
+          scopeType: "technician_profile",
+          scopeId: 17
+        }))
+      }
     );
 
     const result = await service.upload(actor, context, {

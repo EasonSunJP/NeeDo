@@ -193,6 +193,13 @@ export class BookingService {
     actor: AuthenticatedBookingActor,
     input: BookingCreateInput
   ): Promise<BookingOrderPayload> {
+    if (!this.isCustomerSharedIdentity(actor)) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.auth.identity_forbidden",
+        statusCode: 403
+      });
+    }
     await this.assertShopNotSuspended(
       (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );
@@ -291,7 +298,7 @@ export class BookingService {
     return result.order;
   }
 
-  public listOrders(
+  public async listOrders(
     actor: AuthenticatedBookingActor,
     input: OrderListInput
   ): Promise<PaginatedResponse<BookingOrderPayload>> {
@@ -820,6 +827,14 @@ export class BookingService {
       return { ...input, technicianProfileId: actor.currentIdentityScopeId };
     }
 
+    if (!this.isCustomerSharedIdentity(actor)) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.auth.identity_forbidden",
+        statusCode: 403
+      });
+    }
+
     return {
       ...input,
       customerUserId: actor.userId,
@@ -836,6 +851,7 @@ export class BookingService {
     if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
       return order.technicianProfileId === actor.currentIdentityScopeId;
     }
+    if (!this.isCustomerSharedIdentity(actor)) return false;
     return order.customerUserId === actor.userId;
   }
 
@@ -850,6 +866,13 @@ export class BookingService {
       actor.currentIdentityScopeType === "global" ||
       actor.currentIdentityType === "platform" ||
       actor.currentIdentityType === "platform_admin"
+    );
+  }
+
+  private isCustomerSharedIdentity(actor: AuthenticatedBookingActor): boolean {
+    if (!actor.currentIdentityType) return true;
+    return ["customer", "user", "u", "scout", "affiliate", "alliance_marketing"].includes(
+      actor.currentIdentityType
     );
   }
 

@@ -189,6 +189,7 @@ const upsertSimulationPost = async (
   const commonData = {
     authorUserId: post.author.userId,
     authorIdentityId: post.author.identityId,
+    ownerIdentityId: post.author.identityId,
     publisherPublicId: post.author.publicId,
     publisherIdentityType: post.author.identityType,
     publisherDisplayName: post.author.displayName,
@@ -288,7 +289,7 @@ const upsertSimulationPost = async (
     const likeAt = new Date(like.createdAt);
     const saved = await transaction.exchangeLike.upsert({
       where: {
-        postId_actorUserId: { postId: record.id, actorUserId: like.actor.userId }
+        postId_actorIdentityId: { postId: record.id, actorIdentityId: like.actor.identityId }
       },
       create: {
         postId: record.id,
@@ -316,7 +317,7 @@ const upsertSimulationPost = async (
     const shareAt = new Date(share.createdAt);
     const saved = await transaction.exchangeShare.upsert({
       where: {
-        postId_actorUserId: { postId: record.id, actorUserId: share.actor.userId }
+        postId_actorIdentityId: { postId: record.id, actorIdentityId: share.actor.identityId }
       },
       create: {
         postId: record.id,

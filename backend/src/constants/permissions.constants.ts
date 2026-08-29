@@ -177,6 +177,20 @@ export const SYSTEM_PERMISSIONS = [
     "更新当前客户个人资料"
   ),
   createPermission(
+    "technician-profile:read",
+    "查看技师资料",
+    "api",
+    "technician-profile",
+    "读取当前技师身份的个人资料"
+  ),
+  createPermission(
+    "technician-profile:write",
+    "编辑技师资料",
+    "api",
+    "technician-profile",
+    "更新当前技师身份的个人资料"
+  ),
+  createPermission(
     "identity-application:own",
     "本人身份申请",
     "api",
@@ -1646,6 +1660,8 @@ export const buildRolePermissionAssignments = (): Record<
   technician: [
     "menu:technician-app",
     "menu:technician-schedule",
+    "technician-profile:read",
+    "technician-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,

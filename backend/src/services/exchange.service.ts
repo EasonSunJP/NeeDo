@@ -1,6 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthenticatedAccessContext } from "./auth.service";
+import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
 import type {
   ExchangeCommentPage,
   ExchangeCommentPayload,
@@ -29,6 +30,7 @@ export interface ExchangeActorLookup {
 export interface ExchangeActorRecord extends ExchangeActorLookup {
   displayName: string;
   avatarUrl: string | null;
+  ownerIdentityId?: number;
 }
 
 export interface ExchangeFeedListInput {
@@ -75,13 +77,13 @@ export interface ExchangeRepositoryPort {
     type: ExchangePostType;
     page: number;
     pageSize: number;
-    viewerUserId: number;
-    authorUserId?: number;
+    viewerIdentityId: number;
+    authorIdentityId?: number;
     now: Date;
   }): Promise<ExchangePostPage>;
   findPostById(
     postId: number,
-    viewerUserId: number,
+    viewerIdentityId: number,
     now: Date
   ): Promise<ExchangePostPayload | null>;
   listComments(
@@ -123,7 +125,8 @@ const DEMAND_AUDIENCE_IDENTITIES = new Set([
 export class ExchangeService {
   public constructor(
     private readonly repository: ExchangeRepositoryPort,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">
   ) {}
 
   public async listPosts(
@@ -131,14 +134,15 @@ export class ExchangeService {
     input: ExchangeFeedListInput
   ): Promise<ExchangePostPage> {
     const actor = await this.resolveActor(access);
-    const privateAuthorUserId =
+    const ownerIdentityId = actor.ownerIdentityId ?? actor.identityId;
+    const privateAuthorIdentityId =
       input.type === "demand" && !DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)
-        ? actor.userId
+        ? ownerIdentityId
         : undefined;
     return this.repository.listPosts({
       ...input,
-      viewerUserId: actor.userId,
-      ...(privateAuthorUserId ? { authorUserId: privateAuthorUserId } : {}),
+      viewerIdentityId: ownerIdentityId,
+      ...(privateAuthorIdentityId ? { authorIdentityId: privateAuthorIdentityId } : {}),
       now: this.now()
     });
   }
@@ -148,7 +152,11 @@ export class ExchangeService {
     postId: number
   ): Promise<ExchangePostPayload> {
     const actor = await this.resolveActor(access);
-    const post = await this.repository.findPostById(postId, actor.userId, this.now());
+    const post = await this.repository.findPostById(
+      postId,
+      actor.ownerIdentityId ?? actor.identityId,
+      this.now()
+    );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
     return post;
@@ -312,18 +320,26 @@ export class ExchangeService {
     ) {
       throw this.identityForbidden();
     }
-    return actor;
+    if (!this.personalIdentityScopeService) return actor;
+    const scope = await this.personalIdentityScopeService.resolve(access);
+    return { ...actor, ownerIdentityId: scope.identityId };
   }
 
   private assertCanPublish(identityType: string, postType: ExchangePostType): void {
     const allowed =
-      (identityType === "customer" && postType === "demand") ||
+      (["customer", "user", "u", "scout", "affiliate", "alliance_marketing"].includes(
+        identityType
+      ) && postType === "demand") ||
       (INTELLIGENCE_PUBLISHER_IDENTITIES.has(identityType) && postType === "intelligence");
     if (!allowed) throw this.identityForbidden();
   }
 
   private async assertPostReadable(actor: ExchangeActorRecord, postId: number): Promise<void> {
-    const post = await this.repository.findPostById(postId, actor.userId, this.now());
+    const post = await this.repository.findPostById(
+      postId,
+      actor.ownerIdentityId ?? actor.identityId,
+      this.now()
+    );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
   }

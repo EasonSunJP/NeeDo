@@ -6,6 +6,7 @@ const demandRow = {
   id: 41,
   authorUserId: 7,
   authorIdentityId: 17,
+  ownerIdentityId: 17,
   publisherPublicId: "NC12345678",
   publisherIdentityType: "customer",
   publisherDisplayName: "佐藤 美咲",
@@ -136,7 +137,7 @@ describe("ExchangePostRepository", () => {
         type: "demand",
         page: 2,
         pageSize: 10,
-        viewerUserId: 7,
+        viewerIdentityId: 17,
         now
       })
     ).resolves.toEqual({
@@ -186,7 +187,7 @@ describe("ExchangePostRepository", () => {
           demand: { where: { deletedAt: null } },
           intelligence: { where: { deletedAt: null } },
           likes: {
-            where: { actorUserId: 7, deletedAt: null },
+            where: { actorIdentityId: 17, deletedAt: null },
             select: { id: true },
             take: 1
           },
@@ -213,7 +214,7 @@ describe("ExchangePostRepository", () => {
       type: "demand",
       page: 1,
       pageSize: 20,
-      viewerUserId: 7,
+      viewerIdentityId: 17,
       now
     });
     expect(JSON.stringify(response)).not.toContain("authorUserId");
@@ -231,7 +232,7 @@ describe("ExchangePostRepository", () => {
       exchangePost: { findFirst }
     } as never);
 
-    await expect(repository.findPostById(41, 7, now)).resolves.toEqual(
+    await expect(repository.findPostById(41, 17, now)).resolves.toEqual(
       expect.objectContaining({
         id: 41,
         status: "expired",
@@ -273,7 +274,7 @@ describe("ExchangePostRepository", () => {
       exchangePost: { findFirst }
     } as never);
 
-    await expect(repository.findPostById(41, 7, now)).resolves.toEqual(
+    await expect(repository.findPostById(41, 17, now)).resolves.toEqual(
       expect.objectContaining({
         type: "intelligence",
         demand: null,
@@ -286,7 +287,7 @@ describe("ExchangePostRepository", () => {
         }
       })
     );
-    await expect(repository.findPostById(41, 7, now)).rejects.toThrow(
+    await expect(repository.findPostById(41, 17, now)).rejects.toThrow(
       "error.exchange.invalid_service_areas"
     );
   });
@@ -411,6 +412,7 @@ describe("ExchangePostRepository", () => {
         data: expect.objectContaining({
           authorUserId: 7,
           authorIdentityId: 17,
+          ownerIdentityId: 17,
           publisherPublicId: "NC12345678",
           type: "DEMAND",
           status: "PUBLISHED",

@@ -8,6 +8,7 @@ import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-exp
 import { AuditLogRepository } from "./repositories/audit-log.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
 import { ExchangePostRepository } from "./repositories/exchange.repository";
+import { AuthRepository } from "./repositories/auth.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
@@ -19,6 +20,7 @@ import { ContentPublicationSchedulerService } from "./services/content-publicati
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { ExchangeService } from "./services/exchange.service";
+import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { createShutdownHandler } from "./server-shutdown";
@@ -43,7 +45,11 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
-const exchangeService = new ExchangeService(new ExchangePostRepository());
+const exchangeService = new ExchangeService(
+  new ExchangePostRepository(),
+  undefined,
+  new PersonalIdentityScopeService(new AuthRepository())
+);
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,

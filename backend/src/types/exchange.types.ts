@@ -67,8 +67,8 @@ export interface ExchangeListInput {
   type: ExchangePostType;
   page: number;
   pageSize: number;
-  viewerUserId: number;
-  authorUserId?: number;
+  viewerIdentityId: number;
+  authorIdentityId?: number;
   now: Date;
 }
 

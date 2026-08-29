@@ -50,6 +50,7 @@ describeIntegration("formal Exchange simulation seed", () => {
       data: {
         authorUserId: customer.userId,
         authorIdentityId: customer.identityId,
+        ownerIdentityId: customer.identityId,
         publisherPublicId: customer.publicId,
         publisherIdentityType: customer.identityType,
         publisherDisplayName: customer.displayName,

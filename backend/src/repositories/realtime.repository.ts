@@ -976,8 +976,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   public async getConversationForUser(
     conversationId: number,
     identityId: number,
-    _viewerUserId?: number
+    viewerUserId?: number
   ): Promise<ConversationPayload | null> {
+    void viewerUserId;
     const conversation = await this.client.conversation.findFirst({
       where: {
         id: conversationId,
@@ -2405,6 +2406,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: SocialPostListInput,
     userId: number = identityId
   ): Promise<PaginatedResponse<SocialPostPayload>> {
+    void userId;
     const pagination = toPrismaPagination(input);
     const where: Prisma.SocialPostWhereInput = {
       deletedAt: null,
@@ -2453,8 +2455,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   public async getSocialPost(
     identityId: number,
     postId: number,
-    _userId: number = identityId
+    userId: number = identityId
   ): Promise<SocialPostPayload | null> {
+    void userId;
     const socialPost = await this.client.socialPost.findFirst({
       where: {
         id: postId,

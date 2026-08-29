@@ -9,6 +9,7 @@ import type { CustomerProfileUpdateBody } from "../validators/customer-profile.v
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
+import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
 
 type AuditRecorder = Pick<AuditLogService, "createInput">;
 
@@ -18,11 +19,12 @@ export class CustomerProfileService {
   public constructor(
     private readonly repository: CustomerProfileRepositoryPort,
     private readonly auditLogService: AuditRecorder,
-    private readonly avatarStorage: CustomerAvatarStoragePort
+    private readonly avatarStorage: CustomerAvatarStoragePort,
+    private readonly personalIdentityScope?: Pick<PersonalIdentityScopeService, "resolve">
   ) {}
 
   public async getMine(actor: AuthenticatedAccessContext): Promise<CustomerProfilePayload> {
-    const { profileId, userId } = this.getCustomerScope(actor);
+    const { profileId, userId } = await this.getCustomerScope(actor);
     const profile = await this.repository.findMine(userId, profileId);
 
     if (!profile) {
@@ -37,7 +39,7 @@ export class CustomerProfileService {
     context: AuthRequestContext,
     input: CustomerProfileUpdateBody
   ): Promise<CustomerProfilePayload> {
-    const { profileId, userId } = this.getCustomerScope(actor);
+    const { profileId, userId } = await this.getCustomerScope(actor);
     const mutation = this.toMutation(input);
 
     if (input.avatarDataUrl) {
@@ -58,14 +60,22 @@ export class CustomerProfileService {
     return profile;
   }
 
-  private getCustomerScope(actor: AuthenticatedAccessContext): {
+  private async getCustomerScope(actor: AuthenticatedAccessContext): Promise<{
     userId: number;
     profileId: number;
-  } {
+  }> {
+    const scope = this.personalIdentityScope
+      ? await this.personalIdentityScope.resolve(actor)
+      : {
+          userId: actor.userId,
+          identityType: actor.currentIdentityType,
+          scopeType: actor.currentIdentityScopeType,
+          scopeId: actor.currentIdentityScopeId
+        };
     if (
-      actor.currentIdentityType !== "customer" ||
-      actor.currentIdentityScopeType !== "customer_profile" ||
-      !actor.currentIdentityScopeId
+      scope.identityType !== "customer" ||
+      scope.scopeType !== "customer_profile" ||
+      !scope.scopeId
     ) {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
@@ -74,7 +84,7 @@ export class CustomerProfileService {
       });
     }
 
-    return { userId: actor.userId, profileId: actor.currentIdentityScopeId };
+    return { userId: scope.userId, profileId: scope.scopeId };
   }
 
   private toMutation(input: CustomerProfileUpdateBody): CustomerProfileMutation {

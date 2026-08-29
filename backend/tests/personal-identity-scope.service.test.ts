@@ -51,7 +51,13 @@ describe("PersonalIdentityScopeService", () => {
       userId: 7,
       currentIdentityId: 70,
       currentIdentityType: "customer"
-    })).resolves.toEqual({ identityId: 70, userId: 7, identityType: "customer" });
+    })).resolves.toEqual({
+      identityId: 70,
+      userId: 7,
+      identityType: "customer",
+      scopeType: "customer_profile",
+      scopeId: 17
+    });
   });
 
   it("resolves an affiliate identity to the same account customer identity", async () => {
@@ -64,7 +70,13 @@ describe("PersonalIdentityScopeService", () => {
       userId: 7,
       currentIdentityId: 71,
       currentIdentityType: "scout"
-    })).resolves.toEqual({ identityId: 70, userId: 7, identityType: "customer" });
+    })).resolves.toEqual({
+      identityId: 70,
+      userId: 7,
+      identityType: "customer",
+      scopeType: "customer_profile",
+      scopeId: 17
+    });
   });
 
   it.each([
@@ -80,7 +92,13 @@ describe("PersonalIdentityScopeService", () => {
       userId: 7,
       currentIdentityId: id,
       currentIdentityType: type
-    })).resolves.toEqual({ identityId: id, userId: 7, identityType: type });
+    })).resolves.toEqual({
+      identityId: id,
+      userId: 7,
+      identityType: type,
+      scopeType: type === "technician" ? "technician_profile" : "global",
+      scopeId: type === "technician" ? 31 : null
+    });
   });
 
   it.each([

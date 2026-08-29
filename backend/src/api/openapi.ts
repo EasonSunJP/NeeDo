@@ -383,6 +383,14 @@ const customerProfileErrorResponses = {
   "500": { description: "Unexpected customer profile persistence error" }
 };
 
+const technicianProfileErrorResponses = {
+  "400": { description: "Invalid technician self-profile update payload" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing technician-profile permission or technician identity scope" },
+  "404": { description: "Technician profile not found in authenticated scope" },
+  "500": { description: "Unexpected technician profile persistence error" }
+};
+
 const contentAnnouncementErrorResponses = {
   "400": {
     description:
@@ -2931,6 +2939,66 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { type: "string", minLength: 1, maxLength: 40 }
           },
           bio: { type: ["string", "null"], maxLength: 2000 },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
+        }
+      },
+      TechnicianSelfProfile: {
+        type: "object",
+        required: [
+          "id", "publicId", "userId", "shopId", "displayName", "avatarUrl", "bio", "city",
+          "age", "heightCm", "languages", "serviceAreas", "profileTags", "canServeForeigners",
+          "bidBudgetMinJpy", "bidBudgetMaxJpy", "paymentMethods", "visibility",
+          "employmentType", "yearsExperience", "createdAt", "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          publicId: { type: "string" },
+          userId: { type: "integer", minimum: 1 },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          city: { type: "string" },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: { type: "array", items: { type: "string" } },
+          serviceAreas: { type: "array", items: { type: "string" } },
+          profileTags: { type: "array", items: { type: "string" } },
+          canServeForeigners: { type: "boolean" },
+          bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0 },
+          bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
+          paymentMethods: {
+            type: "array",
+            items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] }
+          },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
+          employmentType: { type: "string", enum: ["independent", "full_time", "temporary"] },
+          yearsExperience: { type: "integer", minimum: 0 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      TechnicianSelfProfileUpdate: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarDataUrl: {
+            type: "string",
+            maxLength: 900000,
+            pattern: "^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+          },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", maxLength: 40 } },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          serviceAreas: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 80 } },
+          profileTags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } },
+          canServeForeigners: { type: "boolean" },
+          bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
+          bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
+          paymentMethods: { type: "array", minItems: 1, maxItems: 8, items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] } },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
@@ -9054,6 +9122,38 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/CustomerSelfProfile"
           }),
           ...customerProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technician-profile/me`]: {
+      get: {
+        tags: ["Technician Profile"],
+        summary: "Get the profile belonging to the authenticated technician identity",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current technician self-profile", {
+            $ref: "#/components/schemas/TechnicianSelfProfile"
+          }),
+          ...technicianProfileErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Technician Profile"],
+        summary: "Update editable fields on the authenticated technician profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/TechnicianSelfProfileUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated current technician self-profile", {
+            $ref: "#/components/schemas/TechnicianSelfProfile"
+          }),
+          ...technicianProfileErrorResponses
         }
       }
     },

@@ -898,6 +898,16 @@ model TechnicianProfile {
   bio                 String?                  @db.Text
   city                String                   @db.VarChar(100)
   serviceArea         String?                  @map("service_area") @db.VarChar(255)
+  serviceAreasJson    Json?                    @map("service_areas")
+  age                 Int?
+  heightCm            Decimal?                 @map("height_cm") @db.Decimal(5, 2)
+  languages           Json?
+  profileTags         Json?                    @map("profile_tags")
+  canServeForeigners  Boolean                  @default(false) @map("can_serve_foreigners")
+  bidBudgetMinJpy     Int?                     @map("bid_budget_min_jpy")
+  bidBudgetMaxJpy     Int?                     @map("bid_budget_max_jpy")
+  paymentMethods      Json?                    @map("payment_methods")
+  visibility          String                   @default("public") @db.VarChar(20)
   yearsExperience     Int                      @default(0) @map("years_experience")
   employmentType      TechnicianEmploymentType @default(INDEPENDENT) @map("employment_type")
   employmentStartedAt DateTime?                @map("employment_started_at")
@@ -929,6 +939,7 @@ model TechnicianProfile {
   @@index([shopId])
   @@index([shopId, employmentType])
   @@index([city])
+  @@index([visibility])
   @@index([status])
   @@index([isRecommended])
   @@index([deletedAt])
@@ -2095,6 +2106,7 @@ model UserIdentity {
   user                     User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
   publicIdentifier         PublicIdentifier?
   exchangePosts            ExchangePost[]            @relation("ExchangePostAuthorIdentity")
+  ownedExchangePosts       ExchangePost[]            @relation("ExchangePostOwnerIdentity")
   exchangeComments         ExchangeComment[]         @relation("ExchangeCommentAuthorIdentity")
   exchangeLikes            ExchangeLike[]            @relation("ExchangeLikeActorIdentity")
   exchangeShares           ExchangeShare[]           @relation("ExchangeShareActorIdentity")
@@ -2126,6 +2138,7 @@ model ExchangePost {
   id                    Int                @id @default(autoincrement())
   authorUserId          Int                @map("author_user_id")
   authorIdentityId      Int                @map("author_identity_id")
+  ownerIdentityId       Int                @map("owner_identity_id")
   publisherPublicId     String             @map("publisher_public_id") @db.VarChar(32)
   publisherIdentityType String             @map("publisher_identity_type") @db.VarChar(50)
   publisherDisplayName  String             @map("publisher_display_name") @db.VarChar(100)
@@ -2147,6 +2160,7 @@ model ExchangePost {
 
   author         User                  @relation("ExchangePostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
   authorIdentity UserIdentity          @relation("ExchangePostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+  ownerIdentity  UserIdentity          @relation("ExchangePostOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
   demand         ExchangeDemand?
   intelligence   ExchangeIntelligence?
   comments       ExchangeComment[]
@@ -2156,6 +2170,7 @@ model ExchangePost {
   @@index([type, status, expiresAt, createdAt])
   @@index([authorUserId, createdAt])
   @@index([authorIdentityId, createdAt])
+  @@index([ownerIdentityId, createdAt])
   @@index([areaLabel, type, status])
   @@index([deletedAt])
   @@map("exchange_posts")
@@ -2234,7 +2249,7 @@ model ExchangeLike {
   actor         User         @relation("ExchangeLikeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   actorIdentity UserIdentity @relation("ExchangeLikeActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([postId, actorUserId])
+  @@unique([postId, actorIdentityId])
   @@index([postId, deletedAt])
   @@index([actorUserId, createdAt])
   @@index([actorIdentityId, createdAt])
@@ -2256,7 +2271,7 @@ model ExchangeShare {
   actor         User         @relation("ExchangeShareActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   actorIdentity UserIdentity @relation("ExchangeShareActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([postId, actorUserId])
+  @@unique([postId, actorIdentityId])
   @@index([postId, deletedAt])
   @@index([actorUserId, createdAt])
   @@index([actorIdentityId, createdAt])

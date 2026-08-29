@@ -12,6 +12,8 @@ export interface PersonalIdentityScope {
   identityId: number;
   userId: number;
   identityType: string;
+  scopeType: string | null;
+  scopeId: number | null;
 }
 
 const CUSTOMER_IDENTITY_TYPES = new Set(["customer", "user", "u"]);
@@ -69,7 +71,9 @@ export class PersonalIdentityScopeService {
     return {
       identityId: identity.id,
       userId: identity.userId,
-      identityType: identity.type
+      identityType: identity.type,
+      scopeType: identity.scopeType,
+      scopeId: identity.scopeId
     };
   }
 

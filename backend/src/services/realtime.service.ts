@@ -871,7 +871,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return Promise.resolve({
       identityId: auth.currentIdentityId ?? auth.userId,
       userId: auth.userId,
-      identityType: auth.currentIdentityType ?? "customer"
+      identityType: auth.currentIdentityType ?? "customer",
+      scopeType: auth.currentIdentityScopeType ?? null,
+      scopeId: auth.currentIdentityScopeId ?? null
     });
   }
 
