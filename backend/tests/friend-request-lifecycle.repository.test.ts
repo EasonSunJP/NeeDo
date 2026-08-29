@@ -228,6 +228,55 @@ describe("RealtimeRepository friend request lifecycle", () => {
     expect(tx.follow.upsert).not.toHaveBeenCalled();
   });
 
+  it("claims due requests with skip-locked database-time batching", async () => {
+    const expired = requestRecord({ status: "EXPIRED", expiredAt: dbNow });
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: expired.id }])
+        .mockResolvedValueOnce([{ dbNow }]),
+      friendRequest: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([expired])
+      },
+      auditLog: { createMany: jest.fn().mockResolvedValue({ count: 1 }) }
+    };
+
+    await expect(
+      new RealtimeRepository(transactionClient(tx)).expireDueFriendRequests({ batchSize: 100 })
+    ).resolves.toEqual([
+      expect.objectContaining({ id: expired.id, status: "expired", expiredAt: dbNow })
+    ]);
+
+    const claimQuery = tx.$queryRaw.mock.calls[0]?.[0] as {
+      strings?: readonly string[];
+      values?: unknown[];
+    };
+    const sql = claimQuery.strings?.join(" ") ?? "";
+    expect(sql).toContain("CURRENT_TIMESTAMP(3)");
+    expect(sql).toContain("FOR UPDATE SKIP LOCKED");
+    expect(claimQuery.values).toEqual([100]);
+    expect(tx.friendRequest.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [expired.id] },
+        status: "PENDING",
+        expiresAt: { lte: dbNow },
+        deletedAt: null
+      },
+      data: { status: "EXPIRED", expiredAt: dbNow }
+    });
+    expect(tx.auditLog.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          actorId: null,
+          action: "im.friend_request.expired",
+          targetId: expired.id,
+          metadata: { source: "expiry_worker" }
+        })
+      ]
+    });
+  });
+
   it("returns an incoming pending directory relationship with a safe profile", async () => {
     const pending = requestRecord({ requesterUserId: target.id, targetUserId: requester.id });
     const client = {

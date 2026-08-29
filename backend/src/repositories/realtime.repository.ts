@@ -485,6 +485,9 @@ export interface RealtimeRepositoryPort {
   respondToFriendRequest: (
     input: RespondFriendRequestInput
   ) => Promise<RespondFriendRequestOutcome>;
+  expireDueFriendRequests: (input: {
+    batchSize: number;
+  }) => Promise<FriendRequestPayload[]>;
   createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
   updateSocialPost: (input: UpdateSocialPostInput) => Promise<UpdateSocialPostResult | null>;
   listSocialPosts: (
@@ -2086,6 +2089,62 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           recipientUserIds: [friendRequest.requesterUserId, friendRequest.targetUserId]
         }
       };
+    });
+  }
+
+  public async expireDueFriendRequests(input: {
+    batchSize: number;
+  }): Promise<FriendRequestPayload[]> {
+    return this.client.$transaction(async (tx) => {
+      const candidates = await tx.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`
+          SELECT id
+          FROM friend_requests
+          WHERE status = 'pending'
+            AND expires_at <= CURRENT_TIMESTAMP(3)
+            AND deleted_at IS NULL
+          ORDER BY expires_at, id
+          LIMIT ${input.batchSize}
+          FOR UPDATE SKIP LOCKED
+        `
+      );
+      const ids = candidates.map((candidate) => candidate.id);
+      if (ids.length === 0) {
+        return [];
+      }
+      const databaseClock = await tx.$queryRaw<Array<{ dbNow: Date }>>(
+        Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+      );
+      const dbNow = databaseClock[0]?.dbNow;
+      if (!dbNow) {
+        throw new Error("Database clock query returned no row");
+      }
+      await tx.friendRequest.updateMany({
+        where: {
+          id: { in: ids },
+          status: FriendRequestStatus.PENDING,
+          expiresAt: { lte: dbNow },
+          deletedAt: null
+        },
+        data: { status: FriendRequestStatus.EXPIRED, expiredAt: dbNow }
+      });
+      await tx.auditLog.createMany({
+        data: ids.map((id) => ({
+          actorId: null,
+          action: "im.friend_request.expired",
+          targetType: "FriendRequest",
+          targetId: id,
+          ip: null,
+          userAgent: null,
+          metadata: { source: "expiry_worker" }
+        }))
+      });
+      const expired = await tx.friendRequest.findMany({
+        where: { id: { in: ids }, status: FriendRequestStatus.EXPIRED },
+        include: friendRequestInclude,
+        orderBy: [{ expiresAt: "asc" }, { id: "asc" }]
+      });
+      return expired.map((request) => this.mapFriendRequest(request, dbNow));
     });
   }
 
