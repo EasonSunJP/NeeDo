@@ -1,13 +1,16 @@
 import {
   LIFEDANCE_ADMIN2_PLAN,
   assertLocalAdmin2ProvisioningTarget,
+  resolveLifeDanceAdmin2Password,
+  selectAdmin2AccountCandidate,
   selectAdmin2FriendTargets
 } from "../src/simulation/lifedance-admin2-provisioning";
 
 describe("LifeDance admin2 provisioning plan", () => {
   it("keeps the requested fixed account, NeeDo ID, shop, identities, and friend count", () => {
     expect(LIFEDANCE_ADMIN2_PLAN).toMatchObject({
-      email: "admin2@lifedance.com",
+      email: "admina@lifedance.com",
+      legacyEmails: ["admin2@lifedance.com"],
       needoId: "needo0000000002",
       numberPart: "0000000002",
       shopName: "麻布十番超级按摩",
@@ -22,6 +25,74 @@ describe("LifeDance admin2 provisioning plan", () => {
       ],
       roleCodes: ["admin", "customer", "technician", "merchant_owner", "scout"]
     });
+  });
+
+  it("selects the legacy email account for an in-place canonical rename", () => {
+    expect(
+      selectAdmin2AccountCandidate([
+        {
+          id: 787,
+          email: "admin2@lifedance.com",
+          needoId: "needo0000000002",
+          accountNo: "0000000002",
+          sessionGeneration: 0
+        }
+      ])
+    ).toEqual({
+      id: 787,
+      email: "admin2@lifedance.com",
+      needoId: "needo0000000002",
+      accountNo: "0000000002",
+      sessionGeneration: 0
+    });
+  });
+
+  it("fails closed when canonical and legacy emails belong to different users", () => {
+    expect(() =>
+      selectAdmin2AccountCandidate([
+        {
+          id: 787,
+          email: "admin2@lifedance.com",
+          needoId: "needo0000000002",
+          accountNo: "0000000002",
+          sessionGeneration: 0
+        },
+        {
+          id: 900,
+          email: "admina@lifedance.com",
+          needoId: "needo0000000900",
+          accountNo: "0000000900",
+          sessionGeneration: 0
+        }
+      ])
+    ).toThrow("canonical and legacy emails belong to different users");
+  });
+
+  it("fails closed when the canonical email belongs to a different fixed account", () => {
+    expect(() =>
+      selectAdmin2AccountCandidate([
+        {
+          id: 900,
+          email: "admina@lifedance.com",
+          needoId: "needo0000000900",
+          accountNo: "0000000900",
+          sessionGeneration: 0
+        }
+      ])
+    ).toThrow("email belongs to a different fixed account");
+  });
+
+  it("requires the dedicated admin2 password without falling back to shared test credentials", () => {
+    expect(
+      resolveLifeDanceAdmin2Password({
+        LIFEDANCE_ADMIN2_PASSWORD: " Dedicated.Admin2.Password.2026! ",
+        TEST_USER_DEFAULT_PASSWORD: "Shared.Password.2026!"
+      })
+    ).toBe("Dedicated.Admin2.Password.2026!");
+
+    expect(() =>
+      resolveLifeDanceAdmin2Password({ TEST_USER_DEFAULT_PASSWORD: "Shared.Password.2026!" })
+    ).toThrow("LIFEDANCE_ADMIN2_PASSWORD is required");
   });
 
   it("selects exactly 20 stable formal simulation accounts and excludes admin accounts", () => {

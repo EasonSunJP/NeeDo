@@ -15,6 +15,7 @@ describe("MobileShell shared navigation", () => {
   it("uses the shared liquid glass bottom navigation for every current theme", () => {
     expect(mobileShellSource).toContain("const displayedNavItems = showBottomNav ? resolvedNavItems : [];");
     expect(mobileShellSource).toContain("client-liquid-glass-nav");
+    expect(mobileShellSource).toContain("client-liquid-glass-surface");
     expect(mobileShellSource).toContain("MobileNavIcon");
     expect(mobileShellSource).toContain("NeedoFeaturedNavButton");
   });

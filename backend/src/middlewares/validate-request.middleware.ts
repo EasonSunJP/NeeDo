@@ -8,6 +8,7 @@ interface RequestSchemas {
   body?: ZodSchema<unknown>;
   params?: ZodSchema<unknown>;
   query?: ZodSchema<unknown>;
+  validationErrorMessage?: (error: ZodError) => string | undefined;
 }
 
 export const validateRequest =
@@ -29,10 +30,11 @@ export const validateRequest =
       next();
     } catch (error) {
       if (error instanceof ZodError) {
+        const message = schemas.validationErrorMessage?.(error) ?? "error.validation";
         next(
           new AppError({
             code: ERROR_CODES.VALIDATION,
-            message: "error.validation",
+            message,
             statusCode: 400,
             cause: error
           })

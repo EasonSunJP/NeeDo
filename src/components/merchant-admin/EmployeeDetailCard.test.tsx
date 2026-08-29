@@ -205,6 +205,8 @@ async function renderCard(
         timelineError=""
         timelineLoading={false}
         onRetryTimeline={vi.fn()}
+        onTimelinePageChange={vi.fn()}
+        onTimelinePageSizeChange={vi.fn()}
         onSubmitTimelineComment={vi.fn(async () => undefined)}
         {...props}
       />,
@@ -249,12 +251,45 @@ describe("EmployeeDetailCard", () => {
     container.remove();
   });
 
+  it("uses six mounted detail tabs and preserves an in-progress profile draft", async () => {
+    await renderCard();
+
+    expect(button("基础资料").getAttribute("aria-selected")).toBe("true");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
+        ?.closest<HTMLElement>('[role="tabpanel"]')?.hidden,
+    ).toBe(true);
+
+    await act(async () => button("编辑").click());
+    await setInput("employee-display-name", "未提交的姓名");
+    await act(async () => button("员工日程").click());
+    expect(button("员工日程").getAttribute("aria-selected")).toBe("true");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
+        ?.closest<HTMLElement>('[role="tabpanel"]')?.hidden,
+    ).toBe(false);
+
+    await act(async () => button("基础资料").click());
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="employee-display-name"]',
+      )?.value,
+    ).toBe("未提交的姓名");
+    expect(
+      ["基础资料", "从属与账号", "员工日程", "薪酬与分成", "结算记录", "员工动态"].every(
+        (label) => button(label).getAttribute("role") === "tab",
+      ),
+    ).toBe(true);
+  });
+
   it("shows the NeeDo identity, current relationship, contact and account truth without internal ids", async () => {
     await renderCard();
 
     expect(container.textContent).toContain("NEEDO-S-47");
     expect(container.textContent).toContain("斉藤 健太");
     expect(container.textContent).toContain("专属技师");
+    expect(container.textContent).toContain("雇佣形式");
+    expect(container.textContent).toContain("正式员工");
     expect(container.textContent).toContain("在职");
     expect(container.textContent).toContain("LifeDance 渋谷店");
     expect(container.textContent).toContain("kenta@example.jp");
@@ -291,6 +326,15 @@ describe("EmployeeDetailCard", () => {
     await act(async () => button("发送").click());
 
     expect(onSubmitTimelineComment).toHaveBeenCalledWith("已确认本月结算。");
+  });
+
+  it("renders only lifecycle entries returned by the paginated timeline contract", async () => {
+    await renderCard();
+    await act(async () => button("员工动态").click());
+
+    expect(container.textContent).toContain("更新了姓名、城市");
+    expect(container.textContent).not.toContain("员工档案已通过验证");
+    expect(container.textContent).not.toContain("加入店铺并建立员工从属关系");
   });
 
   it("submits edited basic profile fields through the real mutation contract", async () => {
@@ -393,6 +437,21 @@ describe("EmployeeDetailCard", () => {
         timezone: "Asia/Tokyo",
       }),
     );
+  });
+
+  it("keeps every information tab available but removes mutations in read-only order context", async () => {
+    await renderCard({ readOnly: true });
+
+    expect(button("基础资料").getAttribute("role")).toBe("tab");
+    expect(button("员工日程").getAttribute("role")).toBe("tab");
+    expect(container.textContent).not.toContain("编辑从属关系");
+    expect(container.textContent).not.toContain("编辑结算周期");
+    expect(container.textContent).not.toContain("写下员工档案备注");
+    expect(
+      Array.from(container.querySelectorAll("button")).some(
+        (candidate) => candidate.textContent?.trim() === "编辑",
+      ),
+    ).toBe(false);
   });
 
   it("provides exact merchant-card copy in every supported non-source language", () => {

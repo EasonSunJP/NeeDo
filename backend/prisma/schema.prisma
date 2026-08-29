@@ -353,6 +353,22 @@ enum AffiliateAllianceMemberRole {
   @@map("affiliate_alliance_member_role")
 }
 
+enum AffiliateAllianceInvitationRole {
+  PARTNER     @map("partner")
+  SUBORDINATE @map("subordinate")
+
+  @@map("affiliate_alliance_invitation_role")
+}
+
+enum AffiliateAllianceInvitationStatus {
+  PENDING  @map("pending")
+  ACCEPTED @map("accepted")
+  REJECTED @map("rejected")
+  EXPIRED  @map("expired")
+
+  @@map("affiliate_alliance_invitation_status")
+}
+
 enum FinanceReconciliationStatus {
   PENDING  @map("pending")
   EXPORTED @map("exported")
@@ -363,6 +379,22 @@ enum FinanceReconciliationStatus {
 enum ShopPlatformFeePayerType {
   SHOP
   TECHNICIAN
+}
+
+enum OrderAcceptancePauseSubjectType {
+  MERCHANT_ACCOUNT
+  SHOP
+}
+
+enum OrderAcceptancePauseAuthorityType {
+  OPERATIONS
+  MERCHANT
+  SHOP
+}
+
+enum OrderAcceptancePauseStatus {
+  ACTIVE
+  RELEASED
 }
 
 enum ConversationType {
@@ -452,6 +484,21 @@ enum CustomerSupportAccountType {
   @@map("customer_support_account_type")
 }
 
+enum CustomerMembershipGrantMode {
+  SELF_SERVICE            @map("self_service")
+  OPERATOR_COMPLIMENTARY @map("operator_complimentary")
+
+  @@map("customer_membership_grant_mode")
+}
+
+enum CustomerMembershipDurationUnit {
+  FOREVER @map("forever")
+  DAY     @map("day")
+  MONTH   @map("month")
+
+  @@map("customer_membership_duration_unit")
+}
+
 enum VanityNumberRuleKind {
   REPEATED_DIGIT      @map("repeated_digit")
   ASCENDING_SEQUENCE  @map("ascending_sequence")
@@ -493,6 +540,7 @@ enum CarouselTargetType {
   TECHNICIAN             @map("technician")
   SERVICE                @map("service")
   AFFILIATE_ANNOUNCEMENT @map("affiliate_announcement")
+  NONE                   @map("none")
 
   @@map("carousel_target_type")
 }
@@ -526,6 +574,7 @@ model User {
   userRoles                             UserRole[]
   loginLogs                             LoginLog[]                          @relation("LoginLogUser")
   auditLogs                             AuditLog[]                          @relation("AuditLogActor")
+  grantedCustomerMemberships            CustomerProfile[]                  @relation("CustomerMembershipGrantedBy")
   ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
   requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
@@ -535,6 +584,7 @@ model User {
   affiliateProfile                      AffiliateProfile?
   ownedAffiliateAlliances               AffiliateAlliance[]                 @relation("AffiliateAllianceOwner")
   affiliateAllianceMemberships          AffiliateAllianceMember[]           @relation("AffiliateAllianceMemberUser")
+  receivedAffiliateAllianceInvitations  AffiliateAllianceInvitation[]       @relation("AffiliateAllianceInvitationInvitee")
   bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
   orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
   orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
@@ -599,6 +649,8 @@ model User {
   updatedTechnicianPayrollOverrides     TechnicianPayrollScheduleOverride[] @relation("TechnicianPayrollScheduleOverrideUpdatedBy")
   createdShopPlatformFeePolicies        ShopPlatformFeePolicy[]             @relation("ShopPlatformFeePolicyCreatedBy")
   updatedShopPlatformFeePolicies        ShopPlatformFeePolicy[]             @relation("ShopPlatformFeePolicyUpdatedBy")
+  createdOrderAcceptancePauses          OrderAcceptancePause[]              @relation("OrderAcceptancePauseCreatedBy")
+  releasedOrderAcceptancePauses         OrderAcceptancePause[]              @relation("OrderAcceptancePauseReleasedBy")
   createdOfficialAnnouncements          OfficialAnnouncement[]              @relation("OfficialAnnouncementCreatedBy")
   createdOfficialAnnouncementReleases   OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseCreatedBy")
   updatedOfficialAnnouncementReleases   OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseUpdatedBy")
@@ -719,6 +771,7 @@ model Shop {
   publicIdentifier           PublicIdentifier?
   customerSupportAccount     CustomerSupportAccount?
   platformFeePolicy          ShopPlatformFeePolicy?
+  orderAcceptancePauses      OrderAcceptancePause[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -969,23 +1022,30 @@ model BusinessCalendarDate {
 }
 
 model CustomerProfile {
-  id              Int       @id @default(autoincrement())
-  userId          Int       @unique @map("user_id")
-  displayName     String    @map("display_name") @db.VarChar(120)
-  bio             String?   @db.Text
-  city            String?   @db.VarChar(100)
-  membershipLevel String    @default("standard") @map("membership_level") @db.VarChar(50)
-  isPublic        Boolean   @default(true) @map("is_public")
-  gender          String    @default("private") @db.VarChar(20)
-  age             Int?
-  heightCm        Decimal?  @map("height_cm") @db.Decimal(5, 2)
-  languages       Json?
-  visibility      String    @default("public") @db.VarChar(20)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                      Int                             @id @default(autoincrement())
+  userId                  Int                             @unique @map("user_id")
+  displayName             String                          @map("display_name") @db.VarChar(120)
+  bio                     String?                         @db.Text
+  city                    String?                         @db.VarChar(100)
+  membershipLevel         String                          @default("standard") @map("membership_level") @db.VarChar(50)
+  membershipGrantMode     CustomerMembershipGrantMode     @default(SELF_SERVICE) @map("membership_grant_mode")
+  membershipDurationUnit  CustomerMembershipDurationUnit? @map("membership_duration_unit")
+  membershipDurationValue Int?                            @map("membership_duration_value")
+  membershipStartsAt      DateTime?                       @map("membership_starts_at")
+  membershipExpiresAt     DateTime?                       @map("membership_expires_at")
+  membershipGrantedById   Int?                            @map("membership_granted_by_id")
+  isPublic                Boolean                         @default(true) @map("is_public")
+  gender                  String                          @default("private") @db.VarChar(20)
+  age                     Int?
+  heightCm                Decimal?                        @map("height_cm") @db.Decimal(5, 2)
+  languages               Json?
+  visibility              String                          @default("public") @db.VarChar(20)
+  createdAt               DateTime                        @default(now()) @map("created_at")
+  updatedAt               DateTime                        @updatedAt @map("updated_at")
+  deletedAt               DateTime?                       @map("deleted_at")
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  membershipGrantedBy   User?                  @relation("CustomerMembershipGrantedBy", fields: [membershipGrantedById], references: [id], onDelete: SetNull)
   mediaAssets           MediaAsset[]
   reviewSummary         ReviewSummary?
   receivedOrderReviews  OrderReview[]          @relation("OrderReviewCustomer")
@@ -994,6 +1054,8 @@ model CustomerProfile {
   @@index([city])
   @@index([isPublic])
   @@index([visibility])
+  @@index([membershipGrantMode, membershipExpiresAt, deletedAt], map: "customer_profiles_membership_status_idx")
+  @@index([membershipGrantedById], map: "customer_profiles_membership_granted_by_idx")
   @@index([deletedAt])
   @@map("customer_profiles")
 }
@@ -1124,6 +1186,7 @@ model MediaAsset {
   affiliateTaskCovers  AffiliateTask[]            @relation("AffiliateTaskCover")
   identityApplications IdentityApplicationMedia[]
   carouselSlides       CarouselSlide[]
+  carouselSlideTranslations CarouselSlideTranslation[] @relation("CarouselSlideTranslationMedia")
 
   @@index([entityType, entityId])
   @@index([categoryId])
@@ -1315,6 +1378,7 @@ model CarouselSlide {
 model CarouselSlideTranslation {
   id            Int           @id @default(autoincrement())
   slideId       Int           @map("slide_id")
+  mediaAssetId  Int?          @map("media_asset_id")
   locale        ContentLocale
   badge         String?       @db.VarChar(40)
   title         String        @db.VarChar(160)
@@ -1327,9 +1391,11 @@ model CarouselSlideTranslation {
   updatedAt     DateTime      @updatedAt @map("updated_at")
   deletedAt     DateTime?     @map("deleted_at")
 
-  slide CarouselSlide @relation(fields: [slideId], references: [id], onDelete: Restrict)
+  slide      CarouselSlide @relation(fields: [slideId], references: [id], onDelete: Restrict)
+  mediaAsset MediaAsset?   @relation("CarouselSlideTranslationMedia", fields: [mediaAssetId], references: [id], onDelete: Restrict)
 
   @@unique([slideId, locale])
+  @@index([mediaAssetId])
   @@index([locale, deletedAt])
   @@map("carousel_slide_translations")
 }
@@ -2563,6 +2629,40 @@ model ShopPlatformFeePolicy {
   @@map("shop_platform_fee_policies")
 }
 
+model OrderAcceptancePause {
+  id                Int                               @id @default(autoincrement())
+  subjectType       OrderAcceptancePauseSubjectType   @map("subject_type")
+  merchantAccountId Int?                              @map("merchant_account_id")
+  shopId            Int?                              @map("shop_id")
+  authorityType     OrderAcceptancePauseAuthorityType @map("authority_type")
+  status            OrderAcceptancePauseStatus        @default(ACTIVE)
+  reasonCode        String                            @map("reason_code") @db.VarChar(80)
+  reasonDetail      String                            @map("reason_detail") @db.VarChar(500)
+  createdById       Int                               @map("created_by_id")
+  releasedById      Int?                              @map("released_by_id")
+  startsAt          DateTime                          @default(now()) @map("starts_at")
+  releasedAt        DateTime?                         @map("released_at")
+  releaseReason     String?                           @map("release_reason") @db.VarChar(500)
+  activeKey         String?                           @unique @map("active_key") @db.VarChar(191)
+  createdAt         DateTime                          @default(now()) @map("created_at")
+  updatedAt         DateTime                          @updatedAt @map("updated_at")
+  deletedAt         DateTime?                         @map("deleted_at")
+
+  merchantAccount MerchantAccount? @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shop            Shop?            @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy       User             @relation("OrderAcceptancePauseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  releasedBy      User?            @relation("OrderAcceptancePauseReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([subjectType, merchantAccountId, shopId, status, deletedAt], map: "order_acceptance_pauses_subject_active_idx")
+  @@index([authorityType, status, deletedAt], map: "order_acceptance_pauses_authority_active_idx")
+  @@index([createdById], map: "order_acceptance_pauses_created_by_idx")
+  @@index([releasedById], map: "order_acceptance_pauses_released_by_idx")
+  @@index([startsAt], map: "order_acceptance_pauses_starts_at_idx")
+  @@index([releasedAt], map: "order_acceptance_pauses_released_at_idx")
+  @@index([deletedAt], map: "order_acceptance_pauses_deleted_idx")
+  @@map("order_acceptance_pauses")
+}
+
 model PlatformFeeRule {
   id              Int       @id @default(autoincrement())
   ruleSetId       Int       @map("rule_set_id")
@@ -3046,6 +3146,7 @@ model MerchantAccount {
   payerInvoices           SaasInvoice[]
   invoiceLines            SaasInvoiceLine[]
   entitySuspensions       EntitySuspension[]
+  orderAcceptancePauses   OrderAcceptancePause[]
   publishedAffiliateTasks AffiliateTask[]          @relation("AffiliateMerchantPublisher")
   publicIdentifier        PublicIdentifier?
 
@@ -3330,8 +3431,9 @@ model AffiliateAlliance {
   updatedAt               DateTime                @updatedAt @map("updated_at")
   deletedAt               DateTime?               @map("deleted_at")
 
-  owner   User                      @relation("AffiliateAllianceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  members AffiliateAllianceMember[]
+  owner                        User                          @relation("AffiliateAllianceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members                      AffiliateAllianceMember[]
+  affiliateAllianceInvitations AffiliateAllianceInvitation[]
 
   @@index([ownerUserId])
   @@index([status])
@@ -3355,11 +3457,13 @@ model AffiliateAllianceMember {
   updatedAt                DateTime                    @updatedAt @map("updated_at")
   deletedAt                DateTime?                   @map("deleted_at")
 
-  alliance   AffiliateAlliance            @relation(fields: [allianceId], references: [id], onDelete: Restrict)
-  user       User                         @relation("AffiliateAllianceMemberUser", fields: [userId], references: [id], onDelete: Restrict)
-  parent     AffiliateAllianceMember?     @relation("AffiliateAllianceMemberTree", fields: [parentMemberId], references: [id], onDelete: SetNull)
-  children   AffiliateAllianceMember[]    @relation("AffiliateAllianceMemberTree")
-  permission AffiliateAlliancePermission?
+  alliance                             AffiliateAlliance             @relation(fields: [allianceId], references: [id], onDelete: Restrict)
+  user                                 User                          @relation("AffiliateAllianceMemberUser", fields: [userId], references: [id], onDelete: Restrict)
+  parent                               AffiliateAllianceMember?      @relation("AffiliateAllianceMemberTree", fields: [parentMemberId], references: [id], onDelete: SetNull)
+  children                             AffiliateAllianceMember[]     @relation("AffiliateAllianceMemberTree")
+  permission                           AffiliateAlliancePermission?
+  sentAffiliateAllianceInvitations     AffiliateAllianceInvitation[] @relation("AllianceInvitationInviter")
+  parentedAffiliateAllianceInvitations AffiliateAllianceInvitation[] @relation("AllianceInvitationParent")
 
   @@index([allianceId, role])
   @@index([userId])
@@ -3384,6 +3488,37 @@ model AffiliateAlliancePermission {
 
   @@index([deletedAt])
   @@map("affiliate_alliance_permissions")
+}
+
+model AffiliateAllianceInvitation {
+  id                     Int                               @id @default(autoincrement())
+  allianceId             Int                               @map("alliance_id")
+  inviterMemberId        Int                               @map("inviter_member_id")
+  inviteeUserId          Int                               @map("invitee_user_id")
+  role                   AffiliateAllianceInvitationRole
+  proposedParentMemberId Int?                              @map("proposed_parent_member_id")
+  status                 AffiliateAllianceInvitationStatus @default(PENDING)
+  pendingKey             String?                           @unique @map("pending_key") @db.VarChar(191)
+  expiresAt              DateTime                          @map("expires_at")
+  respondedAt            DateTime?                         @map("responded_at")
+  expiredAt              DateTime?                         @map("expired_at")
+  version                Int                               @default(1)
+  createdAt              DateTime                          @default(now()) @map("created_at")
+  updatedAt              DateTime                          @updatedAt @map("updated_at")
+  deletedAt              DateTime?                         @map("deleted_at")
+
+  alliance             AffiliateAlliance        @relation(fields: [allianceId], references: [id], onDelete: Restrict)
+  inviterMember        AffiliateAllianceMember  @relation("AllianceInvitationInviter", fields: [inviterMemberId], references: [id], onDelete: Restrict)
+  invitee              User                     @relation("AffiliateAllianceInvitationInvitee", fields: [inviteeUserId], references: [id], onDelete: Restrict)
+  proposedParentMember AffiliateAllianceMember? @relation("AllianceInvitationParent", fields: [proposedParentMemberId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([allianceId, status, createdAt])
+  @@index([inviteeUserId, status, createdAt], map: "affiliate_alliance_invitee_status_created_idx")
+  @@index([status, expiresAt, id])
+  @@index([inviterMemberId])
+  @@index([proposedParentMemberId])
+  @@index([deletedAt])
+  @@map("affiliate_alliance_invitations")
 }
 
 model AffiliateTask {
@@ -3436,6 +3571,7 @@ model AffiliateTask {
   publisherShop            Shop?                       @relation("AffiliateShopPublisher", fields: [publisherShopId], references: [id], onDelete: Restrict)
   coverMediaAsset          MediaAsset?                 @relation("AffiliateTaskCover", fields: [coverMediaAssetId], references: [id], onDelete: SetNull)
   reviewedBy               User?                       @relation("AffiliateTaskReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  translations             AffiliateTaskTranslation[]
   shops                    AffiliateTaskShop[]
   services                 AffiliateTaskService[]
   claims                   AffiliateClaim[]
@@ -3455,6 +3591,26 @@ model AffiliateTask {
   @@index([reviewedById])
   @@index([deletedAt])
   @@map("affiliate_tasks")
+}
+
+model AffiliateTaskTranslation {
+  id            Int           @id @default(autoincrement())
+  taskId        Int           @map("task_id")
+  locale        ContentLocale
+  name          String        @db.VarChar(160)
+  description   String?       @db.Text
+  sourceLocale  ContentLocale @map("source_locale")
+  isInitialCopy Boolean       @default(false) @map("is_initial_copy")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  task AffiliateTask @relation(fields: [taskId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, locale])
+  @@index([locale, deletedAt])
+  @@index([deletedAt])
+  @@map("affiliate_task_translations")
 }
 
 model AffiliateTaskShop {

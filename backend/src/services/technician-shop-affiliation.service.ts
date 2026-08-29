@@ -42,7 +42,7 @@ export interface MerchantEmployeePayload {
   };
 }
 
-export type EmployeeTimelineTone = "accent" | "red" | "neutral";
+export type EmployeeTimelineTone = "accent" | "green" | "red" | "neutral";
 
 export interface EmployeeTimelineEventPayload {
   id: string;

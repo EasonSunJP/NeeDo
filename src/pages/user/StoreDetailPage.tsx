@@ -37,6 +37,7 @@ import {
 import {
   coreReadApi,
   coreReadIdFromRoute,
+  coreReadShopIdFromRoute,
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician,
   type CoreShopDetail
@@ -4209,7 +4210,7 @@ function UnifiedFormalStoreDetail({
   shopId
 }: {
   scope: "user" | "merchant";
-  shopId: number;
+  shopId: number | string;
 }) {
   const { language } = useI18n();
   const [revision, setRevision] = useState(0);
@@ -4255,7 +4256,7 @@ function UnifiedFormalStoreDetail({
 export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" } = {}) {
   const { id } = useParams();
   const { language } = useI18n();
-  const apiId = coreReadIdFromRoute(id);
+  const apiId = coreReadShopIdFromRoute(id);
 
   if (apiId) {
     return <UnifiedFormalStoreDetail scope={scope} shopId={apiId} />;

@@ -169,12 +169,14 @@ describe("TechnicianShopAffiliationRepository", () => {
       }
     ]);
     const count = jest.fn().mockResolvedValue(1);
-    const transaction = jest.fn(async (queries: Array<Promise<unknown>>) =>
-      Promise.all(queries)
-    );
+    const findAffiliation = jest.fn().mockResolvedValue({
+      startsAt: new Date("2026-06-01T00:00:00.000Z"),
+      technicianProfile: { verifiedAt: new Date("2026-05-25T00:00:00.000Z") },
+      shop: { name: "LifeDance Wellness" }
+    });
     const repository = new TechnicianShopAffiliationRepository({
       auditLog: { findMany, count },
-      $transaction: transaction
+      technicianShopAffiliation: { findFirst: findAffiliation }
     } as unknown as PrismaClient);
 
     const result = await repository.listCurrentShopEmployeeTimeline({
@@ -194,9 +196,27 @@ describe("TechnicianShopAffiliationRepository", () => {
           actorRole: "基本资料",
           message: "更新了姓名、城市",
           tone: "accent"
+        },
+        {
+          id: "system-affiliation-91",
+          at: "2026-06-01T00:00:00.000Z",
+          actorName: "NeeDo 系统",
+          actorAvatarUrl: null,
+          actorRole: "从属关系",
+          message: "加入店铺并建立员工从属关系 · LifeDance Wellness",
+          tone: "green"
+        },
+        {
+          id: "system-verified-91",
+          at: "2026-05-25T00:00:00.000Z",
+          actorName: "NeeDo 系统",
+          actorAvatarUrl: null,
+          actorRole: "档案验证",
+          message: "员工档案已通过验证",
+          tone: "green"
         }
       ],
-      total: 1,
+      total: 3,
       page: 1,
       page_size: 20
     });
@@ -209,14 +229,111 @@ describe("TechnicianShopAffiliationRepository", () => {
           deletedAt: null
         },
         skip: 0,
-        take: 20
+        take: 1
       })
     );
+    expect(findAffiliation).toHaveBeenCalledWith({
+      where: { id: 91, shopId: 16, deletedAt: null },
+      select: {
+        startsAt: true,
+        technicianProfile: { select: { verifiedAt: true } },
+        shop: { select: { name: true } }
+      }
+    });
     expect(findMany.mock.calls[0]?.[0]?.select?.actor?.select).toEqual({
       username: true,
       avatarUrl: true
     });
     expect(JSON.stringify(result)).not.toMatch(/changedFields|merchant_admin|shopId|targetId/);
+  });
+
+  it("paginates employee system lifecycle events inside the same formal total", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 505,
+        action: "merchant_admin.employee_timeline.comment",
+        metadata: { message: "第一条审计记录" },
+        createdAt: new Date("2026-08-01T00:00:00.000Z"),
+        actor: { username: "财务管理员", avatarUrl: null }
+      },
+      {
+        id: 504,
+        action: "merchant_admin.employee_timeline.comment",
+        metadata: { message: "第二条审计记录" },
+        createdAt: new Date("2026-07-15T00:00:00.000Z"),
+        actor: { username: "财务管理员", avatarUrl: null }
+      },
+      {
+        id: 503,
+        action: "merchant_admin.employee_timeline.comment",
+        metadata: { message: "第三条审计记录" },
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        actor: { username: "财务管理员", avatarUrl: null }
+      }
+    ]);
+    const repository = new TechnicianShopAffiliationRepository({
+      auditLog: { findMany, count: jest.fn().mockResolvedValue(3) },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({
+          startsAt: new Date("2026-06-01T00:00:00.000Z"),
+          technicianProfile: { verifiedAt: new Date("2026-05-25T00:00:00.000Z") },
+          shop: { name: "LifeDance Wellness" }
+        })
+      }
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeTimeline({
+      affiliationId: 91,
+      shopId: 16,
+      page: 2,
+      pageSize: 2
+    });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 3 }));
+    expect(result).toEqual(expect.objectContaining({
+      total: 5,
+      page: 2,
+      page_size: 2,
+      list: [
+        expect.objectContaining({ id: "audit-503" }),
+        expect.objectContaining({ id: "system-affiliation-91" })
+      ]
+    }));
+  });
+
+  it("sorts lifecycle and audit events together before applying the page", async () => {
+    const repository = new TechnicianShopAffiliationRepository({
+      auditLog: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: 500,
+          action: "merchant_admin.employee_timeline.comment",
+          metadata: { message: "更早的审计记录" },
+          createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          actor: { username: "财务管理员", avatarUrl: null }
+        }]),
+        count: jest.fn().mockResolvedValue(1)
+      },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({
+          startsAt: new Date("2026-06-01T00:00:00.000Z"),
+          technicianProfile: { verifiedAt: new Date("2026-05-25T00:00:00.000Z") },
+          shop: { name: "LifeDance Wellness" }
+        })
+      }
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeTimeline({
+      affiliationId: 91,
+      shopId: 16,
+      page: 1,
+      pageSize: 2
+    });
+
+    expect(result.list.map((event) => event.id)).toEqual([
+      "system-affiliation-91",
+      "system-verified-91"
+    ]);
+    expect(result.total).toBe(3);
   });
 
   it("projects partner availability and merges other-shop confirmed time without leaking details", async () => {

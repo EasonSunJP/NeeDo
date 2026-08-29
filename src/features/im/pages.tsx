@@ -2,6 +2,7 @@ import {
   startTransition,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -11,6 +12,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
@@ -76,6 +78,7 @@ import {
   ImIcon,
   ImMessageActionSheet,
   ImMessageSelectionHandles,
+  ImQuotedMessagePreview,
   hasActiveImMessageTextSelection,
   type ImMessageActionSheetItem,
   type ImMessageReactionSummary,
@@ -1247,6 +1250,7 @@ const contactSectionScrollMargin = "calc(env(safe-area-inset-top) + 5rem)";
 const contactIndexBottomGutter = "calc(6rem + env(safe-area-inset-bottom))";
 const contactIndexFixedRight = "max(0.5rem, calc((100vw - min(100vw, 880px)) / 2 + 0.5rem))";
 const contactIndexFixedBottom = "calc(7.5rem + env(safe-area-inset-bottom))";
+const imMessageLongPressActivationGuardMs = 800;
 const contactIndexBarClassName =
   "pointer-events-auto max-h-full touch-none select-none overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-1 py-2 shadow-[0_8px_18px_color-mix(in_srgb,var(--client-text)_10%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] backdrop-blur-xl";
 
@@ -1290,7 +1294,7 @@ function useRoomBackTarget() {
   };
 }
 
-function MessagePressable({
+export function MessagePressable({
   onOpenMenu,
   children
 }: {
@@ -1298,6 +1302,8 @@ function MessagePressable({
   children: ReactNode;
 }) {
   const timerRef = useRef<number | null>(null);
+  const activationGuardTimerRef = useRef<number | null>(null);
+  const suppressNextActivationRef = useRef(false);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const clearPress = () => {
@@ -1308,15 +1314,47 @@ function MessagePressable({
     pressStartRef.current = null;
   };
 
+  const clearActivationGuard = () => {
+    if (activationGuardTimerRef.current) {
+      window.clearTimeout(activationGuardTimerRef.current);
+      activationGuardTimerRef.current = null;
+    }
+    suppressNextActivationRef.current = false;
+  };
+
+  const releaseActivationGuardAfterPointerSequence = () => {
+    if (!suppressNextActivationRef.current) {
+      return;
+    }
+
+    if (activationGuardTimerRef.current) {
+      window.clearTimeout(activationGuardTimerRef.current);
+    }
+    activationGuardTimerRef.current = window.setTimeout(
+      clearActivationGuard,
+      imMessageLongPressActivationGuardMs,
+    );
+  };
+
+  useEffect(() => () => {
+    clearPress();
+    clearActivationGuard();
+  }, []);
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearPress();
+    clearActivationGuard();
 
     if (hasActiveImMessageTextSelection(event.currentTarget)) {
       return;
     }
 
     pressStartRef.current = { x: event.clientX, y: event.clientY };
-    timerRef.current = window.setTimeout(onOpenMenu, 380);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      suppressNextActivationRef.current = true;
+      onOpenMenu();
+    }, 380);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1333,18 +1371,36 @@ function MessagePressable({
 
   return (
     <div
+      onClickCapture={(event) => {
+        if (!suppressNextActivationRef.current) {
+          return;
+        }
+
+        clearActivationGuard();
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       onContextMenu={(event) => {
+        event.preventDefault();
         if (hasActiveImMessageTextSelection(event.currentTarget)) {
           return;
         }
-        event.preventDefault();
         onOpenMenu();
       }}
-      onPointerCancel={clearPress}
+      onPointerCancel={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
       onPointerDown={handlePointerDown}
-      onPointerLeave={clearPress}
+      onPointerLeave={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
       onPointerMove={handlePointerMove}
-      onPointerUp={clearPress}
+      onPointerUp={() => {
+        clearPress();
+        releaseActivationGuardAfterPointerSequence();
+      }}
     >
       {children}
     </div>
@@ -3406,7 +3462,7 @@ export function ImSearchPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const conversationId = searchParams.get("conversationId") ?? undefined;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q")?.trim() ?? "");
   const deferredQuery = useDeferredValue(query);
   const [result, setResult] = useState<{ contacts: ContactRelation[]; conversations: Conversation[]; messages: ConversationMessage[] }>(emptySearchResult);
   const searching = deferredQuery.trim().length > 0;
@@ -4152,9 +4208,33 @@ export function ImConversationRoomPage({
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [imageSending, setImageSending] = useState(false);
+  const pendingImagePreviewUrlRef = useRef<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<{
+    file: File;
+    fileName: string;
+    previewUrl: string;
+  }>();
 
   useDocumentScrollLock(true);
   useIosScrollContainer(listRef, Boolean(menuState));
+
+  useEffect(
+    () => () => {
+      if (pendingImagePreviewUrlRef.current) {
+        URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+        pendingImagePreviewUrlRef.current = null;
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (pendingImagePreviewUrlRef.current) {
+      URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+      pendingImagePreviewUrlRef.current = null;
+    }
+    setPendingImage(undefined);
+  }, [conversationId]);
 
   useEffect(() => {
     recordingRef.current = recording;
@@ -4249,6 +4329,32 @@ export function ImConversationRoomPage({
     listWasNearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
   };
 
+  useLayoutEffect(() => {
+    const list = listRef.current;
+
+    if (!list) {
+      return undefined;
+    }
+
+    const keepTerminalMessageAboveComposer = () => {
+      if (!listWasNearBottomRef.current) {
+        return;
+      }
+
+      list.scrollTop = list.scrollHeight;
+      updateListNearBottom(list);
+    };
+    const frame = window.requestAnimationFrame(keepTerminalMessageAboveComposer);
+    list.addEventListener("load", keepTerminalMessageAboveComposer, true);
+    list.addEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      list.removeEventListener("load", keepTerminalMessageAboveComposer, true);
+      list.removeEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true);
+    };
+  }, [conversationId, draft, messages.length, panel, pendingImage, quotedMessageId, voiceMode]);
+
   useEffect(() => {
     if (!listRef.current) {
       return;
@@ -4293,18 +4399,6 @@ export function ImConversationRoomPage({
       setNewMessageCount((count) => count + 1);
     }
   }, [conversationId, messages.length, searchParams, store.currentUserId]);
-
-  useEffect(() => {
-    if (!menuState) {
-      return undefined;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      messageRefs.current[menuState.message.id]?.scrollIntoView({ block: "end", behavior: "smooth" });
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [menuState?.message.id, messageMenuExpanded]);
 
   useEffect(() => {
     if (!recordingNotice || typeof window === "undefined") {
@@ -4674,10 +4768,70 @@ export function ImConversationRoomPage({
     }, 250);
   };
 
+  const clearPendingImage = () => {
+    if (pendingImagePreviewUrlRef.current) {
+      URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+      pendingImagePreviewUrlRef.current = null;
+    }
+    setPendingImage(undefined);
+  };
+
+  const prepareSelectedImage = async (file?: File) => {
+    if (!file || imageSending) {
+      return;
+    }
+
+    if (pendingImagePreviewUrlRef.current) {
+      URL.revokeObjectURL(pendingImagePreviewUrlRef.current);
+    }
+    const previewUrl = URL.createObjectURL(file);
+    pendingImagePreviewUrlRef.current = previewUrl;
+    setPendingImage({
+      file,
+      fileName: file.name || "待发送图片",
+      previewUrl
+    });
+    setVoiceMode(false);
+    setPanel(null);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
   const sendText = async () => {
     const messageText = clampMessageText(draft.trim());
 
-    if (!messageText) {
+    if (!messageText && !pendingImage) {
+      return;
+    }
+
+    if (pendingImage) {
+      setImageSending(true);
+      setActionNotice(null);
+      try {
+        const size = await readImageSize(pendingImage.previewUrl).catch(() => undefined);
+        const upload = await api.uploadImage(conversationId, pendingImage.file);
+        await store.sendMessage(conversationId, "image", upload.url, {
+          quotedMessageId,
+          ext: {
+            url: upload.url,
+            thumbnailUrl: upload.url,
+            fileName: upload.fileName,
+            fileSize: upload.fileSize,
+            mimeType: upload.mimeType,
+            width: size?.width,
+            height: size?.height,
+            caption: messageText || undefined
+          }
+        });
+        setDraft("");
+        store.setDraft(conversationId, "");
+        clearPendingImage();
+        setQuotedMessageId(undefined);
+        setPanel(null);
+      } catch {
+        setActionNotice("图片发送失败，请重试");
+      } finally {
+        setImageSending(false);
+      }
       return;
     }
 
@@ -4686,6 +4840,7 @@ export function ImConversationRoomPage({
         quotedMessageId
       });
       setDraft("");
+      store.setDraft(conversationId, "");
       setQuotedMessageId(undefined);
       setPanel(null);
     } catch {
@@ -5004,37 +5159,6 @@ export function ImConversationRoomPage({
     }
   };
 
-  const sendSelectedImage = async (file?: File) => {
-    if (!file || imageSending) {
-      return;
-    }
-
-    setImageSending(true);
-    setActionNotice(null);
-    try {
-      const previewUrl = URL.createObjectURL(file);
-      const size = await readImageSize(previewUrl).catch(() => undefined);
-      URL.revokeObjectURL(previewUrl);
-      const upload = await api.uploadImage(conversationId, file);
-      await store.sendMessage(conversationId, "image", upload.url, {
-        ext: {
-          url: upload.url,
-          thumbnailUrl: upload.url,
-          fileName: upload.fileName,
-          fileSize: upload.fileSize,
-          mimeType: upload.mimeType,
-          width: size?.width,
-          height: size?.height
-        }
-      });
-      setPanel(null);
-    } catch {
-      setActionNotice("图片发送失败，请重试");
-    } finally {
-      setImageSending(false);
-    }
-  };
-
   const startRecording = async (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (blocked || recordingPendingRef.current || recordingRef.current.active) {
       return;
@@ -5149,11 +5273,16 @@ export function ImConversationRoomPage({
   };
 
   const handleConversationPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) {
+    const interactiveSelector = "[data-im-composer-root='true'], [data-im-message-action-sheet='true']";
+    const pathContainsInteractiveSurface = event.nativeEvent.composedPath().some((target) => (
+      target instanceof Element && Boolean(target.closest(interactiveSelector))
+    ));
+
+    if (pathContainsInteractiveSurface) {
       return;
     }
 
-    if (event.target.closest("[data-im-composer-root='true'], [data-im-message-action-sheet='true']")) {
+    if (!(event.target instanceof Element)) {
       return;
     }
 
@@ -5182,8 +5311,6 @@ export function ImConversationRoomPage({
   };
 
   const openMessageMenu = (message: ConversationMessage) => {
-    setPanel(null);
-    setVoiceMode(false);
     setMessageMenuExpanded(false);
     setMenuState({ message });
     selectMessageText(message);
@@ -5263,15 +5390,25 @@ export function ImConversationRoomPage({
       reactedByMe: people.some((person) => person.id === currentReactionPerson.id)
     }));
 
-  const copyMessageContent = (message: ConversationMessage) => {
+  const copyMessageContent = async (message: ConversationMessage) => {
     const root = messageRefs.current[message.id];
     const selection = window.getSelection();
     const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
       ? selection.toString().trim()
       : "";
     const content = selectedContent || message.content || message.ext?.previewText || "媒体消息";
-    navigator.clipboard?.writeText(content).catch(() => undefined);
     closeMessageMenu();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("error.clipboard_unavailable");
+      }
+
+      await navigator.clipboard.writeText(content);
+      setActionNotice("已复制");
+    } catch {
+      setActionNotice("复制失败，请重试");
+    }
   };
 
   const scrollToMessage = (messageId: string) => {
@@ -5377,22 +5514,10 @@ export function ImConversationRoomPage({
         }
       },
       {
-        key: "translate",
-        label: "翻译",
-        icon: "translate",
-        onClick: closeMessageMenu
-      },
-      {
         key: "copy",
         label: "复制",
         icon: "copy",
-        onClick: () => copyMessageContent(message)
-      },
-      {
-        key: "multi-select",
-        label: "多选",
-        icon: "select",
-        onClick: closeMessageMenu
+        onClick: () => void copyMessageContent(message)
       },
       {
         key: "pin-message",
@@ -5515,7 +5640,10 @@ export function ImConversationRoomPage({
           }
         />
 
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]">
+        <div
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]"
+          data-im-conversation-layout="true"
+        >
           <div aria-hidden="true" className="im-conversation-wallpaper pointer-events-none absolute inset-0 overflow-hidden">
             <img
               alt=""
@@ -5538,7 +5666,7 @@ export function ImConversationRoomPage({
           ) : null}
 
           {pinnedMessages.length > 0 ? (
-            <section className={cn("relative z-10 border-b px-3 py-2", isNight ? "border-white/8 bg-[#1f1f20]/88" : "border-[color:color-mix(in_srgb,var(--client-line)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]")}>
+            <section className="im-pinned-message-tray absolute inset-x-0 top-[calc(env(safe-area-inset-top)+70px)] z-20 px-3 py-2">
               <div className="space-y-1.5">
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
@@ -5546,7 +5674,7 @@ export function ImConversationRoomPage({
                   const preview = buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
 
                   return (
-                    <div className={cn("flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2", isNight ? "bg-white/[0.05]" : "bg-black/[0.035]")} key={message.id}>
+                    <div className="im-pinned-message-container flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2" key={message.id}>
                       <button
                         className="focus-ring flex min-w-0 flex-1 items-center gap-2 text-left"
                         onClick={() => scrollToMessage(message.id)}
@@ -5576,7 +5704,7 @@ export function ImConversationRoomPage({
           ) : null}
 
           <div
-            className={cn("im-conversation-scroll scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1 py-3", menuState && "im-conversation-scroll--text-selecting")}
+            className={cn("im-conversation-scroll im-conversation-scroll--glass-underlay scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1", menuState && "im-conversation-scroll--text-selecting")}
             data-page-drag-ignore="true"
             data-scroll-drag-ignore="true"
             onClick={() => {
@@ -5630,6 +5758,7 @@ export function ImConversationRoomPage({
                 <div
                   className={cn("relative rounded-3xl transition", menuState ? "z-20" : "z-10", flashMessageId === message.id && "bg-[#fff7d4]", menuState?.message.id === message.id && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]")}
                   data-im-message-selected={menuState?.message.id === message.id ? "true" : undefined}
+                  data-im-message-side={isMine ? "right" : "left"}
                   key={message.id}
                   ref={(element) => {
                     messageRefs.current[message.id] = element;
@@ -5718,6 +5847,7 @@ export function ImConversationRoomPage({
                   <ImMessageSelectionHandles active messageRoot={messageRefs.current[menuState.message.id]} />
                   <ImMessageActionSheet
                     actions={primaryActions}
+                    anchorElement={messageRefs.current[menuState.message.id]}
                     expanded={messageMenuExpanded}
                     isNight={isNight}
                     listActions={listActions}
@@ -5728,14 +5858,16 @@ export function ImConversationRoomPage({
                 </>
               );
             })()
-          ) : (
+          ) : null}
+
+          {!mediaPreview ? (
             <>
               {quotedMessage ? (
                 <div className={cn("relative z-10 px-4 py-2 text-xs", quotedBarClass)}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">回复消息</p>
-                      <p className="mt-1 truncate">{quotedMessage.content || "媒体消息"}</p>
+                      <ImQuotedMessagePreview message={quotedMessage} />
                     </div>
                     <button className="text-ink/32" onClick={() => setQuotedMessageId(undefined)} type="button">
                       取消
@@ -5759,6 +5891,7 @@ export function ImConversationRoomPage({
                 onEndRecording={() => void endRecording()}
                 onMoveRecording={moveRecording}
                 onPanelChange={setPanel}
+                onRemovePendingImage={clearPendingImage}
                 onSend={() => void sendText()}
                 onStartRecording={(event) => void startRecording(event)}
                 onToggleVoice={() => {
@@ -5769,7 +5902,9 @@ export function ImConversationRoomPage({
                   setVoiceMode((value) => !value);
                 }}
                 panel={panel}
+                pendingImage={pendingImage}
                 recording={recording}
+                sending={imageSending}
                 textareaRef={textareaRef}
                 voiceMode={voiceMode}
               />
@@ -5780,13 +5915,13 @@ export function ImConversationRoomPage({
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
                   event.currentTarget.value = "";
-                  void sendSelectedImage(file);
+                  void prepareSelectedImage(file);
                 }}
                 ref={imageInputRef}
                 type="file"
               />
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -6114,11 +6249,11 @@ export function ImConversationRoomPage({
         )}
       </ImBottomSheet>
 
-      {mediaPreview ? (
+      {mediaPreview && typeof document !== "undefined" ? createPortal(
         <div
           aria-label="媒体查看器"
           aria-modal="true"
-          className="fixed inset-0 z-[120] flex h-[100dvh] w-full flex-col bg-black/96 text-white"
+          className="fixed inset-0 z-[240] isolate flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-black text-white"
           data-testid="im-media-viewer"
           onClick={closeMediaPreview}
           role="dialog"
@@ -6213,7 +6348,8 @@ export function ImConversationRoomPage({
               转发
             </button>
           </footer>
-        </div>
+        </div>,
+        document.querySelector<HTMLElement>(".client-shell") ?? document.body
       ) : null}
     </ImStandaloneShell>
   );

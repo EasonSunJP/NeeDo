@@ -2414,7 +2414,12 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   box-shadow: none !important;
 }
 
+.client-shell .client-liquid-glass-surface,
+.client-shell .im-composer-glass,
 .client-shell .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  isolation: isolate;
+  border: 1px solid transparent;
+  border-radius: 28px;
   border-color: color-mix(in srgb, var(--client-line) 42%, transparent) !important;
   background:
     linear-gradient(
@@ -2431,6 +2436,81 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
 }
 
+.client-shell .client-liquid-glass-arrow {
+  border-color: color-mix(in srgb, var(--client-line) 42%, transparent);
+  background: color-mix(in srgb, var(--client-elevated) 18%, var(--client-bg) 8%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 18%, transparent);
+  -webkit-backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03);
+  backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03);
+}
+
+.im-chat-composer-root {
+  flex: 0 0 auto;
+  overflow-x: clip;
+  background: transparent;
+}
+
+.im-chat-composer-stack {
+  width: min(100%, calc(var(--client-bottom-nav-max-width, 880px) - 24px));
+  gap: 8px;
+}
+
+.im-composer-input-shell {
+  min-height: 56px;
+}
+
+.im-composer-icon-button {
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.im-composer-panel {
+  min-height: 0;
+  max-height: 42dvh;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform-origin: bottom center;
+  animation: im-composer-panel-enter 180ms ease-out both;
+  scrollbar-gutter: stable;
+}
+
+@keyframes im-composer-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (pointer: coarse) {
+  .im-composer-icon-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 359px) {
+  .im-composer-input-shell {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
+  .im-composer-panel {
+    padding: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .im-composer-panel {
+    animation: none;
+  }
+}
+
 .client-nav-aligned-panel {
   margin-left: auto;
   margin-right: auto;
@@ -2438,6 +2518,8 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   width: calc(100dvw - var(--client-bottom-nav-inline-gap, 12px) - var(--client-bottom-nav-inline-gap, 12px));
 }
 
+.client-theme-day .client-liquid-glass-surface,
+.client-theme-day .im-composer-glass,
 .client-theme-day .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background:
     linear-gradient(
@@ -2447,6 +2529,8 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     ) !important;
 }
 
+.client-theme-night .client-liquid-glass-surface,
+.client-theme-night .im-composer-glass,
 .client-theme-night .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background:
     linear-gradient(
@@ -2456,8 +2540,14 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     ) !important;
 }
 
+.client-theme-black-gold .client-liquid-glass-surface,
+.client-theme-black-gold .im-composer-glass,
 .client-theme-black-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-cool-black-gray .client-liquid-glass-surface,
+.client-theme-cool-black-gray .im-composer-glass,
 .client-theme-cool-black-gray .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-noir-gold .client-liquid-glass-surface,
+.client-theme-noir-gold .im-composer-glass,
 .client-theme-noir-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(39, 44, 35, 0.2), rgba(18, 22, 18, 0.1)) !important;
   border-color: rgba(196, 255, 122, 0.16) !important;
@@ -2467,6 +2557,8 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
+.client-theme-dark-green .client-liquid-glass-surface,
+.client-theme-dark-green .im-composer-glass,
 .client-theme-dark-green .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(14, 31, 45, 0.22), rgba(7, 20, 31, 0.1)) !important;
   border-color: rgba(108, 144, 170, 0.3) !important;
@@ -2476,7 +2568,11 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
+.client-theme-black-gold .client-liquid-glass-surface,
+.client-theme-black-gold .im-composer-glass,
 .client-theme-black-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-noir-gold .client-liquid-glass-surface,
+.client-theme-noir-gold .im-composer-glass,
 .client-theme-noir-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(42, 42, 40, 0.2), rgba(13, 13, 13, 0.1)) !important;
   border-color: rgba(254, 222, 160, 0.16) !important;
@@ -2486,6 +2582,8 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
+.client-theme-vital-mono .client-liquid-glass-surface,
+.client-theme-vital-mono .im-composer-glass,
 .client-theme-vital-mono .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(47, 47, 48, 0.2), rgba(18, 18, 19, 0.1)) !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
@@ -2495,6 +2593,8 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
+.client-theme-cool-black-gray .client-liquid-glass-surface,
+.client-theme-cool-black-gray .im-composer-glass,
 .client-theme-cool-black-gray .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(50, 58, 66, 0.22), rgba(13, 17, 21, 0.1)) !important;
   border-color: rgba(183, 204, 214, 0.18) !important;
@@ -7996,6 +8096,24 @@ html.im-conversation-scroll-lock #root {
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   will-change: scroll-position;
+}
+
+.im-conversation-scroll--glass-underlay {
+  margin-top: calc(-1 * (env(safe-area-inset-top) + 70px));
+  margin-bottom: calc(-1 * var(--im-composer-overlay-height, 85px));
+  padding-top: calc(env(safe-area-inset-top) + 82px);
+  padding-bottom: calc(var(--im-composer-overlay-height, 85px) + 12px);
+  scroll-padding-top: calc(env(safe-area-inset-top) + 82px);
+  scroll-padding-bottom: calc(var(--im-composer-overlay-height, 85px) + 12px);
+}
+
+.im-pinned-message-container {
+  background: color-mix(in srgb, var(--client-elevated) 50%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--client-elevated) 24%, transparent),
+    0 12px 28px color-mix(in srgb, var(--client-shadow) 14%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(1.35);
+  backdrop-filter: blur(12px) saturate(1.35);
 }
 
 .im-conversation-scroll.im-conversation-scroll--text-selecting,

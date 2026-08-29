@@ -1,13 +1,16 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type Ref,
   type ReactNode
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
@@ -48,9 +51,11 @@ export function ImIcon({
     | "group"
     | "video"
     | "call"
-    | "emoji"
-    | "plus"
-    | "mic"
+	    | "emoji"
+	    | "emoji-chat"
+	    | "plus"
+	    | "mic"
+	    | "voice-input"
     | "message"
     | "photo"
     | "camera"
@@ -198,10 +203,30 @@ export function ImIcon({
     );
   }
 
+  if (name === "emoji-chat") {
+    return (
+      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+        <path d="M20.4 11.1a8.4 8.4 0 0 1-9 8.4 8.8 8.8 0 0 1-2.9-.7L4 20l1.5-4.1A8.1 8.1 0 0 1 3.6 11a8.4 8.4 0 0 1 16.8.1Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+        <circle cx="9" cy="10" fill="currentColor" r="1" />
+        <circle cx="15" cy="10" fill="currentColor" r="1" />
+        <path d="M8.7 13.3c.9 1.2 2 1.8 3.3 1.8s2.4-.6 3.3-1.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
   if (name === "mic") {
     return (
       <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
         <path d="M12 5.5a3 3 0 0 1 3 3v3a3 3 0 1 1-6 0v-3a3 3 0 0 1 3-3ZM7.5 11.5a4.5 4.5 0 0 0 9 0M12 16v2.5M9 19.5h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  if (name === "voice-input") {
+    return (
+      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+        <rect height="14" rx="5" stroke="currentColor" strokeWidth="1.8" width="8" x="8" y="2.5" />
+        <path d="M8.3 8h3M8.3 11h3M12.7 8h3M12.7 11h3M5 11.5v.8a7 7 0 0 0 14 0v-.8M12 19.3v2.2M9.5 21.5h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
       </svg>
     );
   }
@@ -425,6 +450,10 @@ export type ImChatComposerRecordingState = {
   cancel: boolean;
   durationSeconds: number;
 };
+export type ImChatComposerPendingImage = {
+  fileName: string;
+  previewUrl: string;
+};
 
 export function ImChatComposer({
   actions = [],
@@ -437,12 +466,15 @@ export function ImChatComposer({
   onEndRecording,
   onMoveRecording,
   onPanelChange,
+  onRemovePendingImage,
   onSend,
   onStartRecording,
   onToggleVoice,
   panel,
+  pendingImage,
   placeholder = "发送消息",
   recording = { active: false, cancel: false, durationSeconds: 0 },
+  sending = false,
   textareaRef,
   voiceMode = false
 }: {
@@ -456,16 +488,65 @@ export function ImChatComposer({
   onEndRecording?: () => void;
   onMoveRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onPanelChange: (panel: ImChatComposerPanel | ((value: ImChatComposerPanel) => ImChatComposerPanel)) => void;
+  onRemovePendingImage?: () => void;
   onSend: () => void;
   onStartRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onToggleVoice?: () => void;
   panel: ImChatComposerPanel;
+  pendingImage?: ImChatComposerPendingImage;
   placeholder?: string;
   recording?: ImChatComposerRecordingState;
+  sending?: boolean;
   textareaRef?: Ref<HTMLTextAreaElement>;
   voiceMode?: boolean;
 }) {
+  const composerRootRef = useRef<HTMLDivElement | null>(null);
   const [recentEmojis, setRecentEmojis] = useState(loadRecentImEmojis);
+
+  useLayoutEffect(() => {
+    const root = composerRootRef.current;
+    const conversationLayout = root?.closest<HTMLElement>("[data-im-conversation-layout='true']");
+
+    if (!root || !conversationLayout) {
+      return undefined;
+    }
+
+    let frame: number | undefined;
+    const updateComposerInset = () => {
+      const messageScroller = conversationLayout.querySelector<HTMLElement>(".im-conversation-scroll");
+      const shouldKeepLatestMessageVisible = messageScroller
+        ? messageScroller.scrollHeight - messageScroller.scrollTop - messageScroller.clientHeight < 120
+        : false;
+
+      conversationLayout.style.setProperty(
+        "--im-composer-overlay-height",
+        `${Math.ceil(root.getBoundingClientRect().height)}px`
+      );
+
+      if (messageScroller && shouldKeepLatestMessageVisible) {
+        if (frame !== undefined) {
+          cancelAnimationFrame(frame);
+        }
+        frame = requestAnimationFrame(() => {
+          messageScroller.scrollTop = messageScroller.scrollHeight;
+        });
+      }
+    };
+    updateComposerInset();
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateComposerInset);
+    resizeObserver?.observe(root);
+
+    return () => {
+      resizeObserver?.disconnect();
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame);
+      }
+      conversationLayout.style.removeProperty("--im-composer-overlay-height");
+    };
+  }, [draft, panel, pendingImage, voiceMode]);
+
   const selectEmoji = (emoji: string) => {
     onDraftChange(`${draft}${emoji}`);
     setRecentEmojis((current) => {
@@ -474,17 +555,12 @@ export function ImChatComposer({
       return next;
     });
   };
-  const composerShellClass = isNight
-    ? "border-t border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] backdrop-blur-md"
-    : "border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] backdrop-blur-md";
-  const composerInputShellClass = isNight
-    ? "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,var(--client-bg)_28%)] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]"
-    : "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(21,33,27,0.12)]";
-  const composerIconButtonClass = "shrink-0 text-[color:var(--client-muted)]";
+  const composerInputShellClass =
+    "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
+  const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
   const composerTextareaClass =
     "max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
-  const composerPanelClass =
-    "mt-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,var(--client-bg)_14%)] p-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-text)_16%,transparent)] backdrop-blur-xl";
+  const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
   const composerEmojiButtonClass =
     "rounded-xl py-2 transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]";
   const composerActionButtonClass =
@@ -494,121 +570,149 @@ export function ImChatComposer({
 
   return (
     <div
-      className={cn("relative z-10 max-w-full overflow-x-hidden px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]", composerShellClass)}
+      className="im-chat-composer-root relative z-10 max-w-full px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]"
       data-im-composer-root="true"
+      ref={composerRootRef}
     >
-      <div className="flex min-w-0 max-w-full items-end gap-2">
-        <button
-          className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-          onClick={() => {
-            onToggleVoice?.();
-            onPanelChange(null);
-          }}
-          type="button"
+      <div className="im-chat-composer-stack mx-auto flex min-w-0 max-w-full flex-col" data-im-composer-stack="true">
+        <div
+          className="client-liquid-glass-surface im-composer-glass im-composer-input-shell flex min-w-0 max-w-full items-end gap-1 px-1.5 py-2"
+          data-im-composer-input-shell="true"
+          data-im-composer-tone={isNight ? "night" : "day"}
         >
-          <ImIcon name="mic" />
-        </button>
-        <div className={composerInputShellClass}>
-          {voiceMode ? (
-            <button
-              className={cn(
-                "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
-                recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
-              )}
-              disabled={blocked}
-              onPointerCancel={onCancelRecording}
-              onPointerDown={onStartRecording}
-              onPointerMove={onMoveRecording}
-              onPointerUp={onEndRecording}
-              type="button"
-            >
-              {recording.active
-                ? recording.cancel
-                  ? `松开取消发送 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                  : `松开发送，上滑取消 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
-            </button>
-          ) : (
-            <textarea
-              className={composerTextareaClass}
-              onChange={(event) => onDraftChange(event.target.value)}
-              placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
-              ref={textareaRef}
-              rows={1}
-              value={draft}
-            />
-          )}
-        </div>
-        <button
-          className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-          onClick={() => onPanelChange((value) => (value === "emoji" ? null : "emoji"))}
-          type="button"
-        >
-          <ImIcon name="emoji" />
-        </button>
-        {draft.trim() && !voiceMode ? (
-          <Button className="h-10 shrink-0 rounded-full px-4 text-sm" disabled={blocked} onClick={onSend}>
-            发送
-          </Button>
-        ) : (
           <button
-            className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-            onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
+            aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
+            className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+            data-im-composer-control="voice-input"
+            onClick={() => {
+              onToggleVoice?.();
+              onPanelChange(null);
+            }}
             type="button"
           >
-            <ImIcon name="plus" />
+            <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
           </button>
-        )}
+          <div className={composerInputShellClass}>
+            {pendingImage && !voiceMode ? (
+              <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
+                <div className="relative w-fit max-w-full">
+                  <img alt={pendingImage.fileName} className="h-16 w-16 rounded-[14px] object-cover" src={pendingImage.previewUrl} />
+                  <button
+                    aria-label={`移除待发送图片 ${pendingImage.fileName}`}
+                    className="focus-ring absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-white/20 bg-black/72 text-sm font-black leading-none text-white shadow-lg"
+                    disabled={sending}
+                    onClick={onRemovePendingImage}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {voiceMode ? (
+              <button
+                className={cn(
+                  "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
+                  recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
+                )}
+                disabled={blocked}
+                onPointerCancel={onCancelRecording}
+                onPointerDown={onStartRecording}
+                onPointerMove={onMoveRecording}
+                onPointerUp={onEndRecording}
+                type="button"
+              >
+                {recording.active
+                  ? recording.cancel
+                    ? `松开取消发送 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
+                    : `松开发送，上滑取消 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
+                  : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
+              </button>
+            ) : (
+              <textarea
+                className={composerTextareaClass}
+                onChange={(event) => onDraftChange(event.target.value)}
+                placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
+                ref={textareaRef}
+                rows={1}
+                value={draft}
+              />
+            )}
+          </div>
+          <button
+            aria-label={panel === "emoji" ? "关闭表情面板" : "打开表情面板"}
+            className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+            data-im-composer-control="emoji-chat"
+            onClick={() => onPanelChange((value) => (value === "emoji" ? null : "emoji"))}
+            type="button"
+          >
+            <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
+          </button>
+          {(draft.trim() || pendingImage) && !voiceMode ? (
+            <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={blocked || sending} onClick={onSend}>
+              {sending ? "发送中" : "发送"}
+            </Button>
+          ) : (
+            <button
+              aria-label={panel === "more" ? "关闭更多功能" : "打开更多功能"}
+              className={cn("focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full", composerIconButtonClass)}
+              onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
+              type="button"
+            >
+              <ImIcon name="plus" />
+            </button>
+          )}
+        </div>
+
+        {panel === "emoji" ? (
+          <div className={cn(composerPanelClass, "overscroll-contain")} data-im-composer-panel="emoji">
+            <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">最近使用</p>
+            <div className="grid grid-cols-8 gap-2 text-center text-[24px]">
+              {recentEmojis.map((emoji) => (
+                <button
+                  aria-label={`输入表情 ${emoji}`}
+                  className={composerEmojiButtonClass}
+                  key={emoji}
+                  onClick={() => selectEmoji(emoji)}
+                  type="button"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <div className="my-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]" />
+            <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">所有表情</p>
+            <div className="grid grid-cols-8 gap-1 text-center text-[24px]">
+              {IM_COMMON_EMOJIS.map((emoji) => (
+                <button
+                  aria-label={`输入表情 ${emoji}`}
+                  className={composerEmojiButtonClass}
+                  key={emoji}
+                  onClick={() => selectEmoji(emoji)}
+                  type="button"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {panel === "more" && actions.length > 0 ? (
+          <div className={composerPanelClass} data-im-composer-panel="more">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+              {actions.map((action) => (
+                <button className={composerActionButtonClass} key={action.key} onClick={action.run} type="button">
+                  <span className={composerActionIconClass}>
+                    <ImIcon name={action.icon} />
+                  </span>
+                  <span className="mt-2 block truncate text-[11px] font-medium text-[color:var(--client-muted)] sm:text-xs">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
-
-      {panel === "emoji" ? (
-        <div className={cn(composerPanelClass, "max-h-[42dvh] overflow-y-auto overscroll-contain")}>
-          <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">最近使用</p>
-          <div className="grid grid-cols-8 gap-2 text-center text-[24px]">
-            {recentEmojis.map((emoji) => (
-              <button
-                aria-label={`输入表情 ${emoji}`}
-                className={composerEmojiButtonClass}
-                key={emoji}
-                onClick={() => selectEmoji(emoji)}
-                type="button"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-          <div className="my-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]" />
-          <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">所有表情</p>
-          <div className="grid grid-cols-8 gap-1 text-center text-[24px]">
-            {IM_COMMON_EMOJIS.map((emoji) => (
-              <button
-                aria-label={`输入表情 ${emoji}`}
-                className={composerEmojiButtonClass}
-                key={emoji}
-                onClick={() => selectEmoji(emoji)}
-                type="button"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {panel === "more" && actions.length > 0 ? (
-        <div className={composerPanelClass}>
-          <div className="grid grid-cols-4 gap-2 sm:gap-3">
-            {actions.map((action) => (
-              <button className={composerActionButtonClass} key={action.key} onClick={action.run} type="button">
-                <span className={composerActionIconClass}>
-                  <ImIcon name={action.icon} />
-                </span>
-                <span className="mt-2 block truncate text-[11px] font-medium text-[color:var(--client-muted)] sm:text-xs">{action.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1980,6 +2084,7 @@ export function ImMessageSelectionHandles({
 }
 
 const imQuickReactions = ["OK", "😂", "🤣", "👍", "🥹", "😭"];
+const imMessageActionBackdropOpeningGraceMs = 320;
 const imDefaultReactions = [
   "OK", "👍", "🙏", "💪", "🫰", "👏", "🙌", "+1",
   "😄", "😊", "😆", "😁", "😅", "😂", "🤣", "🥹",
@@ -1997,17 +2102,20 @@ const imDefaultReactions = [
 function ImReactionButton({
   emoji,
   onClick,
-  compact = false
+  compact = false,
+  className
 }: {
   emoji: string;
   onClick: () => void;
   compact?: boolean;
+  className?: string;
 }) {
   return (
     <button
       className={cn(
         "focus-ring grid place-items-center rounded-2xl text-center font-black transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
-        compact ? "h-12 min-w-12 px-1 text-[24px]" : "h-11 px-1 text-[25px]"
+        compact ? "h-11 min-w-11 px-1 text-[22px]" : "h-11 px-1 text-[25px]",
+        className
       )}
       onClick={onClick}
       type="button"
@@ -2029,25 +2137,27 @@ function ImMessageActionButton({
   return (
     <button
       className={cn(
-        "focus-ring min-w-0 rounded-[18px] px-2 py-3 text-center transition",
+        "focus-ring min-h-11 min-w-0 rounded-[14px] px-1 py-2 text-center transition",
         "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] text-[color:var(--client-text)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_13%,var(--client-surface)_87%)]",
         danger && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
         item.disabled && "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]"
       )}
+      data-im-message-action-item="true"
       disabled={item.disabled}
       onClick={item.onClick}
       type="button"
     >
-      <span className={cn("mx-auto grid h-10 w-10 place-items-center rounded-2xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
+      <span className={cn("mx-auto grid h-8 w-8 place-items-center rounded-xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
         <ImIcon name={item.icon === "pin" ? "top" : item.icon} />
       </span>
-      <span className="mt-2 block truncate text-xs font-black">{item.label}</span>
+      <span className="mt-1 block truncate text-[11px] font-black leading-4">{item.label}</span>
     </button>
   );
 }
 
 export function ImMessageActionSheet({
   actions,
+  anchorElement,
   expanded,
   isNight,
   listActions = [],
@@ -2056,6 +2166,7 @@ export function ImMessageActionSheet({
   onReact
 }: {
   actions: ImMessageActionSheetItem[];
+  anchorElement: HTMLElement | null;
   expanded: boolean;
   isNight: boolean;
   listActions?: ImMessageActionSheetItem[];
@@ -2063,255 +2174,291 @@ export function ImMessageActionSheet({
   onExpandedChange: (expanded: boolean) => void;
   onReact: (emoji: string) => void;
 }) {
-  const expandedRef = useRef(expanded);
-  const handleDragRef = useRef<{ startY: number; moved: boolean; closed: boolean } | null>(null);
-  const handleDragAbortRef = useRef<AbortController | null>(null);
-  const activeHandlePointerIdRef = useRef<number | null>(null);
-  const suppressHandleClickRef = useRef(false);
+  const backdropPointerStartedRef = useRef(false);
+  const backdropInteractiveAtRef = useRef(Date.now() + imMessageActionBackdropOpeningGraceMs);
+  const menuRef = useRef<HTMLElement | null>(null);
+  const menuContentRef = useRef<HTMLDivElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState({
+    arrowLeft: 28,
+    contentWidth: 0,
+    left: 12,
+    maxHeight: 360,
+    placement: "above" as "above" | "below",
+    ready: false,
+    top: 12
+  });
 
-  useEffect(() => {
-    expandedRef.current = expanded;
-  }, [expanded]);
-
-  useEffect(() => {
-    return () => {
-      handleDragAbortRef.current?.abort();
-      handleDragAbortRef.current = null;
-    };
-  }, []);
-
-  const suppressNextHandleClick = () => {
-    suppressHandleClickRef.current = true;
-
-    if (typeof window === "undefined") {
-      return;
+  useLayoutEffect(() => {
+    if (!anchorElement || typeof window === "undefined") {
+      return undefined;
     }
 
-    window.setTimeout(() => {
-      suppressHandleClickRef.current = false;
-    }, 0);
-  };
+    const updatePosition = () => {
+      const menu = menuRef.current;
 
-  const updateExpandedFromDrag = (clientY: number) => {
-    const drag = handleDragRef.current;
-
-    if (!drag || drag.closed) {
-      return;
-    }
-
-    const deltaY = clientY - drag.startY;
-
-    if (Math.abs(deltaY) > 6) {
-      drag.moved = true;
-    }
-
-    if (!drag.moved) {
-      return;
-    }
-
-    if (deltaY < -28) {
-      expandedRef.current = true;
-      onExpandedChange(true);
-      drag.startY = clientY;
-      return;
-    }
-
-    if (deltaY > 36) {
-      if (expandedRef.current) {
-        if (deltaY > 96) {
-          drag.closed = true;
-          suppressNextHandleClick();
-          onClose();
-          return;
-        }
-
-        expandedRef.current = false;
-        onExpandedChange(false);
-        drag.startY = clientY;
+      if (!menu) {
         return;
       }
 
-      drag.closed = true;
-      suppressNextHandleClick();
-      onClose();
-    }
-  };
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const visualViewport = window.visualViewport;
+      const viewportLeft = visualViewport?.offsetLeft ?? 0;
+      const viewportTop = visualViewport?.offsetTop ?? 0;
+      const viewportWidth = visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = visualViewport?.height ?? window.innerHeight;
+      const viewportRight = viewportLeft + viewportWidth;
+      const viewportBottom = viewportTop + viewportHeight;
+      const viewportMargin = 12;
+      const anchorGap = 10;
+      const menuRect = menu.getBoundingClientRect();
+      const contentWidth = menuContentRef.current?.getBoundingClientRect().width
+        ?? Math.max(0, menuRect.width - 16);
+      const roomAbove = Math.max(0, anchorRect.top - viewportTop - viewportMargin - anchorGap);
+      const roomBelow = Math.max(0, viewportBottom - anchorRect.bottom - viewportMargin - anchorGap);
+      const wantedHeight = Math.min(menu.scrollHeight, viewportHeight - viewportMargin * 2);
+      const placement: "above" | "below" = roomAbove >= Math.min(wantedHeight, 180) || roomAbove >= roomBelow
+        ? "above"
+        : "below";
+      const maxHeight = Math.max(140, placement === "above" ? roomAbove : roomBelow);
+      const renderedHeight = Math.min(menuRect.height, maxHeight);
+      const unclampedTop = placement === "above"
+        ? anchorRect.top - anchorGap - renderedHeight
+        : anchorRect.bottom + anchorGap;
+      const top = Math.min(
+        Math.max(unclampedTop, viewportTop + viewportMargin),
+        viewportBottom - viewportMargin - renderedHeight
+      );
+      const messageSide = anchorElement.dataset.imMessageSide;
+      const alignedLeft = messageSide === "left"
+        ? anchorRect.left + 12
+        : messageSide === "right"
+          ? anchorRect.right - 12 - menuRect.width
+          : anchorRect.left + anchorRect.width / 2 - menuRect.width / 2;
+      const left = Math.min(
+        Math.max(alignedLeft, viewportLeft + viewportMargin),
+        viewportRight - viewportMargin - menuRect.width
+      );
+      const bubbleRect = anchorElement.querySelector<HTMLElement>("[data-im-message-bubble='true']")?.getBoundingClientRect();
+      const anchorCenter = bubbleRect
+        ? bubbleRect.left + bubbleRect.width / 2
+        : messageSide === "left"
+          ? anchorRect.left + 52
+          : messageSide === "right"
+            ? anchorRect.right - 52
+            : anchorRect.left + anchorRect.width / 2;
+      const arrowLeft = Math.min(Math.max(anchorCenter - left, 24), menuRect.width - 24);
 
-  const finishHandleDrag = () => {
-    const drag = handleDragRef.current;
-
-    handleDragAbortRef.current?.abort();
-    handleDragAbortRef.current = null;
-    activeHandlePointerIdRef.current = null;
-
-    if (drag?.moved) {
-      suppressNextHandleClick();
-    }
-
-    handleDragRef.current = null;
-  };
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    handleDragRef.current = { startY: event.clientY, moved: false, closed: false };
-    activeHandlePointerIdRef.current = event.pointerId;
-    handleDragAbortRef.current?.abort();
-
-    const controller = new AbortController();
-    handleDragAbortRef.current = controller;
-
-    window.addEventListener(
-      "pointermove",
-      (nativeEvent) => {
-        if (nativeEvent.pointerId !== activeHandlePointerIdRef.current) {
-          return;
+      setMenuPosition((current) => {
+        if (
+          current.arrowLeft === arrowLeft
+          && current.contentWidth === contentWidth
+          && current.left === left
+          && current.maxHeight === maxHeight
+          && current.placement === placement
+          && current.ready
+          && current.top === top
+        ) {
+          return current;
         }
 
-        updateExpandedFromDrag(nativeEvent.clientY);
+        return { arrowLeft, contentWidth, left, maxHeight, placement, ready: true, top };
+      });
+    };
 
-        if (handleDragRef.current?.moved && nativeEvent.cancelable) {
-          nativeEvent.preventDefault();
-        }
-      },
-      { passive: false, signal: controller.signal }
-    );
-    window.addEventListener(
-      "pointerup",
-      (nativeEvent) => {
-        if (nativeEvent.pointerId === activeHandlePointerIdRef.current) {
-          finishHandleDrag();
-        }
-      },
-      { passive: true, signal: controller.signal }
-    );
-    window.addEventListener(
-      "pointercancel",
-      (nativeEvent) => {
-        if (nativeEvent.pointerId === activeHandlePointerIdRef.current) {
-          finishHandleDrag();
-        }
-      },
-      { passive: true, signal: controller.signal }
-    );
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.visualViewport?.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("scroll", updatePosition);
 
-  const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture release is best-effort across mobile browsers.
-    }
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("scroll", updatePosition);
+    };
+  }, [actions.length, anchorElement, expanded, listActions.length]);
 
-    finishHandleDrag();
-  };
-
-  const handleHandleClick = () => {
-    if (suppressHandleClickRef.current) {
-      suppressHandleClickRef.current = false;
-      return;
-    }
-
-    onExpandedChange(!expandedRef.current);
-  };
-
-  const sheetClass = "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_96%,var(--client-bg)_4%)] text-[color:var(--client-text)] shadow-[0_-18px_48px_color-mix(in_srgb,var(--client-shadow)_24%,transparent)]";
+  const sheetClass = "client-liquid-glass-surface text-[color:var(--client-text)]";
   const listShellClass = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)]";
+  const menuStyle: CSSProperties = {
+    left: menuPosition.left,
+    maxHeight: menuPosition.maxHeight,
+    opacity: menuPosition.ready ? 1 : 0,
+    position: "fixed",
+    top: menuPosition.top,
+    width: "min(520px, calc(100vw - 32px))"
+  };
+  const actionsFitOneRow = menuPosition.contentWidth >= 304;
+  const reactionsFitFullRow = menuPosition.contentWidth >= 336;
+  const visibleQuickReactions = reactionsFitFullRow
+    ? imQuickReactions
+    : imQuickReactions.slice(0, 4);
 
-  return (
-    <section
-      className={cn("relative z-20 shrink-0 overflow-hidden rounded-t-[28px] border-t backdrop-blur-xl transition-[height] duration-200", sheetClass)}
-      data-im-message-action-sheet="true"
-      style={{ height: expanded ? "min(76dvh, 620px)" : "min(43dvh, 360px)" }}
+  const quickReactionRow = (
+    <div
+      className={cn("grid items-center gap-0.5 px-1 py-1.5", reactionsFitFullRow ? "grid-cols-7" : "grid-cols-5")}
+      data-im-message-reaction-density={reactionsFitFullRow ? "full" : "compact"}
+      data-im-message-reaction-row="quick"
     >
+      {visibleQuickReactions.map((emoji) => (
+        <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
+      ))}
       <button
-        aria-label={expanded ? "收起消息操作面板" : "展开消息操作面板"}
-        className="focus-ring mx-auto mt-2 block h-8 w-20 touch-none rounded-full text-[color:var(--client-muted)]"
-        onClick={handleHandleClick}
-        onPointerCancel={handlePointerUp}
-        onPointerDown={handlePointerDown}
-        onPointerMove={(event) => {
-          updateExpandedFromDrag(event.clientY);
-          if (handleDragRef.current?.moved) {
-            event.preventDefault();
-          }
-        }}
-        onPointerUp={handlePointerUp}
+        aria-label={expanded ? "收起默认表情" : "展开默认表情"}
+        className={cn(
+          "focus-ring grid h-11 place-items-center rounded-full transition",
+          "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
+        )}
+        onClick={() => onExpandedChange(!expanded)}
         type="button"
       >
-        <span className="mx-auto block h-1.5 w-11 rounded-full bg-[color:color-mix(in_srgb,var(--client-muted)_28%,transparent)]" />
+        <ImIcon name="more" />
       </button>
+    </div>
+  );
 
-      <div className="scrollbar-none h-[calc(100%-2.5rem)] touch-pan-y overflow-y-auto overscroll-y-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1 [-webkit-overflow-scrolling:touch]">
-        <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] items-center gap-1 py-2">
-          {imQuickReactions.map((emoji) => (
-            <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
+  const expandedReactionCatalog = expanded ? (
+    <div className="space-y-2 px-1 pb-2 pt-1">
+      <section>
+        <p className="mb-1 text-[11px] font-black text-[color:var(--client-muted)]">默认表情</p>
+        <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-9">
+          {imDefaultReactions.map((emoji) => (
+            <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
           ))}
-          <button
-            aria-label={expanded ? "收起默认表情" : "展开默认表情"}
-            className={cn(
-              "focus-ring grid h-11 place-items-center rounded-full transition",
-              "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-            )}
-            onClick={() => onExpandedChange(!expanded)}
-            type="button"
-          >
-            <ImIcon name="more" />
-          </button>
         </div>
+      </section>
+    </div>
+  ) : null;
 
-        {expanded ? (
-          <div className="space-y-4 pb-4 pt-1">
-            <section>
-              <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">默认表情</p>
-              <div className="grid grid-cols-7 gap-2 sm:grid-cols-9">
-                {imDefaultReactions.map((emoji) => (
-                  <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
-                ))}
-              </div>
-            </section>
-          </div>
-        ) : null}
-
-        {actions.length > 0 ? (
-          <div className="grid grid-cols-4 gap-3">
-            {actions.map((item) => (
-              <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
-            ))}
-          </div>
-        ) : null}
-
-        {listActions.length > 0 ? (
-          <div className={cn("mt-4 overflow-hidden rounded-[22px]", listShellClass)}>
-            {listActions.map((item) => (
-              <button
-                className={cn(
-                  "focus-ring flex w-full items-center gap-3 px-4 py-4 text-left text-[15px] font-black transition",
-                  "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
-                  item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-                  item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
-                )}
-                disabled={item.disabled}
-                key={item.key}
-                onClick={item.onClick}
-                type="button"
-              >
-                <ImIcon className="h-5 w-5 shrink-0" name={item.icon} />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <button
-          className="focus-ring mt-4 w-full rounded-2xl px-4 py-3 text-sm font-black text-[color:var(--client-muted)] transition hover:bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]"
-          onClick={onClose}
-          type="button"
-        >
-          收起
-        </button>
-      </div>
+  const reactionSection = (
+    <section
+      className={menuPosition.placement === "above" ? "pt-1" : "pb-1"}
+      data-im-message-action-section="reactions"
+      key="reactions"
+    >
+      {menuPosition.placement === "above" ? expandedReactionCatalog : quickReactionRow}
+      {menuPosition.placement === "above" ? quickReactionRow : expandedReactionCatalog}
     </section>
   );
+
+  const actionSection = actions.length > 0 ? (
+    <div
+      className={cn("grid gap-1", actionsFitOneRow ? "grid-cols-6" : "grid-cols-3")}
+      data-im-message-action-layout={actionsFitOneRow ? "single-row" : "two-row"}
+      data-im-message-action-section="actions"
+      key="actions"
+    >
+      {actions.map((item) => (
+        <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
+      ))}
+    </div>
+  ) : null;
+
+  const listActionSection = listActions.length > 0 ? (
+    <div className={cn("mt-2 overflow-hidden rounded-[16px]", listShellClass)} key="list-actions">
+      {listActions.map((item) => (
+        <button
+          className={cn(
+            "focus-ring flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-black transition",
+            "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+            item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
+            item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
+          )}
+          disabled={item.disabled}
+          key={item.key}
+          onClick={item.onClick}
+          type="button"
+        >
+          <ImIcon className="h-[18px] w-[18px] shrink-0" name={item.icon} />
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const actionMenu = (
+    <div
+      className="fixed inset-0 z-[200]"
+      data-im-message-action-layer="true"
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <button
+        aria-label="关闭消息操作菜单"
+        className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        onClick={(event) => {
+          const pointerStartedOnBackdrop = backdropPointerStartedRef.current;
+          backdropPointerStartedRef.current = false;
+
+          const keyboardActivatedFocusedBackdrop =
+            event.detail === 0 && document.activeElement === event.currentTarget;
+          const releaseFromOpeningLongPress = Date.now() < backdropInteractiveAtRef.current;
+
+          if (
+            releaseFromOpeningLongPress ||
+            (!pointerStartedOnBackdrop && !keyboardActivatedFocusedBackdrop)
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+
+          onClose();
+        }}
+        onPointerCancel={() => {
+          backdropPointerStartedRef.current = false;
+        }}
+        onPointerDown={() => {
+          backdropPointerStartedRef.current = true;
+        }}
+        type="button"
+      />
+      <div className="z-[201]" style={menuStyle}>
+        <span
+          aria-hidden="true"
+          className={cn(
+            "client-liquid-glass-arrow pointer-events-none absolute z-0 h-3.5 w-3.5 -translate-x-1/2 rotate-45",
+            menuPosition.placement === "above" ? "-bottom-2 border-b border-r" : "-top-2 border-l border-t"
+          )}
+          style={{ left: menuPosition.arrowLeft }}
+        />
+
+        <section
+          className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[20px] border backdrop-blur-xl", sheetClass)}
+          data-im-message-action-sheet="true"
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          ref={menuRef}
+          style={{ maxHeight: menuPosition.maxHeight }}
+        >
+          <div
+            className="touch-pan-y p-2 [-webkit-overflow-scrolling:touch]"
+            data-im-message-action-content="true"
+            ref={menuContentRef}
+          >
+            {menuPosition.placement === "below" ? reactionSection : null}
+            {actionSection}
+            {listActionSection}
+            {menuPosition.placement === "above" ? reactionSection : null}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+
+  if (typeof document === "undefined") {
+    return actionMenu;
+  }
+
+  const portalTarget = document.querySelector<HTMLElement>(".client-shell") ?? document.body;
+  return createPortal(actionMenu, portalTarget);
 }
 
 export function ImEmptyState({
@@ -2480,6 +2627,69 @@ function contactCardKindLabel(profileKind: NonNullable<MessageExt["contactCard"]
   return "服务号名片";
 }
 
+export function ImQuotedMessagePreview({
+  message,
+  className
+}: {
+  message: ConversationMessage;
+  className?: string;
+}) {
+  const caption = message.ext?.caption?.trim() ?? "";
+
+  if (message.type === "image" || message.type === "video") {
+    const thumbnailUrl = message.ext?.thumbnailUrl ?? (message.type === "image" ? message.ext?.url ?? message.content : undefined);
+
+    return (
+      <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
+        <span className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-black/10">
+          {thumbnailUrl ? (
+            <img
+              alt={message.ext?.fileName || caption || previewLabel(message.type)}
+              className="h-full w-full object-cover"
+              src={thumbnailUrl}
+            />
+          ) : (
+            <ImIcon className="h-5 w-5 opacity-80" name={message.type === "video" ? "video" : "photo"} />
+          )}
+          {message.type === "video" ? (
+            <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
+              <ImIcon className="h-4 w-4" name="video" />
+            </span>
+          ) : null}
+        </span>
+        {caption ? (
+          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
+            {caption}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (message.type === "voice" || message.type === "file") {
+    const label = caption || (message.type === "file" ? message.ext?.fileName?.trim() ?? "" : "");
+
+    return (
+      <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-black/10">
+          <ImIcon className="h-5 w-5 opacity-80" name={message.type === "voice" ? "mic" : "file"} />
+        </span>
+        {label ? (
+          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
+            {label}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <p className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}>
+      {message.content || previewLabel(message.type)}
+    </p>
+  );
+}
+
 export function MessageBubble({
   message,
   isMine,
@@ -2517,8 +2727,6 @@ export function MessageBubble({
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const disappearing = message.ext?.disappearing;
-  const [expandedReactionEmoji, setExpandedReactionEmoji] = useState<string | null>(null);
-  const quotedPreview = quotedMessage?.content || (quotedMessage ? previewLabel(quotedMessage.type) : "");
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
   if (message.type === "system" || message.type === "recalled") {
@@ -2719,7 +2927,7 @@ export function MessageBubble({
         )}
         <div className="min-w-0 flex-1">
           <p className="line-clamp-1 text-[13px] font-black">{quotedAuthor}</p>
-          <p className="mt-0.5 line-clamp-1 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]">{quotedPreview}</p>
+          <ImQuotedMessagePreview message={quotedMessage} />
         </div>
       </div>
     </div>
@@ -2728,8 +2936,7 @@ export function MessageBubble({
     <div className="mt-2 flex max-w-full flex-wrap gap-1.5">
       {reactions.map((reaction) => {
         const names = reaction.people.map((person) => person.name).filter(Boolean);
-        const nameLabel = names.length > 2 ? `${names[0]}等${names.length}人` : names.join("、");
-        const expanded = expandedReactionEmoji === reaction.emoji;
+        const nameLabel = names.join("、");
 
         return (
           <span className={cn("relative inline-flex min-w-0 items-center overflow-visible rounded-full px-1.5 py-1", isMine ? "bg-black/[0.08]" : "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")} key={`${message.id}-${reaction.emoji}`}>
@@ -2748,27 +2955,12 @@ export function MessageBubble({
             >
               {reaction.emoji}
             </button>
-            <button
-              className="min-w-0 max-w-[9rem] truncate px-2 text-left text-[12px] font-black opacity-78"
+            <span
+              className="min-w-0 max-w-[12rem] truncate px-2 text-left text-[12px] font-black opacity-78"
               key={`${message.id}-${reaction.emoji}-names`}
-              onClick={(event) => {
-                event.stopPropagation();
-                setExpandedReactionEmoji(expanded ? null : reaction.emoji);
-              }}
-              type="button"
             >
               {nameLabel || `${reaction.people.length}人`}
-            </button>
-            {expanded ? (
-              <span className={cn("absolute bottom-[calc(100%+6px)] left-0 z-20 min-w-[160px] rounded-[14px] px-3 py-2 text-left text-[12px] font-black shadow-[0_10px_24px_rgba(0,0,0,0.22)]", isMine ? "bg-[#18231e] text-white" : "bg-[color:var(--client-elevated)] text-[color:var(--client-text)]")}>
-                {reaction.people.map((person) => (
-                  <span className="flex min-w-0 items-center gap-2 py-1" key={person.id}>
-                    {person.avatar ? <AvatarImage alt={person.name} className="h-6 w-6 shrink-0" src={person.avatar} /> : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-black/[0.08]">{person.name.slice(0, 1)}</span>}
-                    <span className="truncate">{person.name}</span>
-                  </span>
-                ))}
-              </span>
-            ) : null}
+            </span>
           </span>
         );
       })}

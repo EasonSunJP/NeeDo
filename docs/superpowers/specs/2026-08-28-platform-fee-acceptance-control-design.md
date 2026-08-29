@@ -355,6 +355,16 @@
 - [ ] 72 名多 `PENDING` 测试用户的 `black` 资格 dry-run/apply。
 - [ ] 暂停接单、普通用户单一 `PENDING`、运营/商户/店铺/技师/用户 UI 与真实浏览器验收。
 
+#### 2026-08-29 接单暂停与单一 PENDING 后端 dry-run 记录
+
+- [x] 新增 `20260829130000_order_acceptance_pause`、运营/商户/店铺权限、严格 Zod、分页 API、OpenAPI、同事务审计，以及订单确认前的接单暂停检查；订单冲突响应不返回内部 `reasonDetail`。
+- [x] 普通用户创建新订单时锁定真实 User 行，在同一事务内取消全部旧 `PENDING`、释放时段容量、记录 `superseded_by_new_pending_order` 和新订单 ID，并撤销旧联盟归因；新订单最终无法占位时全部回滚。`membershipLevel=black` 保留多单例外。
+- [x] 在 `needo_dev` 上临时执行 5 条 DDL 并核对 17 列、4 个外键、4 个 CHECK；2 条权限 DML 在事务中验证 admin/operator/merchant_owner/merchant_staff 授权后精确回滚，dry-run 表最终删除，迁移记录未伪造为已应用。
+- [x] 真实 MySQL marker 验收创建 7 用户、1 商户、1 店铺、1 服务、9 时段和 8 订单，覆盖暂停不隐藏时段、暂停期间可创建 `PENDING`、结算前阻止确认、运营暂停不可由商户解除、多来源叠加、普通用户替换、两路并发最终一单、失败替换回滚、黑卡两单并存；清理后全库基线精确恢复，OrderFinancial 与账本变化均为 0。
+- [x] 代码重整后再次完成后端全量验证：223 suites / 1,420 tests、lint 与 TypeScript build 通过；同步最新 `main` 后前端 194 files / 1,030 tests、TypeScript lint 与 formal production bundle audit 通过。
+- [ ] 尚未对 `needo_dev` 正式执行 Prisma apply：数据库存在已成功但当前主分支尚未包含的 `20260828210000_affiliate_alliance_invitations`（另有同名已回滚记录）与 `20260829123000_employee_payroll_schedule_policy`。前者仍在大幅分叉且有未提交改动的所属 worktree，后者 migration/schema/API 仍全部是所属 worktree 的未提交改动。必须先由各所属微步骤完整合入 migration/schema/code 并恢复一致迁移历史，再应用本迁移；禁止只复制 SQL、绕过 Prisma 或手工标记完成。
+- [ ] 本记录只覆盖第 3 微步骤的后端和真实数据库 dry-run；第 4、5 步 UI、第 6 步测试数据批量 apply 与真实浏览器验收仍未开始，因此第 3 步在正式 migration apply 前保持未勾选。
+
 ### 11.3 浏览器验收
 
 使用现有正式测试账号和真实 MySQL：

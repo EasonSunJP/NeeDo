@@ -1,5 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
+import { assertContentMediaStorageIsolationSync } from "../services/content-media.storage";
 
 if (process.env.ENV_FILE) {
   loadDotenv({ path: process.env.ENV_FILE });
@@ -135,9 +136,24 @@ const envSchema = z
       .default("runtime/identity-applications"),
     IM_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/im-media"),
     IM_MEDIA_PUBLIC_BASE_URL: optionalUrlSchema,
+    CONTENT_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/content-media"),
+    CONTENT_PUBLICATION_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
+    CONTENT_PUBLICATION_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
+    CONTENT_PUBLICATION_MAX_ACTIVATION_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(3),
     IDENTITY_APPLICATION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
     AFFILIATE_TASK_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
     AFFILIATE_TASK_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
+    AFFILIATE_ALLIANCE_INVITATION_EXPIRY_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(60_000)
+      .default(300_000),
+    AFFILIATE_ALLIANCE_INVITATION_EXPIRY_BATCH_SIZE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100),
     BOOKING_USER_REWARD_EXPIRY_INTERVAL_MS: z.coerce
       .number()
       .int()
@@ -161,6 +177,19 @@ const envSchema = z
     AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
   })
   .superRefine((value, context) => {
+    try {
+      assertContentMediaStorageIsolationSync(
+        value.CONTENT_MEDIA_STORAGE_DIR,
+        value.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR
+      );
+    } catch (error) {
+      addProductionIssue(
+        context,
+        "CONTENT_MEDIA_STORAGE_DIR",
+        error instanceof Error ? error.message : "Content media storage isolation is invalid"
+      );
+    }
+
     if (value.NODE_ENV !== "production") {
       return;
     }

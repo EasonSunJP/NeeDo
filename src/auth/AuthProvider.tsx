@@ -13,6 +13,7 @@ import {
   getStoredRefreshToken,
   setAccessToken,
   setAuthExpiredHandler,
+  setExpectedAuthUserId,
   setStoredRefreshToken
 } from "../api/httpClient";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
@@ -314,6 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persistSession = useCallback((nextSession: AuthSession) => {
+    setExpectedAuthUserId(nextSession.id);
     setSession(nextSession);
     removeBrowserStorage(portalStorageKey, { silent: true });
     removeBrowserStorage(legacySessionStorageKey, { silent: true });
@@ -517,6 +519,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (portal: PortalScope, email: string, password: string, captchaCode?: string): Promise<AuthActionResult> => {
+      setExpectedAuthUserId(null);
       try {
         const loginPayload = await authApi.login(email, password, captchaCode);
 
@@ -532,6 +535,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithFormalPassword = useCallback(
     async (portal: PortalScope, username: string, password: string): Promise<AuthActionResult> => {
+      setExpectedAuthUserId(null);
       try {
         const loginPayload = await authApi.loginFormal(username, password);
 
@@ -621,6 +625,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "error.auth.google_api_unavailable" };
       }
 
+      setExpectedAuthUserId(null);
       const completed = await completeAuthenticatedSession(requestedPortal, "google", undefined, "error.auth.google_api_unavailable");
 
       return completed.ok ? { ...completed, status: "authenticated" } : completed;

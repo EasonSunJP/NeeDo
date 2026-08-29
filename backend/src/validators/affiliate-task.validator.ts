@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTENT_LOCALES } from "../constants/content-locales";
 
 const taskStatuses = [
   "draft",
@@ -121,6 +122,7 @@ const validateEditableTask = (
 const shopCreateSchema = z
   .object({
     publisherType: z.literal("shop"),
+    sourceLocale: z.enum(CONTENT_LOCALES).optional(),
     ...editableTaskShape
   })
   .strict();
@@ -128,6 +130,7 @@ const shopCreateSchema = z
 const merchantAccountCreateSchema = z
   .object({
     publisherType: z.literal("merchant_account"),
+    sourceLocale: z.enum(CONTENT_LOCALES).optional(),
     merchantAccountId: z.number().int().positive(),
     shopIds: z.array(z.number().int().positive()).min(1).max(1_000),
     ...editableTaskShape
@@ -149,6 +152,22 @@ export const updateAffiliateTaskBodySchema = z
 
 export const affiliateTaskIdParamSchema = z
   .object({ taskId: z.coerce.number().int().positive() })
+  .strict();
+
+export const affiliateTaskLocaleParamSchema = z
+  .object({
+    taskId: z.coerce.number().int().positive(),
+    locale: z.enum(CONTENT_LOCALES)
+  })
+  .strict();
+
+export const updateAffiliateTaskTranslationBodySchema = z
+  .object({
+    lockVersion: z.number().int().positive(),
+    name: z.string().trim().min(1).max(160),
+    description: z.string().trim().max(10_000).nullable(),
+    syncToAll: z.boolean().default(false)
+  })
   .strict();
 
 export const affiliateTaskListQuerySchema = z
@@ -178,6 +197,10 @@ export const rejectAffiliateTaskBodySchema = z
 export type CreateAffiliateTaskBody = z.infer<typeof createAffiliateTaskBodySchema>;
 export type UpdateAffiliateTaskBody = z.infer<typeof updateAffiliateTaskBodySchema>;
 export type AffiliateTaskIdParams = z.infer<typeof affiliateTaskIdParamSchema>;
+export type AffiliateTaskLocaleParams = z.infer<typeof affiliateTaskLocaleParamSchema>;
+export type UpdateAffiliateTaskTranslationBody = z.infer<
+  typeof updateAffiliateTaskTranslationBodySchema
+>;
 export type AffiliateTaskListQuery = z.infer<typeof affiliateTaskListQuerySchema>;
 export type BackofficeAffiliateTaskListQuery = z.infer<
   typeof backofficeAffiliateTaskListQuerySchema

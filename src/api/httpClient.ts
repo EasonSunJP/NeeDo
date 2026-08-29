@@ -30,6 +30,7 @@ export type HttpClientRequestOptions = {
   method?: HttpMethod;
   query?: Record<string, boolean | number | string | null | undefined>;
   retryOnUnauthorized?: boolean;
+  signal?: AbortSignal;
 };
 
 export type HttpClientCsvExportPayload = {
@@ -59,12 +60,37 @@ export const apiRequestTimeoutMs = Number.isFinite(configuredApiRequestTimeoutMs
 const refreshTokenStorageKey = "needo.auth.refresh-token";
 const legacyAccessTokenStorageKey = "needo.auth.access-token";
 let accessToken: string | null = null;
+let expectedAuthUserId: number | null = null;
 type RefreshedAccessToken = {
   accessToken: string;
   expiresIn: number;
 };
 let refreshRequest: Promise<RefreshedAccessToken> | null = null;
 let authExpiredHandler: (() => void) | null = null;
+
+function readAccessTokenSubject(token: string | null) {
+  if (!token) {
+    return null;
+  }
+
+  const payloadSegment = token.split(".")[1];
+  if (!payloadSegment) {
+    return null;
+  }
+
+  try {
+    const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const payload = JSON.parse(globalThis.atob(padded)) as { sub?: unknown };
+    const subject = typeof payload.sub === "number" || typeof payload.sub === "string"
+      ? Number(payload.sub)
+      : Number.NaN;
+
+    return Number.isInteger(subject) && subject > 0 ? subject : null;
+  } catch {
+    return null;
+  }
+}
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
@@ -218,8 +244,27 @@ function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
+function expireAuthenticationOnUnauthorized(
+  response: Response,
+  options: HttpClientRequestOptions
+) {
+  if (response.status !== 401 || options.auth === false) {
+    return;
+  }
+
+  clearAuthTokens();
+  authExpiredHandler?.();
+}
+
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
+  const externalSignal = init.signal;
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal?.aborted) {
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
   const timeoutId = globalThis.setTimeout(() => {
     controller.abort();
   }, apiRequestTimeoutMs);
@@ -230,6 +275,9 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Pr
       signal: controller.signal
     });
   } catch (error) {
+    if (externalSignal?.aborted) {
+      throw error;
+    }
     if (isAbortError(error)) {
       throw new ApiClientError("error.network.timeout", 408, 408);
     }
@@ -237,6 +285,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Pr
     throw error;
   } finally {
     globalThis.clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
   }
 }
 
@@ -271,11 +320,36 @@ export async function refreshStoredAccessToken(): Promise<RefreshedAccessToken> 
   }
 }
 
+async function alignAccessTokenWithExpectedUser(options: HttpClientRequestOptions) {
+  if (options.auth === false || !accessToken || expectedAuthUserId === null) {
+    return;
+  }
+
+  const accessTokenSubject = readAccessTokenSubject(accessToken);
+  if (accessTokenSubject === null || accessTokenSubject === expectedAuthUserId) {
+    return;
+  }
+
+  accessToken = null;
+
+  try {
+    const refreshed = await refreshStoredAccessToken();
+    if (readAccessTokenSubject(refreshed.accessToken) !== expectedAuthUserId) {
+      throw new ApiClientError("error.auth.session_mismatch", 401, 401);
+    }
+  } catch (error) {
+    clearAuthTokens();
+    authExpiredHandler?.();
+    throw error;
+  }
+}
+
 async function sendRequest<TData>(
   path: string,
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<TData> {
+  await alignAccessTokenWithExpectedUser(options);
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
@@ -283,7 +357,8 @@ async function sendRequest<TData>(
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
     headers: await createRequestHeaders(options, previewShopId),
-    method
+    method,
+    signal: options.signal
   });
   const envelope = await parseEnvelope<TData>(response);
 
@@ -303,6 +378,8 @@ async function sendRequest<TData>(
       throw error;
     }
   }
+
+  expireAuthenticationOnUnauthorized(response, options);
 
   return assertSuccess(envelope, response.status);
 }
@@ -335,6 +412,7 @@ async function sendCsvExportRequest(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<HttpClientCsvExportPayload> {
+  await alignAccessTokenWithExpectedUser(options);
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
@@ -345,7 +423,8 @@ async function sendCsvExportRequest(
       ...options,
       headers: { ...(options.headers ?? {}), Accept: "text/csv" }
     }, previewShopId),
-    method
+    method,
+    signal: options.signal
   });
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -365,6 +444,8 @@ async function sendCsvExportRequest(
       throw error;
     }
   }
+
+  expireAuthenticationOnUnauthorized(response, options);
 
   if (!response.ok || isJsonContentType(contentType)) {
     const envelope = await parseEnvelope<unknown>(response);
@@ -399,6 +480,7 @@ async function sendDataUrlRequest(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<string> {
+  await alignAccessTokenWithExpectedUser(options);
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
@@ -406,7 +488,8 @@ async function sendDataUrlRequest(
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
     headers: await createRequestHeaders(options, previewShopId),
-    method
+    method,
+    signal: options.signal
   });
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -426,6 +509,8 @@ async function sendDataUrlRequest(
       throw error;
     }
   }
+
+  expireAuthenticationOnUnauthorized(response, options);
 
   if (!response.ok || isJsonContentType(contentType)) {
     const envelope = await parseEnvelope<string>(response);
@@ -476,6 +561,10 @@ export function setAccessToken(nextAccessToken: string | null) {
   removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
 }
 
+export function setExpectedAuthUserId(userId: number | null) {
+  expectedAuthUserId = Number.isInteger(userId) && (userId ?? 0) > 0 ? userId : null;
+}
+
 export function setAuthTokens(tokens: { accessToken: string; refreshToken?: string | null }) {
   setAccessToken(tokens.accessToken);
 
@@ -486,6 +575,7 @@ export function setAuthTokens(tokens: { accessToken: string; refreshToken?: stri
 
 export function clearAuthTokens() {
   accessToken = null;
+  expectedAuthUserId = null;
   clearMerchantAdminPreview();
   removeBrowserStorage(refreshTokenStorageKey, { silent: true });
   removeBrowserStorage(refreshTokenStorageKey, {

@@ -36,12 +36,14 @@ const baseBooking: BackofficeOrderPayload = {
   status: "confirmed",
   paymentStatus: "confirmed",
   customerUserId: 2044,
+  customerProfileId: 44,
   customerName: "田中 葵",
   serviceId: 51,
   serviceName: "訪問ケア 60分",
   shopId: 8,
   shopName: "NeeDo 青山店",
   technicianProfileId: 31,
+  technicianNeedoId: "s0000000031",
   technicianName: "佐藤 美香",
   fulfillmentMode: "home",
   priceAmount: 12000,
@@ -75,6 +77,7 @@ const technicianDetail: BackofficeTechnicianDetailPayload = {
   yearsExperience: 6,
   isRecommended: true,
   account: {
+    needoId: "u0000001031",
     username: "mika.sato",
     email: "mika@example.jp",
     phone: "+819012345678",
@@ -153,12 +156,19 @@ const customerDetail: BackofficeCustomerDetailPayload = {
   email: "aoi@example.jp",
   city: "東京都新宿区",
   membershipLevel: "premium",
+  membershipGrantMode: "operator_complimentary",
+  membershipDurationUnit: "month",
+  membershipDurationValue: 3,
+  membershipStartsAt: "2026-08-01T00:00:00.000Z",
+  membershipExpiresAt: "2026-11-01T00:00:00.000Z",
+  membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" },
   isPublic: true,
   bookingCount: 6,
   createdAt: "2026-05-01T01:00:00.000Z",
   updatedAt: "2026-08-20T03:00:00.000Z",
   bio: null,
   account: {
+    needoId: "u0000002044",
     username: "aoi.tanaka",
     email: "aoi@example.jp",
     phone: null,
@@ -205,13 +215,90 @@ describe("formal profile tab accessibility", () => {
     assertExactTabRelationships(markup, 7);
   });
 
-  it("renders four customer tabs and exact tab-to-panel relationships", () => {
+  it("renders five user tabs and exact tab-to-panel relationships", () => {
     const markup = renderToStaticMarkup(<FormalCustomerDetailPanel detail={customerDetail} />);
 
-    for (const label of ["基础资料", "预约与消费", "权限与账号", "时间线"]) {
+    for (const label of ["基础资料", "会员等级", "预约与消费", "权限与账号", "用户动态"]) {
       expect(markup).toContain(`>${label}</button>`);
     }
-    assertExactTabRelationships(markup, 4);
+    assertExactTabRelationships(markup, 5);
+  });
+
+  it("renders membership provenance and the operations editor only when supplied", () => {
+    const readOnlyMarkup = renderToStaticMarkup(
+      <FormalCustomerDetailPanel detail={customerDetail} initialTab="会员等级" />
+    );
+    const operationsMarkup = renderToStaticMarkup(
+      <FormalCustomerDetailPanel
+        detail={customerDetail}
+        initialTab="会员等级"
+        membershipEditContent={<form aria-label="运营会员赋予表单" />}
+      />
+    );
+
+    expect(readOnlyMarkup).toContain("运营免费赋予");
+    expect(readOnlyMarkup).toContain("3个月");
+    expect(readOnlyMarkup).toContain("NeeDoID o0000000001");
+    expect(readOnlyMarkup).not.toContain("运营会员赋予表单");
+    expect(operationsMarkup).toContain('aria-label="运营会员赋予表单"');
+  });
+
+  it("keeps user activity readable without exposing internal database identifiers", () => {
+    const markup = renderToStaticMarkup(
+      <FormalCustomerDetailPanel
+        detail={customerDetail}
+        initialTab="用户动态"
+        timeline={{
+          list: [{
+            id: "audit-membership",
+            action: "backoffice.customer.membership.assign",
+            actorName: "运营管理员",
+            actorAvatarUrl: null,
+            createdAt: "2026-08-24T10:00:00.000Z",
+            metadata: {
+              customerProfileId: 44,
+              shopId: 16,
+              membershipLevel: "premium",
+              durationUnit: "month",
+              durationValue: 3
+            }
+          }],
+          total: 1,
+          page: 1,
+          page_size: 10
+        }}
+      />
+    );
+
+    expect(markup).toContain("会员等级变更");
+    expect(markup).toContain("会员等级");
+    expect(markup).not.toContain("customerProfileId");
+    expect(markup).not.toContain("shopId");
+  });
+
+  it("describes profile lifecycle events instead of showing a missing-data placeholder", () => {
+    const markup = renderToStaticMarkup(
+      <FormalCustomerDetailPanel
+        detail={customerDetail}
+        initialTab="用户动态"
+        timeline={{
+          list: [{
+            id: "audit-created",
+            action: "profile.created",
+            actorName: "NeeDo 系统",
+            actorAvatarUrl: null,
+            createdAt: "2026-08-24T10:00:00.000Z",
+            metadata: null
+          }],
+          total: 1,
+          page: 1,
+          page_size: 10
+        }}
+      />
+    );
+
+    expect(markup).toContain("用户档案已创建");
+    expect(markup).not.toMatch(/用户档案创建[\s\S]*?尚未接入正式数据/);
   });
 
   it("implements roving Arrow/Home/End navigation including wrapping", () => {
@@ -265,7 +352,7 @@ describe("formal profile tab accessibility", () => {
 });
 
 describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
-  it("renders profile, account, and scoped identifiers exactly without locale grouping", () => {
+  it("renders the public NeeDoID without exposing profile or account primary keys", () => {
     const markup = renderToStaticMarkup(
       <FormalTechnicianDetailPanel detail={{
         ...technicianDetail,
@@ -278,10 +365,10 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
       }} />
     );
 
-    for (const exactId of ["#2031", "#1031", "shop #3008", "shop #4008"]) {
+    for (const exactId of ["NeeDoID u0000001031", "shop #3008", "shop #4008"]) {
       expect(markup).toContain(exactId);
     }
-    for (const groupedId of ["#2,031", "#1,031", "shop #3,008", "shop #4,008"]) {
+    for (const groupedId of ["#2031", "#1031", "#2,031", "#1,031", "shop #3,008", "shop #4,008"]) {
       expect(markup).not.toContain(groupedId);
     }
   });
@@ -463,11 +550,19 @@ describe("FormalCustomerDetailPanel formal-data boundaries", () => {
       />
     );
 
-    for (const content of ["身份与基础资料", "预约与消费汇总", "下次预约", "近期预约", "账号状态", "正式审计时间线", "¥48,000", "管理账号"]) {
+    for (const content of ["基础资料", "会员等级", "预约与消费汇总", "下次预约", "近期预约", "账号状态", "用户动态", "¥48,000", "管理账号", "NeeDoID u0000002044"]) {
       expect(markup).toContain(content);
     }
+    expect(markup).not.toContain("用户档案 #");
+    expect(markup).not.toContain("账号 #");
     expect(markup).toContain('aria-label="正式客户编辑表单"');
-    expect(markup.match(/尚未接入正式数据/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(markup).not.toContain("尚未接入正式数据");
+    expect(markup).toContain("暂无下次预约");
+    expect(markup).toContain("暂无近期预约");
+    expect(markup).toContain("暂无评价");
+    expect(markup).toContain("用户身份");
+    expect(markup).not.toContain("客户身份");
+    expect(markup.match(/<h3[^>]*>基础资料<\/h3>/g)).toHaveLength(1);
   });
 
   it("does not emit duplicate React keys for repeated highlights or status aliases", () => {
@@ -527,6 +622,11 @@ describe("formal profile localization and dependency boundary", () => {
     expect(translateText("预约与消费", "en")).toBe("Bookings & Spend");
     expect(translateText("权限与账号", "ko")).toBe("권한 및 계정");
     expect(translateText("迟到情况", "zh-Hant")).toBe("遲到情況");
+    expect(translateText("用户动态", "ja")).toBe("ユーザーアクティビティ");
+    expect(translateText("运营免费赋予", "en")).toBe("Complimentary operations grant");
+    expect(translateText("永久免费", "ko")).toBe("영구 무료");
+    expect(translateText("用户身份", "ja")).toBe("ユーザー ID");
+    expect(translateText("暂无下次预约", "en")).toBe("No upcoming booking");
     expect(formatFormalScheduleMinutes(60, "ja")).toBe("1時間");
     expect(formatFormalScheduleMinutes(59, "en")).toBe("59 min");
   });

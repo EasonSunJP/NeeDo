@@ -16,8 +16,7 @@ const main = async (): Promise<void> => {
   loadDotenv({ path: envFile });
   const provisioning = await import("../src/simulation/lifedance-admin2-provisioning");
   provisioning.assertLocalAdmin2ProvisioningTarget(process.env);
-  const expectedPassword = process.env.TEST_USER_DEFAULT_PASSWORD?.trim();
-  assert(expectedPassword, "TEST_USER_DEFAULT_PASSWORD is required for LifeDance admin2 verification.");
+  const expectedPassword = provisioning.resolveLifeDanceAdmin2Password(process.env);
   const { prisma, disconnectPrisma } = await import("../src/prisma/client");
 
   try {

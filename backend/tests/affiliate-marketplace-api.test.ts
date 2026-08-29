@@ -11,7 +11,11 @@ const publicTask = {
   name: "Shibuya completed-service reward",
   description: "Earn after the referred service is completed.",
   coverMediaAssetId: null,
+  coverImageUrl: "https://cdn.needo.test/task-cover.jpg",
   rewardNdpPerCompletedOrder: 1_000,
+  totalBudgetNdp: 2_000_000,
+  remainingBudgetNdp: 1_985_000,
+  remainingBudgetBps: 9_925,
   customerDiscountType: "fixed_jpy",
   fixedDiscountJpy: 500,
   discountRateBps: 0,
@@ -26,7 +30,23 @@ const publicTask = {
   maxCompletedOrdersPerCustomer: 1,
   status: "scheduled",
   claimable: true,
-  shops: [{ id: 1, shopId: 11, shopNameSnapshot: "Shibuya Relax" }],
+  shops: [
+    {
+      id: 1,
+      shopId: 11,
+      shopNameSnapshot: "Shibuya Relax",
+      publicId: "shop0000000011",
+      city: "Tokyo",
+      address: "Shibuya 1-1",
+      mediaAssets: [
+        {
+          url: "https://cdn.needo.test/shop-cover.jpg",
+          altText: "Shibuya Relax",
+          sortOrder: 0
+        }
+      ]
+    }
+  ],
   services: [
     {
       id: 2,
@@ -128,11 +148,7 @@ const createUser = (id: number, permissionCodes: string[]) => {
 
 const createFixture = () => {
   const users = [
-    createUser(7, [
-      "page:affiliate-marketplace",
-      "button:affiliate-claim",
-      "booking:create"
-    ]),
+    createUser(7, ["page:affiliate-marketplace", "button:affiliate-claim", "booking:create"]),
     createUser(8, ["page:affiliate-marketplace"]),
     createUser(9, ["button:affiliate-claim"])
   ];
@@ -216,6 +232,20 @@ describe("affiliate marketplace HTTP API", () => {
         });
         expect(response.body.data.list[0]).not.toHaveProperty("publisherShopId");
         expect(response.body.data.list[0]).not.toHaveProperty("budgetReservation");
+        expect(response.body.data.list[0]).not.toHaveProperty("walletId");
+        expect(response.body.data.list[0]).toMatchObject({
+          coverImageUrl: "https://cdn.needo.test/task-cover.jpg",
+          totalBudgetNdp: 2_000_000,
+          remainingBudgetNdp: 1_985_000,
+          remainingBudgetBps: 9_925,
+          shops: [
+            expect.objectContaining({
+              publicId: "shop0000000011",
+              city: "Tokyo",
+              address: "Shibuya 1-1"
+            })
+          ]
+        });
       });
     expect(fixture.affiliateMarketplaceService.listTasks).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 7 }),
@@ -348,8 +378,6 @@ describe("affiliate marketplace HTTP API", () => {
       });
     expect(fixture.affiliateMarketplaceService.resolveLink).toHaveBeenCalledWith(publicToken);
 
-    await request(fixture.app)
-      .get("/api/v1/affiliate/resolve/not-a-token")
-      .expect(400);
+    await request(fixture.app).get("/api/v1/affiliate/resolve/not-a-token").expect(400);
   });
 });

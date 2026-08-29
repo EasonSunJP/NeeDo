@@ -194,6 +194,45 @@ describe("BookingService state machine", () => {
     });
   });
 
+  it("returns a structured conflict when an active acceptance pause blocks confirmation", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.transitionOrderWithScheduleGuard = jest.fn().mockResolvedValue({
+      outcome: "acceptance_paused",
+      pauses: [
+        {
+          subjectType: "merchant_account",
+          authorityType: "operations",
+          reasonCode: "risk_review",
+          startsAt: new Date("2026-08-29T01:00:00.000Z")
+        }
+      ]
+    });
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn(),
+      settleBookingCompletion: jest.fn(),
+      compensateCustomerForMerchantCancellation: jest.fn()
+    };
+    const service = new BookingService(repository, ledgerService);
+
+    await expect(service.transitionOrder(actor, 1, "confirm")).rejects.toMatchObject({
+      code: ERROR_CODES.ORDER_ACCEPTANCE_PAUSED,
+      message: "error.order.acceptance_paused",
+      statusCode: 409,
+      data: {
+        pauses: [
+          expect.objectContaining({
+            subjectType: "merchant_account",
+            authorityType: "operations",
+            reasonCode: "risk_review"
+          })
+        ]
+      }
+    });
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
+    expect(ledgerService.freezeBookingAcceptance).not.toHaveBeenCalled();
+  });
+
   it("rejects only new bookings for a suspended shop and keeps existing order transitions available", async () => {
     const repository = createRepository(makeOrder("confirmed"));
     repository.findScheduleSlotShopId = jest.fn(async () => 1);
@@ -311,7 +350,8 @@ describe("BookingService state machine", () => {
     const [, options] = repository.createBooking.mock.calls[0];
     expect(options).toEqual({
       prepareAffiliate: expect.any(Function),
-      persistAffiliate: expect.any(Function)
+      persistAffiliate: expect.any(Function),
+      invalidateSupersededAffiliate: expect.any(Function)
     });
     const transactionClient = { booking: "transaction" };
     const context = {
@@ -371,7 +411,8 @@ describe("BookingService state machine", () => {
     });
 
     expect(repository.createBooking).toHaveBeenCalledWith(
-      expect.objectContaining({ customerUserId: actor.userId })
+      expect.objectContaining({ customerUserId: actor.userId }),
+      { invalidateSupersededAffiliate: expect.any(Function) }
     );
     expect(affiliateCheckout.prepareCheckout).not.toHaveBeenCalled();
   });
@@ -403,24 +444,30 @@ describe("BookingService state machine", () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);
 
-    await service.listOrders({
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 11
-    }, { page: 1, pageSize: 20 });
+    await service.listOrders(
+      {
+        userId: 2,
+        roles: ["merchant_owner"],
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 11
+      },
+      { page: 1, pageSize: 20 }
+    );
     expect(repository.listOrders).toHaveBeenLastCalledWith({
       shopId: 11,
       page: 1,
       pageSize: 20
     });
 
-    await service.listOrders({
-      userId: 3,
-      roles: ["technician"],
-      currentIdentityScopeType: "technician_profile",
-      currentIdentityScopeId: 17
-    }, { page: 1, pageSize: 20 });
+    await service.listOrders(
+      {
+        userId: 3,
+        roles: ["technician"],
+        currentIdentityScopeType: "technician_profile",
+        currentIdentityScopeId: 17
+      },
+      { page: 1, pageSize: 20 }
+    );
     expect(repository.listOrders).toHaveBeenLastCalledWith({
       technicianProfileId: 17,
       page: 1,
@@ -429,22 +476,37 @@ describe("BookingService state machine", () => {
   });
 
   it("hides orders outside the active merchant and technician identity scope", async () => {
-    const merchantService = new BookingService(createRepository({ ...makeOrder("pending"), shopId: 99 }));
-    const technicianService = new BookingService(createRepository({ ...makeOrder("confirmed"), technicianProfileId: 99 }));
+    const merchantService = new BookingService(
+      createRepository({ ...makeOrder("pending"), shopId: 99 })
+    );
+    const technicianService = new BookingService(
+      createRepository({ ...makeOrder("confirmed"), technicianProfileId: 99 })
+    );
 
-    await expect(merchantService.getOrder({
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 11
-    }, 1)).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+    await expect(
+      merchantService.getOrder(
+        {
+          userId: 2,
+          roles: ["merchant_owner"],
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: 11
+        },
+        1
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
 
-    await expect(technicianService.transitionOrder({
-      userId: 3,
-      roles: ["technician"],
-      currentIdentityScopeType: "technician_profile",
-      currentIdentityScopeId: 17
-    }, 1, "start")).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+    await expect(
+      technicianService.transitionOrder(
+        {
+          userId: 3,
+          roles: ["technician"],
+          currentIdentityScopeType: "technician_profile",
+          currentIdentityScopeId: 17
+        },
+        1,
+        "start"
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
   });
 
   it("hides other customers' orders from customer actors", async () => {
@@ -739,12 +801,16 @@ describe("BookingService state machine", () => {
       createRepository(makeOrder("pending")),
       undefined,
       notificationService
-    ).transitionOrder({
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 1
-    }, 1, "confirm");
+    ).transitionOrder(
+      {
+        userId: 2,
+        roles: ["merchant_owner"],
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 1
+      },
+      1,
+      "confirm"
+    );
 
     expect(notificationService.notifyOrderStatusChanged).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -756,5 +822,35 @@ describe("BookingService state machine", () => {
         recipientUserIds: [1]
       })
     );
+  });
+
+  it("does not report a committed pending replacement as failed when notification delivery fails", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const replacement = makeOrder("pending");
+    const superseded = {
+      ...makeOrder("cancelled"),
+      id: 2,
+      orderNo: "ND202605260000"
+    };
+    repository.createBooking.mockResolvedValue({
+      order: replacement,
+      recipientUserIds: [2],
+      supersededOrders: [{ order: superseded, recipientUserIds: [2] }]
+    });
+    const notificationService: jest.Mocked<OrderStatusNotificationPort> = {
+      notifyOrderStatusChanged: jest.fn().mockRejectedValue(new Error("notification unavailable"))
+    };
+    const service = new BookingService(repository, undefined, notificationService);
+
+    await expect(
+      service.createBooking(actor, {
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toEqual(replacement);
+
+    expect(repository.createBooking).toHaveBeenCalledTimes(1);
+    expect(notificationService.notifyOrderStatusChanged).toHaveBeenCalledTimes(2);
   });
 });

@@ -8,6 +8,8 @@ import {
   getStoredRefreshToken,
   httpClient,
   refreshStoredAccessToken,
+  setAuthExpiredHandler,
+  setExpectedAuthUserId,
   setAuthTokens
 } from "./httpClient";
 import type { AuthMePayload } from "../auth/rbac";
@@ -60,6 +62,11 @@ function createFingerprintAgent(visitorId: string) {
   };
 }
 
+function accessTokenForSubject(subject: number) {
+  const payload = Buffer.from(JSON.stringify({ sub: String(subject) })).toString("base64url");
+  return `header.${payload}.signature`;
+}
+
 describe("httpClient auth tokens", () => {
   beforeEach(() => {
     vi.stubGlobal("window", {
@@ -74,6 +81,8 @@ describe("httpClient auth tokens", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    setAuthExpiredHandler(null);
+    setExpectedAuthUserId(null);
     clearAuthTokens();
     clearCachedDeviceFingerprint();
     vi.unstubAllEnvs();
@@ -91,6 +100,71 @@ describe("httpClient auth tokens", () => {
     expect(window.localStorage.getItem("needo.auth.access-token")).toBeNull();
     expect(window.sessionStorage.getItem("needo.auth.refresh-token")).toBe("refresh-token");
     expect(window.localStorage.getItem("needo.auth.refresh-token")).toBeNull();
+  });
+
+  it("refreshes a mismatched in-memory token before sending an authenticated mutation", async () => {
+    const staleToken = accessTokenForSubject(81);
+    const alignedToken = accessTokenForSubject(1);
+    setExpectedAuthUserId(1);
+    setAuthTokens({ accessToken: staleToken, refreshToken: "admin-refresh-token" });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({
+        code: 0,
+        message: "success",
+        data: { accessToken: alignedToken, expiresIn: 900 }
+      }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { updated: true } }));
+
+    await expect(httpClient.request<{ updated: boolean }>("/im/messages/1/reactions", {
+      body: { emoji: "😂" },
+      method: "PUT"
+    })).resolves.toEqual({ updated: true });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/auth/refresh",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/im/messages/1/reactions",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: `Bearer ${alignedToken}` }),
+        method: "PUT"
+      })
+    );
+  });
+
+  it("fails closed instead of sending a request when refresh keeps the wrong token subject", async () => {
+    const mismatchedToken = accessTokenForSubject(81);
+    const onAuthExpired = vi.fn();
+    setExpectedAuthUserId(1);
+    setAuthTokens({ accessToken: mismatchedToken, refreshToken: "admin-refresh-token" });
+    setAuthExpiredHandler(onAuthExpired);
+    const fetchMock = vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { accessToken: mismatchedToken, expiresIn: 900 }
+    }));
+
+    await expect(httpClient.request("/im/messages/1/reactions", {
+      body: { emoji: "😂" },
+      method: "PUT"
+    })).rejects.toMatchObject({
+      code: 401,
+      message: "error.auth.session_mismatch",
+      status: 401
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/auth/refresh",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(getAccessToken()).toBeNull();
+    expect(getStoredRefreshToken()).toBeNull();
+    expect(onAuthExpired).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes once after a 401 response and retries the original request", async () => {
@@ -141,6 +215,24 @@ describe("httpClient auth tokens", () => {
       })
     );
     expect(getAccessToken()).toBe("fresh-access-token");
+  });
+
+  it("expires the local session when a protected request receives 401 without a refresh token", async () => {
+    const onAuthExpired = vi.fn();
+    setAuthTokens({ accessToken: "stale-access-token" });
+    setAuthExpiredHandler(onAuthExpired);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    await expect(httpClient.request("/affiliate/profile")).rejects.toMatchObject({
+      code: 40105,
+      message: "error.auth.token_invalid",
+      status: 401
+    });
+
+    expect(getAccessToken()).toBeNull();
+    expect(onAuthExpired).toHaveBeenCalledTimes(1);
   });
 
   it("coalesces explicit session restoration and unauthorized retries into one refresh request", async () => {
@@ -206,6 +298,30 @@ describe("httpClient auth tokens", () => {
       message: "error.network.timeout",
       status: 408
     });
+  });
+
+  it("honors a caller abort signal without misreporting it as a timeout", async () => {
+    const callerController = new AbortController();
+    vi.mocked(fetch).mockImplementationOnce((_url, init) => {
+      const requestSignal = (init as RequestInit).signal;
+
+      return new Promise<Response>((_resolve, reject) => {
+        if (requestSignal?.aborted) {
+          reject(new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        requestSignal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      });
+    });
+
+    const request = httpClient.request("/affiliate/alliances/me", {
+      signal: callerController.signal
+    });
+    callerController.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("reports non-json API responses as a routing error", async () => {

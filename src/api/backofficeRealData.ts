@@ -10,12 +10,14 @@ export interface BackofficeOrderPayload {
   status: string;
   paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
   customerUserId: number;
+  customerProfileId: number | null;
   customerName: string;
   serviceId: number | null;
   serviceName: string;
   shopId: number;
   shopName: string;
   technicianProfileId: number | null;
+  technicianNeedoId: string | null;
   technicianName: string | null;
   fulfillmentMode: "home" | "store" | string;
   priceAmount: number;
@@ -195,6 +197,7 @@ export interface BackofficeIdentityPayload {
 }
 
 export interface BackofficeAccountPayload {
+  needoId: string;
   username: string;
   email: string;
   phone: string | null;
@@ -255,6 +258,9 @@ export interface BackofficeAuditEventPayload {
   metadata: Record<string, unknown> | null;
 }
 
+export type BackofficeCustomerTimelinePayload =
+  PaginatedApiPayload<BackofficeAuditEventPayload>;
+
 export interface BackofficeTechnicianDetailPayload extends BackofficeTechnicianPayload {
   bio: string | null;
   yearsExperience: number;
@@ -290,6 +296,12 @@ export interface BackofficeCustomerDetailPayload extends BackofficeCustomerPaylo
   recentBookings: BackofficeOrderPayload[];
   reviewSummary: BackofficeReviewSummaryPayload | null;
   timeline: BackofficeAuditEventPayload[];
+  membershipGrantMode: "self_service" | "operator_complimentary";
+  membershipDurationUnit: "forever" | "day" | "month" | null;
+  membershipDurationValue: number | null;
+  membershipStartsAt: string | null;
+  membershipExpiresAt: string | null;
+  membershipGrantedBy: { needoId: string; username: string } | null;
 }
 
 export interface BackofficeServicePayload {
@@ -327,7 +339,25 @@ export interface BackofficeShopCreateInput {
 export type BackofficeShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone" | "isRecommended">>;
 export type MerchantShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">>;
 export type BackofficeTechnicianUpdateInput = Partial<Pick<BackofficeTechnicianPayload, "displayName" | "city" | "serviceArea" | "employmentType" | "employmentStartedAt">> & { shopId?: number | null; isRecommended?: boolean };
-export type BackofficeCustomerUpdateInput = Partial<Pick<BackofficeCustomerPayload, "displayName" | "city" | "membershipLevel" | "isPublic">> & { bio?: string | null };
+export type BackofficeCustomerUpdateInput = Partial<Pick<BackofficeCustomerPayload, "displayName" | "city" | "isPublic">> & { bio?: string | null };
+
+export interface BackofficeCustomerMembershipGrantInput {
+  membershipLevel: string;
+  grantMode: "operator_complimentary";
+  durationUnit: "forever" | "day" | "month";
+  durationValue: number | null;
+  startsAt: string;
+}
+
+export interface BackofficeCustomerMembershipGrantPayload {
+  membershipLevel: string;
+  membershipGrantMode: "operator_complimentary";
+  membershipDurationUnit: "forever" | "day" | "month";
+  membershipDurationValue: number | null;
+  membershipStartsAt: string;
+  membershipExpiresAt: string | null;
+  membershipGrantedBy: { needoId: string; username: string };
+}
 export type BackofficeServiceCreateInput = Pick<BackofficeServicePayload, "categoryId" | "name" | "city" | "serviceMode" | "priceAmount" | "durationMinutes"> & Partial<Pick<BackofficeServicePayload, "technicianProfileId" | "description" | "status" | "isRecommended" | "sortOrder">>;
 export type BackofficeServiceUpdateInput = Partial<BackofficeServiceCreateInput>;
 
@@ -579,8 +609,20 @@ export const backofficeRealDataApi = {
   customer(scope: BackofficeScope, id: number) {
     return httpClient.request<BackofficeCustomerDetailPayload>(`${scopePrefix(scope)}/customers/${id}`);
   },
+  customerTimeline(scope: BackofficeScope, id: number, page = 1, pageSize = 10) {
+    return httpClient.request<BackofficeCustomerTimelinePayload>(
+      `${scopePrefix(scope)}/customers/${id}/timeline`,
+      { query: { page, pageSize } },
+    );
+  },
   updateCustomer(id: number, input: BackofficeCustomerUpdateInput) {
     return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, { body: input, method: "PATCH" });
+  },
+  assignCustomerMembership(id: number, input: BackofficeCustomerMembershipGrantInput) {
+    return httpClient.request<BackofficeCustomerMembershipGrantPayload>(
+      `/backoffice/customers/${id}/membership`,
+      { body: input, method: "PUT" }
+    );
   },
   deleteCustomer(id: number) {
     return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, { method: "DELETE" });

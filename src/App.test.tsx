@@ -116,3 +116,34 @@ describe("production route chunk boundaries", () => {
     expect(appSource).toContain('path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)}');
   });
 });
+
+describe("Affiliate announcement route", () => {
+  it("registers the localized announcement detail inside the protected Affiliate portal", () => {
+    expect(appSource).toContain(
+      'import { AffiliateAnnouncementDetailPage } from "./features/content-publication/AffiliateAnnouncementDetailPage";'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/announcements/:announcementPublicId" element={protect("business", <AffiliateAnnouncementDetailPage />)}'
+    );
+  });
+});
+
+describe("Affiliate marketplace routes", () => {
+  it("mounts the real task list and detail pages behind the Affiliate portal", () => {
+    expect(appSource).toContain(
+      'import { AffiliateMarketplacePage } from "./pages/mobile/AffiliateMarketplacePage";'
+    );
+    expect(appSource).toContain(
+      'import { AffiliateTaskDetailPage } from "./pages/mobile/AffiliateTaskDetailPage";'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/plan" element={protect("business", <AffiliateMarketplacePage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/tasks/:taskId" element={protect("business", <AffiliateTaskDetailPage />)}'
+    );
+    expect(appSource).not.toContain(
+      'path="/afirieito/plan" element={protect("business", <BusinessCpsPage />)}'
+    );
+  });
+});

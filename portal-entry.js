@@ -1,3 +1,7 @@
+document.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+});
+
 const hashRoute = document.querySelector('meta[name="needo-hash"]')?.getAttribute("content")?.trim() || "#/";
 const htmlTitle = document.querySelector('meta[name="needo-title"]')?.getAttribute("content")?.trim();
 const portalTitles = {

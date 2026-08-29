@@ -244,6 +244,23 @@ ENV_FILE=.env.dev npm --prefix backend run check:booking-platform-fee-debt-flow
 
 The checker rejects production flags, remote MySQL hosts, and production-looking database names. It creates uniquely marked real users, customer/technician profiles, shops, services, schedule slots, bookings, wallets, holds, ledger entries, adjustments, and audits; exercises disabled/shop/technician payer, rollback, explicit and consecutive overdrafts, cancellation, immediate/delayed/expired reward, and replay behavior. It also uses real MySQL barriers to force both completion-first and top-up-first races. Settlement locks the payer wallet before reading the complete `OrderFinancial` row with `FOR UPDATE`; top-up and expiry use the same locking read, and reward deadlines use `CURRENT_TIMESTAMP(3)`. The current check creates 7 users, 9 shops, and 10 bookings, then proves exact pre/post aggregate equality after marker-only cleanup.
 
+The additive Booking slice uses migration `20260829130000_order_acceptance_pause`. It introduces persisted merchant-group/shop acceptance pauses with separate operations, merchant, and shop authorities. Active pauses leave availability visible and still allow a customer to create a `PENDING` order, but block only `PENDING → CONFIRMED` before settlement. All active authorities must release their own pause before confirmation can proceed. Ordinary customers are serialized on the real User row and atomically replace all older `PENDING` orders; `membershipLevel=black` is the only multiple-PENDING exception. Replacement cancellation, slot capacity release, status history, affiliate invalidation, and the new order share one transaction, including rollback when the new slot cannot be committed.
+
+Before formal apply, the guarded local checker below was run against `needo_dev`. It dry-ran the DDL, validated its 17 columns, four foreign keys, and four checks, transactionally rolled back the permission DML, ran real repository/service scenarios, proved exact marker cleanup, and dropped the dry-run table without recording the migration. Use it only on a fresh local non-production schema where the migration has not yet been applied:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:order-acceptance-control-migration
+```
+
+Migration `20260829130000_order_acceptance_pause` has now been applied through Prisma to the formal local `needo_dev` database. `prisma migrate status` reports all 61 repository migrations up to date. The post-apply real-flow command composes the acceptance-control and Affiliate checkout checkers: it covers membership-unlink/confirmation serialization plus multi-order same-task Affiliate budget reuse, then proves exact fixture cleanup and zero financial or ledger drift:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run check:order-acceptance-control-flow
+```
+
+This evidence is local database acceptance only; it is not a production deployment. Do not bypass Prisma migration history or copy only an external step's SQL without its matching schema and code.
+
 ## Formal Customer Reservations
 
 Numeric checkout routes load the formal service detail and current bookable schedule inventory, then create the reservation through the authenticated Booking API. A successful submission navigates directly to the persisted numeric order without copying it into browser storage. The customer reservation list reads only the paginated Booking API. Numeric reservation detail routes load the formal order, payment state, and complete status history from the backend, and customer cancellation is submitted through the protected order-status endpoint. Browser-local order creation, hiding, deletion, review mutation, and mock-order merging are not used in this formal lane. Legacy nonnumeric demo links remain isolated compatibility.
@@ -268,11 +285,17 @@ The operations demand and information routes are explicit production exchange ca
 
 The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks; the formal affiliate marketplace can issue one stable promotion code and signed URL per task/user; Booking Checkout persists validated attribution, allocation, and customer-discount price snapshots; service completion settles fixed NDP rewards; and the backend automatically ends due tasks and releases only their unallocated frozen budget. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires completed-order reversal, fraud, aggregate, export, and UI microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
+### Formal Affiliate Alliance Invitations
+
+The user Affiliate alliance page now uses real APIs for reciprocal-contact candidate discovery, owner member lists, sent/received invitations, partner/subordinate hierarchy assignment, accept/reject, exact 72-hour expiry, least-privilege membership, and conditional wallet visibility. All transitions are persisted and audited; cross-alliance acceptance is protected by the single-active-membership constraint. See [the alliance foundation](docs/affiliate-alliance-foundation.md) and [the invitation workflow](docs/affiliate-alliance-invitations.md). This is one formal slice, not the completed Affiliate platform.
+
 ### Formal Affiliate Task Publishing and Review
 
 The formal alliance-marketing foundation persists tasks, explicit shop/service scope snapshots, claims, hashed signed-link tokens, touches, one-attribution-per-order records, fixed-NDP rewards, task budget reservations, ledger links, and risk events. It extends wallets to support merchant-account ownership and seeds role-specific affiliate menu/page/button permissions.
 
 Merchant accounts and current-shop identities now have formal paginated APIs to create and edit unfunded drafts, inspect their tasks, and submit a task for review. Drafts never mutate a wallet. Submit revalidates the publisher's active shop/service scope, refreshes immutable display snapshots, then atomically freezes the full integer-NDP budget, creates a budget reservation and ledger link, writes reconciliation/audit evidence, and moves the task to `pending_review`. A concurrent or repeated submit cannot duplicate the freeze.
+
+Every task now persists independent Japanese, English, Korean, Traditional Chinese, and Simplified Chinese name/description rows. Creating a draft from any selected source language copies that first value to all five rows; subsequent edits affect only the selected language unless the merchant explicitly requests synchronization to all languages. The optimistic task lock protects every language edit, and each change is audited. Submission requires publishable task content in at least one language; when every language is missing or blank, it returns `error.affiliate.task_content_required` before any NDP is frozen. Marketplace search matches every active language. Task cards and detail pages select the authored value for the user's current application language, and use the task's formal compatibility snapshot if that language is absent; they never machine-translate authored content.
 
 Operations users can list/detail tasks and approve or reject a pending task. Approval produces `scheduled` or `active` from the task window. Rejection atomically returns the complete unused frozen budget to available NDP, retains the historical reserved amount for budget conservation, marks the reservation released, and writes one release ledger/reconciliation/audit trail. Insufficient funds, stale optimistic locks, invalid merchant membership, invalid service scope, and transaction failures roll back without partial writes.
 
@@ -280,6 +303,7 @@ Formal endpoints:
 
 - `GET|POST /api/v1/merchant-admin/affiliate/tasks`
 - `GET|PATCH /api/v1/merchant-admin/affiliate/tasks/:taskId`
+- `PUT /api/v1/merchant-admin/affiliate/tasks/:taskId/locales/:locale`
 - `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit`
 - `GET /api/v1/backoffice/affiliate/tasks`
 - `GET /api/v1/backoffice/affiliate/tasks/:taskId`
@@ -291,11 +315,12 @@ Verify the complete transaction flow against a local non-production MySQL databa
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-localization-flow
 ```
 
 The check refuses production flags and remote database hosts, verifies draft/no-freeze, shop and merchant-account freezes, refreshed snapshots, insufficient-funds rollback, membership isolation, review state, full rejection release, idempotency, ledger/reconciliation/audit evidence, and removes only its uniquely identified rows.
 
-This task-publishing microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Checkout attribution/discount application, service-completion reward settlement, and automatic task-end release are implemented in later formal microsteps; manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and complete UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
+The localization checker refuses remote, staging, and production-looking targets; verifies initial five-language copy, independent editing, explicit synchronize-all, rejection with no freeze when every language lacks content, successful one-language submission with exactly one budget freeze, translation audit evidence, and exact marker-only cleanup. This task-localization microstep does not yet activate the merchant/shop task-management editor. Manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and the complete merchant UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
 
 ### Formal Affiliate Marketplace Claims And Signed Links
 
@@ -325,6 +350,8 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-marketplace-claim-flo
 ```
 
 The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. Claim creation itself does not allocate or settle reward budget; those changes occur only in Booking Checkout and the service-completion transaction.
+
+The protected mobile Affiliate experience now consumes those formal endpoints on `/afirieito`, `/afirieito/plan`, and `/afirieito/tasks/:taskId`. Its announcement carousel remains independent from the ordinary user-home carousel; recommended-task cards, search, server pagination, task detail, public store navigation, IM directory prefill, and idempotent participation all use persisted API data. See [Affiliate marketplace mobile UI](docs/affiliate-marketplace-mobile-ui.md) for the data/privacy boundary, verification evidence, and remaining formal microsteps.
 
 ### Formal Affiliate Checkout Attribution And Customer Discounts
 
@@ -416,7 +443,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
 - Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班、用户正式预约列表/详情、线下收款和 NDP 充值提现审核已迁移到 API/Prisma，禁止新增正式业务 mock。
-- 多语言：用户端与后台端支持中文、日本語、English 三语切换，语言偏好会保存在本地。
+- 多语言：用户端与后台端支持日本語、English、한국어、繁體中文、简体中文五语切换，语言偏好会保存在本地；正式公告、规则和预约/联盟营销等可发布内容使用独立的服务端语言版本。
 - 后台主题：运营控制台支持黑夜 / 白天两套视觉主题，可在后台顶部随时切换。
 
 ## 2026-04 Frontend UI Rebuild

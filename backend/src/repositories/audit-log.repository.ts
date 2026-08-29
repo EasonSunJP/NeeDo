@@ -15,6 +15,13 @@ export interface AuditLogRepositoryPort {
   create: (input: AuditLogCreateInput) => Promise<void>;
 }
 
+export interface TransactionAwareAuditLogRepositoryPort extends AuditLogRepositoryPort {
+  createInTransaction: (
+    client: Pick<Prisma.TransactionClient, "auditLog">,
+    input: AuditLogCreateInput
+  ) => Promise<void>;
+}
+
 export const toAuditLogCreateData = (input: AuditLogCreateInput): Prisma.AuditLogUncheckedCreateInput => ({
   actorId: input.actorId ?? null,
   action: input.action,
@@ -25,11 +32,20 @@ export const toAuditLogCreateData = (input: AuditLogCreateInput): Prisma.AuditLo
   metadata: input.metadata as Prisma.InputJsonValue | undefined
 });
 
-export class AuditLogRepository implements AuditLogRepositoryPort {
+export class AuditLogRepository implements TransactionAwareAuditLogRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async create(input: AuditLogCreateInput): Promise<void> {
     await this.client.auditLog.create({
+      data: toAuditLogCreateData(input)
+    });
+  }
+
+  public async createInTransaction(
+    client: Pick<Prisma.TransactionClient, "auditLog">,
+    input: AuditLogCreateInput
+  ): Promise<void> {
+    await client.auditLog.create({
       data: toAuditLogCreateData(input)
     });
   }

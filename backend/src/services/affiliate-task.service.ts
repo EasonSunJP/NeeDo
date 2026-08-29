@@ -1,4 +1,9 @@
 import { randomUUID } from "crypto";
+import {
+  CONTENT_LOCALES,
+  initializeContentTranslations,
+  type ContentLocaleCode
+} from "../constants/content-locales";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
@@ -21,6 +26,17 @@ export type AffiliateServiceScopeMode = "all_current_services" | "selected_servi
 export type AffiliateBudgetStatus = "active" | "released" | "exhausted";
 export type AffiliateBudgetTransactionKind = "freeze" | "release";
 export type AffiliateTaskTransactionClient = unknown;
+
+export interface AffiliateTaskTranslationPayload {
+  name: string;
+  description: string | null;
+  sourceLocale: ContentLocaleCode;
+  isInitialCopy: boolean;
+}
+
+export type AffiliateTaskTranslations = Partial<
+  Record<ContentLocaleCode, AffiliateTaskTranslationPayload>
+>;
 
 export interface AffiliateShopScopeRecord {
   id: number;
@@ -91,12 +107,14 @@ export type CreateAffiliateTaskInput =
   | (AffiliateTaskEditableFields &
       AffiliateTaskScopeInput & {
         publisherType: "shop";
+        sourceLocale?: ContentLocaleCode;
       })
   | (AffiliateTaskEditableFields &
       AffiliateTaskScopeInput & {
         publisherType: "merchant_account";
         merchantAccountId: number;
         shopIds: number[];
+        sourceLocale?: ContentLocaleCode;
       });
 
 export type UpdateAffiliateTaskInput = AffiliateTaskEditableFields &
@@ -111,12 +129,29 @@ export interface AffiliateTaskPersistenceInput extends AffiliateTaskEditableFiel
   publisherType: AffiliatePublisherType;
   publisherMerchantAccountId: number | null;
   publisherShopId: number | null;
+  translations: AffiliateTaskTranslations;
 }
 
 export interface UpdateAffiliateTaskPersistenceInput {
   taskId: number;
   lockVersion: number;
   fields: AffiliateTaskEditableFields;
+}
+
+export interface UpdateAffiliateTaskTranslationInput {
+  lockVersion: number;
+  name: string;
+  description: string | null;
+  syncToAll: boolean;
+}
+
+export interface UpdateAffiliateTaskTranslationPersistenceInput {
+  taskId: number;
+  locale: ContentLocaleCode;
+  lockVersion: number;
+  name: string;
+  description: string | null;
+  syncToAll: boolean;
 }
 
 export interface AffiliateTaskRecord extends AffiliateTaskPersistenceInput {
@@ -184,6 +219,9 @@ export interface AffiliateTaskRepositoryPort {
   createTask: (input: AffiliateTaskPersistenceInput) => Promise<AffiliateTaskRecord>;
   updateDraftTask: (
     input: UpdateAffiliateTaskPersistenceInput
+  ) => Promise<AffiliateTaskRecord | null>;
+  updateDraftTranslation: (
+    input: UpdateAffiliateTaskTranslationPersistenceInput
   ) => Promise<AffiliateTaskRecord | null>;
   replaceTaskScopeSnapshots: (input: {
     taskId: number;
@@ -291,6 +329,21 @@ export class AffiliateTaskService {
         selectedServiceIds: input.selectedServiceIds
       });
       const taskCode = this.createTaskCode();
+      const sourceLocale = input.sourceLocale ?? "zh-CN";
+      const initialized = initializeContentTranslations(sourceLocale, {
+        name: fields.name,
+        description: fields.description
+      });
+      const translations = Object.fromEntries(
+        CONTENT_LOCALES.map((locale) => [
+          locale,
+          {
+            ...initialized[locale],
+            sourceLocale,
+            isInitialCopy: locale !== sourceLocale
+          }
+        ])
+      ) as AffiliateTaskTranslations;
       const created = await repository.createTask({
         ...fields,
         taskCode,
@@ -298,7 +351,8 @@ export class AffiliateTaskService {
         publisherType: input.publisherType,
         publisherMerchantAccountId:
           input.publisherType === "merchant_account" ? input.merchantAccountId : null,
-        publisherShopId: input.publisherType === "shop" ? publisher.shopIds[0] : null
+        publisherShopId: input.publisherType === "shop" ? publisher.shopIds[0] : null,
+        translations
       });
       await repository.replaceTaskScopeSnapshots({ taskId: created.id, ...scope });
       await repository.createAuditLog({
@@ -365,13 +419,51 @@ export class AffiliateTaskService {
     });
   }
 
+  public updateDraftLocale(
+    actor: AuthenticatedAccessContext,
+    taskId: number,
+    locale: ContentLocaleCode,
+    input: UpdateAffiliateTaskTranslationInput
+  ): Promise<AffiliateTaskRecord> {
+    return this.repository.runInTransaction(async (repository) => {
+      const task = this.requireTask(await repository.findTaskById(taskId));
+      await this.assertPublisherAccess(repository, actor, task);
+      if (task.status !== "draft") {
+        throw this.invalidStateError("error.affiliate.task_not_editable");
+      }
+
+      const name = input.name.trim();
+      const description = input.description?.trim() || null;
+      if (!name || name.length > 160 || (description?.length ?? 0) > 10_000) {
+        throw this.validationError("error.affiliate.task_translation_invalid");
+      }
+      const updated = await repository.updateDraftTranslation({
+        taskId,
+        locale,
+        lockVersion: input.lockVersion,
+        name,
+        description,
+        syncToAll: input.syncToAll
+      });
+      if (!updated) {
+        throw this.conflictError();
+      }
+
+      await repository.createAuditLog({
+        actorUserId: actor.userId,
+        action: "affiliate.task.translation_updated",
+        taskId,
+        metadata: { locale, syncToAll: input.syncToAll, lockVersion: updated.lockVersion }
+      });
+      return this.requireTask(await repository.findTaskById(taskId));
+    });
+  }
+
   public async listPublisherTasks(
     actor: AuthenticatedAccessContext,
     input: AffiliateTaskListInput
   ): Promise<PaginatedResponse<AffiliateTaskRecord>> {
-    const merchantAccountIds = await this.repository.getManageableMerchantAccountIds(
-      actor.userId
-    );
+    const merchantAccountIds = await this.repository.getManageableMerchantAccountIds(actor.userId);
     const shopId =
       actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId
         ? actor.currentIdentityScopeId
@@ -397,10 +489,7 @@ export class AffiliateTaskService {
     return task;
   }
 
-  public submit(
-    actor: AuthenticatedAccessContext,
-    taskId: number
-  ): Promise<AffiliateTaskRecord> {
+  public submit(actor: AuthenticatedAccessContext, taskId: number): Promise<AffiliateTaskRecord> {
     return this.repository.runInTransaction(async (repository, transactionClient) => {
       const task = this.requireTask(await repository.lockTask(taskId));
       await this.assertPublisherAccess(repository, actor, task);
@@ -410,6 +499,9 @@ export class AffiliateTaskService {
       }
       if (task.status !== "draft") {
         throw this.invalidStateError();
+      }
+      if (!this.hasPublishableTranslation(task.translations)) {
+        throw this.invalidStateError("error.affiliate.task_content_required");
       }
 
       const currentTime = this.now();
@@ -488,10 +580,7 @@ export class AffiliateTaskService {
     });
   }
 
-  public approve(
-    actor: AuthenticatedAccessContext,
-    taskId: number
-  ): Promise<AffiliateTaskRecord> {
+  public approve(actor: AuthenticatedAccessContext, taskId: number): Promise<AffiliateTaskRecord> {
     this.assertBackofficeActor(actor);
     return this.repository.runInTransaction(async (repository) => {
       const task = this.requireTask(await repository.lockTask(taskId));
@@ -509,10 +598,7 @@ export class AffiliateTaskService {
         "approve",
         this.transitionContext(task, reviewedAt, task.budgetReservation)
       );
-      if (
-        !transition.ok ||
-        (transition.status !== "scheduled" && transition.status !== "active")
-      ) {
+      if (!transition.ok || (transition.status !== "scheduled" && transition.status !== "active")) {
         throw this.invalidStateError("error.affiliate.task_window_expired");
       }
 
@@ -689,10 +775,7 @@ export class AffiliateTaskService {
     }
 
     const selectedServiceIds = this.uniquePositiveIds(input.selectedServiceIds);
-    if (
-      input.serviceScopeMode === "all_current_services" &&
-      selectedServiceIds.length > 0
-    ) {
+    if (input.serviceScopeMode === "all_current_services" && selectedServiceIds.length > 0) {
       throw this.validationError("error.affiliate.service_scope_invalid");
     }
     if (
@@ -707,9 +790,7 @@ export class AffiliateTaskService {
 
     const services = await repository.findEligibleServices({
       shopIds,
-      ...(input.serviceScopeMode === "selected_services"
-        ? { selectedServiceIds }
-        : {})
+      ...(input.serviceScopeMode === "selected_services" ? { selectedServiceIds } : {})
     });
     if (
       services.length === 0 ||
@@ -831,16 +912,12 @@ export class AffiliateTaskService {
     }
     if (fields.customerDiscountType === "none") {
       return (
-        fields.fixedDiscountJpy === 0 &&
-        fields.discountRateBps === 0 &&
-        fields.discountCapJpy === 0
+        fields.fixedDiscountJpy === 0 && fields.discountRateBps === 0 && fields.discountCapJpy === 0
       );
     }
     if (fields.customerDiscountType === "fixed_jpy") {
       return (
-        fields.fixedDiscountJpy > 0 &&
-        fields.discountRateBps === 0 &&
-        fields.discountCapJpy === 0
+        fields.fixedDiscountJpy > 0 && fields.discountRateBps === 0 && fields.discountCapJpy === 0
       );
     }
     return (
@@ -849,6 +926,18 @@ export class AffiliateTaskService {
       fields.discountRateBps <= 10_000 &&
       fields.discountCapJpy > 0
     );
+  }
+
+  private hasPublishableTranslation(translations: AffiliateTaskTranslations): boolean {
+    return CONTENT_LOCALES.some((locale) => {
+      const translation = translations[locale];
+      if (!translation) return false;
+      return (
+        Boolean(translation.name.trim()) &&
+        translation.name.length <= 160 &&
+        (translation.description?.length ?? 0) <= 10_000
+      );
+    });
   }
 
   private isOptionalPositiveInteger(value: number | null): boolean {

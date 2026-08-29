@@ -11,6 +11,7 @@ import type {
   TechnicianProfile
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -98,6 +99,7 @@ export interface TechnicianCardPayload {
 
 export interface ServiceCardPayload {
   id: number;
+  publicId: string;
   name: string;
   description: string | null;
   category: CategoryPayload;
@@ -164,10 +166,10 @@ export interface HomeRecommendationsPayload {
 export interface CoreReadRepositoryPort {
   listCategories: (input: CategoryListInput) => Promise<PaginatedResponse<CategoryPayload>>;
   listServices: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
-  findServiceDetail: (id: number) => Promise<ServiceDetailPayload | null>;
+  findServiceDetail: (id: number | string) => Promise<ServiceDetailPayload | null>;
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
   search: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
-  findShopDetail: (id: number) => Promise<ShopDetailPayload | null>;
+  findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (id: number) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
 }
@@ -270,10 +272,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
-  public async findServiceDetail(id: number): Promise<ServiceDetailPayload | null> {
+  public async findServiceDetail(id: number | string): Promise<ServiceDetailPayload | null> {
     const service = await this.client.service.findFirst({
       where: {
-        id,
+        ...(typeof id === "number" ? { id } : { publicId: id }),
         deletedAt: null,
         status: PUBLISHED_STATUS
       },
@@ -339,10 +341,16 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return this.listServices({ ...input, sort: input.sort ?? "rating_desc" });
   }
 
-  public async findShopDetail(id: number): Promise<ShopDetailPayload | null> {
+  public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
     const shop = await this.client.shop.findFirst({
       where: {
-        id,
+        ...(typeof id === "number"
+          ? { id }
+          : {
+              publicIdentifier: {
+                is: { publicId: id, status: "ACTIVE", deletedAt: null }
+              }
+            }),
         deletedAt: null,
         status: PUBLISHED_STATUS
       },
@@ -551,6 +559,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
     return {
       id: service.id,
+      publicId: service.publicId,
       name: service.name,
       description: service.description,
       category: this.mapCategory(service.category),
@@ -643,17 +652,14 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       city: customer.city,
       bio: customer.bio,
       avatarUrl: this.findMediaUrl(customer.mediaAssets, "avatar"),
-      membershipLevel: customer.membershipLevel,
+      membershipLevel: resolveEffectiveCustomerMembershipLevel(customer),
       reviewSummary: this.mapReviewSummary(customer.reviewSummary),
       createdAt: customer.createdAt,
       updatedAt: customer.updatedAt
     };
   }
 
-  private requirePublicId(
-    identifier: PublicIdentifier | null,
-    expectedKind: "S" | "SHOP"
-  ): string {
+  private requirePublicId(identifier: PublicIdentifier | null, expectedKind: "S" | "SHOP"): string {
     if (
       identifier &&
       identifier.kind === expectedKind &&

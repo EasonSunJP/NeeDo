@@ -19,6 +19,7 @@ type SharedProps = {
   saving: boolean;
   title?: string;
   onRetry: () => void;
+  readOnly?: boolean;
 };
 
 type PayrollSchedulePolicyEditorProps =
@@ -117,6 +118,10 @@ export function PayrollSchedulePolicyEditor(
   useEffect(() => {
     if (!editing) setDraft(createDraft(props.mode, props.policy));
   }, [editing, props.mode, props.policy]);
+
+  useEffect(() => {
+    if (props.readOnly) setEditing(false);
+  }, [props.readOnly]);
 
   const effective = props.policy?.effectivePolicy ?? null;
   const preview = props.policy?.preview ?? null;
@@ -231,7 +236,7 @@ export function PayrollSchedulePolicyEditor(
               )}
             </p>
           </div>
-          {!editing && !props.loading ? (
+          {!props.readOnly && !editing && !props.loading ? (
             <Button
               disabled={props.saving}
               onClick={() => setEditing(true)}

@@ -3,10 +3,16 @@ import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
 import "./styles.css";
+import { installNativeContextMenuGuard } from "./lib/nativeContextMenuGuard";
 import { getClientPwaThemeColors, getInitialClientThemeState } from "./theme/ClientThemeProvider";
 
 const rootElement = document.getElementById("root")!;
 const displayModeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(display-mode: standalone)") : null;
+const uninstallNativeContextMenuGuard = installNativeContextMenuGuard();
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(uninstallNativeContextMenuGuard);
+}
 
 type LegacyMediaQueryList = MediaQueryList & {
   addListener?: (listener: (event: MediaQueryListEvent) => void) => void;

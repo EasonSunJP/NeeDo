@@ -1,8 +1,56 @@
 import { describe, expect, it } from "vitest";
 import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i18n";
+import { contentPublicationTranslations } from "../features/content-publication/i18n";
+import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes every Affiliate marketplace chrome string in all five languages", () => {
+    Object.values(affiliateMarketplaceTranslations).forEach((entry) => {
+      expect(entry).toMatchObject({
+        zh: expect.any(String),
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+      expect(Object.values(entry).every((value) => value.trim().length > 0)).toBe(true);
+    });
+
+    [
+      "推荐任务",
+      "正在读取推荐任务",
+      "剩余：{percent}%",
+      "当前最高收益：{amount} NDP",
+      "任务详细",
+      "本次总预算",
+      "目前剩余预算 {percent}%",
+      "聊天咨询",
+      "立即参加"
+    ].forEach((source) => {
+      expect(translations).toHaveProperty(source);
+      expect(translations[source]).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+    });
+  });
+
+  it("localizes every shared carousel state in all five supported languages", () => {
+    Object.values(contentPublicationTranslations).forEach((entry) => {
+      expect(entry).toMatchObject({
+        zh: expect.any(String),
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+      expect(Object.values(entry).every((value) => value.trim().length > 0)).toBe(true);
+    });
+  });
+
   it("keeps the shared language selector order aligned with product rules", () => {
     expect(languages.map((item) => item.code)).toEqual(["ja", "en", "ko", "zh-Hant", "zh"]);
     expect(languages.map((item) => item.label)).toEqual(["日本語", "English", "한국어", "繁中", "简中"]);

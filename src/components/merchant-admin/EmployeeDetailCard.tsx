@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import type {
   EmployeePayrollSchedulePolicyInput,
   PayrollSchedulePolicyResult,
@@ -19,7 +19,16 @@ import type {
 } from "../../features/merchant-admin/employeeApi";
 import { useOptionalAuth } from "../../auth/AuthProvider";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { languageLocales, translateText } from "../../i18n/translations";
+import { cn } from "../../lib/utils";
+import {
+  FormalTabs,
+  type FormalLocalization,
+} from "../admin/FormalProfileDetailPanels";
+import {
+  FormalTimelinePagination,
+  type FormalTimelinePageSize,
+} from "../admin/FormalTimelinePagination";
 import {
   ContactEventTimelinePanel,
   type ContactEventTimelineEntry,
@@ -29,8 +38,26 @@ import { Button } from "../ui/Button";
 import { PayrollSchedulePolicyEditor } from "./PayrollSchedulePolicyEditor";
 import { EmployeeCompensationPanel } from "./EmployeeCompensationPanel";
 import { EmployeeSchedulePanel } from "./EmployeeSchedulePanel";
+import { EmployeeSettlementPanel } from "./EmployeeSettlementPanel";
 
 type SavingSection = "profile" | "affiliation" | null;
+
+export type EmployeeDetailTab =
+  | "基础资料"
+  | "从属与账号"
+  | "员工日程"
+  | "薪酬与分成"
+  | "结算记录"
+  | "员工动态";
+
+const employeeDetailTabs: EmployeeDetailTab[] = [
+  "基础资料",
+  "从属与账号",
+  "员工日程",
+  "薪酬与分成",
+  "结算记录",
+  "员工动态",
+];
 
 interface EmployeeDetailCardProps {
   employee: MerchantEmployee;
@@ -62,10 +89,13 @@ interface EmployeeDetailCardProps {
   ) => Promise<void>;
   onSaveProfile: (input: MerchantEmployeeProfileUpdate) => Promise<void>;
   onRetryTimeline: () => void;
+  onTimelinePageChange: (page: number) => void;
+  onTimelinePageSizeChange: (pageSize: FormalTimelinePageSize) => void;
   onSubmitTimelineComment: (message: string) => Promise<void>;
   onSaveAffiliation: (
     input: MerchantEmployeeAffiliationUpdate,
   ) => Promise<void>;
+  readOnly?: boolean;
 }
 
 type ProfileDraft = Required<
@@ -106,6 +136,10 @@ function createAffiliationDraft(employee: MerchantEmployee): AffiliationDraft {
 
 function relationshipLabel(value: EmployeeRelationshipType) {
   return value === "exclusive" ? "专属技师" : "合作技师";
+}
+
+function employmentFormLabel(value: EmployeeRelationshipType) {
+  return value === "exclusive" ? "正式员工" : "临时工";
 }
 
 function workStatusLabel(value: EmployeeWorkStatus) {
@@ -187,11 +221,16 @@ export function EmployeeDetailCard({
   timelineError,
   timelineLoading,
   onRetryTimeline,
+  onTimelinePageChange,
+  onTimelinePageSizeChange,
   onSubmitTimelineComment,
+  readOnly = false,
 }: EmployeeDetailCardProps) {
   const auth = useOptionalAuth();
   const { language } = useOptionalI18n();
   const t = (source: string) => translateText(source, language);
+  const [activeTab, setActiveTab] = useState<EmployeeDetailTab>("基础资料");
+  const panelId = useId();
   const [profileEditing, setProfileEditing] = useState(false);
   const [affiliationEditing, setAffiliationEditing] = useState(false);
   const [profileDraft, setProfileDraft] = useState(() =>
@@ -212,11 +251,26 @@ export function EmployeeDetailCard({
       })[language],
     [language],
   );
+  const tabLocalization = useMemo<FormalLocalization>(
+    () => ({
+      language,
+      locale: languageLocales[language],
+      t,
+    }),
+    [language],
+  );
 
   useEffect(() => {
     setProfileDraft(createProfileDraft(employee));
     setAffiliationDraft(createAffiliationDraft(employee));
   }, [employee]);
+
+  useEffect(() => {
+    if (readOnly) {
+      setProfileEditing(false);
+      setAffiliationEditing(false);
+    }
+  }, [readOnly]);
 
   const resetProfile = () => {
     setProfileDraft(createProfileDraft(employee));
@@ -273,7 +327,7 @@ export function EmployeeDetailCard({
   const affiliationSaving = saving === "affiliation";
   const blocked = saving !== null || payrollPolicySaving || compensationSaving;
   const timelineEvents = useMemo<ContactEventTimelineEntry[]>(() => {
-    const auditedEvents: ContactEventTimelineEntry[] = (timeline?.list ?? []).map(
+    return (timeline?.list ?? []).map(
       (event) => ({
         actorAvatarSrc: event.actorAvatarUrl ?? undefined,
         actorName: event.actorName,
@@ -290,34 +344,7 @@ export function EmployeeDetailCard({
         tone: event.tone,
       }),
     );
-    const persistedProfileEvents: ContactEventTimelineEntry[] = [];
-
-    if (employee.verifiedAt) {
-      persistedProfileEvents.push({
-        actorName: t("NeeDo 系统"),
-        actorRole: t("档案验证"),
-        atLabel: employee.verifiedAt,
-        id: `verified-${employee.needoId}`,
-        message: t("员工档案已通过验证"),
-        title: t("档案验证"),
-        tone: "green",
-      });
-    }
-
-    persistedProfileEvents.push({
-      actorName: t("NeeDo 系统"),
-      actorRole: t("从属关系"),
-      atLabel: employee.affiliation.startsAt,
-      id: `affiliation-${employee.needoId}-${employee.affiliation.shop.publicId}`,
-      message: `${t("加入店铺并建立员工从属关系")} · ${employee.affiliation.shop.name}`,
-      title: t("从属关系"),
-      tone: "green",
-    });
-
-    return [...auditedEvents, ...persistedProfileEvents].sort((left, right) =>
-      String(right.atLabel).localeCompare(String(left.atLabel)),
-    );
-  }, [employee, language, timeline]);
+  }, [language, timeline]);
 
   return (
     <article className="space-y-5" data-testid="employee-detail-card">
@@ -374,9 +401,10 @@ export function EmployeeDetailCard({
             </div>
           </div>
         </div>
-        <dl className="grid border-t border-white/10 bg-white/[0.035] sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] border-t border-white/10 bg-white/[0.035]">
           {[
             ["所属店铺", employee.affiliation.shop.name],
+            ["雇佣形式", t(employmentFormLabel(employee.affiliation.relationshipType))],
             ["邮箱", employee.email],
             ["手机号码", employee.phone || t("未填写")],
             ["账号状态", t(employee.account.isActive ? "启用" : "停用")],
@@ -399,6 +427,16 @@ export function EmployeeDetailCard({
         </dl>
       </section>
 
+      <section className="overflow-hidden rounded-[24px] border border-line bg-paper shadow-sm">
+        <FormalTabs
+          active={activeTab}
+          idPrefix={panelId}
+          items={employeeDetailTabs}
+          localization={tabLocalization}
+          onChange={setActiveTab}
+        />
+      </section>
+
       {error ? (
         <div
           className="rounded-2xl border border-coral/35 bg-coral/10 px-4 py-3 text-sm font-bold text-[#9b3f35]"
@@ -408,7 +446,16 @@ export function EmployeeDetailCard({
         </div>
       ) : null}
 
-      <section className="rounded-[24px] border border-line bg-white p-5 shadow-sm sm:p-6">
+      <section
+        aria-labelledby={`${panelId}-tab-0`}
+        className={cn(
+          "rounded-[24px] border border-line bg-white p-5 shadow-sm sm:p-6",
+          activeTab !== "基础资料" && "hidden",
+        )}
+        hidden={activeTab !== "基础资料"}
+        id={`${panelId}-panel-0`}
+        role="tabpanel"
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-moss">
@@ -418,7 +465,7 @@ export function EmployeeDetailCard({
               {t("员工资料")}
             </h4>
           </div>
-          {!profileEditing ? (
+          {!readOnly && !profileEditing ? (
             <Button
               disabled={blocked}
               onClick={() => setProfileEditing(true)}
@@ -564,7 +611,16 @@ export function EmployeeDetailCard({
         )}
       </section>
 
-      <section className="rounded-[24px] border border-line bg-white p-5 shadow-sm sm:p-6">
+      <section
+        aria-labelledby={`${panelId}-tab-1`}
+        className={cn(
+          "rounded-[24px] border border-line bg-white p-5 shadow-sm sm:p-6",
+          activeTab !== "从属与账号" && "hidden",
+        )}
+        hidden={activeTab !== "从属与账号"}
+        id={`${panelId}-panel-1`}
+        role="tabpanel"
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-sky">
@@ -574,7 +630,7 @@ export function EmployeeDetailCard({
               {employee.affiliation.shop.name}
             </h4>
           </div>
-          {!affiliationEditing ? (
+          {!readOnly && !affiliationEditing ? (
             <Button
               disabled={blocked}
               onClick={() => setAffiliationEditing(true)}
@@ -703,7 +759,13 @@ export function EmployeeDetailCard({
         </div>
       </section>
 
-      <div>
+      <div
+        aria-labelledby={`${panelId}-tab-5`}
+        className={cn(activeTab !== "员工动态" && "hidden")}
+        hidden={activeTab !== "员工动态"}
+        id={`${panelId}-panel-5`}
+        role="tabpanel"
+      >
         {timelineLoading ? (
           <div className="rounded-[24px] border border-line bg-white px-5 py-6 text-sm font-bold text-ink/50 shadow-sm">
             {t("正在读取员工动态...")}
@@ -728,36 +790,80 @@ export function EmployeeDetailCard({
             onCommentSubmit={(message) => {
               void onSubmitTimelineComment(message).catch(() => undefined);
             }}
+            showCommentComposer={!readOnly}
             title={t("员工动态")}
           />
         )}
+        {!timelineError && timeline ? (
+          <FormalTimelinePagination
+            ariaLabel="员工动态翻页"
+            disabled={timelineLoading}
+            onPageChange={onTimelinePageChange}
+            onPageSizeChange={onTimelinePageSizeChange}
+            page={timeline.page}
+            pageSize={timeline.page_size}
+            total={timeline.total}
+          />
+        ) : null}
       </div>
 
-      <EmployeeSchedulePanel employee={employee} />
+      <div
+        aria-labelledby={`${panelId}-tab-2`}
+        className={cn(activeTab !== "员工日程" && "hidden")}
+        hidden={activeTab !== "员工日程"}
+        id={`${panelId}-panel-2`}
+        role="tabpanel"
+      >
+        <EmployeeSchedulePanel employee={employee} readOnly={readOnly} />
+      </div>
 
-      <EmployeeCompensationPanel
-        error={compensationError}
-        loading={compensationLoading}
-        onPreview={onPreviewCompensation}
-        onRetry={onRetryCompensation}
-        onSave={onSaveCompensation}
-        preview={compensationPreview}
-        previewing={compensationPreviewing}
-        result={compensation}
-        saving={compensationSaving}
-      />
+      <div
+        aria-labelledby={`${panelId}-tab-3`}
+        className={cn(activeTab !== "薪酬与分成" && "hidden")}
+        hidden={activeTab !== "薪酬与分成"}
+        id={`${panelId}-panel-3`}
+        role="tabpanel"
+      >
+        <EmployeeCompensationPanel
+          error={compensationError}
+          loading={compensationLoading}
+          onPreview={onPreviewCompensation}
+          onRetry={onRetryCompensation}
+          onSave={onSaveCompensation}
+          preview={compensationPreview}
+          previewing={compensationPreviewing}
+          result={compensation}
+          readOnly={readOnly}
+          saving={compensationSaving}
+        />
+      </div>
 
-      <PayrollSchedulePolicyEditor
-        description="继承店铺默认规则，或为该员工设置独立结算周期与休息日处理方式。"
-        error={payrollPolicyError}
-        loading={payrollPolicyLoading}
-        mode="employee"
-        onRetry={onRetryPayrollPolicy}
-        onSave={onSavePayrollPolicy}
-        policy={payrollPolicy}
-        saving={payrollPolicySaving}
-        title="工资结算周期"
-      />
+      <div
+        aria-labelledby={`${panelId}-tab-4`}
+        className={cn("space-y-5", activeTab !== "结算记录" && "hidden")}
+        hidden={activeTab !== "结算记录"}
+        id={`${panelId}-panel-4`}
+        role="tabpanel"
+      >
+        <EmployeeSettlementPanel
+          error={compensationError}
+          loading={compensationLoading}
+          onRetry={onRetryCompensation}
+          result={compensation}
+        />
+        <PayrollSchedulePolicyEditor
+          description="继承店铺默认规则，或为该员工设置独立结算周期与休息日处理方式。"
+          error={payrollPolicyError}
+          loading={payrollPolicyLoading}
+          mode="employee"
+          onRetry={onRetryPayrollPolicy}
+          onSave={onSavePayrollPolicy}
+          policy={payrollPolicy}
+          readOnly={readOnly}
+          saving={payrollPolicySaving}
+          title="工资结算周期"
+        />
+      </div>
     </article>
   );
 }

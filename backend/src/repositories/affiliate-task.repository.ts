@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { ContentLocale, Prisma, type PrismaClient } from "@prisma/client";
+import { CONTENT_LOCALES, type ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
 import type {
   AffiliateBudgetReservationRecord,
@@ -15,7 +16,8 @@ import type {
   AffiliateTaskRepositoryPort,
   AffiliateTaskTransactionClient,
   BackofficeAffiliateTaskListInput,
-  UpdateAffiliateTaskPersistenceInput
+  UpdateAffiliateTaskPersistenceInput,
+  UpdateAffiliateTaskTranslationPersistenceInput
 } from "../services/affiliate-task.service";
 import type { AffiliateTaskStatus } from "../services/affiliate-state-machine.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -24,6 +26,10 @@ import type { PaginatedResponse } from "../utils/pagination";
 type AffiliatePrismaClient = PrismaClient | Prisma.TransactionClient;
 
 const taskInclude = {
+  translations: {
+    where: { deletedAt: null },
+    orderBy: { id: "asc" as const }
+  },
   shops: {
     where: { deletedAt: null },
     orderBy: { id: "asc" as const }
@@ -175,7 +181,16 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
         lineageKey: input.lineageKey,
         publisherType: this.publisherTypeToDb(input.publisherType),
         publisherMerchantAccountId: input.publisherMerchantAccountId,
-        publisherShopId: input.publisherShopId
+        publisherShopId: input.publisherShopId,
+        translations: {
+          create: Object.entries(input.translations).map(([locale, translation]) => ({
+            locale: this.localeToDb(locale as ContentLocaleCode),
+            name: translation.name,
+            description: translation.description,
+            sourceLocale: this.localeToDb(translation.sourceLocale),
+            isInitialCopy: translation.isInitialCopy
+          }))
+        }
       },
       include: taskInclude
     });
@@ -200,6 +215,55 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
     });
 
     return update.count === 1 ? this.findTaskById(input.taskId) : null;
+  }
+
+  public async updateDraftTranslation(
+    input: UpdateAffiliateTaskTranslationPersistenceInput
+  ): Promise<AffiliateTaskRecord | null> {
+    const update = await this.client.affiliateTask.updateMany({
+      where: {
+        id: input.taskId,
+        status: "DRAFT",
+        lockVersion: input.lockVersion,
+        deletedAt: null
+      },
+      data: {
+        ...(input.locale === "zh-CN" || input.syncToAll
+          ? { name: input.name, description: input.description }
+          : {}),
+        lockVersion: { increment: 1 }
+      }
+    });
+    if (update.count !== 1) {
+      return null;
+    }
+
+    const sourceLocale = this.localeToDb(input.locale);
+    const locales = input.syncToAll ? CONTENT_LOCALES : [input.locale];
+    for (const localeCode of locales) {
+      const locale = this.localeToDb(localeCode);
+      const isInitialCopy = localeCode !== input.locale;
+      await this.client.affiliateTaskTranslation.upsert({
+        where: { taskId_locale: { taskId: input.taskId, locale } },
+        create: {
+          taskId: input.taskId,
+          locale,
+          name: input.name,
+          description: input.description,
+          sourceLocale,
+          isInitialCopy
+        },
+        update: {
+          name: input.name,
+          description: input.description,
+          sourceLocale,
+          isInitialCopy,
+          deletedAt: null
+        }
+      });
+    }
+
+    return this.findTaskById(input.taskId);
   }
 
   public async replaceTaskScopeSnapshots(input: {
@@ -505,6 +569,17 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       publisherType: task.publisherType.toLowerCase() as AffiliatePublisherType,
       publisherMerchantAccountId: task.publisherMerchantAccountId,
       publisherShopId: task.publisherShopId,
+      translations: Object.fromEntries(
+        task.translations.map((translation) => [
+          this.localeFromDb(translation.locale),
+          {
+            name: translation.name,
+            description: translation.description,
+            sourceLocale: this.localeFromDb(translation.sourceLocale),
+            isInitialCopy: translation.isInitialCopy
+          }
+        ])
+      ) as AffiliateTaskRecord["translations"],
       name: task.name,
       description: task.description,
       coverMediaAssetId: task.coverMediaAssetId,
@@ -602,6 +677,28 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
       rejected: "REJECTED"
     } as const;
     return values[status];
+  }
+
+  private localeToDb(locale: ContentLocaleCode): ContentLocale {
+    const values: Record<ContentLocaleCode, ContentLocale> = {
+      "zh-CN": ContentLocale.ZH_CN,
+      "zh-TW": ContentLocale.ZH_TW,
+      en: ContentLocale.EN,
+      ja: ContentLocale.JA,
+      ko: ContentLocale.KO
+    };
+    return values[locale];
+  }
+
+  private localeFromDb(locale: ContentLocale): ContentLocaleCode {
+    const values: Record<ContentLocale, ContentLocaleCode> = {
+      [ContentLocale.ZH_CN]: "zh-CN",
+      [ContentLocale.ZH_TW]: "zh-TW",
+      [ContentLocale.EN]: "en",
+      [ContentLocale.JA]: "ja",
+      [ContentLocale.KO]: "ko"
+    };
+    return values[locale];
   }
 
   private canStartTransaction(client: AffiliatePrismaClient): client is PrismaClient {

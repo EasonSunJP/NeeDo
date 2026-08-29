@@ -445,7 +445,7 @@ export function MobileShell({
           <div
             data-nav-panel-style={navPanelStyle}
             data-client-bottom-nav-panel="true"
-            className="client-liquid-glass-nav pointer-events-none grid gap-1 overflow-hidden rounded-[28px] border p-1.5 backdrop-blur-2xl"
+            className="client-liquid-glass-nav client-liquid-glass-surface pointer-events-none grid gap-1 overflow-hidden rounded-[28px] border p-1.5 backdrop-blur-2xl"
             style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}
           >
             {visibleItems.map((item, index) => {

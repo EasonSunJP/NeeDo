@@ -540,3 +540,9 @@ describe("StoreDetailPage formal route isolation", () => {
     expect(pageSource).toContain("formalStoreLinkCopy[language]");
   });
 });
+
+describe("StoreDetailPage public Shop route", () => {
+  it("accepts the public Shop identifier used by Affiliate navigation", () => {
+    expect(pageSource).toContain("coreReadShopIdFromRoute(id)");
+  });
+});

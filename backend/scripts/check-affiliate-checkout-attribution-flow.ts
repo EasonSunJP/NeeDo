@@ -101,8 +101,10 @@ const main = async (): Promise<void> => {
     const customerNone = await createUser("customer-none");
     const customerRaceA = await createUser("customer-race-a");
     const customerRaceB = await createUser("customer-race-b");
+    const customerReplacement = await createUser("customer-replacement");
     const claimantRaceA = await createUser("claimant-race-a");
     const claimantRaceB = await createUser("claimant-race-b");
+    const claimantReplacement = await createUser("claimant-replacement");
 
     const category = await prisma.category.create({
       data: { code: `${marker}-category`, name: `${marker} category` }
@@ -489,6 +491,79 @@ const main = async (): Promise<void> => {
     );
     console.log("PASS concurrent last-budget and last-slot transactions");
 
+    const replacementTask = await createTask({
+      label: "pending-replacement",
+      totalBudgetNdp: REWARD_NDP * 2
+    });
+    const replacementClaim = await createClaim(
+      replacementTask.id,
+      claimantReplacement.id,
+      "REPLACE"
+    );
+    await prisma.customerProfile.update({
+      where: { userId: customerReplacement.id },
+      data: { membershipLevel: "black" }
+    });
+    const replacementOldOrderOne = await createBooking({
+      customerUserId: customerReplacement.id,
+      slotId: (await createSlot()).id,
+      affiliateCode: replacementClaim.claim.publicCode
+    });
+    const replacementOldOrderTwo = await createBooking({
+      customerUserId: customerReplacement.id,
+      slotId: (await createSlot()).id,
+      affiliateCode: replacementClaim.claim.publicCode
+    });
+    const exhaustedBeforeReplacement = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
+      where: { taskId: replacementTask.id }
+    });
+    assert(
+      exhaustedBeforeReplacement.allocatedNdp === REWARD_NDP * 2 &&
+        exhaustedBeforeReplacement.status === "EXHAUSTED",
+      "replacement fixture did not consume the final task budget"
+    );
+    await prisma.customerProfile.update({
+      where: { userId: customerReplacement.id },
+      data: { membershipLevel: "standard" }
+    });
+    const replacementNewOrder = await createBooking({
+      customerUserId: customerReplacement.id,
+      slotId: (await createSlot()).id,
+      affiliateCode: replacementClaim.claim.publicCode
+    });
+    const [replacementOldRows, replacementAttributions, replacementReservation] = await Promise.all(
+      [
+        prisma.bookingOrder.findMany({
+          where: { id: { in: [replacementOldOrderOne.id, replacementOldOrderTwo.id] } },
+          orderBy: { id: "asc" }
+        }),
+        prisma.affiliateAttribution.findMany({
+          where: {
+            bookingOrderId: {
+              in: [replacementOldOrderOne.id, replacementOldOrderTwo.id, replacementNewOrder.id]
+            },
+            deletedAt: null
+          },
+          orderBy: { id: "asc" }
+        }),
+        prisma.affiliateBudgetReservation.findUniqueOrThrow({
+          where: { taskId: replacementTask.id }
+        })
+      ]
+    );
+    assert(
+      replacementOldRows.length === 2 &&
+        replacementOldRows.every((order) => order.status === "CANCELLED") &&
+        replacementAttributions.length === 3 &&
+        replacementAttributions[0]?.status === "INVALIDATED" &&
+        replacementAttributions[1]?.status === "INVALIDATED" &&
+        replacementAttributions[2]?.status === "ATTRIBUTED" &&
+        replacementReservation.allocatedNdp === REWARD_NDP &&
+        replacementReservation.status === "ACTIVE",
+      "multi-order same-task pending replacement did not atomically reuse Affiliate budget"
+    );
+    console.log("PASS multi-order same-task replacement reuses Affiliate budget atomically");
+
     const allocationBeforeCancel = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
       where: { taskId: fixedTask.id }
     });
@@ -544,6 +619,7 @@ const main = async (): Promise<void> => {
           prices: { fixed: true, percent: true, none: true },
           attribution: { code: true, url: true, codePriority: true },
           concurrency: { lastBudget: true, lastSlot: true },
+          pendingReplacement: { finalBudgetReused: true },
           cancellation: { invalidated: true, allocationReleased: true },
           finance: { walletUnchanged: true, rewardsCreated: 0 },
           status: "ok"
@@ -591,6 +667,9 @@ const main = async (): Promise<void> => {
           where: { taskId: { in: taskIds } }
         });
         await transaction.affiliateTaskShop.deleteMany({
+          where: { taskId: { in: taskIds } }
+        });
+        await transaction.affiliateTaskTranslation.deleteMany({
           where: { taskId: { in: taskIds } }
         });
         await transaction.affiliateTask.deleteMany({ where: { id: { in: taskIds } } });
