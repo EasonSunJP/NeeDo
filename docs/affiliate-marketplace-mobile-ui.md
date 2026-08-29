@@ -61,7 +61,7 @@ Fresh verification on 2026-08-29:
 
 - focused frontend task-localization/marketplace regression: 5 files and 17 tests passed;
 - frontend TypeScript lint: passed;
-- full frontend regression: 215 files and 1,268 tests passed;
+- full frontend regression after merging the latest `main`: 215 files and 1,273 tests passed;
 - formal production build and bundle audit: passed; the existing dynamic-import and chunk-size warnings remain non-blocking;
 - backend ESLint and TypeScript production build: passed;
 - focused backend task-localization/marketplace/OpenAPI regression: 6 suites and 40 tests passed;
