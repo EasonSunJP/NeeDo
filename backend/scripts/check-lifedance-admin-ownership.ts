@@ -92,6 +92,17 @@ const main = async (): Promise<void> => {
       "LifeDance administrator technician profile must be private and independent."
     );
 
+    const merchantAccount = await prisma.merchantAccount.findFirst({
+      where: {
+        code: "lifedance-real-ops",
+        ownerUserId: admin.id,
+        status: "active",
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    assert(merchantAccount, "LifeDance merchant account is missing.");
+
     const identityKey = (type: string, scopeType: string, scopeId: number | null): string =>
       `${type}:${scopeType}:${String(scopeId)}`;
     const actualIdentityKeys = new Set(
@@ -103,6 +114,7 @@ const main = async (): Promise<void> => {
       identityKey("platform", "global", null),
       identityKey("customer", "customer_profile", admin.customerProfile.id),
       identityKey("merchant_owner", "shop", shop.id),
+      identityKey("merchant_organization", "merchant_account", merchantAccount.id),
       identityKey("technician", "technician_profile", admin.technicianProfile.id),
       identityKey("scout", "global", null)
     ]);

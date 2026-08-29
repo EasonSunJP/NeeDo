@@ -13,6 +13,10 @@ const checkerSource = readFileSync(
   resolve(__dirname, "../scripts/check-three-month-simulation.ts"),
   "utf8"
 );
+const ownershipCheckerSource = readFileSync(
+  resolve(__dirname, "../scripts/check-lifedance-admin-ownership.ts"),
+  "utf8"
+);
 const formalSocialSeedSource = readFileSync(
   resolve(__dirname, "../scripts/seed-formal-social-test.ts"),
   "utf8"
@@ -56,5 +60,16 @@ describe("LifeDance administrator cross-portal seed contract", () => {
       'expectIdentity(admin, "technician", "technician_profile", admin.technicianProfile.id)'
     );
     expect(checkerSource).toContain('expectIdentity(admin, "scout", "global", null)');
+  });
+
+  it("keeps the administrator merchant organization identity scoped to the formal merchant account", () => {
+    expect(ownershipSource).toContain('type: "merchant_organization"');
+    expect(ownershipSource).toContain('scopeType: "merchant_account"');
+    expect(ownershipCheckerSource).toContain(
+      'identityKey("merchant_organization", "merchant_account", merchantAccount.id)'
+    );
+    expect(ownershipSource).toContain(
+      'action: "seed.lifedance_admin.merchant_organization_scope_reconcile"'
+    );
   });
 });
