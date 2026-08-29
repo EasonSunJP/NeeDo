@@ -71,12 +71,14 @@ describe("ImMessageActionSheet", () => {
 
     await act(async () => {
       root.render(createElement(ImMessageActionSheet, {
-        actions: [{
-          icon: "reply",
-          key: "reply",
-          label: "回复",
-          onClick: vi.fn()
-        }],
+        actions: [
+          { icon: "reply", key: "reply", label: "回复", onClick: vi.fn() },
+          { icon: "forward", key: "forward", label: "转发", onClick: vi.fn() },
+          { icon: "copy", key: "copy", label: "复制", onClick: vi.fn() },
+          { icon: "pin", key: "pin", label: "信息置顶", onClick: vi.fn() },
+          { icon: "delete", key: "recall", label: "撤回", onClick: vi.fn() },
+          { icon: "delete", key: "delete", label: "删除", onClick: vi.fn() }
+        ],
         anchorElement: anchor,
         expanded: false,
         isNight: true,
@@ -100,6 +102,8 @@ describe("ImMessageActionSheet", () => {
     expect(menuPositioner?.style.top).toBe("210px");
     expect(arrow?.className).toContain("-bottom-2");
     expect(actionGrid?.compareDocumentPosition(reactions!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(actionGrid?.className).toContain("grid-cols-6");
+    expect(actionGrid?.querySelectorAll('[data-im-message-action-item="true"]')).toHaveLength(6);
     expect(actionItem?.className).toContain("py-2");
     expect(actionItem?.querySelector("span")?.className).toContain("h-8");
     expect(

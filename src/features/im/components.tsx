@@ -2198,7 +2198,7 @@ export function ImMessageActionSheet({
   );
 
   const actionSection = actions.length > 0 ? (
-    <div className="grid grid-cols-5 gap-1.5" data-im-message-action-section="actions" key="actions">
+    <div className="grid grid-cols-6 gap-1" data-im-message-action-section="actions" key="actions">
       {actions.map((item) => (
         <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
       ))}

@@ -159,7 +159,7 @@ const reactionSection = (
 
 const actionSection = actions.length > 0 ? (
   <div
-    className="grid grid-cols-5 gap-1.5"
+    className="grid grid-cols-6 gap-1"
     data-im-message-action-section="actions"
   >
     {actions.map((item) => (
