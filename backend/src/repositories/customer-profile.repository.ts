@@ -51,7 +51,7 @@ export interface CustomerProfileRepositoryPort {
 
 type CustomerProfileRecord = CustomerProfile & {
   mediaAssets: MediaAsset[];
-  user: { needoId: string };
+  user: { avatarUrl: string | null; needoId: string };
 };
 
 export class CustomerProfileRepository implements CustomerProfileRepositoryPort {
@@ -62,7 +62,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       where: { id: profileId, userId, deletedAt: null },
       include: {
         mediaAssets: this.avatarMediaInclude(),
-        user: { select: { needoId: true } }
+        user: { select: { avatarUrl: true, needoId: true } }
       }
     });
 
@@ -89,7 +89,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
         data: this.profileData(mutation),
         include: {
           mediaAssets: this.avatarMediaInclude(),
-          user: { select: { needoId: true } }
+          user: { select: { avatarUrl: true, needoId: true } }
         }
       });
 
@@ -125,7 +125,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
         where: { id: updated.id },
         include: {
           mediaAssets: this.avatarMediaInclude(),
-          user: { select: { needoId: true } }
+          user: { select: { avatarUrl: true, needoId: true } }
         }
       });
     });
@@ -164,7 +164,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       displayName: profile.displayName,
       city: profile.city,
       membershipLevel: resolveEffectiveCustomerMembershipLevel(profile),
-      avatarUrl: profile.mediaAssets[0]?.url ?? null,
+      avatarUrl: profile.user.avatarUrl ?? profile.mediaAssets[0]?.url ?? null,
       gender: this.toGender(profile.gender),
       age: profile.age,
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),

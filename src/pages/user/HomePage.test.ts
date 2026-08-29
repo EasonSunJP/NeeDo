@@ -58,6 +58,9 @@ vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: null }) }
 vi.mock("../../features/core-read/hooks", () => ({
   useCoreReadQuery: () => ({ data: null, error: null, loading: false })
 }));
+vi.mock("../../features/core-read/useCustomerSelfProfile", () => ({
+  useCustomerSelfProfile: () => ({ customer: null, error: null, loading: false, profile: null, reload: vi.fn() })
+}));
 vi.mock("../../i18n/I18nProvider", () => ({
   useI18n: () => ({ language: homeMocks.language }),
   useOptionalI18n: () => ({ language: homeMocks.language })
@@ -128,13 +131,16 @@ describe("HomePage technician recommendations", () => {
 
 describe("HomePage authenticated customer identity", () => {
   it("loads the formal customer profile instead of falling back to the first demo customer", () => {
-    expect(homePageSource).toContain("getFormalCustomerProfileId(session)");
-    expect(homePageSource).toContain("coreReadApi.getCustomerProfile(formalCustomerProfileId)");
-    expect(homePageSource).toContain("mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)");
+    expect(homePageSource).toContain("useCustomerSelfProfile()");
     expect(homePageSource).not.toContain("isStaticDemoMode()");
-    expect(homePageSource).toContain("const currentCustomer = formalCustomerProfileQuery.data");
-    expect(homePageSource).toContain(": null;");
+    expect(homePageSource).toContain("const { customer: currentCustomer } = useCustomerSelfProfile()");
     expect(homePageSource).not.toContain("legacyCurrentCustomer");
+  });
+
+  it("keeps the authoritative account avatar while the customer profile loads", () => {
+    expect(homePageSource).toContain(
+      'avatarSrc={session?.avatarUrl ?? currentCustomer?.avatar ?? ""}'
+    );
   });
 });
 

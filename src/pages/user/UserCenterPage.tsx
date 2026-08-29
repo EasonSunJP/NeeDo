@@ -577,6 +577,7 @@ function CompleteUserCenterPage({
   onFormalProfileUpdated: (profile: CustomerSelfProfile) => void;
 }) {
   const navigate = useNavigate();
+  const { refreshSession } = useAuth();
   const currentCustomer = useMemo(() => mapCoreCustomerToCustomer(formalData.profile), [formalData.profile]);
   const userProfile = useMemo(() => buildUserProfile(currentCustomer), [currentCustomer]);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -843,7 +844,11 @@ function CompleteUserCenterPage({
         visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
       });
 
+      const avatarChanged = updated.avatarUrl !== formalData.profile.avatarUrl;
       onFormalProfileUpdated(updated);
+      if (avatarChanged) {
+        await refreshSession();
+      }
       setProfileNameOverride("");
 
       setIsEditingProfile(false);

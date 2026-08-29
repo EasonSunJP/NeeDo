@@ -113,13 +113,24 @@ describe("SocialTimelinePage", () => {
 
     expect(source).toContain('import { SharedHomeHeader } from "../../../components/mobile/SharedHomeHeader";');
     expect(headerSource).toContain("<SharedHomeHeader");
-    expect(headerSource).toContain("avatarLevelLabel={getSocialProfileTextField(actor, \"memberLevelLabel\")}");
-    expect(headerSource).toContain("avatarMembershipLevel={getSocialProfileTextField(actor, \"memberLevel\")}");
+    expect(headerSource).toContain('getSocialProfileTextField(actor, "memberLevelLabel")');
+    expect(headerSource).toContain('getSocialProfileTextField(actor, "memberLevel")');
     expect(headerSource).toContain("locationCaption=\"当前服务区域\"");
     expect(headerSource).toContain("locationLabel={selectedHomeLocation?.label ?? \"当前服务区域\"}");
     expect(headerSource).toContain("settingsTo={portalConfig.settingsPath}");
     expect(headerSource).not.toContain("<AvatarImage");
     expect(headerSource).not.toContain("<SocialMembershipStatusBadge");
+  });
+
+  it("uses the authenticated customer profile header on the user timeline instead of the social actor snapshot", () => {
+    expect(source).toContain(
+      'import { useCustomerSelfProfile } from "../../core-read/useCustomerSelfProfile";'
+    );
+    expect(source).toContain('useCustomerSelfProfile(scope === "user")');
+    expect(source).toMatch(
+      /avatarSrc=\{\s*scope === "user"\s*\? session\?\.avatarUrl \?\? currentUserCustomer\?\.avatar/
+    );
+    expect(source).not.toContain('scope === "user" ? actor?.avatar');
   });
 
   it("uses the same formal user-home carousel as the home page", () => {

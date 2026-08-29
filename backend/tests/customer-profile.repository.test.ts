@@ -24,6 +24,26 @@ const profile = {
 };
 
 describe("CustomerProfileRepository", () => {
+  it("uses the account avatar when the customer profile has no active avatar media", async () => {
+    const accountAvatarUrl = "/images/generated/profiles/ai-profile-41.jpg";
+    const client = {
+      customerProfile: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...profile,
+          mediaAssets: [],
+          user: { avatarUrl: accountAvatarUrl, needoId: "u5314672018" }
+        })
+      }
+    } as unknown as PrismaClient;
+    const repository = new CustomerProfileRepository(client);
+
+    await expect(repository.findMine(81, 464)).resolves.toMatchObject({
+      avatarUrl: accountAvatarUrl,
+      displayName: "旧昵称",
+      publicId: "u5314672018"
+    });
+  });
+
   it("updates only its scoped profile, replaces the active avatar, and writes the audit in its transaction", async () => {
     const updated = {
       ...profile,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { PageScaffold, PrimaryButton } from "../../../components/client-ui/AppScaffold";
+import { useAuth } from "../../../auth/AuthProvider";
 import { FloatingHeaderSearchBar } from "../../../components/mobile/FloatingHeaderSearchBar";
 import {
   FloatingHomeHeader,
@@ -11,6 +12,7 @@ import { SharedHomeHeader } from "../../../components/mobile/SharedHomeHeader";
 import { roleBasedTabConfig } from "../../../components/mobile/navItems";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { PublishedCarousel } from "../../content-publication/PublishedCarousel";
+import { useCustomerSelfProfile } from "../../core-read/useCustomerSelfProfile";
 import { getLocationAreaHints } from "../../../lib/location";
 import { cn } from "../../../lib/utils";
 import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
@@ -30,6 +32,7 @@ import {
   SocialSidebarSection
 } from "../components/SocialUi";
 import { profileKey } from "../utils";
+import { getCustomerLevelLabel } from "../../../shared/profile-card/customerMembership";
 import type { SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialTimelineFilterTab } from "../types";
 
 type TimelinePanelStatus = "idle" | "loading" | "ready" | "error";
@@ -262,6 +265,8 @@ function getEmptyStateCopy(filter: SocialTimelineFilterTab, tab: SocialProfileTa
 export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } = {}) {
   const location = useLocation();
   const scope = getSocialScopeFromPathname(location.pathname);
+  const { session } = useAuth();
+  const { customer: currentUserCustomer } = useCustomerSelfProfile(scope === "user");
   const {
     profiles,
     profileList,
@@ -507,10 +512,26 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
           <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
             <div className="mx-auto w-full max-w-[1480px]">
               <SharedHomeHeader
-                avatarAlt={actor?.displayName ?? "我的头像"}
-                avatarLevelLabel={getSocialProfileTextField(actor, "memberLevelLabel")}
-                avatarMembershipLevel={getSocialProfileTextField(actor, "memberLevel")}
-                avatarSrc={actor?.avatar ?? ""}
+                avatarAlt={
+                  scope === "user"
+                    ? currentUserCustomer?.name ?? session?.username ?? "我的头像"
+                    : actor?.displayName ?? "我的头像"
+                }
+                avatarLevelLabel={
+                  scope === "user" && currentUserCustomer
+                    ? getCustomerLevelLabel(currentUserCustomer.activeScore)
+                    : getSocialProfileTextField(actor, "memberLevelLabel")
+                }
+                avatarMembershipLevel={
+                  scope === "user"
+                    ? currentUserCustomer?.memberLevel
+                    : getSocialProfileTextField(actor, "memberLevel")
+                }
+                avatarSrc={
+                  scope === "user"
+                    ? session?.avatarUrl ?? currentUserCustomer?.avatar ?? ""
+                    : actor?.avatar ?? ""
+                }
                 avatarTo={portalConfig.myPath}
                 locationCaption="当前服务区域"
                 locationLabel={selectedHomeLocation?.label ?? "当前服务区域"}

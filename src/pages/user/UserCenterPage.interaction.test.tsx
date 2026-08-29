@@ -13,6 +13,7 @@ const testState = vi.hoisted(() => ({
   getMyWallet: vi.fn(),
   listOrders: vi.fn(),
   updateMine: vi.fn(),
+  refreshSession: vi.fn(),
   updateCustomerEntity: vi.fn(() => true),
   updateTechnicianEntity: vi.fn(() => true),
   loginMethod: "password",
@@ -23,6 +24,7 @@ const testState = vi.hoisted(() => ({
 
 vi.mock("../../auth/AuthProvider", () => ({
   useAuth: () => ({
+    refreshSession: testState.refreshSession,
     session: {
       currentIdentity: { scopeId: testState.currentIdentityScopeId, type: testState.currentIdentityType },
       linkedCustomerId: "customer-1",
@@ -164,6 +166,7 @@ describe("UserCenterPage inline profile editing", () => {
     testState.currentIdentityType = "customer";
     testState.previewCustomer = null;
     testState.getMine.mockResolvedValue(savedProfile);
+    testState.refreshSession.mockResolvedValue({ ok: true });
     testState.getMyWallet.mockResolvedValue({
       availableBalance: 5_000,
       createdAt: "2026-08-26T00:00:00.000Z",
@@ -325,6 +328,19 @@ describe("UserCenterPage inline profile editing", () => {
     await waitFor(() => expect(container.textContent).toContain("服务端最终名"));
     expect(container.textContent).not.toContain("客户端草稿");
     expect(container.querySelector('[data-testid="user-profile-save-action"]')).toBeNull();
+  });
+
+  it("refreshes the authoritative account session when the saved avatar URL changes", async () => {
+    testState.updateMine.mockResolvedValue({
+      ...savedProfile,
+      avatarUrl: "https://cdn.needo.test/customer-41/avatar-v2.webp"
+    });
+    await renderUserCenter();
+
+    await click(findIconButton("编辑资料"));
+    await click(findButton("保存并退出编辑模式"));
+
+    await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
   });
 
   it("keeps the formal draft and fixed save action when the API rejects", async () => {

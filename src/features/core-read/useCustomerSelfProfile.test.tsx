@@ -39,6 +39,11 @@ function ResourceProbe() {
   );
 }
 
+function DisabledResourceProbe() {
+  const resource = useCustomerSelfProfile(false);
+  return <span data-testid="disabled-loading">{String(resource.loading)}</span>;
+}
+
 async function waitFor(assertion: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -89,6 +94,15 @@ describe("useCustomerSelfProfile", () => {
     await waitFor(() => expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId));
 
     expect(getMine).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not request a customer profile when the current portal is not the user portal", async () => {
+    const getMine = vi.spyOn(customerProfileApi, "getMine");
+
+    await act(async () => root.render(<DisabledResourceProbe />));
+
+    expect(container.querySelector('[data-testid="disabled-loading"]')?.textContent).toBe("false");
+    expect(getMine).not.toHaveBeenCalled();
   });
 
   it("keeps customer null after a failed request and retries explicitly", async () => {

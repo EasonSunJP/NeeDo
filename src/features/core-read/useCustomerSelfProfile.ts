@@ -20,6 +20,13 @@ const initialState: CustomerSelfProfileState = {
   error: null
 };
 
+const disabledState: CustomerSelfProfileState = {
+  profile: null,
+  customer: null,
+  loading: false,
+  error: null
+};
+
 let customerSelfProfileRequestInFlight: Promise<CustomerSelfProfile> | null = null;
 
 function requestCustomerSelfProfile(force = false) {
@@ -39,13 +46,21 @@ function requestCustomerSelfProfile(force = false) {
   return request;
 }
 
-export function useCustomerSelfProfile(): CustomerSelfProfileResource {
-  const [state, setState] = useState<CustomerSelfProfileState>(initialState);
+export function useCustomerSelfProfile(enabled = true): CustomerSelfProfileResource {
+  const [state, setState] = useState<CustomerSelfProfileState>(() =>
+    enabled ? initialState : disabledState
+  );
   const requestGeneration = useRef(0);
 
   const load = useCallback(async (force = false) => {
     const generation = requestGeneration.current + 1;
     requestGeneration.current = generation;
+
+    if (!enabled) {
+      setState(disabledState);
+      return;
+    }
+
     setState({
       profile: null,
       customer: null,
@@ -71,7 +86,7 @@ export function useCustomerSelfProfile(): CustomerSelfProfileResource {
         error: error instanceof Error ? error.message : String(error)
       });
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     void load();

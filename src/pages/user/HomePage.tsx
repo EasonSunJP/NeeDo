@@ -15,16 +15,16 @@ import { roleBasedTabConfig } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { CloseIconButton } from "../../components/ui/CloseIconButton";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { useAuth, type AuthSession } from "../../auth/AuthProvider";
+import { useAuth } from "../../auth/AuthProvider";
 import {
   coreReadApi,
-  mapCoreCustomerToCustomer,
   mapCoreServiceToServiceItem,
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
+import { useCustomerSelfProfile } from "../../features/core-read/useCustomerSelfProfile";
 import { PublishedCarousel } from "../../features/content-publication/PublishedCarousel";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
@@ -82,18 +82,6 @@ type ReminderState = {
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, "");
-}
-
-function getFormalCustomerProfileId(session: AuthSession | null) {
-  if (
-    session?.portal !== "user" ||
-    session.currentIdentity.scopeType !== "customer_profile"
-  ) {
-    return null;
-  }
-
-  const profileId = session.currentIdentity.scopeId;
-  return profileId && Number.isInteger(profileId) && profileId > 0 ? profileId : null;
 }
 
 function getLocationTokens(location: HomeLocationOption) {
@@ -660,17 +648,10 @@ export function HomePage() {
   const { theme } = useClientTheme();
   const { language } = useI18n();
   const { session } = useAuth();
+  const { customer: currentCustomer } = useCustomerSelfProfile();
   const { config } = useHomeLayoutStore();
   const petSettings = useNeedoPetSettings();
   const userOrders = useUserOrders();
-  const formalCustomerProfileId = getFormalCustomerProfileId(session);
-  const formalCustomerProfileQuery = useCoreReadQuery(
-    () => formalCustomerProfileId ? coreReadApi.getCustomerProfile(formalCustomerProfileId) : null,
-    [formalCustomerProfileId]
-  );
-  const currentCustomer = formalCustomerProfileQuery.data
-    ? mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)
-    : null;
   const currentCustomerId = currentCustomer?.id ?? "";
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
   const [homeRecommendationsRevision, setHomeRecommendationsRevision] = useState(0);
@@ -969,7 +950,7 @@ export function HomePage() {
             avatarAlt={currentCustomer?.name ?? session?.username ?? ""}
             avatarLevelLabel={currentCustomer ? getCustomerLevelLabel(currentCustomer.activeScore) : undefined}
             avatarMembershipLevel={currentCustomer?.memberLevel}
-            avatarSrc={currentCustomer?.avatar ?? session?.avatarUrl ?? ""}
+            avatarSrc={session?.avatarUrl ?? currentCustomer?.avatar ?? ""}
             avatarTo={userPortalConfig.myPath}
             locationLabel={selectedLocation.label}
             locationCaption="当前服务区域"
