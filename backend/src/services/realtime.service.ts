@@ -380,25 +380,15 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.searchDirectory(auth.userId, input);
   }
 
-  public async addContact(auth: AuthenticatedAccessContext, contactUserId: number) {
-    if (auth.userId === contactUserId) {
+  public async getDirectoryProfile(auth: AuthenticatedAccessContext, targetUserId: number) {
+    if (auth.userId === targetUserId) {
       throw this.validationError("error.realtime.contact_self");
     }
-
-    await this.assertActiveUsers([contactUserId]);
-    const contact = await this.repository.addContact({
-      ownerUserId: auth.userId,
-      contactUserId,
-      source: "manual"
-    });
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: "contact.updated",
-      recipientUserId: auth.userId,
-      payload: contact,
-      createdAt: new Date().toISOString()
-    });
-    return contact;
+    const profile = await this.repository.getDirectoryProfile(auth.userId, targetUserId);
+    if (!profile) {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    return profile;
   }
 
   public async setContactBlocked(
@@ -472,7 +462,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       });
     }
 
-    return outcome.result.friendRequest;
+    return outcome.result;
   }
 
   public listFriendRequests(auth: AuthenticatedAccessContext, input: FriendRequestListInput) {
@@ -494,7 +484,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
       throw this.notFoundError("error.realtime.friend_request_not_found");
     }
     if (outcome.status === "expired") {
-      throw this.validationError("error.realtime.friend_request_expired");
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.realtime.friend_request_expired",
+        statusCode: 409
+      });
     }
 
     for (const recipientUserId of outcome.result.recipientUserIds) {
@@ -505,6 +499,17 @@ export class RealtimeService implements OrderStatusNotificationPort {
         payload: outcome.result.friendRequest,
         createdAt: new Date().toISOString()
       });
+      if (outcome.result.friendRequest.status === "accepted") {
+        for (const type of ["contact.updated", "social.follow.updated"] as const) {
+          this.eventGateway.publish({
+            id: this.createEventId(),
+            type,
+            recipientUserId,
+            payload: outcome.result.friendRequest,
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
     }
 
     return outcome.result.friendRequest;

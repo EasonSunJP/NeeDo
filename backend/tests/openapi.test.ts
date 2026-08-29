@@ -329,7 +329,8 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/home/recommendations");
     expect(response.body.paths).toHaveProperty("/api/v1/search");
     expect(response.body.paths).toHaveProperty("/api/v1/im/directory");
-    expect(response.body.paths["/api/v1/im/contacts"].post).toBeDefined();
+    expect(response.body.paths).toHaveProperty("/api/v1/im/directory/{userId}");
+    expect(response.body.paths["/api/v1/im/contacts"].post).toBeUndefined();
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations/{conversationId}/media");
     expect(
       response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody
@@ -714,6 +715,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/im/contacts");
     expect(response.body.paths["/api/v1/im/contacts/{contactId}"].delete).toMatchObject({
       security: [{ bearerAuth: [] }],
+      summary: expect.stringContaining("Hard-delete"),
       responses: expect.objectContaining({
         "200": expect.any(Object),
         "403": expect.any(Object),
@@ -723,6 +725,10 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests");
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/accept");
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/reject");
+    expect(
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages"].post.responses["403"]
+        .description
+    ).toContain("error.im.not_friends");
     expect(response.body.paths).toHaveProperty("/api/v1/social/posts");
     expect(response.body.paths).toHaveProperty("/api/v1/social/posts/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/social/follows");
@@ -817,6 +823,21 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessageReaction");
     expect(response.body.components.schemas).toHaveProperty("RealtimeContact");
     expect(response.body.components.schemas).toHaveProperty("FriendRequest");
+    expect(response.body.components.schemas.FriendRequest).toMatchObject({
+      required: expect.arrayContaining([
+        "requester",
+        "target",
+        "expiresAt",
+        "expiredAt"
+      ]),
+      properties: {
+        status: { enum: ["pending", "accepted", "rejected", "expired"] },
+        requester: { $ref: "#/components/schemas/RealtimeParticipant" },
+        target: { $ref: "#/components/schemas/RealtimeParticipant" },
+        expiresAt: { type: "string", format: "date-time" },
+        expiredAt: { type: "string", format: "date-time", nullable: true }
+      }
+    });
     expect(response.body.components.schemas).toHaveProperty("SocialPost");
     expect(response.body.components.schemas).toHaveProperty("Follow");
     expect(response.body.components.schemas).toHaveProperty("Notification");

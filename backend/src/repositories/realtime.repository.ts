@@ -2927,6 +2927,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public async getUnreadCounts(userId: number): Promise<UnreadCountsPayload> {
+    const databaseClock = await this.client.$queryRaw<Array<{ dbNow: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+    );
+    const dbNow = databaseClock[0]?.dbNow;
+    if (!dbNow) {
+      throw new Error("Database clock query returned no row");
+    }
     const [conversationUnread, notifications, friendRequests] = await Promise.all([
       this.client.conversationParticipant.aggregate({
         where: {
@@ -2947,6 +2954,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         where: {
           targetUserId: userId,
           status: FriendRequestStatus.PENDING,
+          expiresAt: { gt: dbNow },
           deletedAt: null
         }
       })

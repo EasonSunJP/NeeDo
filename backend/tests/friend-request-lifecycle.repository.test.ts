@@ -309,4 +309,29 @@ describe("RealtimeRepository friend request lifecycle", () => {
       friendRequest: { id: pending.id, status: "pending" }
     });
   });
+
+  it("counts only incoming requests that remain unexpired by database time", async () => {
+    const friendRequestCount = jest.fn().mockResolvedValue(1);
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      conversationParticipant: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { unreadCount: 0 } })
+      },
+      notification: { count: jest.fn().mockResolvedValue(0) },
+      friendRequest: { count: friendRequestCount }
+    } as unknown as PrismaClient;
+
+    await expect(new RealtimeRepository(client).getUnreadCounts(target.id)).resolves.toMatchObject({
+      friendRequests: 1,
+      total: 1
+    });
+    expect(friendRequestCount).toHaveBeenCalledWith({
+      where: {
+        targetUserId: target.id,
+        status: "PENDING",
+        expiresAt: { gt: dbNow },
+        deletedAt: null
+      }
+    });
+  });
 });

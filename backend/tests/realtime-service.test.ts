@@ -24,27 +24,23 @@ describe("RealtimeService fuzzy search", () => {
     });
   });
 
-  it("creates a manual contact for another active user and publishes the update", async () => {
-    const contact = { id: 31, ownerUserId: 41, contactUserId: 167 };
+  it("loads a safe directory profile for another user", async () => {
+    const profile = {
+      user: { userId: 167, needoId: "u0000000167", username: "Target", avatarUrl: null },
+      relationship: "none" as const,
+      contactId: null,
+      friendRequest: null
+    };
     const repository = {
-      findActiveUserIds: jest.fn(async () => [167]),
-      addContact: jest.fn(async () => contact)
+      getDirectoryProfile: jest.fn(async () => profile)
     };
     const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, eventGateway);
 
-    await expect(service.addContact({ userId: 41 } as never, 167)).resolves.toBe(contact);
+    await expect(service.getDirectoryProfile({ userId: 41 } as never, 167)).resolves.toBe(profile);
 
-    expect(repository.addContact).toHaveBeenCalledWith({
-      contactUserId: 167,
-      ownerUserId: 41,
-      source: "manual"
-    });
-    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      payload: contact,
-      recipientUserId: 41,
-      type: "contact.updated"
-    }));
+    expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 167);
+    expect(eventGateway.publish).not.toHaveBeenCalled();
   });
 });
 
@@ -69,7 +65,7 @@ describe("RealtimeService friend request lifecycle", () => {
 
     await expect(
       service.createFriendRequest({ userId: 41 } as never, { targetUserId: 167 })
-    ).resolves.toBe(friendRequest);
+    ).resolves.toEqual({ friendRequest, created: false });
     expect(eventGateway.publish).not.toHaveBeenCalled();
 
     repository.createFriendRequest.mockResolvedValueOnce({
@@ -101,12 +97,18 @@ describe("RealtimeService friend request lifecycle", () => {
     await expect(
       service.respondToFriendRequest({ userId: 167 } as never, 19, "accept")
     ).resolves.toBe(accepted);
-    expect(eventGateway.publish).toHaveBeenCalledTimes(2);
+    expect(eventGateway.publish).toHaveBeenCalledTimes(6);
     expect(eventGateway.publish).toHaveBeenCalledWith(
       expect.objectContaining({ type: "friend_request.accepted", recipientUserId: 41 })
     );
     expect(eventGateway.publish).toHaveBeenCalledWith(
       expect.objectContaining({ type: "friend_request.accepted", recipientUserId: 167 })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "contact.updated", recipientUserId: 41 })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "social.follow.updated", recipientUserId: 167 })
     );
   });
 
