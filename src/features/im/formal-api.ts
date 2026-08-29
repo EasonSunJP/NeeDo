@@ -18,6 +18,7 @@ import {
   type RealtimeParticipant,
 } from "../realtime/api";
 import type { ImApi } from "./contract";
+import { buildMessagePreview } from "./model";
 import type {
   ContactRelation,
   Conversation,
@@ -427,7 +428,9 @@ function toConversation(
         ? String(otherParticipant.userId)
         : undefined,
     lastMessageId: lastMessage?.id,
-    lastMessagePreview: lastMessage?.content ?? "",
+    lastMessagePreview: lastMessage
+      ? buildMessagePreview(lastMessage, String(currentUserId), {})
+      : "",
     lastMessageTime: lastMessage?.sentAt ?? conversation.updatedAt,
     unreadCount: conversation.unreadCount,
     isPinned: conversation.isPinned ?? false,

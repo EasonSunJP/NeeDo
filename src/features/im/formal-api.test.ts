@@ -122,6 +122,100 @@ describe("formal IM adapter", () => {
     );
   });
 
+  it("maps rich formal last messages to safe conversation previews", async () => {
+    const participants = [
+      {
+        userId: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      {
+        userId: 201,
+        needoId: "u0000000201",
+        username: "文件发送者",
+        avatarUrl: null,
+      },
+    ];
+    const richConversation = (
+      id: number,
+      needoMessageType: "image" | "voice" | "video" | "file",
+      fileName?: string,
+    ) => {
+      const url = `http://localhost:3000/media/im/opaque-${id}`;
+      return {
+        id,
+        type: "direct" as const,
+        title: null,
+        participants,
+        lastMessage: {
+          id: id * 10,
+          conversationId: id,
+          senderUserId: 201,
+          type: "text" as const,
+          content: url,
+          metadata: {
+            needoMessageType,
+            needoMessageExt: { fileName, url },
+          },
+          createdAt: now,
+        },
+        unreadCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+    };
+
+    vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
+      list: [
+        richConversation(91, "image", "album.png"),
+        richConversation(92, "voice", "voice.webm"),
+        richConversation(93, "video", "movie.mp4"),
+        richConversation(94, "file", "报价单.pdf"),
+      ],
+      total: 4,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listContacts").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listFriendRequests").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+    const bootstrap = await api.bootstrap();
+    const previews = Object.fromEntries(
+      bootstrap.conversations.map((conversation) => [
+        conversation.id,
+        conversation.lastMessagePreview,
+      ]),
+    );
+
+    expect(previews).toEqual({
+      "91": "图片",
+      "92": "音频",
+      "93": "视频",
+      "94": "报价单.pdf",
+    });
+    expect(Object.values(previews).join(" ")).not.toContain("/media/im/");
+  });
+
   it("maps a persisted formal contact block response into the original IM model", async () => {
     const request = vi.spyOn(httpClient, "request").mockResolvedValue({
       id: 31,
