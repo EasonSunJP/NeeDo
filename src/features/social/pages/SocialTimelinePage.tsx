@@ -143,20 +143,6 @@ function createInitialTimelinePanels(nearbyPanel?: Pick<TimelinePanelState, "not
   };
 }
 
-function timelineFilterStorageKey(scope: SocialPortalScope) {
-  return `needo.social.timeline.filter.${scope}`;
-}
-
-function readStoredTimelineFilter(scope: SocialPortalScope): SocialTimelineFilterTab {
-  if (typeof window === "undefined") {
-    return "friends";
-  }
-
-  const raw = window.localStorage.getItem(timelineFilterStorageKey(scope));
-
-  return raw === "nearby" || raw === "friends" || raw === "mine" ? raw : "friends";
-}
-
 function createNearbyPanelFromHomeLocation(
   selectedLocation: ReturnType<typeof useHomeLayoutStore>["config"]["locations"][number] | undefined,
   preference: HomeLocationPreferenceState
@@ -211,7 +197,7 @@ function getEmptyStateCopy(filter: SocialTimelineFilterTab, tab: SocialProfileTa
     if (tab === "replies") {
       return {
         title: "好友还没有回复动态",
-        description: "只有互相关注好友发出的回复会显示在这里。"
+        description: "只有好友发出的回复会显示在这里。"
       };
     }
 
@@ -231,7 +217,7 @@ function getEmptyStateCopy(filter: SocialTimelineFilterTab, tab: SocialProfileTa
 
     return {
       title: "好友还没有发布动态",
-      description: "这里只显示互相关注好友发布的内容。"
+      description: "这里只显示好友发布的内容。"
     };
   }
 
@@ -295,7 +281,7 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
       selectedHomeLocation
     ]
   );
-  const [timelineFilter, setTimelineFilter] = useState<SocialTimelineFilterTab>(() => readStoredTimelineFilter(scope));
+  const [timelineFilter, setTimelineFilter] = useState<SocialTimelineFilterTab>("friends");
   const [panelStates, setPanelStates] = useState<Record<SocialTimelineFilterTab, TimelinePanelState>>(() => createInitialTimelinePanels(homeNearbyPanel));
   const [timelineSearchInput, setTimelineSearchInput] = useState("");
   const [timelineSearchQuery, setTimelineSearchQuery] = useState("");
@@ -336,19 +322,11 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   );
 
   useEffect(() => {
-    setTimelineFilter(readStoredTimelineFilter(scope));
+    setTimelineFilter("friends");
     setPanelStates(createInitialTimelinePanels(homeNearbyPanel));
     setTimelineSearchInput("");
     setTimelineSearchQuery("");
   }, [scope]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(timelineFilterStorageKey(scope), timelineFilter);
-  }, [scope, timelineFilter]);
 
   useEffect(() => {
     setPanelStates((current) => {

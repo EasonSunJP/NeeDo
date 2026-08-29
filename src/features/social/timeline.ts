@@ -67,7 +67,8 @@ export function canActorViewPost(
   post: SocialPost,
   actorKey: string,
   follows: Record<string, string[]>,
-  profiles?: Record<string, SocialProfile>
+  profiles?: Record<string, SocialProfile>,
+  friends: Record<string, string[]> = {}
 ) {
   const authorKey = postAuthorKey(post);
 
@@ -86,7 +87,7 @@ export function canActorViewPost(
   }
 
   if (post.visibility === "friends") {
-    return actorFollowing.has(authorKey) && (follows[authorKey] ?? []).includes(actorKey);
+    return isFriend(friends, actorKey, authorKey) || isMutualFollow(follows, actorKey, authorKey);
   }
 
   if (post.visibility === "private") {
@@ -106,6 +107,10 @@ export function canActorViewPost(
 
 export function isMutualFollow(follows: Record<string, string[]>, actorKey: string, targetKey: string) {
   return (follows[actorKey] ?? []).includes(targetKey) && (follows[targetKey] ?? []).includes(actorKey);
+}
+
+export function isFriend(friends: Record<string, string[]>, actorKey: string, targetKey: string) {
+  return (friends[actorKey] ?? []).includes(targetKey) && (friends[targetKey] ?? []).includes(actorKey);
 }
 
 export function resolveProfileAreaHints(profile?: SocialProfile) {
@@ -160,6 +165,7 @@ export function filterTimelinePosts({
   posts,
   profiles,
   follows,
+  friends = {},
   actorKey,
   filter,
   locationContext
@@ -167,13 +173,14 @@ export function filterTimelinePosts({
   posts: SocialPost[];
   profiles: Record<string, SocialProfile>;
   follows: Record<string, string[]>;
+  friends?: Record<string, string[]>;
   actorKey: string;
   filter: SocialTimelineFilterTab;
   locationContext?: SocialTimelineLocationContext;
 }) {
   return sortPostsByNewest(
     posts.filter((post) => {
-      if (!isVisiblePost(post) || !canActorViewPost(post, actorKey, follows, profiles)) {
+      if (!isVisiblePost(post) || !canActorViewPost(post, actorKey, follows, profiles, friends)) {
         return false;
       }
 
@@ -184,7 +191,10 @@ export function filterTimelinePosts({
       }
 
       if (filter === "friends") {
-        return authorKey !== actorKey && isMutualFollow(follows, actorKey, authorKey);
+        return (
+          authorKey !== actorKey &&
+          (isFriend(friends, actorKey, authorKey) || isMutualFollow(follows, actorKey, authorKey))
+        );
       }
 
       return matchesNearbyFilter(post, profiles, locationContext);

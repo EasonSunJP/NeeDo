@@ -169,6 +169,7 @@ export interface SocialProfileOverrides {
 export interface SocialState {
   posts: SocialPost[];
   follows: Record<string, string[]>;
+  friends: Record<string, string[]>;
   interactions: Record<string, Record<string, Omit<PostInteractionState, "followingAuthor">>>;
   drafts: Record<string, SocialComposerDraft>;
   notifications: SocialNotification[];

@@ -1116,7 +1116,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       SocialPost: {
         type: "object",
-        required: ["id", "authorUserId", "content", "media", "visibility", "createdAt", "author"],
+        required: [
+          "id",
+          "authorUserId",
+          "content",
+          "media",
+          "visibility",
+          "createdAt",
+          "updatedAt",
+          "author",
+          "viewerFollowsAuthor",
+          "authorFollowsViewer",
+          "viewerIsFriend"
+        ],
         properties: {
           id: { type: "integer" },
           authorUserId: { type: "integer" },
@@ -1124,6 +1136,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           media: {},
           visibility: { type: "string", enum: ["public", "followers"] },
           createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          viewerFollowsAuthor: { type: "boolean" },
+          authorFollowsViewer: { type: "boolean" },
+          viewerIsFriend: {
+            type: "boolean",
+            description:
+              "True when the viewer and author have active, unblocked Contact rows in both directions."
+          },
           author: { $ref: "#/components/schemas/SocialProfileSummary" }
         }
       },

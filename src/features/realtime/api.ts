@@ -139,6 +139,7 @@ export type RealtimeSocialPost = {
   media: unknown;
   updatedAt?: string;
   viewerFollowsAuthor?: boolean;
+  viewerIsFriend?: boolean;
   visibility: "public" | "followers";
 };
 

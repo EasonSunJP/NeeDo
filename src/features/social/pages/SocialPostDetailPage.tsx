@@ -21,7 +21,7 @@ import {
 } from "../components/SocialUi";
 import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
-import { isMutualFollow } from "../timeline";
+import { isFriend, isMutualFollow } from "../timeline";
 import type { SocialPortalScope, SocialPost, SocialProfile } from "../types";
 import { buildAbsoluteUrl, formatCount, formatRelativeTime, profileKey } from "../utils";
 
@@ -580,7 +580,11 @@ export function SocialPostDetailPage() {
 
   const { timeLabel, dateLabel } = formatDetailDate(post.createdAt);
   const interaction = getInteractionState(post.id, actorKey);
-  const canComment = post.commentPermission !== "friends" || postAuthorKey === actorKey || isMutualFollow(state.follows, actorKey, postAuthorKey);
+  const canComment =
+    post.commentPermission !== "friends" ||
+    postAuthorKey === actorKey ||
+    isFriend(state.friends, actorKey, postAuthorKey) ||
+    isMutualFollow(state.follows, actorKey, postAuthorKey);
 
   return (
     <div className={shellClassName}>

@@ -163,7 +163,13 @@ export interface SocialPostPayload {
   author: SocialPostAuthorPayload;
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
+  viewerIsFriend: boolean;
 }
+
+type SocialRelationshipMap = {
+  follows: Set<string>;
+  friendUserIds: Set<number>;
+};
 
 export interface FollowPayload {
   id: number;
@@ -2746,37 +2752,62 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   private async loadSocialRelationshipMap(
     viewerUserId: number,
     authorUserIds: number[]
-  ): Promise<Set<string>> {
+  ): Promise<SocialRelationshipMap> {
     const uniqueAuthorUserIds = [...new Set(authorUserIds)];
     if (uniqueAuthorUserIds.length === 0) {
-      return new Set();
+      return { follows: new Set(), friendUserIds: new Set() };
     }
 
-    const relationships = await this.client.follow.findMany({
-      where: {
-        deletedAt: null,
-        OR: [
-          {
-            followerUserId: viewerUserId,
-            followingUserId: { in: uniqueAuthorUserIds }
-          },
-          {
-            followerUserId: { in: uniqueAuthorUserIds },
-            followingUserId: viewerUserId
-          }
-        ]
-      },
-      select: {
-        followerUserId: true,
-        followingUserId: true
-      }
-    });
-
-    return new Set(
+    const [relationships, contacts] = await Promise.all([
+      this.client.follow.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            {
+              followerUserId: viewerUserId,
+              followingUserId: { in: uniqueAuthorUserIds }
+            },
+            {
+              followerUserId: { in: uniqueAuthorUserIds },
+              followingUserId: viewerUserId
+            }
+          ]
+        },
+        select: {
+          followerUserId: true,
+          followingUserId: true
+        }
+      }),
+      this.client.contact.findMany({
+        where: {
+          blockedAt: null,
+          deletedAt: null,
+          OR: [
+            { ownerUserId: viewerUserId, contactUserId: { in: uniqueAuthorUserIds } },
+            { ownerUserId: { in: uniqueAuthorUserIds }, contactUserId: viewerUserId }
+          ]
+        },
+        select: { ownerUserId: true, contactUserId: true }
+      })
+    ]);
+    const follows = new Set(
       relationships.map(
         (relationship) => `${relationship.followerUserId}:${relationship.followingUserId}`
       )
     );
+    const contactPairs = new Set(
+      contacts.map((contact) => `${contact.ownerUserId}:${contact.contactUserId}`)
+    );
+    const friendUserIds = new Set(
+      uniqueAuthorUserIds.filter(
+        (authorUserId) =>
+          authorUserId !== viewerUserId &&
+          contactPairs.has(`${viewerUserId}:${authorUserId}`) &&
+          contactPairs.has(`${authorUserId}:${viewerUserId}`)
+      )
+    );
+
+    return { follows, friendUserIds };
   }
 
   private mapSocialAuthor(author: SocialAuthorRecord): SocialPostAuthorPayload {
@@ -2809,7 +2840,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     socialPost: SocialPostRecord,
     viewerUserId: number,
     authorUserId: number,
-    relationshipMap: Set<string> = new Set()
+    relationshipMap: SocialRelationshipMap = {
+      follows: new Set(),
+      friendUserIds: new Set()
+    }
   ): SocialPostPayload {
     return {
       id: socialPost.id,
@@ -2820,9 +2854,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       createdAt: socialPost.createdAt,
       updatedAt: socialPost.updatedAt,
       viewerFollowsAuthor:
-        viewerUserId === authorUserId || relationshipMap.has(`${viewerUserId}:${authorUserId}`),
+        viewerUserId === authorUserId ||
+        relationshipMap.follows.has(`${viewerUserId}:${authorUserId}`),
       authorFollowsViewer:
-        viewerUserId === authorUserId || relationshipMap.has(`${authorUserId}:${viewerUserId}`),
+        viewerUserId === authorUserId ||
+        relationshipMap.follows.has(`${authorUserId}:${viewerUserId}`),
+      viewerIsFriend: relationshipMap.friendUserIds.has(authorUserId),
       author: this.mapSocialAuthor(socialPost.author)
     };
   }

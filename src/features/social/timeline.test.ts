@@ -156,6 +156,22 @@ describe("social timeline filters", () => {
     expect(result.map((post) => post.id)).toEqual(["friend"]);
   });
 
+  it("uses the formal bilateral-contact friendship independently from follows", () => {
+    const result = filterTimelinePosts({
+      posts: [{ ...posts[1], visibility: "public" }],
+      profiles,
+      follows: {},
+      friends: {
+        [actorKey]: [friendKey],
+        [friendKey]: [actorKey]
+      },
+      actorKey,
+      filter: "friends"
+    });
+
+    expect(result.map((post) => post.id)).toEqual(["friend"]);
+  });
+
   it("matches nearby posts by area hints when precise coordinates are unavailable", () => {
     const result = filterTimelinePosts({
       posts,
