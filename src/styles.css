@@ -2414,7 +2414,11 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   box-shadow: none !important;
 }
 
+.client-shell .client-liquid-glass-surface,
 .client-shell .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  isolation: isolate;
+  border: 1px solid transparent;
+  border-radius: 28px;
   border-color: color-mix(in srgb, var(--client-line) 42%, transparent) !important;
   background:
     linear-gradient(
@@ -2431,6 +2435,14 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
 }
 
+.client-shell .client-liquid-glass-arrow {
+  border-color: color-mix(in srgb, var(--client-line) 42%, transparent);
+  background: color-mix(in srgb, var(--client-elevated) 18%, var(--client-bg) 8%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 18%, transparent);
+  -webkit-backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03);
+  backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03);
+}
+
 .client-nav-aligned-panel {
   margin-left: auto;
   margin-right: auto;
@@ -2438,6 +2450,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   width: calc(100dvw - var(--client-bottom-nav-inline-gap, 12px) - var(--client-bottom-nav-inline-gap, 12px));
 }
 
+.client-theme-day .client-liquid-glass-surface,
 .client-theme-day .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background:
     linear-gradient(
@@ -2447,6 +2460,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     ) !important;
 }
 
+.client-theme-night .client-liquid-glass-surface,
 .client-theme-night .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background:
     linear-gradient(
@@ -2456,8 +2470,11 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     ) !important;
 }
 
+.client-theme-black-gold .client-liquid-glass-surface,
 .client-theme-black-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-cool-black-gray .client-liquid-glass-surface,
 .client-theme-cool-black-gray .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-noir-gold .client-liquid-glass-surface,
 .client-theme-noir-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(39, 44, 35, 0.2), rgba(18, 22, 18, 0.1)) !important;
   border-color: rgba(196, 255, 122, 0.16) !important;
@@ -2467,6 +2484,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
+.client-theme-dark-green .client-liquid-glass-surface,
 .client-theme-dark-green .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(14, 31, 45, 0.22), rgba(7, 20, 31, 0.1)) !important;
   border-color: rgba(108, 144, 170, 0.3) !important;
@@ -2476,7 +2494,9 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
+.client-theme-black-gold .client-liquid-glass-surface,
 .client-theme-black-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-noir-gold .client-liquid-glass-surface,
 .client-theme-noir-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(42, 42, 40, 0.2), rgba(13, 13, 13, 0.1)) !important;
   border-color: rgba(254, 222, 160, 0.16) !important;
@@ -2486,6 +2506,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
+.client-theme-vital-mono .client-liquid-glass-surface,
 .client-theme-vital-mono .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(47, 47, 48, 0.2), rgba(18, 18, 19, 0.1)) !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
@@ -2495,6 +2516,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
+.client-theme-cool-black-gray .client-liquid-glass-surface,
 .client-theme-cool-black-gray .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
   background: linear-gradient(180deg, rgba(50, 58, 66, 0.22), rgba(13, 17, 21, 0.1)) !important;
   border-color: rgba(183, 204, 214, 0.18) !important;

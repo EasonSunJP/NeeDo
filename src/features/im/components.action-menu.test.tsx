@@ -133,10 +133,13 @@ describe("ImMessageActionSheet", () => {
     expect(menu).not.toBeNull();
     expect(container.contains(menu)).toBe(false);
     expect(shell.contains(menu)).toBe(true);
+    expect(menu?.classList.contains("client-liquid-glass-surface")).toBe(true);
+    expect(menu?.className).not.toContain("var(--client-elevated)_98%");
     expect(menuPositioner?.style.position).toBe("fixed");
     expect(menuPositioner?.style.left).toBe("12px");
     expect(menuPositioner?.style.top).toBe("210px");
     expect(arrow?.className).toContain("-bottom-2");
+    expect(arrow?.className).toContain("client-liquid-glass-arrow");
     expect(actionGrid?.compareDocumentPosition(reactions!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(actionGrid?.className).toContain("grid-cols-6");
     expect(actionGrid?.className).not.toContain("min-[480px]");
@@ -409,6 +412,16 @@ describe("ImMessageActionSheet", () => {
     const contextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
     menu?.dispatchEvent(contextMenuEvent);
     expect(contextMenuEvent.defaultPrevented).toBe(true);
+
+    const actionLayer = document.querySelector<HTMLElement>("[data-im-message-action-layer='true']");
+    const layerContextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    actionLayer?.dispatchEvent(layerContextMenuEvent);
+    expect(layerContextMenuEvent.defaultPrevented).toBe(true);
+
+    const backdrop = document.querySelector<HTMLButtonElement>('[aria-label="关闭消息操作菜单"]');
+    const backdropContextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    backdrop?.dispatchEvent(backdropContextMenuEvent);
+    expect(backdropContextMenuEvent.defaultPrevented).toBe(true);
 
     await act(async () => root.unmount());
   });

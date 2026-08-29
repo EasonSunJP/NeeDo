@@ -324,6 +324,28 @@ describe("IM pages", () => {
     expect(noticeSource).not.toContain("recordingHintClass");
   });
 
+  it("keeps the composer mounted while message actions are open and hides it only for fullscreen media", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const openMenuStart = componentSource.indexOf("const openMessageMenu =");
+    const openMenuEnd = componentSource.indexOf("const toggleMessageReaction", openMenuStart);
+    const openMenuSource = componentSource.slice(openMenuStart, openMenuEnd);
+    const menuStart = componentSource.indexOf("{menuState ? (");
+    const composerGateStart = componentSource.indexOf("{!mediaPreview ? (", menuStart);
+    const mediaViewerStart = componentSource.indexOf("{mediaPreview && typeof document", composerGateStart);
+    const composerSource = componentSource.slice(composerGateStart, mediaViewerStart);
+
+    expect(openMenuStart).toBeGreaterThan(-1);
+    expect(openMenuSource).not.toContain("setPanel(null)");
+    expect(openMenuSource).not.toContain("setVoiceMode(false)");
+    expect(menuStart).toBeGreaterThan(-1);
+    expect(composerGateStart).toBeGreaterThan(menuStart);
+    expect(componentSource.slice(menuStart, composerGateStart)).toContain(") : null}");
+    expect(composerSource).toContain("<ImChatComposer");
+    expect(composerSource).toContain("quotedMessage ?");
+  });
+
   it("keeps the hide member profiles switch independent from privacy mode in group creation", () => {
     const componentStart = pagesSource.indexOf("export function ImNewConversationPage");
     const componentEnd = pagesSource.length;

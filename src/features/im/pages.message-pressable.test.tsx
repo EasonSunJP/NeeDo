@@ -54,6 +54,36 @@ describe("MessagePressable", () => {
     });
 
     expect(onPreviewMedia).not.toHaveBeenCalled();
+
+    await act(async () => {
+      mediaButton!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onPreviewMedia).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+  });
+
+  it("opens the NeeDo menu and cancels the browser menu on right click", async () => {
+    const onOpenMenu = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MessagePressable onOpenMenu={onOpenMenu}>
+          <span>message</span>
+        </MessagePressable>
+      );
+    });
+
+    const message = container.querySelector<HTMLElement>("span");
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    await act(async () => {
+      message?.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onOpenMenu).toHaveBeenCalledOnce();
     await act(async () => root.unmount());
   });
 

@@ -2180,7 +2180,7 @@ export function ImMessageActionSheet({
     };
   }, [actions.length, anchorElement, expanded, listActions.length]);
 
-  const sheetClass = "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_98%,var(--client-bg)_2%)] text-[color:var(--client-text)] shadow-[0_18px_56px_color-mix(in_srgb,var(--client-shadow)_42%,transparent)]";
+  const sheetClass = "client-liquid-glass-surface text-[color:var(--client-text)]";
   const listShellClass = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)]";
   const menuStyle: CSSProperties = {
     left: menuPosition.left,
@@ -2279,7 +2279,11 @@ export function ImMessageActionSheet({
   ) : null;
 
   const actionMenu = (
-    <div className="fixed inset-0 z-[200]" data-im-message-action-layer="true">
+    <div
+      className="fixed inset-0 z-[200]"
+      data-im-message-action-layer="true"
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <button
         aria-label="关闭消息操作菜单"
         className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
@@ -2314,7 +2318,7 @@ export function ImMessageActionSheet({
         <span
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute z-0 h-3.5 w-3.5 -translate-x-1/2 rotate-45 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_98%,var(--client-bg)_2%)]",
+            "client-liquid-glass-arrow pointer-events-none absolute z-0 h-3.5 w-3.5 -translate-x-1/2 rotate-45",
             menuPosition.placement === "above" ? "-bottom-2 border-b border-r" : "-top-2 border-l border-t"
           )}
           style={{ left: menuPosition.arrowLeft }}

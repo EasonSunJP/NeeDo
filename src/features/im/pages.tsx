@@ -5229,8 +5229,6 @@ export function ImConversationRoomPage({
   };
 
   const openMessageMenu = (message: ConversationMessage) => {
-    setPanel(null);
-    setVoiceMode(false);
     setMessageMenuExpanded(false);
     setMenuState({ message });
     selectMessageText(message);
@@ -5775,7 +5773,9 @@ export function ImConversationRoomPage({
                 </>
               );
             })()
-          ) : (
+          ) : null}
+
+          {!mediaPreview ? (
             <>
               {quotedMessage ? (
                 <div className={cn("relative z-10 px-4 py-2 text-xs", quotedBarClass)}>
@@ -5833,7 +5833,7 @@ export function ImConversationRoomPage({
                 type="file"
               />
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
