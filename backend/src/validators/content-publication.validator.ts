@@ -31,7 +31,10 @@ export const contentPublicationValidationErrorMessage = (
     if (issue.path.some((segment) => segment === "locale" || segment === "sourceLocale")) {
       return "error.content.locale_invalid";
     }
-    if (issue.path.includes("mediaAssetPublicId")) {
+    if (
+      issue.path.includes("mediaAssetPublicId") ||
+      issue.path.includes("defaultMediaAssetPublicId")
+    ) {
       return "error.content.media_invalid";
     }
     if (issue.path.includes("target") || issue.path.includes("type")) {
@@ -63,6 +66,7 @@ const utcDateTimeSchema = z
   .datetime({ offset: false })
   .refine((value) => value.endsWith("Z"), "UTC date-time is required");
 const nullableUtcDateTimeSchema = utcDateTimeSchema.nullable().default(null);
+const mediaPublicIdSchema = z.string().regex(/^[a-f0-9]{64}$/, "error.content.media_invalid");
 
 const addOrderedWindowIssue = (
   value: { visibleFrom: string | null; visibleUntil: string | null },
@@ -86,6 +90,7 @@ export const carouselSceneParamSchema = z
   .strict();
 
 const userTargetSchema = z.union([
+  z.object({ type: z.literal("none") }).strict(),
   z.object({ type: z.literal("shop"), shopId: z.number().int().positive() }).strict(),
   z.object({ type: z.literal("shop"), publicId: z.string().regex(/^shop[0-9]{10}$/u) }).strict(),
   z
@@ -119,6 +124,7 @@ const affiliateTargetSchema = z.union([
 export const translationBodySchema = z
   .object({
     locale: localeSchema,
+    mediaAssetPublicId: mediaPublicIdSchema.nullable().optional().default(null),
     badge: z.string().trim().max(40).nullable(),
     title: z.string().trim().min(1).max(160),
     caption: z.string().trim().max(500).nullable(),
@@ -153,7 +159,7 @@ const replacementTranslationsSchema = z
 
 const slideBaseShape = {
   publicId: z.string().uuid().optional(),
-  mediaAssetPublicId: z.string().regex(/^[a-f0-9]{64}$/, "error.content.media_invalid"),
+  defaultMediaAssetPublicId: mediaPublicIdSchema,
   sortOrder: z.number().int().nonnegative(),
   isEnabled: z.boolean().default(true),
   visibleFrom: nullableUtcDateTimeSchema,

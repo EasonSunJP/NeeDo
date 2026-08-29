@@ -86,6 +86,7 @@ const payload = (
   slides: [
     {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      defaultMediaAssetPublicId: mediaPublicId,
       mediaAssetPublicId: mediaPublicId,
       imageUrl: "/media/content/a.png",
       sortOrder: 0,
@@ -126,6 +127,7 @@ const marketplace = () => ({
 describe("CarouselPublicationService", () => {
   it("enforces the exact target matrix for the two fixed scenes", () => {
     const service = new CarouselPublicationService(repository(), marketplace());
+    expect(() => service.assertTarget("USER_HOME", { type: "none" })).not.toThrow();
     expect(() => service.assertTarget("USER_HOME", { type: "shop", shopId: 7 })).not.toThrow();
     expect(() =>
       service.assertTarget("USER_HOME", {
@@ -137,6 +139,43 @@ describe("CarouselPublicationService", () => {
     expect(() =>
       service.assertTarget("AFFILIATE_HOME_NOTICE", { type: "service", serviceId: 4 })
     ).toThrow("error.carousel.target_invalid");
+    expect(() => service.assertTarget("AFFILIATE_HOME_NOTICE", { type: "none" })).toThrow(
+      "error.carousel.target_invalid"
+    );
+  });
+
+  it("rejects CTA copy on a non-clickable user-home slide", async () => {
+    const repo = repository();
+    const service = new CarouselPublicationService(repo, marketplace(), { now: () => now });
+
+    await expect(
+      service.createDraft("USER_HOME", actor, context, {
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [
+          {
+            defaultMediaAssetPublicId: mediaPublicId,
+            sortOrder: 0,
+            isEnabled: true,
+            visibleFrom: null,
+            visibleUntil: null,
+            target: { type: "none" },
+            translations: [
+              {
+                locale: "ja",
+                mediaAssetPublicId: null,
+                badge: null,
+                title: "NeeDoへようこそ",
+                caption: null,
+                ctaLabel: "見る",
+                imageAltText: "ウェルカム画像"
+              }
+            ]
+          }
+        ]
+      })
+    ).rejects.toMatchObject({ message: "error.carousel.target_invalid" });
+    expect(repo.createDraft).not.toHaveBeenCalled();
   });
 
   it("initializes all five locales with provenance and contiguous slide order", async () => {
@@ -161,7 +200,7 @@ describe("CarouselPublicationService", () => {
       sourceLocale: "ja",
       slides: [
         {
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -189,6 +228,7 @@ describe("CarouselPublicationService", () => {
       isInitialCopy: false
     });
     expect(result.slides[0].translations.en).toMatchObject({
+      mediaAssetPublicId: null,
       sourceLocale: "ja",
       isInitialCopy: true
     });
@@ -200,6 +240,7 @@ describe("CarouselPublicationService", () => {
         slides: [
           expect.objectContaining({
             publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            defaultMediaAssetPublicId: mediaPublicId,
             sortOrder: 0
           })
         ]
@@ -214,7 +255,7 @@ describe("CarouselPublicationService", () => {
       sourceLocale: "ja" as const,
       slides: [
         {
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 1,
           isEnabled: false,
           visibleFrom: null,
@@ -244,7 +285,7 @@ describe("CarouselPublicationService", () => {
     const publicId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const slide = (sortOrder: number) => ({
       publicId,
-      mediaAssetPublicId: mediaPublicId,
+      defaultMediaAssetPublicId: mediaPublicId,
       sortOrder,
       isEnabled: true,
       visibleFrom: null,
@@ -295,7 +336,7 @@ describe("CarouselPublicationService", () => {
       slides: [
         {
           publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -447,7 +488,7 @@ describe("CarouselPublicationService", () => {
       slides: [
         {
           publicId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,
@@ -579,7 +620,7 @@ describe("CarouselPublicationService", () => {
       sourceLocale: "ja",
       slides: [
         {
-          mediaAssetPublicId: mediaPublicId,
+          defaultMediaAssetPublicId: mediaPublicId,
           sortOrder: 0,
           isEnabled: true,
           visibleFrom: null,

@@ -37,7 +37,7 @@ const translation = {
 
 const userSlide = {
   publicId: slidePublicId,
-  mediaAssetPublicId,
+  defaultMediaAssetPublicId: mediaAssetPublicId,
   sortOrder: 0,
   isEnabled: true,
   visibleFrom: null,
@@ -76,7 +76,8 @@ describe("content publication scene and translation validators", () => {
       title: "お知らせ",
       caption: "詳細",
       ctaLabel: "見る",
-      imageAltText: "お知らせ画像"
+      imageAltText: "お知らせ画像",
+      mediaAssetPublicId: null
     });
     expect(translationBodySchema.safeParse({ ...translation, locale: "fr" }).success).toBe(false);
     expect(translationBodySchema.safeParse({ ...translation, title: " " }).success).toBe(false);
@@ -90,6 +91,51 @@ describe("content publication scene and translation validators", () => {
 });
 
 describe("strict scene-specific carousel draft validators", () => {
+  it("accepts none only for user-home and normalizes an omitted locale image to null", () => {
+    const parsed = userHomeCarouselDraftCreateBodySchema.parse({
+      idempotencyKey,
+      sourceLocale: "ja",
+      slides: [
+        {
+          ...userSlide,
+          target: { type: "none" },
+          translations: [{ ...translation, ctaLabel: null }]
+        }
+      ]
+    });
+
+    expect(parsed.slides[0]?.target).toEqual({ type: "none" });
+    expect(parsed.slides[0]?.translations[0]?.mediaAssetPublicId).toBeNull();
+
+    expect(
+      affiliateNoticeCarouselDraftCreateBodySchema.safeParse({
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [
+          {
+            ...affiliateSlide,
+            target: { type: "none" }
+          }
+        ]
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts a per-locale media checksum and rejects invalid checksums", () => {
+    expect(
+      translationBodySchema.parse({
+        ...translation,
+        mediaAssetPublicId: "b".repeat(64)
+      }).mediaAssetPublicId
+    ).toBe("b".repeat(64));
+    expect(
+      translationBodySchema.safeParse({
+        ...translation,
+        mediaAssetPublicId: "not-a-checksum"
+      }).success
+    ).toBe(false);
+  });
+
   it("accepts a user-home create draft with one valid user target", () => {
     const parsed = userHomeCarouselDraftCreateBodySchema.parse({
       idempotencyKey,
