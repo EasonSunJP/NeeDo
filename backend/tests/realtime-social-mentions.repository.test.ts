@@ -109,11 +109,23 @@ describe("RealtimeRepository Social post mentions", () => {
     expect(result.post).toMatchObject({ id: 701, authorUserId: 41 });
     expect(result.post.media).toEqual({
       items: [
-        { id: "m1", type: "image", url: `/media/content/${firstChecksum}.png`, alt: "First" },
-        { id: "m2", type: "image", url: `/media/content/${secondChecksum}.webp` }
+        {
+          id: "m1",
+          type: "image",
+          url: `/media/content/${firstChecksum}.png`,
+          mediaAssetPublicId: firstChecksum,
+          alt: "First"
+        },
+        {
+          id: "m2",
+          type: "image",
+          url: `/media/content/${secondChecksum}.webp`,
+          mediaAssetPublicId: secondChecksum
+        }
       ],
       postType: "post",
       locationLabel: "东京 银座",
+      mentionUserIds: [52, 63],
       counters: { likes: 0, replies: 0, reposts: 0, views: 1, bookmarks: 0 }
     });
     expect(result.notifications).toEqual([

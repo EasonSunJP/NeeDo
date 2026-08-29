@@ -145,6 +145,7 @@ export interface SocialPostPayload {
   media: unknown;
   visibility: SocialPostVisibilityPayload;
   createdAt: Date;
+  updatedAt: Date;
   author: SocialPostAuthorPayload;
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
@@ -315,6 +316,12 @@ export interface CreateSocialPostResult {
   notifications: NotificationPayload[];
 }
 
+export interface UpdateSocialPostInput extends CreateSocialPostInput {
+  postId: number;
+}
+
+export type UpdateSocialPostResult = CreateSocialPostResult;
+
 export interface SocialPostListInput extends PaginationInput {
   authorUserId?: number;
 }
@@ -415,6 +422,7 @@ export interface RealtimeRepositoryPort {
     input: RespondFriendRequestInput
   ) => Promise<FriendRequestPayload | null>;
   createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
+  updateSocialPost: (input: UpdateSocialPostInput) => Promise<UpdateSocialPostResult | null>;
   listSocialPosts: (
     userId: number,
     input: SocialPostListInput
@@ -1814,9 +1822,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
                 id: item.id,
                 type: item.type,
                 url: mediaAsset.url,
+                mediaAssetPublicId: item.mediaAssetPublicId,
                 ...(item.alt ? { alt: item.alt } : {})
               };
             }),
+            mentionUserIds,
             counters: { likes: 0, replies: 0, reposts: 0, views: 1, bookmarks: 0 }
           }
         : undefined;
@@ -1885,6 +1895,203 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
       return {
         post: this.mapSocialPost(socialPost, input.authorUserId, input.authorUserId),
+        notifications
+      };
+    });
+  }
+
+  public async updateSocialPost(input: UpdateSocialPostInput): Promise<UpdateSocialPostResult | null> {
+    return this.client.$transaction(async (transaction) => {
+      const existingPost = await transaction.socialPost.findFirst({
+        where: {
+          id: input.postId,
+          authorUserId: input.authorUserId,
+          deletedAt: null
+        },
+        include: socialPostInclude
+      });
+      if (!existingPost) {
+        return null;
+      }
+
+      const mentionUserIds = Array.from(new Set(input.mentionUserIds));
+      if (
+        mentionUserIds.length !== input.mentionUserIds.length ||
+        mentionUserIds.length > 50 ||
+        mentionUserIds.includes(input.authorUserId)
+      ) {
+        throw this.socialPostConflict("error.social.invalid_mention_contact");
+      }
+
+      if (mentionUserIds.length > 0) {
+        const contacts = await transaction.contact.findMany({
+          where: {
+            ownerUserId: input.authorUserId,
+            contactUserId: { in: mentionUserIds },
+            blockedAt: null,
+            deletedAt: null,
+            contactUser: { isActive: true, deletedAt: null }
+          },
+          select: { contactUserId: true }
+        });
+        const matchedContactIds = new Set(contacts.map((contact) => contact.contactUserId));
+        if (
+          matchedContactIds.size !== mentionUserIds.length ||
+          mentionUserIds.some((userId) => !matchedContactIds.has(userId))
+        ) {
+          throw this.socialPostConflict("error.social.invalid_mention_contact");
+        }
+      }
+
+      const requestedMediaItems = input.media?.items ?? [];
+      const mediaPublicIds = requestedMediaItems.map((item) => item.mediaAssetPublicId);
+      if (new Set(mediaPublicIds).size !== mediaPublicIds.length) {
+        throw this.socialPostConflict("error.social.media_not_owned");
+      }
+
+      const selectedMediaByPublicId = new Map<
+        string,
+        { id: number; checksumSha256: string | null; url: string; entityType: string; entityId: number }
+      >();
+      if (mediaPublicIds.length > 0) {
+        const mediaAssets = await transaction.mediaAsset.findMany({
+          where: {
+            ownerUserId: input.authorUserId,
+            usageType: "social_post_public",
+            isActive: true,
+            deletedAt: null,
+            purgedAt: null,
+            checksumSha256: { in: mediaPublicIds },
+            OR: [
+              { entityType: "social_post_upload" },
+              { entityType: "social_post", entityId: input.postId }
+            ]
+          },
+          select: {
+            id: true,
+            checksumSha256: true,
+            url: true,
+            entityType: true,
+            entityId: true,
+            createdAt: true
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        });
+        for (const mediaAsset of mediaAssets) {
+          if (mediaAsset.checksumSha256 && !selectedMediaByPublicId.has(mediaAsset.checksumSha256)) {
+            selectedMediaByPublicId.set(mediaAsset.checksumSha256, mediaAsset);
+          }
+        }
+        if (
+          selectedMediaByPublicId.size !== mediaPublicIds.length ||
+          mediaPublicIds.some((publicId) => !selectedMediaByPublicId.has(publicId))
+        ) {
+          throw this.socialPostConflict("error.social.media_not_owned");
+        }
+      }
+
+      const existingEnvelope = this.jsonRecord(existingPost.media);
+      const existingCounters = this.jsonRecord(existingEnvelope?.counters);
+      const counters = {
+        likes: this.jsonCounter(existingCounters?.likes, 0),
+        replies: this.jsonCounter(existingCounters?.replies, 0),
+        reposts: this.jsonCounter(existingCounters?.reposts, 0),
+        views: this.jsonCounter(existingCounters?.views, 1),
+        bookmarks: this.jsonCounter(existingCounters?.bookmarks, 0)
+      };
+      const existingMentionUserIds = this.jsonPositiveIntegerArray(existingEnvelope?.mentionUserIds);
+      const media = input.media
+        ? {
+            ...(input.media.quotePostId !== undefined ? { quotePostId: input.media.quotePostId } : {}),
+            ...(input.media.replyToPostId !== undefined ? { replyToPostId: input.media.replyToPostId } : {}),
+            ...(input.media.repostPostId !== undefined ? { repostPostId: input.media.repostPostId } : {}),
+            ...(input.media.postType !== undefined ? { postType: input.media.postType } : {}),
+            ...(input.media.locationLabel !== undefined ? { locationLabel: input.media.locationLabel } : {}),
+            items: requestedMediaItems.map((item) => {
+              const mediaAsset = selectedMediaByPublicId.get(item.mediaAssetPublicId);
+              if (!mediaAsset) {
+                throw this.socialPostConflict("error.social.media_not_owned");
+              }
+              return {
+                id: item.id,
+                type: item.type,
+                url: mediaAsset.url,
+                mediaAssetPublicId: item.mediaAssetPublicId,
+                ...(item.alt ? { alt: item.alt } : {})
+              };
+            }),
+            mentionUserIds,
+            counters
+          }
+        : undefined;
+
+      const updatedPost = await transaction.socialPost.update({
+        where: { id: existingPost.id },
+        data: {
+          content: input.content,
+          media: this.toJsonValue(media),
+          visibility: this.socialPostVisibilityToDb(input.visibility)
+        },
+        include: socialPostInclude
+      });
+
+      const pendingMediaAssetIds = mediaPublicIds
+        .map((publicId) => selectedMediaByPublicId.get(publicId)!)
+        .filter((mediaAsset) => mediaAsset.entityType === "social_post_upload")
+        .map((mediaAsset) => mediaAsset.id);
+      if (pendingMediaAssetIds.length > 0) {
+        const updateResult = await transaction.mediaAsset.updateMany({
+          where: {
+            id: { in: pendingMediaAssetIds },
+            ownerUserId: input.authorUserId,
+            entityType: "social_post_upload",
+            usageType: "social_post_public",
+            isActive: true,
+            deletedAt: null,
+            purgedAt: null
+          },
+          data: { entityType: "social_post", entityId: existingPost.id }
+        });
+        if (updateResult.count !== pendingMediaAssetIds.length) {
+          throw this.socialPostConflict("error.social.media_not_owned");
+        }
+      }
+
+      const previousMentionUserIds = new Set(existingMentionUserIds);
+      const notifications: NotificationPayload[] = [];
+      for (const recipientUserId of mentionUserIds.filter((userId) => !previousMentionUserIds.has(userId))) {
+        const notification = await transaction.notification.create({
+          data: {
+            recipientUserId,
+            actorUserId: input.authorUserId,
+            type: NotificationType.SOCIAL,
+            title: "动态提醒",
+            body: "提醒你查看一条动态。",
+            payload: { kind: "post_mention", postId: updatedPost.id }
+          }
+        });
+        notifications.push(this.mapNotification(notification));
+      }
+
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.authorUserId,
+          action: "social.post.updated",
+          targetType: "SocialPost",
+          targetId: updatedPost.id,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: {
+            previousMentionUserIds: existingMentionUserIds,
+            mentionUserIds,
+            mediaAssetPublicIds: mediaPublicIds,
+            visibility: input.visibility
+          } satisfies Prisma.InputJsonValue
+        }
+      });
+
+      return {
+        post: this.mapSocialPost(updatedPost, input.authorUserId, input.authorUserId),
         notifications
       };
     });
@@ -2545,6 +2752,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       media: socialPost.media,
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
       createdAt: socialPost.createdAt,
+      updatedAt: socialPost.updatedAt,
       viewerFollowsAuthor:
         viewerUserId === authorUserId || relationshipMap.has(`${viewerUserId}:${authorUserId}`),
       authorFollowsViewer:
@@ -2676,6 +2884,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       message,
       statusCode: 409
     });
+  }
+
+  private jsonRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : undefined;
+  }
+
+  private jsonCounter(value: unknown, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
+  private jsonPositiveIntegerArray(value: unknown): number[] {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(value.filter(
+      (item): item is number => typeof item === "number" && Number.isSafeInteger(item) && item > 0
+    )));
   }
 
   private toJsonValue(value: unknown): Prisma.InputJsonValue | undefined {

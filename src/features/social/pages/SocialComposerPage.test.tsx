@@ -22,6 +22,11 @@ describe("SocialComposerPage formal contacts and image uploads", () => {
     expect(source).not.toContain("const mentionCandidates = useMemo(() => {\n    const normalized = mentionQuery.trim().toLowerCase();\n\n    return profileList");
   });
 
+  it("keeps persisted reminder contacts and submits them when saving an edit", () => {
+    expect(source).toContain("mentionUserIds: editPost?.mentionUserIds");
+    expect(source).toMatch(/updatePost\(\{[\s\S]*?mentionUserIds,[\s\S]*?\}\)/u);
+  });
+
   it("uploads selected images through the formal Social media route", () => {
     expect(source).toContain("realtimeApi.uploadSocialMedia");
     expect(source).not.toContain("createMediaFromFile");

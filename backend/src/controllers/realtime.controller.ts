@@ -30,6 +30,7 @@ import {
   socialPostCreateBodySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialPostUpdateBodySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
 
@@ -276,6 +277,17 @@ export class RealtimeController {
       ),
     201
   );
+
+  public updateSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+
+    return this.service.updateSocialPost(
+      getAuthenticatedAccess(response),
+      params.id,
+      socialPostUpdateBodySchema.parse(request.body),
+      getRequestContext(request)
+    );
+  });
 
   public getSocialPost = this.createHandler((request, response) => {
     const params = socialPostIdParamSchema.parse(request.params);

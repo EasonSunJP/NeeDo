@@ -263,7 +263,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
     return subscribeRealtimeEvents({
       onEvent: (event) => {
-        if (event.type === "social.post.created" || event.type === "notification.created" || event.type === "follow.created") {
+        if (event.type === "social.post.created" || event.type === "social.post.updated" || event.type === "notification.created" || event.type === "follow.created") {
           void loadFormalSocial();
         }
       }
@@ -333,6 +333,36 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       setState((current) => ({ ...current, posts: sortPostsByNewest([mapped, ...current.posts.filter((post) => post.id !== mapped.id)]) }));
       return mapped;
     };
+    const updatePost = async (input: SocialUpdatePostInput) => {
+      if (!session || input.actorKey !== actorKey) throw new Error("error.auth.forbidden");
+      const currentPost = getPostById(input.postId);
+      if (!currentPost || postAuthorKey(currentPost) !== actorKey) {
+        throw new Error("error.realtime.social_post_not_found");
+      }
+      if (!["public", "followers"].includes(input.visibility)) {
+        throw new Error("error.social.visibility_unavailable");
+      }
+      const updated = await realtimeApi.updateSocialPost(Number(input.postId), {
+        content: input.text.trim(),
+        media: buildFormalSocialCreateMediaEnvelope({
+          media: input.media,
+          quotePostId: currentPost.quotePostId,
+          replyToPostId: currentPost.replyToPostId,
+          repostPostId: currentPost.repostPostId,
+          postType: input.postType,
+          locationLabel: input.locationLabel
+        }),
+        mentionUserIds: input.mentionUserIds ?? [],
+        visibility: input.visibility === "followers" ? "followers" : "public"
+      });
+      const mapped = mapFormalSocialPost(updated);
+      setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([updated]) }));
+      setState((current) => ({
+        ...current,
+        posts: sortPostsByNewest(current.posts.map((post) => post.id === mapped.id ? mapped : post))
+      }));
+      return mapped;
+    };
     const search = (query: string): SocialSearchResult => {
       const normalized = query.trim().toLowerCase();
       return {
@@ -380,7 +410,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       saveDraft,
       clearDraft,
       createPost,
-      updatePost: formalSocialMutationUnavailable,
+      updatePost,
       deletePost: formalSocialMutationUnavailable,
       toggleLike: formalSocialMutationUnavailable,
       toggleBookmark: formalSocialMutationUnavailable,

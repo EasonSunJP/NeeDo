@@ -45,6 +45,7 @@ Social:
 - `GET /social/posts/:id`
 - `POST /social/media?fileName=photo.png`（JPEG/PNG/WebP 原始字节，单张最多 8 MiB，需要 `social-post:create`）
 - `POST /social/posts`
+- `PATCH /social/posts/:id`（仅作者本人；沿用 `social-post:create` 权限）
 - `POST /social/follows`
 - `DELETE /social/follows/:targetUserId`
 

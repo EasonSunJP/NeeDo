@@ -83,6 +83,7 @@ export interface SocialPost {
   media: SocialMediaItem[];
   hashtags: string[];
   mentions: string[];
+  mentionUserIds?: number[];
   quotePostId?: string;
   repostPostId?: string;
   replyToPostId?: string;
@@ -209,6 +210,7 @@ export interface SocialUpdatePostInput {
   includeRelatedPeople?: boolean;
   commentPermission: SocialCommentPermission;
   locationLabel?: string;
+  mentionUserIds?: number[];
   audienceProfileKeys?: string[];
   postType: SocialPostType;
 }

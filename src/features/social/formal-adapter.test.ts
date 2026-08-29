@@ -79,6 +79,22 @@ describe("formal social adapter", () => {
     });
   });
 
+  it("restores editable asset references and reminder contacts from a persisted post", () => {
+    const checksum = "c".repeat(64);
+    const mapped = mapFormalSocialPost({
+      ...formalPost,
+      media: {
+        items: [{ id: "image-1", type: "image", url: `/media/content/${checksum}.webp` }],
+        mentionUserIds: [52, 74]
+      }
+    });
+
+    expect(mapped.media).toEqual([
+      expect.objectContaining({ id: "image-1", mediaAssetPublicId: checksum })
+    ]);
+    expect(mapped.mentionUserIds).toEqual([52, 74]);
+  });
+
   it("builds a request-only image envelope from uploaded asset references", () => {
     const checksum = "a".repeat(64);
 
