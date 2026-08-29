@@ -212,6 +212,13 @@ enum AffiliatePublisherType {
   @@map("affiliate_publisher_type")
 }
 
+enum AffiliatePlatformFeeScopeType {
+  GLOBAL @map("global")
+  SHOP   @map("shop")
+
+  @@map("affiliate_platform_fee_scope_type")
+}
+
 enum AffiliateServiceScopeMode {
   ALL_CURRENT_SERVICES @map("all_current_services")
   SELECTED_SERVICES    @map("selected_services")
@@ -612,6 +619,8 @@ model User {
   createdEntitySuspensions              EntitySuspension[]                  @relation("EntitySuspensionCreatedBy")
   releasedEntitySuspensions             EntitySuspension[]                  @relation("EntitySuspensionReleasedBy")
   reviewedAffiliateTasks                AffiliateTask[]                     @relation("AffiliateTaskReviewer")
+  createdAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleCreatedBy")
+  updatedAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleUpdatedBy")
   affiliateClaims                       AffiliateClaim[]                    @relation("AffiliateClaimUser")
   affiliateTouchesAsClaimant            AffiliateTouch[]                    @relation("AffiliateTouchClaimant")
   affiliateTouchesAsCustomer            AffiliateTouch[]                    @relation("AffiliateTouchCustomer")
@@ -746,6 +755,7 @@ model Shop {
   affiliateServiceScopes     AffiliateTaskService[]
   affiliateTouches           AffiliateTouch[]
   affiliateAttributions      AffiliateAttribution[]
+  affiliatePlatformFeeRules  AffiliatePlatformFeeRule[]
   technicianApplications     TechnicianApplicationDetail[]
   technicianShopAffiliations TechnicianShopAffiliation[]
   payrollSchedulePolicies    ShopPayrollSchedulePolicy[]
@@ -2431,6 +2441,7 @@ model Wallet {
   affiliateBudgetReservations AffiliateBudgetReservation[]
   affiliateRewardsAsPublisher AffiliateReward[]            @relation("AffiliateRewardPublisherWallet")
   affiliateRewardsAsClaimant  AffiliateReward[]            @relation("AffiliateRewardClaimantWallet")
+  affiliateRewardsAsPlatform  AffiliateReward[]            @relation("AffiliateRewardPlatformWallet")
 
   @@unique([ownerType, ownerId, currency])
   @@index([ownerType, ownerId])
@@ -3467,6 +3478,38 @@ model AffiliateAllianceInvitation {
   @@map("affiliate_alliance_invitations")
 }
 
+model AffiliatePlatformFeeRule {
+  id            Int                           @id @default(autoincrement())
+  scopeType     AffiliatePlatformFeeScopeType @map("scope_type")
+  scopeKey      String                        @map("scope_key") @db.VarChar(80)
+  shopId        Int?                          @map("shop_id")
+  feeBps        Int                           @map("fee_bps")
+  version       Int
+  effectiveFrom DateTime                      @map("effective_from")
+  effectiveTo   DateTime?                     @map("effective_to")
+  activeKey     String?                       @unique(map: "affiliate_platform_fee_rules_active_key_key") @map("active_key") @db.VarChar(80)
+  reason        String                        @db.VarChar(500)
+  createdById   Int?                          @map("created_by_id")
+  updatedById   Int?                          @map("updated_by_id")
+  createdAt     DateTime                      @default(now()) @map("created_at")
+  updatedAt     DateTime                      @updatedAt @map("updated_at")
+  deletedAt     DateTime?                     @map("deleted_at")
+
+  shop      Shop?           @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy User?           @relation("AffiliatePlatformFeeRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?           @relation("AffiliatePlatformFeeRuleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tasks     AffiliateTask[]
+
+  @@unique([scopeType, shopId, version], map: "affiliate_platform_fee_rules_scope_shop_version_key")
+  @@unique([scopeKey, version], map: "affiliate_platform_fee_rules_scope_key_version_key")
+  @@index([scopeType, shopId, effectiveFrom, effectiveTo, deletedAt], map: "affiliate_platform_fee_rules_effective_idx")
+  @@index([shopId], map: "affiliate_platform_fee_rules_shop_id_idx")
+  @@index([createdById], map: "affiliate_platform_fee_rules_created_by_id_idx")
+  @@index([updatedById], map: "affiliate_platform_fee_rules_updated_by_id_idx")
+  @@index([deletedAt], map: "affiliate_platform_fee_rules_deleted_at_idx")
+  @@map("affiliate_platform_fee_rules")
+}
+
 model AffiliateTask {
   id                            Int                       @id @default(autoincrement())
   taskCode                      String                    @unique @map("task_code") @db.VarChar(80)
@@ -3486,6 +3529,11 @@ model AffiliateTask {
   allocatedBudgetNdp            Int                       @default(0) @map("allocated_budget_ndp")
   settledBudgetNdp              Int                       @default(0) @map("settled_budget_ndp")
   releasedBudgetNdp             Int                       @default(0) @map("released_budget_ndp")
+  platformFeeRuleId             Int?                      @map("platform_fee_rule_id")
+  platformFeeBps                Int                       @default(0) @map("platform_fee_bps")
+  platformFeeReserveNdp         Int                       @default(0) @map("platform_fee_reserve_ndp")
+  settledPlatformFeeNdp         Int                       @default(0) @map("settled_platform_fee_ndp")
+  releasedPlatformFeeNdp        Int                       @default(0) @map("released_platform_fee_ndp")
   customerDiscountType          AffiliateDiscountType     @default(NONE) @map("customer_discount_type")
   fixedDiscountJpy              Int                       @default(0) @map("fixed_discount_jpy")
   discountRateBps               Int                       @default(0) @map("discount_rate_bps")
@@ -3517,6 +3565,7 @@ model AffiliateTask {
   publisherShop            Shop?                       @relation("AffiliateShopPublisher", fields: [publisherShopId], references: [id], onDelete: Restrict)
   coverMediaAsset          MediaAsset?                 @relation("AffiliateTaskCover", fields: [coverMediaAssetId], references: [id], onDelete: SetNull)
   reviewedBy               User?                       @relation("AffiliateTaskReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  platformFeeRule          AffiliatePlatformFeeRule?   @relation(fields: [platformFeeRuleId], references: [id], onDelete: SetNull)
   translations             AffiliateTaskTranslation[]
   shops                    AffiliateTaskShop[]
   services                 AffiliateTaskService[]
@@ -3533,6 +3582,7 @@ model AffiliateTask {
   @@index([parentTaskId])
   @@index([publisherType, publisherMerchantAccountId, publisherShopId])
   @@index([coverMediaAssetId])
+  @@index([platformFeeRuleId])
   @@index([status, taskStartsAt, taskEndsAt])
   @@index([reviewedById])
   @@index([deletedAt])
@@ -3728,7 +3778,9 @@ model AffiliateReward {
   bookingOrderId         Int                   @map("booking_order_id")
   publisherWalletId      Int                   @map("publisher_wallet_id")
   claimantWalletId       Int                   @map("claimant_wallet_id")
+  platformWalletId       Int?                  @map("platform_wallet_id")
   rewardNdp              Int                   @map("reward_ndp")
+  platformFeeNdp         Int                   @default(0) @map("platform_fee_ndp")
   reversalRequiredNdp    Int                   @default(0) @map("reversal_required_ndp")
   reversedNdp            Int                   @default(0) @map("reversed_ndp")
   outstandingRecoveryNdp Int                   @default(0) @map("outstanding_recovery_ndp")
@@ -3746,6 +3798,7 @@ model AffiliateReward {
   bookingOrder    BookingOrder                 @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
   publisherWallet Wallet                       @relation("AffiliateRewardPublisherWallet", fields: [publisherWalletId], references: [id], onDelete: Restrict)
   claimantWallet  Wallet                       @relation("AffiliateRewardClaimantWallet", fields: [claimantWalletId], references: [id], onDelete: Restrict)
+  platformWallet  Wallet?                      @relation("AffiliateRewardPlatformWallet", fields: [platformWalletId], references: [id], onDelete: Restrict)
   transactions    AffiliateRewardTransaction[]
   riskEvents      AffiliateRiskEvent[]
 
@@ -3754,6 +3807,7 @@ model AffiliateReward {
   @@index([bookingOrderId])
   @@index([publisherWalletId])
   @@index([claimantWalletId])
+  @@index([platformWalletId])
   @@index([deletedAt])
   @@map("affiliate_rewards")
 }
@@ -3777,20 +3831,24 @@ model AffiliateRewardTransaction {
 }
 
 model AffiliateBudgetReservation {
-  id             Int                   @id @default(autoincrement())
-  taskId         Int                   @unique @map("task_id")
-  walletId       Int                   @map("wallet_id")
-  totalFrozenNdp Int                   @map("total_frozen_ndp")
-  allocatedNdp   Int                   @default(0) @map("allocated_ndp")
-  capturedNdp    Int                   @default(0) @map("captured_ndp")
-  releasedNdp    Int                   @default(0) @map("released_ndp")
-  status         AffiliateBudgetStatus @default(ACTIVE)
-  idempotencyKey String                @unique @map("idempotency_key") @db.VarChar(180)
-  frozenAt       DateTime              @default(now()) @map("frozen_at")
-  releasedAt     DateTime?             @map("released_at")
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  deletedAt      DateTime?             @map("deleted_at")
+  id                     Int                   @id @default(autoincrement())
+  taskId                 Int                   @unique @map("task_id")
+  walletId               Int                   @map("wallet_id")
+  totalFrozenNdp         Int                   @map("total_frozen_ndp")
+  commissionFrozenNdp    Int                   @default(0) @map("commission_frozen_ndp")
+  platformFeeFrozenNdp   Int                   @default(0) @map("platform_fee_frozen_ndp")
+  allocatedNdp           Int                   @default(0) @map("allocated_ndp")
+  capturedNdp            Int                   @default(0) @map("captured_ndp")
+  platformFeeCapturedNdp Int                   @default(0) @map("platform_fee_captured_ndp")
+  releasedNdp            Int                   @default(0) @map("released_ndp")
+  platformFeeReleasedNdp Int                   @default(0) @map("platform_fee_released_ndp")
+  status                 AffiliateBudgetStatus @default(ACTIVE)
+  idempotencyKey         String                @unique @map("idempotency_key") @db.VarChar(180)
+  frozenAt               DateTime              @default(now()) @map("frozen_at")
+  releasedAt             DateTime?             @map("released_at")
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+  deletedAt              DateTime?             @map("deleted_at")
 
   task         AffiliateTask                @relation(fields: [taskId], references: [id], onDelete: Restrict)
   wallet       Wallet                       @relation(fields: [walletId], references: [id], onDelete: Restrict)
