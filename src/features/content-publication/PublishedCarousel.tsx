@@ -46,7 +46,13 @@ function PublishedCarouselState({
   );
 }
 
-export function PublishedCarousel({ scene }: { scene: PublishedCarouselUiScene }) {
+export function PublishedCarousel({
+  cardHeightClassName,
+  scene
+}: {
+  cardHeightClassName?: string;
+  scene: PublishedCarouselUiScene;
+}) {
   const { language } = useOptionalI18n();
   const locale = toContentLocale(language);
   const { data, error, loading, retry } = usePublishedCarousel(scene, locale);
@@ -104,5 +110,5 @@ export function PublishedCarousel({ scene }: { scene: PublishedCarouselUiScene }
     to: carouselTargetPath(slide.target)
   }));
 
-  return <FeatureCarousel slides={slides} />;
+  return <FeatureCarousel cardHeightClassName={cardHeightClassName} slides={slides} />;
 }

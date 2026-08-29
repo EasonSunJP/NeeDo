@@ -72,11 +72,14 @@ async function waitFor(assertion: () => void) {
   throw lastError;
 }
 
-async function renderCarousel(scene: "user-home" | "affiliate-home-notice") {
+async function renderCarousel(
+  scene: "user-home" | "affiliate-home-notice",
+  cardHeightClassName?: string
+) {
   await act(async () => {
     root.render(
       <MemoryRouter initialEntries={["/"]}>
-        <PublishedCarousel scene={scene} />
+        <PublishedCarousel cardHeightClassName={cardHeightClassName} scene={scene} />
         <LocationProbe />
       </MemoryRouter>
     );
@@ -165,6 +168,20 @@ describe("PublishedCarousel", () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe(
       "/services/46969a0f-2c2c-4b7b-b986-88e406393255"
     );
+  });
+
+  it("passes an explicit card height through to the shared carousel", async () => {
+    apiMocks.getUserHomeCarousel.mockResolvedValue(
+      payload("USER_HOME", {
+        type: "service",
+        publicId: "46969a0f-2c2c-4b7b-b986-88e406393255"
+      })
+    );
+
+    await renderCarousel("user-home", "h-[204px]");
+    await waitFor(() => expect(container.textContent).toContain("东京护理"));
+
+    expect(container.querySelector(".h\\-\\[204px\\]")).not.toBeNull();
   });
 
   it("preserves the API image alt and explicit no-CTA semantics", async () => {
