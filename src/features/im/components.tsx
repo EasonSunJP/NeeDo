@@ -2918,7 +2918,7 @@ export function MessageBubble({
               }}
               type="button"
             >
-              <ImReactionValue className="max-h-[22px]" value={reaction.emoji} />
+              <ImReactionValue judgementDisplay="summary" value={reaction.emoji} />
             </button>
             <span
               className="min-w-0 max-w-[12rem] truncate px-2 text-left text-[12px] font-black opacity-78"
