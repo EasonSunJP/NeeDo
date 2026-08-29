@@ -168,6 +168,34 @@ export type RealtimeUploadedImage = {
   url: string;
 };
 
+export type RealtimeSocialMediaUpload = {
+  publicId: string;
+  fileSize: number;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  url: string;
+};
+
+export type RealtimeSocialCreateMediaEnvelope = {
+  items: Array<{
+    id: string;
+    type: "image";
+    mediaAssetPublicId: string;
+    alt?: string;
+  }>;
+  quotePostId?: number;
+  replyToPostId?: number;
+  repostPostId?: number;
+  postType?: "post" | "reply" | "quote" | "repost" | "announcement" | "technician-daily";
+  locationLabel?: string;
+};
+
+export type RealtimeSocialCreatePostInput = {
+  content: string;
+  media?: RealtimeSocialCreateMediaEnvelope;
+  mentionUserIds?: number[];
+  visibility?: RealtimeSocialPost["visibility"];
+};
+
 export const realtimeApi = {
   listConversations(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeConversation>>("/im/conversations", { query });
@@ -281,6 +309,14 @@ export const realtimeApi = {
       query: { fileName: file.name }
     });
   },
+  uploadSocialMedia(file: File) {
+    return httpClient.request<RealtimeSocialMediaUpload>("/social/media", {
+      body: file,
+      headers: { "Content-Type": file.type },
+      method: "POST",
+      query: { fileName: file.name }
+    });
+  },
   blockContact(contactId: number) {
     return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "POST" });
   },
@@ -308,7 +344,7 @@ export const realtimeApi = {
   getSocialPost(id: number) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`);
   },
-  createSocialPost(input: { content: string; media?: unknown; visibility?: RealtimeSocialPost["visibility"] }) {
+  createSocialPost(input: RealtimeSocialCreatePostInput) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });
   },
   follow(targetUserId: number) {

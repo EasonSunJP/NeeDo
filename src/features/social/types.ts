@@ -59,10 +59,20 @@ export interface SocialMediaItem {
   id: string;
   type: SocialMediaType;
   url: string;
+  mediaAssetPublicId?: string;
   thumbnailUrl?: string;
   alt?: string;
   aspectRatio?: number;
   durationLabel?: string;
+}
+
+export interface SocialMentionCandidate {
+  userId: number;
+  needoId: string;
+  displayName: string;
+  username: string;
+  avatarUrl: string;
+  searchText: string;
 }
 
 export interface SocialPost {
@@ -128,6 +138,7 @@ export interface SocialComposerDraft {
   commentPermission?: SocialCommentPermission;
   locationLabel?: string;
   audienceProfileKeys?: string[];
+  mentionUserIds?: number[];
   updatedAt: string;
 }
 
@@ -183,6 +194,7 @@ export interface SocialCreatePostInput {
   commentPermission?: SocialCommentPermission;
   locationLabel?: string;
   audienceProfileKeys?: string[];
+  mentionUserIds?: number[];
   postType?: SocialPostType;
 }
 

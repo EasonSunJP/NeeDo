@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { RealtimeSocialPost } from "../realtime/api";
-import { mapFormalSocialPost, mapFormalSocialProfiles } from "./formal-adapter";
+import {
+  buildFormalSocialCreateMediaEnvelope,
+  mapFormalSocialPost,
+  mapFormalSocialProfiles
+} from "./formal-adapter";
 
 const formalPost: RealtimeSocialPost = {
   id: 81,
@@ -73,5 +77,43 @@ describe("formal social adapter", () => {
         joinedAt: "2025-02-03T04:05:06.000Z"
       })
     });
+  });
+
+  it("builds a request-only image envelope from uploaded asset references", () => {
+    const checksum = "a".repeat(64);
+
+    expect(buildFormalSocialCreateMediaEnvelope({
+      media: [
+        {
+          id: "m1",
+          type: "image",
+          url: `/media/content/${checksum}.png`,
+          mediaAssetPublicId: checksum,
+          alt: "Quiet room"
+        }
+      ],
+      quotePostId: "42",
+      postType: "quote",
+      locationLabel: "东京 银座"
+    })).toEqual({
+      items: [{ id: "m1", type: "image", mediaAssetPublicId: checksum, alt: "Quiet room" }],
+      quotePostId: 42,
+      postType: "quote",
+      locationLabel: "东京 银座"
+    });
+  });
+
+  it("rejects previews and video items that do not have a formal image asset", () => {
+    expect(() => buildFormalSocialCreateMediaEnvelope({
+      media: [{ id: "m1", type: "image", url: "blob:preview" }]
+    })).toThrow("error.social.media_upload_unavailable");
+    expect(() => buildFormalSocialCreateMediaEnvelope({
+      media: [{
+        id: "v1",
+        type: "video",
+        url: "/media/content/video.mp4",
+        mediaAssetPublicId: "a".repeat(64)
+      }]
+    })).toThrow("error.social.media_upload_unavailable");
   });
 });

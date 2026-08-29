@@ -90,6 +90,56 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("uploads Social image bytes and creates a post with asset references and contact IDs", async () => {
+    const checksum = "a".repeat(64);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({
+        publicId: checksum,
+        fileSize: 8,
+        mimeType: "image/png",
+        url: `/media/content/${checksum}.png`
+      }, 201))
+      .mockResolvedValueOnce(jsonResponse({ id: 701 }, 201));
+    const file = new File(
+      [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+      "moment.png",
+      { type: "image/png" }
+    );
+
+    await realtimeApi.uploadSocialMedia(file);
+    await realtimeApi.createSocialPost({
+      content: "Formal moment",
+      media: {
+        items: [{ id: "m1", type: "image", mediaAssetPublicId: checksum }]
+      },
+      mentionUserIds: [52, 74],
+      visibility: "public"
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/social/media?fileName=moment.png",
+      expect.objectContaining({
+        body: file,
+        headers: expect.objectContaining({ "Content-Type": "image/png" }),
+        method: "POST"
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/social/posts",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "Formal moment",
+          media: { items: [{ id: "m1", type: "image", mediaAssetPublicId: checksum }] },
+          mentionUserIds: [52, 74],
+          visibility: "public"
+        }),
+        method: "POST"
+      })
+    );
+  });
+
   it("loads one friend's rolling activity status without listing or downloading post media", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       status: "recent_posts",

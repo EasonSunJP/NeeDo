@@ -1,4 +1,8 @@
-import type { RealtimeSocialPost, RealtimeSocialProfileSummary } from "../realtime/api";
+import type {
+  RealtimeSocialCreateMediaEnvelope,
+  RealtimeSocialPost,
+  RealtimeSocialProfileSummary
+} from "../realtime/api";
 import type {
   SocialEntityType,
   SocialMediaItem,
@@ -27,6 +31,8 @@ export type FormalSocialMediaEnvelope = {
   namespace?: string;
   dataset?: string;
 };
+
+export type FormalSocialCreateMediaEnvelope = RealtimeSocialCreateMediaEnvelope;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -188,5 +194,39 @@ export function buildFormalSocialMediaEnvelope(input: {
     postType: input.postType,
     locationLabel: input.locationLabel,
     counters: { likes: 0, replies: 0, reposts: 0, views: 1, bookmarks: 0 }
+  };
+}
+
+export function buildFormalSocialCreateMediaEnvelope(input: {
+  media: SocialMediaItem[];
+  quotePostId?: string;
+  replyToPostId?: string;
+  repostPostId?: string;
+  postType?: SocialPostType;
+  locationLabel?: string;
+}): FormalSocialCreateMediaEnvelope {
+  const items = input.media.map((item) => {
+    if (
+      item.type !== "image" ||
+      !item.mediaAssetPublicId ||
+      !/^[a-f0-9]{64}$/u.test(item.mediaAssetPublicId)
+    ) {
+      throw new Error("error.social.media_upload_unavailable");
+    }
+    return {
+      id: item.id,
+      type: "image" as const,
+      mediaAssetPublicId: item.mediaAssetPublicId,
+      ...(item.alt ? { alt: item.alt } : {})
+    };
+  });
+
+  return {
+    items,
+    ...(input.quotePostId !== undefined ? { quotePostId: Number(input.quotePostId) } : {}),
+    ...(input.replyToPostId !== undefined ? { replyToPostId: Number(input.replyToPostId) } : {}),
+    ...(input.repostPostId !== undefined ? { repostPostId: Number(input.repostPostId) } : {}),
+    ...(input.postType !== undefined ? { postType: input.postType } : {}),
+    ...(input.locationLabel !== undefined ? { locationLabel: input.locationLabel } : {})
   };
 }

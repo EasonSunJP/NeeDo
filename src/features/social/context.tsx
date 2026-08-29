@@ -16,7 +16,7 @@ import type {
   SocialUpdatePostInput
 } from "./types";
 import {
-  buildFormalSocialMediaEnvelope,
+  buildFormalSocialCreateMediaEnvelope,
   mapFormalSocialPost,
   mapFormalSocialProfile,
   mapFormalSocialProfiles
@@ -299,13 +299,14 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       }
       const created = await realtimeApi.createSocialPost({
         content: input.text.trim(),
-        media: buildFormalSocialMediaEnvelope({
+        media: buildFormalSocialCreateMediaEnvelope({
           media: input.media ?? [],
           quotePostId: input.quotePostId,
           replyToPostId: input.replyToPostId,
           postType: input.postType,
           locationLabel: input.locationLabel
         }),
+        mentionUserIds: input.mentionUserIds ?? [],
         visibility: input.visibility === "followers" ? "followers" : "public"
       });
       const mapped = mapFormalSocialPost(created);
