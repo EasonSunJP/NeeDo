@@ -50,6 +50,26 @@ export interface DashboardMerchantFacts {
   city: string;
   address: string;
   status: string;
+  activeTechnicianCount: number;
+  billing: {
+    cadence: "monthly" | "annual" | "free";
+    trialStatus: "not_started" | "active" | "completed" | "interrupted" | "not_applicable";
+    trialEndsAt: Date | null;
+    paidThrough: Date | null;
+  } | null;
+  wallet: {
+    currency: "NDP";
+    availableBalance: number;
+    frozenBalance: number;
+  } | null;
+}
+
+export interface DashboardMerchantSnapshot {
+  publicId: string;
+  name: string;
+  city: string;
+  address: string;
+  status: string;
   billing: {
     cadence: "monthly" | "annual" | "free";
     state: "trial" | "paid" | "free" | "overdue";

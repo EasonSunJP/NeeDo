@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { resolveDashboardWindow } from "../src/domain/dashboard-period";
 import { DashboardRepository } from "../src/repositories/dashboard.repository";
+import { DashboardMerchantSnapshotService } from "../src/services/dashboard-merchant-snapshot.service";
 
 type SqlQuery = {
   sql?: string;
@@ -86,7 +87,7 @@ const createClient = (walletOpened = true) => {
 describe("DashboardRepository merchant finance and current shop snapshot", () => {
   it("keeps formal shop cost separate and restricts frozen stock and profit to the shop", async () => {
     const fixture = createClient();
-    const repository = new DashboardRepository(fixture.client, undefined, () => now);
+    const repository = new DashboardRepository(fixture.client);
 
     const result = await repository.getFinanceFacts({
       scope: { kind: "shop", shopId: 21 },
@@ -132,6 +133,10 @@ describe("DashboardRepository merchant finance and current shop snapshot", () =>
     expect(profit?.sql).toContain("booking.status =");
     expect(profit?.sql).toContain("booking.payment_status NOT IN");
     expect(profit?.sql).toContain("financial.service_income_status IN");
+    expect(profit?.sql).toContain("financial.shop_id = booking.shop_id");
+    expect(profit?.sql).toContain("booking.shop_id =");
+    expect(profit?.sql).toContain("shop.id = booking.shop_id");
+    expect(profit?.sql).not.toContain("shop.id = financial.shop_id");
     expect(profit?.sql).toContain("shopEstimatedGrossProfitJpy");
     expect(profit?.sql).toContain("JSON_TYPE");
     expect(profit?.sql).not.toContain("technicianNetIncomeJpy");
@@ -151,11 +156,33 @@ describe("DashboardRepository merchant finance and current shop snapshot", () =>
 
   it("loads public shop, active billing, technicians, and the current formal wallet once", async () => {
     const fixture = createClient();
-    const repository = new DashboardRepository(fixture.client, undefined, () => now);
+    const repository = new DashboardRepository(fixture.client);
 
-    await expect(
-      repository.getMerchantFacts({ scope: { kind: "shop", shopId: 21 }, city: null, window })
-    ).resolves.toEqual({
+    const facts = await repository.getMerchantFacts({
+      scope: { kind: "shop", shopId: 21 },
+      city: null,
+      window
+    });
+    expect(facts).toEqual({
+      publicId: "s0000000021",
+      name: "Aoyama Care Studio",
+      city: "Tokyo",
+      address: "1-2-3 Aoyama",
+      status: "published",
+      activeTechnicianCount: 3,
+      billing: {
+        cadence: "monthly",
+        trialStatus: "active",
+        trialEndsAt: new Date("2026-09-30T15:00:00.000Z"),
+        paidThrough: null
+      },
+      wallet: {
+        currency: "NDP",
+        availableBalance: 2_500,
+        frozenBalance: 175
+      }
+    });
+    expect(new DashboardMerchantSnapshotService(undefined, () => now).compose(facts)).toEqual({
       publicId: "s0000000021",
       name: "Aoyama Care Studio",
       city: "Tokyo",
@@ -200,7 +227,7 @@ describe("DashboardRepository merchant finance and current shop snapshot", () =>
 
   it("returns not_opened with null balances when the formal shop wallet is absent", async () => {
     const fixture = createClient(false);
-    const repository = new DashboardRepository(fixture.client, undefined, () => now);
+    const repository = new DashboardRepository(fixture.client);
 
     const result = await repository.getMerchantFacts({
       scope: { kind: "shop", shopId: 21 },
@@ -208,12 +235,14 @@ describe("DashboardRepository merchant finance and current shop snapshot", () =>
       window
     });
 
-    expect(result?.wallet).toEqual({
-      status: "not_opened",
-      currency: "NDP",
-      availableBalance: null,
-      frozenBalance: null
-    });
+    expect(result?.wallet).toBeNull();
+    expect(new DashboardMerchantSnapshotService(undefined, () => now).compose(result)?.wallet)
+      .toEqual({
+        status: "not_opened",
+        currency: "NDP",
+        availableBalance: null,
+        frozenBalance: null
+      });
     expect(fixture.queryRaw).toHaveBeenCalledTimes(1);
   });
 });
