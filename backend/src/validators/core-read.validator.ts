@@ -42,6 +42,25 @@ const serviceListQueryBaseSchema = z.object({
   sort: coreReadSortSchema
 });
 
+const repeatedQueryValues = (value: unknown): unknown[] =>
+  value === undefined ? [] : Array.isArray(value) ? value : [value];
+
+const uniqueTrimmedStrings = z.preprocess(
+  repeatedQueryValues,
+  z
+    .array(z.string().trim().min(1).max(100))
+    .transform((values) => Array.from(new Set(values)))
+    .pipe(z.array(z.string()).max(20))
+);
+
+const uniquePositiveIntegers = z.preprocess(
+  repeatedQueryValues,
+  z
+    .array(z.coerce.number().int().positive())
+    .transform((values) => Array.from(new Set(values)))
+    .pipe(z.array(z.number().int().positive()).max(20))
+);
+
 export const serviceListQuerySchema = serviceListQueryBaseSchema.refine(
   (value) =>
     value.minPrice === undefined ||
@@ -52,7 +71,10 @@ export const serviceListQuerySchema = serviceListQueryBaseSchema.refine(
 
 export const coreSearchQuerySchema = serviceListQueryBaseSchema
   .extend({
-    keyword: z.string().trim().min(1).max(100).optional()
+    entityType: z.enum(["service", "shop", "technician"]).default("service"),
+    keyword: z.string().trim().min(1).max(100).optional(),
+    keywords: uniqueTrimmedStrings,
+    categoryIds: uniquePositiveIntegers
   })
   .refine(
     (value) =>
