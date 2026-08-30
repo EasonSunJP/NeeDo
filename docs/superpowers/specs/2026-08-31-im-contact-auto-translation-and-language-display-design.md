@@ -190,7 +190,7 @@ OpenAPI 同步声明请求字段和响应字段；不新增路由、权限、轮
 - 切换 App 语言时，已打开自动翻译的会话立即按新语言重新派生显示，不写数据库。
 - 切换 active identity 或账号后，必须读取新身份的 ConversationPayload，不沿用前一个身份内存中的偏好。
 - SSE 新消息合并后读取当前 Conversation 的偏好，不能以事件到达时的临时全局值改写原消息。
-- 消息输入框是权威原文边界：contenteditable 内的用户输入节点必须排除在 `I18nRuntime` 之外，不能让运行时展示翻译经后续 input/paste 事件写回 draft 或发送 payload。输入框的可视 placeholder 与 `aria-placeholder` 必须由当前 App 语言显式派生并单独保持可本地化。
+- 消息输入框是权威原文边界：contenteditable 内的用户输入节点必须排除在 `I18nRuntime` 之外，不能让运行时展示翻译经后续 input/paste 事件写回 draft 或发送 payload。输入框的可视 placeholder 与 `aria-placeholder` 必须在存在 `I18nProvider` 时由当前 App 语言显式派生并单独保持可本地化；没有 Provider 的独立/复用挂载必须保留调用方传入的原文，不能改用系统语言 fallback。
 - 旧客户端会忽略新增响应字段；数据库默认关闭，因此不会继续发生隐式聊天翻译。
 - 除纠正“业务 Contact 被误判为好友”和待处理资料页操作外，本微步骤不改变好友申请、好友删除、黑名单、会话保留、消息发送权限或身份资料隐私规则。
 - 保留当前工作区中日程与联系人时间线的无关未提交修改。

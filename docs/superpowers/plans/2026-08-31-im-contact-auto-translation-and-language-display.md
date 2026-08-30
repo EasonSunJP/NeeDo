@@ -991,6 +991,8 @@ git commit -m "test(build): calibrate i18n bundle budget"
 
 - Modify: `src/features/im/components.composer.test.tsx`
 - Modify: `src/features/im/components.tsx`
+- Modify: `src/i18n/I18nProvider.tsx`
+- Verify: `src/features/social/components/SocialQuickReplyComposer.test.tsx`
 
 - [ ] **Step 1: Add a failing runtime/composer integration regression**
 
@@ -1002,12 +1004,14 @@ Prove before implementation that runtime translation can rewrite the contentedit
 
 Mark the rich input's user-content boundary so `I18nRuntime` cannot mutate its text nodes. Because the same exclusion also protects attributes, derive the visual placeholder and `aria-placeholder` explicitly from the current optional i18n context and mark the already-localized visual node against a second runtime pass.
 
+Only translate that placeholder when a real `I18nProvider` context exists. Preserve the caller-provided source unchanged for standalone/shared composer mounts without a Provider; do not use navigator or persisted-language fallback to rewrite that contract.
+
 Do not change draft serialization, send behavior, judgement-token rendering, paste semantics, or the conversation auto-translation preference.
 
 - [ ] **Step 3: Verify the focused boundary and affected frontend gates**
 
 ```bash
-npm test -- src/features/im/components.composer.test.tsx src/i18n/I18nProvider.test.ts src/features/im/reaction-policy.test.ts
+npm test -- src/features/im/components.composer.test.tsx src/features/social/components/SocialQuickReplyComposer.test.tsx src/i18n/I18nProvider.test.ts src/features/im/reaction-policy.test.ts
 npm run lint
 npm run verify:production-build
 git diff --check
@@ -1018,7 +1022,7 @@ Expected: all commands exit `0`, raw draft/send assertions stay original, and th
 - [ ] **Step 4: Commit only the composer boundary correction**
 
 ```bash
-git add src/features/im/components.composer.test.tsx src/features/im/components.tsx
+git add src/features/im/components.composer.test.tsx src/features/im/components.tsx src/i18n/I18nProvider.tsx
 git commit -m "fix(im): protect composer draft from translation"
 ```
 
