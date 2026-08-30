@@ -71,6 +71,9 @@ const createClient = () => {
         { ndpCurrency: "TEST_NDP", withdrawnNdp: 999n }
       ];
     }
+    if (sql.includes("dashboard_merchant_profit")) {
+      return [];
+    }
     throw new Error(`Unexpected dashboard finance query: ${sql}`);
   });
 
@@ -187,5 +190,24 @@ describe("DashboardRepository formal finance aggregates", () => {
     );
     expect(withdrawn?.values).not.toContain("Tokyo");
     expect(fixture.queryRaw).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not query platform-global wallet stock or withdrawals for merchant scope", async () => {
+    const fixture = createClient();
+    const repository = new DashboardRepository(fixture.client);
+
+    const result = await repository.getFinanceFacts({
+      scope: { kind: "shop", shopId: 11 },
+      city: null,
+      window
+    });
+
+    const querySql = fixture.queryRaw.mock.calls.map(([query]) =>
+      queryText(query as SqlQuery)
+    );
+    expect(querySql.some((sql) => sql.includes("dashboard_wallet_stock"))).toBe(false);
+    expect(querySql.some((sql) => sql.includes("dashboard_withdrawn"))).toBe(false);
+    expect(result.walletStock).toBeNull();
+    expect(result.withdrawn).toBeNull();
   });
 });

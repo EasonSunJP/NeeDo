@@ -318,21 +318,67 @@ const createFixture = async () => {
     })
   };
   const backofficeRepository = {
-    getDashboard: jest.fn(async () => ({
-      metrics: [{ label: "今日订单", value: "2", change: "真实数据库", tone: "good" }],
-      orders: [{ id: 31, orderNo: "ND202605250001", status: "pending", shopId: 11 }],
-      schedule: { total: 2, available: 1, booked: 1 },
-      finance: {
-        estimatedServiceGmvJpy: 8800,
-        platformNdpRevenue: 700,
-        requestFeeNdpRevenue: 300,
-        userRewardNdpCost: 100,
-        pendingHoldNdp: 0,
-        campaignDiscountNdp: 0,
-        unknownOrUnreportedServiceAmountJpy: 8800
+    getDashboard: jest.fn(async (input: {
+      scope: { kind: "platform" } | { kind: "shop"; shopId: number };
+      window: { buckets: Array<{ key: string; label: string }> };
+    }) => ({
+      current: {
+        availableScheduleSlots: 8,
+        activeTechnicians: 6,
+        registeredTechnicians: 10,
+        shopCount: input.scope.kind === "platform" ? 4 : null,
+        newCustomers: input.scope.kind === "platform" ? 3 : null,
+        pendingOrders: 2,
+        serviceGmvJpy: 8_800,
+        completedCustomerCount: 2
       },
-      technicians: [{ id: 7, displayName: "Mika Tanaka", shopId: 11 }],
-      shops: [{ id: 11, name: "Aoyama Care Studio", status: "published" }]
+      previous: {
+        availableScheduleSlots: 5,
+        activeTechnicians: 4,
+        registeredTechnicians: 8,
+        shopCount: input.scope.kind === "platform" ? 3 : null,
+        newCustomers: input.scope.kind === "platform" ? 2 : null,
+        serviceGmvJpy: 7_000,
+        completedCustomerCount: 1
+      },
+      buckets: input.window.buckets.map((bucket) => ({
+        ...bucket,
+        orderCount: 0,
+        serviceGmvJpy: 0,
+        shopCount: input.scope.kind === "platform" ? 4 : 0,
+        registeredTechnicianCount: 10,
+        scheduleTotalHours: 0,
+        scheduleAvailableHours: 0,
+        scheduleBookedHours: 0
+      })),
+      finance: {
+        platformNetRevenue: { ndp: 900, testNdp: 90 },
+        frozen: { ndp: 500, testNdp: 50 },
+        userReward: { ndp: 100, testNdp: 20 },
+        walletStock: input.scope.kind === "platform" ? { ndp: 5_000, testNdp: 500 } : null,
+        withdrawn: input.scope.kind === "platform" ? { ndp: 200, testNdp: 0 } : null,
+        shopNdpCost:
+          input.scope.kind === "shop"
+            ? { totalNdp: 500, platformNdp: 400, userRewardNdp: 100 }
+            : null,
+        bucketPlatformNetRevenueNdp: new Map(),
+        bucketFrozenNdp: new Map(),
+        bucketShopEstimatedGrossProfitJpy: new Map()
+      },
+      merchant:
+        input.scope.kind === "shop"
+          ? {
+              publicId: "s0000000011",
+              name: "Aoyama Care Studio",
+              city: "Tokyo",
+              address: "Aoyama 1-1",
+              status: "published",
+              activeTechnicianCount: 6,
+              billing: null,
+              wallet: null
+            }
+          : null,
+      availableCities: input.scope.kind === "platform" ? ["Osaka", "Tokyo"] : []
     })),
     listOrders: jest.fn(async (input: unknown) => ({
       list: [{ id: 31, orderNo: "ND202605250001", status: "pending", shopId: 11 }],
@@ -1031,37 +1077,160 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     expect(response.body.data.content.replace(/^\uFEFF/, "").split("\n")).toHaveLength(5_001);
   });
 
-  it("serves the operations dashboard from the repository and records an audit log", async () => {
+  it("serves the named operations dashboard from one aggregate call and records filter metadata", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");
 
     const response = await request(fixture.app)
-      .get("/api/v1/backoffice/dashboard")
+      .get("/api/v1/backoffice/dashboard?period=custom&from=2026-05-19&to=2026-05-25&city=Tokyo")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(response.body.data.metrics[0]).toMatchObject({
-      label: "今日订单",
-      value: "2"
+    expect(response.body.data).toMatchObject({
+      filter: {
+        period: "custom",
+        from: "2026-05-19",
+        to: "2026-05-25",
+        timeZone: "Asia/Tokyo",
+        granularity: "day",
+        city: "Tokyo",
+        availableCities: ["Osaka", "Tokyo"]
+      },
+      summary: {
+        availableScheduleSlots: { current: 8, previous: 5, changeRatePercent: 60 },
+        activeTechnicians: { current: 6, previous: 4, changeRatePercent: 50 },
+        registeredTechnicians: { current: 10, previous: 8, changeRatePercent: 25 },
+        shopCount: { current: 4, previous: 3, changeRatePercent: 33.33 },
+        newCustomers: { current: 3, previous: 2, changeRatePercent: 50 },
+        pendingOrders: 2,
+        serviceGmvJpy: 8_800
+      },
+      series: { buckets: expect.any(Array) },
+      finance: {
+        userReward: { ndp: 100, testNdp: 20 },
+        walletStock: expect.objectContaining({
+          ndp: 5_000,
+          cityFilterApplied: false,
+          scopeLabel: "platform_global"
+        }),
+        withdrawn: expect.objectContaining({ testNdp: 0 })
+      },
+      shop: null,
+      membership: null,
+      scope: { kind: "platform", shopPublicId: null }
     });
-    expect(response.body.data.finance).toMatchObject({
-      estimatedServiceGmvJpy: 8800,
-      platformNdpRevenue: 700,
-      requestFeeNdpRevenue: 300,
-      userRewardNdpCost: 100
-    });
-    expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledWith({
-      scope: "platform"
-    });
+    expect(response.body.data).not.toHaveProperty("metrics");
+    expect(response.body.data).not.toHaveProperty("orders");
+    expect(response.body.data).not.toHaveProperty("technicians");
+    expect(response.body.data).not.toHaveProperty("shops");
+    expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledTimes(1);
+    expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { kind: "platform" },
+        city: "Tokyo",
+        window: expect.objectContaining({
+          period: "custom",
+          fromDate: "2026-05-19",
+          toDate: "2026-05-25"
+        })
+      })
+    );
     expect(fixture.auditLogs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           actorId: 1,
           action: "backoffice.dashboard.read",
-          targetType: "backoffice_dashboard"
+          targetType: "backoffice_dashboard",
+          metadata: {
+            period: "custom",
+            from: "2026-05-19",
+            to: "2026-05-25",
+            city: "Tokyo",
+            shopId: null
+          }
         })
       ])
     );
+  });
+
+  it("returns the merchant dashboard without platform-global wallet data", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("merchant@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard?period=last7days")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      summary: { shopCount: null, newCustomers: null },
+      finance: {
+        walletStock: null,
+        withdrawn: null,
+        shopNdpCost: { totalNdp: 500, platformNdp: 400, userRewardNdp: 100 }
+      },
+      shop: { publicId: "s0000000011" },
+      membership: {
+        memberCount: null,
+        memberDataStatus: "not_available",
+        completedCustomerCount: 2
+      },
+      scope: { kind: "shop", shopPublicId: "s0000000011" }
+    });
+    expect(fixture.backofficeRepository.getDashboard).toHaveBeenLastCalledWith(
+      expect.objectContaining({ scope: { kind: "shop", shopId: 11 }, city: null })
+    );
+  });
+
+  it("strictly rejects dashboard query parameters before aggregate access", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard?shopId=11")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard?unknown=value")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard?city=Tokyo")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard?shopId=11")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(400);
+
+    expect(fixture.backofficeRepository.getDashboard).not.toHaveBeenCalled();
+  });
+
+  it("keeps dashboard authentication and permission failures stable", async () => {
+    const fixture = await createFixture();
+    const viewerToken = await fixture.login("viewer@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard")
+      .expect(401)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.TOKEN_INVALID));
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard")
+      .expect(401)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.TOKEN_INVALID));
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
+
+    expect(fixture.backofficeRepository.getDashboard).not.toHaveBeenCalled();
   });
 
   it("reports formal and Test NDP separately while keeping settlement formal-only", async () => {

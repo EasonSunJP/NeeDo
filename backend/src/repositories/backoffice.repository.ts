@@ -18,7 +18,7 @@ import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-me
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
 import type {
-  DashboardActivityFacts,
+  DashboardAggregateFacts,
   DashboardAggregateInput
 } from "../domain/dashboard";
 import { DashboardRepository } from "./dashboard.repository";
@@ -240,8 +240,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     this.dashboardRepository = new DashboardRepository(client);
   }
 
-  public async getDashboard(input: DashboardAggregateInput): Promise<DashboardActivityFacts> {
-    return this.dashboardRepository.getActivityFacts(input);
+  public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
+    return this.dashboardRepository.getDashboard(input);
   }
 
   public async listOrders(

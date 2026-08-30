@@ -5,6 +5,7 @@ import { getAuthenticatedAccess, getRequestContext } from "../utils/request-cont
 import {
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
+  backofficeDashboardQuerySchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
   backofficeNdpSummaryQuerySchema,
@@ -17,6 +18,7 @@ import {
   backofficeTechnicianApproveBodySchema,
   backofficeTechnicianUpdateBodySchema,
   merchantShopUpdateBodySchema,
+  merchantDashboardQuerySchema,
   technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
 
@@ -35,7 +37,8 @@ export class BackofficeController {
           successResponse(
             await this.service.getPlatformDashboard(
               getAuthenticatedAccess(response),
-              getRequestContext(request)
+              getRequestContext(request),
+              backofficeDashboardQuerySchema.parse(request.query)
             )
           )
         );
@@ -56,7 +59,8 @@ export class BackofficeController {
           successResponse(
             await this.service.getMerchantDashboard(
               getAuthenticatedAccess(response),
-              getRequestContext(request)
+              getRequestContext(request),
+              merchantDashboardQuerySchema.parse(request.query)
             )
           )
         );

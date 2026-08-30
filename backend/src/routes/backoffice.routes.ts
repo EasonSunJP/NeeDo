@@ -13,6 +13,7 @@ import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
 import {
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
+  backofficeDashboardQuerySchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
   backofficeNdpSummaryQuerySchema,
@@ -25,6 +26,7 @@ import {
   backofficeTechnicianApproveBodySchema,
   backofficeTechnicianUpdateBodySchema,
   merchantShopUpdateBodySchema,
+  merchantDashboardQuerySchema,
   technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -84,6 +86,7 @@ export const createBackofficeRoutes = (
     "/backoffice/dashboard",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: backofficeDashboardQuerySchema }),
     controller.platformDashboard
   );
   router.get(
@@ -172,6 +175,7 @@ export const createBackofficeRoutes = (
     "/merchant-admin/dashboard",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantDashboard),
+    validateRequest({ query: merchantDashboardQuerySchema }),
     controller.merchantDashboard
   );
   router.get(

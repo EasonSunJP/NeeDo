@@ -4,6 +4,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import type {
   BackofficeCustomerMembershipGrantBody,
   BackofficeCustomerUpdateBody,
+  BackofficeDashboardQuery,
   BackofficeListQuery,
   BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
@@ -12,6 +13,7 @@ import type {
   BackofficeShopCreateBody,
   BackofficeShopUpdateBody,
   MerchantShopUpdateBody,
+  MerchantDashboardQuery,
   BackofficeTechnicianApproveBody,
   BackofficeTechnicianUpdateBody,
   BackofficeTechnicianRankingQuery,
@@ -31,11 +33,16 @@ import {
   toTokyoCalendarDate
 } from "../domain/dashboard-period";
 import type {
-  DashboardActivityFacts,
+  BackofficeDashboardPayload,
+  DashboardAggregateFacts,
   DashboardAggregateInput,
+  DashboardMetricComparison,
   DashboardNdpPair,
-  DashboardShopNdpCost
+  DashboardPlatformGlobalNdpPair
 } from "../domain/dashboard";
+import { DashboardMerchantSnapshotService } from "./dashboard-merchant-snapshot.service";
+
+export type { BackofficeDashboardPayload } from "../domain/dashboard";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -155,15 +162,6 @@ export type BackofficeScope =
       scope: "merchant";
       shopId: number;
     };
-
-export type BackofficeMetricTone = "good" | "warn" | "neutral";
-
-export interface BackofficeMetricPayload {
-  label: string;
-  value: string;
-  change: string;
-  tone: BackofficeMetricTone;
-}
 
 export interface BackofficeOrderPayload {
   id: number;
@@ -504,28 +502,6 @@ export type ScopedServiceCreateInput = BackofficeScope & BackofficeServiceCreate
 export type ScopedServiceUpdateInput = BackofficeScope &
   BackofficeServiceUpdateBody & { serviceId: number };
 
-export interface BackofficeDashboardPayload {
-  metrics: BackofficeMetricPayload[];
-  orders: BackofficeOrderPayload[];
-  schedule: {
-    total: number;
-    available: number;
-    booked: number;
-  };
-  finance: {
-    estimatedServiceGmvJpy: number;
-    platformNdpRevenue: number;
-    requestFeeNdpRevenue: number;
-    userRewardNdpCost: number;
-    pendingHoldNdp: number;
-    campaignDiscountNdp: number;
-    unknownOrUnreportedServiceAmountJpy: number;
-    shopNdpCost: DashboardShopNdpCost | null;
-  };
-  technicians: BackofficeTechnicianPayload[];
-  shops: BackofficeShopPayload[];
-}
-
 export interface BackofficeCsvExportPayload {
   filename: string;
   contentType: "text/csv; charset=utf-8";
@@ -562,7 +538,7 @@ export interface BackofficeNdpSummaryPayload {
 }
 
 export interface BackofficeRepositoryPort {
-  getDashboard: (input: DashboardAggregateInput) => Promise<DashboardActivityFacts>;
+  getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
@@ -637,31 +613,153 @@ export class BackofficeService {
 
   public async getPlatformDashboard(
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
-  ): Promise<DashboardActivityFacts> {
-    await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard");
-
-    return this.repository.getDashboard({
-      scope: { kind: "platform" },
-      city: null,
-      window: resolveDashboardWindow({ period: "last7days" }, this.now())
+    context: AuthRequestContext,
+    query: BackofficeDashboardQuery
+  ): Promise<BackofficeDashboardPayload> {
+    const window = resolveDashboardWindow(query, this.now());
+    const city = query.city ?? null;
+    await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard", {
+      period: window.period,
+      from: window.fromDate,
+      to: window.toDate,
+      city,
+      shopId: null
     });
+    const aggregate = await this.repository.getDashboard({
+      scope: { kind: "platform" },
+      city,
+      window
+    });
+    return this.composeDashboard(aggregate, window, city, null);
   }
 
   public async getMerchantDashboard(
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
-  ): Promise<DashboardActivityFacts> {
+    context: AuthRequestContext,
+    query: MerchantDashboardQuery
+  ): Promise<BackofficeDashboardPayload> {
     const scope = this.getMerchantScope(actor);
+    const window = resolveDashboardWindow(query, this.now());
     await this.record(actor, context, "merchant_admin.dashboard.read", "merchant_admin_dashboard", {
+      period: window.period,
+      from: window.fromDate,
+      to: window.toDate,
+      city: null,
       shopId: scope.shopId
     });
-
-    return this.repository.getDashboard({
+    const aggregate = await this.repository.getDashboard({
       scope: { kind: "shop", shopId: scope.shopId },
       city: null,
-      window: resolveDashboardWindow({ period: "last7days" }, this.now())
+      window
     });
+    return this.composeDashboard(aggregate, window, null, scope.shopId);
+  }
+
+  private composeDashboard(
+    aggregate: DashboardAggregateFacts,
+    window: ReturnType<typeof resolveDashboardWindow>,
+    city: string | null,
+    shopId: number | null
+  ): BackofficeDashboardPayload {
+    const isPlatform = shopId === null;
+    const merchantFacts = isPlatform
+      ? null
+      : this.requireResult(aggregate.merchant, "error.shop.not_found");
+    const shop = merchantFacts
+      ? new DashboardMerchantSnapshotService(undefined, this.now).compose(merchantFacts)
+      : null;
+    const globalPair = (pair: DashboardNdpPair | null): DashboardPlatformGlobalNdpPair => ({
+      ...(pair ?? { ndp: 0, testNdp: 0 }),
+      cityFilterApplied: false,
+      scopeLabel: "platform_global"
+    });
+    const shopNdpCost = isPlatform
+      ? null
+      : aggregate.finance.shopNdpCost ?? {
+          totalNdp: 0,
+          platformNdp: 0,
+          userRewardNdp: 0
+        };
+
+    return {
+      filter: {
+        period: window.period,
+        from: window.fromDate,
+        to: window.toDate,
+        previousFrom: window.previousFromDate,
+        previousTo: window.previousToDate,
+        timeZone: window.timeZone,
+        granularity: window.granularity,
+        city: isPlatform ? city : null,
+        availableCities: isPlatform ? aggregate.availableCities : []
+      },
+      summary: {
+        availableScheduleSlots: this.dashboardComparison(
+          aggregate.current.availableScheduleSlots,
+          aggregate.previous.availableScheduleSlots
+        ),
+        activeTechnicians: this.dashboardComparison(
+          aggregate.current.activeTechnicians,
+          aggregate.previous.activeTechnicians
+        ),
+        registeredTechnicians: this.dashboardComparison(
+          aggregate.current.registeredTechnicians,
+          aggregate.previous.registeredTechnicians
+        ),
+        shopCount: isPlatform
+          ? this.dashboardComparison(
+              aggregate.current.shopCount ?? 0,
+              aggregate.previous.shopCount ?? 0
+            )
+          : null,
+        newCustomers: isPlatform
+          ? this.dashboardComparison(
+              aggregate.current.newCustomers ?? 0,
+              aggregate.previous.newCustomers ?? 0
+            )
+          : null,
+        pendingOrders: aggregate.current.pendingOrders,
+        serviceGmvJpy: aggregate.current.serviceGmvJpy
+      },
+      series: {
+        buckets: aggregate.buckets.map((bucket) => ({
+          ...bucket,
+          platformNetRevenueNdp:
+            aggregate.finance.bucketPlatformNetRevenueNdp.get(bucket.key) ?? 0,
+          frozenNdp: aggregate.finance.bucketFrozenNdp.get(bucket.key) ?? 0,
+          shopEstimatedGrossProfitJpy:
+            aggregate.finance.bucketShopEstimatedGrossProfitJpy.get(bucket.key) ?? 0
+        }))
+      },
+      finance: {
+        platformNetRevenue: aggregate.finance.platformNetRevenue,
+        frozen: aggregate.finance.frozen,
+        userReward: aggregate.finance.userReward,
+        walletStock: isPlatform ? globalPair(aggregate.finance.walletStock) : null,
+        withdrawn: isPlatform ? globalPair(aggregate.finance.withdrawn) : null,
+        shopNdpCost
+      },
+      shop,
+      membership: isPlatform
+        ? null
+        : {
+            memberCount: null,
+            memberDataStatus: "not_available",
+            completedCustomerCount: aggregate.current.completedCustomerCount
+          },
+      scope: merchantFacts
+        ? { kind: "shop", shopPublicId: merchantFacts.publicId }
+        : { kind: "platform", shopPublicId: null }
+    };
+  }
+
+  private dashboardComparison(current: number, previous: number): DashboardMetricComparison {
+    return {
+      current,
+      previous,
+      changeRatePercent:
+        previous === 0 ? null : Number((((current - previous) / previous) * 100).toFixed(2))
+    };
   }
 
   public async listPlatformOrders(

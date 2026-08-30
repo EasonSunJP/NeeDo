@@ -433,6 +433,100 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/{id}/ledger");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/ledger/transactions");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/dashboard");
+    const dashboardSchemas = response.body.components.schemas;
+    expect(dashboardSchemas).toEqual(
+      expect.objectContaining({
+        DashboardPeriod: expect.any(Object),
+        DashboardMetricComparison: expect.any(Object),
+        DashboardNdpPair: expect.any(Object),
+        DashboardPlatformGlobalNdpPair: expect.any(Object),
+        DashboardBucket: expect.any(Object),
+        DashboardShopSnapshot: expect.any(Object),
+        DashboardMembership: expect.any(Object),
+        Dashboard: expect.any(Object)
+      })
+    );
+    expect(dashboardSchemas.DashboardPeriod).toEqual({
+      type: "string",
+      enum: ["today", "last7days", "last30days", "week", "month", "year", "custom"],
+      default: "last7days"
+    });
+    expect(dashboardSchemas.DashboardMetricComparison).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["current", "previous", "changeRatePercent"],
+      properties: {
+        current: { type: "number" },
+        previous: { type: "number" },
+        changeRatePercent: { type: ["number", "null"] }
+      }
+    });
+    expect(dashboardSchemas.DashboardPlatformGlobalNdpPair).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["ndp", "testNdp", "cityFilterApplied", "scopeLabel"],
+      properties: {
+        cityFilterApplied: { type: "boolean", const: false },
+        scopeLabel: { type: "string", const: "platform_global" }
+      }
+    });
+    expect(dashboardSchemas.DashboardBucket.required).toEqual([
+      "key",
+      "label",
+      "orderCount",
+      "serviceGmvJpy",
+      "platformNetRevenueNdp",
+      "frozenNdp",
+      "shopCount",
+      "registeredTechnicianCount",
+      "shopEstimatedGrossProfitJpy",
+      "scheduleTotalHours",
+      "scheduleAvailableHours",
+      "scheduleBookedHours"
+    ]);
+    expect(dashboardSchemas.DashboardMembership).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["memberCount", "memberDataStatus", "completedCustomerCount"],
+      properties: {
+        memberCount: { type: "null" },
+        memberDataStatus: { type: "string", const: "not_available" },
+        completedCustomerCount: { type: "integer", minimum: 0 }
+      }
+    });
+    expect(dashboardSchemas.Dashboard).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"]
+    });
+    expect(dashboardSchemas.Dashboard.properties.finance.properties.walletStock).toEqual({
+      oneOf: [
+        { $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" },
+        { type: "null" }
+      ]
+    });
+    expect(dashboardSchemas.Dashboard.properties.finance.properties.withdrawn).toEqual({
+      oneOf: [
+        { $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" },
+        { type: "null" }
+      ]
+    });
+    const operationsDashboard = response.body.paths["/api/v1/backoffice/dashboard"].get;
+    expect(
+      operationsDashboard.parameters
+        .filter((parameter: { in: string }) => parameter.in === "query")
+        .map((parameter: { name: string }) => parameter.name)
+        .sort()
+    ).toEqual(["city", "from", "period", "to"]);
+    expect(operationsDashboard.responses["200"].content["application/json"].schema.properties.data)
+      .toEqual({ $ref: "#/components/schemas/Dashboard" });
+    expect(operationsDashboard.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.objectContaining({ description: expect.stringContaining("error.validation") }),
+        "401": expect.objectContaining({ description: expect.stringContaining("error.auth") }),
+        "403": expect.objectContaining({ description: expect.stringContaining("permission") })
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/schedule");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements");
@@ -565,13 +659,35 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/dashboard");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule");
-    expect(response.body.paths["/api/v1/merchant-admin/dashboard"].get.parameters).toEqual(
+    const merchantDashboard = response.body.paths["/api/v1/merchant-admin/dashboard"].get;
+    expect(merchantDashboard.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           in: "header",
           name: "X-NeeDo-Merchant-Preview-Shop-Id"
         })
       ])
+    );
+    expect(
+      merchantDashboard.parameters
+        .filter((parameter: { in: string }) => parameter.in === "query")
+        .map((parameter: { name: string }) => parameter.name)
+        .sort()
+    ).toEqual(["from", "period", "to"]);
+    expect(merchantDashboard.parameters).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ in: "query", name: "city" }),
+        expect.objectContaining({ in: "query", name: "shopId" })
+      ])
+    );
+    expect(merchantDashboard.responses["200"].content["application/json"].schema.properties.data)
+      .toEqual({ $ref: "#/components/schemas/Dashboard" });
+    expect(merchantDashboard.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.objectContaining({ description: expect.stringContaining("error.validation") }),
+        "401": expect.objectContaining({ description: expect.stringContaining("error.auth") }),
+        "403": expect.objectContaining({ description: expect.stringContaining("scope") })
+      })
     );
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/shops/{shopId}/finance/rules"

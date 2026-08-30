@@ -1,4 +1,8 @@
-import type { DashboardWindow } from "./dashboard-period";
+import type {
+  DashboardGranularity,
+  DashboardPeriod,
+  DashboardWindow
+} from "./dashboard-period";
 
 export interface DashboardBucketPayload {
   key: string;
@@ -24,6 +28,17 @@ export interface DashboardAggregateInput {
 export interface DashboardNdpPair {
   ndp: number;
   testNdp: number;
+}
+
+export interface DashboardMetricComparison {
+  current: number;
+  previous: number;
+  changeRatePercent: number | null;
+}
+
+export interface DashboardPlatformGlobalNdpPair extends DashboardNdpPair {
+  cityFilterApplied: false;
+  scopeLabel: "platform_global";
 }
 
 export interface DashboardShopNdpCost {
@@ -110,4 +125,51 @@ export interface DashboardActivityFacts {
       | "scheduleBookedHours"
     >
   >;
+}
+
+export interface DashboardAggregateFacts extends DashboardActivityFacts {
+  finance: DashboardFinanceFacts;
+  merchant: DashboardMerchantFacts | null;
+  availableCities: string[];
+}
+
+export interface BackofficeDashboardPayload {
+  filter: {
+    period: DashboardPeriod;
+    from: string;
+    to: string;
+    previousFrom: string;
+    previousTo: string;
+    timeZone: "Asia/Tokyo";
+    granularity: DashboardGranularity;
+    city: string | null;
+    availableCities: string[];
+  };
+  summary: {
+    availableScheduleSlots: DashboardMetricComparison;
+    activeTechnicians: DashboardMetricComparison;
+    registeredTechnicians: DashboardMetricComparison;
+    shopCount: DashboardMetricComparison | null;
+    newCustomers: DashboardMetricComparison | null;
+    pendingOrders: number;
+    serviceGmvJpy: number;
+  };
+  series: { buckets: DashboardBucketPayload[] };
+  finance: {
+    platformNetRevenue: DashboardNdpPair;
+    frozen: DashboardNdpPair;
+    userReward: DashboardNdpPair;
+    walletStock: DashboardPlatformGlobalNdpPair | null;
+    withdrawn: DashboardPlatformGlobalNdpPair | null;
+    shopNdpCost: DashboardShopNdpCost | null;
+  };
+  shop: DashboardMerchantSnapshot | null;
+  membership: null | {
+    memberCount: null;
+    memberDataStatus: "not_available";
+    completedCustomerCount: number;
+  };
+  scope:
+    | { kind: "platform"; shopPublicId: null }
+    | { kind: "shop"; shopPublicId: string };
 }

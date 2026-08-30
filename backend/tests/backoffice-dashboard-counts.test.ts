@@ -31,6 +31,9 @@ describe("backoffice dashboard named activity summary", () => {
             { periodKey: "previous", aggregateValue: 100n }
           ];
         }
+        if (query.sql?.includes("dashboard_available_cities")) {
+          return [{ city: "Osaka" }, { city: "Tokyo" }];
+        }
         return [];
       })
     };
@@ -57,6 +60,7 @@ describe("backoffice dashboard named activity summary", () => {
       newCustomers: 6,
       serviceGmvJpy: 12_000
     });
+    expect(dashboard.availableCities).toEqual(["Osaka", "Tokyo"]);
     expect(client.bookingOrder).not.toHaveProperty("findMany");
     expect(client.shop).not.toHaveProperty("findMany");
     expect(client.scheduleSlot.count).toHaveBeenCalledTimes(2);

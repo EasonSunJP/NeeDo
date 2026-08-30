@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
   DashboardActivityFacts,
+  DashboardAggregateFacts,
   DashboardAggregateInput,
   DashboardFinanceFacts,
   DashboardMerchantFacts
@@ -42,6 +43,10 @@ interface ScheduleBucketRow {
   schedule_booked_hours?: NumericValue;
 }
 
+interface AvailableCityRow {
+  city: string;
+}
+
 const periodKey = (row: PeriodAggregateRow): string => row.periodKey ?? row.period_key ?? "";
 const periodValue = (row: PeriodAggregateRow): NumericValue =>
   row.aggregateValue ?? row.aggregate_value;
@@ -54,6 +59,22 @@ export class DashboardRepository {
     private readonly financeReader: DashboardFinanceReader = new DashboardFinanceRepository(client),
     private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(client)
   ) {}
+
+  public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
+    const [activity, finance, merchant, availableCities] = await Promise.all([
+      this.getActivityFacts(input),
+      this.getFinanceFacts(input),
+      this.getMerchantFacts(input),
+      this.getAvailableCities(input)
+    ]);
+
+    return {
+      ...activity,
+      finance,
+      merchant,
+      availableCities
+    };
+  }
 
   public async getFinanceFacts(input: DashboardAggregateInput): Promise<DashboardFinanceFacts> {
     return this.financeReader.getFinanceFacts(input);
@@ -223,6 +244,20 @@ export class DashboardRepository {
         };
       })
     };
+  }
+
+  private async getAvailableCities(input: DashboardAggregateInput): Promise<string[]> {
+    if (input.scope.kind !== "platform") return [];
+
+    const rows = await this.client.$queryRaw<AvailableCityRow[]>(Prisma.sql`
+      /* dashboard_available_cities */
+      SELECT DISTINCT shop.city
+      FROM shops AS shop
+      WHERE shop.deleted_at IS NULL
+        AND TRIM(shop.city) <> ${""}
+      ORDER BY shop.city ASC
+    `);
+    return rows.map((row) => row.city);
   }
 
   private scheduleWhere(
