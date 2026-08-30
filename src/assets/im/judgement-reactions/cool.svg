@@ -1,8 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54 28" role="img" aria-label="Cool">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Cool" data-im-judgement-pictogram="cool">
   <defs>
-    <filter id="cool-shadow" x="-20%" y="-30%" width="150%" height="170%">
-      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#0E7490" flood-opacity="0.52"/>
+    <linearGradient id="cool-fill" x1="9" y1="6" x2="31" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+    <filter id="cool-shadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#164E63" flood-opacity="0.45"/>
     </filter>
   </defs>
-  <text x="50%" y="20" text-anchor="middle" fill="#06B6D4" stroke="#0E7490" stroke-width="0.65" paint-order="stroke" filter="url(#cool-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="18" font-style="italic" font-weight="900">Cool</text>
+  <g filter="url(#cool-shadow)">
+    <circle cx="20" cy="20" r="16" fill="url(#cool-fill)" stroke="#fff" stroke-width="2.4"/>
+    <path d="M8.2 14.5c3.7-1.2 7.1-1.4 10.3-.5l1.5 1.5 1.5-1.5c3.2-.9 6.6-.7 10.3.5" fill="none" stroke="#083344" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M9.5 15.2h9.2v2.2c0 3-1.8 4.8-4.6 4.8s-4.6-1.8-4.6-4.8Zm11.8 0h9.2v2.2c0 3-1.8 4.8-4.6 4.8s-4.6-1.8-4.6-4.8Z" fill="#0F172A"/>
+    <path d="M14 27c3.7 2.5 8.3 2.5 12 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+  </g>
 </svg>

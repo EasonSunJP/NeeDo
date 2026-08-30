@@ -349,6 +349,21 @@ describe("formal technician schedule routes", () => {
     expect(mocks.retrySchedule).toHaveBeenCalledTimes(1);
   });
 
+  it("explains that an unassigned technician must link a shop before scheduling", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: null,
+      error: "error.technician.shop_required",
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+
+    await render("/technician/schedule");
+
+    expect(container.textContent).toContain("暂未关联店铺");
+    expect(container.textContent).toContain("关联店铺并配置正式服务后即可使用排班");
+    expect(container.textContent).not.toContain("error.technician.shop_required");
+  });
+
   it("locks a slot with the formal API and requires two clicks before deletion", async () => {
     mocks.updateSlot.mockResolvedValue({ ...slot, status: "blocked" });
     mocks.deleteSlot.mockResolvedValue(slot);

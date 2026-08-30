@@ -1,8 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74 28" role="img" aria-label="Thanks">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Thanks" data-im-judgement-pictogram="thanks">
   <defs>
-    <filter id="thanks-shadow" x="-20%" y="-30%" width="150%" height="170%">
-      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#C2410C" flood-opacity="0.52"/>
+    <linearGradient id="thanks-fill" x1="10" y1="7" x2="30" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FB923C"/>
+      <stop offset="1" stop-color="#EA580C"/>
+    </linearGradient>
+    <filter id="thanks-shadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#7C2D12" flood-opacity="0.45"/>
     </filter>
   </defs>
-  <text x="50%" y="20" text-anchor="middle" fill="#F97316" stroke="#C2410C" stroke-width="0.65" paint-order="stroke" filter="url(#thanks-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="17" font-style="italic" font-weight="900">Thanks</text>
+  <g filter="url(#thanks-shadow)">
+    <path d="M20 34S6 25.2 6 14.8C6 8.8 13.4 5.4 20 12c6.6-6.6 14-3.2 14 2.8C34 25.2 20 34 20 34Z" fill="url(#thanks-fill)" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M27.8 5.4v5.2M25.2 8h5.2M10.2 27.5v4M8.2 29.5h4" fill="none" stroke="#FFE9D5" stroke-width="2" stroke-linecap="round"/>
+  </g>
 </svg>

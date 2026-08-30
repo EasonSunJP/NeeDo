@@ -94,6 +94,25 @@ function ErrorPanel({
   );
 }
 
+function ScheduleResourceErrorPanel({
+  title,
+  error,
+  onRetry
+}: {
+  title: string;
+  error: string;
+  onRetry: () => void;
+}) {
+  const missingShop = error === "error.technician.shop_required";
+  return (
+    <ErrorPanel
+      error={missingShop ? "关联店铺并配置正式服务后即可使用排班；当前不会读取演示排班或临时数据。" : error}
+      onRetry={onRetry}
+      title={missingShop ? "暂未关联店铺" : title}
+    />
+  );
+}
+
 export function TechnicianScheduleIndexRoutePage() {
   const { session } = useAuth();
   const resource = useFormalTechnicianScheduleResource(session, null);
@@ -104,7 +123,7 @@ export function TechnicianScheduleIndexRoutePage() {
   if (resource.error || !resource.data) {
     return (
       <TechnicianSchedulePageShell backTo="/technician" title="排班与预约">
-        <ErrorPanel
+        <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.profile_not_found"}
           onRetry={resource.retry}
           title="正式排班资源加载失败"
@@ -196,7 +215,7 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
   if (resource.error || !resource.data || !slot) {
     return (
       <TechnicianSchedulePageShell title="正式排班详情">
-        <ErrorPanel
+        <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.slot_not_found"}
           onRetry={resource.retry}
           title="正式排班加载失败"
@@ -339,7 +358,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   if (resource.error || !resource.data) {
     return (
       <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}>
-        <ErrorPanel error={resource.error ?? "error.api"} onRetry={resource.retry} title="正式排班资源加载失败" />
+        <ScheduleResourceErrorPanel error={resource.error ?? "error.api"} onRetry={resource.retry} title="正式排班资源加载失败" />
       </TechnicianSchedulePageShell>
     );
   }

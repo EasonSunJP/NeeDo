@@ -1,8 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 28" role="img" aria-label="OK">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="OK" data-im-judgement-pictogram="ok">
   <defs>
-    <filter id="ok-shadow" x="-20%" y="-30%" width="150%" height="170%">
-      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#15803D" flood-opacity="0.52"/>
+    <linearGradient id="ok-fill" x1="8" y1="6" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4ADE80"/>
+      <stop offset="1" stop-color="#16A34A"/>
+    </linearGradient>
+    <filter id="ok-shadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#052E16" flood-opacity="0.45"/>
     </filter>
   </defs>
-  <text x="50%" y="20" text-anchor="middle" fill="#22C55E" stroke="#15803D" stroke-width="0.65" paint-order="stroke" filter="url(#ok-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="19" font-style="italic" font-weight="900">OK</text>
+  <g filter="url(#ok-shadow)">
+    <path d="M8.5 6.5h23a5 5 0 0 1 5 5v13a5 5 0 0 1-5 5H19l-7.5 5v-5h-3a5 5 0 0 1-5-5v-13a5 5 0 0 1 5-5Z" fill="url(#ok-fill)" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="m12.5 18.5 4.5 4.4 10.5-10.2" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

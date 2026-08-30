@@ -6,10 +6,12 @@ import { ApiClientError } from "../../api/httpClient";
 import type { AuthSession } from "../../auth/rbac";
 import type { BookingOrder, BookingScheduleSlot } from "../booking/api";
 import type { CoreTechnicianDetail } from "../core-read/api";
+import type { TechnicianSelfProfile } from "../core-read/technicianProfileApi";
 import type { TechnicianServicePayload } from "../pricing-mode/api";
 
 const apiMocks = vi.hoisted(() => ({
   getOrder: vi.fn(),
+  getMine: vi.fn(),
   getTechnicianDetail: vi.fn(),
   getTechnicianSlot: vi.fn(),
   listTechnicianServices: vi.fn()
@@ -18,6 +20,9 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("../booking/api", () => ({ bookingApi: { getOrder: apiMocks.getOrder } }));
 vi.mock("../core-read/api", () => ({
   coreReadApi: { getTechnicianDetail: apiMocks.getTechnicianDetail }
+}));
+vi.mock("../core-read/technicianProfileApi", () => ({
+  technicianProfileApi: { getMine: apiMocks.getMine }
 }));
 vi.mock("../pricing-mode/api", () => ({
   pricingModeApi: { listTechnicianServices: apiMocks.listTechnicianServices }
@@ -83,6 +88,31 @@ const profile = {
   createdAt: "2026-08-01T00:00:00.000Z",
   updatedAt: "2026-08-01T00:00:00.000Z"
 } satisfies CoreTechnicianDetail;
+
+const selfProfile = {
+  id: 31,
+  publicId: "s0000000031",
+  userId: 31,
+  shopId: 11,
+  displayName: "Formal Technician",
+  avatarUrl: null,
+  bio: null,
+  city: "東京",
+  age: null,
+  heightCm: null,
+  languages: ["日本語"],
+  serviceAreas: ["東京"],
+  profileTags: [],
+  canServeForeigners: false,
+  bidBudgetMinJpy: null,
+  bidBudgetMaxJpy: null,
+  paymentMethods: ["platform"],
+  visibility: "public",
+  employmentType: "independent",
+  yearsExperience: 4,
+  createdAt: "2026-08-01T00:00:00.000Z",
+  updatedAt: "2026-08-01T00:00:00.000Z"
+} satisfies TechnicianSelfProfile;
 
 const makeService = (
   id: number,
@@ -179,6 +209,7 @@ let root: Root;
 describe("formal technician schedule resources", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getMine.mockResolvedValue(selfProfile);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -249,7 +280,20 @@ describe("formal technician schedule resources", () => {
     expect(container.querySelector('[data-testid="services"]')?.textContent).toBe("102");
     expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("null");
     expect(apiMocks.getTechnicianDetail).toHaveBeenCalledWith(31);
+    expect(apiMocks.getMine).toHaveBeenCalledTimes(1);
     expect(apiMocks.getTechnicianSlot).toHaveBeenCalledWith(17);
+  });
+
+  it("reports the persisted missing-shop state without querying the public technician directory", async () => {
+    apiMocks.getMine.mockResolvedValue({ ...selfProfile, shopId: null });
+
+    await act(async () => root.render(<ScheduleProbe slotId={null} />));
+    await waitFor(() => expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("error.technician.shop_required"));
+
+    expect(apiMocks.getMine).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getTechnicianDetail).not.toHaveBeenCalled();
+    expect(apiMocks.listTechnicianServices).not.toHaveBeenCalled();
+    expect(apiMocks.getTechnicianSlot).not.toHaveBeenCalled();
   });
 
   it("keeps schedule data empty after an API error and retries the formal request", async () => {
@@ -290,6 +334,7 @@ describe("formal technician schedule resources", () => {
     await waitFor(() => expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("error.auth.identity_forbidden"));
 
     expect(apiMocks.getTechnicianDetail).not.toHaveBeenCalled();
+    expect(apiMocks.getMine).not.toHaveBeenCalled();
     expect(apiMocks.listTechnicianServices).not.toHaveBeenCalled();
     expect(apiMocks.getTechnicianSlot).not.toHaveBeenCalled();
     expect(apiMocks.getOrder).not.toHaveBeenCalled();
