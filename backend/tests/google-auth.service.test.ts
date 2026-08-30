@@ -339,13 +339,13 @@ const createFixture = () => {
 };
 
 describe("formal Google sign-in service", () => {
-  it("re-resolves and signs the deterministic merchant shop during linked Google login", async () => {
+  it("accepts merchant_owner account scope and signs its deterministic shop on Google login", async () => {
     const fixture = createFixture();
     fixture.users[0].identities = [
       {
         id: 10,
         userId: 1,
-        type: "merchant_organization",
+        type: "merchant_owner",
         scopeType: "merchant_account",
         scopeId: 41,
         displayName: "Google Merchant",

@@ -4,7 +4,12 @@ import { PublicIdentifierRepository } from "../src/repositories/public-identifie
 import { IdentifierAllocator } from "../src/services/public-identifier.service";
 
 const now = new Date("2026-08-28T00:00:00.000Z");
-const publicIdentifier = (id: number, publicId: string, kind: "U" | "S", userIdentityId: number) => ({
+const publicIdentifier = (
+  id: number,
+  publicId: string,
+  kind: "U" | "S",
+  userIdentityId: number
+) => ({
   id,
   publicId,
   numberPart: "1234567890",
@@ -174,11 +179,7 @@ describe("AuthRepository formal login identifiers", () => {
     const repository = new AuthRepository(
       client as never,
       bootstrapKeyAllocator as never,
-      (tx) =>
-        new IdentifierAllocator(
-          new PublicIdentifierRepository(tx),
-          () => "5831047296"
-        )
+      (tx) => new IdentifierAllocator(new PublicIdentifierRepository(tx), () => "5831047296")
     );
 
     const result = await repository.createVerifiedBaselineCustomer({
@@ -214,5 +215,83 @@ describe("AuthRepository formal login identifiers", () => {
     });
     expect(result).toMatchObject({ needoId: "u5831047296" });
     expect(result).not.toHaveProperty("loginIdentityId");
+  });
+
+  it("returns the durable audit id and completes that same merchant switch attempt idempotently", async () => {
+    const create = jest.fn(async () => ({ id: 91 }));
+    const findFirst = jest
+      .fn<() => Promise<{ id: number; metadata: Record<string, unknown> } | null>>()
+      .mockResolvedValueOnce({
+        id: 91,
+        metadata: { phase: "authorized_attempt", operationId: "operation-91", shopId: 11 }
+      })
+      .mockResolvedValueOnce({
+        id: 91,
+        metadata: { phase: "completed", operationId: "operation-91", shopId: 11 }
+      });
+    const update = jest.fn(async () => ({ id: 91 }));
+    const repository = new AuthRepository({ auditLog: { create, findFirst, update } } as never);
+
+    await expect(
+      repository.createAuditLog({
+        actorId: 7,
+        action: "auth.merchant_shop.switch",
+        targetType: "Shop",
+        metadata: { phase: "authorized_attempt", operationId: "operation-91", shopId: 11 }
+      })
+    ).resolves.toEqual({ id: 91 });
+    await expect(
+      repository.completeMerchantShopSwitchAudit({
+        auditId: 91,
+        operationId: "operation-91"
+      })
+    ).resolves.toBe(true);
+    await expect(
+      repository.completeMerchantShopSwitchAudit({
+        auditId: 91,
+        operationId: "operation-91"
+      })
+    ).resolves.toBe(true);
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 91,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null
+      },
+      select: { id: true, metadata: true }
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 91 },
+      data: {
+        metadata: {
+          phase: "completed",
+          operationId: "operation-91",
+          shopId: 11
+        }
+      }
+    });
+  });
+
+  it("does not complete a merchant switch audit for a mismatched operation", async () => {
+    const update = jest.fn();
+    const repository = new AuthRepository({
+      auditLog: {
+        findFirst: jest.fn(async () => ({
+          id: 91,
+          metadata: { phase: "authorized_attempt", operationId: "another-operation" }
+        })),
+        update
+      }
+    } as never);
+
+    await expect(
+      repository.completeMerchantShopSwitchAudit({
+        auditId: 91,
+        operationId: "operation-91"
+      })
+    ).resolves.toBe(false);
+    expect(update).not.toHaveBeenCalled();
   });
 });

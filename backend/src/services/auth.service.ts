@@ -1,4 +1,4 @@
-import { randomInt, timingSafeEqual } from "crypto";
+import { createHash, randomInt, randomUUID, timingSafeEqual } from "crypto";
 import { compare, hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import type { AppConfig } from "../config/env";
@@ -1098,7 +1098,8 @@ export class AuthService {
     const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
     if (!this.sessionStore.completeMerchantShopSwitch) throw this.redisUnavailableError();
 
-    await this.repository.createAuditLog({
+    const operationId = randomUUID();
+    const auditReceipt = await this.repository.createAuditLog({
       actorId: auth.userId,
       action: "auth.merchant_shop.switch",
       targetType: "Shop",
@@ -1107,25 +1108,46 @@ export class AuthService {
       userAgent: context.userAgent,
       metadata: {
         phase: "authorized_attempt",
+        operationId,
         previousShopPublicId: auth.selectedMerchantShopPublicId,
         nextShopPublicId: merchantShopScope.shopPublicId,
         shopId: merchantShopScope.shopId
       }
     });
+    if (!auditReceipt) {
+      throw new Error("Merchant shop switch audit did not return a durable identifier");
+    }
+    const operationHash = createHash("sha256")
+      .update(operationId)
+      .update("\u0000")
+      .update(String(user.id))
+      .update("\u0000")
+      .update(refreshPayload.jti)
+      .update("\u0000")
+      .update(nextRefreshToken.jti)
+      .update("\u0000")
+      .update(auth.accessTokenJti)
+      .update("\u0000")
+      .update(merchantShopScope.shopPublicId)
+      .digest("hex");
 
-    if (
-      !(await this.sessionStore.completeMerchantShopSwitch({
-        userId: user.id,
-        generation: refreshPayload.sessionGeneration,
-        oldRefreshJti: refreshPayload.jti,
-        newRefreshJti: nextRefreshToken.jti,
-        refreshTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
-        oldAccessJti: auth.accessTokenJti,
-        oldAccessTtlSeconds: auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
-      }))
-    ) {
+    const commit = await this.sessionStore.completeMerchantShopSwitch({
+      userId: user.id,
+      generation: refreshPayload.sessionGeneration,
+      oldRefreshJti: refreshPayload.jti,
+      newRefreshJti: nextRefreshToken.jti,
+      refreshTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+      oldAccessJti: auth.accessTokenJti,
+      oldAccessTtlSeconds: auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000),
+      operationId,
+      operationHash,
+      auditId: auditReceipt.id,
+      receiptTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+    });
+    if (commit.status !== "committed" && commit.status !== "already_committed") {
       throw this.tokenInvalidError();
     }
+    await this.drainMerchantShopSwitchAuditOutbox();
 
     return {
       accessToken: nextAccessToken.token,
@@ -1209,6 +1231,8 @@ export class AuthService {
       });
     }
 
+    await this.drainMerchantShopSwitchAuditOutbox();
+
     return {
       userId,
       email: user.email,
@@ -1229,6 +1253,34 @@ export class AuthService {
       roles: me.roles,
       permissions: me.permissions
     };
+  }
+
+  public async drainMerchantShopSwitchAuditOutbox(): Promise<void> {
+    if (
+      !this.sessionStore.readMerchantShopSwitchAuditOutbox ||
+      !this.sessionStore.acknowledgeMerchantShopSwitchAuditOutbox ||
+      !this.repository.completeMerchantShopSwitchAudit
+    ) {
+      return;
+    }
+    try {
+      const events = await this.sessionStore.readMerchantShopSwitchAuditOutbox();
+      for (const event of events) {
+        try {
+          const completed = await this.repository.completeMerchantShopSwitchAudit({
+            auditId: event.auditId,
+            operationId: event.operationId
+          });
+          if (completed) {
+            await this.sessionStore.acknowledgeMerchantShopSwitchAuditOutbox(event.streamId);
+          }
+        } catch {
+          // The stream entry remains pending for a later authenticated request.
+        }
+      }
+    } catch {
+      // Credential validity is authoritative after the atomic Redis commit.
+    }
   }
 
   private async completeSuccessfulLogin(

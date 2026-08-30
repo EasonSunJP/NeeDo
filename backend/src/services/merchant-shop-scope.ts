@@ -11,11 +11,16 @@ export interface MerchantShopIdentityScope {
 export const FORMAL_DIRECT_SHOP_MERCHANT_IDENTITY_TYPES: ReadonlySet<string> = new Set([
   "merchant",
   "merchant_owner",
-  "merchant_staff"
+  "merchant_staff",
+  "business",
+  "b"
 ]);
 
 export const FORMAL_MERCHANT_ACCOUNT_IDENTITY_TYPES: ReadonlySet<string> = new Set([
-  "merchant_organization"
+  "merchant_organization",
+  "merchant_owner",
+  "owner",
+  "o"
 ]);
 
 export const FORMAL_MERCHANT_IDENTITY_TYPES: ReadonlySet<string> = new Set([
@@ -23,7 +28,7 @@ export const FORMAL_MERCHANT_IDENTITY_TYPES: ReadonlySet<string> = new Set([
   ...FORMAL_MERCHANT_ACCOUNT_IDENTITY_TYPES
 ]);
 
-export type FormalMerchantIdentityKind = "merchant_account" | "shop";
+export type FormalMerchantIdentityKind = "merchant_account" | "shop" | "unscoped";
 
 export interface ResolvedMerchantShopScope {
   shopId: number;
@@ -43,13 +48,22 @@ export const resolveFormalMerchantIdentityKind = (
 ): FormalMerchantIdentityKind | null => {
   const hasMerchantType = FORMAL_MERCHANT_IDENTITY_TYPES.has(identity.type);
   const claimsMerchantScope =
-    identity.scopeType === "merchant_account" || identity.scopeType === "shop";
+    identity.scopeType === "merchant_account" ||
+    identity.scopeType === "merchant" ||
+    identity.scopeType === "shop";
   if (!hasMerchantType && !claimsMerchantScope) return null;
+  if (
+    FORMAL_MERCHANT_ACCOUNT_IDENTITY_TYPES.has(identity.type) &&
+    identity.scopeType === "global" &&
+    identity.scopeId === null
+  ) {
+    return "unscoped";
+  }
   if (!identity.scopeId || !Number.isSafeInteger(identity.scopeId)) {
     throw merchantShopIdentityForbidden();
   }
   if (
-    identity.scopeType === "merchant_account" &&
+    (identity.scopeType === "merchant_account" || identity.scopeType === "merchant") &&
     FORMAL_MERCHANT_ACCOUNT_IDENTITY_TYPES.has(identity.type)
   ) {
     return "merchant_account";
@@ -71,7 +85,7 @@ export const resolveMerchantShopScope = async (input: {
 }): Promise<ResolvedMerchantShopScope | null> => {
   const now = input.now ?? new Date();
   const merchantIdentityKind = resolveFormalMerchantIdentityKind(input.identity);
-  if (merchantIdentityKind === null) return null;
+  if (merchantIdentityKind === null || merchantIdentityKind === "unscoped") return null;
   const scopeId = input.identity.scopeId;
   if (scopeId === null) throw merchantShopIdentityForbidden();
 

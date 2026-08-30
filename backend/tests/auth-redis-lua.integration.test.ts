@@ -15,9 +15,25 @@ describeRedis("Redis auth-store Lua integration", () => {
   const marker = randomUUID();
   const userId = numericUserIdFromMarker(marker);
   const email = `task2-${marker}@needo.local`;
-  const jtis = [`${marker}-single`, `${marker}-all-a`, `${marker}-all-b`];
+  const jtis = [
+    `${marker}-single`,
+    `${marker}-all-a`,
+    `${marker}-all-b`,
+    `${marker}-switch-corrupt-old`,
+    `${marker}-switch-corrupt-new`,
+    `${marker}-switch-old`,
+    `${marker}-switch-new`,
+    `${marker}-switch-collision-new`
+  ];
   const challengeIds: string[] = [];
   const nonceIds: string[] = [];
+  const switchOperationIds = [`${marker}-corrupt`, `${marker}-success`];
+  const switchReceiptKey = (operationId: string): string =>
+    `auth:v2:merchant-shop-switch:receipt:${operationId}`;
+  const switchOutboxKey = `auth:v2:audit:merchant-shop-switch:test:${marker}`;
+  const switchBlacklistKeys = [`${marker}-corrupt-access`, `${marker}-success-access`].map(
+    (jti) => `token:blacklist:${jti}`
+  );
   let client: RedisClient | undefined;
   let challengeStore: RedisVerificationChallengeStore;
   let sessionStore: RedisAuthSessionStore;
@@ -50,14 +66,45 @@ describeRedis("Redis auth-store Lua integration", () => {
     `auth:v2:refresh:user:${userId}`,
     `auth:v2:login:account:fail:${userId}`,
     `auth:v2:login:account:lock:${userId}`,
-    ...jtis.map((jti) => `auth:v2:refresh:${userId}:${jti}`)
+    ...jtis.map((jti) => `auth:v2:refresh:${userId}:${jti}`),
+    ...switchOperationIds.map(switchReceiptKey),
+    ...switchBlacklistKeys,
+    switchOutboxKey
   ];
+
+  const completeMerchantShopSwitch = async (input: {
+    userId: number;
+    generation: number;
+    oldRefreshJti: string;
+    newRefreshJti: string;
+    refreshTtlSeconds: number;
+    oldAccessJti: string;
+    oldAccessTtlSeconds: number;
+    operationId: string;
+    operationHash: string;
+    auditId: number;
+    receiptTtlSeconds: number;
+  }): Promise<{ status: string; reason?: string }> => {
+    const method = (
+      sessionStore as unknown as {
+        completeMerchantShopSwitch?: (
+          value: typeof input
+        ) => Promise<{ status: string; reason?: string }>;
+      }
+    ).completeMerchantShopSwitch;
+    expect(method).toEqual(expect.any(Function));
+    return method!.call(sessionStore, input);
+  };
 
   beforeAll(async () => {
     client = createRedisClient();
     await client.connect();
     challengeStore = new RedisVerificationChallengeStore(() => client!);
-    sessionStore = new RedisAuthSessionStore(() => client!);
+    sessionStore = new RedisAuthSessionStore(() => client!, {
+      merchantShopAuditOutboxKey: switchOutboxKey,
+      merchantShopAuditGroup: `auth-merchant-shop-switch-audit-test-${marker}`,
+      merchantShopAuditConsumer: `auth-merchant-shop-switch-audit-worker-test-${marker}`
+    });
   });
 
   afterAll(async () => {
@@ -223,5 +270,113 @@ describeRedis("Redis auth-store Lua integration", () => {
     await expect(sessionStore.getAccountLoginLock(userId)).resolves.toBe(true);
     await sessionStore.clearFailedLoginForAccount(userId);
     await expect(sessionStore.getAccountLoginLock(userId)).resolves.toBe(false);
+  });
+
+  it("rejects a WRONGTYPE refresh index before any merchant-switch credential write", async () => {
+    const oldRefreshJti = jtis[3]!;
+    const newRefreshJti = jtis[4]!;
+    const refreshIndexKey = `auth:v2:refresh:user:${userId}`;
+    const outboxLengthBefore = await client!.xLen(switchOutboxKey).catch(() => 0);
+    await sessionStore.revokeAllRefreshTokens(userId, 4);
+    await sessionStore.storeRefreshToken(userId, oldRefreshJti, 600, 4);
+    await client!.del(refreshIndexKey);
+    await client!.set(refreshIndexKey, "polluted-wrong-type", { EX: 600 });
+
+    const outcome = await completeMerchantShopSwitch({
+      userId,
+      generation: 4,
+      oldRefreshJti,
+      newRefreshJti,
+      refreshTtlSeconds: 600,
+      oldAccessJti: `${marker}-corrupt-access`,
+      oldAccessTtlSeconds: 300,
+      operationId: switchOperationIds[0]!,
+      operationHash: "a".repeat(64),
+      auditId: 91001,
+      receiptTtlSeconds: 600
+    }).catch((error: unknown) => error);
+    const oldRefreshStillExists = await sessionStore.hasRefreshToken(userId, oldRefreshJti);
+    const newRefreshExists = await sessionStore.hasRefreshToken(userId, newRefreshJti);
+    const oldAccessBlacklisted = await sessionStore.isAccessTokenBlacklisted(
+      `${marker}-corrupt-access`
+    );
+    const receipt = await client!.get(switchReceiptKey(switchOperationIds[0]!));
+    const outboxLengthAfter = await client!.xLen(switchOutboxKey).catch(() => 0);
+    await client!.del(refreshIndexKey);
+
+    expect(oldRefreshStillExists).toBe(true);
+    expect(newRefreshExists).toBe(false);
+    expect(oldAccessBlacklisted).toBe(false);
+    expect(receipt).toBeNull();
+    expect(outboxLengthAfter).toBe(outboxLengthBefore);
+    expect(outcome).toEqual({ status: "rejected", reason: "invalid_state" });
+  });
+
+  it("persists an idempotent receipt and one completion outbox event", async () => {
+    const oldRefreshJti = jtis[5]!;
+    const newRefreshJti = jtis[6]!;
+    const operationId = switchOperationIds[1]!;
+    const operationHash = "b".repeat(64);
+    const input = {
+      userId,
+      generation: 4,
+      oldRefreshJti,
+      newRefreshJti,
+      refreshTtlSeconds: 600,
+      oldAccessJti: `${marker}-success-access`,
+      oldAccessTtlSeconds: 300,
+      operationId,
+      operationHash,
+      auditId: 91002,
+      receiptTtlSeconds: 600
+    };
+    await sessionStore.storeRefreshToken(userId, oldRefreshJti, 600, 4);
+    const outboxLengthBefore = await client!.xLen(switchOutboxKey).catch(() => 0);
+
+    await expect(completeMerchantShopSwitch(input)).resolves.toEqual({ status: "committed" });
+    await expect(sessionStore.hasRefreshToken(userId, oldRefreshJti)).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(userId, newRefreshJti)).resolves.toBe(true);
+    await expect(sessionStore.isAccessTokenBlacklisted(`${marker}-success-access`)).resolves.toBe(
+      true
+    );
+    await expect(client!.ttl(switchReceiptKey(operationId))).resolves.toBeGreaterThanOrEqual(599);
+    await expect(client!.get(switchReceiptKey(operationId))).resolves.toBe(
+      `91002:${operationHash}:completed`
+    );
+    await expect(client!.xLen(switchOutboxKey)).resolves.toBe(outboxLengthBefore + 1);
+
+    await expect(completeMerchantShopSwitch(input)).resolves.toEqual({
+      status: "already_committed"
+    });
+    await expect(client!.xLen(switchOutboxKey)).resolves.toBe(outboxLengthBefore + 1);
+    await expect(
+      completeMerchantShopSwitch({
+        ...input,
+        newRefreshJti: jtis[7]!,
+        operationHash: "c".repeat(64)
+      })
+    ).resolves.toEqual({ status: "collision" });
+    await expect(sessionStore.hasRefreshToken(userId, jtis[7]!)).resolves.toBe(false);
+
+    const messages = await client!.xRange(switchOutboxKey, "-", "+");
+    const event = messages.find(
+      (message) => (message.message as Record<string, string>).operationId === operationId
+    );
+    expect(event?.message).toEqual({
+      auditId: "91002",
+      operationId,
+      status: "completed"
+    });
+
+    await expect(sessionStore.readMerchantShopSwitchAuditOutbox()).resolves.toEqual([
+      {
+        streamId: String(event?.id),
+        auditId: 91002,
+        operationId,
+        status: "completed"
+      }
+    ]);
+    await sessionStore.acknowledgeMerchantShopSwitchAuditOutbox(String(event?.id));
+    await expect(sessionStore.readMerchantShopSwitchAuditOutbox()).resolves.toEqual([]);
   });
 });

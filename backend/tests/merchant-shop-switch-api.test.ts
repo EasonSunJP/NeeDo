@@ -12,9 +12,20 @@ const SHOP_B = { shopId: 12, shopPublicId: "shop0000000002" };
 class SessionStore {
   public readonly refreshTokens = new Set<string>();
   public readonly blacklisted = new Set<string>();
+  public readonly merchantShopReceipts = new Map<string, string>();
+  public readonly merchantShopAuditOutbox: Array<{
+    streamId: string;
+    auditId: number;
+    operationId: string;
+    status: "completed";
+    acknowledged: boolean;
+  }> = [];
   public failNextMerchantShopCommitAt: "rotation" | "blacklist" | null = null;
+  public concurrentAccessChecksExpected = 0;
   public legacyRotateCalls = 0;
   public legacyBlacklistCalls = 0;
+  private concurrentAccessChecksSeen = 0;
+  private readonly concurrentAccessCheckWaiters: Array<() => void> = [];
 
   public async getAccountLoginLock() {
     return false;
@@ -35,9 +46,16 @@ class SessionStore {
   }
   public async completeMerchantShopSwitch(input: {
     userId: number;
+    generation: number;
     oldRefreshJti: string;
     newRefreshJti: string;
+    refreshTtlSeconds: number;
     oldAccessJti: string;
+    oldAccessTtlSeconds: number;
+    operationId: string;
+    operationHash: string;
+    auditId: number;
+    receiptTtlSeconds: number;
   }) {
     if (this.failNextMerchantShopCommitAt) {
       const failurePoint = this.failNextMerchantShopCommitAt;
@@ -49,12 +67,34 @@ class SessionStore {
         cause: new Error(`simulated atomic ${failurePoint} failure`)
       });
     }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const receipt = `${input.auditId}:${input.operationHash}:completed`;
+    const existingReceipt = this.merchantShopReceipts.get(input.operationId);
+    if (existingReceipt === receipt) return { status: "already_committed" as const };
+    if (existingReceipt) return { status: "collision" as const };
     const oldKey = `${input.userId}:${input.oldRefreshJti}`;
-    if (!this.refreshTokens.has(oldKey)) return false;
+    if (!this.refreshTokens.has(oldKey)) {
+      return { status: "rejected" as const, reason: "missing" };
+    }
     this.refreshTokens.delete(oldKey);
     this.refreshTokens.add(`${input.userId}:${input.newRefreshJti}`);
     this.blacklisted.add(input.oldAccessJti);
-    return true;
+    this.merchantShopReceipts.set(input.operationId, receipt);
+    this.merchantShopAuditOutbox.push({
+      streamId: `${this.merchantShopAuditOutbox.length + 1}-0`,
+      auditId: input.auditId,
+      operationId: input.operationId,
+      status: "completed",
+      acknowledged: false
+    });
+    return { status: "committed" as const };
+  }
+  public async readMerchantShopSwitchAuditOutbox() {
+    return this.merchantShopAuditOutbox.filter((entry) => !entry.acknowledged);
+  }
+  public async acknowledgeMerchantShopSwitchAuditOutbox(streamId: string) {
+    const event = this.merchantShopAuditOutbox.find((entry) => entry.streamId === streamId);
+    if (event) event.acknowledged = true;
   }
   public async revokeRefreshToken(userId: number, jti: string) {
     this.refreshTokens.delete(`${userId}:${jti}`);
@@ -64,7 +104,17 @@ class SessionStore {
     this.blacklisted.add(jti);
   }
   public async isAccessTokenBlacklisted(jti: string) {
-    return this.blacklisted.has(jti);
+    const blacklisted = this.blacklisted.has(jti);
+    if (this.concurrentAccessChecksExpected > 0) {
+      this.concurrentAccessChecksSeen += 1;
+      if (this.concurrentAccessChecksSeen < this.concurrentAccessChecksExpected) {
+        await new Promise<void>((resolve) => this.concurrentAccessCheckWaiters.push(resolve));
+      } else {
+        this.concurrentAccessChecksExpected = 0;
+        this.concurrentAccessCheckWaiters.splice(0).forEach((resolve) => resolve());
+      }
+    }
+    return blacklisted;
   }
 }
 
@@ -182,7 +232,8 @@ const makeFixture = async (input?: { permission?: boolean }) => {
       }) => (merchantAccountId === 41 ? (memberships.get(shopPublicId) ?? null) : null)
     )
   };
-  const auditLogs: Array<Record<string, unknown>> = [];
+  const auditLogs: Array<Record<string, unknown> & { id: number }> = [];
+  let failNextAuditCompletion = false;
   const repository = {
     findUserByLoginIdentifier: jest.fn(async (identifier: string) =>
       identifier === user.email ? user : null
@@ -190,7 +241,32 @@ const makeFixture = async (input?: { permission?: boolean }) => {
     findUserById: jest.fn(async (id: number) => (id === user.id ? user : null)),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
-    createAuditLog: jest.fn(async (entry: Record<string, unknown>) => auditLogs.push(entry))
+    createAuditLog: jest.fn(async (entry: Record<string, unknown>) => {
+      const audit = { ...entry, id: auditLogs.length + 1 };
+      auditLogs.push(audit);
+      return { id: audit.id };
+    }),
+    completeMerchantShopSwitchAudit: jest.fn(
+      async ({ auditId, operationId }: { auditId: number; operationId: string }) => {
+        if (failNextAuditCompletion) {
+          failNextAuditCompletion = false;
+          throw new Error("audit completion unavailable");
+        }
+        const audit = auditLogs.find((entry) => entry.id === auditId);
+        if (
+          !audit ||
+          audit.action !== "auth.merchant_shop.switch" ||
+          (audit.metadata as { operationId?: string }).operationId !== operationId
+        ) {
+          return false;
+        }
+        audit.metadata = {
+          ...(audit.metadata as Record<string, unknown>),
+          phase: "completed"
+        };
+        return true;
+      }
+    )
   };
   const sessions = new SessionStore();
   const app = createApp(env, {
@@ -202,7 +278,18 @@ const makeFixture = async (input?: { permission?: boolean }) => {
     verificationChallengeStore: {}
   } as never);
 
-  return { app, user, memberships, contextRepository, sessions, auditLogs, repository };
+  return {
+    app,
+    user,
+    memberships,
+    contextRepository,
+    sessions,
+    auditLogs,
+    repository,
+    failNextAuditCompletion: () => {
+      failNextAuditCompletion = true;
+    }
+  };
 };
 
 const login = async (app: ReturnType<typeof createApp>) =>
@@ -291,14 +378,24 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
         action: "auth.merchant_shop.switch",
         targetType: "Shop",
         targetId: null,
-        metadata: {
-          phase: "authorized_attempt",
+        metadata: expect.objectContaining({
+          phase: "completed",
+          operationId: expect.any(String),
           previousShopPublicId: SHOP_A.shopPublicId,
           nextShopPublicId: SHOP_B.shopPublicId,
           shopId: SHOP_B.shopId
-        }
+        })
       })
     );
+    expect(fixture.sessions.merchantShopAuditOutbox).toEqual([
+      expect.objectContaining({
+        auditId: fixture.auditLogs[0]?.id,
+        operationId: expect.any(String),
+        status: "completed",
+        acknowledged: true
+      })
+    ]);
+    expect(JSON.stringify(switched.body)).not.toMatch(/operationId|auditId|shopId/);
   });
 
   it("does not mutate credentials when the durable audit attempt cannot be stored", async () => {
@@ -370,6 +467,7 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
   it("allows at most one concurrent request to commit the same merchant shop switch", async () => {
     const fixture = await makeFixture();
     const loggedIn = await login(fixture.app);
+    fixture.sessions.concurrentAccessChecksExpected = 2;
 
     const responses = await Promise.all([
       request(fixture.app)
@@ -390,14 +488,47 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
     expect(fixture.sessions.refreshTokens).toEqual(
       new Set([`${fixture.user.id}:${refreshPayload.jti}`])
     );
-    expect(fixture.auditLogs.length).toBeGreaterThanOrEqual(1);
+    expect(fixture.auditLogs).toHaveLength(2);
     expect(
-      fixture.auditLogs.every(
-        (entry) =>
-          entry.action === "auth.merchant_shop.switch" &&
-          (entry.metadata as { phase?: string }).phase === "authorized_attempt"
+      fixture.auditLogs.filter(
+        (entry) => (entry.metadata as { phase?: string }).phase === "completed"
       )
-    ).toBe(true);
+    ).toHaveLength(1);
+    expect(
+      fixture.auditLogs.filter(
+        (entry) => (entry.metadata as { phase?: string }).phase === "authorized_attempt"
+      )
+    ).toHaveLength(1);
+    expect(fixture.sessions.merchantShopAuditOutbox).toEqual([
+      expect.objectContaining({ acknowledged: true })
+    ]);
+  });
+
+  it("returns committed credentials when audit completion fails and retries the outbox later", async () => {
+    const fixture = await makeFixture();
+    const loggedIn = await login(fixture.app);
+    fixture.failNextAuditCompletion();
+
+    const switched = await request(fixture.app)
+      .post("/api/v1/auth/merchant-shop/switch")
+      .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+      .send({ refreshToken: loggedIn.body.data.refreshToken, shopPublicId: SHOP_B.shopPublicId })
+      .expect(200);
+
+    expect((fixture.auditLogs[0]?.metadata as { phase?: string }).phase).toBe("authorized_attempt");
+    expect(fixture.sessions.merchantShopAuditOutbox).toEqual([
+      expect.objectContaining({ acknowledged: false })
+    ]);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${switched.body.data.accessToken}`)
+      .expect(200);
+
+    expect((fixture.auditLogs[0]?.metadata as { phase?: string }).phase).toBe("completed");
+    expect(fixture.sessions.merchantShopAuditOutbox).toEqual([
+      expect.objectContaining({ acknowledged: true })
+    ]);
   });
 
   it("fails closed with the stable identity error for revoked or cross-account membership", async () => {
@@ -558,7 +689,6 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
 
   it.each([
     [51, "customer", "merchant_account"],
-    [51, "merchant_owner", "merchant_account"],
     [52, "technician", "shop"],
     [52, "merchant_organization", "shop"]
   ])(
@@ -578,6 +708,42 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
         });
     }
   );
+
+  it("accepts the compatible merchant_owner and merchant_account pair on login and refresh", async () => {
+    const fixture = await makeFixture();
+    fixture.user.identities.find((identity) => identity.id === 51)!.type = "merchant_owner";
+
+    const loggedIn = await login(fixture.app);
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+      .expect(200);
+    await request(fixture.app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken: loggedIn.body.data.refreshToken })
+      .expect(200);
+  });
+
+  it("keeps a compatible merchant organization global identity usable without a shop claim", async () => {
+    const fixture = await makeFixture();
+    const identity = fixture.user.identities.find((candidate) => candidate.id === 51)!;
+    Object.assign(identity, { scopeType: "global", scopeId: null });
+
+    const loggedIn = await login(fixture.app);
+    const tokenService = new AuthTokenService(env);
+    expect(tokenService.verifyAccessToken(loggedIn.body.data.accessToken)).not.toHaveProperty(
+      "merchantShopPublicId"
+    );
+    expect(fixture.contextRepository.resolveDefaultShop).not.toHaveBeenCalled();
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+      .expect(200);
+    await request(fixture.app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken: loggedIn.body.data.refreshToken })
+      .expect(200);
+  });
 
   it("uses the same merchant type/scope pairing rule on authenticate and refresh", async () => {
     const fixture = await makeFixture();

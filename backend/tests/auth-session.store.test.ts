@@ -6,8 +6,13 @@ class FakeRedis {
   public readonly values = new Map<string, string>();
   public readonly sets = new Map<string, Set<string>>();
   public readonly expiries = new Map<string, number>();
+  public readonly streams = new Map<
+    string,
+    Array<{ id: string; message: Record<string, string> }>
+  >();
   public readonly evalCalls: string[] = [];
   public failNextEval = false;
+  public delayNextMerchantSwitchEvalMs = 0;
 
   public async connect(): Promise<void> {
     this.isOpen = true;
@@ -62,9 +67,17 @@ class FakeRedis {
     options: { keys: string[]; arguments: string[] }
   ): Promise<string[]> {
     this.evalCalls.push(script);
+    let merchantSwitchResponseDelayMs = 0;
     if (this.failNextEval) {
       this.failNextEval = false;
       throw new Error("simulated Redis transaction failure");
+    }
+    if (
+      script.includes("auth-merchant-shop-switch-complete") &&
+      this.delayNextMerchantSwitchEvalMs > 0
+    ) {
+      merchantSwitchResponseDelayMs = this.delayNextMerchantSwitchEvalMs;
+      this.delayNextMerchantSwitchEvalMs = 0;
     }
     if (script.includes("auth-refresh-store")) {
       const [refreshKey, userIndexKey, generationKey] = options.keys;
@@ -83,6 +96,77 @@ class FakeRedis {
       return ["ok"];
     }
     if (script.includes("auth-merchant-shop-switch-complete")) {
+      if (options.keys.length >= 7) {
+        const [
+          oldRefreshKey,
+          newRefreshKey,
+          userIndexKey,
+          generationKey,
+          blacklistKey,
+          receiptKey,
+          outboxKey
+        ] = options.keys;
+        const [
+          oldJti,
+          newJti,
+          refreshTtl,
+          requestedGeneration,
+          accessTtl,
+          operationId,
+          operationHash,
+          auditId,
+          receiptTtl
+        ] = options.arguments;
+        const receiptValue = `${auditId}:${operationHash}:completed`;
+        if (this.sets.has(receiptKey)) return ["rejected", "invalid_state"];
+        const existingReceipt = this.values.get(receiptKey);
+        if (existingReceipt !== undefined) {
+          return existingReceipt === receiptValue ? ["already_committed"] : ["collision"];
+        }
+        if (
+          this.sets.has(generationKey) ||
+          this.sets.has(oldRefreshKey) ||
+          this.sets.has(newRefreshKey) ||
+          this.values.has(userIndexKey) ||
+          this.sets.has(blacklistKey) ||
+          this.values.has(outboxKey)
+        ) {
+          return ["rejected", "invalid_state"];
+        }
+        if (this.values.get(generationKey) !== requestedGeneration) {
+          return ["rejected", "generation_mismatch"];
+        }
+        if (this.values.get(oldRefreshKey) !== "1") return ["rejected", "missing"];
+        if (!this.sets.get(userIndexKey)?.has(oldJti)) {
+          return ["rejected", "invalid_state"];
+        }
+        if (this.values.has(newRefreshKey)) return ["rejected", "new_refresh_exists"];
+
+        this.values.delete(oldRefreshKey);
+        this.sets.get(userIndexKey)!.delete(oldJti);
+        this.values.set(newRefreshKey, "1");
+        this.expiries.set(newRefreshKey, Number(refreshTtl));
+        this.sets.get(userIndexKey)!.add(newJti);
+        if ((this.expiries.get(userIndexKey) ?? -2) < Number(refreshTtl)) {
+          this.expiries.set(userIndexKey, Number(refreshTtl));
+        }
+        if (Number(accessTtl) > 0) {
+          this.values.set(blacklistKey, "1");
+          this.expiries.set(blacklistKey, Number(accessTtl));
+        }
+        this.values.set(receiptKey, receiptValue);
+        this.expiries.set(receiptKey, Number(receiptTtl));
+        const stream = this.streams.get(outboxKey) ?? [];
+        stream.push({
+          id: `${stream.length + 1}-0`,
+          message: { auditId, operationId, status: "completed" }
+        });
+        this.streams.set(outboxKey, stream);
+        if (merchantSwitchResponseDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, merchantSwitchResponseDelayMs));
+        }
+        return ["committed"];
+      }
       const [oldRefreshKey, newRefreshKey, userIndexKey, generationKey, blacklistKey] =
         options.keys;
       const [oldJti, newJti, refreshTtl, requestedGeneration, accessTtl] = options.arguments;
@@ -159,12 +243,85 @@ describe("RedisAuthSessionStore refresh-session index", () => {
   ) => {
     const method = (
       store as unknown as {
-        completeMerchantShopSwitch?: (value: typeof input) => Promise<boolean>;
+        completeMerchantShopSwitch?: (
+          value: typeof input & {
+            operationId: string;
+            operationHash: string;
+            auditId: number;
+            receiptTtlSeconds: number;
+          }
+        ) => Promise<{ status: string }>;
+      }
+    ).completeMerchantShopSwitch;
+    expect(method).toEqual(expect.any(Function));
+    const result = await method!.call(store, {
+      ...input,
+      operationId: `operation-${input.newRefreshJti}`,
+      operationHash: "a".repeat(64),
+      auditId: 91,
+      receiptTtlSeconds: input.refreshTtlSeconds
+    });
+    return result.status === "committed" || result.status === "already_committed";
+  };
+
+  const completeMerchantShopSwitchWithReceipt = async (
+    store: RedisAuthSessionStore,
+    input: {
+      userId: number;
+      generation: number;
+      oldRefreshJti: string;
+      newRefreshJti: string;
+      refreshTtlSeconds: number;
+      oldAccessJti: string;
+      oldAccessTtlSeconds: number;
+      operationId: string;
+      operationHash: string;
+      auditId: number;
+      receiptTtlSeconds: number;
+    }
+  ): Promise<{ status: string; reason?: string }> => {
+    const method = (
+      store as unknown as {
+        completeMerchantShopSwitch?: (
+          value: typeof input
+        ) => Promise<{ status: string; reason?: string }>;
       }
     ).completeMerchantShopSwitch;
     expect(method).toEqual(expect.any(Function));
     return method!.call(store, input);
   };
+
+  it("reconciles the same operation receipt when the client timeout fires before Redis commits", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never, { operationTimeoutMs: 1 });
+    await store.storeRefreshToken(7, "refresh-timeout-old", 600, 4);
+    client.delayNextMerchantSwitchEvalMs = 20;
+
+    const result = await completeMerchantShopSwitchWithReceipt(store, {
+      userId: 7,
+      generation: 4,
+      oldRefreshJti: "refresh-timeout-old",
+      newRefreshJti: "refresh-timeout-new",
+      refreshTtlSeconds: 600,
+      oldAccessJti: "access-timeout-old",
+      oldAccessTtlSeconds: 300,
+      operationId: "operation-timeout",
+      operationHash: "d".repeat(64),
+      auditId: 91,
+      receiptTtlSeconds: 600
+    });
+
+    expect(result.status).toMatch(/committed/);
+    expect(
+      client.evalCalls.filter((script) => script.includes("auth-merchant-shop-switch"))
+    ).toHaveLength(2);
+    await expect(store.hasRefreshToken(7, "refresh-timeout-old")).resolves.toBe(false);
+    await expect(store.hasRefreshToken(7, "refresh-timeout-new")).resolves.toBe(true);
+    await expect(store.isAccessTokenBlacklisted("access-timeout-old")).resolves.toBe(true);
+    expect(client.values.get("auth:v2:merchant-shop-switch:receipt:operation-timeout")).toBe(
+      `91:${"d".repeat(64)}:completed`
+    );
+  });
 
   it("atomically rotates the refresh token and blacklists the old access token", async () => {
     const client = new FakeRedis();
