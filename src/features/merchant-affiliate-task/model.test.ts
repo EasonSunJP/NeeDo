@@ -6,6 +6,8 @@ import type {
 } from "../../api/merchantAffiliateTasks";
 import {
   buildCreatePayload,
+  buildFeePreviewKey,
+  buildFeePreviewPayload,
   buildScopePayload,
   buildUpdatePayload,
   changePublisher,
@@ -116,6 +118,23 @@ describe("merchant Affiliate task editor model", () => {
     expect(buildCreatePayload(changePublisher(form, shopPublisher))).not.toHaveProperty("shopIds");
     expect(buildCreatePayload(form)).toMatchObject({ merchantAccountId: 31, shopIds: [11, 12] });
     expect(buildUpdatePayload(form)).toMatchObject({ lockVersion: 2, shopIds: [11, 12] });
+  });
+
+  it("builds a stable fee key and publisher-specific preview payload", () => {
+    expect(buildFeePreviewKey({ ...form, shopIds: [12, 11] })).toBe(
+      "merchant_account:31:11,12:2000000"
+    );
+    expect(buildFeePreviewPayload(form)).toEqual({
+      publisherType: "merchant_account",
+      merchantAccountId: 31,
+      shopIds: [11, 12],
+      totalBudgetNdp: 2_000_000
+    });
+    expect(buildFeePreviewPayload({ ...form, publisherType: "shop", merchantAccountId: null })).toEqual({
+      publisherType: "shop",
+      shopIds: [11, 12],
+      totalBudgetNdp: 2_000_000
+    });
   });
 
   it("creates display rows without internal merchant, service, user, or identity IDs", () => {

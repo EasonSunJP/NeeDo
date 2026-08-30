@@ -26,6 +26,8 @@ vi.mock("../../api/merchantAffiliateTasks", async (importOriginal) => {
       createDraft: vi.fn(),
       updateDraft: vi.fn(),
       updateLocale: vi.fn(),
+      previewFee: vi.fn(),
+      submit: vi.fn(),
       listPublishers: vi.fn(),
       listShops: vi.fn(),
       listServices: vi.fn()
@@ -205,6 +207,8 @@ describe("MerchantAffiliateTaskEditor", () => {
     createDraft: vi.mocked(merchantAffiliateTasksApi.createDraft),
     updateDraft: vi.mocked(merchantAffiliateTasksApi.updateDraft),
     updateLocale: vi.mocked(merchantAffiliateTasksApi.updateLocale),
+    previewFee: vi.mocked(merchantAffiliateTasksApi.previewFee),
+    submit: vi.mocked(merchantAffiliateTasksApi.submit),
     listPublishers: vi.mocked(merchantAffiliateTasksApi.listPublishers),
     listShops: vi.mocked(merchantAffiliateTasksApi.listShops),
     listServices: vi.mocked(merchantAffiliateTasksApi.listServices)
@@ -219,6 +223,16 @@ describe("MerchantAffiliateTaskEditor", () => {
     api.createDraft.mockResolvedValue(task);
     api.updateDraft.mockResolvedValue(task);
     api.updateLocale.mockResolvedValue(task);
+    api.previewFee.mockResolvedValue({
+      evaluatedAt: "2026-08-30T02:00:00.000Z",
+      effectiveAt: "2026-08-30T02:00:00.000Z",
+      platformFeeBps: 1_000,
+      commissionBudgetNdp: 2_000_000,
+      platformFeeReserveNdp: 200_000,
+      grossFreezeNdp: 2_200_000,
+      shopRateStatus: "consistent"
+    });
+    api.submit.mockResolvedValue({ ...task, status: "pending_review" });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -423,5 +437,76 @@ describe("MerchantAffiliateTaskEditor", () => {
     await flush();
     expect(api.getTask).toHaveBeenCalledTimes(2);
     expect(container.querySelector('[data-conflict-local]')?.textContent).toContain("Unsaved English");
+  });
+
+  it("previews authoritative fees without performing a task write", async () => {
+    await act(async () => root.render(<MerchantAffiliateTaskEditor canSubmit canWrite onPersisted={vi.fn()} taskId={81} />));
+    await flush();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-step="finance"]')?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="preview-affiliate-fee"]')?.click());
+    await flush();
+
+    expect(api.previewFee).toHaveBeenCalledWith({
+      publisherType: "merchant_account",
+      merchantAccountId: 31,
+      shopIds: [11, 12],
+      totalBudgetNdp: 2_000_000
+    });
+    expect(api.createDraft).not.toHaveBeenCalled();
+    expect(api.updateDraft).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("2,000,000 NDP");
+    expect(container.textContent).toContain("10%");
+    expect(container.textContent).toContain("200,000 NDP");
+    expect(container.textContent).toContain("2,200,000 NDP");
+  });
+
+  it("submits exactly once while pending and trusts only the returned server status", async () => {
+    let resolveSubmit: ((value: MerchantAffiliateTask) => void) | undefined;
+    api.submit.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveSubmit = resolve;
+      })
+    );
+    const onPersisted = vi.fn();
+    const onSubmitted = vi.fn();
+    await act(async () => root.render(
+      <MerchantAffiliateTaskEditor canSubmit canWrite onPersisted={onPersisted} onSubmitted={onSubmitted} taskId={81} />
+    ));
+    await flush();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-step="finance"]')?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="preview-affiliate-fee"]')?.click());
+    await flush();
+
+    const submitButton = container.querySelector<HTMLButtonElement>('[data-action="submit-affiliate-task"]');
+    await act(async () => {
+      submitButton?.click();
+      submitButton?.click();
+    });
+    expect(api.submit).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveSubmit?.({ ...task, status: "pending_review" }));
+    await flush();
+    expect(onSubmitted).toHaveBeenCalledWith(expect.objectContaining({ status: "pending_review" }));
+    expect(onPersisted).toHaveBeenCalledWith(expect.objectContaining({ status: "pending_review" }));
+    expect(container.textContent).toContain("审核中");
+  });
+
+  it("keeps the draft and form values when submit fails", async () => {
+    api.submit.mockRejectedValue(new ApiClientError("error.wallet.insufficient_available", 40928, 409));
+    await act(async () => root.render(<MerchantAffiliateTaskEditor canSubmit canWrite onPersisted={vi.fn()} taskId={81} />));
+    await flush();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-step="finance"]')?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="preview-affiliate-fee"]')?.click());
+    await flush();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="submit-affiliate-task"]')?.click());
+    await flush();
+
+    expect(container.textContent).toContain("钱包可用 NDP 不足");
+    expect(container.textContent).not.toContain("审核中");
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-step="basic"]')?.click());
+    expect(container.querySelector<HTMLInputElement>('[data-field="name"]')?.value).toBe(
+      "保存済みキャンペーン"
+    );
   });
 });

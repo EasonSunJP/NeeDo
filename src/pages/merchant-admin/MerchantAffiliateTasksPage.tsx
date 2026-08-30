@@ -29,11 +29,13 @@ export const describeMerchantAffiliateTaskListError = (
 ): string => describeMerchantAffiliateTaskError(error, language);
 
 export function MerchantAffiliateTasksContent({
+  canSubmit = true,
   canWrite = true,
   initialPage = 1,
   onCreateTask,
   onSelectTask
 }: {
+  canSubmit?: boolean;
   canWrite?: boolean;
   initialPage?: number;
   onCreateTask?: () => void;
@@ -245,6 +247,7 @@ export function MerchantAffiliateTasksContent({
           widthStorageKey="needo.merchant-affiliate-task.drawer.width"
         >
           <MerchantAffiliateTaskEditor
+            canSubmit={canSubmit}
             canWrite={canWrite}
             onPersisted={persisted}
             taskId={selectedTaskId}
@@ -260,6 +263,7 @@ export function MerchantAffiliateTasksPage() {
   return (
     <MerchantAdminLayout>
       <MerchantAffiliateTasksContent
+        canSubmit={hasPermission("button:merchant-affiliate-task-submit")}
         canWrite={hasPermission("button:merchant-affiliate-task-create")}
       />
     </MerchantAdminLayout>

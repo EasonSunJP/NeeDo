@@ -1,6 +1,7 @@
 import type {
   AffiliateContentLocale,
   MerchantAffiliateEditableInput,
+  MerchantAffiliateFeePreviewInput,
   MerchantAffiliateFeePreview,
   MerchantAffiliatePublisherOption,
   MerchantAffiliateServiceOption,
@@ -167,6 +168,34 @@ export const buildScopePayload = (
   selectedServiceIds:
     form.serviceScopeMode === "all_current_services" ? [] : [...form.selectedServiceIds]
 });
+
+export const buildFeePreviewKey = (form: MerchantAffiliateTaskForm): string =>
+  [
+    form.publisherType,
+    form.merchantAccountId ?? "shop",
+    [...form.shopIds].sort((left, right) => left - right).join(","),
+    form.totalBudgetNdp
+  ].join(":");
+
+export const buildFeePreviewPayload = (
+  form: MerchantAffiliateTaskForm
+): MerchantAffiliateFeePreviewInput => {
+  const common = {
+    shopIds: [...form.shopIds].sort((left, right) => left - right),
+    totalBudgetNdp: form.totalBudgetNdp
+  };
+  if (form.publisherType === "shop") {
+    return { publisherType: "shop", ...common };
+  }
+  if (form.merchantAccountId === null) {
+    throw new Error("Merchant account publisher is not selected");
+  }
+  return {
+    publisherType: "merchant_account",
+    merchantAccountId: form.merchantAccountId,
+    ...common
+  };
+};
 
 const buildEditablePayload = (form: MerchantAffiliateTaskForm): MerchantAffiliateEditableInput => ({
   name: form.name.trim(),

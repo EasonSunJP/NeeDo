@@ -7,6 +7,7 @@ import type { MerchantAffiliateTask } from "../../api/merchantAffiliateTasks";
 import { merchantAffiliateTasksApi } from "../../api/merchantAffiliateTasks";
 import { ApiClientError } from "../../api/httpClient";
 import appSource from "../../App.tsx?raw";
+import pageSource from "./MerchantAffiliateTasksPage.tsx?raw";
 import {
   MerchantAffiliateTasksContent,
   describeMerchantAffiliateTaskListError
@@ -123,6 +124,9 @@ describe("MerchantAffiliateTasksPage", () => {
     expect(appSource).toContain('path="/merchant-admin/affiliate/tasks"');
     expect(appSource).toContain(
       'protectPermission("merchant", "page:merchant-affiliate-task"'
+    );
+    expect(pageSource).toContain(
+      "button:merchant-affiliate-task-submit"
     );
   });
 

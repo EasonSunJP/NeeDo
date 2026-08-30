@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   merchantAffiliateTasksApi,
   type AffiliateContentLocale,
@@ -15,6 +15,8 @@ import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import {
   buildCreatePayload,
+  buildFeePreviewKey,
+  buildFeePreviewPayload,
   buildUpdatePayload,
   changePublisher,
   dateTimeLocalToIso,
@@ -27,6 +29,7 @@ import {
   type MerchantAffiliateLocaleEditorState,
   type MerchantAffiliateTaskForm
 } from "./model";
+import { MerchantAffiliateTaskDetail } from "./MerchantAffiliateTaskDetail";
 import {
   describeMerchantAffiliateTaskError,
   getMerchantAffiliateTaskCopy
@@ -192,6 +195,26 @@ const localeWorkflowCopies: Record<Language, LocaleWorkflowText> = {
   }
 };
 
+type FinanceWorkflowText = {
+  previewFee: string;
+  previewing: string;
+  commissionBudget: string;
+  feeRate: string;
+  feeReserve: string;
+  grossFreeze: string;
+  submit: string;
+  submitting: string;
+  previewRequired: string;
+};
+
+const financeWorkflowCopies: Record<Language, FinanceWorkflowText> = {
+  zh: { previewFee: "读取正式费用", previewing: "正在读取费用", commissionBudget: "佣金预算", feeRate: "平台费率", feeReserve: "平台费预留", grossFreeze: "冻结合计", submit: "提交审核并冻结预算", submitting: "正在提交", previewRequired: "提交前必须读取与当前范围、预算完全一致的服务端费用。" },
+  "zh-Hant": { previewFee: "讀取正式費用", previewing: "正在讀取費用", commissionBudget: "佣金預算", feeRate: "平台費率", feeReserve: "平台費預留", grossFreeze: "凍結合計", submit: "提交審核並凍結預算", submitting: "正在提交", previewRequired: "提交前必須讀取與目前範圍、預算完全一致的伺服器費用。" },
+  ja: { previewFee: "正式な費用を取得", previewing: "費用を取得中", commissionBudget: "報酬予算", feeRate: "手数料率", feeReserve: "手数料引当", grossFreeze: "凍結合計", submit: "審査申請して予算を凍結", submitting: "申請中", previewRequired: "申請前に、現在の範囲と予算に一致するサーバー費用を取得してください。" },
+  en: { previewFee: "Load authoritative fee", previewing: "Loading fee", commissionBudget: "Commission budget", feeRate: "Platform fee rate", feeReserve: "Platform fee reserve", grossFreeze: "Gross freeze", submit: "Submit and freeze budget", submitting: "Submitting", previewRequired: "Load the server fee that exactly matches the current scope and budget before submitting." },
+  ko: { previewFee: "정식 수수료 불러오기", previewing: "수수료 불러오는 중", commissionBudget: "커미션 예산", feeRate: "플랫폼 수수료율", feeReserve: "플랫폼 수수료 적립", grossFreeze: "총 동결액", submit: "심사 제출 및 예산 동결", submitting: "제출 중", previewRequired: "제출 전에 현재 범위와 예산에 정확히 일치하는 서버 수수료를 불러오세요." }
+};
+
 const localeOptions: Array<{ value: AffiliateContentLocale; label: string }> = [
   { value: "ja", label: "日本語" },
   { value: "en", label: "English" },
@@ -251,18 +274,23 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 }
 
 export function MerchantAffiliateTaskEditor({
+  canSubmit = true,
   canWrite,
   onPersisted,
+  onSubmitted,
   taskId
 }: {
+  canSubmit?: boolean;
   canWrite: boolean;
   onPersisted: (task: MerchantAffiliateTask) => void;
+  onSubmitted?: (task: MerchantAffiliateTask) => void;
   taskId: number | null;
 }) {
   const { language } = useI18n();
   const copy = getMerchantAffiliateTaskCopy(language);
   const text = editorCopies[language];
   const localeText = localeWorkflowCopies[language];
+  const financeText = financeWorkflowCopies[language];
   const [activeStep, setActiveStep] = useState<EditorStep>("basic");
   const [activeLocale, setActiveLocale] = useState<AffiliateContentLocale>("ja");
   const [form, setForm] = useState<MerchantAffiliateTaskForm>(createInitialForm);
@@ -270,6 +298,7 @@ export function MerchantAffiliateTaskEditor({
     emptyLocaleEditorState
   );
   const [taskStatus, setTaskStatus] = useState<MerchantAffiliateTaskStatus>("draft");
+  const [taskSnapshot, setTaskSnapshot] = useState<MerchantAffiliateTask | null>(null);
   const [publishers, setPublishers] = useState<MerchantAffiliatePublisherOption[]>([]);
   const [shops, setShops] = useState<MerchantAffiliateShopOption[]>([]);
   const [services, setServices] = useState<MerchantAffiliateServiceOption[]>([]);
@@ -283,6 +312,10 @@ export function MerchantAffiliateTaskEditor({
   const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
   const [conflict, setConflict] = useState<EditorConflict | null>(null);
   const [reloadStatus, setReloadStatus] = useState<"idle" | "loading">("idle");
+  const [feePreviewKey, setFeePreviewKey] = useState<string | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<"idle" | "loading">("idle");
+  const [submitStatus, setSubmitStatus] = useState<"idle" | "submitting">("idle");
+  const submittingRef = useRef(false);
   const readOnly = !canWrite || taskStatus !== "draft";
 
   useEffect(() => {
@@ -320,6 +353,8 @@ export function MerchantAffiliateTaskEditor({
         setForm(taskToForm(task));
         setLocaleState(taskToLocaleEditorState(task));
         setTaskStatus(task.status);
+        setTaskSnapshot(task);
+        setFeePreviewKey(null);
         setLoadStatus("ready");
       })
       .catch((error: unknown) => {
@@ -478,6 +513,8 @@ export function MerchantAffiliateTaskEditor({
       setForm(taskToForm(persisted));
       setLocaleState(taskToLocaleEditorState(persisted));
       setTaskStatus(persisted.status);
+      setTaskSnapshot(persisted);
+      setFeePreviewKey(null);
       onPersisted(persisted);
     } catch (error: unknown) {
       if (error instanceof ApiClientError && error.code === 40918) {
@@ -536,6 +573,8 @@ export function MerchantAffiliateTaskEditor({
       setForm(taskToForm(persisted));
       setLocaleState(taskToLocaleEditorState(persisted));
       setTaskStatus(persisted.status);
+      setTaskSnapshot(persisted);
+      setFeePreviewKey(null);
       setSyncConfirmOpen(false);
       onPersisted(persisted);
     } catch (error: unknown) {
@@ -562,6 +601,8 @@ export function MerchantAffiliateTaskEditor({
       setForm(taskToForm(latest));
       setLocaleState(taskToLocaleEditorState(latest));
       setTaskStatus(latest.status);
+      setTaskSnapshot(latest);
+      setFeePreviewKey(null);
       setConflict((current) => current ? { ...current, reloaded: true } : current);
       onPersisted(latest);
     } catch (error: unknown) {
@@ -571,11 +612,86 @@ export function MerchantAffiliateTaskEditor({
     }
   };
 
+  const currentPreviewKey = buildFeePreviewKey(form);
+  const currentDraftFingerprint = useMemo(() => {
+    if (form.taskId === null || form.lockVersion === null) return null;
+    try {
+      return JSON.stringify(buildUpdatePayload(form));
+    } catch {
+      return null;
+    }
+  }, [form]);
+  const persistedDraftFingerprint = useMemo(() => {
+    if (!taskSnapshot || taskSnapshot.status !== "draft") return null;
+    try {
+      return JSON.stringify(buildUpdatePayload(taskToForm(taskSnapshot)));
+    } catch {
+      return null;
+    }
+  }, [taskSnapshot]);
+  const draftMatchesServer =
+    currentDraftFingerprint !== null && currentDraftFingerprint === persistedDraftFingerprint;
+
+  const previewFee = async () => {
+    if (
+      form.taskId === null ||
+      taskStatus !== "draft" ||
+      previewStatus === "loading" ||
+      !draftMatchesServer
+    ) return;
+    setPreviewStatus("loading");
+    setSaveError("");
+    try {
+      const preview = await merchantAffiliateTasksApi.previewFee(buildFeePreviewPayload(form));
+      setForm((current) => ({ ...current, feePreview: preview }));
+      setFeePreviewKey(currentPreviewKey);
+    } catch (error: unknown) {
+      setFeePreviewKey(null);
+      setForm((current) => ({ ...current, feePreview: null }));
+      setSaveError(describeMerchantAffiliateTaskError(error, language));
+    } finally {
+      setPreviewStatus("idle");
+    }
+  };
+
+  const submit = async () => {
+    if (
+      submittingRef.current ||
+      !canSubmit ||
+      form.taskId === null ||
+      taskStatus !== "draft" ||
+      !draftMatchesServer ||
+      form.feePreview === null ||
+      feePreviewKey !== currentPreviewKey
+    ) return;
+    submittingRef.current = true;
+    setSubmitStatus("submitting");
+    setSaveError("");
+    try {
+      const submitted = await merchantAffiliateTasksApi.submit(form.taskId);
+      setForm(taskToForm(submitted));
+      setLocaleState(taskToLocaleEditorState(submitted));
+      setTaskStatus(submitted.status);
+      setTaskSnapshot(submitted);
+      setFeePreviewKey(null);
+      onPersisted(submitted);
+      onSubmitted?.(submitted);
+    } catch (error: unknown) {
+      setSaveError(describeMerchantAffiliateTaskError(error, language));
+    } finally {
+      submittingRef.current = false;
+      setSubmitStatus("idle");
+    }
+  };
+
   if (loadStatus === "loading") {
     return <p className="py-12 text-center text-sm font-black text-ink/55">{text.loading}</p>;
   }
   if (loadStatus === "error") {
     return <p className="py-12 text-center text-sm font-black text-coral">{resourceError}</p>;
+  }
+  if (taskSnapshot && taskStatus !== "draft") {
+    return <MerchantAffiliateTaskDetail task={taskSnapshot} />;
   }
 
   return (
@@ -828,10 +944,41 @@ export function MerchantAffiliateTaskEditor({
           )}
         </section>
       ) : null}
-      {activeStep === "finance" ? <p className="rounded-lg border border-line bg-paper px-4 py-6 text-sm font-black text-ink/55">{text.financeSummary(form.totalBudgetNdp)}</p> : null}
+      {activeStep === "finance" ? (
+        <section className="space-y-4" data-finance-step>
+          <p className="rounded-lg border border-line bg-paper px-4 py-4 text-sm font-black text-ink/55">
+            {financeText.previewRequired}
+          </p>
+          {form.feePreview && feePreviewKey === currentPreviewKey ? (
+            <dl className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-line bg-white px-4 py-4"><dt className="text-xs font-black text-ink/45">{financeText.commissionBudget}</dt><dd className="mt-1 text-xl font-black text-ink">{form.feePreview.commissionBudgetNdp.toLocaleString(copy.locale)} NDP</dd></div>
+              <div className="rounded-xl border border-line bg-white px-4 py-4"><dt className="text-xs font-black text-ink/45">{financeText.feeRate}</dt><dd className="mt-1 text-xl font-black text-ink">{form.feePreview.platformFeeBps / 100}%</dd></div>
+              <div className="rounded-xl border border-line bg-white px-4 py-4"><dt className="text-xs font-black text-ink/45">{financeText.feeReserve}</dt><dd className="mt-1 text-xl font-black text-ink">{form.feePreview.platformFeeReserveNdp.toLocaleString(copy.locale)} NDP</dd></div>
+              <div className="rounded-xl border border-moss/25 bg-mint/10 px-4 py-4"><dt className="text-xs font-black text-[#2f6846]/70">{financeText.grossFreeze}</dt><dd className="mt-1 text-xl font-black text-[#2f6846]">{form.feePreview.grossFreezeNdp.toLocaleString(copy.locale)} NDP</dd></div>
+            </dl>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+            <Button
+              data-action="preview-affiliate-fee"
+              disabled={taskStatus !== "draft" || form.taskId === null || previewStatus === "loading" || !draftMatchesServer}
+              onClick={() => void previewFee()}
+              variant="secondary"
+            >
+              {previewStatus === "loading" ? financeText.previewing : financeText.previewFee}
+            </Button>
+            <Button
+              data-action="submit-affiliate-task"
+              disabled={!canSubmit || taskStatus !== "draft" || form.taskId === null || form.feePreview === null || feePreviewKey !== currentPreviewKey || submitStatus === "submitting" || !draftMatchesServer}
+              onClick={() => void submit()}
+            >
+              {submitStatus === "submitting" ? financeText.submitting : financeText.submit}
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {saveError ? <p className="rounded-lg border border-coral/25 bg-coral/5 px-3 py-2 text-sm font-bold text-coral" role="alert">{saveError}</p> : null}
-      {activeStep !== "locales" ? (
+      {activeStep !== "locales" && activeStep !== "finance" ? (
         <div className="sticky bottom-0 flex justify-end border-t border-line bg-white/95 pt-4 backdrop-blur">
           <Button data-action="save-affiliate-draft" disabled={readOnly || saveStatus === "saving"} onClick={() => void save()}>
             {saveStatus === "saving" ? text.saving : text.saveDraft}
