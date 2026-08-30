@@ -32,7 +32,9 @@ import {
 } from "../domain/dashboard-period";
 import type {
   DashboardActivityFacts,
-  DashboardAggregateInput
+  DashboardAggregateInput,
+  DashboardNdpPair,
+  DashboardShopNdpCost
 } from "../domain/dashboard";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -518,6 +520,7 @@ export interface BackofficeDashboardPayload {
     pendingHoldNdp: number;
     campaignDiscountNdp: number;
     unknownOrUnreportedServiceAmountJpy: number;
+    shopNdpCost: DashboardShopNdpCost | null;
   };
   technicians: BackofficeTechnicianPayload[];
   shops: BackofficeShopPayload[];
@@ -542,10 +545,7 @@ export interface BackofficeNdpAggregate {
   campaignDiscountNdp: number;
 }
 
-export interface NdpAmountPair {
-  ndp: number;
-  testNdp: number;
-}
+export type NdpAmountPair = DashboardNdpPair;
 
 export interface BackofficeNdpSummaryPayload {
   period: {

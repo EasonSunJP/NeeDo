@@ -21,6 +21,49 @@ export interface DashboardAggregateInput {
   window: DashboardWindow;
 }
 
+export interface DashboardNdpPair {
+  ndp: number;
+  testNdp: number;
+}
+
+export interface DashboardShopNdpCost {
+  totalNdp: number;
+  platformNdp: number;
+  userRewardNdp: number;
+}
+
+export interface DashboardFinanceFacts {
+  platformNetRevenue: DashboardNdpPair;
+  frozen: DashboardNdpPair;
+  userReward: DashboardNdpPair;
+  walletStock: DashboardNdpPair | null;
+  withdrawn: DashboardNdpPair | null;
+  shopNdpCost: DashboardShopNdpCost | null;
+  bucketPlatformNetRevenueNdp: Map<string, number>;
+  bucketFrozenNdp: Map<string, number>;
+  bucketShopEstimatedGrossProfitJpy: Map<string, number>;
+}
+
+export interface DashboardMerchantFacts {
+  publicId: string;
+  name: string;
+  city: string;
+  address: string;
+  status: string;
+  billing: {
+    cadence: "monthly" | "annual" | "free";
+    state: "trial" | "paid" | "free" | "overdue";
+    trialEndsAt: string | null;
+    paidThrough: string | null;
+  } | null;
+  wallet: {
+    status: "available" | "not_opened";
+    currency: "NDP";
+    availableBalance: number | null;
+    frozenBalance: number | null;
+  };
+}
+
 export interface DashboardActivityFacts {
   current: {
     availableScheduleSlots: number;
