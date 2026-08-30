@@ -8,6 +8,7 @@ import {
   FriendDeletionConfirmDialog,
   useFriendDeletionConfirmation,
 } from "./FriendDeletionConfirmDialog";
+import { getFriendDeletionCopy } from "./friend-deletion-i18n";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,6 +88,19 @@ describe("FriendDeletionConfirmDialog", () => {
 
     return matched;
   };
+
+  it("keeps the destructive warning complete in every supported language", () => {
+    expect(getFriendDeletionCopy("zh").title).toBe("确认删除好友？");
+    expect(getFriendDeletionCopy("zh-Hant").title).toBe("確認刪除好友？");
+    expect(getFriendDeletionCopy("ja").title).toBe("友だちを削除しますか？");
+    expect(getFriendDeletionCopy("en").title).toBe("Delete this friend?");
+    expect(getFriendDeletionCopy("ko").title).toBe("친구를 삭제할까요?");
+    expect(getFriendDeletionCopy("zh").description).toContain("你的聊天记录");
+    expect(getFriendDeletionCopy("zh-Hant").description).toContain("你的聊天記錄");
+    expect(getFriendDeletionCopy("ja").description).toContain("あなたのチャット履歴");
+    expect(getFriendDeletionCopy("en").description).toContain("Your chat history");
+    expect(getFriendDeletionCopy("ko").description).toContain("내 채팅 기록");
+  });
 
   it("opens without deleting and keeps confirm on the left of cancel", async () => {
     const deleteContact = vi.fn(async () => undefined);

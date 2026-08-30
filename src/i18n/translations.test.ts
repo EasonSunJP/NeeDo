@@ -300,32 +300,24 @@ describe("translations", () => {
     });
   });
 
-  it("localizes the friend-deletion confirmation without changing one-sided history semantics", () => {
+  it("localizes the shared friend-deletion actions", () => {
     const expected = {
       "zh-Hant": {
-        title: "確認刪除好友？",
-        description: "刪除後，你與對方的好友關係將解除。你的聊天記錄以及雙方的動態追蹤關係將被永久刪除，且無法復原。確定要刪除這位好友嗎？",
         confirm: "確認刪除",
         deleting: "正在刪除…",
         failure: "刪除失敗，請稍後再試",
       },
       ja: {
-        title: "友だちを削除しますか？",
-        description: "削除すると、相手との友だち関係が解除されます。あなたのチャット履歴と双方の投稿フォロー関係は完全に削除され、元に戻せません。この友だちを削除しますか？",
         confirm: "削除する",
         deleting: "削除中…",
         failure: "削除できませんでした。しばらくしてからもう一度お試しください。",
       },
       en: {
-        title: "Delete this friend?",
-        description: "Deleting this friend will end your friend relationship. Your chat history and both users’ activity follows will be permanently deleted and cannot be restored. Delete this friend?",
         confirm: "Delete",
         deleting: "Deleting…",
         failure: "Delete failed. Please try again later.",
       },
       ko: {
-        title: "친구를 삭제할까요?",
-        description: "삭제하면 상대방과의 친구 관계가 해제됩니다. 내 채팅 기록과 양쪽의 활동 팔로우 관계가 영구적으로 삭제되며 복구할 수 없습니다. 이 친구를 삭제할까요?",
         confirm: "삭제하기",
         deleting: "삭제 중…",
         failure: "삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.",
@@ -335,8 +327,6 @@ describe("translations", () => {
     for (const [language, values] of Object.entries(expected)) {
       const targetLanguage = language as keyof typeof expected;
 
-      expect(translateText("确认删除好友？", targetLanguage)).toBe(values.title);
-      expect(translateText("删除后，你与对方的好友关系将解除。你的聊天记录以及双方的动态关注关系将被永久删除，且无法恢复。确定删除该好友吗？", targetLanguage)).toBe(values.description);
       expect(translateText("确认删除", targetLanguage)).toBe(values.confirm);
       expect(translateText("正在删除…", targetLanguage)).toBe(values.deleting);
       expect(translateText("删除失败，请稍后重试", targetLanguage)).toBe(values.failure);

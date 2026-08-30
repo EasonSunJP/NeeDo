@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
+import { getFriendDeletionCopy } from "./friend-deletion-i18n";
 
 export type FriendDeletionTarget = {
   id: string;
@@ -81,6 +82,7 @@ export function FriendDeletionConfirmDialog({
 }) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
+  const copy = getFriendDeletionCopy(language);
 
   return (
     <ClientActionDialog
@@ -105,10 +107,10 @@ export function FriendDeletionConfirmDialog({
         </div>
       )}
       closeOnBackdrop={!deleting}
-      description={t("删除后，你与对方的好友关系将解除。你的聊天记录以及双方的动态关注关系将被永久删除，且无法恢复。确定删除该好友吗？")}
+      description={copy.description}
       onClose={onCancel}
       open={open}
-      title={t("确认删除好友？")}
+      title={copy.title}
     >
       {errorMessage ? (
         <p className="rounded-2xl bg-red-500/10 px-3 py-2 text-sm font-bold text-red-500" role="alert">
