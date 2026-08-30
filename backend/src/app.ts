@@ -147,6 +147,7 @@ import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
+import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
@@ -172,6 +173,7 @@ export interface AppDependencies {
   merchantShopContextRepository?: MerchantShopContextRepositoryPort;
   testOnlyAllowLegacyAuthAdapters?: boolean;
   authSessionStore?: AuthSessionStore;
+  merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger;
   otpDeliveryClient?: OtpDeliveryClient;
   verificationChallengeStore?: VerificationChallengeStore;
   googleCredentialVerifier?: GoogleCredentialVerifierPort;

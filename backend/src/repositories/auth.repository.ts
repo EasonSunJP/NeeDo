@@ -923,15 +923,21 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         action: "auth.merchant_shop.switch",
         deletedAt: null
       },
-      select: { id: true, metadata: true }
+      select: { id: true, updatedAt: true, metadata: true }
     });
     if (!audit || !this.isJsonObject(audit.metadata)) return false;
     if (audit.metadata.operationId !== input.operationId) return false;
     if (audit.metadata.phase === "completed") return true;
     if (audit.metadata.phase !== "authorized_attempt") return false;
 
-    await this.client.auditLog.update({
-      where: { id: audit.id },
+    const completed = await this.client.auditLog.updateMany({
+      where: {
+        id: audit.id,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null,
+        updatedAt: audit.updatedAt,
+        metadata: { path: "$.operationId", equals: input.operationId }
+      },
       data: {
         metadata: {
           ...audit.metadata,
@@ -939,7 +945,22 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         }
       }
     });
-    return true;
+    if (completed.count === 1) return true;
+
+    const current = await this.client.auditLog.findFirst({
+      where: {
+        id: input.auditId,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null
+      },
+      select: { id: true, updatedAt: true, metadata: true }
+    });
+    return Boolean(
+      current &&
+      this.isJsonObject(current.metadata) &&
+      current.metadata.operationId === input.operationId &&
+      current.metadata.phase === "completed"
+    );
   }
 
   private isJsonObject(value: Prisma.JsonValue | null): value is Prisma.JsonObject {

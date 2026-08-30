@@ -220,17 +220,21 @@ describe("AuthRepository formal login identifiers", () => {
   it("returns the durable audit id and completes that same merchant switch attempt idempotently", async () => {
     const create = jest.fn(async () => ({ id: 91 }));
     const findFirst = jest
-      .fn<() => Promise<{ id: number; metadata: Record<string, unknown> } | null>>()
+      .fn<
+        () => Promise<{ id: number; updatedAt: Date; metadata: Record<string, unknown> } | null>
+      >()
       .mockResolvedValueOnce({
         id: 91,
+        updatedAt: now,
         metadata: { phase: "authorized_attempt", operationId: "operation-91", shopId: 11 }
       })
       .mockResolvedValueOnce({
         id: 91,
+        updatedAt: new Date(now.getTime() + 1),
         metadata: { phase: "completed", operationId: "operation-91", shopId: 11 }
       });
-    const update = jest.fn(async () => ({ id: 91 }));
-    const repository = new AuthRepository({ auditLog: { create, findFirst, update } } as never);
+    const updateMany = jest.fn(async () => ({ count: 1 }));
+    const repository = new AuthRepository({ auditLog: { create, findFirst, updateMany } } as never);
 
     await expect(
       repository.createAuditLog({
@@ -259,11 +263,17 @@ describe("AuthRepository formal login identifiers", () => {
         action: "auth.merchant_shop.switch",
         deletedAt: null
       },
-      select: { id: true, metadata: true }
+      select: { id: true, updatedAt: true, metadata: true }
     });
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update).toHaveBeenCalledWith({
-      where: { id: 91 },
+    expect(updateMany).toHaveBeenCalledTimes(1);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 91,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null,
+        updatedAt: now,
+        metadata: { path: "$.operationId", equals: "operation-91" }
+      },
       data: {
         metadata: {
           phase: "completed",
@@ -275,14 +285,15 @@ describe("AuthRepository formal login identifiers", () => {
   });
 
   it("does not complete a merchant switch audit for a mismatched operation", async () => {
-    const update = jest.fn();
+    const updateMany = jest.fn();
     const repository = new AuthRepository({
       auditLog: {
         findFirst: jest.fn(async () => ({
           id: 91,
+          updatedAt: now,
           metadata: { phase: "authorized_attempt", operationId: "another-operation" }
         })),
-        update
+        updateMany
       }
     } as never);
 
@@ -292,6 +303,32 @@ describe("AuthRepository formal login identifiers", () => {
         operationId: "operation-91"
       })
     ).resolves.toBe(false);
-    expect(update).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("re-reads after an AuditLog CAS loss and never overwrites concurrent metadata", async () => {
+    const findFirst = jest
+      .fn<
+        () => Promise<{ id: number; updatedAt: Date; metadata: Record<string, unknown> } | null>
+      >()
+      .mockResolvedValueOnce({
+        id: 91,
+        updatedAt: now,
+        metadata: { phase: "authorized_attempt", operationId: "operation-91", shopId: 11 }
+      })
+      .mockResolvedValueOnce({
+        id: 91,
+        updatedAt: new Date(now.getTime() + 1),
+        metadata: { phase: "completed", operationId: "other-operation", shopId: 12 }
+      });
+    const updateMany = jest.fn(async () => ({ count: 0 }));
+    const repository = new AuthRepository({ auditLog: { findFirst, updateMany } } as never);
+
+    await expect(
+      repository.completeMerchantShopSwitchAudit({ auditId: 91, operationId: "operation-91" })
+    ).resolves.toBe(false);
+
+    expect(findFirst).toHaveBeenCalledTimes(2);
+    expect(updateMany).toHaveBeenCalledTimes(1);
   });
 });

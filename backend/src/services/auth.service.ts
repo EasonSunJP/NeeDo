@@ -44,6 +44,10 @@ export interface AuthRequestContext {
   userAgent?: string;
 }
 
+export interface MerchantShopAuditOutboxTrigger {
+  trigger: () => void;
+}
+
 export interface TokenPairPayload {
   accessToken: string;
   refreshToken: string;
@@ -208,7 +212,8 @@ export class AuthService {
       undefined,
       config
     ),
-    private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository()
+    private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository(),
+    private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -1138,7 +1143,7 @@ export class AuthService {
       newRefreshJti: nextRefreshToken.jti,
       refreshTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
       oldAccessJti: auth.accessTokenJti,
-      oldAccessTtlSeconds: auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000),
+      oldAccessExpiresAt: auth.accessTokenExpiresAt,
       operationId,
       operationHash,
       auditId: auditReceipt.id,
@@ -1147,7 +1152,7 @@ export class AuthService {
     if (commit.status !== "committed" && commit.status !== "already_committed") {
       throw this.tokenInvalidError();
     }
-    await this.drainMerchantShopSwitchAuditOutbox();
+    this.merchantShopAuditOutboxTrigger?.trigger();
 
     return {
       accessToken: nextAccessToken.token,
@@ -1231,7 +1236,7 @@ export class AuthService {
       });
     }
 
-    await this.drainMerchantShopSwitchAuditOutbox();
+    this.merchantShopAuditOutboxTrigger?.trigger();
 
     return {
       userId,
@@ -1253,34 +1258,6 @@ export class AuthService {
       roles: me.roles,
       permissions: me.permissions
     };
-  }
-
-  public async drainMerchantShopSwitchAuditOutbox(): Promise<void> {
-    if (
-      !this.sessionStore.readMerchantShopSwitchAuditOutbox ||
-      !this.sessionStore.acknowledgeMerchantShopSwitchAuditOutbox ||
-      !this.repository.completeMerchantShopSwitchAudit
-    ) {
-      return;
-    }
-    try {
-      const events = await this.sessionStore.readMerchantShopSwitchAuditOutbox();
-      for (const event of events) {
-        try {
-          const completed = await this.repository.completeMerchantShopSwitchAudit({
-            auditId: event.auditId,
-            operationId: event.operationId
-          });
-          if (completed) {
-            await this.sessionStore.acknowledgeMerchantShopSwitchAuditOutbox(event.streamId);
-          }
-        } catch {
-          // The stream entry remains pending for a later authenticated request.
-        }
-      }
-    } catch {
-      // Credential validity is authoritative after the atomic Redis commit.
-    }
   }
 
   private async completeSuccessfulLogin(

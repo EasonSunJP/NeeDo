@@ -5,6 +5,7 @@ import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { AuthTokenService } from "../src/services/auth-token.service";
 import { AppError } from "../src/utils/app-error";
+import { MerchantShopAuditOutboxService } from "../src/services/merchant-shop-audit-outbox.service";
 
 const SHOP_A = { shopId: 11, shopPublicId: "shop0000000001" };
 const SHOP_B = { shopId: 12, shopPublicId: "shop0000000002" };
@@ -51,7 +52,7 @@ class SessionStore {
     newRefreshJti: string;
     refreshTtlSeconds: number;
     oldAccessJti: string;
-    oldAccessTtlSeconds: number;
+    oldAccessExpiresAt: number;
     operationId: string;
     operationHash: string;
     auditId: number;
@@ -90,12 +91,15 @@ class SessionStore {
     return { status: "committed" as const };
   }
   public async readMerchantShopSwitchAuditOutbox() {
-    return this.merchantShopAuditOutbox.filter((entry) => !entry.acknowledged);
+    return this.merchantShopAuditOutbox
+      .filter((entry) => !entry.acknowledged)
+      .map((entry) => ({ ...entry, kind: "completion" as const }));
   }
-  public async acknowledgeMerchantShopSwitchAuditOutbox(streamId: string) {
-    const event = this.merchantShopAuditOutbox.find((entry) => entry.streamId === streamId);
+  public async acknowledgeMerchantShopSwitchAuditOutbox(input: { streamId: string }) {
+    const event = this.merchantShopAuditOutbox.find((entry) => entry.streamId === input.streamId);
     if (event) event.acknowledged = true;
   }
+  public async deadLetterMerchantShopSwitchAuditOutbox() {}
   public async revokeRefreshToken(userId: number, jti: string) {
     this.refreshTokens.delete(`${userId}:${jti}`);
   }
@@ -269,10 +273,13 @@ const makeFixture = async (input?: { permission?: boolean }) => {
     )
   };
   const sessions = new SessionStore();
+  const outboxService = new MerchantShopAuditOutboxService(repository, sessions as never);
+  const outboxTrigger = { trigger: jest.fn() };
   const app = createApp(env, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: repository,
     authSessionStore: sessions,
+    merchantShopAuditOutboxTrigger: outboxTrigger,
     merchantShopContextRepository: contextRepository,
     otpDeliveryClient: { sendOtp: jest.fn() },
     verificationChallengeStore: {}
@@ -286,6 +293,8 @@ const makeFixture = async (input?: { permission?: boolean }) => {
     sessions,
     auditLogs,
     repository,
+    outboxService,
+    outboxTrigger,
     failNextAuditCompletion: () => {
       failNextAuditCompletion = true;
     }
@@ -365,6 +374,8 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
     });
     expect(fixture.sessions.legacyRotateCalls).toBe(0);
     expect(fixture.sessions.legacyBlacklistCalls).toBe(0);
+    expect(fixture.outboxTrigger.trigger).toHaveBeenCalled();
+    expect((fixture.auditLogs[0]?.metadata as { phase?: string }).phase).toBe("authorized_attempt");
     await request(fixture.app)
       .get("/api/v1/auth/me")
       .set("Authorization", `Bearer ${previous.accessToken}`)
@@ -373,6 +384,7 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
       .post("/api/v1/auth/refresh")
       .send({ refreshToken: previous.refreshToken })
       .expect(401);
+    await fixture.outboxService.drain();
     expect(fixture.auditLogs).toContainEqual(
       expect.objectContaining({
         action: "auth.merchant_shop.switch",
@@ -489,6 +501,7 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
       new Set([`${fixture.user.id}:${refreshPayload.jti}`])
     );
     expect(fixture.auditLogs).toHaveLength(2);
+    await fixture.outboxService.drain();
     expect(
       fixture.auditLogs.filter(
         (entry) => (entry.metadata as { phase?: string }).phase === "completed"
@@ -515,6 +528,7 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
       .send({ refreshToken: loggedIn.body.data.refreshToken, shopPublicId: SHOP_B.shopPublicId })
       .expect(200);
 
+    await fixture.outboxService.drain();
     expect((fixture.auditLogs[0]?.metadata as { phase?: string }).phase).toBe("authorized_attempt");
     expect(fixture.sessions.merchantShopAuditOutbox).toEqual([
       expect.objectContaining({ acknowledged: false })
@@ -525,6 +539,7 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
       .set("Authorization", `Bearer ${switched.body.data.accessToken}`)
       .expect(200);
 
+    await fixture.outboxService.drain();
     expect((fixture.auditLogs[0]?.metadata as { phase?: string }).phase).toBe("completed");
     expect(fixture.sessions.merchantShopAuditOutbox).toEqual([
       expect.objectContaining({ acknowledged: true })

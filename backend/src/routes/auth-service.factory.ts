@@ -20,5 +20,6 @@ export const createAuthServiceForRoutes = (
     dependencies.verificationChallengeStore ?? new RedisVerificationChallengeStore(),
     dependencies.testOnlyAllowLegacyAuthAdapters ?? false,
     dependencies.googleCredentialVerifier ?? new GoogleCredentialVerifierService(undefined, config),
-    dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository()
+    dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),
+    dependencies.merchantShopAuditOutboxTrigger
   );

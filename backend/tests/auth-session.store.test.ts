@@ -13,6 +13,7 @@ class FakeRedis {
   public readonly evalCalls: string[] = [];
   public failNextEval = false;
   public delayNextMerchantSwitchEvalMs = 0;
+  public neverResolveMerchantSwitchEvals = false;
 
   public async connect(): Promise<void> {
     this.isOpen = true;
@@ -79,6 +80,12 @@ class FakeRedis {
       merchantSwitchResponseDelayMs = this.delayNextMerchantSwitchEvalMs;
       this.delayNextMerchantSwitchEvalMs = 0;
     }
+    if (
+      script.includes("auth-merchant-shop-switch-complete") &&
+      this.neverResolveMerchantSwitchEvals
+    ) {
+      return new Promise<string[]>(() => undefined);
+    }
     if (script.includes("auth-refresh-store")) {
       const [refreshKey, userIndexKey, generationKey] = options.keys;
       const [jti, ttl, requestedGeneration] = options.arguments;
@@ -111,7 +118,8 @@ class FakeRedis {
           newJti,
           refreshTtl,
           requestedGeneration,
-          accessTtl,
+          oldAccessExpiresAt,
+          ,
           operationId,
           operationHash,
           auditId,
@@ -150,9 +158,10 @@ class FakeRedis {
         if ((this.expiries.get(userIndexKey) ?? -2) < Number(refreshTtl)) {
           this.expiries.set(userIndexKey, Number(refreshTtl));
         }
-        if (Number(accessTtl) > 0) {
+        const accessTtl = Number(oldAccessExpiresAt) - Math.floor(Date.now() / 1000);
+        if (accessTtl > 0) {
           this.values.set(blacklistKey, "1");
-          this.expiries.set(blacklistKey, Number(accessTtl));
+          this.expiries.set(blacklistKey, accessTtl);
         }
         this.values.set(receiptKey, receiptValue);
         this.expiries.set(receiptKey, Number(receiptTtl));
@@ -238,7 +247,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
       newRefreshJti: string;
       refreshTtlSeconds: number;
       oldAccessJti: string;
-      oldAccessTtlSeconds: number;
+      oldAccessExpiresAt: number;
     }
   ) => {
     const method = (
@@ -273,7 +282,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
       newRefreshJti: string;
       refreshTtlSeconds: number;
       oldAccessJti: string;
-      oldAccessTtlSeconds: number;
+      oldAccessExpiresAt: number;
       operationId: string;
       operationHash: string;
       auditId: number;
@@ -304,7 +313,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
       newRefreshJti: "refresh-timeout-new",
       refreshTtlSeconds: 600,
       oldAccessJti: "access-timeout-old",
-      oldAccessTtlSeconds: 300,
+      oldAccessExpiresAt: Math.floor(Date.now() / 1000) + 300,
       operationId: "operation-timeout",
       operationHash: "d".repeat(64),
       auditId: 91,
@@ -323,6 +332,42 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     );
   });
 
+  it("bounds repeated uncertain EVAL outcomes under one operation deadline", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never, {
+      operationTimeoutMs: 5,
+      merchantShopSwitchReconcileDeadlineMs: 30,
+      merchantShopSwitchMaxAttempts: 4
+    });
+    await store.storeRefreshToken(7, "refresh-bounded-old", 600, 4);
+    client.neverResolveMerchantSwitchEvals = true;
+    const startedAt = Date.now();
+
+    await expect(
+      completeMerchantShopSwitchWithReceipt(store, {
+        userId: 7,
+        generation: 4,
+        oldRefreshJti: "refresh-bounded-old",
+        newRefreshJti: "refresh-bounded-new",
+        refreshTtlSeconds: 600,
+        oldAccessJti: "access-bounded-old",
+        oldAccessExpiresAt: Math.floor(Date.now() / 1000) + 300,
+        operationId: "operation-bounded",
+        operationHash: "e".repeat(64),
+        auditId: 92,
+        receiptTtlSeconds: 600
+      })
+    ).rejects.toMatchObject({ code: ERROR_CODES.DEPENDENCY_UNAVAILABLE, statusCode: 503 });
+
+    expect(Date.now() - startedAt).toBeLessThan(250);
+    expect(
+      client.evalCalls.filter((script) => script.includes("auth-merchant-shop-switch-complete"))
+    ).toHaveLength(4);
+    await expect(store.hasRefreshToken(7, "refresh-bounded-old")).resolves.toBe(true);
+    await expect(store.hasRefreshToken(7, "refresh-bounded-new")).resolves.toBe(false);
+    await expect(store.isAccessTokenBlacklisted("access-bounded-old")).resolves.toBe(false);
+  });
+
   it("atomically rotates the refresh token and blacklists the old access token", async () => {
     const client = new FakeRedis();
     const store = new RedisAuthSessionStore(() => client as never);
@@ -336,7 +381,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
         newRefreshJti: "refresh-new",
         refreshTtlSeconds: 600,
         oldAccessJti: "access-old",
-        oldAccessTtlSeconds: 300
+        oldAccessExpiresAt: Math.floor(Date.now() / 1000) + 300
       })
     ).resolves.toBe(true);
 
@@ -360,7 +405,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
         newRefreshJti: "refresh-new",
         refreshTtlSeconds: 600,
         oldAccessJti: "access-old",
-        oldAccessTtlSeconds: 300
+        oldAccessExpiresAt: Math.floor(Date.now() / 1000) + 300
       })
     ).rejects.toMatchObject({ code: ERROR_CODES.DEPENDENCY_UNAVAILABLE });
 
@@ -379,7 +424,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
       oldRefreshJti: "refresh-old",
       refreshTtlSeconds: 600,
       oldAccessJti: "access-old",
-      oldAccessTtlSeconds: 300
+      oldAccessExpiresAt: Math.floor(Date.now() / 1000) + 300
     };
 
     const results = await Promise.all([
@@ -411,7 +456,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
         newRefreshJti: "refresh-new",
         refreshTtlSeconds: 600,
         oldAccessJti: "access-old",
-        oldAccessTtlSeconds: 300
+        oldAccessExpiresAt: Math.floor(Date.now() / 1000) + 300
       })
     ).resolves.toBe(false);
 

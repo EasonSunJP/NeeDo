@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import type { RedisClient } from "../config/redis";
 import { getRedisClient } from "../config/redis";
 import { env } from "../config/env";
@@ -21,10 +23,27 @@ export type MerchantShopSwitchCommitResult =
   | { status: "collision" };
 
 export interface MerchantShopSwitchAuditOutboxEvent {
+  kind: "completion";
   streamId: string;
   auditId: number;
   operationId: string;
   status: "completed";
+}
+
+export interface MerchantShopSwitchAuditPoisonEvent {
+  kind: "poison";
+  streamId: string;
+  reason: string;
+}
+
+export type MerchantShopSwitchAuditOutboxItem =
+  | MerchantShopSwitchAuditOutboxEvent
+  | MerchantShopSwitchAuditPoisonEvent;
+
+export interface MerchantShopSwitchAuditOutboxStats {
+  streamLength: number;
+  pendingCount: number;
+  deadLetterLength: number;
 }
 
 export interface AuthSessionStore {
@@ -68,14 +87,20 @@ export interface AuthSessionStore {
     newRefreshJti: string;
     refreshTtlSeconds: number;
     oldAccessJti: string;
-    oldAccessTtlSeconds: number;
+    oldAccessExpiresAt: number;
     operationId: string;
     operationHash: string;
     auditId: number;
     receiptTtlSeconds: number;
   }) => Promise<MerchantShopSwitchCommitResult>;
-  readMerchantShopSwitchAuditOutbox?: () => Promise<MerchantShopSwitchAuditOutboxEvent[]>;
-  acknowledgeMerchantShopSwitchAuditOutbox?: (streamId: string) => Promise<void>;
+  readMerchantShopSwitchAuditOutbox?: () => Promise<MerchantShopSwitchAuditOutboxItem[]>;
+  acknowledgeMerchantShopSwitchAuditOutbox?: (
+    event: MerchantShopSwitchAuditOutboxEvent
+  ) => Promise<void>;
+  deadLetterMerchantShopSwitchAuditOutbox?: (
+    event: MerchantShopSwitchAuditPoisonEvent
+  ) => Promise<void>;
+  getMerchantShopSwitchAuditOutboxStats?: () => Promise<MerchantShopSwitchAuditOutboxStats>;
   completeGoogleUnlink?: (input: {
     userId: number;
     challengeId: string;
@@ -99,28 +124,64 @@ export interface AuthSessionStore {
 
 interface RedisAuthSessionStoreOptions {
   operationTimeoutMs?: number;
+  merchantShopSwitchReconcileDeadlineMs?: number;
+  merchantShopSwitchMaxAttempts?: number;
   merchantShopAuditOutboxKey?: string;
+  merchantShopAuditDeadLetterKey?: string;
   merchantShopAuditGroup?: string;
   merchantShopAuditConsumer?: string;
+  merchantShopAuditClaimIdleMs?: number;
+  merchantShopAuditBatchSize?: number;
+  merchantShopAuditDeadLetterMaxLength?: number;
+  onSecurityEvent?: (event: { operation: string; reason: string }) => void;
 }
 
 export class RedisAuthSessionStore implements AuthSessionStore {
   private readonly operationTimeoutMs: number;
+  private readonly merchantShopSwitchReconcileDeadlineMs: number;
+  private readonly merchantShopSwitchMaxAttempts: number;
   private readonly merchantShopAuditOutboxKey: string;
+  private readonly merchantShopAuditDeadLetterKey: string;
   private readonly merchantShopAuditGroup: string;
   private readonly merchantShopAuditConsumer: string;
+  private readonly merchantShopAuditClaimIdleMs: number;
+  private readonly merchantShopAuditBatchSize: number;
+  private readonly merchantShopAuditDeadLetterMaxLength: number;
+  private readonly onSecurityEvent: (event: { operation: string; reason: string }) => void;
 
   public constructor(
     private readonly getClient: () => RedisClient = getRedisClient,
     options: RedisAuthSessionStoreOptions = {}
   ) {
     this.operationTimeoutMs = options.operationTimeoutMs ?? env.REDIS_CONNECT_TIMEOUT_MS;
+    this.merchantShopSwitchReconcileDeadlineMs =
+      options.merchantShopSwitchReconcileDeadlineMs ?? Math.max(this.operationTimeoutMs * 3, 1_000);
+    this.merchantShopSwitchMaxAttempts = Math.max(
+      1,
+      Math.floor(options.merchantShopSwitchMaxAttempts ?? 4)
+    );
     this.merchantShopAuditOutboxKey =
       options.merchantShopAuditOutboxKey ?? MERCHANT_SHOP_SWITCH_AUDIT_OUTBOX_KEY;
+    this.merchantShopAuditDeadLetterKey =
+      options.merchantShopAuditDeadLetterKey ?? `${this.merchantShopAuditOutboxKey}:dlq`;
     this.merchantShopAuditGroup =
       options.merchantShopAuditGroup ?? MERCHANT_SHOP_SWITCH_AUDIT_GROUP;
     this.merchantShopAuditConsumer =
-      options.merchantShopAuditConsumer ?? MERCHANT_SHOP_SWITCH_AUDIT_CONSUMER;
+      options.merchantShopAuditConsumer ??
+      `${MERCHANT_SHOP_SWITCH_AUDIT_CONSUMER}:${hostname()}:${process.pid}:${randomUUID()}`;
+    this.merchantShopAuditClaimIdleMs = Math.max(
+      0,
+      Math.floor(options.merchantShopAuditClaimIdleMs ?? 30_000)
+    );
+    this.merchantShopAuditBatchSize = Math.max(
+      1,
+      Math.floor(options.merchantShopAuditBatchSize ?? 20)
+    );
+    this.merchantShopAuditDeadLetterMaxLength = Math.max(
+      1,
+      Math.floor(options.merchantShopAuditDeadLetterMaxLength ?? 1_000)
+    );
+    this.onSecurityEvent = options.onSecurityEvent ?? (() => undefined);
   }
 
   public async getLoginLock(email: string): Promise<boolean> {
@@ -254,7 +315,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     newRefreshJti: string;
     refreshTtlSeconds: number;
     oldAccessJti: string;
-    oldAccessTtlSeconds: number;
+    oldAccessExpiresAt: number;
     operationId: string;
     operationHash: string;
     auditId: number;
@@ -274,28 +335,42 @@ export class RedisAuthSessionStore implements AuthSessionStore {
       input.newRefreshJti,
       String(input.refreshTtlSeconds),
       String(input.generation),
-      String(Math.max(0, input.oldAccessTtlSeconds)),
+      String(input.oldAccessExpiresAt),
+      input.oldAccessJti,
       input.operationId,
       input.operationHash,
       String(input.auditId),
       String(input.receiptTtlSeconds)
     ];
 
-    let response: string[];
-    try {
-      response = await this.eval(MERCHANT_SHOP_SWITCH_COMPLETE_LUA, keys, args);
-    } catch (error) {
-      if (!this.isUncertainRedisError(error)) throw error;
-      response = await this.evalWithoutOperationTimeout(
-        MERCHANT_SHOP_SWITCH_COMPLETE_LUA,
-        keys,
-        args
-      );
+    const deadline = Date.now() + this.merchantShopSwitchReconcileDeadlineMs;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.merchantShopSwitchMaxAttempts; attempt += 1) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+      try {
+        const response = await this.evalWithTimeout(
+          MERCHANT_SHOP_SWITCH_COMPLETE_LUA,
+          keys,
+          args,
+          Math.min(this.operationTimeoutMs, remainingMs)
+        );
+        const result = this.parseMerchantShopSwitchResult(response);
+        if (result.status === "collision") {
+          this.onSecurityEvent({ operation: input.operationId, reason: "receipt_collision" });
+        } else if (result.status === "rejected" && result.reason.startsWith("post_state_")) {
+          this.onSecurityEvent({ operation: input.operationId, reason: result.reason });
+        }
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (!this.isUncertainRedisError(error)) throw error;
+      }
     }
-    return this.parseMerchantShopSwitchResult(response);
+    throw this.redisUnavailableError(lastError);
   }
 
-  public async readMerchantShopSwitchAuditOutbox(): Promise<MerchantShopSwitchAuditOutboxEvent[]> {
+  public async readMerchantShopSwitchAuditOutbox(): Promise<MerchantShopSwitchAuditOutboxItem[]> {
     const client = await this.connect();
     try {
       await this.withRedisUnavailableGuard(() =>
@@ -307,10 +382,24 @@ export class RedisAuthSessionStore implements AuthSessionStore {
       if (!this.isBusyGroupError(error)) throw error;
     }
 
-    const pending = await this.readMerchantShopSwitchAuditMessages(client, "0");
+    const claimed = await this.withRedisUnavailableGuard(() =>
+      client.xAutoClaim(
+        this.merchantShopAuditOutboxKey,
+        this.merchantShopAuditGroup,
+        this.merchantShopAuditConsumer,
+        this.merchantShopAuditClaimIdleMs,
+        "0-0",
+        { COUNT: this.merchantShopAuditBatchSize }
+      )
+    );
+    const pending = claimed.messages.flatMap((message) =>
+      message
+        ? [{ id: String(message.id), message: message.message as Record<string, string> }]
+        : []
+    );
     const fresh = await this.readMerchantShopSwitchAuditMessages(client, ">");
     const messages = [...pending, ...fresh];
-    return messages.flatMap(({ id, message }) => {
+    return messages.map(({ id, message }): MerchantShopSwitchAuditOutboxItem => {
       const auditId = Number.parseInt(message.auditId ?? "", 10);
       if (
         !Number.isSafeInteger(auditId) ||
@@ -318,24 +407,54 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         !message.operationId ||
         message.status !== "completed"
       ) {
-        return [];
+        return { kind: "poison", streamId: id, reason: "invalid_completion_event" };
       }
-      return [
-        {
-          streamId: id,
-          auditId,
-          operationId: message.operationId,
-          status: "completed" as const
-        }
-      ];
+      return {
+        kind: "completion",
+        streamId: id,
+        auditId,
+        operationId: message.operationId,
+        status: "completed" as const
+      };
     });
   }
 
-  public async acknowledgeMerchantShopSwitchAuditOutbox(streamId: string): Promise<void> {
-    const client = await this.connect();
-    await this.withRedisUnavailableGuard(() =>
-      client.xAck(this.merchantShopAuditOutboxKey, this.merchantShopAuditGroup, streamId)
+  public async acknowledgeMerchantShopSwitchAuditOutbox(
+    event: MerchantShopSwitchAuditOutboxEvent
+  ): Promise<void> {
+    await this.eval(
+      MERCHANT_SHOP_SWITCH_AUDIT_ACK_LUA,
+      [this.merchantShopAuditOutboxKey, this.merchantShopSwitchReceiptKey(event.operationId)],
+      [this.merchantShopAuditGroup, event.streamId, event.operationId]
     );
+  }
+
+  public async deadLetterMerchantShopSwitchAuditOutbox(
+    event: MerchantShopSwitchAuditPoisonEvent
+  ): Promise<void> {
+    const response = await this.eval(
+      MERCHANT_SHOP_SWITCH_AUDIT_DEAD_LETTER_LUA,
+      [this.merchantShopAuditOutboxKey, this.merchantShopAuditDeadLetterKey],
+      [
+        this.merchantShopAuditGroup,
+        event.streamId,
+        event.reason,
+        String(this.merchantShopAuditDeadLetterMaxLength)
+      ]
+    );
+    if (response[0] !== "ok") throw this.redisUnavailableError(new Error("DLQ write rejected"));
+  }
+
+  public async getMerchantShopSwitchAuditOutboxStats(): Promise<MerchantShopSwitchAuditOutboxStats> {
+    const client = await this.connect();
+    const [streamLength, pending, deadLetterLength] = await Promise.all([
+      this.withRedisUnavailableGuard(() => client.xLen(this.merchantShopAuditOutboxKey)),
+      this.withRedisUnavailableGuard(() =>
+        client.xPending(this.merchantShopAuditOutboxKey, this.merchantShopAuditGroup)
+      ),
+      this.withRedisUnavailableGuard(() => client.xLen(this.merchantShopAuditDeadLetterKey))
+    ]);
+    return { streamLength, pendingCount: pending.pending, deadLetterLength };
   }
 
   public async completeGoogleUnlink(input: {
@@ -438,18 +557,18 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     return Array.isArray(response) ? response.map((value) => String(value)) : [];
   }
 
-  private async evalWithoutOperationTimeout(
+  private async evalWithTimeout(
     script: string,
     keys: string[],
-    args: string[]
+    args: string[],
+    timeoutMs: number
   ): Promise<string[]> {
-    const client = await this.connect();
-    try {
-      const response = await client.eval(script, { keys, arguments: args });
-      return Array.isArray(response) ? response.map((value) => String(value)) : [];
-    } catch (error) {
-      throw this.redisUnavailableError(error);
-    }
+    const client = this.getClient();
+    const response = await this.withRedisUnavailableGuard(async () => {
+      if (!client.isOpen) await client.connect();
+      return client.eval(script, { keys, arguments: args });
+    }, timeoutMs);
+    return Array.isArray(response) ? response.map((value) => String(value)) : [];
   }
 
   private parseMerchantShopSwitchResult(response: string[]): MerchantShopSwitchCommitResult {
@@ -468,7 +587,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         this.merchantShopAuditGroup,
         this.merchantShopAuditConsumer,
         { key: this.merchantShopAuditOutboxKey, id },
-        { COUNT: 20 }
+        { COUNT: this.merchantShopAuditBatchSize }
       )
     );
     const streams = response as Array<{
@@ -494,7 +613,10 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     await this.withRedisUnavailableGuard(() => client.del(key));
   }
 
-  private async withRedisUnavailableGuard<T>(operation: () => Promise<T>): Promise<T> {
+  private async withRedisUnavailableGuard<T>(
+    operation: () => Promise<T>,
+    timeoutMs = this.operationTimeoutMs
+  ): Promise<T> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
@@ -502,8 +624,8 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         operation(),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(
-            () => reject(new Error(`Redis operation timed out after ${this.operationTimeoutMs}ms`)),
-            this.operationTimeoutMs
+            () => reject(new Error(`Redis operation timed out after ${timeoutMs}ms`)),
+            timeoutMs
           );
         })
       ]);
@@ -531,13 +653,21 @@ export class RedisAuthSessionStore implements AuthSessionStore {
 
   private isUncertainRedisError(error: unknown): boolean {
     const cause = error instanceof Error && "cause" in error ? error.cause : error;
-    const message = cause instanceof Error ? cause.message : String(cause);
-    const code =
-      typeof cause === "object" && cause !== null && "code" in cause ? String(cause.code) : "";
-    return (
-      message.includes("Redis operation timed out") ||
-      /socket|connection|ECONN|EPIPE|closed unexpectedly/i.test(`${code} ${message}`)
-    );
+    const candidates = [cause];
+    if (cause instanceof AggregateError) candidates.push(...cause.errors);
+    return candidates.some((candidate) => {
+      const message = candidate instanceof Error ? candidate.message : String(candidate);
+      const code =
+        typeof candidate === "object" && candidate !== null && "code" in candidate
+          ? String(candidate.code)
+          : "";
+      return (
+        message.includes("Redis operation timed out") ||
+        /socket|connection|ECONN|EPIPE|closed|READONLY|LOADING|TRYAGAIN|BUSY/i.test(
+          `${code} ${message}`
+        )
+      );
+    });
   }
 
   private isBusyGroupError(error: unknown): boolean {
@@ -623,34 +753,57 @@ return {'ok'}
 
 const MERCHANT_SHOP_SWITCH_COMPLETE_LUA = `
 -- auth-merchant-shop-switch-complete
+local MAX_STREAM_ID = '18446744073709551615-18446744073709551615'
 local function keyType(key)
   local result = redis.call('TYPE', key)
   if type(result) == 'table' then return result.ok end
   return result
 end
 
-local receiptValue = ARGV[8] .. ':' .. ARGV[7] .. ':completed'
-local receiptType = keyType(KEYS[6])
-if receiptType ~= 'none' then
-  if receiptType ~= 'string' or redis.call('TTL', KEYS[6]) <= 0 then
-    return {'rejected', 'invalid_state'}
+local function streamHasCapacity(key)
+  if keyType(key) == 'none' then return true end
+  local info = redis.call('XINFO', 'STREAM', key)
+  for index = 1, #info, 2 do
+    if info[index] == 'last-generated-id' then
+      return info[index + 1] ~= MAX_STREAM_ID
+    end
   end
-  if redis.call('GET', KEYS[6]) == receiptValue then return {'already_committed'} end
-  return {'collision'}
+  return false
+end
+
+local function canRun(command, ...)
+  if redis.acl_check_cmd and not redis.acl_check_cmd(command, ...) then return false end
+  return true
+end
+
+local function streamEventMatches(streamId)
+  local entries = redis.call('XRANGE', KEYS[7], streamId, streamId)
+  if #entries ~= 1 then return false end
+  local fields = entries[1][2]
+  local values = {}
+  for index = 1, #fields, 2 do values[fields[index]] = fields[index + 1] end
+  return values.auditId == ARGV[9] and values.operationId == ARGV[7] and values.status == 'completed'
+end
+
+local function receiptFields()
+  local fields = redis.call('HGETALL', KEYS[6])
+  local values = {}
+  for index = 1, #fields, 2 do values[fields[index]] = fields[index + 1] end
+  return values
 end
 
 local refreshTtl = tonumber(ARGV[3])
 local generationNumber = tonumber(ARGV[4])
-local accessTtl = tonumber(ARGV[5])
-local auditId = tonumber(ARGV[8])
-local receiptTtl = tonumber(ARGV[9])
+local oldAccessExpiresAt = tonumber(ARGV[5])
+local auditId = tonumber(ARGV[9])
+local receiptTtl = tonumber(ARGV[10])
 if not refreshTtl or refreshTtl <= 0 or refreshTtl % 1 ~= 0 then
   return {'rejected', 'invalid_state'}
 end
 if not generationNumber or generationNumber < 0 or generationNumber % 1 ~= 0 then
   return {'rejected', 'invalid_state'}
 end
-if not accessTtl or accessTtl < 0 or accessTtl % 1 ~= 0 then
+if not oldAccessExpiresAt or oldAccessExpiresAt <= 0 or oldAccessExpiresAt % 1 ~= 0 then
   return {'rejected', 'invalid_state'}
 end
 if not auditId or auditId <= 0 or auditId % 1 ~= 0 then
@@ -659,12 +812,65 @@ end
 if not receiptTtl or receiptTtl <= 0 or receiptTtl % 1 ~= 0 then
   return {'rejected', 'invalid_state'}
 end
-if ARGV[6] == '' or not string.match(ARGV[7], '^[0-9a-fA-F]+$') or string.len(ARGV[7]) ~= 64 then
+if ARGV[6] == '' or ARGV[7] == '' or not string.match(ARGV[8], '^[0-9a-fA-F]+$') or string.len(ARGV[8]) ~= 64 then
   return {'rejected', 'invalid_state'}
 end
 if KEYS[1] == KEYS[2] or ARGV[1] == ARGV[2] then return {'rejected', 'invalid_state'} end
 
-if keyType(KEYS[1]) ~= 'string' or redis.call('GET', KEYS[1]) ~= '1' then
+local receiptType = keyType(KEYS[6])
+if receiptType ~= 'none' then
+  if receiptType ~= 'hash' or redis.call('TTL', KEYS[6]) <= 0 then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  local receipt = receiptFields()
+  if receipt.operationHash ~= ARGV[8] then return {'collision'} end
+  if receipt.auditId ~= ARGV[9] or receipt.newRefreshJti ~= ARGV[2] or
+    receipt.oldAccessJti ~= ARGV[6] or receipt.oldAccessExpiresAt ~= ARGV[5] or
+    (receipt.auditState ~= 'pending' and receipt.auditState ~= 'completed') or
+    not receipt.outboxId then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  if keyType(KEYS[1]) ~= 'none' or keyType(KEYS[2]) ~= 'string' or
+    redis.call('GET', KEYS[2]) ~= '1' or redis.call('TTL', KEYS[2]) <= 0 then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  if keyType(KEYS[3]) ~= 'set' or redis.call('SISMEMBER', KEYS[3], ARGV[2]) ~= 1 or
+    redis.call('SISMEMBER', KEYS[3], ARGV[1]) ~= 0 or redis.call('TTL', KEYS[3]) <= 0 then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  if keyType(KEYS[4]) ~= 'string' or redis.call('GET', KEYS[4]) ~= ARGV[4] or
+    redis.call('TTL', KEYS[4]) ~= -1 then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  local now = tonumber(redis.call('TIME')[1])
+  if now < oldAccessExpiresAt and
+    (keyType(KEYS[5]) ~= 'string' or redis.call('GET', KEYS[5]) ~= '1' or redis.call('TTL', KEYS[5]) <= 0) then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  if receipt.auditState == 'completed' then return {'already_committed'} end
+  local outboxType = keyType(KEYS[7])
+  if outboxType ~= 'none' and outboxType ~= 'stream' then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  if outboxType == 'stream' and streamEventMatches(receipt.outboxId) then
+    return {'already_committed'}
+  end
+  if not streamHasCapacity(KEYS[7]) or
+    not canRun('XADD', KEYS[7], '*', 'auditId', ARGV[9], 'operationId', ARGV[7], 'status', 'completed') or
+    not canRun('HSET', KEYS[6], 'outboxId', '0-0') then
+    return {'rejected', 'post_state_mismatch'}
+  end
+  local repairedId = redis.call(
+    'XADD', KEYS[7], '*',
+    'auditId', ARGV[9], 'operationId', ARGV[7], 'status', 'completed'
+  )
+  redis.call('HSET', KEYS[6], 'outboxId', repairedId)
+  return {'already_committed'}
+end
+
+local oldRefreshType = keyType(KEYS[1])
+if oldRefreshType == 'none' then return {'rejected', 'post_state_unknown'} end
+if oldRefreshType ~= 'string' or redis.call('GET', KEYS[1]) ~= '1' then
   return {'rejected', 'missing'}
 end
 if redis.call('TTL', KEYS[1]) <= 0 then return {'rejected', 'invalid_state'} end
@@ -679,22 +885,102 @@ if redis.call('TTL', KEYS[4]) ~= -1 then return {'rejected', 'invalid_state'} en
 if keyType(KEYS[5]) ~= 'none' then return {'rejected', 'invalid_state'} end
 local outboxType = keyType(KEYS[7])
 if outboxType ~= 'none' and outboxType ~= 'stream' then return {'rejected', 'invalid_state'} end
+if not streamHasCapacity(KEYS[7]) then return {'rejected', 'outbox_exhausted'} end
 
+local now = tonumber(redis.call('TIME')[1])
+local accessTtl = math.max(0, oldAccessExpiresAt - now)
+if not canRun('XADD', KEYS[7], '*', 'auditId', ARGV[9], 'operationId', ARGV[7], 'status', 'completed') or
+  not canRun('DEL', KEYS[1]) or not canRun('SREM', KEYS[3], ARGV[1]) or
+  not canRun('SET', KEYS[2], '1', 'EX', ARGV[3]) or not canRun('SADD', KEYS[3], ARGV[2]) or
+  not canRun('EXPIRE', KEYS[3], ARGV[3]) or
+  (accessTtl > 0 and not canRun('SET', KEYS[5], '1', 'EX', tostring(accessTtl))) or
+  not canRun('HSET', KEYS[6], 'operationHash', ARGV[8]) or
+  not canRun('EXPIRE', KEYS[6], ARGV[10]) then
+  return {'rejected', 'permission_denied'}
+end
+
+local outboxId = redis.call(
+  'XADD', KEYS[7], '*',
+  'auditId', ARGV[9], 'operationId', ARGV[7], 'status', 'completed'
+)
 redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[3], ARGV[1])
 redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
 redis.call('SADD', KEYS[3], ARGV[2])
 local indexTtl = redis.call('TTL', KEYS[3])
 if indexTtl < refreshTtl then redis.call('EXPIRE', KEYS[3], ARGV[3]) end
-if accessTtl > 0 then redis.call('SET', KEYS[5], '1', 'EX', ARGV[5]) end
-redis.call('SET', KEYS[6], receiptValue, 'EX', ARGV[9])
+if accessTtl > 0 then redis.call('SET', KEYS[5], '1', 'EX', tostring(accessTtl)) end
 redis.call(
-  'XADD', KEYS[7], '*',
-  'auditId', ARGV[8],
-  'operationId', ARGV[6],
-  'status', 'completed'
+  'HSET', KEYS[6],
+  'operationHash', ARGV[8],
+  'auditId', ARGV[9],
+  'newRefreshJti', ARGV[2],
+  'oldAccessJti', ARGV[6],
+  'oldAccessExpiresAt', ARGV[5],
+  'outboxId', outboxId,
+  'auditState', 'pending'
 )
+redis.call('EXPIRE', KEYS[6], ARGV[10])
 return {'committed'}
+`;
+
+const MERCHANT_SHOP_SWITCH_AUDIT_ACK_LUA = `
+-- auth-merchant-shop-switch-audit-ack
+local function keyType(key)
+  local result = redis.call('TYPE', key)
+  if type(result) == 'table' then return result.ok end
+  return result
+end
+local streamType = keyType(KEYS[1])
+if streamType ~= 'stream' then return {'rejected'} end
+local receiptType = keyType(KEYS[2])
+if receiptType ~= 'none' and receiptType ~= 'hash' then return {'rejected'} end
+if redis.acl_check_cmd and (
+  not redis.acl_check_cmd('XACK', KEYS[1], ARGV[1], ARGV[2]) or
+  not redis.acl_check_cmd('XDEL', KEYS[1], ARGV[2]) or
+  (receiptType == 'hash' and not redis.acl_check_cmd('HSET', KEYS[2], 'auditState', 'completed'))
+) then return {'rejected'} end
+if receiptType == 'hash' and redis.call('HGET', KEYS[2], 'outboxId') == ARGV[2] and
+  redis.call('HGET', KEYS[2], 'auditState') == 'pending' then
+  redis.call('HSET', KEYS[2], 'auditState', 'completed')
+end
+redis.call('XACK', KEYS[1], ARGV[1], ARGV[2])
+redis.call('XDEL', KEYS[1], ARGV[2])
+return {'ok'}
+`;
+
+const MERCHANT_SHOP_SWITCH_AUDIT_DEAD_LETTER_LUA = `
+-- auth-merchant-shop-switch-audit-dead-letter
+local MAX_STREAM_ID = '18446744073709551615-18446744073709551615'
+local function keyType(key)
+  local result = redis.call('TYPE', key)
+  if type(result) == 'table' then return result.ok end
+  return result
+end
+local function streamHasCapacity(key)
+  if keyType(key) == 'none' then return true end
+  local info = redis.call('XINFO', 'STREAM', key)
+  for index = 1, #info, 2 do
+    if info[index] == 'last-generated-id' then return info[index + 1] ~= MAX_STREAM_ID end
+  end
+  return false
+end
+if keyType(KEYS[1]) ~= 'stream' then return {'rejected'} end
+local dlqType = keyType(KEYS[2])
+if dlqType ~= 'none' and dlqType ~= 'stream' then return {'rejected'} end
+if not streamHasCapacity(KEYS[2]) then return {'rejected'} end
+if redis.acl_check_cmd and (
+  not redis.acl_check_cmd('XADD', KEYS[2], 'MAXLEN', ARGV[4], '*', 'sourceStreamId', ARGV[2], 'reason', ARGV[3], 'status', 'poison') or
+  not redis.acl_check_cmd('XACK', KEYS[1], ARGV[1], ARGV[2]) or
+  not redis.acl_check_cmd('XDEL', KEYS[1], ARGV[2])
+) then return {'rejected'} end
+redis.call(
+  'XADD', KEYS[2], 'MAXLEN', ARGV[4], '*',
+  'sourceStreamId', ARGV[2], 'reason', ARGV[3], 'status', 'poison'
+)
+redis.call('XACK', KEYS[1], ARGV[1], ARGV[2])
+redis.call('XDEL', KEYS[1], ARGV[2])
+return {'ok'}
 `;
 
 const GOOGLE_UNLINK_COMPLETE_LUA = `

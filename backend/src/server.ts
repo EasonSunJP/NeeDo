@@ -23,6 +23,8 @@ import { FriendRequestExpiryService } from "./services/friend-request-expiry.ser
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
+import { RedisAuthSessionStore } from "./services/auth-session.store";
+import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-outbox.service";
 import { ExchangeService } from "./services/exchange.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
@@ -37,6 +39,7 @@ import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
+import { MerchantShopAuditOutboxWorker } from "./workers/merchant-shop-audit-outbox.worker";
 
 const realtimeEventGateway = new SseRealtimeEventGateway({
   eventBus: new RedisRealtimeEventBus({
@@ -56,10 +59,24 @@ const exchangeService = new ExchangeService(
   undefined,
   new PersonalIdentityScopeService(new AuthRepository())
 );
+const authRepository = new AuthRepository();
+const authSessionStore = new RedisAuthSessionStore(undefined, {
+  onSecurityEvent: (event) => {
+    logger.error(event, "Merchant shop switch receipt post-state mismatch");
+  }
+});
+const merchantShopAuditOutboxWorker = new MerchantShopAuditOutboxWorker(
+  new MerchantShopAuditOutboxService(authRepository, authSessionStore),
+  logger,
+  env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_INTERVAL_MS
+);
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
-  exchangeService
+  exchangeService,
+  authRepository,
+  authSessionStore,
+  merchantShopAuditOutboxTrigger: merchantShopAuditOutboxWorker
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
   new IdentityApplicationPurgeService(
@@ -150,6 +167,7 @@ const server = app.listen(env.PORT, () => {
   affiliateAllianceInvitationExpiryWorker.start();
   contentPublicationWorker.start();
   imPrivacyExpiryWorker.start();
+  merchantShopAuditOutboxWorker.start();
 });
 
 const shutdown = createShutdownHandler({
@@ -171,6 +189,7 @@ const shutdown = createShutdownHandler({
     friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
+    merchantShopAuditOutboxWorker.stop();
   }
 });
 
