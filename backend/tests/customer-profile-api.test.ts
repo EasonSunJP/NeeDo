@@ -163,6 +163,7 @@ const createFixture = async () => {
     username: "Aya Customer",
     avatarUrl: null,
     isActive: true,
+    isTestAccount: true,
     accessState: { disabled: false, restricted: false },
     lastLoginAt: null,
     createdAt: now,
