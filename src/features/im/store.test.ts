@@ -1,8 +1,13 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { JSDOM } from "jsdom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ImApi } from "./contract";
 import type { ConversationMessage } from "./model";
 import {
   buildCachedImSearchResults,
+  createScopedStore,
   getIncomingPendingFriendRequestCount,
   getMessageFailureReason,
   getForwardableMessagePayload,
@@ -13,6 +18,27 @@ import {
 } from "./store";
 
 const sentAt = "2026-08-25T10:00:00.000Z";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let dom: JSDOM;
+
+beforeEach(() => {
+  dom = new JSDOM("<!doctype html><html><body></body></html>", {
+    url: "http://localhost/",
+  });
+  Object.assign(globalThis, {
+    document: dom.window.document,
+    window: dom.window,
+  });
+});
+
+afterEach(() => {
+  window.localStorage.clear();
+  document.body.replaceChildren();
+  dom.window.close();
+  vi.restoreAllMocks();
+});
 
 function message(overrides: Partial<ConversationMessage> = {}): ConversationMessage {
   return {
@@ -65,6 +91,132 @@ describe("formal IM recall terminal precedence", () => {
       "const response = await api.recallMessage(conversationId, messageId, mode);",
     );
     expect(source).toContain("upsertMessage(response.message);");
+  });
+});
+
+describe("formal IM voice send state", () => {
+  function renderStore(sendVoiceMessage: ImApi["sendVoiceMessage"]) {
+    const existingMessage = message({ id: "699", localId: "699" });
+    const api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {},
+        users: [],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [
+          {
+            id: "91",
+            type: "single",
+            title: "语音测试",
+            avatar: "",
+            memberIds: ["100", "201"],
+            lastMessagePreview: "原消息",
+            lastMessageTime: sentAt,
+            unreadCount: 0,
+            isPinned: false,
+            isMuted: false,
+            updatedAt: sentAt,
+          },
+        ],
+        members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [existingMessage],
+        nextCursor: null,
+        hasMore: false,
+      }),
+      sendVoiceMessage,
+    } as unknown as ImApi;
+    const scoped = createScopedStore("user", {
+      api: api as ReturnType<typeof import("./formal-api").createFormalImApi>,
+      subscribeUpdates: () => () => undefined,
+    });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    let latest: ReturnType<typeof scoped.useStore> | undefined;
+
+    function StoreHarness() {
+      latest = scoped.useStore();
+      return null;
+    }
+
+    return {
+      existingMessage,
+      get latest() {
+        if (!latest) {
+          throw new Error("Store harness has not rendered");
+        }
+
+        return latest;
+      },
+      async mount() {
+        await act(async () => {
+          root.render(createElement(StoreHarness));
+          await Promise.resolve();
+        });
+        await act(async () => {
+          await latest!.loadMessages("91");
+        });
+      },
+      async unmount() {
+        await act(async () => root.unmount());
+      },
+    };
+  }
+
+  it("keeps loaded messages and the conversation preview unchanged when voice sending fails", async () => {
+    const sendVoiceMessage = vi
+      .fn<ImApi["sendVoiceMessage"]>()
+      .mockRejectedValue(new Error("error.network.timeout"));
+    const harness = renderStore(sendVoiceMessage);
+    await harness.mount();
+    const beforeMessages = harness.latest.messagesByConversation["91"];
+    const beforeConversation = harness.latest.conversations[0];
+
+    await expect(
+      harness.latest.sendVoiceMessage(
+        "91",
+        new Blob(["voice"], { type: "audio/webm" }),
+        { durationSeconds: 6, fileName: "voice.webm" },
+      ),
+    ).rejects.toThrow("error.network.timeout");
+
+    expect(harness.latest.messagesByConversation["91"]).toBe(beforeMessages);
+    expect(harness.latest.conversations[0]).toBe(beforeConversation);
+    await harness.unmount();
+  });
+
+  it("adds the authoritative voice message once and returns it", async () => {
+    const authoritativeMessage = message({
+      id: "702",
+      localId: "702",
+      type: "voice",
+      content: "语音",
+    });
+    const sendVoiceMessage = vi
+      .fn<ImApi["sendVoiceMessage"]>()
+      .mockResolvedValue({ message: authoritativeMessage });
+    const harness = renderStore(sendVoiceMessage);
+    await harness.mount();
+
+    const result = await harness.latest.sendVoiceMessage(
+      "91",
+      new Blob(["voice"], { type: "audio/webm" }),
+      { durationSeconds: 6, fileName: "voice.webm" },
+    );
+
+    expect(result).toBe(authoritativeMessage);
+    expect(harness.latest.messagesByConversation["91"].filter((item) => item.id === "702")).toEqual([
+      authoritativeMessage,
+    ]);
+    expect(harness.latest.conversations[0]).toMatchObject({
+      lastMessagePreview: "音频",
+      lastMessageTime: authoritativeMessage.sentAt,
+      updatedAt: authoritativeMessage.sentAt,
+    });
+    await harness.unmount();
   });
 });
 

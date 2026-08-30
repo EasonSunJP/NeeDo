@@ -591,6 +591,46 @@ describe("formal IM adapter", () => {
     expect(listConversations).not.toHaveBeenCalled();
   });
 
+  it("sends voice bytes through the formal endpoint instead of message content", async () => {
+    const blob = new Blob(
+      [new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])],
+      { type: "audio/webm" },
+    );
+    const send = vi.spyOn(realtimeApi, "createVoiceMessage").mockResolvedValue({
+      id: 702,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+    const createMessage = vi.spyOn(realtimeApi, "createMessage");
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(
+      api.sendVoiceMessage("91", blob, {
+        durationSeconds: 6,
+        fileName: "voice.webm",
+      }),
+    ).resolves.toEqual({
+      message: expect.objectContaining({ type: "voice", content: "语音" }),
+    });
+    expect(send).toHaveBeenCalledWith(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
   it("persists message reactions through the formal API and maps the saved people", async () => {
     const setMessageReaction = vi
       .spyOn(realtimeApi, "setMessageReaction")

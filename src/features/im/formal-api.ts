@@ -969,6 +969,14 @@ export function createFormalImApi({
         message: toConversationMessage(message),
       };
     },
+    async sendVoiceMessage(conversationId, voice, metadata) {
+      const message = await realtimeApi.createVoiceMessage(
+        toNumericId(conversationId),
+        voice,
+        metadata,
+      );
+      return { message: toConversationMessage(message) };
+    },
     async setMessageReaction(
       conversationId: string,
       messageId: string,

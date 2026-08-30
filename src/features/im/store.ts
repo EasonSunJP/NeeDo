@@ -309,7 +309,7 @@ type ScopedStoreBackend = {
   subscribeUpdates: (onUpdate: (update: ImStoreUpdate) => void) => () => void;
 };
 
-function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
+export function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   const { api } = backend;
   const listeners = new Set<() => void>();
   let realtimeUnsubscribe: (() => void) | null = null;
@@ -781,6 +781,36 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     }
   }
 
+  async function sendVoiceMessage(
+    conversationId: string,
+    voice: Blob,
+    metadata: { durationSeconds: number; fileName: string },
+  ) {
+    await hydrateStore();
+    const response = await api.sendVoiceMessage(conversationId, voice, metadata);
+    upsertMessage(response.message);
+    const conversation = getConversationById(
+      { conversations: snapshot.conversations },
+      conversationId,
+    );
+
+    if (conversation) {
+      upsertConversation({
+        ...conversation,
+        lastMessagePreview: buildMessagePreview(
+          response.message,
+          snapshot.currentUserId ?? "",
+          snapshot.usersById,
+        ),
+        lastMessageTime: response.message.sentAt,
+        updatedAt: response.message.sentAt,
+      });
+    }
+
+    emit();
+    return response.message;
+  }
+
   async function estimateTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignEstimate> {
     await hydrateStore();
     return api.estimateTagMessageCampaign(input);
@@ -1243,6 +1273,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       setActiveConversation,
       setDraft,
       sendMessage,
+      sendVoiceMessage,
       estimateTagMessageCampaign,
       sendTagMessageCampaign,
       resendMessage,

@@ -271,6 +271,21 @@ export const realtimeApi = {
   createMessage(conversationId: number, input: { content: string; metadata?: Record<string, unknown>; type?: RealtimeMessage["type"] }) {
     return httpClient.request<RealtimeMessage>(`/im/conversations/${conversationId}/messages`, { body: input, method: "POST" });
   },
+  createVoiceMessage(
+    conversationId: number,
+    voice: Blob,
+    metadata: { durationSeconds: number; fileName: string },
+  ) {
+    return httpClient.request<RealtimeMessage>(
+      `/im/conversations/${conversationId}/voice`,
+      {
+        body: voice,
+        headers: { "Content-Type": voice.type || "audio/webm" },
+        method: "POST",
+        query: metadata,
+      },
+    );
+  },
   recallMessage(conversationId: number, messageId: number, mode: "standard") {
     return httpClient.request<RealtimeRecallResult>(
       `/im/conversations/${conversationId}/messages/${messageId}/recall`,
