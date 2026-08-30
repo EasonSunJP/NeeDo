@@ -22,6 +22,7 @@ import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
+import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
 
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -344,6 +345,7 @@ export interface BackofficeShopPayload {
   id: number;
   ownerUserId: number | null;
   ownerEmail: string | null;
+  avatarUrl: string | null;
   name: string;
   description: string | null;
   city: string;
@@ -627,6 +629,13 @@ export interface BackofficeRepositoryPort {
   findUserByEmail: (email: string) => Promise<{ id: number } | null>;
   createShop: (input: BackofficeShopCreateData) => Promise<BackofficeShopPayload>;
   updateShop: (id: number, input: BackofficeShopUpdateBody) => Promise<BackofficeShopPayload | null>;
+  updateMerchantShopProfile?: (input: {
+    avatar?: { mimeType: string; url: string };
+    fields: BackofficeShopUpdateBody;
+    identityId: number;
+    shopId: number;
+    userId: number;
+  }) => Promise<BackofficeShopPayload | null>;
   approveShop: (id: number, approvedAt: Date) => Promise<BackofficeShopPayload | null>;
   softDeleteShop: (id: number) => Promise<BackofficeShopPayload | null>;
   updateTechnician: (input: ScopedTechnicianUpdateInput) => Promise<BackofficeTechnicianPayload | null>;
@@ -660,7 +669,8 @@ export class BackofficeService {
   public constructor(
     private readonly repository: BackofficeRepositoryPort,
     private readonly auditLogService: AuditLogService,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly avatarStorage?: CustomerAvatarStoragePort
   ) {}
 
   public async getPlatformDashboard(
@@ -1080,13 +1090,41 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
     const scope = this.getMerchantScope(actor);
+    if (!actor.currentIdentityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
+    }
+    const { avatarDataUrl, ...fields } = input;
+    let avatar: { mimeType: string; url: string } | undefined;
+    if (avatarDataUrl) {
+      if (!this.avatarStorage || !this.repository.updateMerchantShopProfile) {
+        throw new AppError({
+          code: ERROR_CODES.INTERNAL,
+          message: "error.shop.avatar_unavailable",
+          statusCode: 500
+        });
+      }
+      const saved = await this.avatarStorage.save(avatarDataUrl);
+      avatar = { mimeType: saved.mimeType, url: saved.url };
+    }
     const shop = this.requireResult(
-      await this.repository.updateShop(scope.shopId, input),
+      this.repository.updateMerchantShopProfile
+        ? await this.repository.updateMerchantShopProfile({
+            avatar,
+            fields,
+            identityId: actor.currentIdentityId,
+            shopId: scope.shopId,
+            userId: actor.userId
+          })
+        : await this.repository.updateShop(scope.shopId, fields),
       "error.shop.not_found"
     );
     await this.record(actor, context, "merchant_admin.shop.update", "Shop", {
       shopId: scope.shopId,
-      changedFields: Object.keys(input)
+      changedFields: Object.keys(input).map((field) => field === "avatarDataUrl" ? "avatar" : field)
     });
     return shop;
   }

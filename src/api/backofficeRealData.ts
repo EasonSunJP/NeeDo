@@ -178,6 +178,7 @@ export interface BackofficeTechnicianRankingPayload
 export interface BackofficeShopPayload {
   id: number;
   ownerUserId: number | null;
+  avatarUrl: string | null;
   ownerEmail: string | null;
   name: string;
   description: string | null;
@@ -356,7 +357,9 @@ export interface BackofficeShopCreateInput {
 }
 
 export type BackofficeShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone" | "isRecommended">>;
-export type MerchantShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">>;
+export type MerchantShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">> & {
+  avatarDataUrl?: string;
+};
 export type BackofficeTechnicianUpdateInput = Partial<Pick<BackofficeTechnicianPayload, "displayName" | "city" | "serviceArea" | "employmentType" | "employmentStartedAt">> & { shopId?: number | null; isRecommended?: boolean };
 export type BackofficeCustomerUpdateInput = Partial<Pick<BackofficeCustomerPayload, "displayName" | "city" | "isPublic">> & { bio?: string | null };
 

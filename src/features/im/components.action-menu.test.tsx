@@ -553,6 +553,55 @@ describe("MessageBubble reactions", () => {
   });
 });
 
+describe("MessageBubble judgement message content", () => {
+  it("keeps judgement values as sticker images in a failed outgoing bubble", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const message: ConversationMessage = {
+      id: "message-rich-failed-1",
+      localId: "message-rich-failed-1",
+      conversationId: "conversation-1",
+      senderId: "sender-1",
+      type: "text",
+      content: "NOThanks😁OK😊",
+      status: "failed",
+      failureReason: "not_friends",
+      sentAt: "2026-08-30T10:38:00.000Z",
+      clientSeq: 1,
+      ext: {
+        richText: {
+          version: 1,
+          parts: [
+            { type: "judgement", value: "NO" },
+            { type: "judgement", value: "Thanks" },
+            { type: "text", value: "😁" },
+            { type: "judgement", value: "OK" },
+            { type: "text", value: "😊" }
+          ]
+        }
+      } as ConversationMessage["ext"]
+    };
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: true }));
+    });
+
+    const richText = container.querySelector<HTMLElement>('[data-im-message-rich-text="true"]');
+    expect(richText).not.toBeNull();
+    expect([...richText!.querySelectorAll("img")].map((image) => image.alt)).toEqual([
+      "NO",
+      "Thanks",
+      "OK"
+    ]);
+    expect(richText!.textContent).toBe("😁😊");
+    expect(richText!.textContent).not.toContain("NOThanks");
+    expect(container.textContent).toContain("对方不是你的好友，信息发送失败");
+
+    await act(async () => root.unmount());
+  });
+});
+
 describe("MessageBubble quoted media", () => {
   const message: ConversationMessage = {
     id: "reply-1",

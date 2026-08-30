@@ -9,6 +9,7 @@ const describeIntegration = runIntegration ? describe : describe.skip;
 const marker = `customer-profile-repository-${randomUUID()}`;
 let userId: number;
 let profileId: number;
+let identityId: number;
 
 describeIntegration("CustomerProfileRepository MySQL integration", () => {
   const repository = new CustomerProfileRepository(prisma);
@@ -26,6 +27,10 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       data: { city: "Tokyo", displayName: "原始资料", languages: ["日本語"] }
     });
     profileId = profile.id;
+    identityId = (await prisma.userIdentity.findFirstOrThrow({
+      where: { userId, type: "customer", deletedAt: null },
+      select: { id: true }
+    })).id;
     await prisma.mediaAsset.create({
       data: {
         customerProfileId: profileId,
@@ -59,6 +64,7 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       repository.updateMine(
         userId,
         profileId,
+        identityId,
         {
           age: 36,
           avatar: { mimeType: "image/png", url: "https://media.local/new.png" },
@@ -108,7 +114,7 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
 
   it("rolls profile changes back when the audit insert fails", async () => {
     await expect(
-      repository.updateMine(userId, profileId, { displayName: "不得提交" }, {
+      repository.updateMine(userId, profileId, identityId, { displayName: "不得提交" }, {
         action: "x".repeat(101),
         actorId: userId,
         targetId: profileId,

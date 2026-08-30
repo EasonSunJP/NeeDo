@@ -115,7 +115,8 @@ import {
   deriveCurrentUserReactionSlots,
   getImReactionCategory,
   getImReactionFailureMessage,
-  materializeImComposerDraft,
+  restoreImComposerDraft,
+  serializeImComposerMessage,
   sortImReactionSummaries,
   type ImReactionCategory
 } from "./reaction-policy";
@@ -5209,7 +5210,8 @@ export function ImConversationRoomPage({
   };
 
   const sendText = async () => {
-    const messageText = clampMessageText(materializeImComposerDraft(draft).trim());
+    const serializedMessage = serializeImComposerMessage(draft);
+    const messageText = serializedMessage.content;
 
     if (!messageText && !pendingImage) {
       return;
@@ -5231,7 +5233,8 @@ export function ImConversationRoomPage({
             mimeType: upload.mimeType,
             width: size?.width,
             height: size?.height,
-            caption: messageText || undefined
+            caption: messageText || undefined,
+            captionRichText: serializedMessage.richText
           }
         });
         setDraft("");
@@ -5249,7 +5252,10 @@ export function ImConversationRoomPage({
 
     try {
       await store.sendMessage(conversationId, "text", messageText, {
-        quotedMessageId
+        quotedMessageId,
+        ext: serializedMessage.richText
+          ? { richText: serializedMessage.richText }
+          : undefined
       });
       setDraft("");
       store.setDraft(conversationId, "");
@@ -5846,7 +5852,9 @@ export function ImConversationRoomPage({
       return;
     }
 
-    const originalContent = message.type === "text" ? message.content : "";
+    const originalContent = message.type === "text"
+      ? restoreImComposerDraft(message.content, message.ext?.richText)
+      : "";
     setRecallPending(true);
     setActionNotice(null);
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
+import * as reactionPolicy from "./reaction-policy";
 
 import {
   encodeImComposerJudgement,
@@ -13,6 +14,45 @@ import {
 } from "./reaction-policy";
 
 describe("IM reaction policy", () => {
+  it("serializes judgement draft tokens into persisted rich message parts", () => {
+    const serialize = (
+      reactionPolicy as typeof reactionPolicy & {
+        serializeImComposerMessage?: (draft: string) => unknown;
+        restoreImComposerDraft?: (content: string, richText: unknown) => string;
+      }
+    ).serializeImComposerMessage;
+    const restore = (
+      reactionPolicy as typeof reactionPolicy & {
+        restoreImComposerDraft?: (content: string, richText: unknown) => string;
+      }
+    ).restoreImComposerDraft;
+
+    expect(serialize).toBeTypeOf("function");
+    expect(restore).toBeTypeOf("function");
+    if (!serialize || !restore) return;
+
+    const draft = `确认${encodeImComposerJudgement("OK")}😂${encodeImComposerJudgement("Pending")}`;
+
+    const serialized = serialize(draft) as {
+      content: string;
+      richText?: unknown;
+    };
+
+    expect(serialized).toEqual({
+      content: "确认OK😂Pending",
+      richText: {
+        version: 1,
+        parts: [
+          { type: "text", value: "确认" },
+          { type: "judgement", value: "OK" },
+          { type: "text", value: "😂" },
+          { type: "judgement", value: "Pending" }
+        ]
+      }
+    });
+    expect(restore(serialized.content, serialized.richText)).toBe(draft);
+  });
+
   it("keeps judgement choices as opaque draft tokens and materializes them for sending", () => {
     const okToken = encodeImComposerJudgement("OK");
     const pendingToken = encodeImComposerJudgement("Pending");

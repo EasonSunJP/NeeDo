@@ -184,6 +184,7 @@ type TechnicianCardRecord = TechnicianProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
   user: {
+    avatarBootstrapUrl: string | null;
     identities: Array<{ publicIdentifier: PublicIdentifier | null }>;
   };
 };
@@ -212,7 +213,7 @@ type TechnicianDetailRecord = TechnicianCardRecord & {
 type CustomerProfileRecord = CustomerProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
-  user: { needoId: string };
+  user: { avatarBootstrapUrl: string | null; avatarUrl: string | null; needoId: string };
 };
 
 type DecimalLike = {
@@ -405,7 +406,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       include: {
         mediaAssets: activeMediaArgs,
         reviewSummary: true,
-        user: { select: { needoId: true } }
+        user: { select: { avatarBootstrapUrl: true, avatarUrl: true, needoId: true } }
       }
     });
 
@@ -451,6 +452,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       reviewSummary: true,
       user: {
         select: {
+          avatarBootstrapUrl: true,
           identities: {
             where: {
               deletedAt: null,
@@ -625,7 +627,9 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       publicId: this.requirePublicId(identifier ?? null, "S"),
       displayName: technician.displayName,
       city: technician.city,
-      avatarUrl: this.findMediaUrl(technician.mediaAssets, "avatar"),
+      avatarUrl:
+        this.findMediaUrl(technician.mediaAssets, "avatar") ??
+        technician.user.avatarBootstrapUrl,
       reviewSummary: this.mapReviewSummary(technician.reviewSummary)
     };
   }
@@ -651,7 +655,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       displayName: customer.displayName,
       city: customer.city,
       bio: customer.bio,
-      avatarUrl: this.findMediaUrl(customer.mediaAssets, "avatar"),
+      avatarUrl:
+        this.findMediaUrl(customer.mediaAssets, "avatar") ??
+        customer.user.avatarUrl ??
+        customer.user.avatarBootstrapUrl,
       membershipLevel: resolveEffectiveCustomerMembershipLevel(customer),
       reviewSummary: this.mapReviewSummary(customer.reviewSummary),
       createdAt: customer.createdAt,

@@ -44,6 +44,40 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).not.toContain("technicianScheduleStore");
   });
 
+  it("matches the deployed formal today heading contract", () => {
+    const tasksStart = source.indexOf("function TasksView");
+    const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);
+    const tasksSource = source.slice(tasksStart, tasksEnd);
+
+    expect(source).toContain('import { TitleWithInfo } from "../../components/ui/TitleWithInfo"');
+    expect(tasksSource).toContain("<TitleWithInfo");
+    expect(tasksSource).toContain('info="默认先看今天的仅排班展示');
+    expect(tasksSource).toContain('label="今日安排 简介"');
+    expect(tasksSource).toContain('title="今日安排"');
+    expect(tasksSource).toContain('titleClassName="text-lg font-bold text-[color:var(--client-text)]"');
+    expect(tasksSource).toContain('variant="paper"');
+    expect(tasksSource).not.toContain('<h2 className="text-xl font-black">今日安排</h2>');
+  });
+
+  it("restores the deployed formal status timeline instead of a simple list", () => {
+    const tasksStart = source.indexOf("function TasksView");
+    const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);
+    const tasksSource = source.slice(tasksStart, tasksEnd);
+
+    expect(source).toContain('import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline"');
+    expect(tasksSource).toContain("orders.flatMap");
+    expect(tasksSource).toContain("statusHistory");
+    expect(tasksSource).toContain("<ContactEventTimelinePanel");
+    expect(tasksSource).toContain('commentButtonLabel="补充记录"');
+    expect(tasksSource).toContain('commentPlaceholder="记录执行经过、异常原因或后续处理..."');
+    expect(tasksSource).toContain('emptyLabel="暂无执行 / 异常记录"');
+    expect(tasksSource).toContain("onCommentButtonClick={statusRecordTarget");
+    expect(tasksSource).toContain('showCommentComposer={Boolean(statusRecordTarget)}');
+    expect(tasksSource).toContain('title="状态记录"');
+    expect(tasksSource).not.toContain('<ol className="space-y-3">');
+    expect(tasksSource).not.toContain("nextOrder?.statusHistory.slice(-3)");
+  });
+
   it("restores the approved information, services, and data-center tabs", () => {
     expect(source).toContain('{ label: "信息卡", value: "info" }');
     expect(source).toContain('{ label: "服务信息", value: "services" }');

@@ -9,6 +9,7 @@ import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeRepository } from "../repositories/backoffice.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeService } from "../services/backoffice.service";
+import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
 import {
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
@@ -69,7 +70,13 @@ export const createBackofficeRoutes = (
   );
   const service = new BackofficeService(
     dependencies.backofficeRepository ?? new BackofficeRepository(),
-    auditLogService
+    auditLogService,
+    undefined,
+    dependencies.customerAvatarStorage ??
+      new CustomerAvatarFileStorage(
+        config.CUSTOMER_AVATAR_STORAGE_DIR,
+        config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
+      )
   );
   const controller = new BackofficeController(service);
 

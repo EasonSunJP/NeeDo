@@ -16,6 +16,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
+import { persistIdentityAvatar } from "./identity-avatar.repository";
 import {
   type BackofficeCsvExportPayload,
   type BackofficeAccountPayload,
@@ -174,8 +175,10 @@ type TechnicianRecord = Prisma.TechnicianProfileGetPayload<{
         needoId: true;
         email: true;
         avatarUrl: true;
+        avatarBootstrapUrl: true;
       };
     };
+    mediaAssets: true;
     shop: {
       select: {
         name: true;
@@ -189,8 +192,10 @@ type ShopRecord = Prisma.ShopGetPayload<{
     owner: {
       select: {
         email: true;
+        avatarBootstrapUrl: true;
       };
     };
+    mediaAssets: true;
   };
 }>;
 
@@ -1089,6 +1094,43 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return this.mapShop(await this.client.shop.update({ where: { id }, data: input, include: this.shopInclude() }));
   }
 
+  public async updateMerchantShopProfile(input: {
+    avatar?: { mimeType: string; url: string };
+    fields: BackofficeShopUpdateBody;
+    identityId: number;
+    shopId: number;
+    userId: number;
+  }): Promise<BackofficeShopPayload | null> {
+    return this.client.$transaction(async (transaction) => {
+      const existing = await transaction.shop.findFirst({
+        where: { id: input.shopId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!existing) return null;
+
+      if (Object.keys(input.fields).length > 0) {
+        await transaction.shop.update({
+          where: { id: input.shopId },
+          data: input.fields
+        });
+      }
+      if (input.avatar) {
+        await persistIdentityAvatar(transaction, {
+          avatar: input.avatar,
+          capturedAt: new Date(),
+          identityId: input.identityId,
+          source: { kind: "shop", shopId: input.shopId },
+          userId: input.userId
+        });
+      }
+
+      return this.mapShop(await transaction.shop.findUniqueOrThrow({
+        where: { id: input.shopId },
+        include: this.shopInclude()
+      }));
+    });
+  }
+
   public approveShop(id: number, approvedAt: Date): Promise<BackofficeShopPayload | null> {
     return this.client.$transaction(async (transaction) => {
       const existing = await transaction.shop.findFirst({ where: { id, deletedAt: null } });
@@ -1648,6 +1690,11 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       user: {
         select: this.accountSelect(input, "technician")
       },
+      mediaAssets: {
+        where: { usageType: "avatar", isActive: true, deletedAt: null },
+        orderBy: { id: "desc" as const },
+        take: 1
+      },
       shop: { select: { name: true } },
       reviewSummary: { where: { deletedAt: null } }
     } satisfies Prisma.TechnicianProfileInclude;
@@ -1700,6 +1747,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       email: true,
       phone: true,
       avatarUrl: true,
+      avatarBootstrapUrl: true,
       isActive: true,
       lastLoginAt: true,
       userRoles: {
@@ -1846,8 +1894,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         select: {
           needoId: true,
           email: true,
-          avatarUrl: true
+          avatarUrl: true,
+          avatarBootstrapUrl: true
         }
+      },
+      mediaAssets: {
+        where: { usageType: "avatar", isActive: true, deletedAt: null },
+        orderBy: { id: "desc" as const },
+        take: 1
       },
       shop: {
         select: {
@@ -1861,8 +1915,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       owner: {
         select: {
-          email: true
+          email: true,
+          avatarBootstrapUrl: true
         }
+      },
+      mediaAssets: {
+        where: { usageType: "avatar", isActive: true, deletedAt: null },
+        orderBy: { id: "desc" as const },
+        take: 1
       }
     } satisfies Prisma.ShopInclude;
   }
@@ -1966,7 +2026,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       needoId: technician.user.needoId,
       displayName: technician.displayName,
       email: technician.user.email,
-      avatarUrl: technician.user.avatarUrl,
+      avatarUrl: technician.mediaAssets[0]?.url ?? technician.user.avatarBootstrapUrl,
       shopId: technician.shopId,
       shopName: technician.shop?.name ?? null,
       city: technician.city,
@@ -1984,6 +2044,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       id: shop.id,
       ownerUserId: shop.ownerUserId,
       ownerEmail: shop.owner?.email ?? null,
+      avatarUrl: shop.mediaAssets[0]?.url ?? shop.owner?.avatarBootstrapUrl ?? null,
       name: shop.name,
       description: shop.description,
       city: shop.city,

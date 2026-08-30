@@ -2479,7 +2479,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           description: { type: ["string", "null"], maxLength: 5000 },
           city: { type: "string", minLength: 1, maxLength: 100 },
           address: { type: "string", minLength: 1, maxLength: 255 },
-          phone: { type: ["string", "null"], minLength: 5, maxLength: 32 }
+          phone: { type: ["string", "null"], minLength: 5, maxLength: 32 },
+          avatarDataUrl: {
+            type: "string",
+            pattern: "^data:image/(?:png|jpeg|webp);base64,",
+            maxLength: 7000000
+          }
         }
       },
       BackofficeTechnicianUpdateInput: {

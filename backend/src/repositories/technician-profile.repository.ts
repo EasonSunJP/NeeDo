@@ -6,6 +6,7 @@ import {
   toAuditLogCreateData,
   type AuditLogCreateInput
 } from "./audit-log.repository";
+import { persistIdentityAvatar } from "./identity-avatar.repository";
 
 export type TechnicianPaymentMethod =
   | "platform"
@@ -79,6 +80,7 @@ const profileInclude = {
   },
   user: {
     select: {
+      avatarBootstrapUrl: true,
       identities: {
         where: { type: { in: ["technician", "service", "s"] }, isActive: true, deletedAt: null },
         include: { publicIdentifier: true },
@@ -125,26 +127,12 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
 
       if (mutation.avatar) {
-        await transaction.mediaAsset.updateMany({
-          where: {
-            technicianProfileId: profileId,
-            usageType: "avatar",
-            isActive: true,
-            deletedAt: null
-          },
-          data: { isActive: false }
-        });
-        await transaction.mediaAsset.create({
-          data: {
-            entityType: "technician_profile",
-            entityId: profileId,
-            technicianProfileId: profileId,
-            ownerUserId: userId,
-            ownerIdentityId,
-            url: mutation.avatar.url,
-            mimeType: mutation.avatar.mimeType,
-            usageType: "avatar"
-          }
+        await persistIdentityAvatar(transaction, {
+          avatar: mutation.avatar,
+          capturedAt: new Date(),
+          identityId: ownerIdentityId,
+          source: { kind: "technician", profileId },
+          userId
         });
       }
 
@@ -205,7 +193,7 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       userId: profile.userId,
       shopId: profile.shopId,
       displayName: profile.displayName,
-      avatarUrl: profile.mediaAssets[0]?.url ?? null,
+      avatarUrl: profile.mediaAssets[0]?.url ?? profile.user.avatarBootstrapUrl ?? null,
       bio: profile.bio,
       city: profile.city,
       age: profile.age,

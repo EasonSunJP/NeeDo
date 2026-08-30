@@ -15,12 +15,15 @@ describe("MerchantAdminSettingsPage formal shop profile", () => {
     expect(source).not.toContain("shopId:");
   });
 
-  it("does not pretend unsupported media or presentation changes are persisted", () => {
-    expect(source).not.toContain("readImageFileAsDataUrl");
+  it("persists the independent shop avatar without pretending cover or gallery support exists", () => {
+    expect(source).toContain("readImageFileAsDataUrl");
+    expect(source).toContain('avatarDataUrl: nextAvatar');
+    expect(source).toContain("店铺身份头像");
+    expect(source).toContain("首次头像会成为同账号各身份的初始头像");
     expect(source).not.toContain("ImageGalleryManager");
     expect(source).not.toContain("normalizeStorePresentationConfig");
     expect(source).not.toContain("已同步前台");
-    expect(source).toContain("图片与轮播尚未启用");
+    expect(source).toContain("封面与轮播尚未启用");
     expect(source).toContain("营业时段尚未启用");
     expect(source).toContain("证照管理尚未启用");
     expect(source).not.toContain("展示装修");

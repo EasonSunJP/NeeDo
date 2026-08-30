@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
 import { AppIcon, FeatureSegmentedTabs, IconButton } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
+import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
+import type { ContactEventTimelineEntry } from "../../components/mobile/ContactEventTimeline";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { roleBasedTabConfig, technicianNavItems } from "../../components/mobile/navItems";
@@ -13,6 +15,7 @@ import { Badge } from "../../components/ui/Badge";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import type { BookingOrder, BookingScheduleSlot } from "../../features/booking/api";
@@ -183,6 +186,7 @@ function TechnicianPortalDataGate() {
 }
 
 function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
+  const navigate = useNavigate();
   const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
   const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
   const [orders, setOrders] = useState<BookingOrder[]>([]);
@@ -261,7 +265,70 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
     minute: "2-digit",
     hour12: false
   }).format(new Date(value));
-  const statusHistory = nextOrder?.statusHistory.slice(-3).reverse() ?? [];
+  const statusTimelineEntries = orders.flatMap((order) =>
+    order.statusHistory.map((history) => {
+      const role = history.toStatus === "pending"
+        ? "预约创建"
+        : history.toStatus === "confirmed"
+          ? "服务方接单"
+          : history.toStatus === "inService"
+            ? "开始服务"
+            : history.toStatus === "completed"
+              ? "结束服务"
+              : "取消 / 异常";
+      const reason = history.reason?.trim() ?? "";
+      const isProblem = history.toStatus === "cancelled" || /迟到|异常|失败|冲突|拒绝|取消/.test(reason);
+      const actorIsTechnician = history.actorUserId === profile.userId;
+      const createdAt = new Date(history.createdAt);
+      const atLabel = Number.isFinite(createdAt.getTime())
+        ? new Intl.DateTimeFormat("zh-CN", {
+            day: "numeric",
+            hour: "2-digit",
+            hour12: false,
+            minute: "2-digit",
+            month: "numeric",
+            second: "2-digit",
+            year: "numeric"
+          }).format(createdAt)
+        : history.createdAt;
+      const action = history.toStatus === "pending"
+        ? "已创建预约"
+        : history.toStatus === "confirmed"
+          ? "已确认接单"
+          : history.toStatus === "inService"
+            ? "已开始服务"
+            : history.toStatus === "completed"
+              ? "已结束服务"
+              : "预约已取消";
+
+      return {
+        entry: {
+          actorAvatarSrc: actorIsTechnician ? profile.avatarUrl ?? undefined : undefined,
+          actorName: actorIsTechnician ? profile.displayName : "系统",
+          actorRole: role,
+          atLabel,
+          id: `order-${order.id}-history-${history.id}`,
+          message: (
+            <>
+              {action}：订单
+              <Link
+                className="font-black text-[color:var(--client-primary)] underline decoration-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] decoration-2 underline-offset-2"
+                to={`/technician/orders/${order.id}`}
+              >
+                {order.orderNo}
+              </Link>
+              ，项目 {order.serviceName}，预约时间 {dateTime(order.startsAt)}{reason ? `，${reason}` : ""}。
+            </>
+          ),
+          preserveAtLabel: true,
+          title: role,
+          tone: isProblem ? "red" : "green"
+        } satisfies ContactEventTimelineEntry,
+        sortAt: Number.isFinite(createdAt.getTime()) ? createdAt.getTime() : 0
+      };
+    })
+  ).sort((left, right) => right.sortAt - left.sortAt).slice(0, 24).map(({ entry }) => entry);
+  const statusRecordTarget = nextOrder ?? orders[0] ?? null;
 
   return (
     <>
@@ -352,8 +419,14 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-black">今日安排</h2>
-            <span className={cn(surface.metric, "rounded-full border px-3 py-1 text-xs font-black")}>{todayOrders.length} 单</span>
+            <TitleWithInfo
+              as="h2"
+              info="默认先看今天的仅排班展示，下一单会补充用户资料、地址、导航和沟通入口，也可以切回今日订单处理。"
+              label="今日安排 简介"
+              title="今日安排"
+              titleClassName="text-lg font-bold text-[color:var(--client-text)]"
+              variant="paper"
+            />
           </div>
           <FeatureSegmentedTabs
             items={[{ label: "今日仅排班展示", value: "schedule" }, { label: "今日订单", value: "orders" }]}
@@ -409,21 +482,19 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           )}
         </section>
 
-        <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
-          <h2 className="text-lg font-black">状态记录</h2>
-          <div className={cn(surface.panel, "mt-3 rounded-[20px] border border-dashed p-5")}>
-            {statusHistory.length > 0 ? (
-              <ol className="space-y-3">
-                {statusHistory.map((history) => (
-                  <li className="flex items-start justify-between gap-3" key={history.id}>
-                    <div><strong className="text-sm">{history.toStatus}</strong>{history.reason ? <p className={cn(surface.muted, "mt-1 text-xs")}>{history.reason}</p> : null}</div>
-                    <span className={cn(surface.muted, "shrink-0 text-[10px] font-bold")}>{dateTime(history.createdAt)}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : <p className={cn(surface.muted, "text-center text-sm font-bold")}>暂无执行 / 例外记录</p>}
-          </div>
-        </section>
+        <ContactEventTimelinePanel
+          commentAuthorAvatarSrc={profile.avatarUrl ?? undefined}
+          commentAuthorName={profile.displayName}
+          commentAuthorRole="补充记录"
+          commentButtonLabel="补充记录"
+          commentPlaceholder="记录执行经过、异常原因或后续处理..."
+          emptyLabel="暂无执行 / 异常记录"
+          events={statusTimelineEntries}
+          layout="three-column"
+          onCommentButtonClick={statusRecordTarget ? () => navigate(`/technician/orders/${statusRecordTarget.id}`) : undefined}
+          showCommentComposer={Boolean(statusRecordTarget)}
+          title="状态记录"
+        />
       </div>
     </>
   );

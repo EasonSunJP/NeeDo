@@ -31,7 +31,7 @@ describe("CustomerProfileRepository", () => {
         findFirst: jest.fn().mockResolvedValue({
           ...profile,
           mediaAssets: [],
-          user: { avatarUrl: accountAvatarUrl, needoId: "u5314672018" }
+          user: { avatarBootstrapUrl: null, avatarUrl: accountAvatarUrl, needoId: "u5314672018" }
         })
       }
     } as unknown as PrismaClient;
@@ -73,7 +73,10 @@ describe("CustomerProfileRepository", () => {
         update: jest.fn().mockResolvedValue(updated)
       },
       mediaAsset: { create: jest.fn().mockResolvedValue({ id: 82 }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      user: { update: jest.fn().mockResolvedValue({ id: 11 }) }
+      user: {
+        update: jest.fn().mockResolvedValue({ id: 11 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
     };
     const client = {
       $transaction: jest.fn(async (callback) => callback(transaction)),
@@ -85,6 +88,7 @@ describe("CustomerProfileRepository", () => {
       repository.updateMine(
         11,
         41,
+        17,
         {
           age: 36,
           avatar: { mimeType: "image/png", url: "http://localhost:3000/media/customer-avatars/new.png" },
@@ -122,7 +126,14 @@ describe("CustomerProfileRepository", () => {
       expect.objectContaining({ data: { isActive: false } })
     );
     expect(transaction.mediaAsset.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ customerProfileId: 41, usageType: "avatar" }) })
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerProfileId: 41,
+          ownerIdentityId: 17,
+          ownerUserId: 11,
+          usageType: "avatar"
+        })
+      })
     );
     expect(transaction.user.update).toHaveBeenCalledWith({
       where: { id: 11 },
@@ -143,7 +154,7 @@ describe("CustomerProfileRepository", () => {
         update: jest.fn().mockResolvedValue(profile)
       },
       mediaAsset: { create: jest.fn(), updateMany: jest.fn() },
-      user: { update: jest.fn() }
+      user: { update: jest.fn(), updateMany: jest.fn() }
     };
     const client = {
       $transaction: jest.fn(async (callback) => callback(transaction)),
@@ -152,7 +163,7 @@ describe("CustomerProfileRepository", () => {
     const repository = new CustomerProfileRepository(client);
 
     await expect(
-      repository.updateMine(11, 41, { displayName: "不会提交" }, {
+      repository.updateMine(11, 41, 17, { displayName: "不会提交" }, {
         action: "customer_profile.self_update",
         targetType: "CustomerProfile"
       })

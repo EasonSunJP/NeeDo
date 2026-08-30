@@ -1,4 +1,7 @@
-import { materializeImComposerDraft } from "./reaction-policy";
+import {
+  materializeImComposerDraft,
+  type ImMessageRichText,
+} from "./reaction-policy";
 
 export type ImRoleType = "user" | "merchant" | "technician";
 export type ImProfileKind = "person" | "technician" | "store" | "service";
@@ -229,6 +232,8 @@ export type MessageExt = {
   url?: string;
   thumbnailUrl?: string;
   caption?: string;
+  richText?: ImMessageRichText;
+  captionRichText?: ImMessageRichText;
   location?: {
     title: string;
     address: string;

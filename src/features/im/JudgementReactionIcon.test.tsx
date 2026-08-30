@@ -25,6 +25,10 @@ describe("JudgementReactionIcon", () => {
     const stickerWords = Object.values(judgementSvgSources).map((svg) => {
       expect(svg).toContain("data-im-judgement-word-sticker");
       expect(svg).toContain("<text");
+      expect(svg).toContain('stroke="#000000"');
+      expect(svg).toContain('stroke-width="2"');
+      expect(svg).toContain('paint-order="stroke fill"');
+      expect(svg).toContain('stroke-linejoin="round"');
       return svg.match(/<text[^>]*>([^<]+)<\/text>/)?.[1];
     });
 

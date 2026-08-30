@@ -255,7 +255,7 @@ describe("IM pages", () => {
     expect(componentSource).not.toContain("条新消息");
   });
 
-  it("uses confirmed standard recall and restores text only after success", () => {
+  it("uses confirmed standard recall and restores rich composer content only after success", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
     const componentSource = pagesSource.slice(componentStart, componentEnd);
@@ -274,7 +274,9 @@ describe("IM pages", () => {
       'store.recallMessage(message.conversationId, message.id, "standard")',
     );
     expect(recallSource).toContain(".then(() => {");
-    expect(recallSource).toContain("message.type === \"text\" ? message.content : \"\"");
+    expect(recallSource).toContain(
+      "restoreImComposerDraft(message.content, message.ext?.richText)",
+    );
     expect(recallSource).toContain("if (mediaPreview?.id === message.id)");
     expect(recallSource).toContain("setMediaPreview(null)");
     expect(recallSource.indexOf("setDraft(originalContent)")).toBeGreaterThan(

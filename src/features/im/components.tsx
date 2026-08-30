@@ -39,6 +39,7 @@ import {
   encodeImComposerJudgement,
   getImReactionCategory,
   parseImComposerDraft,
+  resolveImMessageRichText,
   type ImReactionCategory
 } from "./reaction-policy";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
@@ -2744,6 +2745,43 @@ function contactCardKindLabel(profileKind: NonNullable<MessageExt["contactCard"]
   return "服务号名片";
 }
 
+function ImRichMessageText({
+  className,
+  content,
+  richText,
+  selectable = false,
+}: {
+  className?: string;
+  content: string;
+  richText?: MessageExt["richText"];
+  selectable?: boolean;
+}) {
+  const parts = resolveImMessageRichText(content, richText);
+  const hasJudgement = parts.some((part) => part.type === "judgement");
+
+  return (
+    <p
+      className={className}
+      data-im-message-rich-text={hasJudgement ? "true" : undefined}
+      data-im-message-selectable-text={selectable ? "true" : undefined}
+    >
+      {parts.map((part, index) =>
+        part.type === "judgement" ? (
+          <span
+            className="mx-0.5 inline-flex align-[-0.3em]"
+            data-im-message-judgement={part.value}
+            key={`judgement-${part.value}-${index}`}
+          >
+            <ImReactionValue judgementDisplay="summary" value={part.value} />
+          </span>
+        ) : (
+          <span key={`text-${index}`}>{part.value}</span>
+        )
+      )}
+    </p>
+  );
+}
+
 export function ImQuotedMessagePreview({
   message,
   className
@@ -2775,9 +2813,13 @@ export function ImQuotedMessagePreview({
           ) : null}
         </span>
         {caption ? (
-          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
-            {caption}
-          </p>
+          <div className="min-w-0" data-im-quoted-media-caption="true">
+            <ImRichMessageText
+              className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+              content={caption}
+              richText={message.ext?.captionRichText}
+            />
+          </div>
         ) : null}
       </div>
     );
@@ -2801,9 +2843,11 @@ export function ImQuotedMessagePreview({
   }
 
   return (
-    <p className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}>
-      {message.content || previewLabel(message.type)}
-    </p>
+    <ImRichMessageText
+      className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}
+      content={message.content || previewLabel(message.type)}
+      richText={message.ext?.richText}
+    />
   );
 }
 
@@ -2853,7 +2897,17 @@ export function MessageBubble({
 
   const bubbleContent = (() => {
     if (message.type === "text" || message.type === "emoji") {
-      return <p className={cn("min-w-0 max-w-full whitespace-pre-wrap break-words text-[15px] leading-6 [overflow-wrap:anywhere]", message.type === "emoji" && "text-[28px]")} data-im-message-selectable-text="true">{message.content}</p>;
+      return (
+        <ImRichMessageText
+          className={cn(
+            "min-w-0 max-w-full whitespace-pre-wrap break-words text-[15px] leading-6 [overflow-wrap:anywhere]",
+            message.type === "emoji" && "text-[28px]"
+          )}
+          content={message.content}
+          richText={message.ext?.richText}
+          selectable
+        />
+      );
     }
 
     if (message.type === "image" || message.type === "video") {
@@ -2868,9 +2922,12 @@ export function MessageBubble({
             ) : null}
           </button>
           {message.ext?.caption ? (
-            <p className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]" data-im-message-selectable-text="true">
-              {message.ext.caption}
-            </p>
+            <ImRichMessageText
+              className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
+              content={message.ext.caption}
+              richText={message.ext.captionRichText}
+              selectable
+            />
           ) : null}
         </div>
       );

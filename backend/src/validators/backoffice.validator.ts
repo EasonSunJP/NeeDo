@@ -123,7 +123,12 @@ const merchantShopUpdateFields = {
   description: z.string().trim().max(5000).nullable().optional(),
   city: z.string().trim().min(1).max(100).optional(),
   address: z.string().trim().min(1).max(255).optional(),
-  phone: z.string().trim().min(5).max(32).nullable().optional()
+  phone: z.string().trim().min(5).max(32).nullable().optional(),
+  avatarDataUrl: z
+    .string()
+    .regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/)
+    .max(7_000_000)
+    .optional()
 };
 
 export const backofficeShopUpdateBodySchema = z.object({

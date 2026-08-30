@@ -8,6 +8,7 @@ const actor = {
   email: "merchant@example.com",
   accessTokenJti: "merchant-jti",
   accessTokenExpiresAt: Date.now() + 60_000,
+  currentIdentityId: 22,
   currentIdentityScopeType: "shop",
   currentIdentityScopeId: 11,
   roles: ["merchant_owner"],
@@ -20,6 +21,7 @@ describe("BackofficeService merchant shop updates", () => {
       id: 11,
       ownerUserId: 2,
       ownerEmail: "merchant@example.com",
+      avatarUrl: null,
       name: "Updated Studio",
       description: "Updated profile",
       city: "Yokohama",
@@ -50,6 +52,54 @@ describe("BackofficeService merchant shop updates", () => {
         shopId: 11,
         changedFields: ["name", "description", "city"]
       }
+    }));
+  });
+
+  it("persists a shop-only avatar after storage and records the public field name", async () => {
+    const updateMerchantShopProfile = jest.fn(async () => ({
+      id: 11,
+      ownerUserId: 2,
+      ownerEmail: "merchant@example.com",
+      avatarUrl: "/media/customer-avatars/shop.png",
+      name: "Studio",
+      description: null,
+      city: "Tokyo",
+      address: "Aoyama 1-1",
+      phone: null,
+      status: "published",
+      isRecommended: false,
+      createdAt: "2026-08-25T00:00:00.000Z"
+    }));
+    const record = jest.fn(async () => undefined);
+    const save = jest.fn(async () => ({
+      absolutePath: "/private/tmp/shop.png",
+      mimeType: "image/png" as const,
+      url: "/media/customer-avatars/shop.png"
+    }));
+    const service = new BackofficeService(
+      { updateMerchantShopProfile } as never,
+      { record } as never,
+      undefined,
+      { save }
+    );
+    const avatarDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
+
+    await expect(service.updateMerchantShop(
+      { avatarDataUrl },
+      actor as never,
+      context
+    )).resolves.toMatchObject({ avatarUrl: "/media/customer-avatars/shop.png" });
+
+    expect(save).toHaveBeenCalledWith(avatarDataUrl);
+    expect(updateMerchantShopProfile).toHaveBeenCalledWith({
+      avatar: { mimeType: "image/png", url: "/media/customer-avatars/shop.png" },
+      fields: {},
+      identityId: 22,
+      shopId: 11,
+      userId: 2
+    });
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: { changedFields: ["avatar"], shopId: 11 }
     }));
   });
 

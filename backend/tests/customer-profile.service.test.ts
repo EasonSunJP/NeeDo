@@ -54,6 +54,7 @@ describe("CustomerProfileService", () => {
   it("updates only the current customer identity and audits changed fields", async () => {
     const actor = {
       userId: 11,
+      currentIdentityId: 17,
       currentIdentityType: "customer",
       currentIdentityScopeType: "customer_profile",
       currentIdentityScopeId: 41
@@ -71,6 +72,7 @@ describe("CustomerProfileService", () => {
     expect(customerRepository.updateMine).toHaveBeenCalledWith(
       11,
       41,
+      17,
       expect.objectContaining({
         displayName: "松尾 雄大",
         isPublic: false,
@@ -87,6 +89,7 @@ describe("CustomerProfileService", () => {
   it("saves an avatar before updating the current profile and excludes its data URL from audit", async () => {
     const actor = {
       userId: 11,
+      currentIdentityId: 17,
       currentIdentityType: "customer",
       currentIdentityScopeType: "customer_profile",
       currentIdentityScopeId: 41
@@ -111,6 +114,7 @@ describe("CustomerProfileService", () => {
     expect(customerRepository.updateMine).toHaveBeenCalledWith(
       11,
       41,
+      17,
       {
         avatar: {
           mimeType: "image/png",

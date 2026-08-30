@@ -31,6 +31,7 @@ const record = {
   deletedAt: null,
   mediaAssets: [],
   user: {
+    avatarBootstrapUrl: null,
     identities: [{
       publicIdentifier: {
         publicId: "s1234567890",
@@ -58,6 +59,10 @@ describe("TechnicianProfileRepository", () => {
       mediaAsset: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn().mockResolvedValue({ id: 91 })
+      },
+      user: {
+        update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
       },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 1 }) }
     };
