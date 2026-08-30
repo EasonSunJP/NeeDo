@@ -337,7 +337,7 @@
 - `npm run i18n:audit` 退出码为 0；本次输出摘要为 `zhSourceCount=12195`、`nonZhSourceCount=3200`、`coveredCount=7328`、`recoverableFromIndexedCount=0`、`missingCount=4867`。任务要求的既有 5 秒超时在本次重跑中未出现。
 - 补齐测试 mock 的严格 `this: HTMLMediaElement` 类型后，`npm run lint` 通过；`npm run verify:production-build` 完成 TypeScript、formal Vite build 与 production bundle audit，8 个 HTML 入口和 23 个资产检查通过。最终 `git diff --check` 通过，没有放宽门禁。
 - 随后主工作树出现与本语音切片无关的 Social 并行修改；本任务复核时 `npm run lint` 与 `npm run verify:production-build` 均在 `src/features/social/formal-adapter.test.ts:68:7` 因 `counters` 不属于 `RealtimeSocialPost` 而退出。该并行修改未纳入本次文档提交，也未放宽门禁。
-- 正式运行监听已确认来自当前检出：前端 `5180` 的 cwd 为仓库根目录，后端 `3000` 的 cwd 为 `backend/`。在 `http://127.0.0.1:5180/user.html#/messages/2546` 实测单击打开、录音态 X + 停止、预览态 X + 重放 + 发送、动作区 `top-[57%]`、72×72 CSS 像素按钮、Blob 音频 `muted=false` / `defaultMuted=false` / `playsinline=true` 及播放进度；用户确认实际录音回放有声。440×956、320×956、持续静音输入提示、失败重试及双账号 SSE/重载播放仍未在本切片重新验收。
+- 正式运行监听已确认来自当前检出：前端 `5180` 的 cwd 为仓库根目录，后端 `3000` 的 cwd 为 `backend/`。在 `http://127.0.0.1:5180/user.html#/messages/2546` 实测单击打开、录音态 X + 停止、预览态 X + 重放 + 发送、动作区 `top-[57%]`、72×72 CSS 像素按钮、Blob 音频 `muted=false` / `defaultMuted=false` / `playsinline=true` 及播放进度；用户确认实际录音回放有声。`volume=1` 已由 hook 回归测试覆盖并在每次 `play()` 前设置，但本次浏览器检查接口未返回该属性，因此不标记为浏览器直接取值通过。440×956、320×956、持续静音输入提示、失败重试及双账号 SSE/重载播放仍未在本切片重新验收。
 
 ---
 
