@@ -117,7 +117,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     const track = stream.getTracks().find(
       (candidate) => candidate.kind === "audio" && candidate.readyState === "live",
     );
-    if (!track) return;
+    if (!track) return false;
 
     const trackedInput: VoiceInputTrackState = {
       stream,
@@ -132,6 +132,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     track.addEventListener("mute", trackedInput.onMute);
     track.addEventListener("unmute", trackedInput.onUnmute);
     voiceInputTrackRef.current = trackedInput;
+    return true;
   }, [clearVoiceInputTrack]);
 
   const didVoiceInputStayMuted = useCallback((stream: MediaStream) => {
@@ -252,6 +253,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     audio.volume = 1;
     audio.setAttribute("playsinline", "");
 
+    let readinessFailed = false;
     try {
       if (audio.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
         await new Promise<void>((resolve, reject) => {
@@ -271,10 +273,13 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
             callback();
           };
           const onReady = () => settle(resolve);
-          const onError = () => settle(() => reject(new DOMException(
-            "Preview media could not be loaded",
-            "NotSupportedError",
-          )));
+          const onError = () => {
+            readinessFailed = true;
+            settle(() => reject(new DOMException(
+              "Preview media could not be loaded",
+              "NotSupportedError",
+            )));
+          };
           playbackReadinessCleanupRef.current = () => settle(() => reject(new DOMException(
             "Preview playback was cancelled",
             "AbortError",
@@ -292,7 +297,9 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       }
     } catch {
       if (isPlaybackCurrent()) {
-        setError("error.im.voice_autoplay_blocked");
+        setError(readinessFailed
+          ? "error.im.voice_recording_failed"
+          : "error.im.voice_autoplay_blocked");
         transition("preview_paused");
       }
     }
@@ -341,8 +348,15 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       return;
     }
 
+    if (!monitorVoiceInputTrack(stream)) {
+      stopStream(stream);
+      transition("idle");
+      if (mountedRef.current && generationRef.current === generation) {
+        setError("error.im.voice_recording_failed");
+      }
+      return;
+    }
     streamRef.current = stream;
-    monitorVoiceInputTrack(stream);
     const chunks: Blob[] = [];
     let recorder: MediaRecorder;
     try {

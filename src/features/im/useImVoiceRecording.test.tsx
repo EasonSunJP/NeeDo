@@ -208,6 +208,30 @@ describe("useImVoiceRecording", () => {
     expect(latest.playbackSeconds).toBe(0);
   });
 
+  it.each([
+    ["an empty stream", () => {
+      stream = { getTracks: () => [] } as unknown as MediaStream;
+    }],
+    ["an ended audio track", () => {
+      Object.defineProperty(track, "readyState", { configurable: true, value: "ended" });
+    }],
+  ])("rejects %s before constructing a recorder", async (_case, arrange) => {
+    arrange();
+    getUserMedia.mockResolvedValue(stream);
+
+    await act(async () => {
+      await latest.open();
+    });
+
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(latest.phase).toBe("idle");
+    expect(latest.error).toBe("error.im.voice_recording_failed");
+    expect(createObjectURL).not.toHaveBeenCalled();
+    if (_case === "an ended audio track") {
+      expect(trackStop).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("can open after the StrictMode effect cleanup and setup cycle", async () => {
     await act(async () => root.unmount());
     root = createRoot(container);
@@ -448,6 +472,28 @@ describe("useImVoiceRecording", () => {
       await Promise.resolve();
     });
     expect(audioPlay).not.toHaveBeenCalled();
+  });
+
+  it("reports preview decode errors without treating them as autoplay policy rejections", async () => {
+    const audio = container.querySelector<HTMLAudioElement>('[data-testid="preview-audio"]')!;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_NOTHING,
+    });
+    const recorder = await openRecording();
+    await finishRecorder(recorder);
+
+    expect(audioPlay).not.toHaveBeenCalled();
+    await act(async () => {
+      audio.dispatchEvent(new Event("error"));
+      await Promise.resolve();
+    });
+
+    expect(audioPlay).not.toHaveBeenCalled();
+    expect(latest.phase).toBe("preview_paused");
+    expect(latest.error).toBe("error.im.voice_recording_failed");
+    expect(latest.blob).toBeInstanceOf(Blob);
+    expect(latest.previewUrl).toBe("blob:needo-voice-1");
   });
 
   it("waits for replay readiness and invalidates a cancelled pending replay", async () => {
