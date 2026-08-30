@@ -98,6 +98,7 @@ import {
 } from "./repositories/realtime.repository";
 import type { RoleRepositoryPort } from "./repositories/role.repository";
 import type { UserRepositoryPort } from "./repositories/user.repository";
+import type { TestAccountRepositoryPort } from "./repositories/test-account.repository";
 import { createAuthRoutes } from "./routes/auth.routes";
 import { createAffiliateTaskRoutes } from "./routes/affiliate-task.routes";
 import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace.routes";
@@ -171,6 +172,7 @@ export interface AppDependencies {
   technicianShopAffiliationRepository?: TechnicianShopAffiliationRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
+  testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;

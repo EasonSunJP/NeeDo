@@ -40,6 +40,11 @@ export interface UserPayload {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  isTestAccount: boolean;
+  balances: {
+    ndp: { available: number; frozen: number };
+    testNdp: { available: number; frozen: number };
+  };
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -54,6 +59,7 @@ export interface UserListInput {
   pageSize?: number;
   keyword?: string;
   isActive?: boolean;
+  isTestAccount?: boolean;
 }
 
 export interface UserCreateInput {
@@ -393,6 +399,8 @@ export class UserService {
       username: user.username,
       avatarUrl: user.avatarUrl,
       isActive: user.isActive,
+      isTestAccount: user.isTestAccount,
+      balances: user.balances,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

@@ -108,6 +108,7 @@ export interface AuthMePayload {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  isTestAccount: boolean;
   currentIdentity: AuthIdentityPayload;
   identities: AuthIdentityPayload[];
   identityAvailability: AuthIdentityAvailabilityPayload[];
@@ -1768,6 +1769,7 @@ export class AuthService {
       username: user.username,
       avatarUrl: user.avatarUrl,
       isActive: user.isActive,
+      isTestAccount: user.isTestAccount,
       currentIdentity,
       identities,
       identityAvailability: this.buildIdentityAvailability(user, allActiveIdentities),

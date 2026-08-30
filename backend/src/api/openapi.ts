@@ -2540,6 +2540,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "username",
           "avatarUrl",
           "isActive",
+          "isTestAccount",
           "currentIdentity",
           "identities",
           "identityAvailability",
@@ -2565,6 +2566,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           username: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
           isActive: { type: "boolean" },
+          isTestAccount: { type: "boolean" },
           currentIdentity: { $ref: "#/components/schemas/AuthIdentity" },
           identities: {
             type: "array",
@@ -2657,6 +2659,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "username",
           "avatarUrl",
           "isActive",
+          "isTestAccount",
+          "balances",
           "lastLoginAt",
           "createdAt",
           "updatedAt",
@@ -2672,6 +2676,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           username: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
           isActive: { type: "boolean" },
+          isTestAccount: { type: "boolean" },
+          balances: {
+            type: "object",
+            required: ["ndp", "testNdp"],
+            properties: {
+              ndp: { $ref: "#/components/schemas/UserWalletBalance" },
+              testNdp: { $ref: "#/components/schemas/UserWalletBalance" }
+            }
+          },
           lastLoginAt: { type: ["string", "null"], format: "date-time" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -2696,6 +2709,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           roles: { type: "array", items: { type: "string" } }
+        }
+      },
+      UserWalletBalance: {
+        type: "object",
+        required: ["available", "frozen"],
+        properties: {
+          available: { type: "integer", minimum: 0 },
+          frozen: { type: "integer", minimum: 0 }
         }
       },
       PermissionTree: {
@@ -8656,6 +8677,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["User Management"],
         summary: "Paginated user list",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "isTestAccount",
+            in: "query",
+            required: false,
+            schema: { type: "boolean" }
+          }
+        ],
         responses: {
           "200": {
             description: "Paginated users",
@@ -8780,6 +8809,43 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": { description: "User roles assigned" },
           "403": { description: "Current admin final admin role removal blocked" },
           "404": { description: "User or role not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/users/{id}/test-account`]: {
+      patch: {
+        tags: ["User Management"],
+        summary: "Change a user's test-account classification",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["isTestAccount", "expectedUpdatedAt"],
+                properties: {
+                  isTestAccount: { type: "boolean" },
+                  expectedUpdatedAt: { type: "string", format: "date-time" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Account classification updated" },
+          "403": { description: "Dedicated permission required" },
+          "404": { description: "User not found" },
+          "409": { description: "Stale version or active financial state" }
         }
       }
     },

@@ -171,6 +171,11 @@ export interface TestUserRecord {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  isTestAccount: boolean;
+  balances: {
+    ndp: { available: number; frozen: number };
+    testNdp: { available: number; frozen: number };
+  };
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -232,6 +237,7 @@ export const createStep06Fixture = async () => {
     userId: number;
     roleAssignments: Array<{ roleId: number; scopeType: string | null; scopeId: number | null }>;
   }> = [];
+  const activeFinancialStateUserIds = new Set<number>();
   const permissions: TestPermissionRecord[] = [
     {
       id: 1,
@@ -329,7 +335,10 @@ export const createStep06Fixture = async () => {
           "user:update",
           "user:delete",
           "user:status:update",
-          "user:assign-role"
+          "user:assign-role",
+          "auth:me",
+          "user:test-account:update",
+          "button:user:test-account:update"
         ].map((code) => makeAuthOnlyPermission(code))
       ].map((permission, index) => ({
         id: index + 1,
@@ -355,6 +364,20 @@ export const createStep06Fixture = async () => {
           permissionId: 5,
           deletedAt: null,
           permission: permissions[4]
+        },
+        {
+          id: 102,
+          roleId: 2,
+          permissionId: 9010,
+          deletedAt: null,
+          permission: makeAuthOnlyPermission("user:test-account:update")
+        },
+        {
+          id: 103,
+          roleId: 2,
+          permissionId: 9011,
+          deletedAt: null,
+          permission: makeAuthOnlyPermission("button:user:test-account:update")
         }
       ]
     },
@@ -387,6 +410,11 @@ export const createStep06Fixture = async () => {
       username: "NeeDo Admin",
       avatarUrl: null,
       isActive: true,
+      isTestAccount: true,
+      balances: {
+        ndp: { available: 0, frozen: 0 },
+        testNdp: { available: 100_000, frozen: 0 }
+      },
       lastLoginAt: null,
       createdAt: now(),
       updatedAt: now(),
@@ -424,6 +452,11 @@ export const createStep06Fixture = async () => {
       username: "Operator",
       avatarUrl: null,
       isActive: true,
+      isTestAccount: false,
+      balances: {
+        ndp: { available: 250, frozen: 0 },
+        testNdp: { available: 0, frozen: 0 }
+      },
       lastLoginAt: null,
       createdAt: now(),
       updatedAt: now(),
@@ -449,6 +482,11 @@ export const createStep06Fixture = async () => {
       username: "Second Admin",
       avatarUrl: null,
       isActive: true,
+      isTestAccount: true,
+      balances: {
+        ndp: { available: 0, frozen: 0 },
+        testNdp: { available: 100_000, frozen: 25 }
+      },
       lastLoginAt: null,
       createdAt: now(),
       updatedAt: now(),
@@ -617,11 +655,27 @@ export const createStep06Fixture = async () => {
     )
   };
   const userRepository = {
-    list: jest.fn(async ({ page, pageSize }: { page: number; pageSize: number }) => ({
+    list: jest.fn(async ({
+      page,
+      pageSize,
+      isTestAccount
+    }: {
+      page: number;
+      pageSize: number;
+      isTestAccount?: boolean;
+    }) => ({
       list: users
-        .filter((user) => user.deletedAt === null)
+        .filter(
+          (user) =>
+            user.deletedAt === null &&
+            (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
+        )
         .slice((page - 1) * pageSize, page * pageSize),
-      total: users.filter((user) => user.deletedAt === null).length,
+      total: users.filter(
+        (user) =>
+          user.deletedAt === null &&
+          (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
+      ).length,
       page,
       page_size: pageSize
     })),
@@ -649,6 +703,11 @@ export const createStep06Fixture = async () => {
           username: input.username,
           avatarUrl: input.avatarUrl ?? null,
           isActive: input.isActive,
+          isTestAccount: false,
+          balances: {
+            ndp: { available: 0, frozen: 0 },
+            testNdp: { available: 0, frozen: 0 }
+          },
           lastLoginAt: null,
           createdAt: now(),
           updatedAt: now(),
@@ -711,6 +770,53 @@ export const createStep06Fixture = async () => {
       }
     )
   };
+  const testAccountRepository = {
+    runInTransaction: jest.fn(
+      async <T>(
+        handler: (transaction: {
+          lockUser: (userId: number) => Promise<TestUserRecord | null>;
+          hasActiveFinancialState: (userId: number, currency: string) => Promise<boolean>;
+          updateClassification: (input: {
+            userId: number;
+            fromTestAccount: boolean;
+            toTestAccount: boolean;
+            expectedUpdatedAt: Date;
+          }) => Promise<boolean>;
+          ensureFormalWallet: (userId: number) => Promise<void>;
+          calibrateTestNdp: (userId: number) => Promise<void>;
+          createAudit: (entry: AuditLogEntry) => Promise<void>;
+        }) => Promise<T>
+      ) =>
+        handler({
+          lockUser: async (userId) =>
+            users.find((user) => user.id === userId && user.deletedAt === null) ?? null,
+          hasActiveFinancialState: async (userId) => activeFinancialStateUserIds.has(userId),
+          updateClassification: async (input) => {
+            const user = users.find(
+              (candidate) =>
+                candidate.id === input.userId &&
+                candidate.isTestAccount === input.fromTestAccount &&
+                candidate.updatedAt.getTime() === input.expectedUpdatedAt.getTime()
+            );
+            if (!user) return false;
+            user.isTestAccount = input.toTestAccount;
+            user.updatedAt = new Date(input.expectedUpdatedAt.getTime() + 1);
+            return true;
+          },
+          ensureFormalWallet: async (userId) => {
+            const user = users.find((candidate) => candidate.id === userId);
+            if (user) user.balances.ndp = { available: 0, frozen: 0 };
+          },
+          calibrateTestNdp: async (userId) => {
+            const user = users.find((candidate) => candidate.id === userId);
+            if (user) user.balances.testNdp.available = 100_000;
+          },
+          createAudit: async (entry) => {
+            auditLogs.push(entry);
+          }
+        })
+    )
+  };
   const sessionStore = new InMemoryAuthSessionStore();
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
@@ -721,7 +827,8 @@ export const createStep06Fixture = async () => {
     auditLogRepository,
     permissionRepository,
     roleRepository,
-    userRepository
+    userRepository,
+    testAccountRepository
   } as never);
   const loginAsAdmin = async (): Promise<string> => {
     const response = await request(app)
@@ -753,9 +860,11 @@ export const createStep06Fixture = async () => {
     auditLogs,
     permissionAssignCalls,
     userRoleAssignCalls,
+    activeFinancialStateUserIds,
     permissionRepository,
     roleRepository,
     userRepository,
+    testAccountRepository,
     loginAsAdmin,
     replaceAdminPermissions
   };

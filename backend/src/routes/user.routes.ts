@@ -2,13 +2,16 @@ import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { UserController } from "../controllers/user.controller";
+import { TestAccountController } from "../controllers/test-account.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { UserRepository } from "../repositories/user.repository";
+import { TestAccountRepository } from "../repositories/test-account.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { UserService } from "../services/user.service";
+import { TestAccountService } from "../services/test-account.service";
 import {
   userAssignRolesBodySchema,
   userCreateBodySchema,
@@ -16,6 +19,7 @@ import {
   userListQuerySchema,
   userUpdateBodySchema
 } from "../validators/user.validator";
+import { testAccountUpdateBodySchema } from "../validators/test-account.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 export const USER_ROUTE_PERMISSIONS = {
@@ -26,7 +30,8 @@ export const USER_ROUTE_PERMISSIONS = {
   delete: "user:delete",
   enable: "user:status:update",
   disable: "user:status:update",
-  assignRoles: "user:assign-role"
+  assignRoles: "user:assign-role",
+  testAccountUpdate: "user:test-account:update"
 } as const;
 
 export const createUserRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
@@ -42,6 +47,12 @@ export const createUserRoutes = (config: AppConfig, dependencies: AppDependencie
     auditLogService
   );
   const controller = new UserController(userService);
+  const testAccountController = new TestAccountController(
+    new TestAccountService(
+      dependencies.testAccountRepository ?? new TestAccountRepository(),
+      userService
+    )
+  );
 
   router.get(
     "/users",
@@ -70,6 +81,13 @@ export const createUserRoutes = (config: AppConfig, dependencies: AppDependencie
     authorize(USER_ROUTE_PERMISSIONS.update),
     validateRequest({ params: userIdParamSchema, body: userUpdateBodySchema }),
     controller.update
+  );
+  router.patch(
+    "/users/:id/test-account",
+    authenticate(),
+    authorize(USER_ROUTE_PERMISSIONS.testAccountUpdate),
+    validateRequest({ params: userIdParamSchema, body: testAccountUpdateBodySchema }),
+    testAccountController.update
   );
   router.post(
     "/users/:id/enable",

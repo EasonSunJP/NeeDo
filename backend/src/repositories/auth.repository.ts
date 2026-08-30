@@ -73,6 +73,7 @@ export interface AuthUserRecord {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  isTestAccount: boolean;
   sessionGeneration?: number;
   accessState: AuthAccountAccessState;
   lastLoginAt: Date | null;

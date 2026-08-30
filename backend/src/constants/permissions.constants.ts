@@ -261,11 +261,25 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("user:delete", "删除用户", "api", "user", "软删除用户"),
   createPermission("user:assign-role", "分配用户角色", "api", "user", "为用户分配角色"),
   createPermission("user:status:update", "更新用户状态", "api", "user", "启用或禁用用户"),
+  createPermission(
+    "user:test-account:update",
+    "更新测试账号分类",
+    "api",
+    "user",
+    "切换测试账号分类并审计双币种资金边界"
+  ),
   createPermission("user:identity:list", "用户身份列表", "api", "user", "查看用户身份"),
   createPermission("user:identity:switch", "切换用户身份", "api", "user", "切换当前用户身份"),
   createPermission("page:user-management", "用户管理页面", "page", "user", "访问用户管理页面"),
   createPermission("button:user:create", "创建用户按钮", "button", "user", "显示创建用户操作"),
   createPermission("button:user:update", "更新用户按钮", "button", "user", "显示更新用户操作"),
+  createPermission(
+    "button:user:test-account:update",
+    "测试账号分类按钮",
+    "button",
+    "user",
+    "显示测试账号分类操作"
+  ),
   createPermission("button:user:disable", "禁用用户按钮", "button", "user", "显示禁用用户操作"),
   createPermission("button:user:delete", "删除用户按钮", "button", "user", "显示删除用户操作"),
   createPermission(
@@ -1592,10 +1606,12 @@ export const buildRolePermissionAssignments = (): Record<
     "user:update",
     "user:status:update",
     "user:assign-role",
+    "user:test-account:update",
     "button:user:create",
     "button:user:update",
     "button:user:disable",
     "button:user:assign-role",
+    "button:user:test-account:update",
     "menu:admin-settings",
     "page:admin-settings"
   ],

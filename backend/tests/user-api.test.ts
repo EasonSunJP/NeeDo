@@ -5,6 +5,146 @@ import { UserBootstrapKeyAllocationExhaustedError } from "../src/services/user-b
 import { createStep06Fixture } from "./helpers/step06-fixture";
 
 describe("Step 06 User API", () => {
+  it("lists paginated users by account classification with separate NDP balances", async () => {
+    const fixture = await createStep06Fixture();
+    const accessToken = await fixture.loginAsAdmin();
+
+    const response = await request(fixture.app)
+      .get("/api/v1/users?page=1&pageSize=10&isTestAccount=true")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({ total: 2, page: 1, page_size: 10 });
+    expect(response.body.data.list).toEqual([
+      expect.objectContaining({
+        id: 1,
+        isTestAccount: true,
+        balances: {
+          ndp: { available: 0, frozen: 0 },
+          testNdp: { available: 100_000, frozen: 0 }
+        }
+      }),
+      expect.objectContaining({
+        id: 3,
+        isTestAccount: true,
+        balances: {
+          ndp: { available: 0, frozen: 0 },
+          testNdp: { available: 100_000, frozen: 25 }
+        }
+      })
+    ]);
+    expect(fixture.userRepository.list).toHaveBeenCalledWith(
+      expect.objectContaining({ isTestAccount: true })
+    );
+  });
+
+  it("changes account classification atomically, calibrates Test NDP, and audits the actor", async () => {
+    const fixture = await createStep06Fixture();
+    const accessToken = await fixture.loginAsAdmin();
+    const expectedUpdatedAt = fixture.users[1].updatedAt.toISOString();
+
+    const response = await request(fixture.app)
+      .patch("/api/v1/users/2/test-account")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .set("User-Agent", "NeeDo test account acceptance")
+      .send({ isTestAccount: true, expectedUpdatedAt })
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      id: 2,
+      isTestAccount: true,
+      balances: {
+        ndp: { available: 250, frozen: 0 },
+        testNdp: { available: 100_000, frozen: 0 }
+      }
+    });
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorId: 1,
+          action: "user.test_account.update",
+          targetType: "User",
+          targetId: 2,
+          userAgent: "NeeDo test account acceptance",
+          metadata: {
+            fromTestAccount: false,
+            toTestAccount: true,
+            activeCurrency: "NDP",
+            expectedUpdatedAt
+          }
+        })
+      ])
+    );
+  });
+
+  it("rejects stale or financially active classification changes", async () => {
+    const staleFixture = await createStep06Fixture();
+    const staleToken = await staleFixture.loginAsAdmin();
+
+    await request(staleFixture.app)
+      .patch("/api/v1/users/2/test-account")
+      .set("Authorization", `Bearer ${staleToken}`)
+      .send({ isTestAccount: true, expectedUpdatedAt: "2026-05-24T00:00:00.000Z" })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.ACCOUNT_CLASSIFICATION_STALE,
+          message: "error.account_classification.stale"
+        });
+      });
+
+    const activeFixture = await createStep06Fixture();
+    activeFixture.activeFinancialStateUserIds.add(2);
+    const activeToken = await activeFixture.loginAsAdmin();
+
+    await request(activeFixture.app)
+      .patch("/api/v1/users/2/test-account")
+      .set("Authorization", `Bearer ${activeToken}`)
+      .send({
+        isTestAccount: true,
+        expectedUpdatedAt: activeFixture.users[1].updatedAt.toISOString()
+      })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.ACCOUNT_CLASSIFICATION_CONFLICT,
+          message: "error.account_classification.active_financial_state"
+        });
+      });
+  });
+
+  it("requires the dedicated account-classification permission", async () => {
+    const fixture = await createStep06Fixture();
+    const accessToken = await fixture.loginAsAdmin();
+    fixture.replaceAdminPermissions(["user:list"]);
+
+    await request(fixture.app)
+      .patch("/api/v1/users/2/test-account")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        isTestAccount: true,
+        expectedUpdatedAt: fixture.users[1].updatedAt.toISOString()
+      })
+      .expect(403);
+  });
+
+  it("exposes account classification in auth me without embedding wallet balances in tokens", async () => {
+    const fixture = await createStep06Fixture();
+    const accessToken = await fixture.loginAsAdmin();
+
+    const response = await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual(expect.objectContaining({ id: 1, isTestAccount: true }));
+    const tokenPayload = JSON.parse(
+      Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8")
+    );
+    expect(tokenPayload).not.toHaveProperty("balances");
+    expect(tokenPayload).not.toHaveProperty("isTestAccount");
+  });
+
   it("lists, creates, and updates users without exposing password hashes", async () => {
     const fixture = await createStep06Fixture();
     const accessToken = await fixture.loginAsAdmin();

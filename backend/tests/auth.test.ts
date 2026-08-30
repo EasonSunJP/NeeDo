@@ -309,6 +309,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
     username: "admin",
     avatarUrl: null,
     isActive: true,
+    isTestAccount: true,
     sessionGeneration: 0,
     accessState: { disabled: false, restricted: false },
     lastLoginAt: null as Date | null,
@@ -1648,6 +1649,7 @@ describe("verified email registration and formal password authentication", () =>
       hasPassword: true,
       username: "admin",
       isActive: true,
+      isTestAccount: true,
       currentIdentity: {
         id: 10,
         type: "platform",

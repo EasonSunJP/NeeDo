@@ -154,6 +154,23 @@ const createPermissionApp = (input: {
 };
 
 describe("formal Auth account-security permissions", () => {
+  it("limits account-classification controls to admin and operator roles", () => {
+    const assignments = buildRolePermissionAssignments();
+    const classificationPermissions = [
+      "user:test-account:update",
+      "button:user:test-account:update"
+    ] as const;
+
+    expect(SYSTEM_PERMISSION_CODES).toEqual(expect.arrayContaining(classificationPermissions));
+    expect(assignments.admin).toEqual(expect.arrayContaining(classificationPermissions));
+    expect(assignments.operator).toEqual(expect.arrayContaining(classificationPermissions));
+    for (const roleCode of SYSTEM_ROLE_CODES.filter(
+      (code) => code !== "admin" && code !== "operator"
+    )) {
+      expect(assignments[roleCode]).not.toEqual(expect.arrayContaining(classificationPermissions));
+    }
+  });
+
   it("declares the granular route permissions and assigns them to every active system role", () => {
     expect(AUTH_ROUTE_PERMISSIONS).toEqual({
       logout: "auth:logout",

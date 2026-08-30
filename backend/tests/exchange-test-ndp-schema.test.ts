@@ -35,6 +35,11 @@ describe("Exchange Test NDP foundation schema", () => {
     expect(migration).toContain("UPDATE `wallets` SET `currency` = 'TEST_NDP'");
     expect(migration).toContain("UPDATE `ledger_transactions` SET `currency` = 'TEST_NDP'");
     expect(migration).toContain("UPDATE `finance_reconciliations`");
+    expect(migration).toContain("'user:test-account:update'");
+    expect(migration).toContain("'button:user:test-account:update'");
+    expect(migration).toContain("WHERE roles.code IN ('admin', 'operator')");
+    expect(migration).toContain("AND permissions.deleted_at IS NULL");
+    expect(migration).toContain("AND roles.deleted_at IS NULL");
     expect(migration).not.toMatch(/DELETE\s+FROM|DROP\s+TABLE/i);
   });
 });

@@ -20,6 +20,10 @@ export const userListQuerySchema = z.object({
   isActive: z
     .enum(["true", "false"])
     .transform((value) => value === "true")
+    .optional(),
+  isTestAccount: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .transform((value) => (typeof value === "boolean" ? value : value === "true"))
     .optional()
 });
 

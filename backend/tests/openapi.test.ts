@@ -323,6 +323,13 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/users/{id}/enable");
     expect(response.body.paths).toHaveProperty("/api/v1/users/{id}/disable");
     expect(response.body.paths).toHaveProperty("/api/v1/users/{id}/roles");
+    expect(response.body.paths).toHaveProperty("/api/v1/users/{id}/test-account");
+    expect(response.body.components.schemas.User.required).toEqual(
+      expect.arrayContaining(["isTestAccount", "balances"])
+    );
+    expect(response.body.components.schemas.AuthMe.required).toEqual(
+      expect.arrayContaining(["isTestAccount"])
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/categories");
     expect(response.body.paths).toHaveProperty("/api/v1/services");
     expect(response.body.paths).toHaveProperty("/api/v1/services/{id}");

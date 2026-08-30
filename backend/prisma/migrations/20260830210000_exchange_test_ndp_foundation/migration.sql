@@ -38,3 +38,72 @@ SET `currency` = 'TEST_NDP', `status` = 'test_only'
 WHERE `currency` = 'NDP';
 UPDATE `wallet_holds` SET `currency` = 'TEST_NDP' WHERE `currency` = 'NDP';
 UPDATE `order_financials` SET `ndp_currency` = 'TEST_NDP' WHERE `ndp_currency` = 'NDP';
+
+INSERT INTO `permissions` (
+  `name`,
+  `code`,
+  `type`,
+  `module`,
+  `description`,
+  `is_system`,
+  `created_at`,
+  `updated_at`,
+  `deleted_at`
+)
+VALUES
+  (
+    '更新测试账号分类',
+    'user:test-account:update',
+    'api',
+    'user',
+    '切换测试账号分类并审计双币种资金边界',
+    TRUE,
+    CURRENT_TIMESTAMP(3),
+    CURRENT_TIMESTAMP(3),
+    NULL
+  ),
+  (
+    '测试账号分类按钮',
+    'button:user:test-account:update',
+    'button',
+    'user',
+    '显示测试账号分类操作',
+    TRUE,
+    CURRENT_TIMESTAMP(3),
+    CURRENT_TIMESTAMP(3),
+    NULL
+  )
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `type` = VALUES(`type`),
+  `module` = VALUES(`module`),
+  `description` = VALUES(`description`),
+  `is_system` = TRUE,
+  `updated_at` = CURRENT_TIMESTAMP(3),
+  `deleted_at` = NULL;
+
+INSERT INTO `role_permissions` (
+  `role_id`,
+  `permission_id`,
+  `created_at`,
+  `updated_at`,
+  `deleted_at`
+)
+SELECT
+  roles.id,
+  permissions.id,
+  CURRENT_TIMESTAMP(3),
+  CURRENT_TIMESTAMP(3),
+  NULL
+FROM `roles`
+JOIN `permissions`
+  ON permissions.code IN (
+    'user:test-account:update',
+    'button:user:test-account:update'
+  )
+  AND permissions.deleted_at IS NULL
+WHERE roles.code IN ('admin', 'operator')
+  AND roles.deleted_at IS NULL
+ON DUPLICATE KEY UPDATE
+  `updated_at` = CURRENT_TIMESTAMP(3),
+  `deleted_at` = NULL;
