@@ -78,6 +78,39 @@ describe("SocialQuickReplyComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("keeps the typed draft and announces a failure when reply submission is rejected", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("unexpected"));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+          canComment
+          onOpenFullComposer={vi.fn()}
+          onSubmit={onSubmit}
+        />
+      );
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
+    await act(async () => {
+      editor!.textContent = "保留的草稿";
+      editor!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.click();
+      await Promise.resolve();
+    });
+
+    expect(onSubmit).toHaveBeenCalledWith("保留的草稿");
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')?.textContent).toBe("保留的草稿");
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("发布失败，请重试。");
+    await act(async () => root.unmount());
+  });
+
   it("keeps restricted comments visible and natively disabled", async () => {
     const container = document.createElement("div");
     document.body.append(container);

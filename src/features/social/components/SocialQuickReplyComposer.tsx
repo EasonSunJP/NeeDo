@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { ImChatComposer, type ImChatComposerPanel } from "../../im/components";
 import { materializeImComposerDraft } from "../../im/reaction-policy";
+import { getSocialComposerErrorMessage } from "../composer-media";
 import type { SocialPost, SocialProfile } from "../types";
 
 export function SocialQuickReplyComposer({
@@ -18,16 +19,21 @@ export function SocialQuickReplyComposer({
   const [draft, setDraft] = useState("");
   const [panel, setPanel] = useState<ImChatComposerPanel>(null);
   const [sending, setSending] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   const submit = async () => {
     const text = materializeImComposerDraft(draft).trim();
     if (!canComment || !text || sending) return;
 
+    setSubmissionError(null);
     setSending(true);
     try {
       await onSubmit(text);
       setDraft("");
       setPanel(null);
+      setSubmissionError(null);
+    } catch (error) {
+      setSubmissionError(getSocialComposerErrorMessage(error));
     } finally {
       setSending(false);
     }
@@ -61,6 +67,11 @@ export function SocialQuickReplyComposer({
         sending={sending}
         sendingLabel="回复中"
       />
+      {submissionError ? (
+        <p className="px-4 pb-2 text-sm text-[#ff8b86]" role="alert">
+          {submissionError}
+        </p>
+      ) : null}
     </div>
   );
 }
