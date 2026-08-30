@@ -174,6 +174,59 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(fixture.queryRaw).toHaveBeenCalledTimes(6);
   });
 
+  it("excludes soft-deleted related shops from every all-city platform scalar and raw aggregate", async () => {
+    const fixture = createClient();
+    const repository = new DashboardRepository(fixture.client);
+
+    await repository.getActivityFacts({
+      scope: { kind: "platform" },
+      city: null,
+      window
+    });
+
+    expect(fixture.scheduleCount).toHaveBeenNthCalledWith(1, {
+      where: {
+        deletedAt: null,
+        status: "AVAILABLE",
+        startsAt: { lt: window.toExclusive },
+        endsAt: { gt: window.fromInclusive },
+        shop: { deletedAt: null }
+      }
+    });
+    expect(fixture.pendingOrderCount).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        status: "PENDING",
+        shop: { deletedAt: null }
+      }
+    });
+    expect(fixture.orderAggregate).toHaveBeenNthCalledWith(1, {
+      where: {
+        deletedAt: null,
+        status: "COMPLETED",
+        paymentStatus: { notIn: ["REFUND_PENDING", "REFUNDED"] },
+        startsAt: { gte: window.fromInclusive, lt: window.toExclusive },
+        shop: { deletedAt: null }
+      },
+      _sum: { priceAmount: true }
+    });
+
+    const relatedShopQueries = fixture.queryRaw.mock.calls
+      .map(([query]) => queryText(query as SqlQuery))
+      .filter((sql) =>
+        [
+          "dashboard_active_technicians",
+          "dashboard_completed_customers",
+          "dashboard_order_series",
+          "dashboard_schedule_series"
+        ].some((marker) => sql.includes(marker))
+      );
+    expect(relatedShopQueries).toHaveLength(4);
+    expect(relatedShopQueries.every((sql) => sql.includes("shop.deleted_at IS NULL"))).toBe(
+      true
+    );
+  });
+
   it("applies overlap, soft-delete, cumulative, startsAt, refund, union, and clipping rules", async () => {
     const fixture = createClient();
     const repository = new DashboardRepository(fixture.client);
@@ -306,16 +359,34 @@ describe("DashboardRepository activity and supply aggregates", () => {
     );
     expect(fixture.customerCount).not.toHaveBeenCalled();
     expect(fixture.shopCount).not.toHaveBeenCalled();
-    expect(fixture.scheduleCount.mock.calls.every(([input]) => input.where.shopId === 21)).toBe(true);
+    expect(
+      fixture.scheduleCount.mock.calls.every(
+        ([input]) => input.where.shopId === 21 && input.where.shop?.deletedAt === null
+      )
+    ).toBe(true);
     expect(fixture.pendingOrderCount).toHaveBeenCalledWith({
-      where: { deletedAt: null, status: "PENDING", shopId: 21 }
+      where: {
+        deletedAt: null,
+        status: "PENDING",
+        shopId: 21,
+        shop: { deletedAt: null }
+      }
     });
-    expect(fixture.orderAggregate.mock.calls.every(([input]) => input.where.shopId === 21)).toBe(
-      true
-    );
+    expect(
+      fixture.orderAggregate.mock.calls.every(
+        ([input]) => input.where.shopId === 21 && input.where.shop?.deletedAt === null
+      )
+    ).toBe(true);
     expect(fixture.queryRaw).toHaveBeenCalledTimes(5);
     expect(
       fixture.queryRaw.mock.calls.every(([query]) => (query as SqlQuery).values?.includes(21))
     ).toBe(true);
+    const relatedShopQueries = fixture.queryRaw.mock.calls
+      .map(([query]) => queryText(query as SqlQuery))
+      .filter((sql) => !sql.includes("dashboard_registered_technicians"));
+    expect(relatedShopQueries).toHaveLength(4);
+    expect(relatedShopQueries.every((sql) => sql.includes("shop.deleted_at IS NULL"))).toBe(
+      true
+    );
   });
 });

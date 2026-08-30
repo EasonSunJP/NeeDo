@@ -212,8 +212,7 @@ export class DashboardRepository {
       status: "AVAILABLE",
       startsAt: { lt: toExclusive },
       endsAt: { gt: fromInclusive },
-      ...(shopId ? { shopId } : {}),
-      ...(city ? { shop: { city, deletedAt: null } } : {})
+      ...this.prismaRelatedShopScope(shopId, city)
     };
   }
 
@@ -228,8 +227,7 @@ export class DashboardRepository {
       status: "COMPLETED",
       paymentStatus: { notIn: ["REFUND_PENDING", "REFUNDED"] },
       startsAt: { gte: fromInclusive, lt: toExclusive },
-      ...(shopId ? { shopId } : {}),
-      ...(city ? { shop: { city, deletedAt: null } } : {})
+      ...this.prismaRelatedShopScope(shopId, city)
     };
   }
 
@@ -240,8 +238,20 @@ export class DashboardRepository {
     return {
       deletedAt: null,
       status: "PENDING",
+      ...this.prismaRelatedShopScope(shopId, city)
+    };
+  }
+
+  private prismaRelatedShopScope(
+    shopId: number | null,
+    city: string | null
+  ): { shopId?: number; shop: Prisma.ShopWhereInput } {
+    return {
       ...(shopId ? { shopId } : {}),
-      ...(city ? { shop: { city, deletedAt: null } } : {})
+      shop: {
+        deletedAt: null,
+        ...(city ? { city } : {})
+      }
     };
   }
 
@@ -315,15 +325,22 @@ export class DashboardRepository {
   }
 
   private bookingScope(shopId: number | null, city: string | null): Prisma.Sql {
-    if (shopId) return Prisma.sql`booking.shop_id = ${shopId}`;
-    if (city) return Prisma.sql`shop.city = ${city} AND shop.deleted_at IS NULL`;
-    return Prisma.sql`shop.deleted_at IS NULL`;
+    return this.rawRelatedShopScope(Prisma.sql`booking.shop_id`, shopId, city);
   }
 
   private slotScope(shopId: number | null, city: string | null): Prisma.Sql {
-    if (shopId) return Prisma.sql`slot.shop_id = ${shopId}`;
-    if (city) return Prisma.sql`shop.city = ${city} AND shop.deleted_at IS NULL`;
-    return Prisma.sql`shop.deleted_at IS NULL`;
+    return this.rawRelatedShopScope(Prisma.sql`slot.shop_id`, shopId, city);
+  }
+
+  private rawRelatedShopScope(
+    relatedShopId: Prisma.Sql,
+    shopId: number | null,
+    city: string | null
+  ): Prisma.Sql {
+    const filters: Prisma.Sql[] = [Prisma.sql`shop.deleted_at IS NULL`];
+    if (shopId) filters.push(Prisma.sql`${relatedShopId} = ${shopId}`);
+    if (city) filters.push(Prisma.sql`shop.city = ${city}`);
+    return Prisma.join(filters, " AND ");
   }
 
   private async queryActiveTechnicians(
