@@ -2254,7 +2254,7 @@ model SocialPostShare {
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   message           Message      @relation(fields: [messageId], references: [id], onDelete: Restrict)
 
-  @@unique([actorIdentityId, idempotencyKey, recipientIdentityId])
+  @@unique([actorIdentityId, idempotencyKey, recipientIdentityId], map: "social_post_shares_actor_idem_recipient_key")
   @@index([postId, deletedAt])
   @@index([actorUserId, deletedAt])
   @@index([actorIdentityId, deletedAt])

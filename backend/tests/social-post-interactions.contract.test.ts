@@ -27,6 +27,9 @@ describe("formal Social interaction contract", () => {
     expect(schema).toContain("model SocialPostBookmark");
     expect(schema).toContain("model SocialPostView");
     expect(schema).toContain("model SocialPostShare");
+    expect(schema).toContain(
+      '@@unique([actorIdentityId, idempotencyKey, recipientIdentityId], map: "social_post_shares_actor_idem_recipient_key")'
+    );
     expect(migration).toContain("social_post_likes");
     expect(migration).toContain("social_post_bookmarks");
     expect(migration).toContain("social_post_views");

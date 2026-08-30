@@ -66,7 +66,7 @@ CREATE TABLE `social_post_shares` (
   `updated_at` DATETIME(3) NOT NULL,
   `deleted_at` DATETIME(3) NULL,
   UNIQUE INDEX `social_post_shares_message_id_key` (`message_id`),
-  UNIQUE INDEX `social_post_shares_actor_identity_id_idempotency_key_recipient_identity_id_key` (`actor_identity_id`, `idempotency_key`, `recipient_identity_id`),
+  UNIQUE INDEX `social_post_shares_actor_idem_recipient_key` (`actor_identity_id`, `idempotency_key`, `recipient_identity_id`),
   INDEX `social_post_shares_post_id_deleted_at_idx` (`post_id`, `deleted_at`),
   INDEX `social_post_shares_actor_user_id_deleted_at_idx` (`actor_user_id`, `deleted_at`),
   INDEX `social_post_shares_actor_identity_id_deleted_at_idx` (`actor_identity_id`, `deleted_at`),
