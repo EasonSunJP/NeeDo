@@ -8,7 +8,6 @@ import type { SocialPost, SocialProfile } from "../types";
 type SocialQuickReplyComposerProps = {
   actor?: Pick<SocialProfile, "avatar" | "displayName">;
   canComment: boolean;
-  onOpenFullComposer: () => void;
   onSubmit: (text: string) => SocialPost | Promise<SocialPost>;
   targetIdentity: string;
 };
@@ -18,7 +17,6 @@ type SocialQuickReplyComposerStateProps = Omit<SocialQuickReplyComposerProps, "t
 function SocialQuickReplyComposerState({
   actor,
   canComment,
-  onOpenFullComposer,
   onSubmit
 }: SocialQuickReplyComposerStateProps) {
   const [draft, setDraft] = useState("");
@@ -62,7 +60,6 @@ function SocialQuickReplyComposerState({
             />
           </span>
         }
-        moreAction={{ ariaLabel: "打开完整回复", run: onOpenFullComposer }}
         onDraftChange={setDraft}
         onPanelChange={setPanel}
         onSend={() => void submit()}

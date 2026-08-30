@@ -16,6 +16,12 @@ const uploadedImage: SocialMediaItem = {
 };
 
 describe("SocialComposerPage formal contacts and image uploads", () => {
+  it("contains no reply-mode branch or reply-specific draft payload", () => {
+    expect(source).not.toContain('searchParams.get("replyToPostId")');
+    expect(source).not.toContain(["reply", "Post"].join(""));
+    expect(source).not.toContain("replyToPostId,");
+  });
+
   it("loads reminder candidates from the formal contact API instead of Social profiles", () => {
     expect(source).toContain("loadFormalSocialMentionCandidates");
     expect(source).toContain("mentionUserIds");

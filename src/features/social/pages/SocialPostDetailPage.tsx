@@ -21,7 +21,7 @@ import {
 } from "../components/SocialUi";
 import { SocialQuickReplyComposer } from "../components/SocialQuickReplyComposer";
 import { useSocial } from "../context";
-import { getSocialScopeFromPathname, socialPaths } from "../paths";
+import { getSocialScopeFromPathname, socialPaths, socialReplyFocusState } from "../paths";
 import { isFriend, isMutualFollow } from "../timeline";
 import type { SocialPortalScope, SocialPost, SocialProfile } from "../types";
 import { buildAbsoluteUrl, formatCount, formatRelativeTime, profileKey } from "../utils";
@@ -491,7 +491,6 @@ export function SocialPostDetailPage() {
   const replies = useMemo(() => (postId ? getReplies(postId) : []), [getReplies, postId]);
   const relatedPosts = useMemo(() => (postId ? getRelatedPosts(postId).slice(0, 4) : []), [getRelatedPosts, postId]);
   const viewedRef = useRef<string | null>(null);
-  const isThreadPage = location.pathname.endsWith("/replies");
 
   useEffect(() => {
     if (!postId || viewedRef.current === postId) {
@@ -528,7 +527,7 @@ export function SocialPostDetailPage() {
 
   return (
     <div className={shellClassName}>
-      <SocialPostDetailHeader onBack={() => navigate(-1)} title={isThreadPage ? "回复" : "帖子"} />
+      <SocialPostDetailHeader onBack={() => navigate(-1)} title="帖子" />
 
       <main className="mx-auto max-w-[720px] px-4 pb-[152px] pt-4">
         {ancestors.length > 0 ? (
@@ -577,7 +576,7 @@ export function SocialPostDetailPage() {
 
               <div className="mt-4 py-2">
                 <div className="grid grid-cols-5 items-center gap-1">
-                  <DetailActionButton count={post.replyCount} disabled={!canComment} icon="reply" label="回复" to={socialPaths.compose(scope, { replyToPostId: post.id })} />
+                  <DetailActionButton count={post.replyCount} disabled={!canComment} icon="reply" label="回复" onClick={() => navigate(socialPaths.post(scope, post.id), { state: socialReplyFocusState })} />
                   <DetailActionButton active={interaction.reposted} count={post.repostCount} icon="repost" label="转发" to={socialPaths.repost(scope, post.id)} tone="primary" />
                   <DetailActionButton active={interaction.liked} count={post.likeCount} icon="like" label="喜欢" onClick={() => toggleLike(post.id, actorKey)} tone="danger" />
                   <DetailActionButton active={interaction.bookmarked} count={post.bookmarkCount} icon="bookmark" label="收藏" onClick={() => toggleBookmark(post.id, actorKey)} tone="primary" />
@@ -607,13 +606,13 @@ export function SocialPostDetailPage() {
         <section className="pt-4">
           <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div>
-              <h2 className="text-[18px] font-black text-white">{isThreadPage ? "全部回复" : "回复列表"}</h2>
+              <h2 className="text-[18px] font-black text-white">回复列表</h2>
               <p className="mt-1 text-[13px] text-white/42">{replies.length > 0 ? `${formatCount(replies.length)} 条公开回复` : "从这里继续这个讨论串"}</p>
             </div>
             {canComment ? (
-              <Link className="text-[13px] font-semibold text-[#d1ff4d]" to={socialPaths.compose(scope, { replyToPostId: post.id })}>
+              <button className="text-[13px] font-semibold text-[#d1ff4d]" onClick={() => navigate(socialPaths.post(scope, post.id), { state: socialReplyFocusState })} type="button">
                 写回复
-              </Link>
+              </button>
             ) : (
               <span className="text-[13px] font-semibold text-white/28">仅好友可评论</span>
             )}
@@ -628,7 +627,7 @@ export function SocialPostDetailPage() {
           ) : (
             <div className="mt-4 rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-5">
               <p className="text-[15px] font-semibold text-white">还没有公开回复</p>
-              <p className="mt-2 text-sm leading-7 text-white/46">你可以从底部输入框直接回复，也可以进入完整发帖页继续补充文字、图片和引用内容。</p>
+              <p className="mt-2 text-sm leading-7 text-white/46">你可以从底部输入框直接回复这条动态。</p>
             </div>
           )}
         </section>
@@ -652,7 +651,6 @@ export function SocialPostDetailPage() {
       <SocialQuickReplyComposer
         actor={actor}
         canComment={canComment}
-        onOpenFullComposer={() => navigate(socialPaths.compose(scope, { replyToPostId: post.id }))}
         onSubmit={(text) => createPost({
           authorKey: actorKey,
           replyToPostId: post.id,

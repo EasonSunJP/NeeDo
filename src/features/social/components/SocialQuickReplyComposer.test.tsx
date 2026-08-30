@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SocialPost } from "../types";
+import source from "./SocialQuickReplyComposer.tsx?raw";
 import { SocialQuickReplyComposer } from "./SocialQuickReplyComposer";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -15,8 +16,7 @@ afterEach(() => {
 });
 
 describe("SocialQuickReplyComposer", () => {
-  it("uses the shared chat shell with an avatar, emoji control, and functional plus action", async () => {
-    const onOpenFullComposer = vi.fn();
+  it("uses the shared chat shell with an avatar, emoji control, and unclaimed plus control", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -26,7 +26,6 @@ describe("SocialQuickReplyComposer", () => {
         <SocialQuickReplyComposer
           actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
           canComment
-          onOpenFullComposer={onOpenFullComposer}
           onSubmit={vi.fn()}
           targetIdentity="actor-mia:post-1"
         />
@@ -39,10 +38,9 @@ describe("SocialQuickReplyComposer", () => {
     expect(container.querySelector("[data-im-composer-control='voice-input']")).toBeNull();
     expect(container.querySelector("[data-im-composer-control='emoji-chat']")).not.toBeNull();
 
-    await act(async () => {
-      container.querySelector<HTMLButtonElement>("[aria-label='打开完整回复']")?.click();
-    });
-    expect(onOpenFullComposer).toHaveBeenCalledTimes(1);
+    expect(container.querySelector<HTMLButtonElement>("[aria-label='打开更多功能']")).not.toBeNull();
+    expect(source).not.toContain(["onOpen", "FullComposer"].join(""));
+    expect(source).not.toContain("moreAction=");
 
     await act(async () => root.unmount());
   });
@@ -58,7 +56,6 @@ describe("SocialQuickReplyComposer", () => {
         <SocialQuickReplyComposer
           actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
           canComment
-          onOpenFullComposer={vi.fn()}
           onSubmit={onSubmit}
           targetIdentity="actor-mia:post-1"
         />
@@ -93,7 +90,6 @@ describe("SocialQuickReplyComposer", () => {
         <SocialQuickReplyComposer
           actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
           canComment
-          onOpenFullComposer={vi.fn()}
           onSubmit={onSubmit}
           targetIdentity="actor-mia:post-1"
         />
@@ -132,7 +128,6 @@ describe("SocialQuickReplyComposer", () => {
         <SocialQuickReplyComposer
           actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
           canComment
-          onOpenFullComposer={vi.fn()}
           onSubmit={firstSubmit}
           targetIdentity="actor-mia:post-1"
         />
@@ -154,7 +149,6 @@ describe("SocialQuickReplyComposer", () => {
         <SocialQuickReplyComposer
           actor={{ avatar: "/ren.jpg", displayName: "Ren" }}
           canComment
-          onOpenFullComposer={vi.fn()}
           onSubmit={secondSubmit}
           targetIdentity="actor-ren:post-2"
         />
@@ -163,7 +157,7 @@ describe("SocialQuickReplyComposer", () => {
 
     editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
     expect(editor.textContent).toBe("");
-    expect(container.querySelector<HTMLButtonElement>("[aria-label='打开完整回复']")?.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>("[aria-label='打开更多功能']")?.disabled).toBe(false);
 
     await act(async () => {
       editor.textContent = "第二条草稿";
@@ -191,7 +185,6 @@ describe("SocialQuickReplyComposer", () => {
         <SocialQuickReplyComposer
           actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
           canComment={false}
-          onOpenFullComposer={vi.fn()}
           onSubmit={vi.fn()}
           targetIdentity="actor-mia:post-1"
         />

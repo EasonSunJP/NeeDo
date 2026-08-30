@@ -43,7 +43,7 @@ import { resolveImMessageRichText, type ImMessageRichTextPart } from "../../im/r
 import { useImStore } from "../../im/store";
 import type { ImUser } from "../../im/model";
 import { useSocial } from "../context";
-import { socialPaths } from "../paths";
+import { socialPaths, socialReplyFocusState } from "../paths";
 import { buildTechnicianWeeklyScheduleItems, type TechnicianWeeklyScheduleTone } from "../profileHeaderPresentation";
 import { getCustomerCustomProfileReviewTags } from "../profileReviewPresentation";
 import type { SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialSearchTab, SocialTimelineFilterTab } from "../types";
@@ -1160,8 +1160,8 @@ function SocialPostContextRow({
   if (post.postType === "repost" && contentPost.id !== post.id) {
     activityText = `${activityAuthor.displayName} 转发了`;
   } else if (post.replyToPostId) {
-    const replyPost = getPostById(post.replyToPostId);
-    const replyTarget = replyPost ? profiles[profileKey({ entityType: replyPost.authorType, id: replyPost.authorId })] : undefined;
+    const replyParentPost = getPostById(post.replyToPostId);
+    const replyTarget = replyParentPost ? profiles[profileKey({ entityType: replyParentPost.authorType, id: replyParentPost.authorId })] : undefined;
     activityText = `回复给 ${replyTarget ? profileMentionLabel(replyTarget) : "主帖"}`;
   }
 
@@ -1466,7 +1466,7 @@ export function SocialInteractionBar({
       <div className="grid min-w-0 flex-1 grid-cols-4 items-center gap-1">
         <button
           className={countedActionClassName}
-          onClick={() => navigate(socialPaths.compose(scope, { replyToPostId: post.id }))}
+          onClick={() => navigate(detailHref, { state: socialReplyFocusState })}
           type="button"
         >
           <InteractionIcon name="reply" />

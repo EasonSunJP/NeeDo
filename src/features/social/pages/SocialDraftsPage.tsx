@@ -16,7 +16,7 @@ export function SocialDraftsPage() {
   const drafts = useMemo(
     () =>
       Object.entries(state.drafts)
-        .filter(([key]) => key.startsWith(`composer:${scope}:`))
+        .filter(([key, draft]) => key.startsWith(`composer:${scope}:`) && !draft.replyToPostId)
         .sort((left, right) => new Date(right[1].updatedAt).getTime() - new Date(left[1].updatedAt).getTime()),
     [scope, state.drafts]
   );
@@ -32,7 +32,7 @@ export function SocialDraftsPage() {
       {drafts.length === 0 ? (
         <SocialEmptyState
           action={<PrimaryButton to={socialPaths.compose(scope)}>去写一条动态</PrimaryButton>}
-          description="当前身份下还没有未发送的草稿。新的公开动态、回复和引用都会自动进入这里。"
+          description="当前身份下还没有未发送的草稿。新的公开动态和引用都会自动进入这里。"
           title="还没有草稿"
         />
       ) : (
@@ -42,8 +42,7 @@ export function SocialDraftsPage() {
             const resumePath = socialPaths.compose(scope, {
               author: draft.authorKey,
               editPostId: draft.editPostId,
-              quotePostId: draft.quotePostId,
-              replyToPostId: draft.replyToPostId
+              quotePostId: draft.quotePostId
             });
 
             return (
@@ -56,7 +55,7 @@ export function SocialDraftsPage() {
                         <p className="text-base font-black text-[color:var(--client-text)]">{author?.displayName ?? "草稿作者"}</p>
                       </div>
                       <p className="mt-1 text-sm text-[color:var(--client-muted)]">
-                        {draft.replyToPostId ? "回复草稿" : draft.quotePostId ? "引用转发草稿" : draft.editPostId ? "编辑草稿" : "公开动态草稿"} ·
+                        {draft.quotePostId ? "引用转发草稿" : draft.editPostId ? "编辑草稿" : "公开动态草稿"} ·
                         {" "}
                         {formatRelativeTime(draft.updatedAt)}
                       </p>

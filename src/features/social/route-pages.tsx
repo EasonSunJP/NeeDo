@@ -1,4 +1,6 @@
 import { lazy, Suspense, type ComponentType } from "react";
+import { Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { getSocialScopeFromPathname, socialPaths, socialReplyFocusState } from "./paths";
 
 const FullSocialTimelinePage = lazy(() => import("./pages/SocialTimelinePage").then((module) => ({ default: module.SocialTimelinePage })));
 const FullSocialComposerPage = lazy(() => import("./pages/SocialComposerPage").then((module) => ({ default: module.SocialComposerPage })));
@@ -16,7 +18,28 @@ function FullSocialRoute({ page: Page }: { page: ComponentType }) {
 }
 
 export function SocialTimelinePage() { return <FullSocialRoute page={FullSocialTimelinePage} />; }
-export function SocialComposerPage() { return <FullSocialRoute page={FullSocialComposerPage} />; }
+export function SocialComposerPage() {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const scope = getSocialScopeFromPathname(location.pathname);
+
+  if (searchParams.has("replyToPostId")) {
+    const replyToPostId = searchParams.get("replyToPostId");
+    return replyToPostId && /^\d+$/u.test(replyToPostId)
+      ? <Navigate replace state={socialReplyFocusState} to={socialPaths.post(scope, replyToPostId)} />
+      : <Navigate replace to={socialPaths.timeline(scope)} />;
+  }
+
+  return <FullSocialRoute page={FullSocialComposerPage} />;
+}
+export function SocialLegacyReplyRedirectPage() {
+  const location = useLocation();
+  const { postId } = useParams();
+  const scope = getSocialScopeFromPathname(location.pathname);
+  return postId
+    ? <Navigate replace state={socialReplyFocusState} to={socialPaths.post(scope, postId)} />
+    : <Navigate replace to={socialPaths.timeline(scope)} />;
+}
 export function SocialDraftsPage() { return <FullSocialRoute page={FullSocialDraftsPage} />; }
 export function SocialMediaViewerPage() { return <FullSocialRoute page={FullSocialMediaViewerPage} />; }
 export function SocialNotificationsPage() { return <FullSocialRoute page={FullSocialNotificationsPage} />; }

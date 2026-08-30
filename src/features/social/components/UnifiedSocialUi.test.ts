@@ -45,6 +45,14 @@ describe("UnifiedSocialUi technician store booking links", () => {
     expect(followButtonSource).not.toContain("autoFriendTargetRef");
     expect(followButtonSource).not.toContain("friendUnfollowDialog");
   });
+
+  it("routes timeline reply controls to canonical detail with transient focus state", () => {
+    const obsoleteReplyComposeCall = ["socialPaths.compose(scope, { reply", "ToPostId: post.id })"].join("");
+
+    expect(source).toContain('import { socialPaths, socialReplyFocusState } from "../paths";');
+    expect(source).toContain("onClick={() => navigate(detailHref, { state: socialReplyFocusState })}");
+    expect(source).not.toContain(obsoleteReplyComposeCall);
+  });
 });
 
 describe("UnifiedPostText judgement rendering", () => {

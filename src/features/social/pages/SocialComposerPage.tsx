@@ -31,7 +31,6 @@ import type { SocialCommentPermission, SocialComposerDraft, SocialMentionCandida
 import {
   isValidSocialPostMediaSet,
   nextId,
-  profileMentionLabel,
   profileKey,
   socialImageUploadLimit,
   unique
@@ -52,9 +51,8 @@ export function SocialComposerPage() {
   const { state, profiles, profileList, getActorForScope, getPostById, createPost, updatePost, saveDraft, clearDraft } = useSocial();
   const defaultActorKey = getActorForScope(scope);
   const quotePostId = searchParams.get("quotePostId") ?? undefined;
-  const replyToPostId = searchParams.get("replyToPostId") ?? undefined;
   const editPostId = searchParams.get("editPostId") ?? undefined;
-  const draftKey = `composer:${scope}:${editPostId ?? replyToPostId ?? quotePostId ?? "root"}`;
+  const draftKey = `composer:${scope}:${editPostId ?? quotePostId ?? "root"}`;
   const draft = state.drafts[draftKey];
   const editPost = editPostId ? getPostById(editPostId, defaultActorKey) : undefined;
   const selectedAuthorFromQuery = searchParams.get("author") ?? undefined;
@@ -68,15 +66,10 @@ export function SocialComposerPage() {
     defaultActorKey;
 
   const quotePost = quotePostId ? getPostById(quotePostId, initialAuthorKey) : undefined;
-  const replyPost = replyToPostId ? getPostById(replyToPostId, initialAuthorKey) : undefined;
   const author = profiles[initialAuthorKey];
   const textLimit = useMemo(() => getComposerTextLimit(author), [author]);
 
   const postTypeOptions = useMemo<Array<{ label: string; value: SocialPostType }>>(() => {
-    if (replyToPostId) {
-      return [{ label: "回复", value: "reply" }];
-    }
-
     if (quotePostId) {
       return [{ label: "引用", value: "quote" }];
     }
@@ -96,7 +89,7 @@ export function SocialComposerPage() {
     }
 
     return [{ label: "动态", value: "post" }];
-  }, [author?.entityType, quotePostId, replyToPostId]);
+  }, [author?.entityType, quotePostId]);
 
   const initialComposerState = useMemo(
     () => {
@@ -167,7 +160,7 @@ export function SocialComposerPage() {
     setMediaError("");
     setMentionQuery("");
     setLocationQuery("");
-  }, [clearTransientMedia, draftKey, editPost?.id, initialAuthorKey, postTypeOptions, quotePostId, replyToPostId, selectedAuthorFromQuery, textLimit]);
+  }, [clearTransientMedia, draftKey, editPost?.id, initialAuthorKey, postTypeOptions, quotePostId, selectedAuthorFromQuery, textLimit]);
 
   useEffect(() => () => {
     mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
@@ -246,7 +239,6 @@ export function SocialComposerPage() {
       text,
       media: media.filter((item) => Boolean(item.mediaAssetPublicId)),
       quotePostId,
-      replyToPostId,
       editPostId,
       postType,
       visibility,
@@ -271,7 +263,6 @@ export function SocialComposerPage() {
     postType,
     postTypeOptions,
     quotePostId,
-    replyToPostId,
     saveDraft,
     text,
     visibility,
@@ -508,7 +499,6 @@ export function SocialComposerPage() {
           authorKey: initialAuthorKey,
           media,
           quotePostId,
-          replyToPostId,
           text,
           visibility,
           visibilityTagIds,
@@ -630,7 +620,7 @@ export function SocialComposerPage() {
             isPublishing={isPublishing}
             onCancel={handleCancel}
             onPublish={handlePublish}
-            publishLabel={editPostId ? "保存" : replyPost ? "回复" : "发表"}
+            publishLabel={editPostId ? "保存" : "发表"}
           />
 
           <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+392px)] top-[calc(env(safe-area-inset-top)+88px)] z-20 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-6">
@@ -640,14 +630,9 @@ export function SocialComposerPage() {
                 authorTo={author ? socialPaths.profile(scope, author) : undefined}
                 hint={detectedLink ? `已检测到链接：${detectedLink}` : undefined}
                 leading={
-                  postTypeOptions.length > 1 || replyPost || quotePost ? (
+                  postTypeOptions.length > 1 || quotePost ? (
                     <div className="space-y-3">
                       {postTypeOptions.length > 1 ? <ComposerTypeSwitch onChange={setPostType} options={postTypeOptions} value={postType} /> : null}
-                      {replyPost ? (
-                        <ComposerContextCard title={`正在回复 ${profileMentionLabel(profiles[profileKey({ entityType: replyPost.authorType, id: replyPost.authorId })])}`}>
-                          <SocialPostItem actorKey={initialAuthorKey} compact hideActions post={replyPost} scope={scope} />
-                        </ComposerContextCard>
-                      ) : null}
                       {quotePost ? (
                         <ComposerContextCard title="引用动态">
                           <SocialPostItem actorKey={initialAuthorKey} compact hideActions post={quotePost} scope={scope} />
@@ -658,7 +643,7 @@ export function SocialComposerPage() {
                 }
                 maxLength={textLimit}
                 onChange={handleTextChange}
-                placeholder={replyPost ? "继续回复这条动态..." : editPostId ? "把这一条动态再润一润..." : "这一刻的想法..."}
+                placeholder={editPostId ? "把这一条动态再润一润..." : "这一刻的想法..."}
                 text={text}
               />
               <div className="mt-auto pt-6">
