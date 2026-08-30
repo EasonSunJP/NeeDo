@@ -670,7 +670,8 @@ export function ImChatComposer({
   sending = false,
   submitOnEnter = false,
   textareaRef,
-  voiceButtonRef
+  voiceButtonRef,
+  voiceInputAriaLabel
 }: {
   actions?: ImChatComposerAction[];
   blocked?: boolean;
@@ -693,6 +694,7 @@ export function ImChatComposer({
   submitOnEnter?: boolean;
   textareaRef?: Ref<HTMLDivElement>;
   voiceButtonRef?: Ref<HTMLButtonElement>;
+  voiceInputAriaLabel: string;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   const recentReactions = useSyncExternalStore(
@@ -790,7 +792,7 @@ export function ImChatComposer({
             </div>
           ) : (
             <button
-              aria-label="录制语音"
+              aria-label={voiceInputAriaLabel}
               className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
               data-im-composer-control="voice-input"
               disabled={disabled || blocked}

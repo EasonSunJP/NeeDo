@@ -1,4 +1,4 @@
-import type { KeyboardEvent as ReactKeyboardEvent, ReactEventHandler, RefObject } from "react";
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactEventHandler, type RefObject } from "react";
 import { ImIcon } from "./components";
 import type { ImVoiceRecordingPhase } from "./useImVoiceRecording";
 
@@ -11,6 +11,7 @@ export type ImVoiceRecordingOverlayCopy = {
   replayAriaLabel: string;
   remainingRecording: (remainingSeconds: number) => string;
   sendAriaLabel: string;
+  sending: string;
   sendingAriaLabel: string;
   stopAriaLabel: string;
 };
@@ -46,11 +47,21 @@ export function ImVoiceRecordingOverlay({
   previewUrl: string | null;
   remainingSeconds: number;
 }) {
-  if (phase === "idle") return null;
-
+  const dialogRef = useRef<HTMLElement>(null);
   const isRecording = phase === "acquiring_permission" || phase === "recording";
   const isSending = phase === "sending";
-  const bubbleText = phase === "acquiring_permission"
+
+  useEffect(() => {
+    if (isSending) {
+      dialogRef.current?.focus();
+    }
+  }, [isSending]);
+
+  if (phase === "idle") return null;
+
+  const bubbleText = phase === "sending"
+    ? copy.sending
+    : phase === "acquiring_permission"
     ? copy.acquiringPermission
     : phase === "recording"
       ? copy.remainingRecording(remainingSeconds)
@@ -60,7 +71,32 @@ export function ImVoiceRecordingOverlay({
           ? error
           : copy.previewPaused;
 
-  const handleEscape = (event: ReactKeyboardEvent<HTMLElement>) => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key === "Tab") {
+      const dialog = dialogRef.current;
+      const controls = dialog
+        ? [...dialog.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")]
+        : [];
+
+      if (controls.length === 0) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const activeElement = document.activeElement;
+      if (event.shiftKey && (activeElement === first || !dialog?.contains(activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (activeElement === last || !dialog?.contains(activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+
     if (event.key !== "Escape" || isSending) return;
     event.preventDefault();
     if (isRecording) {
@@ -74,10 +110,13 @@ export function ImVoiceRecordingOverlay({
     <section
       aria-labelledby="im-voice-recording-title"
       aria-modal="true"
+      aria-busy={isSending || undefined}
       className="fixed inset-0 z-[80] flex flex-col bg-black/55 px-6 pb-[calc(env(safe-area-inset-bottom)+28px)] pt-[max(72px,env(safe-area-inset-top))] backdrop-blur-[10px] motion-reduce:transition-none"
       data-im-voice-recording-overlay="true"
-      onKeyDown={handleEscape}
+      onKeyDown={handleKeyDown}
+      ref={dialogRef}
       role="dialog"
+      tabIndex={-1}
     >
       <div
         className="relative mx-auto mt-[8vh] flex min-h-[112px] w-full max-w-[420px] items-center justify-center rounded-[28px] bg-[#91ed63] px-6 text-center text-[#245629] shadow-[0_18px_54px_rgba(0,0,0,0.28)]"
@@ -96,7 +135,7 @@ export function ImVoiceRecordingOverlay({
             <button
               aria-label={copy.cancelAriaLabel}
               autoFocus
-              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none"
+              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
               onClick={onCancel}
               type="button"
             >
@@ -104,7 +143,8 @@ export function ImVoiceRecordingOverlay({
             </button>
             <button
               aria-label={copy.stopAriaLabel}
-              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none"
+              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={phase === "acquiring_permission"}
               onClick={onStop}
               type="button"
             >

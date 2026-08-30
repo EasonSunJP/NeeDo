@@ -33,6 +33,7 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
         onPanelChange={setPanel}
         onSend={vi.fn()}
         panel={panel}
+        voiceInputAriaLabel="录制语音"
       />
       <button aria-label="重置测试草稿" onClick={() => setDraft("")} type="button" />
     </>
@@ -40,9 +41,10 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
 }
 
 describe("ImChatComposer", () => {
-  it("opens voice recording directly and closes the active panel without entering a gesture mode", async () => {
+  it("opens voice recording directly with caller copy and a ref without entering a gesture mode", async () => {
     const onOpenVoiceRecording = vi.fn();
-    const onPanelChange = vi.fn();
+    const callbackOrder: string[] = [];
+    const voiceButtonRef = { current: null as HTMLButtonElement | null };
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -53,22 +55,66 @@ describe("ImChatComposer", () => {
           draft=""
           isNight={false}
           onDraftChange={vi.fn()}
-          onOpenVoiceRecording={onOpenVoiceRecording}
-          onPanelChange={onPanelChange}
+          onOpenVoiceRecording={() => {
+            callbackOrder.push("open");
+            onOpenVoiceRecording();
+          }}
+          onPanelChange={() => callbackOrder.push("close-panel")}
           onSend={vi.fn()}
           panel="emoji"
+          voiceButtonRef={voiceButtonRef}
+          voiceInputAriaLabel="Start voice recording"
         />,
       );
     });
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.click();
+      voiceButtonRef.current?.click();
     });
 
-    expect(onPanelChange).toHaveBeenCalledWith(null);
+    expect(voiceButtonRef.current?.getAttribute("aria-label")).toBe("Start voice recording");
+    expect(callbackOrder).toEqual(["close-panel", "open"]);
     expect(onOpenVoiceRecording).toHaveBeenCalledTimes(1);
     expect(container.textContent).not.toContain("按住说话");
     expect(container.querySelector("[data-im-composer-rich-input='true']")).not.toBeNull();
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          disabled
+          draft=""
+          isNight={false}
+          onDraftChange={vi.fn()}
+          onOpenVoiceRecording={onOpenVoiceRecording}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          voiceInputAriaLabel="Start voice recording"
+        />,
+      );
+    });
+    expect(container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.click());
+    expect(onOpenVoiceRecording).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          blocked
+          draft=""
+          isNight={false}
+          onDraftChange={vi.fn()}
+          onOpenVoiceRecording={onOpenVoiceRecording}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          voiceInputAriaLabel="Start voice recording"
+        />,
+      );
+    });
+    expect(container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.click());
+    expect(onOpenVoiceRecording).toHaveBeenCalledTimes(1);
 
     await act(async () => root.unmount());
   });
@@ -120,6 +166,7 @@ describe("ImChatComposer", () => {
           onPanelChange={vi.fn()}
           onSend={vi.fn()}
           panel="emoji"
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
@@ -273,6 +320,7 @@ describe("ImChatComposer", () => {
           onSend={onSend}
           panel={null}
           pendingImage={{ fileName: "poster.png", previewUrl: "blob:poster-preview" }}
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
@@ -314,6 +362,7 @@ describe("ImChatComposer", () => {
           panel={null}
           sendLabel="回复"
           sendingLabel="回复中"
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
@@ -344,6 +393,7 @@ describe("ImChatComposer", () => {
           onSend={vi.fn()}
           panel={null}
           sendLabel="回复"
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
@@ -368,6 +418,7 @@ describe("ImChatComposer", () => {
           onSend={onSend}
           panel={null}
           submitOnEnter
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
@@ -417,6 +468,7 @@ describe("ImChatComposer", () => {
           onPanelChange={vi.fn()}
           onSend={onSend}
           panel={null}
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
