@@ -80,6 +80,13 @@ describe("translations", () => {
     expect(translateText("保存密码", "ko")).toBe("비밀번호 저장");
   });
 
+  it("localizes the group privacy countdown maximum", () => {
+    expect(translateText("时间上限最大为99小时59分钟", "zh-Hant")).toBe("時間上限最大為99小時59分鐘");
+    expect(translateText("时间上限最大为99小时59分钟", "ja")).toBe("時間の上限は99時間59分です");
+    expect(translateText("时间上限最大为99小时59分钟", "en")).toBe("The maximum time is 99 hours 59 minutes");
+    expect(translateText("时间上限最大为99小时59分钟", "ko")).toBe("최대 시간은 99시간 59분입니다");
+  });
+
   it("keeps truly unknown source text untouched", () => {
     const unknownText = "__test_unknown_translation_key__";
     expect(translateText(unknownText, "ko")).toBe(unknownText);

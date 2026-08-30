@@ -535,4 +535,19 @@ describe("IM pages", () => {
     expect(componentSource).toContain('<ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="md" />');
     expect(componentSource).toContain("privacyModeEnabled || hideMemberProfilesEnabled");
   });
+
+  it("uses the shared two-field privacy countdown and blocks overflow in both group editors", () => {
+    const infoStart = pagesSource.indexOf("export function ImConversationInfoPage");
+    const newStart = pagesSource.indexOf("export function ImNewConversationPage");
+    const infoSource = pagesSource.slice(infoStart, newStart);
+    const newSource = pagesSource.slice(newStart);
+
+    for (const componentSource of [infoSource, newSource]) {
+      expect(componentSource).toContain("hasCountdownInputOverflow(privacyCountdownInput)");
+      expect(componentSource).toContain("GROUP_PRIVACY_COUNTDOWN_LIMIT_MESSAGE");
+      expect(componentSource).toContain('role="alert"');
+      expect(componentSource).toContain("grid-cols-2");
+    }
+    expect(pagesSource).not.toContain("grid grid-cols-4 gap-2");
+  });
 });
