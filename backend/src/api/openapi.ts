@@ -1,6 +1,10 @@
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
+import {
+  IM_PRIVACY_TTL_MAX_SECONDS,
+  IM_PRIVACY_TTL_MIN_SECONDS
+} from "../constants/im-privacy";
 
 type OpenApiDocument = Record<string, unknown>;
 
@@ -1503,7 +1507,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           unreadCount: { type: "integer" },
           privacyModeEnabled: { type: "boolean" },
           hideMemberProfiles: { type: "boolean" },
-          disappearingTtlSeconds: { type: ["integer", "null"], minimum: 60 },
+          disappearingTtlSeconds: {
+            type: ["integer", "null"],
+            minimum: IM_PRIVACY_TTL_MIN_SECONDS,
+            maximum: IM_PRIVACY_TTL_MAX_SECONDS
+          },
           disappearingStartMode: { type: "string", enum: ["sent", "read_by_all"] },
           privacyPolicyVersion: { type: "integer", minimum: 0 },
           createdAt: { type: "string", format: "date-time" },
@@ -13080,8 +13088,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   hideMemberProfiles: { type: "boolean" },
                   disappearingTtlSeconds: {
                     type: ["integer", "null"],
-                    minimum: 60,
-                    maximum: 34560000
+                    minimum: IM_PRIVACY_TTL_MIN_SECONDS,
+                    maximum: IM_PRIVACY_TTL_MAX_SECONDS
                   },
                   disappearingStartMode: {
                     type: "string",
@@ -13177,8 +13185,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   hideMemberProfiles: { type: "boolean" },
                   disappearingTtlSeconds: {
                     type: ["integer", "null"],
-                    minimum: 60,
-                    maximum: 34560000
+                    minimum: IM_PRIVACY_TTL_MIN_SECONDS,
+                    maximum: IM_PRIVACY_TTL_MAX_SECONDS
                   },
                   disappearingStartMode: {
                     type: "string",

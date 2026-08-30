@@ -737,6 +737,12 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "时间上限最大为99小时59分钟": {
+    "zh-Hant": "時間上限最大為99小時59分鐘",
+    ja: "時間の上限は99時間59分です",
+    en: "The maximum time is 99 hours 59 minutes",
+    ko: "최대 시간은 99시간 59분입니다",
+  },
   "搜索联系人昵称、用户名或 NeeDoID": { "zh-Hant": "搜尋聯絡人暱稱、使用者名稱或 NeeDoID", ja: "連絡先のニックネーム、ユーザー名、NeeDoID を検索", en: "Search contacts by nickname, username, or NeeDoID", ko: "연락처 닉네임, 사용자 이름 또는 NeeDoID 검색" },
   "正在加载联系人...": { "zh-Hant": "正在載入聯絡人...", ja: "連絡先を読み込み中...", en: "Loading contacts...", ko: "연락처 불러오는 중..." },
   "联系人加载失败，请重试。": { "zh-Hant": "聯絡人載入失敗，請重試。", ja: "連絡先を読み込めませんでした。もう一度お試しください。", en: "Contacts failed to load. Try again.", ko: "연락처를 불러오지 못했습니다. 다시 시도해 주세요." },

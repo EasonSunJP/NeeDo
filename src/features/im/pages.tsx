@@ -135,7 +135,6 @@ import {
   type ContactRelation,
   type ContactIndexLetter,
   type Conversation,
-  type ConversationDisappearingCountdown,
   type ConversationDisappearingStartMode,
   type ConversationMessage,
   type DirectoryProfile,
@@ -150,6 +149,20 @@ import {
   type TagMessageCampaignEstimate,
   type TagMessageCampaignResult
 } from "./model";
+import {
+  GROUP_PRIVACY_COUNTDOWN_LIMIT_MESSAGE,
+  createCountdownInput,
+  defaultGroupPrivacyCountdownInput,
+  formatConversationDisappearingCountdown,
+  groupPrivacyCountdownLabels,
+  groupPrivacyCountdownLimits,
+  hasCountdownInputOverflow,
+  hasCountdownValue,
+  parseCountdownInput,
+  sanitizeCountdownInputValue,
+  type GroupPrivacyCountdownField,
+  type GroupPrivacyCountdownInput,
+} from "./privacy-countdown";
 import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
 import {
@@ -311,30 +324,6 @@ function AddStaffContactBadge({ adding }: { adding: boolean }) {
   );
 }
 
-type GroupPrivacyCountdownField = keyof ConversationDisappearingCountdown;
-type GroupPrivacyCountdownInput = Record<GroupPrivacyCountdownField, string>;
-
-const defaultGroupPrivacyCountdownInput: GroupPrivacyCountdownInput = {
-  months: "",
-  days: "",
-  hours: "",
-  minutes: ""
-};
-
-const groupPrivacyCountdownLimits: Record<GroupPrivacyCountdownField, number> = {
-  months: 12,
-  days: 30,
-  hours: 23,
-  minutes: 59
-};
-
-const groupPrivacyCountdownLabels: Array<{ field: GroupPrivacyCountdownField; label: string; suffix: string }> = [
-  { field: "months", label: "月", suffix: "月" },
-  { field: "days", label: "日", suffix: "日" },
-  { field: "hours", label: "小时", suffix: "小时" },
-  { field: "minutes", label: "分钟", suffix: "分钟" }
-];
-
 const groupPrivacyStartModeOptions: Array<{ value: ConversationDisappearingStartMode; label: string }> = [
   { value: "sent", label: "按发送时间" },
   { value: "read_by_all", label: "全员看过后" }
@@ -363,29 +352,6 @@ export const imConversationQuickSearchItems: Array<{
   { key: "gift", label: "礼物", query: "礼物", icon: "emoji" },
   { key: "sticker", label: "贴纸", query: "贴纸 表情", icon: "emoji" }
 ];
-
-function parseCountdownInput(input: GroupPrivacyCountdownInput): ConversationDisappearingCountdown {
-  return {
-    months: Number(input.months) || 0,
-    days: Number(input.days) || 0,
-    hours: Number(input.hours) || 0,
-    minutes: Number(input.minutes) || 0
-  };
-}
-
-function createCountdownInput(countdown?: Partial<ConversationDisappearingCountdown>): GroupPrivacyCountdownInput {
-  return {
-    months: countdown?.months ? String(countdown.months) : "",
-    days: countdown?.days ? String(countdown.days) : "",
-    hours: countdown?.hours ? String(countdown.hours) : "",
-    minutes: countdown?.minutes ? String(countdown.minutes) : ""
-  };
-}
-
-function sanitizeCountdownInputValue(field: GroupPrivacyCountdownField, value: string) {
-  const digits = value.replace(/[^\d]/g, "");
-  return digits ? String(Math.min(groupPrivacyCountdownLimits[field], Number(digits))) : "";
-}
 
 function resetImHorizontalScroll() {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -421,25 +387,6 @@ function stabilizeImMobileViewport() {
   if (typeof window !== "undefined") {
     window.requestAnimationFrame(resetImHorizontalScroll);
   }
-}
-
-function hasCountdownValue(countdown: ConversationDisappearingCountdown) {
-  return countdown.months + countdown.days + countdown.hours + countdown.minutes > 0;
-}
-
-function formatConversationDisappearingCountdown(countdown?: Partial<ConversationDisappearingCountdown>) {
-  if (!countdown) {
-    return "";
-  }
-
-  const segments = groupPrivacyCountdownLabels
-    .map(({ field, suffix }) => {
-      const value = Number(countdown[field]) || 0;
-      return value > 0 ? `${value}${suffix}` : "";
-    })
-    .filter(Boolean);
-
-  return segments.join(" ");
 }
 
 function formatDisappearingStartModeLabel(mode?: ConversationDisappearingStartMode) {
@@ -6858,6 +6805,7 @@ export function ImConversationInfoPage() {
   const infoRoleTagSet = useMemo(() => new Set(scope === "merchant" ? getMerchantOrganizationRoleTagNames() : []), [scope]);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
+  const privacyCountdownOverflow = hasCountdownInputOverflow(privacyCountdownInput);
   const privacyCountdownSummary = formatConversationDisappearingCountdown(privacyCountdown);
   const currentGroupMember = conversation && store.currentUserId
     ? getConversationMember({ members: store.members }, conversation.id, store.currentUserId)
@@ -7029,6 +6977,11 @@ export function ImConversationInfoPage() {
 
     if (privacyModeEnabled && !hasPrivacyCountdown) {
       showInfoToast("请先设置消失倒计时");
+      return;
+    }
+
+    if (privacyModeEnabled && privacyCountdownOverflow) {
+      showInfoToast(GROUP_PRIVACY_COUNTDOWN_LIMIT_MESSAGE);
       return;
     }
 
@@ -7459,12 +7412,13 @@ export function ImConversationInfoPage() {
 
               {privacyModeEnabled ? (
                 <>
-                  <div className="mt-4 grid grid-cols-4 gap-2">
+                  <div className="mt-4 grid grid-cols-2 gap-2">
                     {groupPrivacyCountdownLabels.map(({ field, label }) => (
                       <label className="min-w-0" key={field}>
                         <span className="mb-1 block text-center text-[11px] font-black text-[color:var(--client-muted)]">{label}</span>
                         <input
                           aria-label={`对话消失倒计时${label}`}
+                          aria-invalid={privacyCountdownOverflow}
                           className="h-10 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,var(--client-surface))] px-2 text-center text-[15px] font-black text-[color:var(--client-text)] outline-none transition placeholder:text-[color:color-mix(in_srgb,var(--client-muted)_54%,transparent)] focus:border-[color:var(--client-primary)] disabled:cursor-not-allowed disabled:opacity-55"
                           disabled={!canManageGroupPrivacy}
                           inputMode="numeric"
@@ -7478,6 +7432,11 @@ export function ImConversationInfoPage() {
                       </label>
                     ))}
                   </div>
+                  {privacyCountdownOverflow ? (
+                    <p className="mt-2 text-xs font-bold text-red-500" role="alert">
+                      {GROUP_PRIVACY_COUNTDOWN_LIMIT_MESSAGE}
+                    </p>
+                  ) : null}
                   <div className="mt-3 grid grid-cols-2 gap-2 rounded-full bg-[color:color-mix(in_srgb,var(--client-bg)_62%,transparent)] p-1">
                     {groupPrivacyStartModeOptions.map((option) => {
                       const active = privacyStartMode === option.value;
@@ -7510,11 +7469,17 @@ export function ImConversationInfoPage() {
               <div className="mt-4">
                 <button
                   className="focus-ring inline-flex h-10 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--pin-badge-glyph)] transition disabled:cursor-not-allowed disabled:bg-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-surface))] disabled:text-[color:var(--client-muted)]"
-                  disabled={!canManageGroupPrivacy || (privacyModeEnabled && !hasPrivacyCountdown)}
+                  disabled={!canManageGroupPrivacy || (privacyModeEnabled && (!hasPrivacyCountdown || privacyCountdownOverflow))}
                   onClick={() => void savePrivacySettings()}
                   type="button"
                 >
-                  {!canManageGroupPrivacy ? "仅群主可保存隐私设置" : privacyModeEnabled && !hasPrivacyCountdown ? "请设置消失倒计时" : "保存隐私设置"}
+                  {!canManageGroupPrivacy
+                    ? "仅群主可保存隐私设置"
+                    : privacyModeEnabled && privacyCountdownOverflow
+                      ? GROUP_PRIVACY_COUNTDOWN_LIMIT_MESSAGE
+                      : privacyModeEnabled && !hasPrivacyCountdown
+                        ? "请设置消失倒计时"
+                        : "保存隐私设置"}
                 </button>
               </div>
             </div>
@@ -7944,8 +7909,10 @@ export function ImNewConversationPage() {
   const canSubmitCollection = Boolean(selectedCollectUserId && Number.isFinite(collectAmountValue) && collectAmountValue > 0);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
+  const privacyCountdownOverflow = hasCountdownInputOverflow(privacyCountdownInput);
   const hasEnoughGroupMembers = selectedIds.length >= minimumGroupMemberCount;
-  const canCreateGroup = hasEnoughGroupMembers && (!privacyModeEnabled || hasPrivacyCountdown);
+  const canCreateGroup = hasEnoughGroupMembers
+    && (!privacyModeEnabled || (hasPrivacyCountdown && !privacyCountdownOverflow));
   const privacyCountdownSummary = formatConversationDisappearingCountdown(privacyCountdown);
   const privacyModeInfo = "开启后需设置对话消失倒计时";
   const hideMemberProfilesInfo = "名字会变为用户，个人资料将不再显示。";
@@ -8137,6 +8104,10 @@ export function ImNewConversationPage() {
   const createGroup = async () => {
     if (!hasEnoughGroupMembers) {
       setGroupSelectionWarningOpen(true);
+      return;
+    }
+
+    if (privacyModeEnabled && privacyCountdownOverflow) {
       return;
     }
 
@@ -8492,12 +8463,13 @@ export function ImNewConversationPage() {
 
               {privacyModeEnabled ? (
                 <>
-                  <div className="mt-3 grid grid-cols-4 gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2">
                     {groupPrivacyCountdownLabels.map(({ field, label }) => (
                       <label className="min-w-0" key={field}>
                         <span className="mb-1 block text-center text-[11px] font-black text-[color:var(--client-muted)]">{label}</span>
                         <input
                           aria-label={`对话消失倒计时${label}`}
+                          aria-invalid={privacyCountdownOverflow}
                           className="h-10 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_76%,var(--client-surface))] px-2 text-center text-[15px] font-black text-[color:var(--client-text)] outline-none transition placeholder:text-[color:color-mix(in_srgb,var(--client-muted)_54%,transparent)] focus:border-[color:var(--client-primary)]"
                           inputMode="numeric"
                           min={0}
@@ -8510,6 +8482,11 @@ export function ImNewConversationPage() {
                       </label>
                     ))}
                   </div>
+                  {privacyCountdownOverflow ? (
+                    <p className="mt-2 text-xs font-bold text-red-500" role="alert">
+                      {GROUP_PRIVACY_COUNTDOWN_LIMIT_MESSAGE}
+                    </p>
+                  ) : null}
                   <div className="mt-3 grid grid-cols-2 gap-2 rounded-full bg-[color:color-mix(in_srgb,var(--client-bg)_68%,transparent)] p-1">
                     {groupPrivacyStartModeOptions.map((option) => {
                       const active = privacyStartMode === option.value;
