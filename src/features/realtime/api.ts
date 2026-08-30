@@ -67,6 +67,7 @@ export type RealtimeConversation = {
   title: string | null;
   type: "direct" | "group";
   unreadCount: number;
+  autoTranslateMessages?: boolean;
   isPinned?: boolean;
   isMuted?: boolean;
   isHidden?: boolean;
@@ -297,7 +298,11 @@ export const realtimeApi = {
   },
   updateConversationPreferences(
     conversationId: number,
-    preferences: { isMuted?: boolean; isPinned?: boolean }
+    preferences: {
+      autoTranslateMessages?: boolean;
+      isMuted?: boolean;
+      isPinned?: boolean;
+    }
   ) {
     return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}/preferences`, {
       body: preferences,

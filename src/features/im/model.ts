@@ -182,6 +182,7 @@ export type Conversation = {
   unreadCount: number;
   isPinned: boolean;
   isMuted: boolean;
+  autoTranslateMessages: boolean;
   draftText?: string;
   draftUpdatedAt?: string;
   updatedAt: string;
@@ -603,7 +604,7 @@ function createFriendRequest(input: Omit<FriendRequest, "createdAt"> & { created
 }
 
 function createConversation(
-  input: Omit<Conversation, "lastMessagePreview" | "lastMessageTime" | "updatedAt" | "unreadCount" | "isPinned" | "isMuted" | "avatar"> & {
+  input: Omit<Conversation, "lastMessagePreview" | "lastMessageTime" | "updatedAt" | "unreadCount" | "isPinned" | "isMuted" | "autoTranslateMessages" | "avatar"> & {
     avatar?: string;
     lastMessagePreview?: string;
     lastMessageTime?: string;
@@ -611,6 +612,7 @@ function createConversation(
     unreadCount?: number;
     isPinned?: boolean;
     isMuted?: boolean;
+    autoTranslateMessages?: boolean;
   }
 ) {
   return {
@@ -620,6 +622,7 @@ function createConversation(
     unreadCount: input.unreadCount ?? 0,
     isPinned: input.isPinned ?? false,
     isMuted: input.isMuted ?? false,
+    autoTranslateMessages: input.autoTranslateMessages ?? false,
     updatedAt: input.updatedAt ?? input.lastMessageTime ?? atDaysAgo(3),
     ...input
   };

@@ -1,6 +1,32 @@
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import type { ConversationMessage } from "./model";
+// @vitest-environment jsdom
+
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Conversation, ConversationMessage } from "./model";
+import storeSource from "./store.ts?raw";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const mocked = vi.hoisted(() => ({
+  api: null as unknown,
+  session: {
+    activePublicId: "u0000000100",
+    avatarUrl: null,
+    id: 100,
+    primaryPublicId: "u0000000100",
+    username: "测试用户",
+  },
+}));
+
+vi.mock("../../auth/AuthProvider", () => ({
+  useAuth: () => ({ session: mocked.session }),
+}));
+
+vi.mock("./formal-api", () => ({
+  createFormalImApi: () => mocked.api,
+  subscribeFormalImUpdates: () => () => undefined,
+}));
 import {
   buildCachedImSearchResults,
   getIncomingPendingFriendRequestCount,
@@ -10,9 +36,56 @@ import {
   preferTerminalMessage,
   selectLatestFriendRequestsByCounterpart,
   upsertConversationMessage,
+  useImStore,
 } from "./store";
 
 const sentAt = "2026-08-25T10:00:00.000Z";
+
+let container: HTMLDivElement | null = null;
+let root: Root | null = null;
+let store: ReturnType<typeof useImStore> | null = null;
+
+function conversation(overrides: Partial<Conversation> = {}): Conversation {
+  return {
+    id: "91",
+    type: "single",
+    title: "已确认标题",
+    avatar: "",
+    memberIds: ["100", "201"],
+    lastMessagePreview: "",
+    lastMessageTime: sentAt,
+    unreadCount: 0,
+    isPinned: false,
+    isMuted: false,
+    autoTranslateMessages: false,
+    updatedAt: sentAt,
+    ...overrides,
+  };
+}
+
+function StoreProbe() {
+  store = useImStore();
+  return null;
+}
+
+async function renderStore() {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(createElement(StoreProbe));
+  });
+  await act(async () => Promise.resolve());
+}
+
+afterEach(async () => {
+  await act(async () => root?.unmount());
+  container?.remove();
+  container = null;
+  root = null;
+  store = null;
+  window.localStorage.clear();
+});
 
 function message(overrides: Partial<ConversationMessage> = {}): ConversationMessage {
   return {
@@ -57,7 +130,7 @@ describe("formal IM recall terminal precedence", () => {
   });
 
   it("awaits the conversation-scoped standard recall before upserting the result", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = storeSource;
     expect(source).toContain(
       'async function recallMessage(conversationId: string, messageId: string, mode: "standard")',
     );
@@ -65,6 +138,78 @@ describe("formal IM recall terminal precedence", () => {
       "const response = await api.recallMessage(conversationId, messageId, mode);",
     );
     expect(source).toContain("upsertMessage(response.message);");
+  });
+});
+
+describe("formal IM auto translation preference", () => {
+  it("waits for the confirmed response and preserves the confirmed value after rejection", async () => {
+    let resolvePreference: ((value: { conversation: Conversation }) => void) | undefined;
+    const setConversationAutoTranslateMessages = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ conversation: Conversation }>((resolve) => {
+            resolvePreference = resolve;
+          }),
+      )
+      .mockRejectedValueOnce(new Error("error.network.timeout"));
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: [],
+      }),
+      setConversationAutoTranslateMessages,
+    };
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    await renderStore();
+    expect(store?.conversations).toMatchObject([
+      { id: "91", autoTranslateMessages: false },
+    ]);
+    setItem.mockClear();
+
+    const pending = store?.setConversationAutoTranslateMessages("91", true);
+    expect(store?.conversations).toMatchObject([
+      { id: "91", autoTranslateMessages: false },
+    ]);
+    await Promise.resolve();
+    expect(resolvePreference).toEqual(expect.any(Function));
+
+    await act(async () => {
+      resolvePreference?.({
+        conversation: conversation({
+          autoTranslateMessages: true,
+          title: "服务器确认标题",
+        }),
+      });
+      await pending;
+    });
+    expect(store?.conversations).toMatchObject([
+      {
+        id: "91",
+        autoTranslateMessages: true,
+        title: "服务器确认标题",
+      },
+    ]);
+
+    await expect(
+      store?.setConversationAutoTranslateMessages("91", false),
+    ).rejects.toThrow("error.network.timeout");
+    expect(store?.conversations).toMatchObject([
+      { id: "91", autoTranslateMessages: true },
+    ]);
+    expect(setItem).not.toHaveBeenCalled();
   });
 });
 
@@ -146,7 +291,7 @@ describe("formal IM forwarding", () => {
   });
 
   it("uses the normal formal send path instead of the unavailable forward stub", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = storeSource;
     const start = source.indexOf("async function forwardMessage");
     const end = source.indexOf("async function pinConversation", start);
     const forwardSource = source.slice(start, end);
@@ -197,6 +342,7 @@ describe("formal IM cached fuzzy search", () => {
       unreadCount: 0,
       isPinned: false,
       isMuted: false,
+      autoTranslateMessages: false,
       isDeleted: false,
       createdAt: sentAt,
       updatedAt: sentAt,
@@ -252,7 +398,7 @@ describe("formal IM quick reactions", () => {
   });
 
   it("upserts the authoritative reaction response into the shared message store", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = storeSource;
     const start = source.indexOf("async function setMessageReaction");
     const end = source.indexOf("async function recallMessage", start);
     const reactionSource = source.slice(start, end);

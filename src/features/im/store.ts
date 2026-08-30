@@ -748,6 +748,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         unreadCount: 0,
         isPinned: false,
         isMuted: false,
+        autoTranslateMessages: false,
         updatedAt: optimistic.sentAt
       }),
       lastMessagePreview: buildMessagePreview(optimistic, snapshot.currentUserId ?? "", snapshot.usersById),
@@ -889,6 +890,20 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     const response = await api.muteConversation(conversationId, isMuted);
     upsertConversation(response.conversation);
     emit();
+  }
+
+  async function setConversationAutoTranslateMessages(
+    conversationId: string,
+    enabled: boolean,
+  ) {
+    await hydrateStore();
+    const response = await api.setConversationAutoTranslateMessages(
+      conversationId,
+      enabled,
+    );
+    upsertConversation(response.conversation);
+    emit();
+    return response.conversation;
   }
 
   async function updateConversationPrivacy(conversationId: string, privacyOptions: UpdateConversationPrivacyOptions) {
@@ -1252,6 +1267,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       forwardMessage,
       pinConversation,
       muteConversation,
+      setConversationAutoTranslateMessages,
       updateConversationPrivacy,
       updateConversationGroupInfo,
       markConversationRead,

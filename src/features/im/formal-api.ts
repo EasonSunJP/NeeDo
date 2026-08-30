@@ -451,6 +451,7 @@ function toConversation(
     unreadCount: conversation.unreadCount,
     isPinned: conversation.isPinned ?? false,
     isMuted: conversation.isMuted ?? false,
+    autoTranslateMessages: conversation.autoTranslateMessages ?? false,
     isDeleted: conversation.isHidden || undefined,
     privacyModeEnabled: conversation.privacyModeEnabled || undefined,
     hideMemberProfiles: conversation.hideMemberProfiles || undefined,
@@ -905,6 +906,13 @@ export function createFormalImApi({
       const conversation = await realtimeApi.updateConversationPreferences(
         toNumericId(conversationId),
         { isMuted },
+      );
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
+    async setConversationAutoTranslateMessages(conversationId: string, enabled: boolean) {
+      const conversation = await realtimeApi.updateConversationPreferences(
+        toNumericId(conversationId),
+        { autoTranslateMessages: enabled },
       );
       return { conversation: toConversation(conversation, currentUser.id) };
     },
