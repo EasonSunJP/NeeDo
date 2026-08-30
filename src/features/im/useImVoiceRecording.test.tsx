@@ -496,6 +496,32 @@ describe("useImVoiceRecording", () => {
     expect(latest.previewUrl).toBe("blob:needo-voice-1");
   });
 
+  it("fails an already-errored preview before registering readiness listeners", async () => {
+    const audio = container.querySelector<HTMLAudioElement>('[data-testid="preview-audio"]')!;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_NOTHING,
+    });
+    Object.defineProperty(audio, "error", {
+      configurable: true,
+      value: { code: 3 } as MediaError,
+    });
+    const recorder = await openRecording();
+    await finishRecorder(recorder);
+
+    expect(audioPlay).not.toHaveBeenCalled();
+    expect(latest.phase).toBe("preview_paused");
+    expect(latest.error).toBe("error.im.voice_recording_failed");
+    expect(latest.blob).toBeInstanceOf(Blob);
+    expect(latest.previewUrl).toBe("blob:needo-voice-1");
+
+    await act(async () => {
+      audio.dispatchEvent(new Event("canplay"));
+      await Promise.resolve();
+    });
+    expect(audioPlay).not.toHaveBeenCalled();
+  });
+
   it("waits for replay readiness and invalidates a cancelled pending replay", async () => {
     const recorder = await openRecording();
     await finishRecorder(recorder);
@@ -592,6 +618,21 @@ describe("useImVoiceRecording", () => {
 
     expect(latest.phase).toBe("preview_paused");
     expect(latest.error).toBe("error.im.voice_autoplay_blocked");
+    expect(latest.blob).toBeInstanceOf(Blob);
+    expect(latest.previewUrl).toBe("blob:needo-voice-1");
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("keeps the preview when playback rejects because the media is unsupported", async () => {
+    audioPlay.mockImplementationOnce(function (this: HTMLMediaElement) {
+      expectAudibleOutput(this);
+      return Promise.reject(new DOMException("Unsupported preview", "NotSupportedError"));
+    });
+    const recorder = await openRecording();
+    await finishRecorder(recorder);
+
+    expect(latest.phase).toBe("preview_paused");
+    expect(latest.error).toBe("error.im.voice_recording_failed");
     expect(latest.blob).toBeInstanceOf(Blob);
     expect(latest.previewUrl).toBe("blob:needo-voice-1");
     expect(revokeObjectURL).not.toHaveBeenCalled();

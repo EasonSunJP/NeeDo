@@ -253,7 +253,14 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     audio.volume = 1;
     audio.setAttribute("playsinline", "");
 
-    let readinessFailed = false;
+    if (audio.error) {
+      if (isPlaybackCurrent()) {
+        setError("error.im.voice_recording_failed");
+        transition("preview_paused");
+      }
+      return;
+    }
+
     try {
       if (audio.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
         await new Promise<void>((resolve, reject) => {
@@ -273,13 +280,10 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
             callback();
           };
           const onReady = () => settle(resolve);
-          const onError = () => {
-            readinessFailed = true;
-            settle(() => reject(new DOMException(
-              "Preview media could not be loaded",
-              "NotSupportedError",
-            )));
-          };
+          const onError = () => settle(() => reject(new DOMException(
+            "Preview media could not be loaded",
+            "NotSupportedError",
+          )));
           playbackReadinessCleanupRef.current = () => settle(() => reject(new DOMException(
             "Preview playback was cancelled",
             "AbortError",
@@ -295,11 +299,11 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
         setError(null);
         transition("preview_playing");
       }
-    } catch {
+    } catch (error) {
       if (isPlaybackCurrent()) {
-        setError(readinessFailed
-          ? "error.im.voice_recording_failed"
-          : "error.im.voice_autoplay_blocked");
+        setError(error instanceof DOMException && error.name === "NotAllowedError"
+          ? "error.im.voice_autoplay_blocked"
+          : "error.im.voice_recording_failed");
         transition("preview_paused");
       }
     }
