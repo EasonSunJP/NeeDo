@@ -176,7 +176,7 @@ describe("ImVoiceMessageService", () => {
         throw originalError;
       })
     };
-    const remove = jest.fn(async (_fileKey: string) => undefined);
+    const remove = jest.fn(async () => undefined);
     remove.mockImplementationOnce(async () => {
       throw cleanupError;
     });
@@ -207,7 +207,7 @@ describe("ImVoiceMessageService", () => {
         throw originalError;
       })
     };
-    const remove = jest.fn(async (_fileKey: string) => undefined);
+    const remove = jest.fn(async () => undefined);
     remove.mockImplementationOnce(async () => {
       throw firstCleanupError;
     });
