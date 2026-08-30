@@ -53,4 +53,10 @@ describe("normalizeImLanguageLabels", () => {
 
     expect(values).toEqual([" ja ", "Klingon", ""]);
   });
+
+  it("deduplicates unknown labels case-insensitively while preserving the first trimmed spelling", () => {
+    expect(normalizeImLanguageLabels([" Klingon ", "klingon", "KLINGON"])).toEqual([
+      "Klingon",
+    ]);
+  });
 });

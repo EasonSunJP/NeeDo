@@ -32,7 +32,7 @@ const languageLabelAliases = new Map<string, string>([
 
 export function normalizeImLanguageLabels(values: readonly string[]): string[] {
   const labels: string[] = [];
-  const seen = new Set<string>();
+  const seenKeys = new Set<string>();
 
   values.forEach((value) => {
     const trimmed = value.trim();
@@ -42,12 +42,13 @@ export function normalizeImLanguageLabels(values: readonly string[]): string[] {
     }
 
     const label = languageLabelAliases.get(trimmed.toLowerCase()) ?? trimmed;
+    const deduplicationKey = label.toLowerCase();
 
-    if (seen.has(label)) {
+    if (seenKeys.has(deduplicationKey)) {
       return;
     }
 
-    seen.add(label);
+    seenKeys.add(deduplicationKey);
     labels.push(label);
   });
 
