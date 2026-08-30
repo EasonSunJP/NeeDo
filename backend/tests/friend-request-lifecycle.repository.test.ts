@@ -775,6 +775,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         serviceArea: "涩谷区、港区",
         yearsExperience: 7,
         languages: ["日本語"],
+        visibility: "public",
         employmentType: "INDEPENDENT",
         status: "published",
         verifiedAt: dbNow,
@@ -819,11 +820,62 @@ describe("RealtimeRepository friend request lifecycle", () => {
       expect.objectContaining({
         select: expect.objectContaining({
           technicianProfile: {
-            select: expect.objectContaining({ languages: true })
+            select: expect.objectContaining({ languages: true, visibility: true })
           }
         })
       })
     );
+  });
+
+  it("does not expose languages from a private technician identity card", async () => {
+    const privateTechnicianTarget = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 88,
+          displayName: "Mia 技师",
+          isDefault: true
+        }
+      ],
+      customerProfile: null,
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: "private technician bio",
+        city: "东京",
+        serviceArea: "涩谷区、港区",
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "private",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: dbNow,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(privateTechnicianTarget) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    const profile = await new RealtimeRepository(client).getDirectoryProfile(
+      requester.id,
+      requesterIdentityId,
+      target.id,
+      targetIdentityId
+    );
+
+    expect(profile?.identityCard).toMatchObject({
+      entityType: "technician",
+      profileId: 88,
+      languages: []
+    });
   });
 
   it("uses an eligible technician language list when a public customer list is empty", async () => {
@@ -862,6 +914,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         serviceArea: null,
         yearsExperience: 7,
         languages: ["日本語"],
+        visibility: "public",
         employmentType: "INDEPENDENT",
         status: "published",
         verifiedAt: null,
@@ -886,6 +939,128 @@ describe("RealtimeRepository friend request lifecycle", () => {
     ).resolves.toMatchObject({
       identityCard: { entityType: "user", languages: ["日本語"] }
     });
+  });
+
+  it("keeps public customer languages ahead of eligible technician languages", async () => {
+    const publicCustomerWithOwnLanguages = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "公开资料",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: true,
+        gender: "private",
+        age: null,
+        heightCm: null,
+        languages: ["中文"],
+        visibility: "public",
+        deletedAt: null,
+        reviewSummary: null
+      },
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: null,
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "public",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: null,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(publicCustomerWithOwnLanguages) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    const profile = await new RealtimeRepository(client).getDirectoryProfile(
+      requester.id,
+      requesterIdentityId,
+      target.id,
+      targetIdentityId
+    );
+
+    expect(profile?.identityCard.languages).toEqual(["中文"]);
+  });
+
+  it("does not fall back to private technician languages for a public customer", async () => {
+    const publicCustomerWithPrivateTechnician = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "公开资料",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: true,
+        gender: "private",
+        age: null,
+        heightCm: null,
+        languages: null,
+        visibility: "public",
+        deletedAt: null,
+        reviewSummary: null
+      },
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: null,
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "private",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: null,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(publicCustomerWithPrivateTechnician) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    const profile = await new RealtimeRepository(client).getDirectoryProfile(
+      requester.id,
+      requesterIdentityId,
+      target.id,
+      targetIdentityId
+    );
+
+    expect(profile?.identityCard).toMatchObject({ entityType: "user", languages: [] });
   });
 
   it("does not expose technician languages through a private customer card", async () => {
@@ -924,6 +1099,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         serviceArea: null,
         yearsExperience: 7,
         languages: ["日本語"],
+        visibility: "public",
         employmentType: "INDEPENDENT",
         status: "published",
         verifiedAt: null,
@@ -991,6 +1167,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
           serviceArea: null,
           yearsExperience: 7,
           languages: ["日本語"],
+          visibility: "public",
           employmentType: "INDEPENDENT",
           status,
           verifiedAt: null,

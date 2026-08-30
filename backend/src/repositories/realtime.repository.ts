@@ -771,6 +771,7 @@ type DirectoryProfileUserRecord = {
     serviceArea: string | null;
     yearsExperience: number;
     languages: unknown;
+    visibility: string;
     employmentType: string;
     status: string;
     verifiedAt: Date | null;
@@ -2371,6 +2372,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             serviceArea: true,
             yearsExperience: true,
             languages: true,
+            visibility: true,
             employmentType: true,
             status: true,
             verifiedAt: true,
@@ -4224,7 +4226,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const technicianLanguages =
         customerLanguages.length === 0 &&
         user.technicianProfile?.deletedAt === null &&
-        user.technicianProfile.status === "published"
+        user.technicianProfile.status === "published" &&
+        user.technicianProfile.visibility === "public"
           ? toDirectoryLanguages(user.technicianProfile.languages)
           : [];
       return {
@@ -4265,7 +4268,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         gender: null,
         age: null,
         heightCm: null,
-        languages: toDirectoryLanguages(profile.languages),
+        languages:
+          profile.visibility === "public" ? toDirectoryLanguages(profile.languages) : [],
         city: profile.city,
         serviceArea: profile.serviceArea,
         yearsExperience: profile.yearsExperience,
