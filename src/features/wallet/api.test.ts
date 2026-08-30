@@ -40,6 +40,14 @@ describe("walletApi", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/wallets/me");
   });
 
+  it("reads both current-user balances from the fixed summary endpoint", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await walletApi.getMyWalletSummary();
+
+    expect(httpClient.request).toHaveBeenCalledWith("/wallets/me/summary");
+  });
+
   it("lists and reviews requests through the backoffice API", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
 

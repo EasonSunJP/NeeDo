@@ -604,6 +604,7 @@ function CompleteUserCenterPage({
   const displayName = limitUserProfileName(getUserProfileDisplayName(currentCustomer, profileDraft));
   const profileNameEditorWidth = getUserProfileNameEditorWidth(profileNameOverride || displayName);
   const points = formalData.wallet.availableBalance;
+  const pointsLabel = formalData.wallet.currency === "TEST_NDP" ? "Test NDP" : "NDP";
   const usageCount = Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0);
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
@@ -1075,7 +1076,7 @@ function CompleteUserCenterPage({
 
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   {[
-                    { label: "NDP", value: points.toLocaleString("en-US") },
+                    { label: pointsLabel, value: points.toLocaleString("en-US") },
                     { label: "利用次数", value: `${usageCount}` },
                     { label: "信用值", value: creditScore, suffix: "/5" }
                   ].map((item) => (

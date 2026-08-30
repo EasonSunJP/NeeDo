@@ -53,6 +53,14 @@ type Copy = {
   empty: string;
   permissionTree: string;
   saveSuccess: string;
+  formalAccount: string;
+  testAccount: string;
+  formalNdp: string;
+  testNdp: string;
+  accountTypeFilter: string;
+  allAccountTypes: string;
+  markAsTest: string;
+  markAsFormal: string;
 };
 
 const copyByLanguage: Record<Language, Copy> = {
@@ -89,7 +97,15 @@ const copyByLanguage: Record<Language, Copy> = {
     search: "搜索",
     empty: "暂无数据",
     permissionTree: "权限树",
-    saveSuccess: "已保存"
+    saveSuccess: "已保存",
+    formalAccount: "正式账号",
+    testAccount: "测试账号",
+    formalNdp: "正式 NDP",
+    testNdp: "测试 NDP",
+    accountTypeFilter: "账号类型",
+    allAccountTypes: "全部账号",
+    markAsTest: "标记为测试账号",
+    markAsFormal: "标记为正式账号"
   },
   "zh-Hant": {
     usersTitle: "帳號管理",
@@ -124,7 +140,15 @@ const copyByLanguage: Record<Language, Copy> = {
     search: "搜尋",
     empty: "暫無資料",
     permissionTree: "權限樹",
-    saveSuccess: "已儲存"
+    saveSuccess: "已儲存",
+    formalAccount: "正式帳號",
+    testAccount: "測試帳號",
+    formalNdp: "正式 NDP",
+    testNdp: "測試 NDP",
+    accountTypeFilter: "帳號類型",
+    allAccountTypes: "全部帳號",
+    markAsTest: "標記為測試帳號",
+    markAsFormal: "標記為正式帳號"
   },
   ja: {
     usersTitle: "アカウント管理",
@@ -159,7 +183,15 @@ const copyByLanguage: Record<Language, Copy> = {
     search: "検索",
     empty: "データがありません",
     permissionTree: "権限ツリー",
-    saveSuccess: "保存しました"
+    saveSuccess: "保存しました",
+    formalAccount: "正式アカウント",
+    testAccount: "テストアカウント",
+    formalNdp: "正式 NDP",
+    testNdp: "Test NDP",
+    accountTypeFilter: "アカウント種別",
+    allAccountTypes: "すべてのアカウント",
+    markAsTest: "テストアカウントに変更",
+    markAsFormal: "正式アカウントに変更"
   },
   en: {
     usersTitle: "Account Management",
@@ -194,7 +226,15 @@ const copyByLanguage: Record<Language, Copy> = {
     search: "Search",
     empty: "No data",
     permissionTree: "Permission tree",
-    saveSuccess: "Saved"
+    saveSuccess: "Saved",
+    formalAccount: "Formal account",
+    testAccount: "Test account",
+    formalNdp: "Formal NDP",
+    testNdp: "Test NDP",
+    accountTypeFilter: "Account type",
+    allAccountTypes: "All accounts",
+    markAsTest: "Mark as test account",
+    markAsFormal: "Mark as formal account"
   },
   ko: {
     usersTitle: "계정 관리",
@@ -229,7 +269,15 @@ const copyByLanguage: Record<Language, Copy> = {
     search: "검색",
     empty: "데이터 없음",
     permissionTree: "권한 트리",
-    saveSuccess: "저장됨"
+    saveSuccess: "저장됨",
+    formalAccount: "정식 계정",
+    testAccount: "테스트 계정",
+    formalNdp: "정식 NDP",
+    testNdp: "Test NDP",
+    accountTypeFilter: "계정 유형",
+    allAccountTypes: "모든 계정",
+    markAsTest: "테스트 계정으로 변경",
+    markAsFormal: "정식 계정으로 변경"
   }
 };
 
@@ -414,6 +462,7 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
   const [permissions, setPermissions] = useState(emptyPermissions);
   const [permissionTree, setPermissionTree] = useState<PermissionTreePayload | null>(null);
   const [keyword, setKeyword] = useState("");
+  const [accountTypeFilter, setAccountTypeFilter] = useState<"" | "true" | "false">("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -452,7 +501,16 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
               : Promise.resolve(emptyPermissions)
         ]);
         const [nextUsers, nextPermissionTree] = await Promise.all([
-          mode === "users" ? userManagementApi.listUsers({ keyword, page: 1, pageSize: 20 }) : Promise.resolve(emptyUsers),
+          mode === "users"
+            ? userManagementApi.listUsers({
+                keyword,
+                page: 1,
+                pageSize: 20,
+                ...(accountTypeFilter
+                  ? { isTestAccount: accountTypeFilter === "true" }
+                  : {})
+              })
+            : Promise.resolve(emptyUsers),
           mode === "permissions" ? userManagementApi.getPermissionTree() : Promise.resolve(null)
         ]);
 
@@ -480,7 +538,7 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
     return () => {
       alive = false;
     };
-  }, [keyword, mode, refreshKey]);
+  }, [accountTypeFilter, keyword, mode, refreshKey]);
 
   const roleById = useMemo(() => new Map(roles.list.map((role) => [role.id, role])), [roles.list]);
 
@@ -529,13 +587,25 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
         actions={<Button onClick={() => setRefreshKey((current) => current + 1)} variant="secondary">{copy.refresh}</Button>}
       >
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),auto]">
-          <div className="flex items-center gap-2 rounded-lg border border-line bg-white p-2 shadow-panel">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-white p-2 shadow-panel">
             <input
               className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm font-bold outline-none"
               onChange={(event) => setKeyword(event.target.value)}
               placeholder={copy.keyword}
               value={keyword}
             />
+            {mode === "users" ? (
+              <select
+                aria-label={copy.accountTypeFilter}
+                className="h-9 max-w-full rounded-lg border border-line bg-paper px-2 text-xs font-bold text-ink/70 outline-none focus:border-moss"
+                onChange={(event) => setAccountTypeFilter(event.target.value as "" | "true" | "false")}
+                value={accountTypeFilter}
+              >
+                <option value="">{copy.allAccountTypes}</option>
+                <option value="true">{copy.testAccount}</option>
+                <option value="false">{copy.formalAccount}</option>
+              </select>
+            ) : null}
             <Button onClick={() => setRefreshKey((current) => current + 1)} size="sm" variant="dark">
               {copy.search}
             </Button>
@@ -571,12 +641,41 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
                       <p className="mt-1 text-sm font-semibold text-ink/55">{user.email}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Badge tone={user.isActive ? "green" : "red"}>{user.isActive ? copy.active : copy.disabled}</Badge>
+                        <Badge tone={user.isTestAccount ? "yellow" : "green"}>
+                          {user.isTestAccount ? copy.testAccount : copy.formalAccount}
+                        </Badge>
                         {user.roles.map((role) => (
                           <Badge key={role} tone="blue">{roleById.get(user.roleAssignments.find((assignment) => assignment.code === role)?.roleId ?? 0)?.name ?? role}</Badge>
                         ))}
                       </div>
+                      <div className="mt-3 rounded-lg border border-line bg-paper px-3 py-2">
+                        <p
+                          aria-label={`${copy.formalNdp}: ${user.balances.ndp.available.toLocaleString("ja-JP")} NDP`}
+                          className="text-sm font-black text-ink"
+                        >
+                          {user.balances.ndp.available.toLocaleString("ja-JP")} NDP
+                        </p>
+                        <p
+                          aria-label={`${copy.testNdp}: ${user.balances.testNdp.available.toLocaleString("ja-JP")} Test NDP`}
+                          className="mt-1 text-xs font-bold text-ink/45"
+                        >
+                          {user.balances.testNdp.available.toLocaleString("ja-JP")} Test NDP
+                        </p>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <PermissionGate permission="button:user:test-account:update">
+                        <Button
+                          onClick={() => mutate(() => userManagementApi.updateTestAccount(user.id, {
+                            isTestAccount: !user.isTestAccount,
+                            expectedUpdatedAt: user.updatedAt
+                          }))}
+                          size="sm"
+                          variant="secondary"
+                        >
+                          {user.isTestAccount ? copy.markAsFormal : copy.markAsTest}
+                        </Button>
+                      </PermissionGate>
                       <PermissionGate permission="button:user:disable">
                         <Button onClick={() => mutate(() => user.isActive ? userManagementApi.disableUser(user.id) : userManagementApi.enableUser(user.id))} size="sm" variant="secondary">
                           {user.isActive ? copy.disable : copy.enable}

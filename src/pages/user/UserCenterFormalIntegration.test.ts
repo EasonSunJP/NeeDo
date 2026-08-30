@@ -9,6 +9,8 @@ describe("formal customer center integration", () => {
     expect(centerSource).toContain("customerProfileApi.getMine()");
     expect(centerSource).toContain("profile.id !== customerProfileId");
     expect(centerSource).toContain("walletApi.getMyWallet()");
+    expect(centerSource).toContain('formalData.wallet.currency === "TEST_NDP" ? "Test NDP" : "NDP"');
+    expect(centerSource).toContain("{ label: pointsLabel, value: points.toLocaleString(\"en-US\") }");
     expect(centerSource).toContain('data-testid="user-profile-privacy-control"');
     expect(centerSource).toContain("我的订单");
     expect(centerSource).toContain("serviceTools.map");

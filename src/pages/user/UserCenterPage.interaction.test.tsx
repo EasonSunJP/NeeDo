@@ -191,6 +191,24 @@ describe("UserCenterPage inline profile editing", () => {
     container.remove();
   });
 
+  it("labels the active wallet as Test NDP from the server currency", async () => {
+    testState.getMyWallet.mockResolvedValue({
+      availableBalance: 100_000,
+      createdAt: "2026-08-26T00:00:00.000Z",
+      currency: "TEST_NDP",
+      frozenBalance: 0,
+      id: 7,
+      ownerId: 12,
+      ownerType: "user",
+      updatedAt: "2026-08-26T00:00:00.000Z"
+    });
+
+    await renderUserCenter();
+
+    expect(container.textContent).toContain("Test NDP");
+    expect(container.textContent).toContain("100,000");
+  });
+
   it("keeps the saved privacy value in view and restores it after cancelling an edited draft", async () => {
     await renderUserCenter();
 

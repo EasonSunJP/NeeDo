@@ -8,11 +8,17 @@ export type Wallet = {
   id: number;
   ownerType: WalletOwnerType;
   ownerId: number;
-  currency: "NDP";
+  currency: "NDP" | "TEST_NDP";
   availableBalance: number;
   frozenBalance: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WalletSummary = {
+  activeCurrency: "NDP" | "TEST_NDP";
+  ndp: { available: number; frozen: number };
+  testNdp: { available: number; frozen: number };
 };
 
 export type WalletAdjustmentRequest = {
@@ -62,6 +68,9 @@ export type WalletAdjustmentListQuery = {
 export const walletApi = {
   getMyWallet() {
     return httpClient.request<Wallet>("/wallets/me");
+  },
+  getMyWalletSummary() {
+    return httpClient.request<WalletSummary>("/wallets/me/summary");
   },
   createAdjustment(input: CreateWalletAdjustmentInput) {
     return httpClient.request<WalletAdjustmentRequest>("/wallet-adjustments", {

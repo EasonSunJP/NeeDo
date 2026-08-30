@@ -43,6 +43,11 @@ export type UserRolePayload = {
   scopeId: number | null;
 };
 
+export type NdpBalance = {
+  available: number;
+  frozen: number;
+};
+
 export type UserPayload = {
   id: number;
   email: string;
@@ -50,6 +55,11 @@ export type UserPayload = {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  isTestAccount: boolean;
+  balances: {
+    ndp: NdpBalance;
+    testNdp: NdpBalance;
+  };
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -69,7 +79,7 @@ export type PermissionTreePayload = {
 };
 
 export const userManagementApi = {
-  listUsers(query: { isActive?: boolean; keyword?: string; page?: number; pageSize?: number } = {}) {
+  listUsers(query: { isActive?: boolean; isTestAccount?: boolean; keyword?: string; page?: number; pageSize?: number } = {}) {
     return httpClient.request<PaginatedData<UserPayload>>("/users", { query });
   },
 
@@ -100,6 +110,13 @@ export const userManagementApi = {
 
   disableUser(id: number) {
     return httpClient.request<UserPayload>(`/users/${id}/disable`, { method: "POST" });
+  },
+
+  updateTestAccount(id: number, body: { isTestAccount: boolean; expectedUpdatedAt: string }) {
+    return httpClient.request<UserPayload>(`/users/${id}/test-account`, {
+      body,
+      method: "PATCH"
+    });
   },
 
   deleteUser(id: number) {
