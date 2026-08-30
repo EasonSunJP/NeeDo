@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AppIcon } from "../../components/client-ui/AppScaffold";
+import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import {
   ContactEventTimelinePanel,
   type ContactEventTimelineEntry
 } from "../../components/mobile/ContactEventTimeline";
+import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import { ScheduleSearchField } from "../../components/scheduling/ScheduleSearchField";
 import {
   UnifiedUserCalendar,
   type UnifiedCalendarTechnician
@@ -132,38 +134,24 @@ export function FormalTechnicianScheduleWorkspace({
   }, []);
 
   return (
-    <div className="space-y-4 text-[color:var(--client-text)]" data-testid="formal-technician-schedule-workspace">
-      <section className={cn(schedulePanelClass, "overflow-hidden p-3")}>
-        <div className="grid grid-cols-2 gap-2 rounded-full bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1">
-          {([["calendar", "我的排班"], ["settings", "排班设置"]] as const).map(([value, label]) => (
-            <button
-              className={cn(
-                "rounded-full px-4 py-2.5 text-sm font-black transition",
-                tab === value
-                  ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]"
-                  : "text-[color:var(--client-muted)]"
-              )}
-              key={value}
-              onClick={() => setTab(value)}
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <label className="relative mt-3 block">
-          <AppIcon className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-[color:var(--client-muted)]" name="search" />
-          <input
-            aria-label="行程搜索"
-            className="h-11 w-full rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] pl-11 pr-4 text-sm font-bold outline-none"
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="行程搜索"
-            value={searchQuery}
-          />
-        </label>
-      </section>
+    <div className="text-[color:var(--client-text)]" data-testid="formal-technician-schedule-workspace">
+      <FloatingHomeHeader className="relative z-10" panelClassName="relative overflow-hidden">
+        <FeatureSegmentedTabs
+          items={[
+            { label: "我的排班", value: "calendar" },
+            { label: "排班设置", value: "settings" }
+          ]}
+          onChange={setTab}
+          value={tab}
+          variant="header"
+        />
+        {tab === "calendar" ? (
+          <ScheduleSearchField onChange={setSearchQuery} value={searchQuery} />
+        ) : null}
+      </FloatingHomeHeader>
 
-      {tab === "settings" ? (
+      <div className="space-y-4">
+        {tab === "settings" ? (
         <div className="space-y-4" data-testid="formal-schedule-settings-surface">
           <section className={cn(schedulePanelClass, "p-4")}>
             <div className="flex items-center justify-between gap-3">
@@ -193,8 +181,8 @@ export function FormalTechnicianScheduleWorkspace({
             <FormalTechnicianOrdersPanel />
           </section>
         </div>
-      ) : (
-        <>
+        ) : (
+          <>
           <UnifiedUserCalendar
             currentTechnician={calendarTechnician}
             displayMode="parallel"
@@ -228,8 +216,9 @@ export function FormalTechnicianScheduleWorkspace({
           >
             <AppIcon name="plus" />
           </button>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

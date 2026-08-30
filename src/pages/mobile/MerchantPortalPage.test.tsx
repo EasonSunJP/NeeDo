@@ -40,6 +40,17 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(schedulePanelSource).toContain("searchQuery={merchantAppointmentSearchQuery}");
   });
 
+  it("keeps the approved appointment calendar as the first booking surface", () => {
+    const schedulePanelSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "schedule" && ('),
+      merchantSource.indexOf('{activeView === "contacts" && (')
+    );
+
+    expect(schedulePanelSource).toContain('<UnifiedUserCalendar currentStore={store}');
+    expect(schedulePanelSource).not.toContain("<FormalScheduleInventoryPanel");
+    expect(schedulePanelSource).not.toContain('className="space-y-4"');
+  });
+
   it("keeps the merchant staff detail header as a single shared glass layer", () => {
     const staffDetailSource = merchantSource.slice(
       merchantSource.indexOf("export function MerchantStaffDetailRoutePage"),

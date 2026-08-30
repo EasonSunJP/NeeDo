@@ -31,11 +31,13 @@ function TechnicianSchedulePageShell({
   title,
   subtitle,
   backTo = "/technician/schedule",
+  showHeader = true,
   children
 }: {
   title: string;
   subtitle?: string;
   backTo?: string;
+  showHeader?: boolean;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -43,14 +45,19 @@ function TechnicianSchedulePageShell({
   return (
     <MobileShell navItems={technicianNavItems}>
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
-        <MobileFullscreenHeader
-          className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
-          dark={isNight}
-          onBack={() => navigate(backTo)}
-          subtitle={subtitle}
-          title={title}
-        />
-        <main className="min-h-0 flex-1 px-4 py-3 pb-24">{children}</main>
+        {showHeader ? (
+          <MobileFullscreenHeader
+            className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
+            dark={isNight}
+            onBack={() => navigate(backTo)}
+            subtitle={subtitle}
+            title={title}
+          />
+        ) : null}
+        <main className={showHeader
+          ? "min-h-0 flex-1 px-4 py-3 pb-24"
+          : "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(220px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
+        }>{children}</main>
       </div>
     </MobileShell>
   );
@@ -119,11 +126,11 @@ export function TechnicianScheduleIndexRoutePage() {
   const resource = useFormalTechnicianScheduleResource(session, null);
 
   if (resource.loading) {
-    return <TechnicianSchedulePageShell backTo="/technician" title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
+    return <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
   }
   if (resource.error || !resource.data) {
     return (
-      <TechnicianSchedulePageShell backTo="/technician" title="排班与预约">
+      <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约">
         <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.profile_not_found"}
           onRetry={resource.retry}
@@ -136,6 +143,7 @@ export function TechnicianScheduleIndexRoutePage() {
   return (
     <TechnicianSchedulePageShell
       backTo="/technician"
+      showHeader={false}
       subtitle={`${resource.data.profile.displayName} · ${resource.data.profile.shop?.name ?? "--"}`}
       title="排班与预约"
     >

@@ -16,8 +16,12 @@ describe("approved formal technician schedule UI", () => {
 
   it("uses the restored mobile shell and full calendar surfaces", () => {
     expect(routeSource).toContain("MobileFullscreenHeader");
+    expect(routeSource).toContain("showHeader={false}");
     expect(routeSource).toContain("FormalTechnicianScheduleWorkspace");
     expect(routeSource).toContain('navItems={technicianNavItems}');
+    expect(workspaceSource).toContain("FloatingHomeHeader");
+    expect(workspaceSource).toContain("FeatureSegmentedTabs");
+    expect(workspaceSource).toContain("ScheduleSearchField");
     expect(routeSource).not.toContain("FormalRoutePage");
     expect(unifiedCalendarSource).toContain('aria-label="切换日程展示范围"');
     expect(unifiedCalendarSource).toContain('{ value: "day", label: "1日" }');
@@ -29,7 +33,6 @@ describe("approved formal technician schedule UI", () => {
     expect(unifiedCalendarSource).toContain('data-calendar-time-row="true"');
     expect(unifiedCalendarSource).toContain('data-calendar-time-tag="true"');
     expect(workspaceSource).toContain("排班设置");
-    expect(workspaceSource).toContain("行程搜索");
     expect(workspaceSource).toContain("FormalTechnicianOrdersPanel");
     expect(workspaceSource).toContain('aria-label="新建正式排班"');
   });

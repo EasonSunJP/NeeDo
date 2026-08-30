@@ -85,7 +85,7 @@ export function ContactEventTimeline({
   if (renderedEvents.length === 0) {
     return (
       <div className={cn("grid gap-4", className)}>
-        <div className="rounded-[18px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">
+        <div className="flex min-h-[72px] items-center justify-center rounded-[18px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">
           {emptyLabel}
         </div>
         {showCommentComposer ? (
