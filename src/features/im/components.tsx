@@ -746,11 +746,19 @@ export function ImChatComposer({
   voiceMode?: boolean;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
-  const recentReactions = useSyncExternalStore(
-    subscribeRecentImReactions,
-    getRecentImReactionSnapshot,
-    getRecentImReactionSnapshot
+  const previousPanelRef = useRef<ImChatComposerPanel>(null);
+  const [visibleRecentReactions, setVisibleRecentReactions] = useState<readonly string[]>(
+    () => getRecentImReactionSnapshot()
   );
+
+  useLayoutEffect(() => {
+    const openingEmojiPanel = panel === "emoji" && previousPanelRef.current !== "emoji";
+    previousPanelRef.current = panel;
+
+    if (openingEmojiPanel) {
+      setVisibleRecentReactions(getRecentImReactionSnapshot());
+    }
+  }, [panel]);
 
   useLayoutEffect(() => {
     const root = composerRootRef.current;
@@ -942,7 +950,7 @@ export function ImChatComposer({
               disabled={disabled}
               expanded
               onSelect={selectReactionValue}
-              recentValues={recentReactions}
+              recentValues={visibleRecentReactions}
             />
           </div>
         ) : null}
@@ -2577,7 +2585,7 @@ export function ImMessageActionSheet({
     >
       <button
         aria-label="关闭消息操作菜单"
-        className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        className="im-message-action-backdrop absolute inset-0 bg-black/20"
         onClick={(event) => {
           const pointerStartedOnBackdrop = backdropPointerStartedRef.current;
           backdropPointerStartedRef.current = false;

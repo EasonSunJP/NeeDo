@@ -83,6 +83,56 @@ describe("SocialQuickReplyComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("defers common-reaction reordering until the Social emoji panel is reopened", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+          canComment
+          onSubmit={vi.fn()}
+          targetIdentity="actor-mia:post-reaction-order"
+        />
+      );
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+
+    const readCommonOrder = () => [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '[data-im-reaction-section="common"] [data-im-reaction-value]'
+      )
+    ].map((button) => button.dataset.imReactionValue ?? "");
+    const initialOrder = readCommonOrder();
+    const selectedValue = initialOrder[1];
+    expect(selectedValue).toBeTruthy();
+    const selectedButton = [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '[data-im-reaction-section="common"] [data-im-reaction-value]'
+      )
+    ].find((button) => button.dataset.imReactionValue === selectedValue);
+    expect(selectedButton).toBeDefined();
+
+    await act(async () => {
+      selectedButton?.click();
+    });
+    expect(readCommonOrder()).toEqual(initialOrder);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='关闭表情面板']")?.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+    expect(readCommonOrder()[0]).toBe(selectedValue);
+
+    await act(async () => root.unmount());
+  });
+
   it("submits a judgement sticker with one formally uploaded image", async () => {
     const onSubmit = vi.fn().mockResolvedValue({ id: "reply-1" });
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview-1");

@@ -8145,6 +8145,12 @@ html.im-conversation-scroll-lock #root {
   -webkit-touch-callout: none;
 }
 
+.im-message-action-backdrop {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  filter: none;
+}
+
 .im-message-selection-handle {
   position: fixed;
   z-index: 80;

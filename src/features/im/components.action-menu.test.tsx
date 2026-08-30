@@ -2,12 +2,15 @@
 
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImMessageActionSheet, ImQuotedMessagePreview, MessageBubble } from "./components";
 import type { ImMessageActionSheetItem } from "./components";
 import type { ConversationMessage } from "./model";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 function buildRect({
   bottom,
@@ -129,12 +132,19 @@ describe("ImMessageActionSheet", () => {
     const quickReactionGrid = reactions?.querySelector<HTMLElement>('[data-im-message-reaction-row="quick"]');
     const actionGrid = menu?.querySelector<HTMLElement>('[data-im-message-action-section="actions"]');
     const actionItem = menu?.querySelector<HTMLElement>('[data-im-message-action-item="true"]');
+    const backdrop = document.querySelector<HTMLButtonElement>('[aria-label="关闭消息操作菜单"]');
+    const backdropRule = stylesSource.match(/\.im-message-action-backdrop\s*\{([^}]*)\}/)?.[1] ?? "";
 
     expect(menu).not.toBeNull();
     expect(container.contains(menu)).toBe(false);
     expect(shell.contains(menu)).toBe(true);
     expect(menu?.classList.contains("client-liquid-glass-surface")).toBe(true);
     expect(menu?.className).not.toContain("var(--client-elevated)_98%");
+    expect(backdrop?.classList.contains("im-message-action-backdrop")).toBe(true);
+    expect(backdrop?.className).not.toContain("backdrop-blur");
+    expect(backdropRule).toContain("-webkit-backdrop-filter: none");
+    expect(backdropRule).toContain("backdrop-filter: none");
+    expect(backdropRule).toContain("filter: none");
     expect(menuPositioner?.style.position).toBe("fixed");
     expect(menuPositioner?.style.left).toBe("12px");
     expect(menuPositioner?.style.top).toBe("210px");

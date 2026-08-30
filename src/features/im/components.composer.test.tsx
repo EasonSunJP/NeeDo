@@ -190,6 +190,49 @@ describe("ImChatComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("keeps common reactions stationary until the emoji panel is opened again", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+
+    const readCommonOrder = () => [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '[data-im-reaction-section="common"] [data-im-reaction-value]'
+      )
+    ].map((button) => button.dataset.imReactionValue ?? "");
+    const initialOrder = readCommonOrder();
+    const selectedValue = initialOrder[1];
+    expect(selectedValue).toBeTruthy();
+    const selectedButton = [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '[data-im-reaction-section="common"] [data-im-reaction-value]'
+      )
+    ].find((button) => button.dataset.imReactionValue === selectedValue);
+    expect(selectedButton).toBeDefined();
+
+    await act(async () => {
+      selectedButton?.click();
+    });
+    expect(readCommonOrder()).toEqual(initialOrder);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='关闭表情面板']")?.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+    expect(readCommonOrder()[0]).toBe(selectedValue);
+
+    await act(async () => root.unmount());
+  });
+
   it("renders independent glass capsules and switches panels without breaking their actions", async () => {
     const actionRun = vi.fn();
     const container = document.createElement("div");
