@@ -122,6 +122,10 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     return wallet;
   }
 
+  public async lockWalletById(walletId: number): Promise<WalletPayload | null> {
+    return [...this.wallets.values()].find((wallet) => wallet.id === walletId) ?? null;
+  }
+
   public async createTransaction(input: {
     idempotencyKey: string;
     type: LedgerTransactionPayload["type"];
@@ -258,6 +262,38 @@ interface ExistingAffiliateReleaseMismatch {
 }
 
 describe("LedgerService affiliate task budget operations", () => {
+  it.each([
+    [false, "NDP"],
+    [true, "TEST_NDP"]
+  ] as const)("routes isTestAccount=%s affiliate budget freeze through %s", async (isTestAccount, currency) => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    repository.accountClassifications.set(7, isTestAccount);
+    repository.seedWallet({
+      ownerType: "merchant_account",
+      ownerId: 41,
+      availableBalance: 2_500_000,
+      currency
+    });
+    const service = new LedgerService(repository);
+
+    const result = await service.freezeAffiliateTaskBudget({
+      taskId: isTestAccount ? 181 : 180,
+      ownerType: "merchant_account",
+      ownerId: 41,
+      amountNdp: 2_000_000,
+      idempotencyKey: `affiliate-task:${isTestAccount ? 181 : 180}:v1:freeze`,
+      actorUserId: 7
+    });
+
+    expect(result.transaction).toMatchObject({ currency });
+    expect(repository.wallets.get(`merchant_account:41:${currency}`)).toMatchObject({
+      availableBalance: 500_000,
+      frozenBalance: 2_000_000,
+      currency
+    });
+    expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
+  });
+
   it("freezes the complete task budget once and records immutable finance evidence", async () => {
     const repository = new AffiliateBudgetLedgerRepository();
     const wallet = repository.seedWallet({
@@ -417,6 +453,35 @@ describe("LedgerService affiliate task budget operations", () => {
         actorUserId: null
       })
     ]);
+  });
+
+  it("uses the frozen Test NDP wallet currency when a system actor releases budget", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const wallet = repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 15,
+      availableBalance: 300,
+      frozenBalance: 2_000,
+      currency: "TEST_NDP"
+    });
+    const service = new LedgerService(repository);
+
+    const result = await service.releaseAffiliateTaskBudget({
+      taskId: 185,
+      walletId: wallet.id,
+      ownerType: "shop",
+      ownerId: 15,
+      amountNdp: 2_000,
+      idempotencyKey: "affiliate-task:185:v1:release",
+      actorUserId: null
+    });
+
+    expect(result.transaction.currency).toBe("TEST_NDP");
+    expect(repository.wallets.get("shop:15:TEST_NDP")).toMatchObject({
+      availableBalance: 2_300,
+      frozenBalance: 0
+    });
+    expect(repository.reconciliationRows).toHaveLength(0);
   });
 
   it.each<ExistingAffiliateReleaseMismatch>([
@@ -783,6 +848,43 @@ describe("LedgerService affiliate reward settlement", () => {
         actorUserId: 7
       })
     ]);
+  });
+
+  it("settles a Test NDP reward only between Test NDP wallets without formal reconciliation", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const publisherWallet = repository.seedWallet({
+      ownerType: "merchant_account",
+      ownerId: 41,
+      availableBalance: 500_000,
+      frozenBalance: 2_000,
+      currency: "TEST_NDP"
+    });
+    repository.accountClassifications.set(51, true);
+    const service = new LedgerService(repository);
+
+    const result = await service.settleAffiliateReward({
+      taskId: 191,
+      attributionId: 291,
+      rewardId: 391,
+      bookingOrderId: 491,
+      publisherOwnerType: "merchant_account",
+      publisherOwnerId: 41,
+      publisherWalletId: publisherWallet.id,
+      claimantUserId: 51,
+      amountNdp: 1_000,
+      idempotencyKey: "affiliate:task:191:booking:491:reward:settlement",
+      actorUserId: 7
+    });
+
+    expect(result.transaction).toMatchObject({ currency: "TEST_NDP" });
+    expect(repository.wallets.get("merchant_account:41:TEST_NDP")).toMatchObject({
+      frozenBalance: 1_000
+    });
+    expect(repository.wallets.get("user:51:TEST_NDP")).toMatchObject({
+      availableBalance: 1_000
+    });
+    expect(repository.wallets.has("user:51:NDP")).toBe(false);
+    expect(repository.reconciliationRows).toHaveLength(0);
   });
 
   it("rejects a reward that exceeds publisher frozen NDP without side effects", async () => {

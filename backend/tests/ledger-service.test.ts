@@ -425,6 +425,7 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
 
     return {
       bookingOrderId,
+      ndpCurrency: financial.ndpCurrency,
       customerUserId: financial.customerUserId,
       shopId: financial.shopId,
       technicianProfileId: financial.technicianProfileId ?? null,
@@ -479,6 +480,166 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
 }
 
 describe("LedgerService wallet mutations", () => {
+  it.each([
+    [false, "NDP"],
+    [true, "TEST_NDP"]
+  ] as const)("uses %s account classification as %s for booking freeze", async (isTestAccount, currency) => {
+    const repository = new InMemoryLedgerRepository();
+    repository.accountClassifications.set(3, isTestAccount);
+    repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 10,
+      availableBalance: 1000,
+      currency
+    });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+
+    await service.freezeBookingAcceptance(
+      bookingInput({ bookingOrderId: isTestAccount ? 301 : 300, shopId: 10, actorUserId: 2, customerUserId: 3 })
+    );
+
+    expect(repository.wallets.get(`shop:10:${currency}`)).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 500,
+      currency
+    });
+    expect(Array.from(repository.transactions.values())[0]).toMatchObject({ currency });
+    expect(repository.financials.get(isTestAccount ? 301 : 300)).toMatchObject({
+      ndpCurrency: currency
+    });
+    expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
+  });
+
+  it("releases a booking in its snapshotted Test NDP currency after classification changes", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.accountClassifications.set(3, true);
+    repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 10,
+      availableBalance: 1_000,
+      currency: "TEST_NDP"
+    });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 302,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+
+    await service.freezeBookingAcceptance(input);
+    repository.accountClassifications.set(3, false);
+    const released = await service.releaseBookingHold(input);
+
+    expect(released).toMatchObject({ currency: "TEST_NDP" });
+    expect(repository.wallets.get("shop:10:TEST_NDP")).toMatchObject({
+      availableBalance: 1_000,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.has("shop:10:NDP")).toBe(false);
+    expect(repository.financials.get(302)).toMatchObject({
+      ndpCurrency: "TEST_NDP",
+      settlementStatus: "cancelled"
+    });
+    expect(repository.reconciliationRows).toHaveLength(0);
+  });
+
+  it("completes a booking in its snapshotted Test NDP currency after classification changes", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.accountClassifications.set(3, true);
+    repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 10,
+      availableBalance: 1_000,
+      currency: "TEST_NDP"
+    });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 303,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+
+    await service.freezeBookingAcceptance(input);
+    repository.accountClassifications.set(3, false);
+    const settled = await service.settleBookingCompletion({ ...input, customerUserId: 3 });
+
+    expect(settled).toMatchObject({ currency: "TEST_NDP" });
+    expect(repository.wallets.get("shop:10:TEST_NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.get("user:3:TEST_NDP")).toMatchObject({
+      availableBalance: 100,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.has("user:3:NDP")).toBe(false);
+    expect(repository.reconciliationRows).toHaveLength(0);
+  });
+
+  it("pays merchant-cancel compensation only in the booking's Test NDP currency", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.accountClassifications.set(3, true);
+    repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 10,
+      availableBalance: 1_000,
+      currency: "TEST_NDP"
+    });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 304,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+
+    await service.freezeBookingAcceptance(input);
+    repository.accountClassifications.set(3, false);
+    const compensated = await service.compensateCustomerForMerchantCancellation({
+      ...input,
+      customerUserId: 3
+    });
+
+    expect(compensated).toMatchObject({ currency: "TEST_NDP" });
+    expect(repository.wallets.get("shop:10:TEST_NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.get("user:3:TEST_NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.has("shop:10:NDP")).toBe(false);
+    expect(repository.wallets.has("user:3:NDP")).toBe(false);
+    expect(repository.reconciliationRows).toHaveLength(0);
+  });
+
   it("freezes a merchant booking acceptance once for an idempotency key", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1000 });

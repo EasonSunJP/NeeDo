@@ -13,7 +13,7 @@ import type {
   BookingPlatformFeePolicySnapshot,
   PlatformFeePolicyService
 } from "./platform-fee-policy.service";
-import type { LedgerCurrency } from "./ledger-currency.service";
+import { LedgerCurrencyService, type LedgerCurrency } from "./ledger-currency.service";
 
 export type { LedgerCurrency } from "./ledger-currency.service";
 
@@ -237,6 +237,7 @@ export interface OrderFinancialUpsertInput {
 
 export interface OrderFinancialPlatformFeeSnapshot {
   bookingOrderId: number;
+  ndpCurrency: LedgerCurrency;
   customerUserId: number;
   shopId: number;
   technicianProfileId: number | null;
@@ -258,6 +259,7 @@ export interface OrderFinancialPlatformFeeSnapshot {
 export interface PlatformFeeDebtAllocationRecord {
   id: number;
   bookingOrderId: number;
+  ndpCurrency: LedgerCurrency;
   customerUserId: number;
   platformFeeWalletId: number;
   platformFeeAcceptedAt: Date;
@@ -548,7 +550,6 @@ export interface BookingLedgerSettlementPort {
   ) => Promise<LedgerTransactionPayload | void>;
 }
 
-const CURRENCY: LedgerCurrency = "NDP";
 const PLATFORM_FEE_DEBT_ALLOCATION_BATCH_SIZE = 100;
 
 export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewardSettlementPort {
@@ -577,10 +578,15 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         };
       }
 
+      if (input.actorUserId === null) {
+        throw this.walletMutationError();
+      }
+      const currency = await this.resolveCurrencyForUser(repository, input.actorUserId);
+
       const wallet = await repository.getOrCreateWallet({
         ownerType: input.ownerType,
         ownerId: input.ownerId,
-        currency: CURRENCY
+        currency
       });
 
       if (wallet.availableBalance < input.amountNdp) {
@@ -605,7 +611,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.taskId,
         actorUserId: input.actorUserId,
         amount: input.amountNdp,
-        currency: CURRENCY,
+        currency,
         metadata: {
           taskId: input.taskId,
           ownerType: input.ownerType,
@@ -650,18 +656,15 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const existing = await repository.findTransactionByIdempotencyKey(input.idempotencyKey);
 
       if (existing) {
-        return this.resolveExistingAffiliateTaskBudgetRelease(existing, input);
+        return this.resolveExistingAffiliateTaskBudgetRelease(repository, existing, input);
       }
 
-      const wallet = await repository.getOrCreateWallet({
-        ownerType: input.ownerType,
-        ownerId: input.ownerId,
-        currency: CURRENCY
-      });
+      const wallet = await this.lockWalletById(repository, input.walletId);
 
-      if (wallet.id !== input.walletId) {
+      if (wallet.ownerType !== input.ownerType || wallet.ownerId !== input.ownerId) {
         throw this.walletMutationError();
       }
+      const currency = wallet.currency;
       if (wallet.frozenBalance < input.amountNdp) {
         throw this.insufficientFrozenError();
       }
@@ -684,7 +687,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.taskId,
         actorUserId: input.actorUserId,
         amount: input.amountNdp,
-        currency: CURRENCY,
+        currency,
         metadata: {
           taskId: input.taskId,
           ownerType: input.ownerType,
@@ -732,23 +735,28 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         return this.resolveAffiliateRewardLedgerResult(repository, existing, input);
       }
 
-      const publisherWallet = await repository.getOrCreateWallet({
-        ownerType: input.publisherOwnerType,
-        ownerId: input.publisherOwnerId,
-        currency: CURRENCY
-      });
+      const publisherWallet = await this.lockWalletById(repository, input.publisherWalletId);
 
-      if (publisherWallet.id !== input.publisherWalletId) {
+      if (
+        publisherWallet.ownerType !== input.publisherOwnerType ||
+        publisherWallet.ownerId !== input.publisherOwnerId
+      ) {
         throw this.walletMutationError();
       }
       if (publisherWallet.frozenBalance < input.amountNdp) {
         throw this.insufficientFrozenError();
       }
 
+      const claimantCurrency = await this.resolveCurrencyForUser(
+        repository,
+        input.claimantUserId
+      );
+      LedgerCurrencyService.assertSameCurrency(publisherWallet.currency, [claimantCurrency]);
+      const currency = publisherWallet.currency;
       const claimantWallet = await repository.getOrCreateWallet({
         ownerType: "user",
         ownerId: input.claimantUserId,
-        currency: CURRENCY
+        currency
       });
       const updatedPublisherWallet = await repository.applyWalletDelta({
         walletId: publisherWallet.id,
@@ -778,7 +786,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.rewardId,
         actorUserId: input.actorUserId,
         amount: input.amountNdp,
-        currency: CURRENCY,
+        currency,
         metadata: {
           taskId: input.taskId,
           attributionId: input.attributionId,
@@ -846,6 +854,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         }
 
         this.assertFinanceMutationRepository(repository);
+        const currency = await this.resolveBookingCurrency(repository, input);
         const feeType = this.acceptanceFeeType(input);
         const transactionContext = { transactionClient };
         if (feeType === "b_platform_fee" && this.platformFeePolicyService) {
@@ -853,7 +862,8 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
             repository,
             input,
             idempotencyKey,
-            transactionContext
+            transactionContext,
+            currency
           );
         }
         const fee = await this.calculateFee(feeType, "hold", input, transactionContext);
@@ -863,7 +873,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         const wallet = await repository.getOrCreateWallet({
           ownerType: holdOwner.ownerType,
           ownerId: holdOwner.ownerId,
-          currency: CURRENCY
+          currency
         });
 
         if (wallet.availableBalance < holdAmount) {
@@ -890,7 +900,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           bookingOrderId: input.bookingOrderId,
           feeType,
           holdAmountNdp: holdAmount,
-          currency: CURRENCY,
+          currency,
           status: "active",
           idempotencyKey,
           calculationLogId: fee.calculationLogId,
@@ -911,7 +921,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
             amountNdp: holdAmount,
             fee
           }
-        });
+        }, currency);
 
         if (holdAmount === 0) {
           return undefined;
@@ -924,7 +934,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           referenceId: input.bookingOrderId,
           actorUserId: input.actorUserId,
           amount: holdAmount,
-          currency: CURRENCY,
+          currency,
           metadata: { shopId: input.shopId, holdOwner, fee }
         });
         await repository.createLedgerEntry({
@@ -962,7 +972,8 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     repository: LedgerRepositoryPort,
     input: BookingLedgerSettlementInput,
     idempotencyKey: string,
-    context: LedgerMutationContext
+    context: LedgerMutationContext,
+    currency: LedgerCurrency
   ): Promise<LedgerTransactionPayload | void> {
     const acceptedAt = input.acceptedAt ?? this.now();
     const policy = await this.platformFeePolicyService!.resolveForBookingSettlement(
@@ -1005,7 +1016,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           policy,
           fee: this.feeMetadata(fee)
         }
-      });
+      }, currency);
 
       return undefined;
     }
@@ -1014,7 +1025,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     const wallet = await repository.getOrCreateWallet({
       ownerType: owner.ownerType,
       ownerId: owner.ownerId,
-      currency: CURRENCY
+      currency
     });
     const deficitBeforeNdp = Math.max(0, -wallet.availableBalance);
     const deficitAfterNdp = Math.max(0, -(wallet.availableBalance - holdAmount));
@@ -1072,7 +1083,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       bookingOrderId: input.bookingOrderId,
       feeType: "b_platform_fee",
       holdAmountNdp: holdAmount,
-      currency: CURRENCY,
+      currency,
       status: "active",
       idempotencyKey,
       calculationLogId: fee.calculationLogId,
@@ -1105,7 +1116,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         previewVersion,
         fee: this.feeMetadata(fee)
       }
-    });
+    }, currency);
 
     if (holdAmount === 0) {
       return undefined;
@@ -1118,7 +1129,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       referenceId: input.bookingOrderId,
       actorUserId: input.actorUserId,
       amount: holdAmount,
-      currency: CURRENCY,
+      currency,
       metadata: { shopId: input.shopId, policy, owner, shortfallNdp, previewVersion }
     });
     await repository.createLedgerEntry({
@@ -1180,13 +1191,15 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
             action: "booking_cancel_platform_fee_disabled",
             amountNdp: 0
           }
-        });
+        }, snapshot.ndpCurrency);
 
         return undefined;
       }
       const hold = snapshot
         ? await this.requireSnapshotPlatformFeeHold(repository, input.bookingOrderId)
         : await this.requireAcceptanceHold(repository, input);
+      const currency = snapshot?.ndpCurrency ?? hold.currency;
+      LedgerCurrencyService.assertSameCurrency(currency, [hold.currency]);
       const releaseAmount = this.remainingHoldAmount(hold);
 
       if (releaseAmount <= 0) {
@@ -1211,7 +1224,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
             action: "booking_cancel_no_remaining_hold",
             amountNdp: 0
           }
-        });
+        }, currency);
 
         return undefined;
       }
@@ -1221,8 +1234,9 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         (await repository.getOrCreateWallet({
           ownerType: hold.ownerType,
           ownerId: hold.ownerId,
-          currency: CURRENCY
+          currency
         }));
+      LedgerCurrencyService.assertSameCurrency(currency, [wallet.currency]);
 
       if (wallet.frozenBalance < releaseAmount) {
         throw this.insufficientFrozenError();
@@ -1246,7 +1260,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: releaseAmount,
-        currency: CURRENCY,
+        currency,
         metadata: { shopId: input.shopId, holdId: hold.id }
       });
       await repository.createLedgerEntry({
@@ -1286,7 +1300,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           action: "booking_cancel_release",
           amountNdp: releaseAmount
         }
-      });
+      }, currency);
       await this.recordFinanceAndAudit(repository, transaction, {
         action: "ledger.booking_cancel.unfreeze",
         expectedAmount: releaseAmount,
@@ -1328,6 +1342,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         );
       }
       const hold = await this.requireAcceptanceHold(repository, input);
+      const currency = hold.currency;
       const fee = await this.calculateFee("b_platform_fee", "capture", input, context);
       const reward = await this.calculateFee("user_reward", "capture", input, context);
       const holdRemaining = this.remainingHoldAmount(hold);
@@ -1341,7 +1356,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const merchantWallet = await repository.getOrCreateWallet({
         ownerType: "shop",
         ownerId: input.shopId,
-        currency: CURRENCY
+        currency
       });
 
       if (merchantWallet.frozenBalance < captureAmount + releaseAmount) {
@@ -1351,7 +1366,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const customerWallet = await repository.getOrCreateWallet({
         ownerType: "user",
         ownerId: input.customerUserId,
-        currency: CURRENCY
+        currency
       });
       const updatedMerchantWallet =
         captureAmount + releaseAmount > 0
@@ -1409,7 +1424,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           fee,
           reward
         }
-      });
+      }, currency);
 
       if (transactionAmount === 0) {
         return undefined;
@@ -1422,7 +1437,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: transactionAmount,
-        currency: CURRENCY,
+        currency,
         metadata: {
           shopId: input.shopId,
           customerUserId: input.customerUserId,
@@ -1510,12 +1525,16 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           platformFeeNdp: 0,
           userRewardNdp: 0
         }
-      });
+      }, snapshot.ndpCurrency);
 
       return undefined;
     }
 
     const hold = await this.requireSnapshotPlatformFeeHold(repository, input.bookingOrderId);
+    LedgerCurrencyService.assertSameCurrency(snapshot.ndpCurrency, [
+      hold.currency,
+      ...(lockedPayerWallet ? [lockedPayerWallet.currency] : [])
+    ]);
     const holdRemaining = this.remainingHoldAmount(hold);
     const captureAmount = Math.min(snapshot.platformFeeAmountNdpSnapshot, holdRemaining);
     const releaseAmount = Math.max(0, holdRemaining - captureAmount);
@@ -1556,7 +1575,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         ? await repository.getOrCreateWallet({
             ownerType: "user",
             ownerId: input.customerUserId,
-            currency: CURRENCY
+            currency: snapshot.ndpCurrency
           })
         : null;
     const updatedCustomerWallet = customerWallet
@@ -1605,7 +1624,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         rewardStatus: rewardPending ? "pending" : "immediate",
         rewardDeadlineAt: rewardDeadlineAt?.toISOString() ?? null
       }
-    });
+    }, snapshot.ndpCurrency);
 
     if (transactionAmount === 0) {
       return undefined;
@@ -1618,7 +1637,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       referenceId: input.bookingOrderId,
       actorUserId: input.actorUserId,
       amount: transactionAmount,
-      currency: CURRENCY,
+      currency: snapshot.ndpCurrency,
       metadata: {
         shopId: input.shopId,
         customerUserId: input.customerUserId,
@@ -1690,6 +1709,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       }
       this.assertFinanceMutationRepository(repository);
       const hold = await this.requireAcceptanceHold(repository, input);
+      const currency = hold.currency;
       const fee = await this.calculateFee("c_request_dispatch_fee", "capture", input, context);
       const holdRemaining = this.remainingHoldAmount(hold);
       const captureAmount = Math.min(fee.finalFeeNdp, holdRemaining);
@@ -1699,7 +1719,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const customerWallet = await repository.getOrCreateWallet({
         ownerType: "user",
         ownerId: input.customerUserId,
-        currency: CURRENCY
+        currency
       });
 
       if (customerWallet.frozenBalance < captureAmount + releaseAmount) {
@@ -1745,7 +1765,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           releasedNdp: releaseAmount,
           fee
         }
-      });
+      }, currency);
 
       if (transactionAmount === 0) {
         return undefined;
@@ -1758,7 +1778,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: transactionAmount,
-        currency: CURRENCY,
+        currency,
         metadata: {
           shopId: input.shopId,
           customerUserId: input.customerUserId,
@@ -1819,6 +1839,11 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
+      const financialSnapshot = await repository.findOrderFinancialPlatformFeeSnapshot?.(
+        input.bookingOrderId
+      );
+      const currency =
+        financialSnapshot?.ndpCurrency ?? (await this.resolveBookingCurrency(repository, input));
       await this.releaseBookingHold(input, { transactionClient });
       const penaltyFee = await this.calculateFee("penalty", "capture", input, {
         transactionClient
@@ -1828,7 +1853,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const merchantWallet = await repository.getOrCreateWallet({
         ownerType: "shop",
         ownerId: input.shopId,
-        currency: CURRENCY
+        currency
       });
 
       if (merchantWallet.availableBalance < penaltyAmount) {
@@ -1838,7 +1863,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const customerWallet = await repository.getOrCreateWallet({
         ownerType: "user",
         ownerId: input.customerUserId,
-        currency: CURRENCY
+        currency
       });
       const updatedMerchantWallet =
         penaltyAmount > 0
@@ -1879,7 +1904,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           compensationToUserNdp: penaltyAmount,
           penaltyFee
         }
-      });
+      }, currency);
 
       if (penaltyAmount === 0) {
         return undefined;
@@ -1892,7 +1917,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: penaltyAmount,
-        currency: CURRENCY,
+        currency,
         metadata: {
           shopId: input.shopId,
           customerUserId: input.customerUserId,
@@ -2116,6 +2141,10 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     if (!locked || locked.platformFeeWalletId !== preliminary.platformFeeWalletId) {
       throw this.walletMutationError();
     }
+    LedgerCurrencyService.assertSameCurrency(locked.ndpCurrency, [
+      preliminary.ndpCurrency,
+      ...(payerWallet ? [payerWallet.currency] : [])
+    ]);
     return { snapshot: locked, payerWallet };
   }
 
@@ -2195,6 +2224,44 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     });
   }
 
+  private resolveCurrencyForUser(
+    repository: LedgerRepositoryPort,
+    userId: number
+  ): Promise<LedgerCurrency> {
+    return new LedgerCurrencyService(repository).resolveForUser(userId);
+  }
+
+  private resolveBookingCurrency(
+    repository: LedgerRepositoryPort,
+    input: BookingLedgerSettlementInput
+  ): Promise<LedgerCurrency> {
+    const userId = input.customerUserId ?? input.actorUserId;
+    if (userId === null || userId === undefined) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.ledger.currency_user_required",
+        statusCode: 500
+      });
+    }
+
+    return this.resolveCurrencyForUser(repository, userId);
+  }
+
+  private async lockWalletById(
+    repository: LedgerRepositoryPort,
+    walletId: number
+  ): Promise<WalletPayload> {
+    if (!repository.lockWalletById) {
+      throw this.repositoryUnavailableError();
+    }
+    const wallet = await repository.lockWalletById(walletId);
+    if (!wallet) {
+      throw this.walletMutationError();
+    }
+
+    return wallet;
+  }
+
   private remainingHoldAmount(hold: WalletHoldPayload): number {
     return Math.max(0, hold.holdAmountNdp - hold.capturedAmountNdp - hold.releasedAmountNdp);
   }
@@ -2221,12 +2288,13 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
   private upsertOrderFinancial(
     repository: LedgerRepositoryPort,
     input: BookingLedgerSettlementInput,
-    override: Partial<OrderFinancialUpsertInput>
+    override: Partial<OrderFinancialUpsertInput>,
+    ndpCurrency: LedgerCurrency
   ): Promise<void> {
     return repository.upsertOrderFinancial!({
       bookingOrderId: input.bookingOrderId,
       orderType: input.orderType,
-      ndpCurrency: CURRENCY,
+      ndpCurrency,
       customerUserId: input.customerUserId ?? 0,
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId ?? null,
@@ -2243,6 +2311,10 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     return this.repository.runInTransaction(async (repository) => {
       this.assertWalletAdjustmentRepository(repository);
       const owner = this.walletOwnerForActor(actor);
+      const currency = await this.resolveCurrencyForUser(repository, actor.userId);
+      if (currency === "TEST_NDP") {
+        throw this.testNdpSettlementForbiddenError();
+      }
       const existing = await repository.findWalletAdjustmentByIdempotencyKey!(input.idempotencyKey);
 
       if (existing) {
@@ -2273,7 +2345,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
 
       const wallet = await repository.getOrCreateWallet({
         ...owner,
-        currency: CURRENCY
+        currency
       });
       const created = await repository.createWalletAdjustmentRequest!({
         ...input,
@@ -2364,11 +2436,17 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         return rejected;
       }
 
-      const wallet = await repository.getOrCreateWallet({
-        ownerType: request.ownerType,
-        ownerId: request.ownerId,
-        currency: CURRENCY
-      });
+      const wallet = await this.lockWalletById(repository, request.walletId);
+      if (
+        wallet.ownerType !== request.ownerType ||
+        wallet.ownerId !== request.ownerId ||
+        wallet.currency === "TEST_NDP"
+      ) {
+        if (wallet.currency === "TEST_NDP") {
+          throw this.testNdpSettlementForbiddenError();
+        }
+        throw this.walletMutationError();
+      }
       const availableDelta = request.type === "topup" ? request.amountNdp : -request.amountNdp;
       const updatedWallet = await repository.applyWalletDelta({
         walletId: wallet.id,
@@ -2391,7 +2469,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: request.id,
         actorUserId: actor.userId,
         amount: request.amountNdp,
-        currency: CURRENCY,
+        currency: wallet.currency,
         metadata: {
           ownerType: request.ownerType,
           ownerId: request.ownerId,
@@ -2515,6 +2593,9 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     userRewardNdp?: number;
     userRewardGrantedAt?: Date | null;
   }> {
+    if (debt.ndpCurrency === "TEST_NDP") {
+      throw this.testNdpSettlementForbiddenError();
+    }
     if (debt.settlementStatus !== "settled") {
       return {
         userRewardStatus: "immediate",
@@ -2552,7 +2633,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const customerWallet = await repository.getOrCreateWallet({
         ownerType: "user",
         ownerId: debt.customerUserId,
-        currency: CURRENCY
+        currency: debt.ndpCurrency
       });
       const updatedCustomerWallet = await repository.applyWalletDelta({
         walletId: customerWallet.id,
@@ -2569,7 +2650,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: debt.bookingOrderId,
         actorUserId,
         amount: debt.userRewardEligibleNdp,
-        currency: CURRENCY,
+        currency: debt.ndpCurrency,
         metadata: {
           delayedUserReward: true,
           orderFinancialId: debt.id,
@@ -2605,11 +2686,12 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
 
   public async getMyWallet(actor: AuthenticatedAccessContext): Promise<WalletPayload> {
     const owner = this.walletOwnerForReadActor(actor);
+    const currency = await this.resolveCurrencyForUser(this.repository, actor.userId);
 
     if (this.repository.findWallet) {
       const existing = await this.repository.findWallet({
         ...owner,
-        currency: CURRENCY
+        currency
       });
 
       if (existing) {
@@ -2619,7 +2701,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
 
     const wallet = await this.repository.getOrCreateWallet({
       ...owner,
-      currency: CURRENCY
+      currency
     });
 
     return wallet;
@@ -2632,7 +2714,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
 
     const wallet = await this.repository.findWallet({
       ...input,
-      currency: input.currency ?? CURRENCY
+      currency: input.currency ?? "NDP"
     });
 
     if (!wallet) {
@@ -2658,9 +2740,10 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       actor.currentIdentityScopeType !== "global" &&
       actor.currentIdentityScopeType !== "platform"
     ) {
+      const currency = await this.resolveCurrencyForUser(this.repository, actor.userId);
       const wallet = await this.repository.findWallet({
         ...this.walletOwnerForReadActor(actor),
-        currency: CURRENCY
+        currency
       });
 
       if (!wallet || wallet.id !== input.walletId) {
@@ -2715,14 +2798,16 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       metadata?: Record<string, unknown>;
     }
   ): Promise<void> {
-    await repository.createFinanceReconciliation({
-      transactionId: transaction.id,
-      referenceType: transaction.referenceType,
-      referenceId: transaction.referenceId,
-      currency: "NDP",
-      expectedAmount: input.expectedAmount,
-      actualAmount: input.actualAmount
-    });
+    if (transaction.currency === "NDP") {
+      await repository.createFinanceReconciliation({
+        transactionId: transaction.id,
+        referenceType: transaction.referenceType,
+        referenceId: transaction.referenceId,
+        currency: "NDP",
+        expectedAmount: input.expectedAmount,
+        actualAmount: input.actualAmount
+      });
+    }
     await repository.createAuditLog({
       actorUserId: transaction.actorUserId,
       action: input.action,
@@ -2751,17 +2836,19 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     const wallet = await repository.getOrCreateWallet({
       ownerType: input.ownerType,
       ownerId: input.ownerId,
-      currency: CURRENCY
+      currency: transaction.currency
     });
 
     return wallet.id;
   }
 
-  private resolveExistingAffiliateTaskBudgetRelease(
+  private async resolveExistingAffiliateTaskBudgetRelease(
+    repository: LedgerRepositoryPort,
     transaction: LedgerTransactionPayload,
     input: ReleaseAffiliateTaskBudgetInput
-  ): AffiliateBudgetLedgerResult {
+  ): Promise<AffiliateBudgetLedgerResult> {
     const metadata = transaction.metadata;
+    const wallet = await this.lockWalletById(repository, input.walletId);
 
     if (!this.isPlainObject(metadata)) {
       throw this.walletMutationError();
@@ -2775,7 +2862,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       transaction.referenceId !== input.taskId ||
       transaction.actorUserId !== input.actorUserId ||
       transaction.amount !== input.amountNdp ||
-      transaction.currency !== CURRENCY ||
+      transaction.currency !== wallet.currency ||
       metadata.taskId !== input.taskId ||
       metadata.ownerType !== input.ownerType ||
       metadata.ownerId !== input.ownerId ||
@@ -2834,15 +2921,16 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     const claimantEntry = transaction.entries.find(
       (entry) => entry.direction === "available_credit"
     );
-    const publisherWallet = await repository.getOrCreateWallet({
-      ownerType: input.publisherOwnerType,
-      ownerId: input.publisherOwnerId,
-      currency: CURRENCY
-    });
+    const publisherWallet = await this.lockWalletById(repository, input.publisherWalletId);
+    const claimantCurrency = await this.resolveCurrencyForUser(repository, input.claimantUserId);
+    LedgerCurrencyService.assertSameCurrency(transaction.currency, [
+      publisherWallet.currency,
+      claimantCurrency
+    ]);
     const claimantWallet = await repository.getOrCreateWallet({
       ownerType: "user",
       ownerId: input.claimantUserId,
-      currency: CURRENCY
+      currency: transaction.currency
     });
 
     if (
@@ -3005,6 +3093,14 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     return new AppError({
       code: ERROR_CODES.WALLET_MUTATION_FAILED,
       message: "error.wallet.mutation_failed",
+      statusCode: 409
+    });
+  }
+
+  private testNdpSettlementForbiddenError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
+      message: "error.test_ndp.settlement_forbidden",
       statusCode: 409
     });
   }

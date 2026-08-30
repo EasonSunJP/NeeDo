@@ -158,6 +158,7 @@ const createFixture = async () => {
     ]
   };
   const ledgerRepository = {
+    findUserAccountClassification: jest.fn(async () => ({ isTestAccount: false })),
     findWallet: jest.fn(async () => ({
       id: 1,
       ownerType: "user",

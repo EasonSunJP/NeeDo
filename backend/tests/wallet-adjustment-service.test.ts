@@ -40,12 +40,13 @@ const affiliate: AuthenticatedAccessContext = {
   currentIdentityScopeId: null
 };
 
-const createRepository = (availableBalance = 1000) => {
+const createRepository = (availableBalance = 1000, isTestAccount = false) => {
+  const currency = isTestAccount ? ("TEST_NDP" as const) : ("NDP" as const);
   let wallet = {
     id: 3,
     ownerType: "shop" as const,
     ownerId: 7,
-    currency: "NDP" as const,
+    currency,
     availableBalance,
     frozenBalance: 0,
     createdAt: now,
@@ -66,6 +67,7 @@ const createRepository = (availableBalance = 1000) => {
         status: "pending",
         ownerType: input.ownerType,
         ownerId: input.ownerId,
+        walletId: input.walletId,
         amountNdp: input.amountNdp,
         idempotencyKey: input.idempotencyKey,
         bankReference: input.bankReference ?? null,
@@ -109,7 +111,11 @@ const createRepository = (availableBalance = 1000) => {
       return request;
     }),
     findTransactionByIdempotencyKey: jest.fn(async () => null),
+    findUserAccountClassification: jest.fn(async () => ({ isTestAccount })),
     getOrCreateWallet: jest.fn(async () => wallet),
+    lockWalletById: jest.fn(async (walletId: number) =>
+      wallet.id === walletId ? wallet : null
+    ),
     applyWalletDelta: jest.fn(
       async (input: { availableDelta: number; requireAvailableAtLeast?: number }) => {
         if (
@@ -131,7 +137,7 @@ const createRepository = (availableBalance = 1000) => {
       referenceId: input.referenceId,
       actorUserId: input.actorUserId,
       amount: input.amount,
-      currency: "NDP",
+      currency: input.currency,
       metadata: input.metadata ?? null,
       createdAt: now,
       updatedAt: now,
@@ -157,6 +163,52 @@ const createRepository = (availableBalance = 1000) => {
 };
 
 describe("LedgerService wallet adjustment requests", () => {
+  it.each(["topup", "withdrawal"] as const)(
+    "rejects %s for a Test NDP account",
+    async (type) => {
+      const repository = createRepository(1000, true);
+      const service = new LedgerService(repository as never);
+
+      await expect(
+        service.createWalletAdjustmentRequest(merchant, {
+          type,
+          amountNdp: 500,
+          idempotencyKey: `test-ndp-${type}-forbidden`
+        })
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
+        statusCode: 409
+      });
+      expect(repository.createWalletAdjustmentRequest).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects approval of an existing Test NDP adjustment request", async () => {
+    const repository = createRepository(1_000, true);
+    await repository.createWalletAdjustmentRequest({
+      type: "topup",
+      ownerType: "shop",
+      ownerId: 7,
+      walletId: 3,
+      amountNdp: 500,
+      idempotencyKey: "existing-test-ndp-topup",
+      requestedById: merchant.userId
+    });
+    const service = new LedgerService(repository as never);
+
+    await expect(
+      service.reviewWalletAdjustmentRequest(operator, 41, {
+        action: "approve",
+        note: "must remain non-settleable"
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
+      statusCode: 409
+    });
+    expect(repository.applyWalletDelta).not.toHaveBeenCalled();
+    expect(repository.createTransaction).not.toHaveBeenCalled();
+  });
+
   it("guards affiliate withdrawal creation even when the user is switched to customer identity", async () => {
     const repository = createRepository();
     const eligibility = {
@@ -617,11 +669,29 @@ describe("LedgerService wallet adjustment requests", () => {
       message: "error.wallet.not_found"
     });
   });
+
+  it("returns the Test NDP wallet for a test account", async () => {
+    const repository = createRepository(100_000, true);
+    const service = new LedgerService(repository as never);
+
+    await expect(service.getMyWallet(merchant)).resolves.toMatchObject({
+      ownerType: "shop",
+      ownerId: 7,
+      currency: "TEST_NDP",
+      availableBalance: 100_000
+    });
+    expect(repository.findWallet).toHaveBeenCalledWith({
+      ownerType: "shop",
+      ownerId: 7,
+      currency: "TEST_NDP"
+    });
+  });
 });
 
 interface DebtRecord {
   id: number;
   bookingOrderId: number;
+  ndpCurrency: "NDP" | "TEST_NDP";
   customerUserId: number;
   platformFeeWalletId: number;
   platformFeeAcceptedAt: Date;
@@ -643,9 +713,11 @@ const debtRecord = (input: {
   settlementStatus?: "holding" | "settled";
   rewardStatus?: DebtRecord["userRewardStatus"];
   rewardDeadlineAt?: Date | null;
+  ndpCurrency?: DebtRecord["ndpCurrency"];
 }): DebtRecord => ({
   id: input.id,
   bookingOrderId: input.bookingOrderId,
+  ndpCurrency: input.ndpCurrency ?? "NDP",
   customerUserId: 30,
   platformFeeWalletId: 3,
   platformFeeAcceptedAt: new Date(`${input.acceptedAt}T00:00:00.000Z`),

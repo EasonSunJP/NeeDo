@@ -62,6 +62,7 @@ type WalletAdjustmentRequestRecord = Prisma.WalletAdjustmentRequestGetPayload<
 >;
 type LockedOrderFinancialPlatformFeeRow = {
   bookingOrderId: number;
+  ndpCurrency: string;
   customerUserId: number;
   shopId: number;
   technicianProfileId: number | null;
@@ -82,6 +83,7 @@ type LockedOrderFinancialPlatformFeeRow = {
 type LockedPlatformFeeDebtRow = {
   id: number;
   bookingOrderId: number;
+  ndpCurrency: string;
   customerUserId: number;
   platformFeeWalletId: number | null;
   platformFeeAcceptedAt: Date | null;
@@ -584,6 +586,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       },
       select: {
         bookingOrderId: true,
+        ndpCurrency: true,
         customerUserId: true,
         shopId: true,
         technicianProfileId: true,
@@ -608,6 +611,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
 
     return {
       ...financial,
+      ndpCurrency: LedgerCurrencyService.fromStored(financial.ndpCurrency),
       platformFeeEnabledSnapshot: financial.platformFeeEnabledSnapshot,
       platformFeeWalletOwnerType: financial.platformFeeWalletOwnerType
         ? this.ownerTypeFromDb(financial.platformFeeWalletOwnerType)
@@ -627,6 +631,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     const rows = await this.client.$queryRaw<LockedOrderFinancialPlatformFeeRow[]>(
       Prisma.sql`SELECT
           booking_order_id AS bookingOrderId,
+          ndp_currency AS ndpCurrency,
           customer_user_id AS customerUserId,
           shop_id AS shopId,
           technician_profile_id AS technicianProfileId,
@@ -655,6 +660,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     }
     return {
       ...financial,
+      ndpCurrency: LedgerCurrencyService.fromStored(financial.ndpCurrency),
       platformFeeEnabledSnapshot: Boolean(financial.platformFeeEnabledSnapshot),
       platformFeeWalletOwnerType: financial.platformFeeWalletOwnerType
         ? this.ownerTypeFromDb(financial.platformFeeWalletOwnerType)
@@ -742,6 +748,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       Prisma.sql`SELECT
           id,
           booking_order_id AS bookingOrderId,
+          ndp_currency AS ndpCurrency,
           customer_user_id AS customerUserId,
           platform_fee_wallet_id AS platformFeeWalletId,
           platform_fee_accepted_at AS platformFeeAcceptedAt,
@@ -768,6 +775,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
 
     return {
       ...financial,
+      ndpCurrency: LedgerCurrencyService.fromStored(financial.ndpCurrency),
       platformFeeWalletId: financial.platformFeeWalletId,
       platformFeeAcceptedAt: financial.platformFeeAcceptedAt,
       platformFeeDebtStatus:
@@ -815,6 +823,12 @@ export class LedgerRepository implements LedgerRepositoryPort {
     const existing = await this.client.orderFinancial.findUnique({
       where: { bookingOrderId: input.bookingOrderId }
     });
+    if (existing) {
+      LedgerCurrencyService.assertSameCurrency(
+        LedgerCurrencyService.fromStored(existing.ndpCurrency),
+        [input.ndpCurrency]
+      );
+    }
     const appliedRuleIds = this.mergeStringArrays(
       existing?.appliedFeeRuleIdsJson,
       input.appliedFeeRuleIds

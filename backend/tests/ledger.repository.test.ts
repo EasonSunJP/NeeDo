@@ -113,6 +113,7 @@ describe("LedgerRepository wallet creation", () => {
     const deadlineAt = new Date("2026-09-05T01:00:00.000Z");
     const findFirst = jest.fn().mockResolvedValue({
       bookingOrderId: 71,
+      ndpCurrency: "NDP",
       customerUserId: 3,
       shopId: 10,
       technicianProfileId: 9,
@@ -164,6 +165,7 @@ describe("LedgerRepository wallet creation", () => {
     };
     const financial = {
       bookingOrderId: 71,
+      ndpCurrency: "NDP",
       customerUserId: 3,
       shopId: 10,
       technicianProfileId: 9,
@@ -274,6 +276,7 @@ describe("LedgerRepository wallet creation", () => {
     const financial = {
       id: 11,
       bookingOrderId: 71,
+      ndpCurrency: "NDP",
       customerUserId: 3,
       platformFeeWalletId: 91,
       platformFeeAcceptedAt: acceptedAt,

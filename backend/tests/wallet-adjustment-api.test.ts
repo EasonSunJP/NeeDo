@@ -181,7 +181,9 @@ const createFixture = async () => {
       return adjustment;
     }),
     rejectWalletAdjustmentRequest: jest.fn(async () => adjustment),
+    findUserAccountClassification: jest.fn(async () => ({ isTestAccount: false })),
     getOrCreateWallet: jest.fn(async () => wallet),
+    lockWalletById: jest.fn(async (walletId: number) => (wallet.id === walletId ? wallet : null)),
     applyWalletDelta: jest.fn(async (input: { availableDelta: number }) => {
       wallet = { ...wallet, availableBalance: wallet.availableBalance + input.availableDelta };
       return wallet;
