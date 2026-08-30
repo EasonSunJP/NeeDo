@@ -1,16 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Pending" data-im-judgement-pictogram="pending">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 28" role="img" aria-label="Pending" data-im-judgement-word-sticker="pending">
   <defs>
-    <linearGradient id="pending-fill" x1="10" y1="6" x2="31" y2="34" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FDE047"/>
-      <stop offset="1" stop-color="#F59E0B"/>
-    </linearGradient>
-    <filter id="pending-shadow" x="-30%" y="-30%" width="170%" height="180%">
-      <feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#78350F" flood-opacity="0.45"/>
+    <filter id="pending-shadow" x="-20%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#B45309" flood-opacity="0.52"/>
     </filter>
   </defs>
-  <g filter="url(#pending-shadow)">
-    <path d="M11 5.5h18M11 34.5h18" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
-    <path d="M13 7.5h14c0 6-2.2 8.1-6.2 11.2 4.7 3.1 6.2 5.8 6.2 13.8H13c0-8 1.5-10.7 6.2-13.8C15.2 15.6 13 13.5 13 7.5Z" fill="url(#pending-fill)" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/>
-    <path d="M16.3 28.8h7.4c-.5-3.5-1.7-5.2-3.7-6.7-2 1.5-3.2 3.2-3.7 6.7Z" fill="#FFF7CC"/>
-  </g>
+  <text x="50%" y="20" text-anchor="middle" fill="#F59E0B" stroke="#B45309" stroke-width="0.65" paint-order="stroke" filter="url(#pending-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="17" font-style="italic" font-weight="900">Pending</text>
 </svg>

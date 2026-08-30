@@ -1,16 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Done" data-im-judgement-pictogram="done">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 28" role="img" aria-label="Done" data-im-judgement-word-sticker="done">
   <defs>
-    <linearGradient id="done-fill" x1="9" y1="6" x2="31" y2="35" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#34D399"/>
-      <stop offset="1" stop-color="#059669"/>
-    </linearGradient>
-    <filter id="done-shadow" x="-30%" y="-30%" width="170%" height="180%">
-      <feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#064E3B" flood-opacity="0.45"/>
+    <filter id="done-shadow" x="-20%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="0.8" flood-color="#166534" flood-opacity="0.52"/>
     </filter>
   </defs>
-  <g filter="url(#done-shadow)">
-    <rect x="7" y="6" width="26" height="29" rx="5" fill="url(#done-fill)" stroke="#fff" stroke-width="2.4"/>
-    <path d="M15 5.5h10v5H15z" fill="#D1FAE5" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="m12.5 22 4.7 4.5 10.3-10" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
+  <text x="50%" y="20" text-anchor="middle" fill="#16A34A" stroke="#166534" stroke-width="0.65" paint-order="stroke" filter="url(#done-shadow)" font-family="Arial Black, Arial, sans-serif" font-size="18" font-style="italic" font-weight="900">Done</text>
 </svg>
