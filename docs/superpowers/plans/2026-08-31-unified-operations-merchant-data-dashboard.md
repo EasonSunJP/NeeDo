@@ -263,8 +263,8 @@ export interface DashboardActivityFacts {
     availableScheduleSlots: number;
     activeTechnicians: number;
     registeredTechnicians: number;
-    shopCount: number;
-    newCustomers: number;
+    shopCount: number | null;
+    newCustomers: number | null;
     pendingOrders: number;
     serviceGmvJpy: number;
     completedCustomerCount: number;
@@ -288,6 +288,7 @@ Assert these exact rules:
 - platform new users count undeleted `CustomerProfile.createdAt` within the period and use `CustomerProfile.city` for the optional city filter; merchant aggregation does not query or expose this platform-only card;
 - order series uses service `startsAt`; service GMV requires completed and not refunded;
 - completed customers are distinct `customerUserId` from completed, non-refunded orders;
+- schedule hours clip every non-deleted `AVAILABLE` or `BOOKED` slot to the bucket boundary, convert milliseconds to decimal hours once, and satisfy `scheduleTotalHours = scheduleAvailableHours + scheduleBookedHours`; the chart renders the total and two components as side-by-side groups rather than stacking the total again;
 - merchant scope always applies `shopId`; platform city scope joins the formal shop/city;
 - no query is issued once per bucket, shop, technician, customer, or wallet.
 
@@ -511,7 +512,9 @@ export interface MerchantShopContextRepositoryPort {
     identityScopeId: number | null;
     selectedShopPublicId: string | null;
     now: Date;
-  }): Promise<ManageableMerchantShop[]>;
+    page: number;
+    pageSize: number;
+  }): Promise<ManageableMerchantShopPage>;
   resolveShop(input: {
     merchantAccountId: number;
     shopPublicId: string;
@@ -530,11 +533,18 @@ export interface ManageableMerchantShop {
   status: string;
   selected: boolean;
 }
+
+export interface ManageableMerchantShopPage {
+  list: ManageableMerchantShop[];
+  total: number;
+  page: number;
+  page_size: number;
+}
 ```
 
 - [ ] **Step 1: Write failing repository and API tests**
 
-Prove shop identity lists only itself; merchant-account identity lists only active, non-deleted memberships whose account/shop are active; ended/deleted/cross-account memberships are rejected; response contains no numeric shop, merchant account, membership, or user IDs.
+Prove shop identity lists only itself; merchant-account identity lists only active, non-deleted memberships whose account/shop are active; ended/deleted/cross-account memberships are rejected; `page`/`page_size` are honored with a stable total and deterministic ordering; response contains no numeric shop, merchant account, membership, or user IDs.
 
 - [ ] **Step 2: Add a signed public-ID claim**
 
@@ -596,6 +606,7 @@ git commit -m "feat(auth): sign and rotate merchant shop context"
 - Modify: `backend/src/services/payroll.service.ts`
 - Modify: `backend/src/services/pricing-mode.service.ts`
 - Modify: `backend/src/services/technician-shop-affiliation.service.ts`
+- Modify: `backend/src/validators/backoffice.validator.ts`
 - Modify: `backend/src/routes/backoffice.routes.ts`
 - Modify: `backend/src/controllers/backoffice.controller.ts`
 - Modify: `backend/src/api/openapi.ts`
@@ -632,7 +643,7 @@ Add:
 GET /api/v1/merchant-admin/manageable-shops
 ```
 
-Use `merchant-admin:dashboard:read`, the context repository, strict safe response fields, and audit action `merchant_admin.manageable_shops.read`. Shop identities receive one row with `selected: true`; merchant accounts receive all active rows and exactly one selected row.
+Use `merchant-admin:dashboard:read`, strict Zod pagination (`page >= 1`, bounded `page_size`), the context repository, standard paginated response fields, strict safe row fields, and audit action `merchant_admin.manageable_shops.read`. Shop identities receive one row with `selected: true`; merchant accounts receive only the requested deterministic page and exactly one selected row across the complete logical result.
 
 - [ ] **Step 5: Run merchant regression tests and commit**
 
@@ -643,7 +654,7 @@ Expected: PASS with operations preview tests unchanged.
 Commit:
 
 ```bash
-git add backend/src/services/merchant-shop-scope.ts backend/src/services/backoffice.service.ts backend/src/services/booking.service.ts backend/src/services/compensation-profile.service.ts backend/src/services/ledger.service.ts backend/src/services/merchant-finance-rules.service.ts backend/src/services/order-finance.service.ts backend/src/services/payroll-schedule-policy.service.ts backend/src/services/payroll.service.ts backend/src/services/pricing-mode.service.ts backend/src/services/technician-shop-affiliation.service.ts backend/src/routes/backoffice.routes.ts backend/src/controllers/backoffice.controller.ts backend/src/api/openapi.ts backend/tests/merchant-selected-shop-scope.test.ts
+git add backend/src/services/merchant-shop-scope.ts backend/src/services/backoffice.service.ts backend/src/services/booking.service.ts backend/src/services/compensation-profile.service.ts backend/src/services/ledger.service.ts backend/src/services/merchant-finance-rules.service.ts backend/src/services/order-finance.service.ts backend/src/services/payroll-schedule-policy.service.ts backend/src/services/payroll.service.ts backend/src/services/pricing-mode.service.ts backend/src/services/technician-shop-affiliation.service.ts backend/src/validators/backoffice.validator.ts backend/src/routes/backoffice.routes.ts backend/src/controllers/backoffice.controller.ts backend/src/api/openapi.ts backend/tests/merchant-selected-shop-scope.test.ts
 git commit -m "refactor(merchant): enforce selected shop scope everywhere"
 ```
 
@@ -671,13 +682,18 @@ export interface DashboardQuery extends Record<string, string | undefined> {
 }
 
 dashboard(scope: BackofficeScope, query: DashboardQuery): Promise<BackofficeDashboardPayload>;
-manageableMerchantShops(): Promise<{ list: ManageableMerchantShopPayload[] }>;
+manageableMerchantShops(page?: number, pageSize?: number): Promise<{
+  list: ManageableMerchantShopPayload[];
+  total: number;
+  page: number;
+  page_size: number;
+}>;
 switchMerchantShop(shopPublicId: string): Promise<SwitchMerchantShopPayload>;
 ```
 
 - [ ] **Step 1: Write failing API serialization tests**
 
-Assert default and custom Dashboard query strings, absence of `shopId` on merchant requests, safe manageable-shop payload types, and token persistence after shop switch.
+Assert default and custom Dashboard query strings, absence of `shopId` on merchant requests, paginated safe manageable-shop payload types, and token persistence after shop switch.
 
 - [ ] **Step 2: Replace the loose frontend DTO**
 
@@ -875,7 +891,7 @@ Assert one “数据大盘” menu/route; retained shop card; billing cadence/st
 
 - [ ] **Step 2: Add switch interaction tests**
 
-Test list loading, Escape close, focus return, successful token rotation/reload, failed switch preserving old shop/data, and a deferred Shop A Dashboard response arriving after Shop B without overwriting Shop B.
+Test paginated list loading/load-more, `total > 1` button visibility, Escape close, focus return, successful token rotation/reload, failed switch preserving old shop/data, and a deferred Shop A Dashboard response arriving after Shop B without overwriting Shop B. After token rotation succeeds, keep the previous Dashboard visibly frozen behind a blocking loading state and commit the new shop card plus new Dashboard data together only after the signed Shop B request succeeds.
 
 - [ ] **Step 3: Run merchant tests and confirm RED**
 
