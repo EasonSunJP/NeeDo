@@ -9,12 +9,33 @@ export interface TestNdpFoundationSnapshot {
   nonTestUserCount: number;
   userWalletCount: number;
   nonTargetBalanceCount: number;
+  testNdpAvailableBalanceTotal: number;
+  testNdpFrozenBalanceTotal: number;
   currencyMismatchCount: number;
   formalExportableTestRows: number;
 }
 
+export interface TestNdpMigrationPreflightSnapshot {
+  activeUserCount: number;
+  deletedUserCount: number;
+  walletCount: number;
+  ndpWalletCount: number;
+  testNdpWalletCount: number;
+  ndpAvailableBalanceTotal: number;
+  ndpFrozenBalanceTotal: number;
+  ledgerTransactionCount: number;
+  ndpLedgerTransactionCount: number;
+  ndpReconciliationCount: number;
+  walletHoldWithNdpCount: number;
+  orderFinancialCount: number;
+  walletCurrencyCollisionCount: number;
+  relationshipInconsistencyCount: number;
+}
+
+export type TestNdpCheckPhase = "preflight" | "postflight";
+
 type QueryClient = {
-  $queryRawUnsafe<T = unknown>(query: string): Promise<T>;
+  $queryRawUnsafe(query: string): Promise<unknown>;
 };
 
 const BLOCKED_ENVIRONMENTS = new Set(["staging", "prod", "production"]);
@@ -74,6 +95,10 @@ export const assertTestNdpFoundation = (snapshot: TestNdpFoundationSnapshot): vo
     "every Test NDP user wallet must have 100000 available"
   );
   assertInvariant(
+    snapshot.testNdpAvailableBalanceTotal === snapshot.activeUserCount * 100_000,
+    "Test NDP available balance total must equal 100000 per current user"
+  );
+  assertInvariant(
     snapshot.currencyMismatchCount === 0,
     "wallet and transaction currencies must agree"
   );
@@ -83,9 +108,110 @@ export const assertTestNdpFoundation = (snapshot: TestNdpFoundationSnapshot): vo
   );
 };
 
+export const assertTestNdpMigrationPreflight = (
+  snapshot: TestNdpMigrationPreflightSnapshot
+): void => {
+  assertInvariant(
+    snapshot.walletCurrencyCollisionCount === 0,
+    "NDP and Test NDP wallets would collide during reclassification"
+  );
+  assertInvariant(
+    snapshot.relationshipInconsistencyCount === 0,
+    "wallet and transaction relationships must be consistent before reclassification"
+  );
+};
+
+export const resolveTestNdpCheckPhase = (argumentsList: string[]): TestNdpCheckPhase => {
+  const phase = argumentsList
+    .find((argument) => argument.startsWith("--phase="))
+    ?.slice("--phase=".length);
+  if (phase === "preflight" || phase === "postflight") return phase;
+  throw new Error("Test NDP check requires --phase=preflight or --phase=postflight.");
+};
+
 const scalarCount = async (client: QueryClient, query: string): Promise<number> => {
-  const rows = await client.$queryRawUnsafe<Array<{ count: bigint | number | string }>>(query);
+  const rows = (await client.$queryRawUnsafe(query)) as Array<{
+    count: bigint | number | string;
+  }>;
   return Number(rows[0]?.count ?? 0);
+};
+
+export const readTestNdpMigrationPreflightSnapshot = async (
+  client: QueryClient
+): Promise<TestNdpMigrationPreflightSnapshot> => {
+  const activeUserCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM users WHERE deleted_at IS NULL"
+  );
+  const deletedUserCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM users WHERE deleted_at IS NOT NULL"
+  );
+  const walletCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM wallets WHERE deleted_at IS NULL"
+  );
+  const ndpWalletCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM wallets WHERE currency = 'NDP' AND deleted_at IS NULL"
+  );
+  const testNdpWalletCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM wallets WHERE currency = 'TEST_NDP' AND deleted_at IS NULL"
+  );
+  const ndpAvailableBalanceTotal = await scalarCount(
+    client,
+    "SELECT COALESCE(SUM(available_balance), 0) AS count FROM wallets WHERE currency = 'NDP' AND deleted_at IS NULL"
+  );
+  const ndpFrozenBalanceTotal = await scalarCount(
+    client,
+    "SELECT COALESCE(SUM(frozen_balance), 0) AS count FROM wallets WHERE currency = 'NDP' AND deleted_at IS NULL"
+  );
+  const ledgerTransactionCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM ledger_transactions WHERE deleted_at IS NULL"
+  );
+  const ndpLedgerTransactionCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM ledger_transactions WHERE currency = 'NDP' AND deleted_at IS NULL"
+  );
+  const ndpReconciliationCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM finance_reconciliations WHERE currency = 'NDP' AND deleted_at IS NULL"
+  );
+  const walletHoldWithNdpCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM wallet_holds WHERE deleted_at IS NULL AND (hold_amount_ndp <> 0 OR captured_amount_ndp <> 0 OR released_amount_ndp <> 0)"
+  );
+  const orderFinancialCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM order_financials WHERE deleted_at IS NULL"
+  );
+  const walletCurrencyCollisionCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM (SELECT owner_type, owner_id FROM wallets WHERE currency IN ('NDP', 'TEST_NDP') AND deleted_at IS NULL GROUP BY owner_type, owner_id HAVING COUNT(DISTINCT currency) > 1) AS wallet_currency_collisions"
+  );
+  const relationshipInconsistencyCount = await scalarCount(
+    client,
+    "SELECT COUNT(*) AS count FROM wallet_ledgers wl LEFT JOIN wallets w ON w.id = wl.wallet_id LEFT JOIN ledger_transactions lt ON lt.id = wl.transaction_id WHERE wl.deleted_at IS NULL AND (w.id IS NULL OR lt.id IS NULL OR w.deleted_at IS NOT NULL OR lt.deleted_at IS NOT NULL OR w.currency <> lt.currency)"
+  );
+
+  return {
+    activeUserCount,
+    deletedUserCount,
+    walletCount,
+    ndpWalletCount,
+    testNdpWalletCount,
+    ndpAvailableBalanceTotal,
+    ndpFrozenBalanceTotal,
+    ledgerTransactionCount,
+    ndpLedgerTransactionCount,
+    ndpReconciliationCount,
+    walletHoldWithNdpCount,
+    orderFinancialCount,
+    walletCurrencyCollisionCount,
+    relationshipInconsistencyCount
+  };
 };
 
 export const readTestNdpFoundationSnapshot = async (
@@ -96,6 +222,8 @@ export const readTestNdpFoundationSnapshot = async (
     nonTestUserCount,
     userWalletCount,
     nonTargetBalanceCount,
+    testNdpAvailableBalanceTotal,
+    testNdpFrozenBalanceTotal,
     currencyMismatchCount,
     formalExportableTestRows
   ] = await Promise.all([
@@ -114,6 +242,14 @@ export const readTestNdpFoundationSnapshot = async (
     ),
     scalarCount(
       client,
+      "SELECT COALESCE(SUM(available_balance), 0) AS count FROM wallets WHERE owner_type = 'user' AND currency = 'TEST_NDP' AND deleted_at IS NULL"
+    ),
+    scalarCount(
+      client,
+      "SELECT COALESCE(SUM(frozen_balance), 0) AS count FROM wallets WHERE owner_type = 'user' AND currency = 'TEST_NDP' AND deleted_at IS NULL"
+    ),
+    scalarCount(
+      client,
       "SELECT COUNT(*) AS count FROM wallet_ledgers wl INNER JOIN wallets w ON w.id = wl.wallet_id INNER JOIN ledger_transactions lt ON lt.id = wl.transaction_id WHERE wl.deleted_at IS NULL AND w.deleted_at IS NULL AND lt.deleted_at IS NULL AND w.currency <> lt.currency"
     ),
     scalarCount(
@@ -127,6 +263,8 @@ export const readTestNdpFoundationSnapshot = async (
     nonTestUserCount,
     userWalletCount,
     nonTargetBalanceCount,
+    testNdpAvailableBalanceTotal,
+    testNdpFrozenBalanceTotal,
     currencyMismatchCount,
     formalExportableTestRows
   };
@@ -136,12 +274,19 @@ const main = async (): Promise<void> => {
   const { config } = await import("dotenv");
   config({ path: process.env.ENV_FILE ?? ".env" });
   assertSafeTestNdpRuntime(process.env);
+  const phase = resolveTestNdpCheckPhase(process.argv.slice(2));
   const { prisma, disconnectPrisma } = await import("../src/prisma/client");
 
   try {
+    if (phase === "preflight") {
+      const snapshot = await readTestNdpMigrationPreflightSnapshot(prisma);
+      assertTestNdpMigrationPreflight(snapshot);
+      process.stdout.write(`${JSON.stringify({ status: "ok", phase, ...snapshot }, null, 2)}\n`);
+      return;
+    }
     const snapshot = await readTestNdpFoundationSnapshot(prisma);
     assertTestNdpFoundation(snapshot);
-    process.stdout.write(`${JSON.stringify({ status: "ok", ...snapshot }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ status: "ok", phase, ...snapshot }, null, 2)}\n`);
   } finally {
     await disconnectPrisma();
   }
