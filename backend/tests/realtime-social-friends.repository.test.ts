@@ -10,6 +10,7 @@ describe("RealtimeRepository Social friends", () => {
           {
             id: 64774,
             authorUserId: 1,
+            authorIdentityId: 101,
             content: "123456788888888",
             media: null,
             visibility: "PUBLIC",
@@ -22,7 +23,8 @@ describe("RealtimeRepository Social friends", () => {
               avatarUrl: null,
               createdAt,
               identities: []
-            }
+            },
+            authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" }
           }
         ]),
         count: jest.fn(async () => 1)
@@ -32,8 +34,8 @@ describe("RealtimeRepository Social friends", () => {
       },
       contact: {
         findMany: jest.fn(async () => [
-          { ownerUserId: 787, contactUserId: 1 },
-          { ownerUserId: 1, contactUserId: 787 }
+          { ownerIdentityId: 787, contactIdentityId: 101 },
+          { ownerIdentityId: 101, contactIdentityId: 787 }
         ])
       }
     };
@@ -53,11 +55,11 @@ describe("RealtimeRepository Social friends", () => {
         blockedAt: null,
         deletedAt: null,
         OR: [
-          { ownerUserId: 787, contactUserId: { in: [1] } },
-          { ownerUserId: { in: [1] }, contactUserId: 787 }
+          { ownerIdentityId: 787, contactIdentityId: { in: [101] } },
+          { ownerIdentityId: { in: [101] }, contactIdentityId: 787 }
         ]
       },
-      select: { ownerUserId: true, contactUserId: true }
+      select: { ownerIdentityId: true, contactIdentityId: true }
     });
   });
 
@@ -69,6 +71,7 @@ describe("RealtimeRepository Social friends", () => {
           {
             id: 64774,
             authorUserId: 1,
+            authorIdentityId: 101,
             content: "123456788888888",
             media: null,
             visibility: "PUBLIC",
@@ -81,7 +84,8 @@ describe("RealtimeRepository Social friends", () => {
               avatarUrl: null,
               createdAt,
               identities: []
-            }
+            },
+            authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" }
           }
         ]),
         count: jest.fn(async () => 1)
@@ -90,7 +94,7 @@ describe("RealtimeRepository Social friends", () => {
         findMany: jest.fn(async () => [])
       },
       contact: {
-        findMany: jest.fn(async () => [{ ownerUserId: 787, contactUserId: 1 }])
+        findMany: jest.fn(async () => [{ ownerIdentityId: 787, contactIdentityId: 101 }])
       }
     };
 

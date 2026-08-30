@@ -196,7 +196,7 @@ Adding a contact now uses the persisted Step 13 friend-request flow rather than 
 
 Deleting a friendship physically removes both Contact directions and both Follow directions. It also removes only the deleter's participant row from the friendship conversation, so the deleter loses the one-to-one conversation and history entry while the other account retains its history. A retained non-friend conversation cannot send new messages: the backend returns `error.im.not_friends` before message, unread, or SSE writes. Re-acceptance creates a new participant history boundary and does not restore the deleter's old history. Manual Social follow/unfollow remains independent from Contact after friendship creation.
 
-The chat information page reads the same formal directory profile and renders the contact's customer, technician, shop, or safe account identity card. It shows the persisted credit review summary and public identity fields only; points, usage count, and the personal-profile privacy toggle are not included. Full state, API, migration, and acceptance rules are documented in [`docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`](docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md#616-好友验证双向解除与身份资料卡2026-08-30).
+The chat information page reads the same formal directory profile and renders the contact's customer, technician, shop, or safe account identity card. The customer portal omits the credit summary from this chat-settings card, while technician and merchant/shop portals retain it; this does not change the customer's own personal-center credit display. City is not rendered in chat settings, and customer basic information always keeps gender, age, and height with explicit private/not-set states. Points, usage count, and the personal-profile privacy toggle are not included. A retained conversation whose friendship was removed shows the formal add-friend action instead of an empty friend-action area. Full state, API, migration, and acceptance rules are documented in [`docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`](docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md#616-好友验证双向解除与身份资料卡2026-08-30).
 
 ## Formal Merchant Employee Affiliations
 
@@ -333,11 +333,13 @@ The user Affiliate alliance page now uses real APIs for reciprocal-contact candi
 
 The formal alliance-marketing foundation persists tasks, explicit shop/service scope snapshots, claims, hashed signed-link tokens, touches, one-attribution-per-order records, fixed-NDP rewards, task budget reservations, ledger links, and risk events. It extends wallets to support merchant-account ownership and seeds role-specific affiliate menu/page/button permissions.
 
-Merchant accounts and current-shop identities now have formal paginated APIs to create and edit unfunded drafts, inspect their tasks, and submit a task for review. Drafts never mutate a wallet. Submit revalidates the publisher's active shop/service scope, refreshes immutable display snapshots, then atomically freezes the full integer-NDP budget, creates a budget reservation and ledger link, writes reconciliation/audit evidence, and moves the task to `pending_review`. A concurrent or repeated submit cannot duplicate the freeze.
+Merchant accounts and current-shop identities now have formal paginated APIs to create and edit unfunded drafts, inspect their tasks, and submit a task for review. Drafts never mutate a wallet. Submit revalidates the publisher's active shop/service scope, refreshes immutable display snapshots, snapshots the effective Affiliate fee rule, then atomically freezes commission budget plus fee reserve, creates a budget reservation and ledger link, writes reconciliation/audit evidence, and moves the task to `pending_review`. A concurrent or repeated submit cannot duplicate the freeze.
 
 Every task now persists independent Japanese, English, Korean, Traditional Chinese, and Simplified Chinese name/description rows. Creating a draft from any selected source language copies that first value to all five rows; subsequent edits affect only the selected language unless the merchant explicitly requests synchronization to all languages. The optimistic task lock protects every language edit, and each change is audited. Submission requires publishable task content in at least one language; when every language is missing or blank, it returns `error.affiliate.task_content_required` before any NDP is frozen. Marketplace search matches every active language. Task cards and detail pages select the authored value for the user's current application language, and use the task's formal compatibility snapshot if that language is absent; they never machine-translate authored content.
 
 Operations users can list/detail tasks and approve or reject a pending task. Approval produces `scheduled` or `active` from the task window. Rejection atomically returns the complete unused frozen budget to available NDP, retains the historical reserved amount for budget conservation, marks the reservation released, and writes one release ledger/reconciliation/audit trail. Insufficient funds, stale optimistic locks, invalid merchant membership, invalid service scope, and transaction failures roll back without partial writes.
+
+The Affiliate fee is added to the publisher's commission budget and never deducted from the promoter's advertised reward. At the default 10% rate, a 2,000,000 NDP task freezes 2,200,000 NDP. Each completed 10,000 NDP reward captures 11,000 from the publisher's frozen wallet, credits 10,000 to the claimant, and credits 1,000 to the platform wallet in one reconciled transaction. Task, reservation, reward, ledger, and audit rows retain the immutable split. Later fee-rule versions never rewrite an existing task snapshot.
 
 Formal endpoints:
 
@@ -349,6 +351,8 @@ Formal endpoints:
 - `GET /api/v1/backoffice/affiliate/tasks/:taskId`
 - `POST /api/v1/backoffice/affiliate/tasks/:taskId/approve`
 - `POST /api/v1/backoffice/affiliate/tasks/:taskId/reject`
+- `GET /api/v1/backoffice/affiliate/fee-rules`
+- `POST /api/v1/backoffice/affiliate/fee-rules`
 
 Verify the complete transaction flow against a local non-production MySQL database:
 
@@ -356,11 +360,14 @@ Verify the complete transaction flow against a local non-production MySQL databa
 ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-localization-flow
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-platform-fee-flow
 ```
 
 The check refuses production flags and remote database hosts, verifies draft/no-freeze, shop and merchant-account freezes, refreshed snapshots, insufficient-funds rollback, membership isolation, review state, full rejection release, idempotency, ledger/reconciliation/audit evidence, and removes only its uniquely identified rows.
 
 The localization checker refuses remote, staging, and production-looking targets; verifies initial five-language copy, independent editing, explicit synchronize-all, rejection with no freeze when every language lacks content, successful one-language submission with exactly one budget freeze, translation audit evidence, and exact marker-only cleanup. This task-localization microstep does not yet activate the merchant/shop task-management editor. Manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and the complete merchant UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
+
+The Affiliate platform-fee checker additionally rejects production flags, remote MySQL, and production-like database names. It proves exact gross freeze/capture, three-wallet settlement, shop override immutability, multi-shop rate mismatch before wallet mutation, split rejection/expiry release, idempotent rule/freeze/settlement evidence, and exact row-count plus wallet-balance restoration through a rolled-back fixture transaction.
 
 ### Formal Affiliate Marketplace Claims And Signed Links
 

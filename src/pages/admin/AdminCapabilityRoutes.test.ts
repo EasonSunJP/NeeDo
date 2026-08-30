@@ -5,6 +5,7 @@ const timelineSource = readFileSync(new URL("./OperationTimelinePage.tsx", impor
 const exchangeSource = readFileSync(new URL("./NeedoExchangeAdminPage.tsx", import.meta.url), "utf8");
 const carouselSource = readFileSync(new URL("./CarouselPage.tsx", import.meta.url), "utf8");
 const affiliateCarouselSource = readFileSync(new URL("./AffiliateNoticeCarouselPage.tsx", import.meta.url), "utf8");
+const affiliateFeeRulesSource = readFileSync(new URL("./AffiliateFeeRulesPage.tsx", import.meta.url), "utf8");
 const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.url), "utf8");
 const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
 const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
@@ -202,6 +203,30 @@ describe("affiliate administration formal task review", () => {
     expect(affiliateCopySource).toContain('title: "アフィリエイト"');
     expect(affiliateSource).not.toContain("正式 Afirieito 管理尚未启用");
     expect(affiliateSource).not.toMatch(/localStorage|data\/mock|CpsPage/);
+  });
+});
+
+describe("affiliate platform fee operations", () => {
+  it("registers the dedicated read-permission route", () => {
+    expect(appSource).toContain('import { AffiliateFeeRulesPage } from "./pages/admin/AffiliateFeeRulesPage"');
+    expect(appSource).toContain(
+      'path="/admin/afirieito/fee-rules" element={protectPermission("admin", "page:backoffice-affiliate-fee-rule", <AffiliateFeeRulesPage />)}'
+    );
+  });
+
+  it("shows a dedicated item below Affiliate tasks in the TEST section", () => {
+    expect(adminLayoutSource).toContain('label: "平台抽成规则"');
+    expect(adminLayoutSource).toContain('to: "/admin/afirieito/fee-rules"');
+    expect(adminLayoutSource).toContain('permission: "page:backoffice-affiliate-fee-rule"');
+    expect(adminLayoutSource.indexOf('label: "平台抽成规则"')).toBeGreaterThan(
+      adminLayoutSource.indexOf('label: "联盟营销任务"')
+    );
+  });
+
+  it("keeps the page on formal fee-rule APIs and immutable version creation", () => {
+    expect(affiliateFeeRulesSource).toContain("affiliatePlatformFeeApi.getGlobalSummary()");
+    expect(affiliateFeeRulesSource).toContain("affiliatePlatformFeeApi.createRule");
+    expect(affiliateFeeRulesSource).not.toMatch(/localStorage|data\/mock|backofficeRealDataApi\.shops/);
   });
 });
 

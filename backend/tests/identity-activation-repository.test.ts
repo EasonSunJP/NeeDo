@@ -40,6 +40,7 @@ describe("IdentityActivationRepository", () => {
         findFirst: jest.fn().mockResolvedValue({ id: 6, code: "technician" })
       },
       userIdentity: {
+        findFirst: jest.fn().mockResolvedValue({ id: 108 }),
         create: jest.fn().mockResolvedValue({
           id: 91,
           userId: 3,
@@ -93,7 +94,13 @@ describe("IdentityActivationRepository", () => {
       data: { userId: 3, roleId: 6, scopeType: "technician_profile", scopeId: 21 }
     });
     expect(tx.notification.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ recipientUserId: 3, actorUserId: 8, type: "SYSTEM" })
+      data: expect.objectContaining({
+        recipientUserId: 3,
+        recipientIdentityId: 91,
+        actorUserId: 8,
+        actorIdentityId: 108,
+        type: "SYSTEM"
+      })
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

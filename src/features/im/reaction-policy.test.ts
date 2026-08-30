@@ -2,14 +2,33 @@ import { describe, expect, it } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 
 import {
+  encodeImComposerJudgement,
   deriveCurrentUserReactionSlots,
   getImReactionCategory,
   getImReactionFailureMessage,
   isImReactionChoiceDisabled,
+  materializeImComposerDraft,
+  parseImComposerDraft,
   sortImReactionSummaries
 } from "./reaction-policy";
 
 describe("IM reaction policy", () => {
+  it("keeps judgement choices as opaque draft tokens and materializes them for sending", () => {
+    const okToken = encodeImComposerJudgement("OK");
+    const pendingToken = encodeImComposerJudgement("Pending");
+    const draft = `确认${okToken}😂${pendingToken}`;
+
+    expect(okToken).not.toBe("OK");
+    expect(pendingToken).not.toBe("Pending");
+    expect(parseImComposerDraft(draft)).toEqual([
+      { type: "text", value: "确认" },
+      { type: "judgement", token: okToken, value: "OK" },
+      { type: "text", value: "😂" },
+      { type: "judgement", token: pendingToken, value: "Pending" }
+    ]);
+    expect(materializeImComposerDraft(draft)).toBe("确认OK😂Pending");
+  });
+
   it("derives one independent judgement and emoji slot", () => {
     expect(
       deriveCurrentUserReactionSlots(

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
-import { FormalScheduleInventoryPanel } from "../../components/scheduling/FormalScheduleInventoryPanel";
-import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileShell } from "../../components/mobile/MobileShell";
+import { technicianNavItems } from "../../components/mobile/navItems";
 import { Button } from "../../components/ui/Button";
+import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
   type BookingOrder,
@@ -13,6 +15,7 @@ import {
 } from "../booking/api";
 import { schedulingApi } from "../scheduling/api";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
+import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
 import {
   parsePositiveRouteId,
   useFormalTechnicianOrderResource,
@@ -24,7 +27,7 @@ const panelClass =
 const fieldClass =
   "mt-2 h-11 w-full rounded-[16px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 text-sm font-bold text-[color:var(--client-text)] outline-none";
 
-function FormalRoutePage({
+function TechnicianSchedulePageShell({
   title,
   subtitle,
   backTo = "/technician/schedule",
@@ -35,40 +38,34 @@ function FormalRoutePage({
   backTo?: string;
   children: ReactNode;
 }) {
+  const navigate = useNavigate();
+  const { isNight } = useClientTheme();
   return (
-    <main className="min-h-screen bg-[color:var(--client-bg)] px-4 pb-12 pt-4 text-[color:var(--client-text)]">
-      <div className="mx-auto max-w-[720px]">
-        <header className="mb-5 rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Link
-              aria-label="返回"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:var(--client-line)] font-black"
-              to={backTo}
-            >
-              ‹
-            </Link>
-            <div className="min-w-0">
-              <h1 className="text-xl font-black">{title}</h1>
-              {subtitle ? <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{subtitle}</p> : null}
-            </div>
-          </div>
-        </header>
-        {children}
+    <MobileShell navItems={technicianNavItems}>
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
+        <MobileFullscreenHeader
+          className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
+          dark={isNight}
+          onBack={() => navigate(backTo)}
+          subtitle={subtitle}
+          title={title}
+        />
+        <main className="min-h-0 flex-1 px-4 py-3 pb-24">{children}</main>
       </div>
-    </main>
+    </MobileShell>
   );
 }
 
 function RouteUnavailable({ kind }: { kind: "order" | "schedule" }) {
   return (
-    <FormalRoutePage title={kind === "schedule" ? "排班记录不可用" : "订单记录不可用"}>
+    <TechnicianSchedulePageShell title={kind === "schedule" ? "排班记录不可用" : "订单记录不可用"}>
       <section className={panelClass} role="alert">
         <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">
           路由中的记录编号无效，未读取任何演示或浏览器缓存数据。
         </p>
         <Button className="mt-4" to="/technician/schedule">返回正式排班</Button>
       </section>
-    </FormalRoutePage>
+    </TechnicianSchedulePageShell>
   );
 }
 
@@ -98,53 +95,56 @@ function ErrorPanel({
   );
 }
 
+function ScheduleResourceErrorPanel({
+  title,
+  error,
+  onRetry
+}: {
+  title: string;
+  error: string;
+  onRetry: () => void;
+}) {
+  const missingShop = error === "error.technician.shop_required";
+  return (
+    <ErrorPanel
+      error={missingShop ? "关联店铺并配置正式服务后即可使用排班；当前不会读取演示排班或临时数据。" : error}
+      onRetry={onRetry}
+      title={missingShop ? "暂未关联店铺" : title}
+    />
+  );
+}
+
 export function TechnicianScheduleIndexRoutePage() {
   const { session } = useAuth();
   const resource = useFormalTechnicianScheduleResource(session, null);
 
   if (resource.loading) {
-    return <FormalRoutePage backTo="/technician" title="正式排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></FormalRoutePage>;
+    return <TechnicianSchedulePageShell backTo="/technician" title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
   }
   if (resource.error || !resource.data) {
     return (
-      <FormalRoutePage backTo="/technician" title="正式排班与预约">
-        <ErrorPanel
+      <TechnicianSchedulePageShell backTo="/technician" title="排班与预约">
+        <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.profile_not_found"}
           onRetry={resource.retry}
           title="正式排班资源加载失败"
         />
-      </FormalRoutePage>
+      </TechnicianSchedulePageShell>
     );
   }
 
   return (
-    <FormalRoutePage
+    <TechnicianSchedulePageShell
       backTo="/technician"
       subtitle={`${resource.data.profile.displayName} · ${resource.data.profile.shop?.name ?? "--"}`}
-      title="正式排班与预约"
+      title="排班与预约"
     >
-      <div className="space-y-5">
-        <section className={panelClass}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-black">我的正式排班</h2>
-              <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">所有时段和状态均来自当前技师身份的正式数据库记录。</p>
-            </div>
-            <Button to="/technician/schedule/new">新建正式排班</Button>
-          </div>
-        </section>
-
-        <FormalScheduleInventoryPanel scope="technician" shopId={resource.data.shopId} />
-
-        <section className={panelClass}>
-          <h2 className="text-base font-black">我的正式预约</h2>
-          <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">订单详情、支付状态和状态记录均由服务端返回。</p>
-          <div className="mt-4">
-            <FormalTechnicianOrdersPanel />
-          </div>
-        </section>
-      </div>
-    </FormalRoutePage>
+      <FormalTechnicianScheduleWorkspace
+        profileAvatarUrl={resource.data.profile.avatarUrl}
+        profileName={resource.data.profile.displayName}
+        shopName={resource.data.profile.shop?.name ?? "--"}
+      />
+    </TechnicianSchedulePageShell>
   );
 }
 
@@ -212,17 +212,17 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
   }, [resource.data?.slot]);
 
   if (resource.loading) {
-    return <FormalRoutePage title="正式排班详情"><LoadingPanel label="正在读取正式排班" /></FormalRoutePage>;
+    return <TechnicianSchedulePageShell title="正式排班详情"><LoadingPanel label="正在读取正式排班" /></TechnicianSchedulePageShell>;
   }
   if (resource.error || !resource.data || !slot) {
     return (
-      <FormalRoutePage title="正式排班详情">
-        <ErrorPanel
+      <TechnicianSchedulePageShell title="正式排班详情">
+        <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.slot_not_found"}
           onRetry={resource.retry}
           title="正式排班加载失败"
         />
-      </FormalRoutePage>
+      </TechnicianSchedulePageShell>
     );
   }
 
@@ -263,7 +263,7 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
   };
 
   return (
-    <FormalRoutePage
+    <TechnicianSchedulePageShell
       subtitle={`${localDateLabel(slot.startsAt)} · ${timeRangeLabel(slot.startsAt, slot.endsAt)}`}
       title="正式排班详情"
     >
@@ -307,7 +307,7 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
           </section>
         )}
       </div>
-    </FormalRoutePage>
+    </TechnicianSchedulePageShell>
   );
 }
 
@@ -355,20 +355,20 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   }, [resource.data, slotId]);
 
   if (resource.loading) {
-    return <FormalRoutePage title={slotId ? "编辑正式排班" : "新建正式排班"}><LoadingPanel label="正在读取技师服务与排班" /></FormalRoutePage>;
+    return <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}><LoadingPanel label="正在读取技师服务与排班" /></TechnicianSchedulePageShell>;
   }
   if (resource.error || !resource.data) {
     return (
-      <FormalRoutePage title={slotId ? "编辑正式排班" : "新建正式排班"}>
-        <ErrorPanel error={resource.error ?? "error.api"} onRetry={resource.retry} title="正式排班资源加载失败" />
-      </FormalRoutePage>
+      <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}>
+        <ScheduleResourceErrorPanel error={resource.error ?? "error.api"} onRetry={resource.retry} title="正式排班资源加载失败" />
+      </TechnicianSchedulePageShell>
     );
   }
   if (slotId && !resource.data.slot) {
     return (
-      <FormalRoutePage title="编辑正式排班">
+      <TechnicianSchedulePageShell title="编辑正式排班">
         <ErrorPanel error="error.schedule.slot_not_found" onRetry={resource.retry} title="正式排班加载失败" />
-      </FormalRoutePage>
+      </TechnicianSchedulePageShell>
     );
   }
 
@@ -401,7 +401,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   };
 
   return (
-    <FormalRoutePage
+    <TechnicianSchedulePageShell
       subtitle={resource.data.profile.displayName}
       title={slotId ? "编辑正式排班" : "新建正式排班"}
     >
@@ -472,7 +472,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
           {pending ? "保存中" : "保存正式排班"}
         </Button>
       </div>
-    </FormalRoutePage>
+    </TechnicianSchedulePageShell>
   );
 }
 
@@ -488,14 +488,14 @@ export function TechnicianScheduleEditorRoutePage() {
 
 export function TechnicianScheduleTransferRoutePage() {
   return (
-    <FormalRoutePage title="班次转让暂未开放">
+    <TechnicianSchedulePageShell title="班次转让暂未开放">
       <section className={panelClass}>
         <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">
           正式班次转让状态机尚未启用。当前页面不会创建浏览器记录，也不会写入数据库；请返回排班页继续管理正式时段。
         </p>
         <Button className="mt-4" to="/technician/schedule">返回正式排班</Button>
       </section>
-    </FormalRoutePage>
+    </TechnicianSchedulePageShell>
   );
 }
 
@@ -549,13 +549,13 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   }, [resource.data]);
 
   if (resource.loading) {
-    return <FormalRoutePage title="正式预约订单"><LoadingPanel label="正在读取正式订单" /></FormalRoutePage>;
+    return <TechnicianSchedulePageShell title="正式预约订单"><LoadingPanel label="正在读取正式订单" /></TechnicianSchedulePageShell>;
   }
   if (resource.error || !order) {
     return (
-      <FormalRoutePage title="正式预约订单">
+      <TechnicianSchedulePageShell title="正式预约订单">
         <ErrorPanel error={resource.error ?? "error.order.not_found"} onRetry={resource.retry} title="正式订单加载失败" />
-      </FormalRoutePage>
+      </TechnicianSchedulePageShell>
     );
   }
 
@@ -595,7 +595,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   };
 
   return (
-    <FormalRoutePage
+    <TechnicianSchedulePageShell
       backTo="/technician/schedule"
       subtitle={`${order.orderNo} · ${timeRangeLabel(order.startsAt, order.endsAt)}`}
       title="正式预约订单"
@@ -654,7 +654,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           </section>
         ) : null}
       </div>
-    </FormalRoutePage>
+    </TechnicianSchedulePageShell>
   );
 }
 

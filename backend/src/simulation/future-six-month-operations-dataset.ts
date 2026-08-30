@@ -758,12 +758,46 @@ export const applyFutureOperationsPlan = async (
       for (const history of plan.histories) {
         latestHistoryAt.set(history.orderNo, history.createdAt);
       }
+      const notificationUserIds = Array.from(
+        new Set(
+          plan.bookings.flatMap((booking) => [booking.customerUserId, booking.shopOwnerUserId])
+        )
+      );
+      const notificationIdentityRows = await tx.userIdentity.findMany({
+        where: {
+          userId: { in: notificationUserIds },
+          isActive: true,
+          deletedAt: null
+        },
+        orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+        select: { id: true, userId: true, type: true }
+      });
+      const notificationIdentityIds = new Map<string, number>();
+      for (const identity of notificationIdentityRows.sort(
+        (left, right) =>
+          Number(!["customer", "user", "u"].includes(left.type)) -
+          Number(!["customer", "user", "u"].includes(right.type))
+      )) {
+        if (!notificationIdentityIds.has(String(identity.userId))) {
+          notificationIdentityIds.set(String(identity.userId), identity.id);
+        }
+      }
       for (const rows of chunkRows(plan.bookings)) {
         await tx.notification.createMany({
           data: rows.map(
             (booking): Prisma.NotificationCreateManyInput => ({
               recipientUserId: booking.customerUserId,
+              recipientIdentityId: getRequiredId(
+                notificationIdentityIds,
+                String(booking.customerUserId),
+                "notification recipient identity"
+              ),
               actorUserId: booking.shopOwnerUserId,
+              actorIdentityId: getRequiredId(
+                notificationIdentityIds,
+                String(booking.shopOwnerUserId),
+                "notification actor identity"
+              ),
               type: NotificationType.ORDER_STATUS,
               title: "将来予約状況のお知らせ",
               body: `${booking.orderNo} の予約状況が更新されました。`,

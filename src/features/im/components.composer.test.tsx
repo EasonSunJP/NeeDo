@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImChatComposer, ImReturnToLatestButton } from "./components";
 import type { ImChatComposerPanel } from "./components";
 import { getRecentImReactionSnapshot } from "./reaction-catalog";
+import { encodeImComposerJudgement } from "./reaction-policy";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
@@ -39,7 +40,39 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
 }
 
 describe("ImChatComposer", () => {
-  it("uses the shared three-section catalog and inserts judgement text or Unicode", async () => {
+  it("keeps selected judgement replies as SVG inside the composer while ordinary emoji stay Unicode", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-im-reaction-value="Thanks"]')?.click();
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
+    expect(editor).not.toBeNull();
+    expect(editor!.querySelector('img[alt="Thanks"]')).not.toBeNull();
+    expect(editor!.textContent).not.toContain("Thanks");
+
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("[data-im-reaction-value]")]
+        .find((button) => button.dataset.imReactionValue === "😂")
+        ?.click();
+    });
+    expect(editor!.querySelector('img[alt="Thanks"]')).not.toBeNull();
+    expect(editor!.textContent).toContain("😂");
+
+    await act(async () => root.unmount());
+  });
+
+  it("uses the shared three-section catalog and inserts judgement tokens or Unicode", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -66,7 +99,7 @@ describe("ImChatComposer", () => {
     await act(async () => {
       container.querySelector<HTMLButtonElement>('[data-im-reaction-value="Thanks"]')?.click();
     });
-    expect(onDraftChange).toHaveBeenLastCalledWith("existingThanks");
+    expect(onDraftChange).toHaveBeenLastCalledWith(`existing${encodeImComposerJudgement("Thanks")}`);
     expect(getRecentImReactionSnapshot()[0]).toBe("Thanks");
 
     await act(async () => {
@@ -140,7 +173,7 @@ describe("ImChatComposer", () => {
     });
 
     const inputShell = container.querySelector<HTMLElement>("[data-im-composer-input-shell='true']");
-    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
     const controls = [
       container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']"),
       container.querySelector<HTMLButtonElement>("[data-im-composer-control='emoji-chat']"),
@@ -148,8 +181,8 @@ describe("ImChatComposer", () => {
     ];
 
     expect(inputShell?.classList.contains("items-end")).toBe(true);
-    expect(textarea?.parentElement?.classList.contains("min-h-[40px]")).toBe(true);
-    expect(textarea?.classList.contains("block")).toBe(true);
+    expect(editor?.parentElement?.parentElement?.classList.contains("min-h-[40px]")).toBe(true);
+    expect(editor?.classList.contains("block")).toBe(true);
     for (const control of controls) {
       expect(control).not.toBeNull();
       expect(control?.classList.contains("h-10")).toBe(true);
@@ -212,7 +245,7 @@ describe("ImChatComposer", () => {
     });
 
     expect(container.querySelector('[data-im-composer-pending-image="true"] img')?.getAttribute("src")).toBe("blob:poster-preview");
-    expect(container.querySelector("textarea")?.value).toBe("说明文字");
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')?.textContent).toBe("说明文字");
     expect(container.querySelector('[data-im-composer-control="voice-input"]')).not.toBeNull();
     expect(container.querySelector('[data-im-composer-control="emoji-chat"]')).not.toBeNull();
 

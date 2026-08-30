@@ -29,6 +29,12 @@ describe("friend request verification schema", () => {
     expect(migration).toContain("friend_request_target_pending_expiry_idx");
     expect(preflight).toContain("malformedConversationIds");
     expect(preflight).toContain("duplicatePairs");
+    expect(preflight).toContain("select: { identityId: true }");
+    expect(preflight).toContain("item.identityId");
+    expect(preflight).toContain("friendshipPairKey: true");
+    expect(preflight).toContain("accessPolicy: true");
+    expect(preflight).toContain("missingCanonicalPairs");
+    expect(preflight).not.toContain("select: { userId: true }");
     expect(packageJson.scripts["check:friendship-conversation-pairs"]).toBe(
       "tsx scripts/check-friendship-conversation-pairs.ts"
     );

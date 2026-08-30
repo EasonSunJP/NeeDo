@@ -30,6 +30,7 @@ const createClaim = (
     id: 31,
     status: "active",
     rewardNdpPerCompletedOrder: 1_000,
+    platformFeeBps: 1_000,
     customerDiscountType: "fixed_jpy",
     fixedDiscountJpy: 1_000,
     discountRateBps: 0,
@@ -42,9 +43,13 @@ const createClaim = (
       id: 91,
       status: "active",
       totalFrozenNdp: 10_000,
+      commissionFrozenNdp: 9_000,
+      platformFeeFrozenNdp: 1_000,
       allocatedNdp: 2_000,
       capturedNdp: 1_000,
-      releasedNdp: 0
+      platformFeeCapturedNdp: 100,
+      releasedNdp: 0,
+      platformFeeReleasedNdp: 0
     }
   },
   ...overrides
@@ -100,6 +105,7 @@ const createCompletionRecord = (
   shopId: 8,
   serviceId: 88,
   rewardAllocatedNdp: 1_000,
+  platformFeeBps: 1_000,
   taskStatus: "active",
   taskStartsAt: new Date("2026-08-01T00:00:00.000Z"),
   taskEndsAt: new Date("2026-10-01T00:00:00.000Z"),
@@ -113,9 +119,11 @@ const createCompletionRecord = (
   rewardId: null,
   rewardStatus: null,
   rewardNdp: null,
+  rewardPlatformFeeNdp: null,
   rewardLedgerTransactionId: null,
   rewardPublisherWalletId: null,
   rewardClaimantWalletId: null,
+  rewardPlatformWalletId: null,
   ...overrides
 });
 
@@ -130,7 +138,7 @@ const createRewardLedger = (): jest.Mocked<AffiliateRewardSettlementPort> => ({
       referenceType: "affiliate_reward",
       referenceId: 601,
       actorUserId: 7,
-      amount: 1_000,
+      amount: 1_100,
       currency: "NDP",
       metadata: null,
       createdAt: NOW,
@@ -138,7 +146,8 @@ const createRewardLedger = (): jest.Mocked<AffiliateRewardSettlementPort> => ({
       entries: []
     },
     publisherWalletId: 191,
-    claimantWalletId: 291
+    claimantWalletId: 291,
+    platformWalletId: 391
   })
 });
 
@@ -297,9 +306,7 @@ describe("AffiliateCheckoutService", () => {
       expiresAt: new Date("2026-10-01T00:00:00.000Z"),
       publicTokenId: "public-token-id"
     });
-    const repository = createRepository(
-      createClaim({ tokenHash: issued.tokenHash })
-    );
+    const repository = createRepository(createClaim({ tokenHash: issued.tokenHash }));
     const service = new AffiliateCheckoutService(repository, linkTokens, {
       now: () => NOW
     });
@@ -319,16 +326,11 @@ describe("AffiliateCheckoutService", () => {
   it.each([
     ["missing claim", null],
     ["revoked claim", createClaim({ status: "revoked" })],
-    [
-      "expired claim",
-      createClaim({ expiresAt: new Date("2026-08-26T03:59:59.000Z") })
-    ]
+    ["expired claim", createClaim({ expiresAt: new Date("2026-08-26T03:59:59.000Z") })]
   ])("rejects %s as an invalid promotion", async (_label, claim) => {
-    const service = new AffiliateCheckoutService(
-      createRepository(claim),
-      createLinkTokens(),
-      { now: () => NOW }
-    );
+    const service = new AffiliateCheckoutService(createRepository(claim), createLinkTokens(), {
+      now: () => NOW
+    });
 
     await expect(service.prepareCheckout(prepareInput)).rejects.toMatchObject({
       statusCode: 404,
@@ -406,6 +408,7 @@ describe("AffiliateCheckoutService", () => {
           budgetReservation: {
             ...createClaim().task.budgetReservation!,
             totalFrozenNdp: 4_000,
+            commissionFrozenNdp: 4_000,
             allocatedNdp: 2_000,
             capturedNdp: 1_001
           }
@@ -414,11 +417,9 @@ describe("AffiliateCheckoutService", () => {
       "error.affiliate.budget_unavailable"
     ]
   ])("rejects invalid %s eligibility", async (_label, claim, message) => {
-    const service = new AffiliateCheckoutService(
-      createRepository(claim),
-      createLinkTokens(),
-      { now: () => NOW }
-    );
+    const service = new AffiliateCheckoutService(createRepository(claim), createLinkTokens(), {
+      now: () => NOW
+    });
 
     await expect(service.prepareCheckout(prepareInput)).rejects.toMatchObject({
       statusCode: 409,
@@ -440,11 +441,9 @@ describe("AffiliateCheckoutService", () => {
   });
 
   it("rejects a service time outside the task execution window", async () => {
-    const service = new AffiliateCheckoutService(
-      createRepository(),
-      createLinkTokens(),
-      { now: () => NOW }
-    );
+    const service = new AffiliateCheckoutService(createRepository(), createLinkTokens(), {
+      now: () => NOW
+    });
 
     await expect(
       service.prepareCheckout({
@@ -647,9 +646,7 @@ describe("AffiliateCheckoutService", () => {
   it("settles an attributed reward from frozen budget after service completion", async () => {
     const repository = createRepository();
     const rewardLedger = createRewardLedger();
-    repository.lockAttributionForCompletion.mockResolvedValue(
-      createCompletionRecord()
-    );
+    repository.lockAttributionForCompletion.mockResolvedValue(createCompletionRecord());
     repository.qualifyAttributionAndCreateReward.mockResolvedValue({
       rewardId: 601,
       publisherWalletId: 191,
@@ -675,6 +672,7 @@ describe("AffiliateCheckoutService", () => {
       rewardId: 601,
       ledgerTransactionId: 801,
       rewardNdp: 1_000,
+      platformFeeNdp: 100,
       idempotent: false
     });
     expect(repository.countSettledCustomerOrders).toHaveBeenCalledWith({
@@ -689,6 +687,7 @@ describe("AffiliateCheckoutService", () => {
       publisherWalletId: 191,
       claimantUserId: 701,
       rewardNdp: 1_000,
+      platformFeeNdp: 100,
       qualifiedAt: NOW
     });
     expect(rewardLedger.settleAffiliateReward).toHaveBeenCalledWith(
@@ -701,7 +700,9 @@ describe("AffiliateCheckoutService", () => {
         publisherOwnerId: 61,
         publisherWalletId: 191,
         claimantUserId: 701,
-        amountNdp: 1_000,
+        rewardNdp: 1_000,
+        platformFeeNdp: 100,
+        platformFeeBps: 1_000,
         idempotencyKey: "affiliate:task:31:booking:9001:reward:settlement",
         actorUserId: 7
       },
@@ -714,6 +715,8 @@ describe("AffiliateCheckoutService", () => {
       reservationId: 91,
       rewardId: 601,
       rewardNdp: 1_000,
+      platformFeeNdp: 100,
+      platformWalletId: 391,
       ledgerTransactionId: 801,
       settledAt: NOW
     });
@@ -725,7 +728,10 @@ describe("AffiliateCheckoutService", () => {
       claimId: 41,
       rewardId: 601,
       ledgerTransactionId: 801,
-      rewardSettledNdp: 1_000
+      rewardSettledNdp: 1_000,
+      platformFeeSettledNdp: 100,
+      grossSettledNdp: 1_100,
+      platformWalletId: 391
     });
   });
 
@@ -738,9 +744,11 @@ describe("AffiliateCheckoutService", () => {
         rewardId: 601,
         rewardStatus: "settled",
         rewardNdp: 1_000,
+        rewardPlatformFeeNdp: 100,
         rewardLedgerTransactionId: 801,
         rewardPublisherWalletId: 191,
-        rewardClaimantWalletId: 291
+        rewardClaimantWalletId: 291,
+        rewardPlatformWalletId: 391
       })
     );
     const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
@@ -763,6 +771,7 @@ describe("AffiliateCheckoutService", () => {
       rewardId: 601,
       ledgerTransactionId: 801,
       rewardNdp: 1_000,
+      platformFeeNdp: 100,
       idempotent: true
     });
     expect(repository.qualifyAttributionAndCreateReward).not.toHaveBeenCalled();
@@ -813,9 +822,7 @@ describe("AffiliateCheckoutService", () => {
   it("releases allocation without reward when the customer completion limit is reached", async () => {
     const repository = createRepository();
     const rewardLedger = createRewardLedger();
-    repository.lockAttributionForCompletion.mockResolvedValue(
-      createCompletionRecord()
-    );
+    repository.lockAttributionForCompletion.mockResolvedValue(createCompletionRecord());
     repository.countSettledCustomerOrders.mockResolvedValue(2);
     const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
       now: () => NOW,
@@ -871,9 +878,7 @@ describe("AffiliateCheckoutService", () => {
 
   it("translates a guarded reward capture conflict into the stable domain error", async () => {
     const repository = createRepository();
-    repository.lockAttributionForCompletion.mockResolvedValue(
-      createCompletionRecord()
-    );
+    repository.lockAttributionForCompletion.mockResolvedValue(createCompletionRecord());
     repository.qualifyAttributionAndCreateReward.mockResolvedValue({
       rewardId: 601,
       publisherWalletId: 191,

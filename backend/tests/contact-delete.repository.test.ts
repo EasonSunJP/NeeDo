@@ -6,7 +6,11 @@ describe("RealtimeRepository friendship deletion", () => {
     const transaction = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: 31 }]),
       contact: {
-        findFirst: jest.fn().mockResolvedValue({ id: 31, contactUserId: 167 }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 31,
+          contactUserId: 167,
+          contactIdentityId: 1670
+        }),
         findMany: jest.fn().mockResolvedValue([{ id: 31 }, { id: 32 }]),
         deleteMany: jest.fn().mockResolvedValue({ count: 2 })
       },
@@ -23,10 +27,12 @@ describe("RealtimeRepository friendship deletion", () => {
     const repository = new RealtimeRepository(client);
 
     await expect(
-      repository.deleteContact({ contactId: 31, ownerUserId: 41 })
+      repository.deleteContact({ contactId: 31, ownerUserId: 41, ownerIdentityId: 410 })
     ).resolves.toEqual({
       actorUserId: 41,
+      actorIdentityId: 410,
       counterpartUserId: 167,
+      counterpartIdentityId: 1670,
       contactIds: [31, 32],
       deletedContactCount: 2,
       deletedFollowCount: 2,
@@ -38,24 +44,24 @@ describe("RealtimeRepository friendship deletion", () => {
     expect(transaction.contact.deleteMany).toHaveBeenCalledWith({
       where: {
         OR: [
-          { ownerUserId: 41, contactUserId: 167 },
-          { ownerUserId: 167, contactUserId: 41 }
+          { ownerIdentityId: 410, contactIdentityId: 1670 },
+          { ownerIdentityId: 1670, contactIdentityId: 410 }
         ]
       }
     });
     expect(transaction.follow.deleteMany).toHaveBeenCalledWith({
       where: {
         OR: [
-          { followerUserId: 41, followingUserId: 167 },
-          { followerUserId: 167, followingUserId: 41 }
+          { followerIdentityId: 410, followingIdentityId: 1670 },
+          { followerIdentityId: 1670, followingIdentityId: 410 }
         ]
       }
     });
     expect(transaction.conversationParticipant.deleteMany).toHaveBeenCalledWith({
-      where: { conversationId: 91, userId: 41 }
+      where: { conversationId: 91, identityId: 410 }
     });
     expect(transaction.conversationParticipant.deleteMany).not.toHaveBeenCalledWith({
-      where: { conversationId: 91, userId: 167 }
+      where: { conversationId: 91, identityId: 1670 }
     });
     expect(transaction.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -63,7 +69,12 @@ describe("RealtimeRepository friendship deletion", () => {
         action: "im.friendship.deleted",
         targetType: "User",
         targetId: 167,
-        metadata: { contactIds: [31, 32], conversationId: 91 }
+        metadata: {
+          actorIdentityId: 410,
+          counterpartIdentityId: 1670,
+          contactIds: [31, 32],
+          conversationId: 91
+        }
       })
     });
   });
@@ -84,7 +95,7 @@ describe("RealtimeRepository friendship deletion", () => {
     const repository = new RealtimeRepository(client);
 
     await expect(
-      repository.deleteContact({ contactId: 31, ownerUserId: 99 })
+      repository.deleteContact({ contactId: 31, ownerUserId: 99, ownerIdentityId: 990 })
     ).resolves.toBeNull();
     expect(transaction.contact.deleteMany).not.toHaveBeenCalled();
     expect(transaction.follow.deleteMany).not.toHaveBeenCalled();

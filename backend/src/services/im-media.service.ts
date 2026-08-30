@@ -4,6 +4,7 @@ import type { RealtimeRepositoryPort } from "../repositories/realtime.repository
 import { AppError } from "../utils/app-error";
 import type { AuthenticatedAccessContext } from "./auth.service";
 import type { ImMediaMimeType, ImMediaStoragePort } from "./im-media.storage";
+import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
 
 export interface UploadImMediaInput {
   bytes: Buffer;
@@ -16,12 +17,17 @@ export class ImMediaService {
   public constructor(
     private readonly repository: Pick<RealtimeRepositoryPort, "getConversationForUser">,
     private readonly storage: ImMediaStoragePort,
-    private readonly publicBaseUrl: string
+    private readonly publicBaseUrl: string,
+    private readonly personalIdentityScope?: Pick<PersonalIdentityScopeService, "resolve">
   ) {}
 
   public async upload(auth: AuthenticatedAccessContext, input: UploadImMediaInput) {
+    const identityScope = this.personalIdentityScope
+      ? await this.personalIdentityScope.resolve(auth)
+      : { identityId: auth.currentIdentityId ?? auth.userId };
     const conversation = await this.repository.getConversationForUser(
       input.conversationId,
+      identityScope.identityId,
       auth.userId
     );
     if (!conversation) {

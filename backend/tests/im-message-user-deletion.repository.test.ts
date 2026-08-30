@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 
-describe("RealtimeRepository user-only message deletion", () => {
+describe("RealtimeRepository identity-only message deletion", () => {
   it("persists an idempotent viewer tombstone without changing the shared message", async () => {
     const participantCreatedAt = new Date("2026-08-30T00:00:00.000Z");
     const participantFindFirst = jest.fn(async () => ({ createdAt: participantCreatedAt }));
@@ -20,13 +20,18 @@ describe("RealtimeRepository user-only message deletion", () => {
     const repository = new RealtimeRepository(client);
 
     await expect(
-      repository.deleteMessageForUser({ conversationId: 3, messageId: 41, userId: 7 })
+      repository.deleteMessageForUser({
+        conversationId: 3,
+        messageId: 41,
+        userId: 7,
+        identityId: 70
+      })
     ).resolves.toEqual({ conversationId: 3, messageId: 41, deleted: true });
 
     expect(participantFindFirst).toHaveBeenCalledWith({
       where: {
         conversationId: 3,
-        userId: 7,
+        identityId: 70,
         deletedAt: null,
         conversation: { deletedAt: null }
       },
@@ -41,14 +46,14 @@ describe("RealtimeRepository user-only message deletion", () => {
         deletedAt: null,
         conversation: {
           deletedAt: null,
-          participants: { some: { userId: 7, deletedAt: null } }
+          participants: { some: { identityId: 70, deletedAt: null } }
         }
       },
       select: { id: true }
     });
     expect(deletionUpsert).toHaveBeenCalledWith({
-      where: { userId_messageId: { userId: 7, messageId: 41 } },
-      create: { conversationId: 3, messageId: 41, userId: 7 },
+      where: { identityId_messageId: { identityId: 70, messageId: 41 } },
+      create: { conversationId: 3, messageId: 41, userId: 7, identityId: 70 },
       update: { deletedAt: null }
     });
     expect(auditCreate).toHaveBeenCalledWith({

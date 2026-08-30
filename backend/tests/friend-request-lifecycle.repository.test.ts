@@ -17,11 +17,15 @@ const target = {
   username: "Target",
   avatarUrl: "/target.png"
 };
+const requesterIdentityId = 410;
+const targetIdentityId = 1670;
 
 const requestRecord = (overrides: Record<string, unknown> = {}) => ({
   id: 19,
   requesterUserId: requester.id,
+  requesterIdentityId,
   targetUserId: target.id,
+  targetIdentityId,
   requester,
   target,
   status: "PENDING",
@@ -49,6 +53,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         .mockResolvedValueOnce([{ dbNow }])
         .mockResolvedValueOnce([{ id: requester.id }, { id: target.id }]),
       contact: { count: jest.fn().mockResolvedValue(0) },
+      userIdentity: { count: jest.fn().mockResolvedValue(2) },
       friendRequest: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -61,7 +66,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
     await expect(
       new RealtimeRepository(transactionClient(tx)).createFriendRequest({
         requesterUserId: requester.id,
-        targetUserId: target.id
+        requesterIdentityId,
+        targetUserId: target.id,
+        targetIdentityId
       })
     ).resolves.toEqual({
       status: "ready",
@@ -70,7 +77,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
         friendRequest: {
           id: 19,
           requesterUserId: requester.id,
+          requesterIdentityId,
           targetUserId: target.id,
+          targetIdentityId,
           requester: {
             userId: requester.id,
             needoId: requester.needoId,
@@ -95,7 +104,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
     expect(tx.friendRequest.create).toHaveBeenCalledWith({
       data: {
         requesterUserId: requester.id,
+        requesterIdentityId,
         targetUserId: target.id,
+        targetIdentityId,
         message: null,
         expiresAt
       },
@@ -119,6 +130,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         .mockResolvedValueOnce([{ dbNow }])
         .mockResolvedValueOnce([{ id: requester.id }, { id: target.id }]),
       contact: { count: jest.fn().mockResolvedValue(0) },
+      userIdentity: { count: jest.fn().mockResolvedValue(2) },
       friendRequest: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(original),
@@ -130,7 +142,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
 
     const outcome = await new RealtimeRepository(transactionClient(tx)).createFriendRequest({
       requesterUserId: requester.id,
-      targetUserId: target.id
+      requesterIdentityId,
+      targetUserId: target.id,
+      targetIdentityId
     });
 
     expect(outcome).toMatchObject({
@@ -157,7 +171,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
     await expect(
       new RealtimeRepository(transactionClient(tx)).createFriendRequest({
         requesterUserId: requester.id,
-        targetUserId: target.id
+        requesterIdentityId,
+        targetUserId: target.id,
+        targetIdentityId
       })
     ).resolves.toEqual({ status: "target_unavailable" });
     expect(tx.friendRequest.create).not.toHaveBeenCalled();
@@ -179,7 +195,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
       follow: { upsert: jest.fn().mockResolvedValue({ id: 1 }) },
       conversation: { findFirst: jest.fn().mockResolvedValue({ id: 91 }) },
       conversationParticipant: {
-        findMany: jest.fn().mockResolvedValue([{ userId: target.id }]),
+        findMany: jest.fn().mockResolvedValue([{ identityId: targetIdentityId }]),
         upsert: jest.fn().mockResolvedValue({ id: 7 })
       },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 3 }) }
@@ -188,6 +204,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
     const outcome = await new RealtimeRepository(transactionClient(tx)).respondToFriendRequest({
       id: pending.id,
       actorUserId: target.id,
+      actorIdentityId: targetIdentityId,
       action: "accept"
     });
 
@@ -205,6 +222,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         create: expect.objectContaining({
           conversationId: 91,
           userId: requester.id,
+          identityId: requesterIdentityId,
           createdAt: dbNow
         })
       })
@@ -231,6 +249,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
     const outcome = await new RealtimeRepository(transactionClient(tx)).respondToFriendRequest({
       id: pending.id,
       actorUserId: target.id,
+      actorIdentityId: targetIdentityId,
       action: "accept"
     });
 
@@ -292,7 +311,12 @@ describe("RealtimeRepository friend request lifecycle", () => {
   });
 
   it("returns an incoming pending directory relationship with a safe profile", async () => {
-    const pending = requestRecord({ requesterUserId: target.id, targetUserId: requester.id });
+    const pending = requestRecord({
+      requesterUserId: target.id,
+      requesterIdentityId: targetIdentityId,
+      targetUserId: requester.id,
+      targetIdentityId: requesterIdentityId
+    });
     const publicTarget = {
       ...target,
       identities: [
@@ -333,7 +357,12 @@ describe("RealtimeRepository friend request lifecycle", () => {
     } as unknown as PrismaClient;
 
     await expect(
-      new RealtimeRepository(client).getDirectoryProfile(requester.id, target.id)
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
     ).resolves.toMatchObject({
       relationship: "incoming_pending",
       contactId: null,
@@ -356,6 +385,52 @@ describe("RealtimeRepository friend request lifecycle", () => {
         yearsExperience: null,
         bio: "东京生活，预约前请先确认时间。"
       }
+    });
+  });
+
+  it("keeps an incoming pending request actionable when only the viewer has a one-way contact", async () => {
+    const pending = requestRecord({
+      requesterUserId: target.id,
+      requesterIdentityId: targetIdentityId,
+      targetUserId: requester.id,
+      targetIdentityId: requesterIdentityId
+    });
+    const publicTarget = {
+      ...target,
+      identities: [],
+      customerProfile: null,
+      technicianProfile: null
+    };
+    const findContact = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 91 })
+      .mockResolvedValueOnce(null);
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(publicTarget) },
+      contact: { findFirst: findContact },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(pending) }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
+    ).resolves.toMatchObject({
+      relationship: "incoming_pending",
+      contactId: null,
+      friendRequest: { id: pending.id, status: "pending" }
+    });
+    expect(findContact).toHaveBeenNthCalledWith(2, {
+      where: {
+        ownerIdentityId: targetIdentityId,
+        contactIdentityId: requesterIdentityId,
+        deletedAt: null
+      },
+      select: { id: true }
     });
   });
 
@@ -396,7 +471,12 @@ describe("RealtimeRepository friend request lifecycle", () => {
     } as unknown as PrismaClient;
 
     await expect(
-      new RealtimeRepository(client).getDirectoryProfile(requester.id, target.id)
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
     ).resolves.toMatchObject({
       relationship: "friend",
       identityCard: {
@@ -454,7 +534,12 @@ describe("RealtimeRepository friend request lifecycle", () => {
     } as unknown as PrismaClient;
 
     await expect(
-      new RealtimeRepository(client).getDirectoryProfile(requester.id, target.id)
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
     ).resolves.toMatchObject({
       identityCard: {
         entityType: "technician",
@@ -508,7 +593,12 @@ describe("RealtimeRepository friend request lifecycle", () => {
     } as unknown as PrismaClient;
 
     await expect(
-      new RealtimeRepository(client).getDirectoryProfile(requester.id, target.id)
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
     ).resolves.toMatchObject({
       identityCard: {
         entityType: "shop",
@@ -537,13 +627,15 @@ describe("RealtimeRepository friend request lifecycle", () => {
       friendRequest: { count: friendRequestCount }
     } as unknown as PrismaClient;
 
-    await expect(new RealtimeRepository(client).getUnreadCounts(target.id)).resolves.toMatchObject({
+    await expect(
+      new RealtimeRepository(client).getUnreadCounts(targetIdentityId)
+    ).resolves.toMatchObject({
       friendRequests: 1,
       total: 1
     });
     expect(friendRequestCount).toHaveBeenCalledWith({
       where: {
-        targetUserId: target.id,
+        targetIdentityId,
         status: "PENDING",
         expiresAt: { gt: dbNow },
         deletedAt: null

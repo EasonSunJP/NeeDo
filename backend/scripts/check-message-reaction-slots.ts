@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 
 type DuplicateReactionSlot = {
   messageId: number;
-  userId: number;
+  identityId: number;
   category: "judgement" | "emoji";
   activeCount: bigint;
 };
@@ -19,9 +19,9 @@ const main = async (): Promise<void> => {
 
   try {
     const duplicates = await prisma.$queryRaw<DuplicateReactionSlot[]>`
-      SELECT
-        message_id AS messageId,
-        user_id AS userId,
+          SELECT
+            message_id AS messageId,
+            identity_id AS identityId,
         CASE
           WHEN emoji IN ('OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks')
             THEN 'judgement'
@@ -30,7 +30,7 @@ const main = async (): Promise<void> => {
         COUNT(*) AS activeCount
       FROM message_reactions
       WHERE deleted_at IS NULL
-      GROUP BY message_id, user_id, category
+          GROUP BY message_id, identity_id, category
       HAVING COUNT(*) > 1
     `;
     const result = {

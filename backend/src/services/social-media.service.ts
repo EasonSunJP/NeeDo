@@ -4,6 +4,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { ContentMediaMimeType, ContentMediaStoragePort } from "./content-media.storage";
+import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
 
 export interface SocialMediaProjection {
   publicId: string;
@@ -14,6 +15,7 @@ export interface SocialMediaProjection {
 
 export interface CreateSocialMediaUploadInput {
   ownerUserId: number;
+  ownerIdentityId: number;
   entityType: "social_post_upload";
   usageType: "social_post_public";
   fileKey: string;
@@ -39,7 +41,8 @@ export interface UploadSocialMediaInput {
 export class SocialMediaService {
   public constructor(
     private readonly repository: SocialMediaRepositoryPort,
-    private readonly storage: ContentMediaStoragePort
+    private readonly storage: ContentMediaStoragePort,
+    private readonly personalIdentityScope?: Pick<PersonalIdentityScopeService, "resolve">
   ) {}
 
   public async upload(
@@ -47,6 +50,9 @@ export class SocialMediaService {
     context: AuthRequestContext,
     input: UploadSocialMediaInput
   ): Promise<SocialMediaProjection> {
+    const identityScope = this.personalIdentityScope
+      ? await this.personalIdentityScope.resolve(actor)
+      : { identityId: actor.currentIdentityId ?? actor.userId };
     let stored: Awaited<ReturnType<ContentMediaStoragePort["save"]>>;
     try {
       stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
@@ -58,6 +64,7 @@ export class SocialMediaService {
     try {
       return await this.repository.createUpload({
         ownerUserId: actor.userId,
+        ownerIdentityId: identityScope.identityId,
         entityType: "social_post_upload",
         usageType: "social_post_public",
         fileKey: stored.fileKey,

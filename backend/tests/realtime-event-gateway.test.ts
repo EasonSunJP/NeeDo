@@ -104,6 +104,44 @@ describe("SseRealtimeEventGateway", () => {
     response.emit("close");
   });
 
+  it("routes and cleans up subscribers by canonical identity instead of account user", async () => {
+    const gateway = new SseRealtimeEventGateway();
+    const technicianResponse = new FakeSseResponse();
+    await gateway.subscribe(71, technicianResponse as unknown as Response);
+
+    gateway.publish({
+      id: "evt-technician-only",
+      type: "message.created",
+      recipientUserId: 7,
+      recipientIdentityId: 71,
+      payload: { messageId: 12 },
+      createdAt: "2026-08-30T00:00:00.000Z"
+    });
+
+    expect(technicianResponse.writes.join("")).toContain("id: evt-technician-only");
+    technicianResponse.writable = false;
+    gateway.publish({
+      id: "evt-disconnect",
+      type: "message.created",
+      recipientUserId: 7,
+      recipientIdentityId: 71,
+      payload: { messageId: 13 },
+      createdAt: "2026-08-30T00:00:01.000Z"
+    });
+    expect(technicianResponse.ended).toBe(true);
+
+    const writesAfterDisconnect = technicianResponse.writes.length;
+    gateway.publish({
+      id: "evt-after-identity-disconnect",
+      type: "message.created",
+      recipientUserId: 7,
+      recipientIdentityId: 71,
+      payload: { messageId: 14 },
+      createdAt: "2026-08-30T00:00:02.000Z"
+    });
+    expect(technicianResponse.writes).toHaveLength(writesAfterDisconnect);
+  });
+
   it("delivers an event exactly once across backend instances", async () => {
     const eventBus = new SharedRealtimeEventBus();
     const firstGateway = new SseRealtimeEventGateway({ eventBus, instanceId: "instance-a" });

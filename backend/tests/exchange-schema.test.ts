@@ -7,6 +7,13 @@ const migrationPath = resolve(
   "../prisma/migrations/20260830040000_formal_needo_exchange/migration.sql"
 );
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+const identityScopeMigration = readFileSync(
+  resolve(
+    __dirname,
+    "../prisma/migrations/20260830130000_exchange_personal_identity_scope/migration.sql"
+  ),
+  "utf8"
+);
 
 const modelSource = (name: string): string => {
   const match = schema.match(new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`, "m"));
@@ -43,6 +50,7 @@ describe("formal NeeDo Exchange schema", () => {
     const post = modelSource("ExchangePost");
     expect(post).toContain("authorUserId");
     expect(post).toContain("authorIdentityId");
+    expect(post).toContain("ownerIdentityId");
     expect(post).toContain("publisherPublicId");
     expect(post).toContain("publisherIdentityType");
 
@@ -57,8 +65,8 @@ describe("formal NeeDo Exchange schema", () => {
     expect(modelSource("ExchangeDemand")).toContain("postId");
     expect(modelSource("ExchangeDemand")).toContain("@unique");
     expect(modelSource("ExchangeIntelligence")).toContain("@unique");
-    expect(modelSource("ExchangeLike")).toContain("@@unique([postId, actorUserId])");
-    expect(modelSource("ExchangeShare")).toContain("@@unique([postId, actorUserId])");
+    expect(modelSource("ExchangeLike")).toContain("@@unique([postId, actorIdentityId])");
+    expect(modelSource("ExchangeShare")).toContain("@@unique([postId, actorIdentityId])");
   });
 
   it("ships an additive migration with all Exchange tables and foreign keys", () => {
@@ -70,5 +78,15 @@ describe("formal NeeDo Exchange schema", () => {
     expect(migration).toContain("CREATE TABLE `exchange_shares`");
     expect(migration).toContain("ADD CONSTRAINT");
     expect(migration).not.toMatch(/(?:^|\n)\s*(?:DROP|DELETE|TRUNCATE)\b/i);
+  });
+
+  it("moves Exchange ownership and like/share uniqueness to personal identities in a new migration", () => {
+    expect(identityScopeMigration).toContain("ADD COLUMN `owner_identity_id` INTEGER NULL");
+    expect(identityScopeMigration).toContain("IN ('customer', 'user', 'u')");
+    expect(identityScopeMigration).toContain("MODIFY `owner_identity_id` INTEGER NOT NULL");
+    expect(identityScopeMigration).toContain("exchange_likes_post_id_actor_identity_id_key");
+    expect(identityScopeMigration).toContain("exchange_shares_post_id_actor_identity_id_key");
+    expect(identityScopeMigration).toContain("exchange_posts_owner_identity_id_fkey");
+    expect(identityScopeMigration).not.toMatch(/(?:^|\n)\s*(?:DELETE|TRUNCATE)\b/i);
   });
 });

@@ -1,6 +1,10 @@
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
+import {
+  IM_PRIVACY_TTL_MAX_SECONDS,
+  IM_PRIVACY_TTL_MIN_SECONDS
+} from "../constants/im-privacy";
 
 type OpenApiDocument = Record<string, unknown>;
 
@@ -188,6 +192,20 @@ const orderAcceptancePauseListParameters = [
   { name: "subjectId", in: "query", schema: { type: "integer", minimum: 1 } }
 ];
 
+const affiliatePlatformFeeErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description: "error.forbidden or error.identity_forbidden — denied permission or scope"
+  },
+  "404": {
+    description: "error.affiliate.platform_fee_shop_not_found — shop does not exist"
+  },
+  "409": {
+    description:
+      "error.affiliate.platform_fee_version_conflict, error.affiliate.platform_fee_policy_conflict, or error.affiliate.platform_fee_rate_mismatch"
+  }
+};
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -381,6 +399,14 @@ const customerProfileErrorResponses = {
   "403": { description: "Missing customer-profile permission or customer identity scope" },
   "404": { description: "Customer profile not found in authenticated scope" },
   "500": { description: "Unexpected customer profile persistence error" }
+};
+
+const technicianProfileErrorResponses = {
+  "400": { description: "Invalid technician self-profile update payload" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing technician-profile permission or technician identity scope" },
+  "404": { description: "Technician profile not found in authenticated scope" },
+  "500": { description: "Unexpected technician profile persistence error" }
 };
 
 const contentAnnouncementErrorResponses = {
@@ -1480,7 +1506,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           unreadCount: { type: "integer" },
           privacyModeEnabled: { type: "boolean" },
           hideMemberProfiles: { type: "boolean" },
-          disappearingTtlSeconds: { type: ["integer", "null"], minimum: 60 },
+          disappearingTtlSeconds: {
+            type: ["integer", "null"],
+            minimum: IM_PRIVACY_TTL_MIN_SECONDS,
+            maximum: IM_PRIVACY_TTL_MAX_SECONDS
+          },
           disappearingStartMode: { type: "string", enum: ["sent", "read_by_all"] },
           privacyPolicyVersion: { type: "integer", minimum: 0 },
           createdAt: { type: "string", format: "date-time" },
@@ -1492,7 +1522,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "ownerUserId",
+          "ownerIdentityId",
           "contactUserId",
+          "contactIdentityId",
           "contactUser",
           "nickname",
           "source",
@@ -1502,7 +1534,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer" },
           ownerUserId: { type: "integer" },
+          ownerIdentityId: { type: "integer" },
           contactUserId: { type: "integer" },
+          contactIdentityId: { type: "integer" },
           contactUser: { $ref: "#/components/schemas/RealtimeParticipant" },
           nickname: { type: ["string", "null"] },
           source: { type: "string" },
@@ -1525,7 +1559,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "requesterUserId",
+          "requesterIdentityId",
           "targetUserId",
+          "targetIdentityId",
           "requester",
           "target",
           "status",
@@ -1537,8 +1573,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
-          requesterUserId: { type: "integer" },
-          targetUserId: { type: "integer" },
+            requesterUserId: { type: "integer" },
+            requesterIdentityId: { type: "integer" },
+            targetUserId: { type: "integer" },
+            targetIdentityId: { type: "integer" },
           requester: { $ref: "#/components/schemas/RealtimeParticipant" },
           target: { $ref: "#/components/schemas/RealtimeParticipant" },
           status: { type: "string", enum: ["pending", "accepted", "rejected", "expired"] },
@@ -1641,6 +1679,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "authorUserId",
+          "authorIdentityId",
           "content",
           "media",
           "visibility",
@@ -1654,6 +1693,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer" },
           authorUserId: { type: "integer" },
+          authorIdentityId: { type: "integer" },
           content: { type: "string" },
           media: {},
           visibility: { type: "string", enum: ["public", "followers"] },
@@ -1672,9 +1712,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       SocialProfileSummary: {
         type: "object",
         additionalProperties: false,
-        required: ["userId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
+        required: ["userId", "identityId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
         properties: {
           userId: { type: "integer" },
+          identityId: { type: "integer" },
           username: { type: "string" },
           displayName: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
@@ -1694,11 +1735,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       Follow: {
         type: "object",
-        required: ["id", "followerUserId", "followingUserId", "createdAt"],
+        required: [
+          "id",
+          "followerUserId",
+          "followerIdentityId",
+          "followingUserId",
+          "followingIdentityId",
+          "createdAt"
+        ],
         properties: {
           id: { type: "integer" },
           followerUserId: { type: "integer" },
+          followerIdentityId: { type: "integer" },
           followingUserId: { type: "integer" },
+          followingIdentityId: { type: "integer" },
           createdAt: { type: "string", format: "date-time" }
         }
       },
@@ -1707,7 +1757,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "recipientUserId",
+          "recipientIdentityId",
           "actorUserId",
+          "actorIdentityId",
           "type",
           "title",
           "body",
@@ -1718,7 +1770,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer" },
           recipientUserId: { type: "integer" },
+          recipientIdentityId: { type: "integer" },
           actorUserId: { type: ["integer", "null"] },
+          actorIdentityId: { type: ["integer", "null"] },
           type: { type: "string", enum: ["orderStatus", "friendRequest", "system", "social"] },
           title: { type: "string" },
           body: { type: "string" },
@@ -3032,6 +3086,66 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { type: "string", minLength: 1, maxLength: 40 }
           },
           bio: { type: ["string", "null"], maxLength: 2000 },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
+        }
+      },
+      TechnicianSelfProfile: {
+        type: "object",
+        required: [
+          "id", "publicId", "userId", "shopId", "displayName", "avatarUrl", "bio", "city",
+          "age", "heightCm", "languages", "serviceAreas", "profileTags", "canServeForeigners",
+          "bidBudgetMinJpy", "bidBudgetMaxJpy", "paymentMethods", "visibility",
+          "employmentType", "yearsExperience", "createdAt", "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          publicId: { type: "string" },
+          userId: { type: "integer", minimum: 1 },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          city: { type: "string" },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: { type: "array", items: { type: "string" } },
+          serviceAreas: { type: "array", items: { type: "string" } },
+          profileTags: { type: "array", items: { type: "string" } },
+          canServeForeigners: { type: "boolean" },
+          bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0 },
+          bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
+          paymentMethods: {
+            type: "array",
+            items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] }
+          },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
+          employmentType: { type: "string", enum: ["independent", "full_time", "temporary"] },
+          yearsExperience: { type: "integer", minimum: 0 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      TechnicianSelfProfileUpdate: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarDataUrl: {
+            type: "string",
+            maxLength: 900000,
+            pattern: "^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+          },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", maxLength: 40 } },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          serviceAreas: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 80 } },
+          profileTags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } },
+          canServeForeigners: { type: "boolean" },
+          bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
+          bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
+          paymentMethods: { type: "array", minItems: 1, maxItems: 8, items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] } },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
@@ -4746,9 +4860,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "taskId",
           "walletId",
           "totalFrozenNdp",
+          "commissionFrozenNdp",
+          "platformFeeFrozenNdp",
           "allocatedNdp",
           "capturedNdp",
+          "platformFeeCapturedNdp",
           "releasedNdp",
+          "platformFeeReleasedNdp",
           "status",
           "idempotencyKey",
           "frozenAt",
@@ -4759,9 +4877,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           taskId: { type: "integer", minimum: 1 },
           walletId: { type: "integer", minimum: 1 },
           totalFrozenNdp: { type: "integer", minimum: 0 },
+          commissionFrozenNdp: { type: "integer", minimum: 0 },
+          platformFeeFrozenNdp: { type: "integer", minimum: 0 },
           allocatedNdp: { type: "integer", minimum: 0 },
           capturedNdp: { type: "integer", minimum: 0 },
+          platformFeeCapturedNdp: { type: "integer", minimum: 0 },
           releasedNdp: { type: "integer", minimum: 0 },
+          platformFeeReleasedNdp: { type: "integer", minimum: 0 },
           status: { type: "string", enum: ["active", "released", "exhausted"] },
           idempotencyKey: { type: "string", maxLength: 180 },
           frozenAt: { type: "string", format: "date-time" },
@@ -4781,10 +4903,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "name",
           "rewardNdpPerCompletedOrder",
           "totalBudgetNdp",
+          "platformFeeBps",
+          "platformFeeReserveNdp",
           "reservedBudgetNdp",
+          "grossReservedBudgetNdp",
           "allocatedBudgetNdp",
           "settledBudgetNdp",
+          "settledPlatformFeeNdp",
           "releasedBudgetNdp",
+          "releasedPlatformFeeNdp",
           "customerDiscountType",
           "claimStartsAt",
           "claimEndsAt",
@@ -4813,6 +4940,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
           rewardNdpPerCompletedOrder: affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
           totalBudgetNdp: affiliateEditableTaskProperties.totalBudgetNdp,
+          platformFeeBps: { type: "integer", minimum: 0, maximum: 10000 },
+          platformFeeReserveNdp: { type: "integer", minimum: 0 },
           customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
           fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
           discountRateBps: affiliateEditableTaskProperties.discountRateBps,
@@ -4828,9 +4957,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             affiliateEditableTaskProperties.maxCompletedOrdersPerCustomer,
           serviceScopeMode: affiliateEditableTaskProperties.serviceScopeMode,
           reservedBudgetNdp: { type: "integer", minimum: 0 },
+          grossReservedBudgetNdp: { type: "integer", minimum: 0 },
           allocatedBudgetNdp: { type: "integer", minimum: 0 },
           settledBudgetNdp: { type: "integer", minimum: 0 },
+          settledPlatformFeeNdp: { type: "integer", minimum: 0 },
           releasedBudgetNdp: { type: "integer", minimum: 0 },
+          releasedPlatformFeeNdp: { type: "integer", minimum: 0 },
           status: { type: "string", enum: affiliateTaskStatuses },
           reviewedById: { type: ["integer", "null"], minimum: 1 },
           reviewedAt: { type: ["string", "null"], format: "date-time" },
@@ -4944,6 +5076,126 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           list: {
             type: "array",
             items: { $ref: "#/components/schemas/AffiliateTask" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliatePlatformFeeRule: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "scopeType",
+          "scopeKey",
+          "shopId",
+          "shopName",
+          "shopCity",
+          "feeBps",
+          "version",
+          "effectiveFrom",
+          "effectiveTo",
+          "activeKey",
+          "reason",
+          "createdByNeedoId",
+          "updatedByNeedoId",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          scopeType: { type: "string", enum: ["global", "shop"] },
+          scopeKey: { type: "string", pattern: "^(?:global|shop:[1-9][0-9]*)$" },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          shopName: { type: ["string", "null"] },
+          shopCity: { type: ["string", "null"] },
+          feeBps: { type: "integer", minimum: 0, maximum: 10000 },
+          version: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          activeKey: { type: ["string", "null"], maxLength: 191 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          createdByNeedoId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|needo)[0-9]{10}$"
+          },
+          updatedByNeedoId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|needo)[0-9]{10}$"
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliatePlatformFeeRulePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliatePlatformFeeRule" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliatePlatformFeeRuleCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scopeType", "shopId", "feeBps", "expectedVersion", "effectiveFrom", "reason"],
+        properties: {
+          scopeType: { type: "string", enum: ["global", "shop"] },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          feeBps: { type: "integer", minimum: 0, maximum: 10000 },
+          expectedVersion: { type: "integer", minimum: 0 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        },
+        description:
+          "Global scope requires shopId=null; shop scope requires a positive shopId. expectedVersion provides optimistic concurrency."
+      },
+      AffiliatePlatformFeeRuleSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["evaluatedAt", "current", "nextScheduled", "latestVersion"],
+        properties: {
+          evaluatedAt: { type: "string", format: "date-time" },
+          current: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
+              { type: "null" }
+            ]
+          },
+          nextScheduled: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
+              { type: "null" }
+            ]
+          },
+          latestVersion: { type: "integer", minimum: 0 }
+        }
+      },
+      AffiliatePlatformFeeShopOption: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "name", "city"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 1 },
+          city: { type: "string" }
+        }
+      },
+      AffiliatePlatformFeeShopOptionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliatePlatformFeeShopOption" }
           },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
@@ -6416,6 +6668,103 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   paths: {
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
+    [`${config.API_PREFIX}/backoffice/affiliate/fee-rules/summary`]: {
+      get: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "Read the server-evaluated global Affiliate platform fee summary",
+        description:
+          "Requires page:backoffice-affiliate-fee-rule and a global or platform operations identity.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "scopeType",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["global"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Current, next scheduled, and latest global fee versions", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeRuleSummary"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/fee-rule-shops`]: {
+      get: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "Search published shops for an Affiliate fee-rule scope",
+        description:
+          "Requires page:backoffice-affiliate-fee-rule. Returns only minimal published shop options.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated minimal published shop options", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeShopOptionPage"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/fee-rules`]: {
+      get: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "List versioned Affiliate platform fee rules",
+        description:
+          "Requires page:backoffice-affiliate-fee-rule and a global or platform operations identity.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          {
+            name: "scopeType",
+            in: "query",
+            schema: { type: "string", enum: ["global", "shop"] }
+          },
+          { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated Affiliate platform fee rule history", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeRulePage"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      },
+      post: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "Create the next Affiliate platform fee rule version",
+        description:
+          "Requires button:backoffice-affiliate-fee-rule-create. The prior version is closed and retained for immutable task snapshots.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliatePlatformFeeRuleCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created Affiliate platform fee rule version", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeRule"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/platform-fee-policy`]: {
       get: {
         tags: ["Platform Fee Policy"],
@@ -9260,6 +9609,38 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/CustomerSelfProfile"
           }),
           ...customerProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technician-profile/me`]: {
+      get: {
+        tags: ["Technician Profile"],
+        summary: "Get the profile belonging to the authenticated technician identity",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current technician self-profile", {
+            $ref: "#/components/schemas/TechnicianSelfProfile"
+          }),
+          ...technicianProfileErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Technician Profile"],
+        summary: "Update editable fields on the authenticated technician profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/TechnicianSelfProfileUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated current technician self-profile", {
+            $ref: "#/components/schemas/TechnicianSelfProfile"
+          }),
+          ...technicianProfileErrorResponses
         }
       }
     },
@@ -12990,8 +13371,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   hideMemberProfiles: { type: "boolean" },
                   disappearingTtlSeconds: {
                     type: ["integer", "null"],
-                    minimum: 60,
-                    maximum: 34560000
+                    minimum: IM_PRIVACY_TTL_MIN_SECONDS,
+                    maximum: IM_PRIVACY_TTL_MAX_SECONDS
                   },
                   disappearingStartMode: {
                     type: "string",
@@ -13087,8 +13468,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   hideMemberProfiles: { type: "boolean" },
                   disappearingTtlSeconds: {
                     type: ["integer", "null"],
-                    minimum: 60,
-                    maximum: 34560000
+                    minimum: IM_PRIVACY_TTL_MIN_SECONDS,
+                    maximum: IM_PRIVACY_TTL_MAX_SECONDS
                   },
                   disappearingStartMode: {
                     type: "string",

@@ -4,7 +4,9 @@ describe("RealtimeService friendship deletion", () => {
   it("returns the bilateral result and refreshes both accounts", async () => {
     const deletedFriendship = {
       actorUserId: 41,
+      actorIdentityId: 410,
       counterpartUserId: 167,
+      counterpartIdentityId: 1670,
       contactIds: [31, 32],
       deletedContactCount: 2,
       deletedFollowCount: 2,
@@ -16,14 +18,21 @@ describe("RealtimeService friendship deletion", () => {
     const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, eventGateway);
 
-    await expect(service.deleteContact({ userId: 41 } as never, 31)).resolves.toBe(
-      deletedFriendship
-    );
+    await expect(
+      service.deleteContact({ userId: 41, currentIdentityId: 410 } as never, 31)
+    ).resolves.toBe(deletedFriendship);
+
+    expect(repository.deleteContact).toHaveBeenCalledWith({
+      contactId: 31,
+      ownerIdentityId: 410,
+      ownerUserId: 41
+    });
     expect(eventGateway.publish).toHaveBeenCalledTimes(2);
     expect(eventGateway.publish).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: deletedFriendship,
         recipientUserId: 41,
+        recipientIdentityId: 410,
         type: "friendship.deleted"
       })
     );
@@ -31,6 +40,7 @@ describe("RealtimeService friendship deletion", () => {
       expect.objectContaining({
         payload: deletedFriendship,
         recipientUserId: 167,
+        recipientIdentityId: 1670,
         type: "friendship.deleted"
       })
     );

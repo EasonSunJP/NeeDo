@@ -60,7 +60,7 @@ describe("message reaction slot reconciliation migration", () => {
       "'OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks'"
     );
     expect(checker).toContain("WHERE deleted_at IS NULL");
-    expect(checker).toContain("GROUP BY message_id, user_id, category");
+    expect(checker).toContain("GROUP BY message_id, identity_id, category");
     expect(checker).toContain("HAVING COUNT(*) > 1");
     expect(checker).not.toMatch(/\$executeRaw|\b(?:INSERT|UPDATE|DELETE)\b/i);
     expect(packageJson).toContain('"check:message-reaction-slots"');

@@ -1,3 +1,4 @@
+import { materializeImComposerDraft } from "./reaction-policy";
 
 export type ImRoleType = "user" | "merchant" | "technician";
 export type ImProfileKind = "person" | "technician" | "store" | "service";
@@ -1045,7 +1046,7 @@ export function buildConversationRowPreview(conversation: Conversation) {
 
   if (draftText) {
     return {
-      text: draftText,
+      text: materializeImComposerDraft(draftText),
       isDraft: true
     };
   }

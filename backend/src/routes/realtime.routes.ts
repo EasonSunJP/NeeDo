@@ -6,8 +6,10 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { RealtimeRepository } from "../repositories/realtime.repository";
+import { AuthRepository } from "../repositories/auth.repository";
 import { SseRealtimeEventGateway } from "../services/realtime-event.gateway";
 import { RealtimeService } from "../services/realtime.service";
+import { PersonalIdentityScopeService } from "../services/personal-identity-scope.service";
 import {
   contactIdParamSchema,
   contactListQuerySchema,
@@ -84,7 +86,9 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     dependencies.realtimeService ??
     new RealtimeService(
       dependencies.realtimeRepository ?? new RealtimeRepository(),
-      dependencies.realtimeEventGateway ?? new SseRealtimeEventGateway()
+      dependencies.realtimeEventGateway ?? new SseRealtimeEventGateway(),
+      dependencies.personalIdentityScopeService ??
+        new PersonalIdentityScopeService(dependencies.authRepository ?? new AuthRepository())
     );
   const controller = new RealtimeController(service);
 

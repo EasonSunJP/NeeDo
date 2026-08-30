@@ -39,16 +39,12 @@ type AffiliateCheckoutClaimDbRecord = Prisma.AffiliateClaimGetPayload<{
 }>;
 
 export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryPort {
-  public constructor(
-    private readonly client: AffiliateCheckoutPrismaClient = prisma
-  ) {}
+  public constructor(private readonly client: AffiliateCheckoutPrismaClient = prisma) {}
 
   public forTransaction(
     transactionClient: AffiliateCheckoutTransactionClient
   ): AffiliateCheckoutRepositoryPort {
-    return new AffiliateCheckoutRepository(
-      transactionClient as AffiliateCheckoutPrismaClient
-    );
+    return new AffiliateCheckoutRepository(transactionClient as AffiliateCheckoutPrismaClient);
   }
 
   public async resolvePromotion(input: {
@@ -195,9 +191,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     return touch.id;
   }
 
-  public async createAttribution(
-    input: AffiliateCheckoutAttributionInput
-  ): Promise<void> {
+  public async createAttribution(input: AffiliateCheckoutAttributionInput): Promise<void> {
     await this.client.affiliateAttribution.create({
       data: {
         taskId: input.taskId,
@@ -231,7 +225,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       Prisma.sql`
         UPDATE affiliate_budget_reservations
         SET status = CASE
-              WHEN total_frozen_ndp
+              WHEN commission_frozen_ndp
                 - (allocated_ndp + ${input.rewardNdp})
                 - captured_ndp
                 - released_ndp < ${input.rewardNdp}
@@ -243,7 +237,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         WHERE task_id = ${input.taskId}
           AND deleted_at IS NULL
           AND status = 'active'
-          AND total_frozen_ndp
+          AND commission_frozen_ndp
             - allocated_ndp
             - captured_ndp
             - released_ndp >= ${input.rewardNdp}
@@ -259,7 +253,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         SET allocated_budget_ndp = allocated_budget_ndp + ${input.rewardNdp},
             status = CASE
               WHEN (
-                SELECT reservation.total_frozen_ndp
+                SELECT reservation.commission_frozen_ndp
                   - reservation.allocated_ndp
                   - reservation.captured_ndp
                   - reservation.released_ndp
@@ -289,9 +283,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       },
       data: {
         attributedOrderCount: { increment: 1 },
-        ...(input.source === "code"
-          ? { codeUseCount: { increment: 1 } }
-          : {})
+        ...(input.source === "code" ? { codeUseCount: { increment: 1 } } : {})
       }
     });
     if (claimUpdated.count !== 1) {
@@ -299,9 +291,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     }
   }
 
-  public async createAttributionAudit(
-    input: AffiliateCheckoutAuditInput
-  ): Promise<void> {
+  public async createAttributionAudit(input: AffiliateCheckoutAuditInput): Promise<void> {
     await this.client.auditLog.create({
       data: {
         actorId: input.actorUserId,
@@ -385,6 +375,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         shopId: number;
         serviceId: number;
         rewardAllocatedNdp: number;
+        platformFeeBps: number;
         taskStatus: string;
         taskStartsAt: Date;
         taskEndsAt: Date;
@@ -399,9 +390,11 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         rewardId: number | null;
         rewardStatus: string | null;
         rewardNdp: number | null;
+        rewardPlatformFeeNdp: number | null;
         rewardLedgerTransactionId: number | null;
         rewardPublisherWalletId: number | null;
         rewardClaimantWalletId: number | null;
+        rewardPlatformWalletId: number | null;
         bookingCustomerUserId: number;
         bookingShopId: number;
         bookingServiceId: number | null;
@@ -417,6 +410,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
                attribution.shop_id AS shopId,
                attribution.service_id AS serviceId,
                attribution.reward_allocated_ndp AS rewardAllocatedNdp,
+               task.platform_fee_bps AS platformFeeBps,
                task.status AS taskStatus,
                task.task_starts_at AS taskStartsAt,
                task.task_ends_at AS taskEndsAt,
@@ -431,9 +425,11 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
                reward.id AS rewardId,
                reward.status AS rewardStatus,
                reward.reward_ndp AS rewardNdp,
+               reward.platform_fee_ndp AS rewardPlatformFeeNdp,
                reward_transaction.ledger_transaction_id AS rewardLedgerTransactionId,
                reward.publisher_wallet_id AS rewardPublisherWalletId,
                reward.claimant_wallet_id AS rewardClaimantWalletId,
+               reward.platform_wallet_id AS rewardPlatformWalletId,
                booking.customer_user_id AS bookingCustomerUserId,
                booking.shop_id AS bookingShopId,
                COALESCE(
@@ -483,9 +479,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       throw new Error("error.affiliate.reward_settlement_conflict");
     }
 
-    const publisherOwnerType = row.publisherOwnerType.toLowerCase() as
-      | "merchant_account"
-      | "shop";
+    const publisherOwnerType = row.publisherOwnerType.toLowerCase() as "merchant_account" | "shop";
     const publisherOwnerId =
       publisherOwnerType === "merchant_account"
         ? row.publisherMerchantAccountId
@@ -496,7 +490,8 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
 
     return {
       attributionId: Number(row.attributionId),
-      attributionStatus: row.attributionStatus.toLowerCase() as AffiliateCompletionAttributionStatus,
+      attributionStatus:
+        row.attributionStatus.toLowerCase() as AffiliateCompletionAttributionStatus,
       taskId: Number(row.taskId),
       claimId: Number(row.claimId),
       claimantUserId: Number(row.claimantUserId),
@@ -504,13 +499,12 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       shopId: Number(row.shopId),
       serviceId: Number(row.serviceId),
       rewardAllocatedNdp: Number(row.rewardAllocatedNdp),
+      platformFeeBps: Number(row.platformFeeBps),
       taskStatus: row.taskStatus.toLowerCase() as AffiliateCheckoutTaskStatus,
       taskStartsAt: row.taskStartsAt,
       taskEndsAt: row.taskEndsAt,
       maxCompletedOrdersPerClaim:
-        row.maxCompletedOrdersPerClaim === null
-          ? null
-          : Number(row.maxCompletedOrdersPerClaim),
+        row.maxCompletedOrdersPerClaim === null ? null : Number(row.maxCompletedOrdersPerClaim),
       maxCompletedOrdersPerCustomer:
         row.maxCompletedOrdersPerCustomer === null
           ? null
@@ -526,18 +520,16 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
           ? null
           : (row.rewardStatus.toLowerCase() as AffiliateCompletionRewardStatus),
       rewardNdp: row.rewardNdp === null ? null : Number(row.rewardNdp),
+      rewardPlatformFeeNdp:
+        row.rewardPlatformFeeNdp === null ? null : Number(row.rewardPlatformFeeNdp),
       rewardLedgerTransactionId:
-        row.rewardLedgerTransactionId === null
-          ? null
-          : Number(row.rewardLedgerTransactionId),
+        row.rewardLedgerTransactionId === null ? null : Number(row.rewardLedgerTransactionId),
       rewardPublisherWalletId:
-        row.rewardPublisherWalletId === null
-          ? null
-          : Number(row.rewardPublisherWalletId),
+        row.rewardPublisherWalletId === null ? null : Number(row.rewardPublisherWalletId),
       rewardClaimantWalletId:
-        row.rewardClaimantWalletId === null
-          ? null
-          : Number(row.rewardClaimantWalletId)
+        row.rewardClaimantWalletId === null ? null : Number(row.rewardClaimantWalletId),
+      rewardPlatformWalletId:
+        row.rewardPlatformWalletId === null ? null : Number(row.rewardPlatformWalletId)
     };
   }
 
@@ -620,6 +612,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         publisherWalletId: input.publisherWalletId,
         claimantWalletId: claimantWallet.id,
         rewardNdp: input.rewardNdp,
+        platformFeeNdp: input.platformFeeNdp,
         status: "PENDING"
       },
       select: { id: true }
@@ -632,9 +625,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     };
   }
 
-  public async settleRewardAndCaptureBudget(
-    input: AffiliateRewardCaptureInput
-  ): Promise<void> {
+  public async settleRewardAndCaptureBudget(input: AffiliateRewardCaptureInput): Promise<void> {
     const attribution = await this.client.affiliateAttribution.updateMany({
       where: {
         id: input.attributionId,
@@ -655,11 +646,13 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         taskId: input.taskId,
         claimId: input.claimId,
         rewardNdp: input.rewardNdp,
+        platformFeeNdp: input.platformFeeNdp,
         status: "PENDING",
         deletedAt: null
       },
       data: {
         status: "SETTLED",
+        platformWalletId: input.platformWalletId,
         settledAt: input.settledAt
       }
     });
@@ -668,22 +661,26 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         id: input.reservationId,
         taskId: input.taskId,
         allocatedNdp: { gte: input.rewardNdp },
+        platformFeeFrozenNdp: { gte: input.platformFeeNdp },
         deletedAt: null
       },
       data: {
         allocatedNdp: { decrement: input.rewardNdp },
-        capturedNdp: { increment: input.rewardNdp }
+        capturedNdp: { increment: input.rewardNdp },
+        platformFeeCapturedNdp: { increment: input.platformFeeNdp }
       }
     });
     const task = await this.client.affiliateTask.updateMany({
       where: {
         id: input.taskId,
         allocatedBudgetNdp: { gte: input.rewardNdp },
+        platformFeeReserveNdp: { gte: input.platformFeeNdp },
         deletedAt: null
       },
       data: {
         allocatedBudgetNdp: { decrement: input.rewardNdp },
-        settledBudgetNdp: { increment: input.rewardNdp }
+        settledBudgetNdp: { increment: input.rewardNdp },
+        settledPlatformFeeNdp: { increment: input.platformFeeNdp }
       }
     });
     const claim = await this.client.affiliateClaim.updateMany({
@@ -721,7 +718,8 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
           AND task.deleted_at IS NULL
           AND task.status = 'ended'
           AND reservation.allocated_ndp = 0
-          AND reservation.total_frozen_ndp = reservation.captured_ndp + reservation.released_ndp
+          AND reservation.commission_frozen_ndp = reservation.captured_ndp + reservation.released_ndp
+          AND reservation.platform_fee_frozen_ndp = reservation.platform_fee_captured_ndp + reservation.platform_fee_released_ndp
       `
     );
 
@@ -730,7 +728,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         budgetReservationId: input.reservationId,
         ledgerTransactionId: input.ledgerTransactionId,
         kind: "SETTLEMENT",
-        amountNdp: input.rewardNdp
+        amountNdp: input.rewardNdp + input.platformFeeNdp
       }
     });
     await this.client.affiliateRewardTransaction.create({
@@ -738,7 +736,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         rewardId: input.rewardId,
         ledgerTransactionId: input.ledgerTransactionId,
         kind: "SETTLEMENT",
-        amountNdp: input.rewardNdp
+        amountNdp: input.rewardNdp + input.platformFeeNdp
       }
     });
   }
@@ -758,7 +756,10 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
           claimId: input.claimId,
           rewardId: input.rewardId,
           ledgerTransactionId: input.ledgerTransactionId,
-          rewardSettledNdp: input.rewardSettledNdp
+          rewardSettledNdp: input.rewardSettledNdp,
+          platformFeeSettledNdp: input.platformFeeSettledNdp,
+          grossSettledNdp: input.grossSettledNdp,
+          platformWalletId: input.platformWalletId
         }
       }
     });
@@ -812,8 +813,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         allocatedBudgetNdp: { decrement: input.rewardNdp },
         ...(input.restoreTaskStatus
           ? {
-              status:
-                input.restoreTaskStatus === "scheduled" ? "SCHEDULED" : "ACTIVE"
+              status: input.restoreTaskStatus === "scheduled" ? "SCHEDULED" : "ACTIVE"
             }
           : {})
       }
@@ -823,9 +823,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     }
   }
 
-  public async createInvalidationAudit(
-    input: AffiliateCancellationAuditInput
-  ): Promise<void> {
+  public async createInvalidationAudit(input: AffiliateCancellationAuditInput): Promise<void> {
     await this.client.auditLog.create({
       data: {
         actorId: input.actorUserId,
@@ -857,8 +855,8 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       task: {
         id: claim.task.id,
         status: claim.task.status.toLowerCase() as AffiliateCheckoutTaskStatus,
-        rewardNdpPerCompletedOrder:
-          claim.task.rewardNdpPerCompletedOrder,
+        rewardNdpPerCompletedOrder: claim.task.rewardNdpPerCompletedOrder,
+        platformFeeBps: claim.task.platformFeeBps,
         customerDiscountType: claim.task.customerDiscountType.toLowerCase() as
           | "none"
           | "fixed_jpy"
@@ -876,9 +874,13 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
                 id: reservation.id,
                 status: reservation.status.toLowerCase() as AffiliateCheckoutBudgetStatus,
                 totalFrozenNdp: reservation.totalFrozenNdp,
+                commissionFrozenNdp: reservation.commissionFrozenNdp,
+                platformFeeFrozenNdp: reservation.platformFeeFrozenNdp,
                 allocatedNdp: reservation.allocatedNdp,
                 capturedNdp: reservation.capturedNdp,
-                releasedNdp: reservation.releasedNdp
+                platformFeeCapturedNdp: reservation.platformFeeCapturedNdp,
+                releasedNdp: reservation.releasedNdp,
+                platformFeeReleasedNdp: reservation.platformFeeReleasedNdp
               }
             : null
       }

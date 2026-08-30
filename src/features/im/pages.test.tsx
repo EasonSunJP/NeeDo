@@ -35,6 +35,27 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(profileSource).not.toContain("gradient");
   });
 
+  it("uses the formal identity information card on the directory profile", () => {
+    const start = source.indexOf("export function ImDirectoryProfilePage");
+    const end = source.indexOf("export function ImContactDetailPage", start);
+    const profileSource = source.slice(start, end);
+
+    expect(profileSource).toContain("<ConversationIdentityProfileCard");
+    expect(profileSource).toContain("identityCard={profile.identityCard}");
+    expect(profileSource).toContain("viewerScope={scope}");
+    expect(profileSource).not.toContain("<ContactSummaryCard");
+  });
+
+  it("renders friend-request actions as independent buttons without a shared visual capsule", () => {
+    const start = source.indexOf("function ImFriendProfileActionBar");
+    const end = source.indexOf("export function ImDirectoryProfilePage", start);
+    const actionBarSource = source.slice(start, end);
+
+    expect(actionBarSource).toContain('className="pointer-events-auto flex gap-3"');
+    expect(actionBarSource).not.toContain("rounded-[28px] border");
+    expect(actionBarSource).not.toContain("backdrop-blur-xl");
+  });
+
   it("uses the formal identity profile card in one-to-one conversation settings", () => {
     const start = source.indexOf("export function ImConversationInfoPage");
     const end = source.indexOf("export function ImConversationSearchPage", start);
@@ -45,5 +66,40 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).not.toContain("infoMiniCard");
     expect(infoSource).not.toContain("<SocialProfileMiniCard");
     expect(infoSource).not.toContain("<ContactSummaryCard");
+  });
+
+  it("routes both friend-deletion entry points through the shared confirmation flow", () => {
+    const contactsStart = source.indexOf("export function ImContactsListPage");
+    const contactsEnd = source.indexOf("export function ImFriendRequestsPage", contactsStart);
+    const contactsSource = source.slice(contactsStart, contactsEnd);
+    const infoStart = source.indexOf("export function ImConversationInfoPage");
+    const infoEnd = source.indexOf("export function ImMediaRecordsPage", infoStart);
+    const infoSource = source.slice(infoStart, infoEnd);
+
+    expect(source).toContain('from "./FriendDeletionConfirmDialog"');
+    expect(source.match(/<FriendDeletionConfirmDialog/g)).toHaveLength(2);
+
+    expect(contactsSource).toContain("useFriendDeletionConfirmation<ContactRelation>");
+    expect(contactsSource).toContain("contactDeletion.requestDeletion(contact)");
+    expect(contactsSource).not.toContain("onClick: () => void store.deleteContact(contact.id)");
+
+    expect(infoSource).toContain("useFriendDeletionConfirmation<ContactRelation>");
+    expect(infoSource).toContain("contactDeletion.requestDeletion(contact)");
+    expect(infoSource).toContain("navigate(config.routes.contacts, { replace: true })");
+    expect(infoSource).not.toContain("onClick={() => void store.deleteContact(contact.id)}");
+  });
+
+  it("replaces friend-only settings actions with a formal add-friend action after the relationship is removed", () => {
+    const start = source.indexOf("export function ImConversationInfoPage");
+    const end = source.indexOf("export function ImConversationSearchPage", start);
+    const infoSource = source.slice(start, end);
+
+    expect(infoSource).toContain("resolveDirectoryProfileActions(");
+    expect(infoSource).toContain('conversationFriendActions.includes("send_request")');
+    expect(infoSource).toContain('conversationFriendActions.includes("accept")');
+    expect(infoSource).toContain("store.sendFriendRequest");
+    expect(infoSource).toContain("store.acceptFriendRequest");
+    expect(infoSource).toContain('contact?.id, formalActivityTargetUserId');
+    expect(infoSource).toContain('{t("添加好友")}');
   });
 });

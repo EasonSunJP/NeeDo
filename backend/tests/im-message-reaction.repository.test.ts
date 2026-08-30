@@ -7,6 +7,7 @@ const createdAt = new Date("2026-08-30T00:00:00.000Z");
 type ReactionState = {
   id: number;
   userId: number;
+  identityId: number;
   emoji: string;
   createdAt: Date;
   updatedAt: Date;
@@ -54,6 +55,7 @@ function createMessageRecord(reactions: ReactionState[], reactionVersion = 0) {
         id: reaction.id,
         messageId: 41,
         userId: reaction.userId,
+        identityId: reaction.identityId,
         emoji: reaction.emoji,
         createdAt: reaction.createdAt,
         updatedAt: reaction.updatedAt,
@@ -68,12 +70,18 @@ function createMessageRecord(reactions: ReactionState[], reactionVersion = 0) {
 }
 
 function createConcurrentFixture(
-  seed: Array<{ userId: number; emoji: string; deletedAt?: Date | null }> = [],
+  seed: Array<{
+    userId: number;
+    identityId?: number;
+    emoji: string;
+    deletedAt?: Date | null;
+  }> = [],
   initialReactionVersion = 0
 ) {
   const committedReactions: ReactionState[] = seed.map((reaction, index) => ({
     id: index + 1,
     userId: reaction.userId,
+    identityId: reaction.identityId ?? reaction.userId,
     emoji: reaction.emoji,
     createdAt,
     updatedAt: createdAt,
@@ -105,11 +113,16 @@ function createConcurrentFixture(
         },
         messageReaction: {
           findMany: jest.fn(
-            async ({ where }: { where: { userId: number; deletedAt: null } }) =>
+            async ({ where }: {
+              where: { userId?: number; identityId?: number; deletedAt: null };
+            }) =>
               committedReactions
                 .filter(
                   (reaction) =>
-                    reaction.userId === where.userId && reaction.deletedAt === where.deletedAt
+                    (where.identityId === undefined ||
+                      reaction.identityId === where.identityId) &&
+                    (where.userId === undefined || reaction.userId === where.userId) &&
+                    reaction.deletedAt === where.deletedAt
                 )
                 .sort(
                   (left, right) =>
@@ -118,9 +131,12 @@ function createConcurrentFixture(
                 .map(({ emoji }) => ({ emoji }))
           ),
           upsert: jest.fn(
-            async ({ create }: { create: { userId: number; emoji: string } }) => {
+            async ({ create }: {
+              create: { userId: number; identityId: number; emoji: string };
+            }) => {
               const existing = committedReactions.find(
-                (reaction) => reaction.userId === create.userId && reaction.emoji === create.emoji
+                (reaction) =>
+                  reaction.identityId === create.identityId && reaction.emoji === create.emoji
               );
               writeSequence += 1;
               const updatedAt = new Date(createdAt.getTime() + writeSequence);
@@ -134,6 +150,7 @@ function createConcurrentFixture(
               const added: ReactionState = {
                 id: nextReactionId,
                 userId: create.userId,
+                identityId: create.identityId,
                 emoji: create.emoji,
                 createdAt: updatedAt,
                 updatedAt,
@@ -146,12 +163,19 @@ function createConcurrentFixture(
           ),
           updateMany: jest.fn(
             async ({ where, data }: {
-              where: { userId: number; emoji: string; deletedAt: null };
+              where: {
+                userId?: number;
+                identityId?: number;
+                emoji: string;
+                deletedAt: null;
+              };
               data: { deletedAt: Date };
             }) => {
               const matching = committedReactions.filter(
                 (reaction) =>
-                  reaction.userId === where.userId &&
+                  (where.identityId === undefined ||
+                    reaction.identityId === where.identityId) &&
+                  (where.userId === undefined || reaction.userId === where.userId) &&
                   reaction.emoji === where.emoji &&
                   reaction.deletedAt === where.deletedAt
               );
@@ -208,6 +232,34 @@ describe("RealtimeRepository message reactions", () => {
     ]);
     expect(fixture.getReactionVersion()).toBe(2);
     expect(fixture.lockCalls).toHaveLength(2);
+  });
+
+  it("isolates reaction slots between two identities of the same account", async () => {
+    const fixture = createConcurrentFixture();
+
+    const customer = await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      identityId: 70,
+      emoji: "OK"
+    });
+    const technician = await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      identityId: 71,
+      emoji: "NO"
+    });
+
+    expect(customer.status).toBe("updated");
+    expect(technician.status).toBe("updated");
+    expect(
+      fixture.activeReactions().map(({ identityId, emoji }) => ({ identityId, emoji }))
+    ).toEqual([
+      { identityId: 70, emoji: "OK" },
+      { identityId: 71, emoji: "NO" }
+    ]);
   });
 
   it("returns slot_occupied for a second different emoji and preserves the first", async () => {

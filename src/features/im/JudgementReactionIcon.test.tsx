@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { IM_JUDGEMENT_REPLIES } from "./reaction-policy";
 import { ImReactionValue, JudgementReactionIcon } from "./JudgementReactionIcon";
 
+const judgementSvgSources = import.meta.glob(
+  "../../assets/im/judgement-reactions/*.svg",
+  { eager: true, import: "default", query: "?raw" }
+) as Record<string, string>;
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
@@ -14,6 +19,18 @@ afterEach(() => {
 });
 
 describe("JudgementReactionIcon", () => {
+  it("keeps every judgement value as a word sticker SVG", () => {
+    expect(Object.keys(judgementSvgSources)).toHaveLength(IM_JUDGEMENT_REPLIES.length);
+
+    const stickerWords = Object.values(judgementSvgSources).map((svg) => {
+      expect(svg).toContain("data-im-judgement-word-sticker");
+      expect(svg).toContain("<text");
+      return svg.match(/<text[^>]*>([^<]+)<\/text>/)?.[1];
+    });
+
+    expect(new Set(stickerWords)).toEqual(new Set(IM_JUDGEMENT_REPLIES));
+  });
+
   it.each(IM_JUDGEMENT_REPLIES)("renders the dedicated %s SVG", async (value) => {
     const container = document.createElement("div");
     const root = createRoot(container);

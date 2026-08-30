@@ -38,7 +38,10 @@ describe("AffiliateIdentityActivationRepository", () => {
         })
       },
       userIdentity: {
-        findFirst: jest.fn().mockResolvedValue(null),
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({ id: 70 }),
         create: jest.fn().mockResolvedValue({
           id: 81,
           userId: 7,
@@ -96,7 +99,12 @@ describe("AffiliateIdentityActivationRepository", () => {
       })
     });
     expect(tx.notification.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ recipientUserId: 7, type: "SYSTEM" })
+      data: expect.objectContaining({
+        recipientUserId: 7,
+        recipientIdentityId: 81,
+        actorIdentityId: 70,
+        type: "SYSTEM"
+      })
     });
     expect(tx.affiliateProfile.upsert).toHaveBeenCalledWith({
       where: { userId: 7 },

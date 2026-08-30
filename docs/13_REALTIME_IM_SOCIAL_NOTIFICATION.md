@@ -216,6 +216,8 @@
 
 - 群聊开启隐私模式后，新消息在服务端创建事务内快照当前 `privacyPolicyVersion`，并以服务端 `createdAt + disappearingTtlSeconds` 写入不可变 `expiresAt`；后续修改群设置不会回写旧消息期限。
 - 正式消息 API / OpenAPI 返回 `expiresAt` 与 `privacyPolicyVersionAtSend`。前端只用这两个服务端权威字段生成倒计时，不再信任客户端 metadata 中可伪造的消失时间。
+- 群聊隐私倒计时编辑器只显示小时和分钟；小时范围为 `0–99`，分钟范围为 `0–59`。超限时显示“时间上限最大为99小时59分钟”并阻止创建或保存。
+- 正式创建与隐私更新 API 将 `disappearingTtlSeconds` 统一限制为 `60–359940` 秒；不新增 schema 或 migration。
 - 消息历史和会话摘要在清理 worker 提交前也会过滤已到期消息，避免刷新页面短暂恢复；1 秒周期 worker 到期后在串行化事务中清空正文与 metadata、删除回应和本人删除记录、写入无正文的审计及删除同步记录，再硬删除隐私消息。
 - 到期提交后向发送时的群成员发布不含正文的 `message.deleted` SSE，当前会话立即补拉并移除消息；同时修复未读数、已读游标和会话最后消息时间。
 - 本节沿用现有 `messages`、`im_deletion_sync` 与审计结构，不新增 migration、mock、轮询或平行消息实现。
@@ -241,6 +243,14 @@
 - 正式接口为 `GET /api/v1/im/directory/:userId`、`POST /api/v1/im/friend-requests`、`POST /api/v1/im/friend-requests/:id/accept|reject`、`DELETE /api/v1/im/contacts/:contactId`；公开的直接 Contact 创建入口已移除。
 - `GET /api/v1/im/directory/:userId` 同时返回相应身份的只读资料卡。聊天“信息设置”使用该正式资料替代简易联系人块：用户、技师、店铺分别显示其可公开基础信息，信用值来自 `ReviewSummary`；不显示积分、利用次数或个人资料隐私开关。私密用户资料降级为不含私密字段的账号卡，无评价显示“—”而不是伪造 0 分。
 - additive migration 为 `20260830200000_friend_request_verification`；部署前运行只读 `npm run check:friendship-conversation-pairs`，确认现有好友直接会话不存在重复 pair 后再应用 migration。
+
+## 6.18 被删除方会话设置关系动作与资料字段修复（2026-08-30）
+
+- 一方删除好友后，另一方保留的正式一对一会话会重新读取目录关系摘要；“信息设置”不再留下空白好友操作区，而是显示正式“添加好友”。点击后调用既有好友申请 API；若对方已有有效申请，则同一入口按服务端状态接受申请；发出申请后显示“等待对方验证”。
+- 仍是好友时继续显示既有拉黑/解除黑名单与删除联系人操作，不把好友关系操作降级成申请入口。`friendship.deleted` 触发的 bootstrap 移除 Contact 后，已打开的设置页也会重新读取资料关系，避免停留在旧 `friend` 状态。
+- 聊天“信息设置”资料卡不再渲染城市。用户身份的基础信息固定保留性别、年龄、身高三项；缺少值时分别显示“不公开”或“未设置”，不因字段为空而删除项目。
+- 信用值的可见性只调整聊天“信息设置”：普通用户端隐藏，技师端与商户/店铺端保留。个人中心的信用值展示和数据合同不变。
+- 本节只修改共享正式前端组件、关系状态接线、测试和文档；不新增 API、schema、migration、mock、轮询或浏览器业务持久化。
 
 ---
 

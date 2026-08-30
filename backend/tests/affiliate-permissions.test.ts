@@ -26,6 +26,8 @@ const merchantPublisher = [
   "button:merchant-affiliate-task-pause"
 ];
 const backofficeRead = ["menu:backoffice-affiliate", "page:backoffice-affiliate"];
+const affiliateFeeRuleRead = "page:backoffice-affiliate-fee-rule";
+const affiliateFeeRuleWrite = "button:backoffice-affiliate-fee-rule-create";
 
 describe("affiliate RBAC seed contract", () => {
   const assignments = buildRolePermissionAssignments();
@@ -39,7 +41,9 @@ describe("affiliate RBAC seed contract", () => {
         "button:backoffice-affiliate-review",
         "button:backoffice-affiliate-suspend",
         "button:backoffice-affiliate-reversal",
-        "button:backoffice-affiliate-export"
+        "button:backoffice-affiliate-export",
+        affiliateFeeRuleRead,
+        affiliateFeeRuleWrite
       ])
     );
   });
@@ -107,5 +111,27 @@ describe("affiliate RBAC seed contract", () => {
 
   it("continues to grant every system permission to admin", () => {
     expect(assignments.admin).toEqual(SYSTEM_PERMISSION_CODES);
+  });
+
+  it("grants Affiliate fee rules with least privilege", () => {
+    expect(assignments.finance).toEqual(
+      expect.arrayContaining([affiliateFeeRuleRead, affiliateFeeRuleWrite])
+    );
+    expect(assignments.operator).toContain(affiliateFeeRuleRead);
+    expect(assignments.operator).not.toContain(affiliateFeeRuleWrite);
+    expect(assignments.viewer).toContain(affiliateFeeRuleRead);
+    expect(assignments.viewer).not.toContain(affiliateFeeRuleWrite);
+    for (const role of [
+      "support",
+      "merchant_owner",
+      "merchant_staff",
+      "technician",
+      "customer",
+      "broker",
+      "scout"
+    ] as const) {
+      expect(assignments[role]).not.toContain(affiliateFeeRuleRead);
+      expect(assignments[role]).not.toContain(affiliateFeeRuleWrite);
+    }
   });
 });

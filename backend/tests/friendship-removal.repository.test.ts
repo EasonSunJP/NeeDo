@@ -10,7 +10,10 @@ describe("RealtimeRepository friendship conversation boundaries", () => {
           createdAt: new Date("2026-08-30T00:00:00.000Z"),
           conversation: {
             accessPolicy: "FRIENDSHIP_REQUIRED",
-            participants: [{ userId: 41 }, { userId: 167 }]
+            participants: [
+              { userId: 41, identityId: 410 },
+              { userId: 167, identityId: 1670 }
+            ]
           }
         }),
         updateMany: jest.fn()
@@ -30,10 +33,20 @@ describe("RealtimeRepository friendship conversation boundaries", () => {
       new RealtimeRepository(client).createMessage({
         conversationId: 91,
         senderUserId: 167,
+        senderIdentityId: 1670,
         type: "text",
         content: "still there?"
       })
     ).resolves.toEqual({ status: "not_friends" });
+    expect(transaction.contact.count).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        OR: [
+          { ownerIdentityId: 410, contactIdentityId: 1670 },
+          { ownerIdentityId: 1670, contactIdentityId: 410 }
+        ]
+      }
+    });
     expect(transaction.message.create).not.toHaveBeenCalled();
     expect(transaction.conversation.update).not.toHaveBeenCalled();
     expect(transaction.conversationParticipant.updateMany).not.toHaveBeenCalled();
@@ -79,8 +92,13 @@ describe("RealtimeRepository friendship conversation boundaries", () => {
     await expect(
       repository.createConversation({
         creatorUserId: 41,
+        creatorIdentityId: 410,
         type: "direct",
-        participantUserIds: [167]
+        participantUserIds: [167],
+        participantIdentities: [
+          { userId: 41, identityId: 410 },
+          { userId: 167, identityId: 1670 }
+        ]
       })
     ).resolves.toEqual({ status: "not_friends" });
     expect(conversationFindFirst).not.toHaveBeenCalled();

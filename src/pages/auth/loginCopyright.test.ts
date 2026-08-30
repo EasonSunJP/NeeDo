@@ -9,9 +9,10 @@ const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), 
 const splashVersionBadgeStyles = stylesSource.match(/\.needo-splash-version-badge\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
 
 describe("login copyright copy", () => {
-  it("uses LifeDance across login and splash surfaces", () => {
+  it("uses the complete LifeDance company name across login and splash surfaces", () => {
     sourceFiles.forEach((source) => {
-      expect(source).toContain("Copyright © 2026 LifeDance. All rights reserved.");
+      expect(source).toContain("Copyright © 2026 LifeDance Co., Ltd. All rights reserved.");
+      expect(source).not.toContain("Copyright © 2026 LifeDance. All rights reserved.");
       expect(source).not.toContain("NeeDo Co., Ltd. All rights reserved.");
     });
   });

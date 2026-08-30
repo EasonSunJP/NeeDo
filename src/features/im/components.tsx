@@ -1,11 +1,13 @@
 import {
   useEffect,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
+  type ClipboardEvent as ReactClipboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type Ref,
@@ -26,14 +28,19 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
-import { ImReactionValue } from "./JudgementReactionIcon";
+import { getJudgementReactionIconUrl, ImReactionValue } from "./JudgementReactionIcon";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
   recordRecentImReaction,
   subscribeRecentImReactions
 } from "./reaction-catalog";
-import type { ImReactionCategory } from "./reaction-policy";
+import {
+  encodeImComposerJudgement,
+  getImReactionCategory,
+  parseImComposerDraft,
+  type ImReactionCategory
+} from "./reaction-policy";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
 
 export function ImIcon({
@@ -458,6 +465,148 @@ export type ImChatComposerPendingImage = {
   previewUrl: string;
 };
 
+function assignImComposerRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (typeof ref === "function") {
+    ref(value);
+  } else if (ref) {
+    ref.current = value;
+  }
+}
+
+function readImComposerNode(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent ?? "";
+  }
+
+  if (!(node instanceof HTMLElement)) {
+    return "";
+  }
+
+  const judgementValue = node.dataset.imComposerJudgement;
+  if (judgementValue) {
+    return encodeImComposerJudgement(judgementValue);
+  }
+
+  if (node.tagName === "BR") {
+    return "\n";
+  }
+
+  const isBlock = node.tagName === "DIV" || node.tagName === "P";
+  const content = [...node.childNodes].map(readImComposerNode).join("");
+  return isBlock && node.nextSibling && !content.endsWith("\n") ? `${content}\n` : content;
+}
+
+function readImComposerValue(element: HTMLElement): string {
+  return [...element.childNodes].map(readImComposerNode).join("");
+}
+
+function renderImComposerValue(element: HTMLElement, value: string) {
+  const nodes = parseImComposerDraft(value).map((part) => {
+    if (part.type === "text") {
+      return document.createTextNode(part.value);
+    }
+
+    const image = document.createElement("img");
+    image.alt = part.value;
+    image.className = "mx-0.5 inline-block h-[22px] w-auto max-w-[54px] align-[-0.28em]";
+    image.contentEditable = "false";
+    image.dataset.imComposerJudgement = part.value;
+    image.draggable = false;
+    image.src = getJudgementReactionIconUrl(part.value) ?? "";
+    return image;
+  });
+
+  element.replaceChildren(...nodes);
+}
+
+function focusImComposerAtEnd(element: HTMLElement | null) {
+  if (!element) return;
+  element.focus();
+  const selection = window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function insertPlainTextIntoImComposer(element: HTMLElement, value: string) {
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
+
+  if (!range || !element.contains(range.commonAncestorContainer)) {
+    element.append(document.createTextNode(value));
+    focusImComposerAtEnd(element);
+    return;
+  }
+
+  range.deleteContents();
+  const textNode = document.createTextNode(value);
+  range.insertNode(textNode);
+  range.setStartAfter(textNode);
+  range.collapse(true);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function ImComposerRichInput({
+  disabled,
+  draft,
+  inputRef,
+  onDraftChange,
+  placeholder
+}: {
+  disabled: boolean;
+  draft: string;
+  inputRef?: Ref<HTMLDivElement>;
+  onDraftChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const setEditorRef = useCallback((element: HTMLDivElement | null) => {
+    editorRef.current = element;
+    assignImComposerRef(inputRef, element);
+  }, [inputRef]);
+
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || readImComposerValue(editor) === draft) return;
+    renderImComposerValue(editor, draft);
+  }, [draft]);
+
+  const handlePaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    const text = event.clipboardData.getData("text/plain");
+    if (!text) return;
+    event.preventDefault();
+    insertPlainTextIntoImComposer(event.currentTarget, text);
+    onDraftChange(readImComposerValue(event.currentTarget));
+  };
+
+  return (
+    <div className="relative min-h-[24px]">
+      {!draft ? (
+        <span className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]">
+          {placeholder}
+        </span>
+      ) : null}
+      <div
+        aria-disabled={disabled}
+        aria-multiline="true"
+        aria-placeholder={placeholder}
+        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+        contentEditable={!disabled}
+        data-im-composer-rich-input="true"
+        onInput={(event) => onDraftChange(readImComposerValue(event.currentTarget))}
+        onPaste={handlePaste}
+        ref={setEditorRef}
+        role="textbox"
+        suppressContentEditableWarning
+      />
+    </div>
+  );
+}
+
 export function ImReturnToLatestButton({
   onActivate,
   visible
@@ -538,7 +687,7 @@ export function ImChatComposer({
   placeholder?: string;
   recording?: ImChatComposerRecordingState;
   sending?: boolean;
-  textareaRef?: Ref<HTMLTextAreaElement>;
+  textareaRef?: Ref<HTMLDivElement>;
   voiceMode?: boolean;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
@@ -593,14 +742,19 @@ export function ImChatComposer({
   }, [draft, panel, pendingImage, voiceMode]);
 
   const selectReactionValue = (value: string) => {
-    onDraftChange(`${draft}${value}`);
+    const nextValue = getImReactionCategory(value) === "judgement"
+      ? encodeImComposerJudgement(value)
+      : value;
+    onDraftChange(`${draft}${nextValue}`);
     recordRecentImReaction(value);
+    window.requestAnimationFrame(() => {
+      const editor = composerRootRef.current?.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]') ?? null;
+      focusImComposerAtEnd(editor);
+    });
   };
   const composerInputShellClass =
     "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
   const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
-  const composerTextareaClass =
-    "block max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
   const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
   const composerActionButtonClass =
     "min-w-0 rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-1.5 py-3 text-center text-[color:var(--client-text)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface)_90%)] sm:px-3 sm:py-4";
@@ -673,14 +827,12 @@ export function ImChatComposer({
                   : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
               </button>
             ) : (
-              <textarea
-                className={composerTextareaClass}
+              <ImComposerRichInput
                 disabled={disabled}
-                onChange={(event) => onDraftChange(event.target.value)}
+                draft={draft}
+                inputRef={textareaRef}
+                onDraftChange={onDraftChange}
                 placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
-                ref={textareaRef}
-                rows={1}
-                value={draft}
               />
             )}
           </div>

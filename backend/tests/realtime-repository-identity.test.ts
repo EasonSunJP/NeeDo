@@ -11,7 +11,7 @@ describe("RealtimeRepository formal identity payloads", () => {
             id: 91,
             type: "DIRECT",
             title: null,
-            friendshipPairKey: "137:237",
+            friendshipPairKey: "1370:2370",
             createdByUserId: 137,
             createdAt,
             updatedAt: createdAt,
@@ -21,6 +21,7 @@ describe("RealtimeRepository formal identity payloads", () => {
                 id: 1,
                 conversationId: 91,
                 userId: 137,
+                identityId: 1370,
                 role: "member",
                 unreadCount: 0,
                 isPinned: false,
@@ -42,19 +43,22 @@ describe("RealtimeRepository formal identity payloads", () => {
         ]),
         count: jest.fn(async () => 1)
       },
-      user: {
+      userIdentity: {
         findMany: jest.fn(async () => [
           {
-            id: 237,
-            needoId: "u0000000237",
-            username: "已删除好友关系的一方",
-            avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
+            id: 2370,
+            user: {
+              id: 237,
+              needoId: "u0000000237",
+              username: "已删除好友关系的一方",
+              avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
+            }
           }
         ])
       }
     } as unknown as PrismaClient;
 
-    const result = await new RealtimeRepository(client).listConversations(137, {
+    const result = await new RealtimeRepository(client).listConversations(1370, {
       page: 1,
       pageSize: 20
     });
@@ -68,9 +72,19 @@ describe("RealtimeRepository formal identity payloads", () => {
         avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
       }
     });
-    expect(client.user.findMany).toHaveBeenCalledWith({
-      where: { id: { in: [237] }, isActive: true, deletedAt: null },
-      select: { id: true, needoId: true, username: true, avatarUrl: true }
+    expect(client.userIdentity.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [2370] },
+        isActive: true,
+        deletedAt: null,
+        user: { isActive: true, deletedAt: null }
+      },
+      select: {
+        id: true,
+        user: {
+          select: { id: true, needoId: true, username: true, avatarUrl: true }
+        }
+      }
     });
   });
 
@@ -92,6 +106,7 @@ describe("RealtimeRepository formal identity payloads", () => {
                 id: 1,
                 conversationId: 91,
                 userId: 237,
+                identityId: 2370,
                 role: "member",
                 unreadCount: 0,
                 isPinned: false,
@@ -115,7 +130,7 @@ describe("RealtimeRepository formal identity payloads", () => {
       }
     } as unknown as PrismaClient;
 
-    const result = await new RealtimeRepository(client).listConversations(137, {
+    const result = await new RealtimeRepository(client).listConversations(1370, {
       page: 1,
       pageSize: 20
     });
@@ -247,7 +262,7 @@ describe("RealtimeRepository formal identity payloads", () => {
     expect(client.contact.findFirst).toHaveBeenCalledWith({
       where: {
         id: 4056,
-        ownerUserId: 137,
+        ownerIdentityId: 137,
         deletedAt: null,
         contactUser: { deletedAt: null, isActive: true }
       },

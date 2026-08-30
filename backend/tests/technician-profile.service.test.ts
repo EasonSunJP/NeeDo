@@ -1,0 +1,95 @@
+import type { AuditLogCreateInput } from "../src/repositories/audit-log.repository";
+import type {
+  TechnicianProfilePayload,
+  TechnicianProfileRepositoryPort
+} from "../src/repositories/technician-profile.repository";
+import type { AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { CustomerAvatarStoragePort } from "../src/services/customer-avatar.storage";
+import { TechnicianProfileService } from "../src/services/technician-profile.service";
+
+const profile: TechnicianProfilePayload = {
+  id: 31,
+  publicId: "s1234567890",
+  userId: 9,
+  shopId: 3,
+  displayName: "田中 彩",
+  avatarUrl: null,
+  bio: "肩颈护理",
+  city: "Tokyo",
+  age: 28,
+  heightCm: 164,
+  languages: ["日本語"],
+  serviceAreas: ["銀座"],
+  profileTags: ["肩颈调理"],
+  canServeForeigners: true,
+  bidBudgetMinJpy: 12_000,
+  bidBudgetMaxJpy: 28_000,
+  paymentMethods: ["platform", "offline"],
+  visibility: "public",
+  employmentType: "full_time",
+  yearsExperience: 4,
+  createdAt: "2026-08-30T00:00:00.000Z",
+  updatedAt: "2026-08-30T00:00:00.000Z"
+};
+
+const actor = {
+  userId: 9,
+  currentIdentityId: 19,
+  currentIdentityType: "technician",
+  currentIdentityScopeType: "technician_profile",
+  currentIdentityScopeId: 31
+} as AuthenticatedAccessContext;
+
+const repository = (): jest.Mocked<TechnicianProfileRepositoryPort> => ({
+  findMine: jest.fn(),
+  updateMine: jest.fn()
+});
+
+const audit = {
+  createInput: jest.fn((input): AuditLogCreateInput => ({
+    actorId: input.actor.userId,
+    action: input.action,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    metadata: input.metadata
+  }))
+};
+
+const storage = (): jest.Mocked<CustomerAvatarStoragePort> => ({ save: jest.fn() });
+
+describe("TechnicianProfileService", () => {
+  it("reads and updates only the active technician profile scope with an audit", async () => {
+    const repo = repository();
+    repo.findMine.mockResolvedValue(profile);
+    repo.updateMine.mockResolvedValue({ ...profile, displayName: "彩" });
+    const service = new TechnicianProfileService(repo, audit, storage());
+
+    await expect(service.getMine(actor)).resolves.toBe(profile);
+    await service.updateMine(actor, { ip: "127.0.0.1", userAgent: "jest" }, {
+      displayName: "彩"
+    });
+
+    expect(repo.findMine).toHaveBeenCalledWith(9, 31);
+    expect(repo.updateMine).toHaveBeenCalledWith(
+      9,
+      31,
+      19,
+      { displayName: "彩" },
+      expect.objectContaining({
+        action: "technician_profile.self_update",
+        metadata: { changedFields: ["displayName"] }
+      })
+    );
+  });
+
+  it.each(["customer", "scout", "merchant_owner"])(
+    "rejects the %s identity before repository access",
+    async (identityType) => {
+      const repo = repository();
+      const service = new TechnicianProfileService(repo, audit, storage());
+      await expect(service.getMine({ ...actor, currentIdentityType: identityType }))
+        .rejects.toMatchObject({ statusCode: 403 });
+      expect(repo.findMine).not.toHaveBeenCalled();
+    }
+  );
+});

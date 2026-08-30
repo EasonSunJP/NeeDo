@@ -213,6 +213,13 @@ enum AffiliatePublisherType {
   @@map("affiliate_publisher_type")
 }
 
+enum AffiliatePlatformFeeScopeType {
+  GLOBAL @map("global")
+  SHOP   @map("shop")
+
+  @@map("affiliate_platform_fee_scope_type")
+}
+
 enum AffiliateServiceScopeMode {
   ALL_CURRENT_SERVICES @map("all_current_services")
   SELECTED_SERVICES    @map("selected_services")
@@ -667,6 +674,8 @@ model User {
   createdEntitySuspensions              EntitySuspension[]                  @relation("EntitySuspensionCreatedBy")
   releasedEntitySuspensions             EntitySuspension[]                  @relation("EntitySuspensionReleasedBy")
   reviewedAffiliateTasks                AffiliateTask[]                     @relation("AffiliateTaskReviewer")
+  createdAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleCreatedBy")
+  updatedAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleUpdatedBy")
   affiliateClaims                       AffiliateClaim[]                    @relation("AffiliateClaimUser")
   affiliateTouchesAsClaimant            AffiliateTouch[]                    @relation("AffiliateTouchClaimant")
   affiliateTouchesAsCustomer            AffiliateTouch[]                    @relation("AffiliateTouchCustomer")
@@ -804,6 +813,7 @@ model Shop {
   affiliateServiceScopes     AffiliateTaskService[]
   affiliateTouches           AffiliateTouch[]
   affiliateAttributions      AffiliateAttribution[]
+  affiliatePlatformFeeRules  AffiliatePlatformFeeRule[]
   technicianApplications     TechnicianApplicationDetail[]
   technicianShopAffiliations TechnicianShopAffiliation[]
   payrollSchedulePolicies    ShopPayrollSchedulePolicy[]
@@ -911,6 +921,16 @@ model TechnicianProfile {
   bio                 String?                  @db.Text
   city                String                   @db.VarChar(100)
   serviceArea         String?                  @map("service_area") @db.VarChar(255)
+  serviceAreasJson    Json?                    @map("service_areas")
+  age                 Int?
+  heightCm            Decimal?                 @map("height_cm") @db.Decimal(5, 2)
+  languages           Json?
+  profileTags         Json?                    @map("profile_tags")
+  canServeForeigners  Boolean                  @default(false) @map("can_serve_foreigners")
+  bidBudgetMinJpy     Int?                     @map("bid_budget_min_jpy")
+  bidBudgetMaxJpy     Int?                     @map("bid_budget_max_jpy")
+  paymentMethods      Json?                    @map("payment_methods")
+  visibility          String                   @default("public") @db.VarChar(20)
   yearsExperience     Int                      @default(0) @map("years_experience")
   employmentType      TechnicianEmploymentType @default(INDEPENDENT) @map("employment_type")
   employmentStartedAt DateTime?                @map("employment_started_at")
@@ -942,6 +962,7 @@ model TechnicianProfile {
   @@index([shopId])
   @@index([shopId, employmentType])
   @@index([city])
+  @@index([visibility])
   @@index([status])
   @@index([isRecommended])
   @@index([deletedAt])
@@ -1202,6 +1223,7 @@ model MediaAsset {
   technicianProfileId Int?      @map("technician_profile_id")
   customerProfileId   Int?      @map("customer_profile_id")
   ownerUserId         Int?      @map("owner_user_id")
+  ownerIdentityId     Int?      @map("owner_identity_id")
   url                 String    @db.VarChar(500)
   mimeType            String    @default("image/jpeg") @map("mime_type") @db.VarChar(100)
   usageType           String    @default("gallery") @map("usage_type") @db.VarChar(50)
@@ -1223,6 +1245,7 @@ model MediaAsset {
   technicianProfile         TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   customerProfile           CustomerProfile?           @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   ownerUser                 User?                      @relation("ApplicationMediaOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  ownerIdentity             UserIdentity?              @relation("MediaAssetOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: SetNull)
   affiliateTaskCovers       AffiliateTask[]            @relation("AffiliateTaskCover")
   identityApplications      IdentityApplicationMedia[]
   carouselSlides            CarouselSlide[]
@@ -1235,6 +1258,7 @@ model MediaAsset {
   @@index([technicianProfileId])
   @@index([customerProfileId])
   @@index([ownerUserId])
+  @@index([ownerIdentityId])
   @@index([usageType])
   @@index([purgeAt])
   @@index([deletedAt])
@@ -1767,6 +1791,7 @@ model Conversation {
   friendshipPairKey      String?                  @unique(map: "conversations_friendship_pair_key_key") @map("friendship_pair_key") @db.VarChar(64)
   title                  String?                  @db.VarChar(120)
   createdByUserId        Int?                     @map("created_by_user_id")
+  createdByIdentityId    Int?                     @map("created_by_identity_id")
   privacyModeEnabled     Boolean                  @default(false) @map("privacy_mode_enabled")
   hideMemberProfiles     Boolean                  @default(false) @map("hide_member_profiles")
   disappearingTtlSeconds Int?                     @map("disappearing_ttl_seconds")
@@ -1779,6 +1804,7 @@ model Conversation {
   deletedAt              DateTime?                @map("deleted_at")
 
   createdBy            User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByIdentity    UserIdentity?             @relation("ConversationCreatorIdentity", fields: [createdByIdentityId], references: [id], onDelete: SetNull)
   privacyUpdatedBy     User?                     @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
   participants         ConversationParticipant[]
   messages             Message[]
@@ -1787,6 +1813,7 @@ model Conversation {
 
   @@index([type])
   @@index([createdByUserId])
+  @@index([createdByIdentityId])
   @@index([privacyUpdatedByUserId])
   @@index([privacyModeEnabled, deletedAt])
   @@index([updatedAt])
@@ -1798,6 +1825,7 @@ model ConversationParticipant {
   id                      Int       @id @default(autoincrement())
   conversationId          Int       @map("conversation_id")
   userId                  Int       @map("user_id")
+  identityId              Int       @map("identity_id")
   role                    String    @default("member") @db.VarChar(50)
   unreadCount             Int       @default(0) @map("unread_count")
   isPinned                Boolean   @default(false) @map("is_pinned")
@@ -1812,11 +1840,13 @@ model ConversationParticipant {
 
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  identity        UserIdentity @relation("ConversationParticipantIdentity", fields: [identityId], references: [id], onDelete: Restrict)
   lastReadMessage Message?     @relation("ParticipantLastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
 
-  @@unique([conversationId, userId])
+  @@unique([conversationId, identityId])
   @@index([conversationId])
   @@index([userId])
+  @@index([identityId])
   @@index([userId, hiddenAt])
   @@index([conversationId, clearedThroughMessageId], map: "conv_participant_clear_cutoff_idx")
   @@index([lastReadMessageId])
@@ -1828,6 +1858,7 @@ model Message {
   id                         Int                @id @default(autoincrement())
   conversationId             Int                @map("conversation_id")
   senderUserId               Int?               @map("sender_user_id")
+  senderIdentityId           Int?               @map("sender_identity_id")
   type                       MessageType        @default(TEXT)
   content                    String?            @db.Text
   metadata                   Json?
@@ -1844,14 +1875,16 @@ model Message {
   updatedAt                  DateTime           @updatedAt @map("updated_at")
   deletedAt                  DateTime?          @map("deleted_at")
 
-  conversation  Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-  sender        User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
-  readMarkers   ConversationParticipant[] @relation("ParticipantLastReadMessage")
-  reactions     MessageReaction[]
-  userDeletions MessageUserDeletion[]
+  conversation   Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sender         User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  senderIdentity UserIdentity?             @relation("MessageSenderIdentity", fields: [senderIdentityId], references: [id], onDelete: SetNull)
+  readMarkers    ConversationParticipant[] @relation("ParticipantLastReadMessage")
+  reactions      MessageReaction[]
+  userDeletions  MessageUserDeletion[]
 
   @@index([conversationId, id])
   @@index([senderUserId])
+  @@index([senderIdentityId])
   @@index([type])
   @@index([createdAt])
   @@index([expiresAt, expiredAt, deletedAt])
@@ -1866,6 +1899,7 @@ model MessageUserDeletion {
   conversationId Int       @map("conversation_id")
   messageId      Int       @map("message_id")
   userId         Int       @map("user_id")
+  identityId     Int       @map("identity_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -1873,11 +1907,13 @@ model MessageUserDeletion {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   message      Message      @relation(fields: [messageId], references: [id], onDelete: Restrict)
   user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  identity     UserIdentity @relation("MessageUserDeletionIdentity", fields: [identityId], references: [id], onDelete: Restrict)
 
-  @@unique([userId, messageId])
+  @@unique([identityId, messageId])
   @@index([conversationId, userId, deletedAt], map: "message_user_deletion_conversation_user_idx")
   @@index([messageId, deletedAt], map: "message_user_deletion_message_idx")
   @@index([userId, deletedAt], map: "message_user_deletion_user_idx")
+  @@index([identityId, deletedAt], map: "message_user_deletion_identity_idx")
   @@map("message_user_deletions")
 }
 
@@ -1923,84 +1959,103 @@ model ImDeletionSync {
 }
 
 model MessageReaction {
-  id        Int       @id @default(autoincrement())
-  messageId Int       @map("message_id")
-  userId    Int       @map("user_id")
-  emoji     String    @db.VarChar(64)
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id         Int       @id @default(autoincrement())
+  messageId  Int       @map("message_id")
+  userId     Int       @map("user_id")
+  identityId Int       @map("identity_id")
+  emoji      String    @db.VarChar(64)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
-  message Message @relation(fields: [messageId], references: [id], onDelete: Restrict)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  message  Message      @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  identity UserIdentity @relation("MessageReactionIdentity", fields: [identityId], references: [id], onDelete: Restrict)
 
-  @@unique([messageId, userId, emoji])
+  @@unique([messageId, identityId, emoji])
   @@index([messageId])
   @@index([userId])
+  @@index([identityId])
   @@index([deletedAt])
   @@map("message_reactions")
 }
 
 model Contact {
-  id            Int       @id @default(autoincrement())
-  ownerUserId   Int       @map("owner_user_id")
-  contactUserId Int       @map("contact_user_id")
-  nickname      String?   @db.VarChar(120)
-  source        String    @default("manual") @db.VarChar(50)
-  blockedAt     DateTime? @map("blocked_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  deletedAt     DateTime? @map("deleted_at")
+  id                Int       @id @default(autoincrement())
+  ownerUserId       Int       @map("owner_user_id")
+  ownerIdentityId   Int       @map("owner_identity_id")
+  contactUserId     Int       @map("contact_user_id")
+  contactIdentityId Int       @map("contact_identity_id")
+  nickname          String?   @db.VarChar(120)
+  source            String    @default("manual") @db.VarChar(50)
+  blockedAt         DateTime? @map("blocked_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
 
-  owner       User @relation("ContactOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  contactUser User @relation("ContactUser", fields: [contactUserId], references: [id], onDelete: Restrict)
+  owner           User         @relation("ContactOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  ownerIdentity   UserIdentity @relation("ContactOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
+  contactUser     User         @relation("ContactUser", fields: [contactUserId], references: [id], onDelete: Restrict)
+  contactIdentity UserIdentity @relation("ContactTargetIdentity", fields: [contactIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([ownerUserId, contactUserId])
+  @@unique([ownerIdentityId, contactIdentityId])
   @@index([ownerUserId])
+  @@index([ownerIdentityId])
   @@index([contactUserId])
+  @@index([contactIdentityId])
   @@index([deletedAt])
   @@map("contacts")
 }
 
 model FriendRequest {
-  id              Int                 @id @default(autoincrement())
-  requesterUserId Int                 @map("requester_user_id")
-  targetUserId    Int                 @map("target_user_id")
-  status          FriendRequestStatus @default(PENDING)
-  message         String?             @db.VarChar(300)
-  respondedAt     DateTime?           @map("responded_at")
-  expiresAt       DateTime            @map("expires_at")
-  expiredAt       DateTime?           @map("expired_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
-  deletedAt       DateTime?           @map("deleted_at")
+  id                  Int                 @id @default(autoincrement())
+  requesterUserId     Int                 @map("requester_user_id")
+  requesterIdentityId Int                 @map("requester_identity_id")
+  targetUserId        Int                 @map("target_user_id")
+  targetIdentityId    Int                 @map("target_identity_id")
+  status              FriendRequestStatus @default(PENDING)
+  message             String?             @db.VarChar(300)
+  respondedAt         DateTime?           @map("responded_at")
+  expiresAt           DateTime            @map("expires_at")
+  expiredAt           DateTime?           @map("expired_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  deletedAt           DateTime?           @map("deleted_at")
 
-  requester User @relation("FriendRequestRequester", fields: [requesterUserId], references: [id], onDelete: Restrict)
-  target    User @relation("FriendRequestTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+  requester         User         @relation("FriendRequestRequester", fields: [requesterUserId], references: [id], onDelete: Restrict)
+  requesterIdentity UserIdentity @relation("FriendRequestRequesterIdentity", fields: [requesterIdentityId], references: [id], onDelete: Restrict)
+  target            User         @relation("FriendRequestTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+  targetIdentity    UserIdentity @relation("FriendRequestTargetIdentity", fields: [targetIdentityId], references: [id], onDelete: Restrict)
 
   @@index([requesterUserId])
+  @@index([requesterIdentityId])
   @@index([targetUserId])
+  @@index([targetIdentityId])
   @@index([status])
-  @@index([requesterUserId, targetUserId, status, expiresAt, deletedAt], map: "friend_request_direction_status_expiry_idx")
-  @@index([targetUserId, status, expiresAt, deletedAt], map: "friend_request_target_pending_expiry_idx")
+  @@index([requesterIdentityId, targetIdentityId, status, expiresAt, deletedAt], map: "friend_request_direction_status_expiry_idx")
+  @@index([targetIdentityId, status, expiresAt, deletedAt], map: "friend_request_target_pending_expiry_idx")
   @@index([createdAt])
   @@index([deletedAt])
   @@map("friend_requests")
 }
 
 model SocialPost {
-  id           Int                  @id @default(autoincrement())
-  authorUserId Int                  @map("author_user_id")
-  content      String               @db.Text
-  media        Json?
-  visibility   SocialPostVisibility @default(PUBLIC)
-  createdAt    DateTime             @default(now()) @map("created_at")
-  updatedAt    DateTime             @updatedAt @map("updated_at")
-  deletedAt    DateTime?            @map("deleted_at")
+  id               Int                  @id @default(autoincrement())
+  authorUserId     Int                  @map("author_user_id")
+  authorIdentityId Int                  @map("author_identity_id")
+  content          String               @db.Text
+  media            Json?
+  visibility       SocialPostVisibility @default(PUBLIC)
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  deletedAt        DateTime?            @map("deleted_at")
 
-  author User @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  author         User         @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorIdentity UserIdentity @relation("SocialPostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
 
   @@index([authorUserId])
+  @@index([authorIdentityId])
+  @@index([authorIdentityId, deletedAt, createdAt])
   @@index([authorUserId, deletedAt, createdAt])
   @@index([visibility])
   @@index([createdAt])
@@ -2009,41 +2064,53 @@ model SocialPost {
 }
 
 model Follow {
-  id              Int       @id @default(autoincrement())
-  followerUserId  Int       @map("follower_user_id")
-  followingUserId Int       @map("following_user_id")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                  Int       @id @default(autoincrement())
+  followerUserId      Int       @map("follower_user_id")
+  followerIdentityId  Int       @map("follower_identity_id")
+  followingUserId     Int       @map("following_user_id")
+  followingIdentityId Int       @map("following_identity_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
-  follower  User @relation("FollowFollower", fields: [followerUserId], references: [id], onDelete: Restrict)
-  following User @relation("FollowFollowing", fields: [followingUserId], references: [id], onDelete: Restrict)
+  follower          User         @relation("FollowFollower", fields: [followerUserId], references: [id], onDelete: Restrict)
+  followerIdentity  UserIdentity @relation("FollowFollowerIdentity", fields: [followerIdentityId], references: [id], onDelete: Restrict)
+  following         User         @relation("FollowFollowing", fields: [followingUserId], references: [id], onDelete: Restrict)
+  followingIdentity UserIdentity @relation("FollowFollowingIdentity", fields: [followingIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([followerUserId, followingUserId])
+  @@unique([followerIdentityId, followingIdentityId])
   @@index([followerUserId])
+  @@index([followerIdentityId])
   @@index([followingUserId])
+  @@index([followingIdentityId])
   @@index([deletedAt])
   @@map("follows")
 }
 
 model Notification {
-  id              Int              @id @default(autoincrement())
-  recipientUserId Int              @map("recipient_user_id")
-  actorUserId     Int?             @map("actor_user_id")
-  type            NotificationType
-  title           String           @db.VarChar(160)
-  body            String           @db.VarChar(500)
-  payload         Json?
-  readAt          DateTime?        @map("read_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  deletedAt       DateTime?        @map("deleted_at")
+  id                  Int              @id @default(autoincrement())
+  recipientUserId     Int              @map("recipient_user_id")
+  recipientIdentityId Int              @map("recipient_identity_id")
+  actorUserId         Int?             @map("actor_user_id")
+  actorIdentityId     Int?             @map("actor_identity_id")
+  type                NotificationType
+  title               String           @db.VarChar(160)
+  body                String           @db.VarChar(500)
+  payload             Json?
+  readAt              DateTime?        @map("read_at")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  deletedAt           DateTime?        @map("deleted_at")
 
-  recipient User  @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
-  actor     User? @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  recipient         User          @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientIdentity UserIdentity  @relation("NotificationRecipientIdentity", fields: [recipientIdentityId], references: [id], onDelete: Restrict)
+  actor             User?         @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorIdentity     UserIdentity? @relation("NotificationActorIdentity", fields: [actorIdentityId], references: [id], onDelete: SetNull)
 
   @@index([recipientUserId])
+  @@index([recipientIdentityId])
   @@index([actorUserId])
+  @@index([actorIdentityId])
   @@index([type])
   @@index([readAt])
   @@index([createdAt])
@@ -2065,12 +2132,28 @@ model UserIdentity {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  publicIdentifier PublicIdentifier?
-  exchangePosts    ExchangePost[]    @relation("ExchangePostAuthorIdentity")
-  exchangeComments ExchangeComment[] @relation("ExchangeCommentAuthorIdentity")
-  exchangeLikes    ExchangeLike[]    @relation("ExchangeLikeActorIdentity")
-  exchangeShares   ExchangeShare[]   @relation("ExchangeShareActorIdentity")
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  publicIdentifier         PublicIdentifier?
+  exchangePosts            ExchangePost[]            @relation("ExchangePostAuthorIdentity")
+  ownedExchangePosts       ExchangePost[]            @relation("ExchangePostOwnerIdentity")
+  exchangeComments         ExchangeComment[]         @relation("ExchangeCommentAuthorIdentity")
+  exchangeLikes            ExchangeLike[]            @relation("ExchangeLikeActorIdentity")
+  exchangeShares           ExchangeShare[]           @relation("ExchangeShareActorIdentity")
+  createdConversations     Conversation[]            @relation("ConversationCreatorIdentity")
+  conversationParticipants ConversationParticipant[] @relation("ConversationParticipantIdentity")
+  sentMessages             Message[]                 @relation("MessageSenderIdentity")
+  messageUserDeletions     MessageUserDeletion[]     @relation("MessageUserDeletionIdentity")
+  messageReactions         MessageReaction[]         @relation("MessageReactionIdentity")
+  ownedContacts            Contact[]                 @relation("ContactOwnerIdentity")
+  contactTargets           Contact[]                 @relation("ContactTargetIdentity")
+  requestedFriendRequests  FriendRequest[]           @relation("FriendRequestRequesterIdentity")
+  targetedFriendRequests   FriendRequest[]           @relation("FriendRequestTargetIdentity")
+  socialPosts              SocialPost[]              @relation("SocialPostAuthorIdentity")
+  following                Follow[]                  @relation("FollowFollowerIdentity")
+  followers                Follow[]                  @relation("FollowFollowingIdentity")
+  receivedNotifications    Notification[]            @relation("NotificationRecipientIdentity")
+  actedNotifications       Notification[]            @relation("NotificationActorIdentity")
+  ownedMediaAssets         MediaAsset[]              @relation("MediaAssetOwnerIdentity")
 
   @@index([userId])
   @@index([type])
@@ -2084,6 +2167,7 @@ model ExchangePost {
   id                    Int                @id @default(autoincrement())
   authorUserId          Int                @map("author_user_id")
   authorIdentityId      Int                @map("author_identity_id")
+  ownerIdentityId       Int                @map("owner_identity_id")
   publisherPublicId     String             @map("publisher_public_id") @db.VarChar(32)
   publisherIdentityType String             @map("publisher_identity_type") @db.VarChar(50)
   publisherDisplayName  String             @map("publisher_display_name") @db.VarChar(100)
@@ -2105,6 +2189,7 @@ model ExchangePost {
 
   author         User                  @relation("ExchangePostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
   authorIdentity UserIdentity          @relation("ExchangePostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+  ownerIdentity  UserIdentity          @relation("ExchangePostOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
   demand         ExchangeDemand?
   intelligence   ExchangeIntelligence?
   comments       ExchangeComment[]
@@ -2114,6 +2199,7 @@ model ExchangePost {
   @@index([type, status, expiresAt, createdAt])
   @@index([authorUserId, createdAt])
   @@index([authorIdentityId, createdAt])
+  @@index([ownerIdentityId, createdAt])
   @@index([areaLabel, type, status])
   @@index([deletedAt])
   @@map("exchange_posts")
@@ -2192,7 +2278,7 @@ model ExchangeLike {
   actor         User         @relation("ExchangeLikeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   actorIdentity UserIdentity @relation("ExchangeLikeActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([postId, actorUserId])
+  @@unique([postId, actorIdentityId])
   @@index([postId, deletedAt])
   @@index([actorUserId, createdAt])
   @@index([actorIdentityId, createdAt])
@@ -2214,7 +2300,7 @@ model ExchangeShare {
   actor         User         @relation("ExchangeShareActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   actorIdentity UserIdentity @relation("ExchangeShareActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
 
-  @@unique([postId, actorUserId])
+  @@unique([postId, actorIdentityId])
   @@index([postId, deletedAt])
   @@index([actorUserId, createdAt])
   @@index([actorIdentityId, createdAt])
@@ -2643,6 +2729,7 @@ model Wallet {
   affiliateBudgetReservations AffiliateBudgetReservation[]
   affiliateRewardsAsPublisher AffiliateReward[]            @relation("AffiliateRewardPublisherWallet")
   affiliateRewardsAsClaimant  AffiliateReward[]            @relation("AffiliateRewardClaimantWallet")
+  affiliateRewardsAsPlatform  AffiliateReward[]            @relation("AffiliateRewardPlatformWallet")
 
   @@unique([ownerType, ownerId, currency])
   @@index([ownerType, ownerId])
@@ -3718,6 +3805,38 @@ model AffiliateAllianceInvitation {
   @@map("affiliate_alliance_invitations")
 }
 
+model AffiliatePlatformFeeRule {
+  id            Int                           @id @default(autoincrement())
+  scopeType     AffiliatePlatformFeeScopeType @map("scope_type")
+  scopeKey      String                        @map("scope_key") @db.VarChar(80)
+  shopId        Int?                          @map("shop_id")
+  feeBps        Int                           @map("fee_bps")
+  version       Int
+  effectiveFrom DateTime                      @map("effective_from")
+  effectiveTo   DateTime?                     @map("effective_to")
+  activeKey     String?                       @unique(map: "affiliate_platform_fee_rules_active_key_key") @map("active_key") @db.VarChar(80)
+  reason        String                        @db.VarChar(500)
+  createdById   Int?                          @map("created_by_id")
+  updatedById   Int?                          @map("updated_by_id")
+  createdAt     DateTime                      @default(now()) @map("created_at")
+  updatedAt     DateTime                      @updatedAt @map("updated_at")
+  deletedAt     DateTime?                     @map("deleted_at")
+
+  shop      Shop?           @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy User?           @relation("AffiliatePlatformFeeRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?           @relation("AffiliatePlatformFeeRuleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tasks     AffiliateTask[]
+
+  @@unique([scopeType, shopId, version], map: "affiliate_platform_fee_rules_scope_shop_version_key")
+  @@unique([scopeKey, version], map: "affiliate_platform_fee_rules_scope_key_version_key")
+  @@index([scopeType, shopId, effectiveFrom, effectiveTo, deletedAt], map: "affiliate_platform_fee_rules_effective_idx")
+  @@index([shopId], map: "affiliate_platform_fee_rules_shop_id_idx")
+  @@index([createdById], map: "affiliate_platform_fee_rules_created_by_id_idx")
+  @@index([updatedById], map: "affiliate_platform_fee_rules_updated_by_id_idx")
+  @@index([deletedAt], map: "affiliate_platform_fee_rules_deleted_at_idx")
+  @@map("affiliate_platform_fee_rules")
+}
+
 model AffiliateTask {
   id                            Int                       @id @default(autoincrement())
   taskCode                      String                    @unique @map("task_code") @db.VarChar(80)
@@ -3737,6 +3856,11 @@ model AffiliateTask {
   allocatedBudgetNdp            Int                       @default(0) @map("allocated_budget_ndp")
   settledBudgetNdp              Int                       @default(0) @map("settled_budget_ndp")
   releasedBudgetNdp             Int                       @default(0) @map("released_budget_ndp")
+  platformFeeRuleId             Int?                      @map("platform_fee_rule_id")
+  platformFeeBps                Int                       @default(0) @map("platform_fee_bps")
+  platformFeeReserveNdp         Int                       @default(0) @map("platform_fee_reserve_ndp")
+  settledPlatformFeeNdp         Int                       @default(0) @map("settled_platform_fee_ndp")
+  releasedPlatformFeeNdp        Int                       @default(0) @map("released_platform_fee_ndp")
   customerDiscountType          AffiliateDiscountType     @default(NONE) @map("customer_discount_type")
   fixedDiscountJpy              Int                       @default(0) @map("fixed_discount_jpy")
   discountRateBps               Int                       @default(0) @map("discount_rate_bps")
@@ -3768,6 +3892,7 @@ model AffiliateTask {
   publisherShop            Shop?                       @relation("AffiliateShopPublisher", fields: [publisherShopId], references: [id], onDelete: Restrict)
   coverMediaAsset          MediaAsset?                 @relation("AffiliateTaskCover", fields: [coverMediaAssetId], references: [id], onDelete: SetNull)
   reviewedBy               User?                       @relation("AffiliateTaskReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  platformFeeRule          AffiliatePlatformFeeRule?   @relation(fields: [platformFeeRuleId], references: [id], onDelete: SetNull)
   translations             AffiliateTaskTranslation[]
   shops                    AffiliateTaskShop[]
   services                 AffiliateTaskService[]
@@ -3784,6 +3909,7 @@ model AffiliateTask {
   @@index([parentTaskId])
   @@index([publisherType, publisherMerchantAccountId, publisherShopId])
   @@index([coverMediaAssetId])
+  @@index([platformFeeRuleId])
   @@index([status, taskStartsAt, taskEndsAt])
   @@index([reviewedById])
   @@index([deletedAt])
@@ -3979,7 +4105,9 @@ model AffiliateReward {
   bookingOrderId         Int                   @map("booking_order_id")
   publisherWalletId      Int                   @map("publisher_wallet_id")
   claimantWalletId       Int                   @map("claimant_wallet_id")
+  platformWalletId       Int?                  @map("platform_wallet_id")
   rewardNdp              Int                   @map("reward_ndp")
+  platformFeeNdp         Int                   @default(0) @map("platform_fee_ndp")
   reversalRequiredNdp    Int                   @default(0) @map("reversal_required_ndp")
   reversedNdp            Int                   @default(0) @map("reversed_ndp")
   outstandingRecoveryNdp Int                   @default(0) @map("outstanding_recovery_ndp")
@@ -3997,6 +4125,7 @@ model AffiliateReward {
   bookingOrder    BookingOrder                 @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
   publisherWallet Wallet                       @relation("AffiliateRewardPublisherWallet", fields: [publisherWalletId], references: [id], onDelete: Restrict)
   claimantWallet  Wallet                       @relation("AffiliateRewardClaimantWallet", fields: [claimantWalletId], references: [id], onDelete: Restrict)
+  platformWallet  Wallet?                      @relation("AffiliateRewardPlatformWallet", fields: [platformWalletId], references: [id], onDelete: Restrict)
   transactions    AffiliateRewardTransaction[]
   riskEvents      AffiliateRiskEvent[]
 
@@ -4005,6 +4134,7 @@ model AffiliateReward {
   @@index([bookingOrderId])
   @@index([publisherWalletId])
   @@index([claimantWalletId])
+  @@index([platformWalletId])
   @@index([deletedAt])
   @@map("affiliate_rewards")
 }
@@ -4028,20 +4158,24 @@ model AffiliateRewardTransaction {
 }
 
 model AffiliateBudgetReservation {
-  id             Int                   @id @default(autoincrement())
-  taskId         Int                   @unique @map("task_id")
-  walletId       Int                   @map("wallet_id")
-  totalFrozenNdp Int                   @map("total_frozen_ndp")
-  allocatedNdp   Int                   @default(0) @map("allocated_ndp")
-  capturedNdp    Int                   @default(0) @map("captured_ndp")
-  releasedNdp    Int                   @default(0) @map("released_ndp")
-  status         AffiliateBudgetStatus @default(ACTIVE)
-  idempotencyKey String                @unique @map("idempotency_key") @db.VarChar(180)
-  frozenAt       DateTime              @default(now()) @map("frozen_at")
-  releasedAt     DateTime?             @map("released_at")
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  deletedAt      DateTime?             @map("deleted_at")
+  id                     Int                   @id @default(autoincrement())
+  taskId                 Int                   @unique @map("task_id")
+  walletId               Int                   @map("wallet_id")
+  totalFrozenNdp         Int                   @map("total_frozen_ndp")
+  commissionFrozenNdp    Int                   @default(0) @map("commission_frozen_ndp")
+  platformFeeFrozenNdp   Int                   @default(0) @map("platform_fee_frozen_ndp")
+  allocatedNdp           Int                   @default(0) @map("allocated_ndp")
+  capturedNdp            Int                   @default(0) @map("captured_ndp")
+  platformFeeCapturedNdp Int                   @default(0) @map("platform_fee_captured_ndp")
+  releasedNdp            Int                   @default(0) @map("released_ndp")
+  platformFeeReleasedNdp Int                   @default(0) @map("platform_fee_released_ndp")
+  status                 AffiliateBudgetStatus @default(ACTIVE)
+  idempotencyKey         String                @unique @map("idempotency_key") @db.VarChar(180)
+  frozenAt               DateTime              @default(now()) @map("frozen_at")
+  releasedAt             DateTime?             @map("released_at")
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+  deletedAt              DateTime?             @map("deleted_at")
 
   task         AffiliateTask                @relation(fields: [taskId], references: [id], onDelete: Restrict)
   wallet       Wallet                       @relation(fields: [walletId], references: [id], onDelete: Restrict)

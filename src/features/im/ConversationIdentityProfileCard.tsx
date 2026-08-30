@@ -4,7 +4,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
-import type { DirectoryIdentityCard, ImUser } from "./model";
+import type { DirectoryIdentityCard, ImRoleType, ImUser } from "./model";
 
 function identityLabel(card: DirectoryIdentityCard) {
   if (card.entityType === "user") {
@@ -34,19 +34,17 @@ function genderLabel(value?: string) {
 function profileFields(card: DirectoryIdentityCard) {
   if (card.entityType === "user") {
     return [
-      { label: "性别", value: genderLabel(card.gender) },
-      { label: "年龄", value: card.age === undefined ? undefined : String(card.age) },
+      { label: "性别", value: genderLabel(card.gender) ?? "不公开" },
+      { label: "年龄", value: card.age === undefined ? "未设置" : String(card.age) },
       {
         label: "身高（cm）",
-        value: card.heightCm === undefined ? undefined : String(card.heightCm),
+        value: card.heightCm === undefined ? "未设置" : String(card.heightCm),
       },
-      { label: "城市", value: card.city },
     ];
   }
 
   if (card.entityType === "technician") {
     return [
-      { label: "城市", value: card.city },
       {
         label: "从业年限",
         value: card.yearsExperience === undefined
@@ -59,7 +57,6 @@ function profileFields(card: DirectoryIdentityCard) {
 
   if (card.entityType === "shop") {
     return [
-      { label: "城市", value: card.city },
       { label: "店铺地址", value: card.serviceArea },
     ];
   }
@@ -71,10 +68,12 @@ export function ConversationIdentityProfileCard({
   detailTo,
   identityCard,
   user,
+  viewerScope,
 }: {
   detailTo?: string;
   identityCard: DirectoryIdentityCard;
   user: ImUser;
+  viewerScope: ImRoleType;
 }) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
@@ -89,6 +88,7 @@ export function ConversationIdentityProfileCard({
   const creditReviewText = identityCard.creditReviewCount > 0
     ? t(`${identityCard.creditReviewCount}人评价`)
     : t("暂无评价");
+  const showCreditValue = viewerScope !== "user";
   const header = (
     <div className="flex min-w-0 items-start gap-4">
       <AvatarImage
@@ -131,31 +131,42 @@ export function ConversationIdentityProfileCard({
         </Link>
       ) : header}
 
-      <div className="mt-4 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_9%,var(--client-surface))] px-4 py-3">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-xs font-black text-[color:var(--client-muted)]">{t("信用值")}</p>
-            <div className="mt-1 flex items-end gap-1">
-              <strong className="text-[28px] font-black leading-none text-[color:var(--client-primary)]">
-                {creditText}
-              </strong>
-              {creditValue === undefined ? null : (
-                <span className="pb-0.5 text-xs font-black text-[color:var(--client-muted)]">/5</span>
-              )}
+      {showCreditValue ? (
+        <div className="mt-4 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_9%,var(--client-surface))] px-4 py-3">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-black text-[color:var(--client-muted)]">{t("信用值")}</p>
+              <div className="mt-1 flex items-end gap-1">
+                <strong className="text-[28px] font-black leading-none text-[color:var(--client-primary)]">
+                  {creditText}
+                </strong>
+                {creditValue === undefined ? null : (
+                  <span className="pb-0.5 text-xs font-black text-[color:var(--client-muted)]">/5</span>
+                )}
+              </div>
             </div>
+            <p className="pb-0.5 text-right text-[11px] font-black text-[color:var(--client-muted)]">
+              {creditReviewText}
+            </p>
           </div>
-          <p className="pb-0.5 text-right text-[11px] font-black text-[color:var(--client-muted)]">
-            {creditReviewText}
-          </p>
         </div>
-      </div>
+      ) : null}
 
-      <div className="my-5 h-px bg-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]" />
+      <div className={cn(showCreditValue ? "my-5" : "mt-5 mb-5", "h-px bg-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]")} />
 
       <div>
         <h3 className="text-[18px] font-black text-[color:var(--client-text)]">{t("基础信息")}</h3>
         {fields.length > 0 ? (
-          <div className={cn("mt-3 grid gap-2", fields.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+          <div
+            className={cn(
+              "mt-3 grid gap-2",
+              identityCard.entityType === "user"
+                ? "grid-cols-3"
+                : fields.length > 1
+                  ? "grid-cols-2"
+                  : "grid-cols-1",
+            )}
+          >
             {fields.map((field) => (
               <div
                 className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] p-3"

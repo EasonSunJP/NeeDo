@@ -137,8 +137,8 @@ describe("ExchangeService", () => {
       type: "demand",
       page: 1,
       pageSize: 20,
-      viewerUserId: 7,
-      authorUserId: 7,
+      viewerIdentityId: 17,
+      authorIdentityId: 17,
       now
     });
 
@@ -153,7 +153,7 @@ describe("ExchangeService", () => {
       type: "demand",
       page: 1,
       pageSize: 20,
-      viewerUserId: 7,
+      viewerIdentityId: 17,
       now
     });
 
@@ -235,6 +235,56 @@ describe("ExchangeService", () => {
       )
     ).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
     expect(repository.publishPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares demand ownership between customer and affiliate while preserving the publisher identity", async () => {
+    const repository = createRepository();
+    const affiliateActor = {
+      ...actor,
+      identityId: 18,
+      identityType: "scout",
+      scopeType: "global",
+      scopeId: null,
+      publicId: "NA12345678"
+    };
+    repository.resolveActor.mockResolvedValue(affiliateActor);
+    const scopeResolver = {
+      resolve: jest.fn(async () => ({
+        identityId: 17,
+        userId: 7,
+        identityType: "customer",
+        scopeType: "customer_profile",
+        scopeId: 27
+      }))
+    };
+    const service = new ExchangeService(repository, () => now, scopeResolver);
+    const affiliateAccess = {
+      ...access,
+      currentIdentityId: 18,
+      currentIdentityType: "scout",
+      currentIdentityScopeType: "global",
+      currentIdentityScopeId: null,
+      currentPublicId: "NA12345678"
+    };
+
+    await service.publish(affiliateAccess, demandInput, "affiliate-demand-001");
+    await service.listPosts(affiliateAccess, { type: "demand", page: 1, pageSize: 20 });
+
+    expect(repository.publishPost).toHaveBeenCalledWith(expect.objectContaining({
+      actor: expect.objectContaining({
+        identityId: 18,
+        identityType: "scout",
+        ownerIdentityId: 17
+      })
+    }));
+    expect(repository.listPosts).toHaveBeenCalledWith({
+      type: "demand",
+      page: 1,
+      pageSize: 20,
+      viewerIdentityId: 17,
+      authorIdentityId: 17,
+      now
+    });
   });
 
   it.each(["technician", "merchant", "merchant_owner", "merchant_staff"])(

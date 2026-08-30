@@ -20,6 +20,52 @@ type ImReactionPerson = {
 };
 
 const judgementReplies = new Set<string>(IM_JUDGEMENT_REPLIES);
+const judgementDraftTokenEntries = IM_JUDGEMENT_REPLIES.map(
+  (value, index) => [value, String.fromCodePoint(0xe100 + index)] as const,
+);
+const judgementDraftTokenByValue = new Map<string, string>(judgementDraftTokenEntries);
+const judgementValueByDraftToken = new Map<string, string>(
+  judgementDraftTokenEntries.map(([value, token]) => [token, value]),
+);
+
+export type ImComposerDraftPart =
+  | { type: "text"; value: string }
+  | { type: "judgement"; token: string; value: string };
+
+export function encodeImComposerJudgement(value: string): string {
+  return judgementDraftTokenByValue.get(value) ?? value;
+}
+
+export function parseImComposerDraft(value: string): ImComposerDraftPart[] {
+  const parts: ImComposerDraftPart[] = [];
+  let text = "";
+
+  const flushText = () => {
+    if (!text) return;
+    parts.push({ type: "text", value: text });
+    text = "";
+  };
+
+  for (const character of Array.from(value)) {
+    const judgement = judgementValueByDraftToken.get(character);
+    if (!judgement) {
+      text += character;
+      continue;
+    }
+
+    flushText();
+    parts.push({ type: "judgement", token: character, value: judgement });
+  }
+
+  flushText();
+  return parts;
+}
+
+export function materializeImComposerDraft(value: string): string {
+  return parseImComposerDraft(value)
+    .map((part) => part.value)
+    .join("");
+}
 
 export function getImReactionCategory(value: string): ImReactionCategory {
   return judgementReplies.has(value) ? "judgement" : "emoji";

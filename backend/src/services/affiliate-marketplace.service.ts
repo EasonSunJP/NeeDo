@@ -390,7 +390,7 @@ export class AffiliateMarketplaceService {
     const remainingBudgetNdp = Math.max(
       0,
       task.budgetReservation
-        ? task.budgetReservation.totalFrozenNdp -
+        ? task.budgetReservation.commissionFrozenNdp -
             task.budgetReservation.allocatedNdp -
             task.budgetReservation.capturedNdp -
             task.budgetReservation.releasedNdp
@@ -445,7 +445,7 @@ export class AffiliateMarketplaceService {
       task.shops.length > 0 &&
       task.services.length > 0 &&
       reservation?.status === "active" &&
-      reservation.totalFrozenNdp -
+      reservation.commissionFrozenNdp -
         reservation.allocatedNdp -
         reservation.capturedNdp -
         reservation.releasedNdp >=

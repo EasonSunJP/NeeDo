@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import source from "./FormalScheduleInventoryPanel.tsx?raw";
 import merchantSource from "../../pages/mobile/MerchantPortalPage.tsx?raw";
-import technicianSource from "../../pages/mobile/TechnicianPortalPage.tsx?raw";
+import technicianSource from "../../features/technician-schedule/FormalTechnicianScheduleWorkspace.tsx?raw";
 
 describe("FormalScheduleInventoryPanel", () => {
   it("uses identity-scoped formal APIs for all bookable inventory mutations", () => {
@@ -31,10 +31,11 @@ describe("FormalScheduleInventoryPanel", () => {
     expect(source).toContain("当前范围没有正式可预约时段");
   });
 
-  it("is mounted in both merchant and technician schedule portals", () => {
+  it("keeps merchant inventory and the restored technician workspace on formal schedule loaders", () => {
     expect(merchantSource).toContain('scope="merchant-admin"');
     expect(merchantSource).toContain("<FormalScheduleInventoryPanel");
-    expect(technicianSource).toContain('scope="technician"');
-    expect(technicianSource).toContain("shopId={technicianShopApiId}");
+    expect(technicianSource).toContain('loadManagedScheduleWindow("technician"');
+    expect(technicianSource).toContain("loadEveryTechnicianOrder");
+    expect(technicianSource).toContain("<FormalTechnicianOrdersPanel />");
   });
 });

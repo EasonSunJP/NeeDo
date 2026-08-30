@@ -333,7 +333,9 @@ const createFixture = async () => {
   const contacts: Array<{
     id: number;
     ownerUserId: number;
+    ownerIdentityId: number;
     contactUserId: number;
+    contactIdentityId: number;
     nickname: string | null;
     isBlocked: boolean;
     createdAt: Date;
@@ -341,7 +343,9 @@ const createFixture = async () => {
   const friendRequests: Array<{
     id: number;
     requesterUserId: number;
+    requesterIdentityId: number;
     targetUserId: number;
+    targetIdentityId: number;
     requester: { userId: number; needoId: string; username: string; avatarUrl: null };
     target: { userId: number; needoId: string; username: string; avatarUrl: null };
     status: "pending" | "accepted" | "rejected" | "expired";
@@ -462,6 +466,16 @@ const createFixture = async () => {
     findActiveUserIds: jest.fn(async (ids: number[]) =>
       ids.filter((id) => users.some((user) => user.id === id))
     ),
+    findCanonicalIdentityIdForUser: jest.fn(async (userId: number) =>
+      users.find((user) => user.id === userId)?.identities[0]?.id ?? null
+    ),
+    listConversationRecipients: jest.fn(async (conversationIdToFind: number) => {
+      const conversation = conversations.find((item) => item.id === conversationIdToFind);
+      return (conversation?.participantUserIds ?? []).map((userId) => ({
+        userId,
+        identityId: users.find((user) => user.id === userId)?.identities[0]?.id ?? userId
+      }));
+    }),
     createConversation: jest.fn(
       async (input: {
         creatorUserId: number;
@@ -922,22 +936,31 @@ const createFixture = async () => {
         return mapConversation(conversation, input.userId);
       }
     ),
-    listContacts: jest.fn(async (userId: number) =>
-      listPage(contacts.filter((contact) => contact.ownerUserId === userId))
+    listContacts: jest.fn(async (identityId: number) =>
+      listPage(contacts.filter((contact) => contact.ownerIdentityId === identityId))
     ),
-    getDirectoryProfile: jest.fn(async (viewerUserId: number, targetUserId: number) => {
+    getDirectoryProfile: jest.fn(async (
+      viewerUserId: number,
+      viewerIdentityId: number,
+      targetUserId: number,
+      targetIdentityId: number
+    ) => {
       const targetUser = users.find((user) => user.id === targetUserId);
       if (!targetUser) return null;
       const contact = contacts.find(
-        (item) => item.ownerUserId === viewerUserId && item.contactUserId === targetUserId
+        (item) =>
+          item.ownerIdentityId === viewerIdentityId &&
+          item.contactIdentityId === targetIdentityId
       );
       const friendRequest = [...friendRequests]
         .reverse()
         .find(
           (item) =>
             item.status === "pending" &&
-            ((item.requesterUserId === viewerUserId && item.targetUserId === targetUserId) ||
-              (item.requesterUserId === targetUserId && item.targetUserId === viewerUserId))
+            ((item.requesterIdentityId === viewerIdentityId &&
+              item.targetIdentityId === targetIdentityId) ||
+              (item.requesterIdentityId === targetIdentityId &&
+                item.targetIdentityId === viewerIdentityId))
         );
       return {
         user: publicProfile(targetUserId),
@@ -960,7 +983,7 @@ const createFixture = async () => {
         },
         relationship: contact
           ? ("friend" as const)
-          : friendRequest?.requesterUserId === viewerUserId
+          : friendRequest?.requesterIdentityId === viewerIdentityId
             ? ("outgoing_pending" as const)
             : friendRequest
               ? ("incoming_pending" as const)
@@ -1039,14 +1062,20 @@ const createFixture = async () => {
       }
     ),
     createFriendRequest: jest.fn(
-      async (input: { requesterUserId: number; targetUserId: number; message?: string | null }) => {
+      async (input: {
+        requesterUserId: number;
+        requesterIdentityId: number;
+        targetUserId: number;
+        targetIdentityId: number;
+        message?: string | null;
+      }) => {
         const existing = friendRequests.find(
           (item) =>
             item.status === "pending" &&
-            ((item.requesterUserId === input.requesterUserId &&
-              item.targetUserId === input.targetUserId) ||
-              (item.requesterUserId === input.targetUserId &&
-                item.targetUserId === input.requesterUserId))
+            ((item.requesterIdentityId === input.requesterIdentityId &&
+              item.targetIdentityId === input.targetIdentityId) ||
+              (item.requesterIdentityId === input.targetIdentityId &&
+                item.targetIdentityId === input.requesterIdentityId))
         );
         if (existing) {
           return {
@@ -1057,7 +1086,9 @@ const createFixture = async () => {
         const friendRequest = {
           id: friendRequestId++,
           requesterUserId: input.requesterUserId,
+          requesterIdentityId: input.requesterIdentityId,
           targetUserId: input.targetUserId,
+          targetIdentityId: input.targetIdentityId,
           requester: publicProfile(input.requesterUserId),
           target: publicProfile(input.targetUserId),
           status: "pending" as const,
@@ -1086,20 +1117,26 @@ const createFixture = async () => {
         };
       }
     ),
-    listFriendRequests: jest.fn(async (userId: number) =>
+    listFriendRequests: jest.fn(async (identityId: number) =>
       listPage(
         friendRequests.filter(
           (friendRequest) =>
-            friendRequest.requesterUserId === userId || friendRequest.targetUserId === userId
+            friendRequest.requesterIdentityId === identityId ||
+            friendRequest.targetIdentityId === identityId
         )
       )
     ),
     respondToFriendRequest: jest.fn(
-      async (input: { id: number; actorUserId: number; action: "accept" | "reject" }) => {
+      async (input: {
+        id: number;
+        actorUserId: number;
+        actorIdentityId: number;
+        action: "accept" | "reject";
+      }) => {
         const friendRequest = friendRequests.find((item) => item.id === input.id);
         if (
           !friendRequest ||
-          friendRequest.targetUserId !== input.actorUserId ||
+          friendRequest.targetIdentityId !== input.actorIdentityId ||
           friendRequest.status !== "pending"
         ) {
           return { status: "not_found" as const };
@@ -1111,7 +1148,9 @@ const createFixture = async () => {
           contacts.push({
             id: contactId++,
             ownerUserId: friendRequest.requesterUserId,
+            ownerIdentityId: friendRequest.requesterIdentityId,
             contactUserId: friendRequest.targetUserId,
+            contactIdentityId: friendRequest.targetIdentityId,
             nickname: null,
             isBlocked: false,
             createdAt: now
@@ -1119,7 +1158,9 @@ const createFixture = async () => {
           contacts.push({
             id: contactId++,
             ownerUserId: friendRequest.targetUserId,
+            ownerIdentityId: friendRequest.targetIdentityId,
             contactUserId: friendRequest.requesterUserId,
+            contactIdentityId: friendRequest.requesterIdentityId,
             nickname: null,
             isBlocked: false,
             createdAt: now
@@ -1290,17 +1331,18 @@ const createFixture = async () => {
 
       return { count };
     }),
-    getUnreadCounts: jest.fn(async (userId: number) => {
+    getUnreadCounts: jest.fn(async (identityId: number) => {
       const conversationsUnread = conversations.reduce(
-        (sum, conversation) => sum + (conversation.unreadByUserId.get(userId) ?? 0),
+        (sum, conversation) => sum + (conversation.unreadByUserId.get(identityId) ?? 0),
         0
       );
       const notificationsUnread = notifications.filter(
-        (notification) => notification.recipientUserId === userId && notification.readAt === null
+        (notification) =>
+          notification.recipientUserId === identityId && notification.readAt === null
       ).length;
       const friendRequestsUnread = friendRequests.filter(
         (friendRequest) =>
-          friendRequest.targetUserId === userId && friendRequest.status === "pending"
+          friendRequest.targetIdentityId === identityId && friendRequest.status === "pending"
       ).length;
 
       return {
@@ -1821,6 +1863,59 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect((response) => {
         expect(response.body.data).toMatchObject({ conversationId: 2, dissolved: true });
       });
+  });
+
+  it("rejects group privacy countdowns above 99 hours 59 minutes", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    const rejectedCreate = await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        type: "group",
+        title: "Privacy countdown boundary",
+        participantUserIds: [2],
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_941,
+        disappearingStartMode: "sent"
+      })
+      .expect(400);
+    expect(rejectedCreate.body.message).toBe("error.validation");
+
+    const validCreate = await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        type: "group",
+        title: "Privacy countdown boundary",
+        participantUserIds: [2],
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_940,
+        disappearingStartMode: "sent"
+      })
+      .expect(201);
+
+    const rejectedUpdate = await request(fixture.app)
+      .patch(`/api/v1/im/conversations/${validCreate.body.data.id}/privacy`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_941,
+        disappearingStartMode: "read_by_all"
+      })
+      .expect(400);
+    expect(rejectedUpdate.body.message).toBe("error.validation");
+
+    await request(fixture.app)
+      .patch(`/api/v1/im/conversations/${validCreate.body.data.id}/privacy`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_940,
+        disappearingStartMode: "read_by_all"
+      })
+      .expect(200);
   });
 
   it("recalls an owned message through the protected formal endpoint", async () => {

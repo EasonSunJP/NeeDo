@@ -101,14 +101,19 @@ describe("user management seed contract", () => {
       "customer@example.com"
     ]);
     expect(
-      TEST_USER_ACCOUNTS.map((account) => [account.email, account.roleCode, account.identityType])
+      TEST_USER_ACCOUNTS.map((account) => [
+        account.email,
+        account.roleCode,
+        account.identityType,
+        account.primaryIdentifierKind
+      ])
     ).toEqual([
-      ["admin@lifedance.com", "admin", "platform"],
-      ["operator@example.com", "operator", "platform"],
-      ["merchant@example.com", "merchant_owner", "merchant"],
-      ["affiliate@example.com", "broker", "broker"],
-      ["technician@example.com", "technician", "technician"],
-      ["customer@example.com", "customer", "customer"]
+      ["admin@lifedance.com", "admin", "platform", "NEEDO"],
+      ["operator@example.com", "operator", "platform", "U"],
+      ["merchant@example.com", "merchant_owner", "merchant", "U"],
+      ["affiliate@example.com", "broker", "broker", "U"],
+      ["technician@example.com", "technician", "technician", "U"],
+      ["customer@example.com", "customer", "customer", "U"]
     ]);
   });
 

@@ -71,7 +71,8 @@ export const createSocialMediaRoutes = (
     dependencies.socialMediaService ??
     new SocialMediaService(
       dependencies.socialMediaRepository ?? new SocialMediaRepository(),
-      storage
+      storage,
+      dependencies.personalIdentityScopeService
     );
   const controller = new SocialMediaController(service);
 

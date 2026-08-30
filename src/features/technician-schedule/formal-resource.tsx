@@ -3,6 +3,7 @@ import { ApiClientError } from "../../api/httpClient";
 import type { AuthSession } from "../../auth/rbac";
 import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "../booking/api";
 import { coreReadApi, type CoreTechnicianDetail } from "../core-read/api";
+import { technicianProfileApi } from "../core-read/technicianProfileApi";
 import {
   pricingModeApi,
   type TechnicianServicePayload
@@ -118,8 +119,10 @@ export function useFormalTechnicianScheduleResource(
     setState({ data: null, error: null, loading: true });
     void (async () => {
       try {
+        const selfProfile = await technicianProfileApi.getMine();
+        if (!selfProfile.shopId) throw new Error(missingShopError);
         const profile = await coreReadApi.getTechnicianDetail(technicianProfileId);
-        if (!profile.shop) throw new Error(missingShopError);
+        if (!profile.shop || profile.shop.id !== selfProfile.shopId) throw new Error(missingShopError);
         const [services, slot] = await Promise.all([
           loadAllTechnicianServices(profile.shop.id),
           slotId === null ? Promise.resolve(null) : schedulingApi.getTechnicianSlot(slotId)

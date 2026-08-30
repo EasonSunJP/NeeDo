@@ -24,6 +24,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
+vi.mock("../../theme/ClientThemeProvider", async () => {
+  const actual = await vi.importActual<typeof import("../../theme/ClientThemeProvider")>("../../theme/ClientThemeProvider");
+  return { ...actual, useClientTheme: () => ({ isNight: false, theme: "whiteGreen" }) };
+});
 vi.mock("../booking/api", async () => {
   const actual = await vi.importActual<typeof import("../booking/api")>("../booking/api");
   return {
@@ -72,13 +76,10 @@ vi.mock("./FormalScheduleRangeEditor", () => ({
     </button>
   )
 }));
-vi.mock("../../components/scheduling/FormalScheduleInventoryPanel", () => ({
-  FormalScheduleInventoryPanel: ({ scope, shopId }: { scope: string; shopId: number }) => (
-    <section data-testid="formal-schedule-index-inventory">{scope}:{shopId}</section>
+vi.mock("./FormalTechnicianScheduleWorkspace", () => ({
+  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopName }: { profileAvatarUrl?: string | null; profileName: string; shopName: string }) => (
+    <section data-avatar={profileAvatarUrl ?? ""} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
   )
-}));
-vi.mock("../../components/technician/FormalTechnicianOrdersPanel", () => ({
-  FormalTechnicianOrdersPanel: () => <section data-testid="formal-schedule-index-orders">正式订单库存</section>
 }));
 
 import {
@@ -316,11 +317,10 @@ describe("formal technician schedule routes", () => {
 
     await render("/technician/schedule");
 
-    expect(container.textContent).toContain("正式排班与预约");
+    expect(container.textContent).toContain("排班与预约");
     expect(container.textContent).toContain("正式技师");
     expect(container.textContent).toContain("正式店铺");
-    expect(container.querySelector('[data-testid="formal-schedule-index-inventory"]')?.textContent).toBe("technician:11");
-    expect(container.querySelector('[data-testid="formal-schedule-index-orders"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.textContent).toBe("正式技师:正式店铺");
     expect(mocks.scheduleResource).toHaveBeenCalledWith(technicianSession, null);
   });
 
@@ -347,6 +347,21 @@ describe("formal technician schedule routes", () => {
     expect(container.textContent).not.toContain("Aroma 60");
     await click("重新加载");
     expect(mocks.retrySchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains that an unassigned technician must link a shop before scheduling", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: null,
+      error: "error.technician.shop_required",
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+
+    await render("/technician/schedule");
+
+    expect(container.textContent).toContain("暂未关联店铺");
+    expect(container.textContent).toContain("关联店铺并配置正式服务后即可使用排班");
+    expect(container.textContent).not.toContain("error.technician.shop_required");
   });
 
   it("locks a slot with the formal API and requires two clicks before deletion", async () => {

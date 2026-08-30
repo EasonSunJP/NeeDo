@@ -45,6 +45,7 @@ The Exchange Request publication fee and its future operations-configured 1,000 
 - `order_financials`: one minimal financial summary per Booking/Request order with an NDP currency snapshot for backoffice and merchant-admin finance views.
 
 Manual service payments remain JPY records, not NDP wallet mutations. Confirming an `onsite` or `bank_transfer` payment updates the Booking payment snapshot and synchronizes the `order_financials` offline-income fields/timeline transactionally. NDP platform-fee holds and settlement remain exclusively inside `LedgerService`.
+
 - `audit_logs`: ledger mutations write audit rows with target type `ledger_transaction`.
 
 ## Manual Top-up and Withdrawal
@@ -148,9 +149,9 @@ Customer and service-provider roles receive wallet read/ledger and adjustment-re
 
 - An unfunded draft changes no wallet balance and has no budget reservation.
 - Shop-published tasks use the current Shop wallet. Merchant-account tasks use the MerchantAccount wallet and may target only active member shops.
-- Submit freezes the complete `totalBudgetNdp` from available to frozen NDP with `affiliate_task_budget_freeze`. Scope snapshots, reservation, ledger link, task state, reconciliation, and audit records share one Prisma transaction.
-- The task's `reservedBudgetNdp` records the historical amount frozen. It remains unchanged after release so the database invariant `allocated + settled + released <= reserved` remains auditable.
-- Reject is allowed only while the submitted reservation has no allocation/capture. It returns the complete frozen amount to available NDP with `affiliate_task_budget_release`, records `releasedBudgetNdp`, releases the reservation, and changes the task to `rejected` in one transaction.
+- Submit resolves and snapshots the effective Affiliate platform-fee rule, then freezes `totalBudgetNdp + ceil(totalBudgetNdp * platformFeeBps / 10000)` from available to frozen NDP with `affiliate_task_budget_freeze`. Scope snapshots, fee snapshot, reservation, ledger link, task state, reconciliation, and audit records share one Prisma transaction.
+- `reservedBudgetNdp` and `totalFrozenNdp` record the historical gross freeze. `commissionFrozenNdp` remains the only allocation-capacity authority; fee reserve cannot inflate claim capacity.
+- Reject is allowed only while the submitted reservation has no allocation/capture. It returns both unused commission and uncaptured fee to available NDP with `affiliate_task_budget_release`, records the two release counters independently, and changes the task to `rejected` in one transaction.
 - Submit and reject idempotency keys are derived from task ID, version, and action. Retries do not create duplicate ledger entries or wallet deltas.
 - Conditional wallet updates reject concurrent overspend or insufficient frozen balances without partial writes.
 
@@ -166,11 +167,19 @@ Publishing and review APIs:
 
 Permissions are `page:merchant-affiliate-task`, `button:merchant-affiliate-task-create`, `button:merchant-affiliate-task-submit`, `page:backoffice-affiliate`, and `button:backoffice-affiliate-review`.
 
+Affiliate fee-rule operations use `page:backoffice-affiliate-fee-rule` for paginated history and `button:backoffice-affiliate-fee-rule-create` for a new immutable global/shop version:
+
+- `GET /api/v1/backoffice/affiliate/fee-rules`
+- `POST /api/v1/backoffice/affiliate/fee-rules`
+
+Admin and finance may create a version; operator and viewer remain read-only. Multi-shop submission must resolve the same effective rate across every selected shop or fail before wallet mutation.
+
 Local MySQL verification:
 
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-platform-fee-flow
 ```
 
 The script refuses production flags and remote database hosts, creates uniquely identified formal rows, validates draft/no-freeze, shop and multi-shop merchant submission, insufficient-funds rollback, membership isolation, approve/reject, full release, idempotency, reconciliation, and audit evidence, then removes only those rows.
@@ -180,7 +189,9 @@ The script refuses production flags and remote database hosts, creates uniquely 
 The backend starts the expiry worker with one immediate scan and repeats it at the configured interval. When `now >= taskEndsAt`, it may end an eligible `scheduled`, `active`, `paused`, or `budget_exhausted` task. The expiry transaction locks the task and its budget reservation, revalidates their aggregate snapshot, records `ended`, and releases only the current unallocated amount:
 
 ```text
-releaseAmount = totalFrozenNdp - allocatedNdp - capturedNdp - releasedNdp
+commissionRelease = commissionFrozenNdp - allocatedNdp - capturedNdp - releasedNdp
+platformFeeRelease = platformFeeFrozenNdp - platformFeeCapturedNdp - platformFeeReleasedNdp - feeReservedForAllocatedRewards
+grossRelease = commissionRelease + platformFeeRelease
 ```
 
 For a positive release, the publisher wallet moves that amount from frozen to available NDP through `LedgerService`. The task and reservation each accumulate the released amount but retain their historical total/reserved values. The associated immutable ledger transaction, wallet ledger, finance reconciliation, affiliate budget transaction, and system audit share the task transaction. A zero release still ends an eligible task but creates no empty ledger transaction.

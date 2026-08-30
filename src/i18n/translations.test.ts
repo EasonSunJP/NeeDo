@@ -106,6 +106,13 @@ describe("translations", () => {
     expect(translateText("保存密码", "ko")).toBe("비밀번호 저장");
   });
 
+  it("localizes the group privacy countdown maximum", () => {
+    expect(translateText("时间上限最大为99小时59分钟", "zh-Hant")).toBe("時間上限最大為99小時59分鐘");
+    expect(translateText("时间上限最大为99小时59分钟", "ja")).toBe("時間の上限は99時間59分です");
+    expect(translateText("时间上限最大为99小时59分钟", "en")).toBe("The maximum time is 99 hours 59 minutes");
+    expect(translateText("时间上限最大为99小时59分钟", "ko")).toBe("최대 시간은 99시간 59분입니다");
+  });
+
   it("keeps truly unknown source text untouched", () => {
     const unknownText = "__test_unknown_translation_key__";
     expect(translateText(unknownText, "ko")).toBe(unknownText);
@@ -291,6 +298,39 @@ describe("translations", () => {
       });
       expect(Object.values(translations[key]).every((value) => value?.trim())).toBe(true);
     });
+  });
+
+  it("localizes the shared friend-deletion actions", () => {
+    const expected = {
+      "zh-Hant": {
+        confirm: "確認刪除",
+        deleting: "正在刪除…",
+        failure: "刪除失敗，請稍後再試",
+      },
+      ja: {
+        confirm: "削除する",
+        deleting: "削除中…",
+        failure: "削除できませんでした。しばらくしてからもう一度お試しください。",
+      },
+      en: {
+        confirm: "Delete",
+        deleting: "Deleting…",
+        failure: "Delete failed. Please try again later.",
+      },
+      ko: {
+        confirm: "삭제하기",
+        deleting: "삭제 중…",
+        failure: "삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      },
+    } as const;
+
+    for (const [language, values] of Object.entries(expected)) {
+      const targetLanguage = language as keyof typeof expected;
+
+      expect(translateText("确认删除", targetLanguage)).toBe(values.confirm);
+      expect(translateText("正在删除…", targetLanguage)).toBe(values.deleting);
+      expect(translateText("删除失败，请稍后重试", targetLanguage)).toBe(values.failure);
+    }
   });
 
   it("localizes the inaccessible conversation prompt in every target language", () => {

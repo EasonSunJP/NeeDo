@@ -36,7 +36,7 @@ const identityCard: DirectoryIdentityCard = {
 };
 
 describe("ConversationIdentityProfileCard", () => {
-  it("renders the formal personal-center identity fields with credit as the only metric", () => {
+  it("keeps user basic fields but removes city and credit from user-side conversation settings", () => {
     const markup = renderToStaticMarkup(
       <I18nProvider>
         <MemoryRouter>
@@ -44,6 +44,7 @@ describe("ConversationIdentityProfileCard", () => {
             detailTo="/profile/user/73"
             identityCard={identityCard}
             user={user}
+            viewerScope="user"
           />
         </MemoryRouter>
       </I18nProvider>,
@@ -51,10 +52,19 @@ describe("ConversationIdentityProfileCard", () => {
 
     expect(markup).toContain("Mia");
     expect(markup).toContain("ID u0000000167");
-    expect(markup).toContain("信用值");
-    expect(markup).toContain("5.0");
-    expect(markup).toContain("28人评价");
+    expect(markup).not.toContain("信用值");
+    expect(markup).not.toContain("5.0");
+    expect(markup).not.toContain("28人评价");
     expect(markup).toContain("基础信息");
+    expect(markup).toContain("性别");
+    expect(markup).toContain("女性");
+    expect(markup).toContain("年龄");
+    expect(markup).toContain("25");
+    expect(markup).toContain("身高（cm）");
+    expect(markup).toContain("164");
+    expect(markup).toContain("grid-cols-3");
+    expect(markup).not.toContain("城市");
+    expect(markup).not.toContain("东京");
     expect(markup).toContain("语言能力");
     expect(markup).toContain("自我介绍");
     expect(markup).not.toContain("积分");
@@ -63,7 +73,28 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).not.toContain("type=\"checkbox\"");
   });
 
-  it("shows an explicit unrated state instead of inventing a zero credit score", () => {
+  it.each(["technician", "merchant"] as const)(
+    "keeps the conversation-settings credit summary for the %s portal",
+    (viewerScope) => {
+      const markup = renderToStaticMarkup(
+        <I18nProvider>
+          <MemoryRouter>
+            <ConversationIdentityProfileCard
+              identityCard={identityCard}
+              user={user}
+              viewerScope={viewerScope}
+            />
+          </MemoryRouter>
+        </I18nProvider>,
+      );
+
+      expect(markup).toContain("信用值");
+      expect(markup).toContain("5.0");
+      expect(markup).toContain("28人评价");
+    },
+  );
+
+  it("shows an explicit unrated state instead of inventing a zero credit score in an allowed portal", () => {
     const markup = renderToStaticMarkup(
       <I18nProvider>
         <MemoryRouter>
@@ -74,6 +105,7 @@ describe("ConversationIdentityProfileCard", () => {
               creditReviewCount: 0,
             }}
             user={user}
+            viewerScope="technician"
           />
         </MemoryRouter>
       </I18nProvider>,
@@ -82,6 +114,33 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).toContain("—");
     expect(markup).toContain("暂无评价");
     expect(markup).not.toContain("0.0/5");
+  });
+
+  it("always renders gender, age, and height placeholders for a user identity", () => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={{
+              ...identityCard,
+              gender: undefined,
+              age: undefined,
+              heightCm: undefined,
+            }}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup).toContain("性别");
+    expect(markup).toContain("不公开");
+    expect(markup).toContain("年龄");
+    expect(markup.match(/未设置/g)).toHaveLength(2);
+    expect(markup).toContain("身高（cm）");
+    expect(markup).not.toContain("城市");
+    expect(markup).not.toContain("东京");
   });
 
   it.each([
@@ -116,12 +175,15 @@ describe("ConversationIdentityProfileCard", () => {
               languages: [],
             }}
             user={user}
+            viewerScope="merchant"
           />
         </MemoryRouter>
       </I18nProvider>,
     );
 
     expected.forEach((text) => expect(markup).toContain(text));
+    expect(markup).not.toContain("城市");
+    expect(markup).not.toContain("东京");
     expect(markup).not.toContain("积分");
     expect(markup).not.toContain("利用次数");
     expect(markup).not.toContain("隐私模式");

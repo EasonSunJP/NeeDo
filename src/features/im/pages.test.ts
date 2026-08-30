@@ -35,8 +35,11 @@ describe("IM pages", () => {
     expect(markup).toContain('data-im-composer-disabled="true"');
     expect(markup).toContain('data-im-composer-control="voice-input"');
     expect(markup).toContain('data-im-composer-control="emoji-chat"');
+    expect(markup).toContain('data-im-composer-rich-input="true"');
+    expect(markup).toContain('aria-disabled="true"');
+    expect(markup).toContain('contentEditable="false"');
     expect(markup).toContain('placeholder="发送消息"');
-    expect(markup.match(/disabled=""/g)).toHaveLength(4);
+    expect(markup.match(/disabled=""/g)).toHaveLength(3);
   });
 
   it("recognizes only formal and legacy inaccessible-conversation errors", () => {
@@ -279,9 +282,8 @@ describe("IM pages", () => {
     );
     expect(recallSource).toContain("store.setDraft(conversationId, originalContent)");
     expect(recallSource).toContain("textareaRef.current?.focus()");
-    expect(recallSource).toContain(
-      "textareaRef.current?.setSelectionRange(originalContent.length, originalContent.length)",
-    );
+    expect(recallSource).toContain("range.selectNodeContents(editor)");
+    expect(recallSource).toContain("range.collapse(false)");
     expect(recallSource).toContain("发送超过3分钟后无法撤回");
     expect(recallSource).toContain("撤回失败，请稍后重试");
     const recallFailureStart = recallSource.indexOf(".catch((error: unknown) => {");
@@ -542,5 +544,20 @@ describe("IM pages", () => {
     expect(componentSource).not.toContain("rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-bg)_46%,transparent)] px-3 py-3");
     expect(componentSource).toContain('<ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="md" />');
     expect(componentSource).toContain("privacyModeEnabled || hideMemberProfilesEnabled");
+  });
+
+  it("uses the shared two-field privacy countdown and blocks overflow in both group editors", () => {
+    const infoStart = pagesSource.indexOf("export function ImConversationInfoPage");
+    const newStart = pagesSource.indexOf("export function ImNewConversationPage");
+    const infoSource = pagesSource.slice(infoStart, newStart);
+    const newSource = pagesSource.slice(newStart);
+
+    for (const componentSource of [infoSource, newSource]) {
+      expect(componentSource).toContain("hasCountdownInputOverflow(privacyCountdownInput)");
+      expect(componentSource).toContain("GROUP_PRIVACY_COUNTDOWN_LIMIT_MESSAGE");
+      expect(componentSource).toContain('role="alert"');
+      expect(componentSource).toContain("grid-cols-2");
+    }
+    expect(pagesSource).not.toContain("grid grid-cols-4 gap-2");
   });
 });

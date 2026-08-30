@@ -54,7 +54,12 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
   );
-  const service = dependencies.exchangeService ?? new ExchangeService(new ExchangePostRepository());
+  const service = dependencies.exchangeService ??
+    new ExchangeService(
+      new ExchangePostRepository(),
+      undefined,
+      dependencies.personalIdentityScopeService
+    );
   const controller = new ExchangeController(service);
 
   router.get(

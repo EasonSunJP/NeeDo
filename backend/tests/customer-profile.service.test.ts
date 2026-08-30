@@ -137,4 +137,35 @@ describe("CustomerProfileService", () => {
     ).rejects.toMatchObject({ statusCode: 403 });
     expect(customerRepository.findMine).not.toHaveBeenCalled();
   });
+
+  it("shares the customer profile with the affiliate identity through the server resolver", async () => {
+    const customerRepository = repository();
+    customerRepository.findMine.mockResolvedValue(updatedProfile);
+    const scopeResolver = {
+      resolve: jest.fn(async () => ({
+        identityId: 70,
+        userId: 11,
+        identityType: "customer",
+        scopeType: "customer_profile",
+        scopeId: 41
+      }))
+    };
+    const service = new CustomerProfileService(
+      customerRepository,
+      audit,
+      storage(),
+      scopeResolver
+    );
+    const affiliateActor = {
+      userId: 11,
+      currentIdentityId: 71,
+      currentIdentityType: "scout",
+      currentIdentityScopeType: "global",
+      currentIdentityScopeId: null
+    } as AuthenticatedAccessContext;
+
+    await expect(service.getMine(affiliateActor)).resolves.toBe(updatedProfile);
+    expect(scopeResolver.resolve).toHaveBeenCalledWith(affiliateActor);
+    expect(customerRepository.findMine).toHaveBeenCalledWith(11, 41);
+  });
 });

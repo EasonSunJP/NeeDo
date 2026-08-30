@@ -6,7 +6,7 @@ import stepFeedbackCollectionSource from "../../features/scheduling/automation/S
 import stepModeSelectionSource from "../../features/scheduling/automation/StepModeSelection.tsx?raw";
 import scheduleSearchFieldSource from "./ScheduleSearchField.tsx?raw";
 import unifiedCalendarSource from "./UnifiedUserCalendar.tsx?raw";
-import technicianPortalSource from "../../pages/mobile/TechnicianPortalPage.tsx?raw";
+import technicianScheduleSource from "../../features/technician-schedule/FormalTechnicianScheduleWorkspace.tsx?raw";
 
 describe("shared schedule frame layout", () => {
   it("does not draw an outer frame around cycle calendar boards", () => {
@@ -118,9 +118,11 @@ describe("shared schedule frame layout", () => {
   });
 
   it("does not add local theme backgrounds around the technician schedule calendar", () => {
-    expect(technicianPortalSource).toContain("<ScheduleSearchField");
-    expect(technicianPortalSource).toContain("<UnifiedUserCalendar currentTechnician={baseTech}");
-    expect(technicianPortalSource).not.toContain("scheduleThemeRootClass");
+    expect(technicianScheduleSource).toContain('data-testid="formal-technician-schedule-workspace"');
+    expect(technicianScheduleSource).toContain('useState<TechnicianScheduleView>("day")');
+    expect(technicianScheduleSource).toContain('view === "week"');
+    expect(technicianScheduleSource).toContain('view === "month"');
+    expect(technicianScheduleSource).not.toContain("scheduleThemeRootClass");
   });
 
   it("keeps the shared day timeline time rail transparent", () => {

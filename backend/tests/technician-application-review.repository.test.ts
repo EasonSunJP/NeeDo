@@ -61,6 +61,7 @@ describe("TechnicianApplicationReviewRepository", () => {
         findFirst: jest.fn().mockResolvedValue({ id: 6, code: "technician" })
       },
       userIdentity: {
+        findFirst: jest.fn().mockResolvedValue({ id: 130 }),
         create: jest.fn().mockResolvedValue({
           id: 61,
           userId: 7,
@@ -150,6 +151,7 @@ describe("TechnicianApplicationReviewRepository", () => {
       identityApplication: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      userIdentity: { findFirst: jest.fn().mockResolvedValue({ id: 107 }) },
       notification: { create: jest.fn().mockResolvedValue({ id: 81 }) },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 91 }) }
     };
@@ -180,7 +182,9 @@ describe("TechnicianApplicationReviewRepository", () => {
     expect(tx.notification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         recipientUserId: 7,
+        recipientIdentityId: 107,
         actorUserId: 30,
+        actorIdentityId: 107,
         type: "SYSTEM",
         payload: { applicationId: 11, rejectionReason: "照片无法确认" }
       })

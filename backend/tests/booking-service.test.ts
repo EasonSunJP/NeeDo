@@ -440,6 +440,32 @@ describe("BookingService state machine", () => {
     });
   });
 
+  it("shares customer orders with affiliate identity but rejects unrelated identity fallback", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+
+    await service.listOrders(
+      { userId: 1, roles: ["scout"], currentIdentityType: "scout" },
+      { page: 1, pageSize: 20 }
+    );
+    expect(repository.listOrders).toHaveBeenLastCalledWith({
+      customerUserId: 1,
+      page: 1,
+      pageSize: 20
+    });
+
+    await expect(
+      service.listOrders(
+        { userId: 1, roles: ["support"], currentIdentityType: "support" },
+        { page: 1, pageSize: 20 }
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.auth.identity_forbidden",
+      statusCode: 403
+    });
+  });
+
   it("scopes merchant and technician order lists to the active identity", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);

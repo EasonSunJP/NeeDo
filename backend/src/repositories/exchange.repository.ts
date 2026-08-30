@@ -76,12 +76,12 @@ const serviceModeToDatabase: Record<ExchangeServiceMode, DatabaseExchangeService
   flexible: DatabaseExchangeServiceMode.FLEXIBLE
 };
 
-const postInclude = (viewerUserId: number) =>
+const postInclude = (viewerIdentityId: number) =>
   ({
     demand: { where: { deletedAt: null } },
     intelligence: { where: { deletedAt: null } },
     likes: {
-      where: { actorUserId: viewerUserId, deletedAt: null },
+      where: { actorIdentityId: viewerIdentityId, deletedAt: null },
       select: { id: true },
       take: 1
     },
@@ -154,7 +154,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       type: typeToDatabase[input.type],
       status: DatabaseExchangePostStatus.PUBLISHED,
       expiresAt: { gt: input.now },
-      ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
+      ...(input.authorIdentityId ? { ownerIdentityId: input.authorIdentityId } : {}),
       deletedAt: null
     } satisfies Prisma.ExchangePostWhereInput;
 
@@ -164,13 +164,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: pagination.skip,
         take: pagination.take,
-        include: postInclude(input.viewerUserId)
+        include: postInclude(input.viewerIdentityId)
       }),
       this.client.exchangePost.count({ where })
     ]);
 
     return buildPaginatedResponse(
-      rows.map((row) => this.mapPost(row, input.viewerUserId, input.now)),
+      rows.map((row) => this.mapPost(row, input.viewerIdentityId, input.now)),
       total,
       pagination
     );
@@ -178,15 +178,15 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
 
   public async findPostById(
     postId: number,
-    viewerUserId: number,
+    viewerIdentityId: number,
     now: Date
   ): Promise<ExchangePostPayload | null> {
     const row = await this.client.exchangePost.findFirst({
       where: { id: postId, deletedAt: null },
-      include: postInclude(viewerUserId)
+      include: postInclude(viewerIdentityId)
     });
 
-    return row ? this.mapPost(row, viewerUserId, now) : null;
+    return row ? this.mapPost(row, viewerIdentityId, now) : null;
   }
 
   public async listComments(
@@ -215,16 +215,17 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   public async publishPost(
     input: ExchangePublishRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
+    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     try {
       return await this.client.$transaction(async (transaction) => {
         const existing = await transaction.exchangePost.findUnique({
           where: { idempotencyKey: input.idempotencyKey },
-          include: postInclude(input.actor.userId)
+          include: postInclude(ownerIdentityId)
         });
         if (existing) {
           return {
             kind: "replayed",
-            value: this.mapPost(existing, input.actor.userId, input.now)
+            value: this.mapPost(existing, ownerIdentityId, input.now)
           };
         }
 
@@ -232,6 +233,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           data: {
             authorUserId: input.actor.userId,
             authorIdentityId: input.actor.identityId,
+            ownerIdentityId,
             publisherPublicId: input.actor.publicId,
             publisherIdentityType: input.actor.identityType,
             publisherDisplayName: input.actor.displayName,
@@ -269,26 +271,26 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                   }
                 })
           },
-          include: postInclude(input.actor.userId)
+          include: postInclude(ownerIdentityId)
         });
         await transaction.auditLog.create({
           data: toAuditLogCreateData({ ...input.audit, targetId: created.id })
         });
         return {
           kind: "success",
-          value: this.mapPost(created, input.actor.userId, input.now)
+          value: this.mapPost(created, ownerIdentityId, input.now)
         };
       });
     } catch (error) {
       if (!this.isUniqueConflict(error)) throw error;
       const existing = await this.client.exchangePost.findUnique({
         where: { idempotencyKey: input.idempotencyKey },
-        include: postInclude(input.actor.userId)
+        include: postInclude(ownerIdentityId)
       });
       if (!existing) throw error;
       return {
         kind: "replayed",
-        value: this.mapPost(existing, input.actor.userId, input.now)
+        value: this.mapPost(existing, ownerIdentityId, input.now)
       };
     }
   }
@@ -296,17 +298,18 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   public withdrawPost(
     input: ExchangeWithdrawRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
+    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     return this.client.$transaction(async (transaction) => {
       const current = await transaction.exchangePost.findFirst({
         where: { id: input.postId, deletedAt: null },
-        include: postInclude(input.actor.userId)
+        include: postInclude(ownerIdentityId)
       });
       if (!current) return { kind: "not_found" };
-      if (current.authorUserId !== input.actor.userId) return { kind: "forbidden" };
+      if (current.ownerIdentityId !== ownerIdentityId) return { kind: "forbidden" };
       if (current.status === DatabaseExchangePostStatus.WITHDRAWN) {
         return {
           kind: "replayed",
-          value: this.mapPost(current, input.actor.userId, input.now)
+          value: this.mapPost(current, ownerIdentityId, input.now)
         };
       }
       if (
@@ -322,14 +325,14 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           withdrawnAt: input.now,
           updatedAt: input.now
         },
-        include: postInclude(input.actor.userId)
+        include: postInclude(ownerIdentityId)
       });
       await transaction.auditLog.create({
         data: toAuditLogCreateData({ ...input.audit, targetId: updated.id })
       });
       return {
         kind: "success",
-        value: this.mapPost(updated, input.actor.userId, input.now)
+        value: this.mapPost(updated, ownerIdentityId, input.now)
       };
     });
   }
@@ -378,12 +381,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   public setLike(
     input: ExchangeLikeRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
+    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     return this.client.$transaction(async (transaction) => {
       const availability = await this.postAvailability(transaction, input.postId, input.now);
       if (availability !== "available") return { kind: availability };
       const existing = await transaction.exchangeLike.findUnique({
         where: {
-          postId_actorUserId: { postId: input.postId, actorUserId: input.actor.userId }
+          postId_actorIdentityId: { postId: input.postId, actorIdentityId: ownerIdentityId }
         }
       });
       let changed = false;
@@ -392,7 +396,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           data: {
             postId: input.postId,
             actorUserId: input.actor.userId,
-            actorIdentityId: input.actor.identityId,
+            actorIdentityId: ownerIdentityId,
             createdAt: input.now,
             updatedAt: input.now
           }
@@ -402,7 +406,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         await transaction.exchangeLike.update({
           where: { id: existing.id },
           data: {
-            actorIdentityId: input.actor.identityId,
+            actorIdentityId: ownerIdentityId,
             deletedAt: null,
             updatedAt: input.now
           }
@@ -430,13 +434,14 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   public async recordShare(
     input: ExchangeShareRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
+    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     try {
       return await this.client.$transaction(async (transaction) => {
         const replay = await transaction.exchangeShare.findFirst({
           where: {
             OR: [
               { idempotencyKey: input.idempotencyKey },
-              { postId: input.postId, actorUserId: input.actor.userId }
+              { postId: input.postId, actorIdentityId: ownerIdentityId }
             ],
             deletedAt: null
           },
@@ -454,7 +459,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           data: {
             postId: input.postId,
             actorUserId: input.actor.userId,
-            actorIdentityId: input.actor.identityId,
+            actorIdentityId: ownerIdentityId,
             idempotencyKey: input.idempotencyKey,
             createdAt: input.now,
             updatedAt: input.now
@@ -517,7 +522,11 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     });
   }
 
-  private mapPost(row: ExchangePostRecord, viewerUserId: number, now: Date): ExchangePostPayload {
+  private mapPost(
+    row: ExchangePostRecord,
+    viewerIdentityId: number,
+    now: Date
+  ): ExchangePostPayload {
     const expired =
       row.status === DatabaseExchangePostStatus.PUBLISHED &&
       row.expiresAt.getTime() <= now.getTime();
@@ -562,7 +571,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       },
       viewer: {
         liked: row.likes.length > 0,
-        canWithdraw: row.authorUserId === viewerUserId && status === "published"
+        canWithdraw: row.ownerIdentityId === viewerIdentityId && status === "published"
       },
       demand: row.demand
         ? {

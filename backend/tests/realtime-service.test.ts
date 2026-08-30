@@ -18,6 +18,7 @@ describe("RealtimeService fuzzy search", () => {
       )
     ).resolves.toBe(directoryResult);
     expect(repository.searchDirectory).toHaveBeenCalledWith(41, {
+      ownerIdentityId: 41,
       query: "u0000000167",
       page: 1,
       pageSize: 50
@@ -49,14 +50,17 @@ describe("RealtimeService fuzzy search", () => {
       friendRequest: null
     };
     const repository = {
+      findCanonicalIdentityIdForUser: jest.fn(async () => 1670),
       getDirectoryProfile: jest.fn(async () => profile)
     };
     const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, eventGateway);
 
-    await expect(service.getDirectoryProfile({ userId: 41 } as never, 167)).resolves.toBe(profile);
+    await expect(
+      service.getDirectoryProfile({ userId: 41, currentIdentityId: 410 } as never, 167)
+    ).resolves.toBe(profile);
 
-    expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 167);
+    expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 410, 167, 1670);
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
 });
@@ -65,13 +69,16 @@ describe("RealtimeService friend request lifecycle", () => {
   const friendRequest = {
     id: 19,
     requesterUserId: 41,
+    requesterIdentityId: 410,
     targetUserId: 167,
+    targetIdentityId: 1670,
     status: "pending" as const
   };
 
   it("publishes only when a new request was created", async () => {
     const repository = {
       findActiveUserIds: jest.fn(async () => [167]),
+      findCanonicalIdentityIdForUser: jest.fn(async () => 1670),
       createFriendRequest: jest.fn(async () => ({
         status: "ready" as const,
         result: { friendRequest, created: false }
@@ -79,9 +86,10 @@ describe("RealtimeService friend request lifecycle", () => {
     };
     const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, eventGateway);
+    const auth = { userId: 41, currentIdentityId: 410 } as never;
 
     await expect(
-      service.createFriendRequest({ userId: 41 } as never, { targetUserId: 167 })
+      service.createFriendRequest(auth, { targetUserId: 167 })
     ).resolves.toEqual({ friendRequest, created: false });
     expect(eventGateway.publish).not.toHaveBeenCalled();
 
@@ -89,18 +97,19 @@ describe("RealtimeService friend request lifecycle", () => {
       status: "ready",
       result: { friendRequest, created: true }
     });
-    await service.createFriendRequest({ userId: 41 } as never, { targetUserId: 167 });
+    await service.createFriendRequest(auth, { targetUserId: 167 });
     expect(eventGateway.publish).toHaveBeenCalledTimes(1);
     expect(eventGateway.publish).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "friend_request.created",
         recipientUserId: 167,
+        recipientIdentityId: 1670,
         payload: friendRequest
       })
     );
   });
 
-  it("publishes an accepted request to both accounts", async () => {
+  it("publishes an accepted request to both identities", async () => {
     const accepted = { ...friendRequest, status: "accepted" as const };
     const repository = {
       respondToFriendRequest: jest.fn(async () => ({
@@ -112,20 +121,32 @@ describe("RealtimeService friend request lifecycle", () => {
     const service = new RealtimeService(repository as never, eventGateway);
 
     await expect(
-      service.respondToFriendRequest({ userId: 167 } as never, 19, "accept")
+      service.respondToFriendRequest(
+        { userId: 167, currentIdentityId: 1670 } as never,
+        19,
+        "accept"
+      )
     ).resolves.toBe(accepted);
     expect(eventGateway.publish).toHaveBeenCalledTimes(6);
     expect(eventGateway.publish).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "friend_request.accepted", recipientUserId: 41 })
+      expect.objectContaining({
+        type: "friend_request.accepted",
+        recipientUserId: 41,
+        recipientIdentityId: 410
+      })
     );
     expect(eventGateway.publish).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "friend_request.accepted", recipientUserId: 167 })
+      expect.objectContaining({
+        type: "friend_request.accepted",
+        recipientUserId: 167,
+        recipientIdentityId: 1670
+      })
     );
     expect(eventGateway.publish).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "contact.updated", recipientUserId: 41 })
+      expect.objectContaining({ type: "contact.updated", recipientIdentityId: 410 })
     );
     expect(eventGateway.publish).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "social.follow.updated", recipientUserId: 167 })
+      expect.objectContaining({ type: "social.follow.updated", recipientIdentityId: 1670 })
     );
   });
 
@@ -140,7 +161,11 @@ describe("RealtimeService friend request lifecycle", () => {
     const service = new RealtimeService(repository as never, eventGateway);
 
     await expect(
-      service.respondToFriendRequest({ userId: 167 } as never, 19, "accept")
+      service.respondToFriendRequest(
+        { userId: 167, currentIdentityId: 1670 } as never,
+        19,
+        "accept"
+      )
     ).rejects.toMatchObject({ message: "error.realtime.friend_request_expired" });
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
@@ -450,6 +475,7 @@ describe("RealtimeService standard message recall", () => {
     expect(repository.recallMessage).toHaveBeenCalledWith({
       conversationId: 91,
       messageId: 700,
+      senderIdentityId: 1,
       senderUserId: 1,
       now: expect.any(Date)
     });
@@ -562,6 +588,7 @@ describe("RealtimeService friendship authorization", () => {
   it("maps unauthorized direct conversation creation to a 403", async () => {
     const repository = {
       findActiveUserIds: jest.fn().mockResolvedValue([41, 167]),
+      findCanonicalIdentityIdForUser: jest.fn().mockResolvedValue(1670),
       createConversation: jest.fn().mockResolvedValue({ status: "not_friends" })
     };
     const service = new RealtimeService(repository as never, {
@@ -611,6 +638,7 @@ describe("RealtimeService group privacy and membership", () => {
     ).resolves.toBe(conversation);
 
     expect(repository.updateConversationPrivacy).toHaveBeenCalledWith({
+      actorIdentityId: 1,
       actorUserId: 1,
       conversationId: 91,
       privacyModeEnabled: true,
@@ -645,6 +673,7 @@ describe("RealtimeService group privacy and membership", () => {
     await expect(service.leaveConversation({ userId: 1 } as never, 91, 2)).resolves.toBe(result);
     expect(repository.leaveConversation).toHaveBeenCalledWith({
       conversationId: 91,
+      identityId: 1,
       userId: 1,
       transferOwnerUserId: 2
     });
@@ -690,6 +719,7 @@ describe("RealtimeService group privacy and membership", () => {
     await expect(service.dissolveConversation({ userId: 1 } as never, 91)).resolves.toBe(result);
     expect(repository.dissolveConversation).toHaveBeenCalledWith({
       conversationId: 91,
+      ownerIdentityId: 1,
       ownerUserId: 1
     });
     expect(eventGateway.publish).toHaveBeenCalledWith(
@@ -712,6 +742,7 @@ describe("RealtimeService group privacy and membership", () => {
     ).resolves.toBe(conversation);
     expect(repository.clearConversationMessages).toHaveBeenCalledWith({
       conversationId: 91,
+      identityId: 1,
       userId: 1
     });
   });
