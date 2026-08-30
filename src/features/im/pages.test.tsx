@@ -46,4 +46,25 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).not.toContain("<SocialProfileMiniCard");
     expect(infoSource).not.toContain("<ContactSummaryCard");
   });
+
+  it("routes both friend-deletion entry points through the shared confirmation flow", () => {
+    const contactsStart = source.indexOf("export function ImContactsListPage");
+    const contactsEnd = source.indexOf("export function ImFriendRequestsPage", contactsStart);
+    const contactsSource = source.slice(contactsStart, contactsEnd);
+    const infoStart = source.indexOf("export function ImConversationInfoPage");
+    const infoEnd = source.indexOf("export function ImMediaRecordsPage", infoStart);
+    const infoSource = source.slice(infoStart, infoEnd);
+
+    expect(source).toContain('from "./FriendDeletionConfirmDialog"');
+    expect(source.match(/<FriendDeletionConfirmDialog/g)).toHaveLength(2);
+
+    expect(contactsSource).toContain("useFriendDeletionConfirmation<ContactRelation>");
+    expect(contactsSource).toContain("contactDeletion.requestDeletion(contact)");
+    expect(contactsSource).not.toContain("onClick: () => void store.deleteContact(contact.id)");
+
+    expect(infoSource).toContain("useFriendDeletionConfirmation<ContactRelation>");
+    expect(infoSource).toContain("contactDeletion.requestDeletion(contact)");
+    expect(infoSource).toContain("navigate(config.routes.contacts, { replace: true })");
+    expect(infoSource).not.toContain("onClick={() => void store.deleteContact(contact.id)}");
+  });
 });

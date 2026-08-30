@@ -300,6 +300,39 @@ describe("translations", () => {
     });
   });
 
+  it("localizes the shared friend-deletion actions", () => {
+    const expected = {
+      "zh-Hant": {
+        confirm: "確認刪除",
+        deleting: "正在刪除…",
+        failure: "刪除失敗，請稍後再試",
+      },
+      ja: {
+        confirm: "削除する",
+        deleting: "削除中…",
+        failure: "削除できませんでした。しばらくしてからもう一度お試しください。",
+      },
+      en: {
+        confirm: "Delete",
+        deleting: "Deleting…",
+        failure: "Delete failed. Please try again later.",
+      },
+      ko: {
+        confirm: "삭제하기",
+        deleting: "삭제 중…",
+        failure: "삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      },
+    } as const;
+
+    for (const [language, values] of Object.entries(expected)) {
+      const targetLanguage = language as keyof typeof expected;
+
+      expect(translateText("确认删除", targetLanguage)).toBe(values.confirm);
+      expect(translateText("正在删除…", targetLanguage)).toBe(values.deleting);
+      expect(translateText("删除失败，请稍后重试", targetLanguage)).toBe(values.failure);
+    }
+  });
+
   it("localizes the inaccessible conversation prompt in every target language", () => {
     expect(translations["无效聊天，无法进入"]).toEqual({
       "zh-Hant": "無效的聊天，無法進入",
