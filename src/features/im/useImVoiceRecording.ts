@@ -426,7 +426,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       audio.removeEventListener("pause", markPaused);
       audio.removeEventListener("ended", markPaused);
     };
-  }, [transition]);
+  }, [phase, transition]);
 
   useEffect(() => {
     const currentUrl = previewUrl;

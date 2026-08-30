@@ -161,7 +161,7 @@ export function ImVoiceRecordingOverlay({
               onClick={onDelete}
               type="button"
             >
-              <ImIcon name="delete" />
+              <ImIcon name="close" />
             </button>
             <button
               aria-label={copy.replayAriaLabel}

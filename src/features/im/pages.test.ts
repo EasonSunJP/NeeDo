@@ -28,7 +28,8 @@ describe("IM pages", () => {
         onDraftChange: () => undefined,
         onPanelChange: () => undefined,
         onSend: () => undefined,
-        panel: null
+        panel: null,
+        voiceInputAriaLabel: "录制语音"
       })
     );
 
@@ -530,6 +531,43 @@ describe("IM pages", () => {
     expect(componentSource).toContain("const upload = await api.uploadImage(conversationId, pendingImage.file)");
     expect(componentSource).toContain("caption: messageText || undefined");
     expect(componentSource).toContain("void prepareSelectedImage(file)");
+  });
+
+  it("integrates click-to-record voice preview with formal confirmed sending", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const sendStart = componentSource.indexOf("const sendVoiceRecording = async () =>");
+    const sendEnd = componentSource.indexOf("const resolveContactCardDetailPath", sendStart);
+    const sendSource = componentSource.slice(sendStart, sendEnd);
+
+    expect(componentSource).toContain("useImVoiceRecording()");
+    expect(componentSource).toContain("<ImVoiceRecordingOverlay");
+    expect(componentSource).toContain("MAX_VOICE_RECORDING_SECONDS");
+    expect(componentSource).toContain("onOpenVoiceRecording");
+    expect(componentSource).toContain("voiceButtonRef={voiceButtonRef}");
+    expect(componentSource).toContain('data-im-conversation-voice-underlay="true"');
+    expect(componentSource).toContain("inert={voiceRecording.phase !== \"idle\" || undefined}");
+    expect(componentSource).toContain('aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}');
+    expect(componentSource).toContain("previousVoicePhaseRef");
+    expect(componentSource).toContain("voiceButtonRef.current?.focus()");
+
+    expect(sendStart).toBeGreaterThan(-1);
+    expect(sendSource).toContain("voiceRecording.beginSending()");
+    expect(sendSource).toContain("store.sendVoiceMessage(");
+    expect(sendSource).toContain("voiceRecording.finishSending()");
+    expect(sendSource).toContain("voiceRecording.failSending(");
+    expect(sendSource).not.toContain("setDraft(");
+    expect(sendSource).not.toContain("setQuotedMessageId(");
+
+    expect(componentSource).not.toContain("readBlobAsDataUrl");
+    expect(componentSource).not.toContain("recordingGestureStartYRef");
+    expect(componentSource).not.toContain("setVoiceMode");
+    expect(componentSource).not.toContain('store.sendMessage(conversationId, "voice"');
+    expect(componentSource).not.toContain("已自动发送");
+    expect(componentSource).not.toContain("onStartRecording");
+    expect(componentSource).not.toContain("onMoveRecording");
+    expect(componentSource).not.toContain("onEndRecording");
   });
 
   it("keeps the hide member profiles switch independent from privacy mode in group creation", () => {

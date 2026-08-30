@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
+import { useOptionalI18n } from "../../../i18n/I18nProvider";
+import { translateText } from "../../../i18n/translations";
 import { ImChatComposer, type ImChatComposerPanel } from "../../im/components";
 import { materializeImComposerDraft } from "../../im/reaction-policy";
 import { getSocialComposerErrorMessage } from "../composer-media";
@@ -21,6 +23,7 @@ function SocialQuickReplyComposerState({
   onOpenFullComposer,
   onSubmit
 }: SocialQuickReplyComposerStateProps) {
+  const { language } = useOptionalI18n();
   const [draft, setDraft] = useState("");
   const [panel, setPanel] = useState<ImChatComposerPanel>(null);
   const [sending, setSending] = useState(false);
@@ -72,6 +75,7 @@ function SocialQuickReplyComposerState({
         sending={sending}
         sendingLabel="回复中"
         submitOnEnter
+        voiceInputAriaLabel={translateText("录制语音", language)}
       />
       {submissionError ? (
         <p className="px-4 pb-2 text-sm text-[#ff8b86]" role="alert">

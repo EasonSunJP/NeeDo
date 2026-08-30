@@ -5,6 +5,39 @@ import { affiliateMarketplaceTranslations } from "../features/affiliate-marketpl
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes the complete IM voice recording confirmation flow", () => {
+    const voiceKeys = [
+      "录制语音",
+      "正在连接麦克风",
+      "后将停止录音",
+      "取消录音",
+      "停止录音",
+      "删除录音",
+      "重放录音",
+      "发送录音",
+      "录音预览",
+      "正在播放录音",
+      "正在发送录音",
+      "录音失败，请重试",
+      "请允许麦克风权限后重试",
+      "自动播放已暂停，请点击重放",
+      "语音发送失败，请重试",
+    ] as const;
+
+    for (const key of voiceKeys) {
+      expect(translations[key], key).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String),
+      });
+      expect(translateText(key, "zh-Hant")).not.toBe(key);
+      expect(translateText(key, "ja")).not.toBe(key);
+      expect(translateText(key, "en")).not.toBe(key);
+      expect(translateText(key, "ko")).not.toBe(key);
+    }
+  });
+
   it("localizes the complete friend-verification flow in all five languages", () => {
     const friendVerificationCopy = [
       "取消",

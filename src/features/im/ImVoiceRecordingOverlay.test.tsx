@@ -148,8 +148,12 @@ describe("ImVoiceRecordingOverlay", () => {
     const audio = container.querySelector<HTMLAudioElement>("audio")!;
     expect(audioRef.current).toBe(audio);
     expect(audio.getAttribute("src")).toBe("blob:voice-preview");
+    const previewDeleteButton = container.querySelector<HTMLButtonElement>("button[aria-label='删除录音']")!;
+    expect(previewDeleteButton.querySelector("path")?.getAttribute("d")).toBe(
+      "m7 7 10 10M17 7 7 17",
+    );
     await act(async () => {
-      container.querySelector<HTMLButtonElement>("button[aria-label='删除录音']")?.click();
+      previewDeleteButton.click();
       container.querySelector<HTMLButtonElement>("button[aria-label='重放录音']")?.click();
       container.querySelector<HTMLButtonElement>("button[aria-label='发送录音']")?.click();
       audio.dispatchEvent(new Event("ended", { bubbles: true }));

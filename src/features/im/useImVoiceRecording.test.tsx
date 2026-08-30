@@ -69,6 +69,18 @@ function HookProbe() {
   );
 }
 
+function PageLikeHookProbe() {
+  const voice = useImVoiceRecording();
+  latest = voice;
+  return voice.phase === "idle" ? null : (
+    <audio
+      data-testid="page-like-preview-audio"
+      ref={voice.audioRef}
+      src={voice.previewUrl ?? undefined}
+    />
+  );
+}
+
 let latest: UseImVoiceRecordingResult;
 let container: HTMLDivElement;
 let root: Root;
@@ -344,6 +356,23 @@ describe("useImVoiceRecording", () => {
       await latest.replay();
       audio.dispatchEvent(new Event("ended"));
     });
+    expect(latest.phase).toBe("preview_paused");
+  });
+
+  it("follows ended events when the page mounts audio only after leaving idle", async () => {
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(<PageLikeHookProbe />));
+    expect(container.querySelector("audio")).toBeNull();
+
+    const recorder = await openRecording();
+    await finishRecorder(recorder);
+    expect(latest.phase).toBe("preview_playing");
+
+    const audio = container.querySelector<HTMLAudioElement>(
+      '[data-testid="page-like-preview-audio"]',
+    )!;
+    await act(async () => audio.dispatchEvent(new Event("ended")));
     expect(latest.phase).toBe("preview_paused");
   });
 

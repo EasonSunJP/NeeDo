@@ -53,7 +53,7 @@ import {
   type MerchantManualStaffRoleRecord
 } from "../../lib/merchantStaffRoles";
 import { cn } from "../../lib/utils";
-import { useI18n } from "../../i18n/I18nProvider";
+import { useI18n, useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { SocialProfileMiniCard } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
@@ -105,6 +105,7 @@ import {
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
+import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
 import {
   FriendDeletionConfirmDialog,
@@ -170,6 +171,7 @@ import {
 } from "./privacy-countdown";
 import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
+import { MAX_VOICE_RECORDING_SECONDS, useImVoiceRecording } from "./useImVoiceRecording";
 import {
   getBlockedContacts,
   getContactConversation,
@@ -1250,31 +1252,7 @@ export function ImContactActivityEntry({
   );
 }
 
-const maxVoiceRecordingSeconds = 60;
-const preferredVoiceMimeTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"] as const;
-
-type VoiceRecordingState = {
-  active: boolean;
-  cancel: boolean;
-  durationSeconds: number;
-  startedAt?: number;
-};
-
-const idleVoiceRecordingState: VoiceRecordingState = {
-  active: false,
-  cancel: false,
-  durationSeconds: 0
-};
-
-function getSupportedVoiceMimeType() {
-  if (typeof MediaRecorder === "undefined") {
-    return undefined;
-  }
-
-  return preferredVoiceMimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
-}
-
-function readBlobAsDataUrl(blob: Blob) {
+function readImageBlobAsDataUrl(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
 
@@ -1291,6 +1269,27 @@ function readBlobAsDataUrl(blob: Blob) {
     reader.readAsDataURL(blob);
   });
 }
+
+function getVoiceRecordingFileExtension(blob: Blob) {
+  if (blob.type.toLowerCase().includes("mp4")) return "mp4";
+  if (blob.type.toLowerCase().includes("ogg")) return "ogg";
+  return "webm";
+}
+
+function getVoiceRecordingErrorSource(errorKey: string) {
+  if (errorKey === "error.im.voice_permission_denied") {
+    return "请允许麦克风权限后重试";
+  }
+  if (errorKey === "error.im.voice_autoplay_blocked") {
+    return "自动播放已暂停，请点击重放";
+  }
+  if (errorKey === "error.im.voice_recording_failed") {
+    return "录音失败，请重试";
+  }
+  return "语音发送失败，请重试";
+}
+
+const handleHookOwnedVoiceAudioEvent = () => undefined;
 
 function readImageSize(src: string) {
   return new Promise<{ width: number; height: number }>((resolve, reject) => {
@@ -1686,7 +1685,7 @@ export function ImConversationListPage() {
       return;
     }
 
-    const url = await readBlobAsDataUrl(file);
+    const url = await readImageBlobAsDataUrl(file);
     const size = await readImageSize(url).catch(() => undefined);
 
     setCampaignImage({
@@ -4497,6 +4496,7 @@ export function ImConversationUnavailableState({
   onReturnHome: () => void;
 }) {
   const { isNight } = useClientTheme();
+  const { language } = useOptionalI18n();
   const wallpaperFilter = isNight ? "saturate(0.8) brightness(0.42)" : "saturate(0.76) brightness(1.08)";
   const wallpaperOverlay = isNight
     ? "linear-gradient(90deg, rgba(0,0,0,0.62) 0%, rgba(7,20,29,0.54) 100%), linear-gradient(180deg, rgba(4,4,4,0.12) 0%, rgba(4,4,4,0.18) 24%, rgba(4,4,4,0.52) 100%)"
@@ -4547,6 +4547,7 @@ export function ImConversationUnavailableState({
               onPanelChange={() => undefined}
               onSend={() => undefined}
               panel={null}
+              voiceInputAriaLabel={translateText("录制语音", language)}
             />
           </div>
         </div>
@@ -4607,6 +4608,7 @@ export function ImConversationRoomPage({
 }) {
   const { scope, store, config, api } = useImRuntime();
   const { isNight } = useClientTheme();
+  const { language } = useI18n();
   const social = useSocial();
   const entityStore = useEntityStore();
   const navigate = useNavigate();
@@ -4616,9 +4618,7 @@ export function ImConversationRoomPage({
   const [draft, setDraft] = useState("");
   const [quotedMessageId, setQuotedMessageId] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<"emoji" | "more" | null>(null);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [recording, setRecording] = useState<VoiceRecordingState>(idleVoiceRecordingState);
-  const [recordingNotice, setRecordingNotice] = useState<string | null>(null);
+  const voiceRecording = useImVoiceRecording();
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [recallPending, setRecallPending] = useState(false);
   const [menuState, setMenuState] = useState<MessageMenuState | null>(null);
@@ -4652,15 +4652,10 @@ export function ImConversationRoomPage({
   const reactionPendingKeysRef = useRef(new Set<string>());
   const [reactionPendingKeys, setReactionPendingKeys] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLDivElement | null>(null);
-  const recordingRef = useRef<VoiceRecordingState>(idleVoiceRecordingState);
-  const recordingGestureStartYRef = useRef<number | null>(null);
-  const recordingTimerRef = useRef<number | null>(null);
-  const recordingDurationRef = useRef(0);
-  const recordingPendingRef = useRef(false);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const recordingStopReasonRef = useRef<"send" | "cancel" | "timeout" | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const voiceButtonRef = useRef<HTMLButtonElement | null>(null);
+  const voiceSendPendingRef = useRef(false);
+  const previousVoicePhaseRef = useRef(voiceRecording.phase);
+  const conversationUnderlayRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [imageSending, setImageSending] = useState(false);
   const [conversationRouteStatus, setConversationRouteStatus] =
@@ -4671,6 +4666,9 @@ export function ImConversationRoomPage({
     fileName: string;
     previewUrl: string;
   }>();
+  const voiceRecordingError = voiceRecording.error
+    ? translateText(getVoiceRecordingErrorSource(voiceRecording.error), language)
+    : null;
 
   useDocumentScrollLock(true);
   useIosScrollContainer(listRef, Boolean(menuState));
@@ -4692,10 +4690,6 @@ export function ImConversationRoomPage({
     }
     setPendingImage(undefined);
   }, [conversationId]);
-
-  useEffect(() => {
-    recordingRef.current = recording;
-  }, [recording]);
 
   useEffect(() => {
     let disposed = false;
@@ -4812,7 +4806,7 @@ export function ImConversationRoomPage({
       list.removeEventListener("load", keepTerminalMessageAboveComposer, true);
       list.removeEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true);
     };
-  }, [conversationId, draft, messages.length, panel, pendingImage, quotedMessageId, voiceMode]);
+  }, [conversationId, draft, messages.length, panel, pendingImage, quotedMessageId]);
 
   useEffect(() => {
     const root = listRef.current;
@@ -4871,15 +4865,6 @@ export function ImConversationRoomPage({
   }, [conversationId, messages.length, searchParams, store.currentUserId]);
 
   useEffect(() => {
-    if (!recordingNotice || typeof window === "undefined") {
-      return;
-    }
-
-    const timer = window.setTimeout(() => setRecordingNotice(null), 2_600);
-    return () => window.clearTimeout(timer);
-  }, [recordingNotice]);
-
-  useEffect(() => {
     if (!actionNotice || typeof window === "undefined") {
       return;
     }
@@ -4888,21 +4873,24 @@ export function ImConversationRoomPage({
     return () => window.clearTimeout(timer);
   }, [actionNotice]);
 
-  useEffect(
-    () => () => {
-      if (recordingTimerRef.current !== null) {
-        window.clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
+  useEffect(() => () => voiceRecording.cancel(), [conversationId, voiceRecording.cancel]);
 
-      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
-      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-      mediaRecorderRef.current = null;
-      recordingStreamRef.current = null;
-      recordingPendingRef.current = false;
-    },
-    []
-  );
+  useEffect(() => {
+    const previousPhase = previousVoicePhaseRef.current;
+    previousVoicePhaseRef.current = voiceRecording.phase;
+    if (previousPhase === "idle" || voiceRecording.phase !== "idle") {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => voiceButtonRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [voiceRecording.phase]);
+
+  useEffect(() => {
+    if (voiceRecording.phase === "idle" && voiceRecordingError) {
+      setActionNotice(voiceRecordingError);
+    }
+  }, [voiceRecording.phase, voiceRecordingError]);
 
   const rows = useMemo(
     () => buildTimeSeparatedMessages(messages, store.config?.separatorThresholdMs ?? 300_000),
@@ -5126,118 +5114,6 @@ export function ImConversationRoomPage({
   const loadMoreButtonClass = isNight
     ? "rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] px-4 py-2 text-xs text-[color:var(--client-muted)] shadow-[0_6px_18px_rgba(0,0,0,0.18)]"
     : "rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_68%,var(--client-bg)_32%)] px-4 py-2 text-xs text-[color:var(--client-muted)] shadow-[0_6px_18px_rgba(0,0,0,0.08)]";
-  const recordingHintClass = isNight
-    ? "border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,var(--client-bg)_16%)] text-[color:var(--client-muted)] backdrop-blur-md"
-    : "border-b border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_80%,var(--client-bg)_20%)] text-[color:var(--client-muted)] backdrop-blur-md";
-
-  const clearRecordingTimer = () => {
-    if (recordingTimerRef.current !== null) {
-      window.clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  };
-
-  const stopRecordingStream = () => {
-    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaRecorderRef.current = null;
-    recordingStreamRef.current = null;
-  };
-
-  const resetRecording = (preserveStopReason = false) => {
-    clearRecordingTimer();
-    stopRecordingStream();
-    recordingPendingRef.current = false;
-    recordingChunksRef.current = [];
-    recordingDurationRef.current = 0;
-    if (!preserveStopReason) {
-      recordingStopReasonRef.current = null;
-    }
-    recordingGestureStartYRef.current = null;
-    recordingRef.current = idleVoiceRecordingState;
-    setRecording(idleVoiceRecordingState);
-  };
-
-  const updateRecordingCancel = (cancel: boolean) => {
-    recordingRef.current = {
-      ...recordingRef.current,
-      cancel
-    };
-    setRecording((current) => (current.active && current.cancel !== cancel ? { ...current, cancel } : current));
-  };
-
-  const stopActiveRecording = (reason: "send" | "cancel" | "timeout") => {
-    recordingStopReasonRef.current = reason;
-
-    if (recordingPendingRef.current && !mediaRecorderRef.current) {
-      resetRecording(true);
-      return;
-    }
-
-    const recorder = mediaRecorderRef.current;
-
-    if (!recorder || recorder.state === "inactive") {
-      resetRecording();
-      return;
-    }
-
-    recorder.stop();
-  };
-
-  const finalizeVoiceRecording = async (chunks: Blob[], mimeType: string, stopReason: "send" | "cancel" | "timeout" | null) => {
-    const durationSeconds = Math.min(maxVoiceRecordingSeconds, Math.max(1, recordingDurationRef.current));
-    resetRecording();
-
-    if (stopReason === "cancel") {
-      return;
-    }
-
-    if (chunks.length === 0) {
-      setRecordingNotice("没有录到语音，请再试一次。");
-      return;
-    }
-
-    try {
-      const blob = new Blob(chunks, { type: mimeType });
-      const audioUrl = await readBlobAsDataUrl(blob);
-
-      await store.sendMessage(conversationId, "voice", audioUrl, {
-        quotedMessageId,
-        ext: {
-          url: audioUrl,
-          fileName: `voice-${Date.now()}.webm`,
-          fileSize: blob.size,
-          mimeType,
-          duration: durationSeconds
-        }
-      });
-
-      setQuotedMessageId(undefined);
-
-      if (stopReason === "timeout") {
-        setRecordingNotice("语音已录满 60 秒，已自动发送。");
-      }
-    } catch {
-      setRecordingNotice("语音发送失败，请稍后重试。");
-    }
-  };
-
-  const startRecordingTimer = (startedAt: number) => {
-    clearRecordingTimer();
-    recordingTimerRef.current = window.setInterval(() => {
-      const elapsedSeconds = Math.min(maxVoiceRecordingSeconds, Math.max(1, Math.ceil((Date.now() - startedAt) / 1000)));
-      recordingDurationRef.current = elapsedSeconds;
-      recordingRef.current = {
-        ...recordingRef.current,
-        durationSeconds: elapsedSeconds
-      };
-      setRecording((current) => (current.active && current.durationSeconds !== elapsedSeconds ? { ...current, durationSeconds: elapsedSeconds } : current));
-
-      if (elapsedSeconds >= maxVoiceRecordingSeconds) {
-        stopActiveRecording("timeout");
-      }
-    }, 250);
-  };
 
   const clearPendingImage = () => {
     if (pendingImagePreviewUrlRef.current) {
@@ -5262,7 +5138,6 @@ export function ImConversationRoomPage({
       fileName: file.name || "待发送图片",
       previewUrl
     });
-    setVoiceMode(false);
     setPanel(null);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
@@ -5321,6 +5196,27 @@ export function ImConversationRoomPage({
       setPanel(null);
     } catch {
       // failed state is rendered by optimistic message
+    }
+  };
+
+  const sendVoiceRecording = async () => {
+    const blob = voiceRecording.blob;
+    if (!blob || voiceRecording.phase === "sending" || voiceSendPendingRef.current) {
+      return;
+    }
+
+    voiceSendPendingRef.current = true;
+    voiceRecording.beginSending();
+    try {
+      await store.sendVoiceMessage(conversationId, blob, {
+        durationSeconds: voiceRecording.durationSeconds,
+        fileName: `voice-${Date.now()}.${getVoiceRecordingFileExtension(blob)}`
+      });
+      voiceRecording.finishSending();
+    } catch {
+      voiceRecording.failSending("error.im.voice_send_failed");
+    } finally {
+      voiceSendPendingRef.current = false;
     }
   };
 
@@ -5633,99 +5529,6 @@ export function ImConversationRoomPage({
       setContactCardQuery("");
       setContactCardPickerOpen(true);
     }
-  };
-
-  const startRecording = async (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (blocked || recordingPendingRef.current || recordingRef.current.active) {
-      return;
-    }
-
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setRecordingNotice("当前设备不支持浏览器录音。");
-      return;
-    }
-
-    const button = event.currentTarget;
-    button.setPointerCapture(event.pointerId);
-    recordingPendingRef.current = true;
-    recordingStopReasonRef.current = null;
-    recordingGestureStartYRef.current = event.clientY;
-    recordingChunksRef.current = [];
-    setPanel(null);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      if (recordingStopReasonRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        resetRecording();
-        return;
-      }
-
-      const mimeType = getSupportedVoiceMimeType();
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      const startedAt = Date.now();
-
-      recordingPendingRef.current = false;
-      recordingStreamRef.current = stream;
-      mediaRecorderRef.current = recorder;
-      recordingDurationRef.current = 0;
-      recordingRef.current = {
-        active: true,
-        cancel: false,
-        startedAt,
-        durationSeconds: 0
-      };
-      setRecording(recordingRef.current);
-
-      recorder.ondataavailable = (dataEvent) => {
-        if (dataEvent.data.size > 0) {
-          recordingChunksRef.current.push(dataEvent.data);
-        }
-      };
-
-      recorder.onerror = () => {
-        setRecordingNotice("录音时出了点问题，请再试一次。");
-        resetRecording();
-      };
-
-      recorder.onstop = () => {
-        const chunks = [...recordingChunksRef.current];
-        const stopReason = recordingStopReasonRef.current;
-        const nextMimeType = recorder.mimeType || chunks[0]?.type || mimeType || "audio/webm";
-
-        void finalizeVoiceRecording(chunks, nextMimeType, stopReason);
-      };
-
-      recorder.start(250);
-      startRecordingTimer(startedAt);
-    } catch {
-      if (recordingStopReasonRef.current) {
-        resetRecording();
-        return;
-      }
-
-      recordingPendingRef.current = false;
-      setRecordingNotice("请先允许麦克风权限，才能发送语音。");
-      resetRecording();
-    }
-  };
-
-  const moveRecording = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!recordingRef.current.active) {
-      return;
-    }
-
-    const gestureStartY = recordingGestureStartYRef.current ?? event.clientY;
-    updateRecordingCancel(gestureStartY - event.clientY > 56);
-  };
-
-  const endRecording = async () => {
-    if (!recordingPendingRef.current && !recordingRef.current.active) {
-      return;
-    }
-
-    stopActiveRecording(recordingRef.current.cancel ? "cancel" : "send");
   };
 
   const closeMessageMenu = () => {
@@ -6100,8 +5903,12 @@ export function ImConversationRoomPage({
   return (
     <ImStandaloneShell>
       <div
+        aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}
         className="im-conversation-room-shell fixed inset-x-0 inset-y-0 z-20 mx-auto flex h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden overscroll-none [overflow-x:clip]"
+        data-im-conversation-voice-underlay="true"
+        inert={voiceRecording.phase !== "idle" || undefined}
         onPointerDownCapture={handleConversationPointerDownCapture}
+        ref={conversationUnderlayRef}
         style={{ maxWidth: "min(880px, 100%)" }}
       >
         <ImTopBar
@@ -6309,12 +6116,6 @@ export function ImConversationRoomPage({
             visible={!latestPositionVisible && !menuState && !mediaPreview}
           />
 
-          {recordingNotice ? (
-            <div className={cn("relative z-10 px-4 py-2 text-xs", recordingHintClass)}>
-              <p>{recordingNotice}</p>
-            </div>
-          ) : null}
-
           {actionNotice ? (
             <div
               aria-atomic="true"
@@ -6382,32 +6183,24 @@ export function ImConversationRoomPage({
                 blocked={blocked}
                 draft={draft}
                 isNight={isNight}
-                maxVoiceRecordingSeconds={maxVoiceRecordingSeconds}
-                onCancelRecording={() => stopActiveRecording("cancel")}
                 onDraftChange={(value) => {
                   const nextDraft = clampMessageText(value);
                   setDraft(nextDraft);
                   store.setDraft(conversationId, nextDraft);
                 }}
-                onEndRecording={() => void endRecording()}
-                onMoveRecording={moveRecording}
+                onOpenVoiceRecording={() => {
+                  setPanel(null);
+                  void voiceRecording.open();
+                }}
                 onPanelChange={setPanel}
                 onRemovePendingImage={clearPendingImage}
                 onSend={() => void sendText()}
-                onStartRecording={(event) => void startRecording(event)}
-                onToggleVoice={() => {
-                  if (recordingPendingRef.current || recordingRef.current.active) {
-                    return;
-                  }
-
-                  setVoiceMode((value) => !value);
-                }}
                 panel={panel}
                 pendingImage={pendingImage}
-                recording={recording}
                 sending={imageSending}
                 textareaRef={textareaRef}
-                voiceMode={voiceMode}
+                voiceButtonRef={voiceButtonRef}
+                voiceInputAriaLabel={translateText("录制语音", language)}
               />
               <input
                 accept="image/jpeg,image/png,image/webp"
@@ -6425,6 +6218,38 @@ export function ImConversationRoomPage({
           ) : null}
         </div>
       </div>
+
+      {voiceRecording.phase !== "idle" ? (
+        <ImVoiceRecordingOverlay
+          audioRef={voiceRecording.audioRef}
+          copy={{
+            acquiringPermission: translateText("正在连接麦克风", language),
+            cancelAriaLabel: translateText("取消录音", language),
+            deleteAriaLabel: translateText("删除录音", language),
+            previewPaused: translateText("录音预览", language),
+            previewPlaying: translateText("正在播放录音", language),
+            replayAriaLabel: translateText("重放录音", language),
+            remainingRecording: (remainingSeconds) =>
+              `${Math.min(MAX_VOICE_RECORDING_SECONDS, remainingSeconds)}″ ${translateText("后将停止录音", language)}`,
+            sendAriaLabel: translateText("发送录音", language),
+            sending: translateText("正在发送录音", language),
+            sendingAriaLabel: translateText("正在发送录音", language),
+            stopAriaLabel: translateText("停止录音", language)
+          }}
+          durationSeconds={voiceRecording.durationSeconds}
+          error={voiceRecordingError}
+          onCancel={voiceRecording.cancel}
+          onDelete={voiceRecording.cancel}
+          onPreviewEnded={handleHookOwnedVoiceAudioEvent}
+          onReplay={() => void voiceRecording.replay()}
+          onSend={() => void sendVoiceRecording()}
+          onStop={() => voiceRecording.stop("manual")}
+          onTimeUpdate={handleHookOwnedVoiceAudioEvent}
+          phase={voiceRecording.phase}
+          previewUrl={voiceRecording.previewUrl}
+          remainingSeconds={voiceRecording.remainingSeconds}
+        />
+      ) : null}
 
       <ImBottomSheet onClose={() => setContactCardPickerOpen(false)} open={contactCardPickerOpen} title="发送名片">
         <div className="space-y-3 pb-2">
