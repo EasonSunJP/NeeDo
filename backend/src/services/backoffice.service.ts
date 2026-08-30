@@ -23,8 +23,13 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
+import {
+  parseCalendarDate,
+  shiftCalendarDate,
+  startOfTokyoCalendarDate,
+  toTokyoCalendarDate
+} from "../domain/dashboard-period";
 
-const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const resolveCustomerMembershipGrant = (
@@ -77,54 +82,6 @@ export interface TechnicianRankingWindow {
   fromInclusive: Date | null;
   toExclusive: Date | null;
 }
-
-const formatCalendarDate = (year: number, month: number, day: number): string =>
-  `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day
-    .toString()
-    .padStart(2, "0")}`;
-
-const parseCalendarDate = (value: string): { year: number; month: number; day: number } => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {
-    throw new Error("Invalid calendar date");
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const candidate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    candidate.getUTCFullYear() !== year ||
-    candidate.getUTCMonth() !== month - 1 ||
-    candidate.getUTCDate() !== day
-  ) {
-    throw new Error("Invalid calendar date");
-  }
-  return { year, month, day };
-};
-
-const shiftCalendarDate = (value: string, days: number): string => {
-  const { year, month, day } = parseCalendarDate(value);
-  const shifted = new Date(Date.UTC(year, month - 1, day) + days * DAY_MS);
-  return formatCalendarDate(
-    shifted.getUTCFullYear(),
-    shifted.getUTCMonth() + 1,
-    shifted.getUTCDate()
-  );
-};
-
-const toTokyoCalendarDate = (value: Date): string => {
-  const tokyo = new Date(value.getTime() + TOKYO_OFFSET_MS);
-  return formatCalendarDate(
-    tokyo.getUTCFullYear(),
-    tokyo.getUTCMonth() + 1,
-    tokyo.getUTCDate()
-  );
-};
-
-const startOfTokyoCalendarDate = (value: string): Date => {
-  const { year, month, day } = parseCalendarDate(value);
-  return new Date(Date.UTC(year, month - 1, day) - TOKYO_OFFSET_MS);
-};
 
 export const resolveTechnicianRankingWindow = (
   input: { period?: RankingPeriod; from?: string; to?: string },

@@ -24,7 +24,7 @@ export const backofficeTimelineQuerySchema = z
   })
   .strict();
 
-const calendarDateSchema = z
+export const calendarDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((value) => {
@@ -52,6 +52,52 @@ const technicianRankingPeriodSchema = z.enum([
   "all"
 ]);
 const technicianRankingSortSchema = z.enum(["revenue", "completedOrders", "workingDays"]);
+
+const dashboardPeriodSchema = z.enum([
+  "today",
+  "last7days",
+  "last30days",
+  "week",
+  "month",
+  "year",
+  "custom"
+]);
+
+const dashboardQueryBaseSchema = z
+  .object({
+    period: dashboardPeriodSchema.default("last7days"),
+    from: calendarDateSchema.optional(),
+    to: calendarDateSchema.optional(),
+    city: z.string().trim().min(1).max(100).optional()
+  })
+  .strict();
+
+const refineDashboardQuery = (
+  value: { period: z.infer<typeof dashboardPeriodSchema>; from?: string; to?: string },
+  context: z.RefinementCtx
+) => {
+  const hasBoundaries = Boolean(value.from || value.to);
+  if (value.period === "custom" && (!value.from || !value.to)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: [!value.from ? "from" : "to"], message: "custom period requires from and to" });
+  }
+  if (value.period !== "custom" && hasBoundaries) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: [value.from ? "from" : "to"], message: "date boundaries require custom period" });
+  }
+  if (value.period === "custom" && value.from && value.to) {
+    const inclusiveDays = Math.floor((Date.parse(`${value.to}T00:00:00.000Z`) - Date.parse(`${value.from}T00:00:00.000Z`)) / 86_400_000) + 1;
+    if (inclusiveDays < 1) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "to must not be before from" });
+    }
+    if (inclusiveDays > 366) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "custom period must not exceed 366 days" });
+    }
+  }
+};
+
+export const backofficeDashboardQuerySchema = dashboardQueryBaseSchema.superRefine(refineDashboardQuery);
+export const merchantDashboardQuerySchema = dashboardQueryBaseSchema
+  .omit({ city: true })
+  .superRefine(refineDashboardQuery);
 
 export const technicianRankingQuerySchema = z
   .object({
@@ -215,6 +261,8 @@ export const backofficeServiceUpdateBodySchema = z.object({
 
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
 export type BackofficeNdpSummaryQuery = z.infer<typeof backofficeNdpSummaryQuerySchema>;
+export type BackofficeDashboardQuery = z.infer<typeof backofficeDashboardQuerySchema>;
+export type MerchantDashboardQuery = z.infer<typeof merchantDashboardQuerySchema>;
 export type BackofficeTimelineQuery = z.infer<typeof backofficeTimelineQuerySchema>;
 export type TechnicianRankingPeriod = z.infer<typeof technicianRankingPeriodSchema>;
 export type TechnicianRankingSort = z.infer<typeof technicianRankingSortSchema>;
