@@ -100,6 +100,13 @@ describe("friend request presentation", () => {
         "1",
       ),
     ).toEqual([]);
+    expect(
+      resolveDirectoryProfileActions(
+        { ...profile, relationship: "self" },
+        null,
+        "1",
+      ),
+    ).toEqual([]);
   });
 
   it("builds a scoped directory profile route before contact-id routes", () => {

@@ -233,7 +233,7 @@ export function resolveDirectoryProfileActions(
   currentUserId: string,
   nowMs: number = Date.now(),
 ): DirectoryProfileAction[] {
-  if (profile.relationship === "friend") {
+  if (profile.relationship === "friend" || profile.relationship === "self") {
     return [];
   }
 
@@ -2721,6 +2721,7 @@ export function ImDirectoryProfilePage() {
     ? socialPaths.accountProfile(scope as SocialPortalScope, numericUserId)
     : undefined;
   const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend";
+  const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
 
@@ -2890,10 +2891,12 @@ export function ImDirectoryProfilePage() {
               user={profile.user}
               viewerScope={scope}
             />
-            <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
-              <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
-              <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>
-            </section>
+            {!isSelfProfile ? (
+              <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
+                <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
+                <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>
+              </section>
+            ) : null}
             {activityTo ? <ImContactActivityEntry status={activityStatus} to={activityTo} /> : null}
             {mutationError ? (
               <p className="rounded-[18px] border border-[color:color-mix(in_srgb,#f15a63_48%,var(--client-line))] bg-[color:color-mix(in_srgb,#f15a63_10%,var(--client-surface))] px-4 py-3 text-sm font-bold text-[color:color-mix(in_srgb,#f15a63_82%,var(--client-text))]" role="alert">
@@ -2903,7 +2906,7 @@ export function ImDirectoryProfilePage() {
           </div>
         )}
       </main>
-      {profile && !isFriendProfile ? (
+      {profile && !isFriendProfile && !isSelfProfile ? (
         <ImFriendProfileActionBar
           actions={actions}
           currentUserId={store.currentUserId ?? ""}
