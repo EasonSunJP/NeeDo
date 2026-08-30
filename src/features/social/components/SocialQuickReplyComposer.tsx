@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { ImChatComposer, type ImChatComposerPanel } from "../../im/components";
 import { materializeImComposerDraft } from "../../im/reaction-policy";
@@ -14,15 +14,38 @@ type SocialQuickReplyComposerProps = {
 
 type SocialQuickReplyComposerStateProps = Omit<SocialQuickReplyComposerProps, "targetIdentity">;
 
+export type SocialQuickReplyComposerHandle = {
+  focus: () => void;
+};
+
 function SocialQuickReplyComposerState({
   actor,
   canComment,
-  onSubmit
-}: SocialQuickReplyComposerStateProps) {
+  onSubmit,
+  forwardedRef
+}: SocialQuickReplyComposerStateProps & { forwardedRef: Ref<SocialQuickReplyComposerHandle> }) {
   const [draft, setDraft] = useState("");
   const [panel, setPanel] = useState<ImChatComposerPanel>(null);
   const [sending, setSending] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const richInputRef = useRef<HTMLDivElement | null>(null);
+
+  useImperativeHandle(forwardedRef, () => ({
+    focus() {
+      const editor = richInputRef.current;
+      if (!editor) return;
+
+      editor.focus();
+      const selection = window.getSelection();
+      if (!selection) return;
+
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }), []);
 
   const submit = async () => {
     const text = materializeImComposerDraft(draft).trim();
@@ -69,6 +92,7 @@ function SocialQuickReplyComposerState({
         sending={sending}
         sendingLabel="回复中"
         submitOnEnter
+        textareaRef={richInputRef}
       />
       {submissionError ? (
         <p className="px-4 pb-2 text-sm text-[#ff8b86]" role="alert">
@@ -79,6 +103,8 @@ function SocialQuickReplyComposerState({
   );
 }
 
-export function SocialQuickReplyComposer({ targetIdentity, ...props }: SocialQuickReplyComposerProps) {
-  return <SocialQuickReplyComposerState key={targetIdentity} {...props} />;
-}
+export const SocialQuickReplyComposer = forwardRef<SocialQuickReplyComposerHandle, SocialQuickReplyComposerProps>(
+  function SocialQuickReplyComposer({ targetIdentity, ...props }, ref) {
+    return <SocialQuickReplyComposerState forwardedRef={ref} key={targetIdentity} {...props} />;
+  }
+);

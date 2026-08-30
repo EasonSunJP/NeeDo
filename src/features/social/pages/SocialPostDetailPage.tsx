@@ -19,9 +19,9 @@ import {
   socialMediaGridClassName,
   socialMediaTileClassName
 } from "../components/SocialUi";
-import { SocialQuickReplyComposer } from "../components/SocialQuickReplyComposer";
+import { SocialQuickReplyComposer, type SocialQuickReplyComposerHandle } from "../components/SocialQuickReplyComposer";
 import { useSocial } from "../context";
-import { getSocialScopeFromPathname, socialPaths, socialReplyFocusState } from "../paths";
+import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { isFriend, isMutualFollow } from "../timeline";
 import type { SocialPortalScope, SocialPost, SocialProfile } from "../types";
 import { buildAbsoluteUrl, formatCount, formatRelativeTime, profileKey } from "../utils";
@@ -416,7 +416,7 @@ function ReplyListItem({
 
   return (
     <article
-      className="cursor-pointer border-b border-white/8 px-4 py-4 transition hover:bg-white/[0.03] last:border-none"
+      className="cursor-pointer rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.06]"
       onClick={(event) => {
         if (shouldIgnoreCardNavigation(event.target)) {
           return;
@@ -491,6 +491,8 @@ export function SocialPostDetailPage() {
   const replies = useMemo(() => (postId ? getReplies(postId) : []), [getReplies, postId]);
   const relatedPosts = useMemo(() => (postId ? getRelatedPosts(postId).slice(0, 4) : []), [getRelatedPosts, postId]);
   const viewedRef = useRef<string | null>(null);
+  const composerRef = useRef<SocialQuickReplyComposerHandle>(null);
+  const focusReply = () => composerRef.current?.focus();
 
   useEffect(() => {
     if (!postId || viewedRef.current === postId) {
@@ -501,10 +503,20 @@ export function SocialPostDetailPage() {
     incrementView(postId);
   }, [incrementView, postId]);
 
+  useEffect(() => {
+    if (location.state?.focusSocialReply !== true) return;
+    window.requestAnimationFrame(focusReply);
+    navigate({
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash
+    }, { replace: true, state: null });
+  }, [location.hash, location.pathname, location.search, location.state, navigate]);
+
   if (!post) {
     return (
       <div className={shellClassName}>
-        <SocialPostDetailHeader onBack={() => navigate(-1)} title="帖子" />
+        <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
 
         <main className="mx-auto max-w-[720px] px-4 pb-20 pt-4">
           <SocialEmptyState
@@ -527,7 +539,7 @@ export function SocialPostDetailPage() {
 
   return (
     <div className={shellClassName}>
-      <SocialPostDetailHeader onBack={() => navigate(-1)} title="帖子" />
+      <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
 
       <main className="mx-auto max-w-[720px] px-4 pb-[152px] pt-4">
         {ancestors.length > 0 ? (
@@ -576,7 +588,7 @@ export function SocialPostDetailPage() {
 
               <div className="mt-4 py-2">
                 <div className="grid grid-cols-5 items-center gap-1">
-                  <DetailActionButton count={post.replyCount} disabled={!canComment} icon="reply" label="回复" onClick={() => navigate(socialPaths.post(scope, post.id), { state: socialReplyFocusState })} />
+                  <DetailActionButton count={post.replyCount} disabled={!canComment} icon="reply" label="回复" onClick={focusReply} />
                   <DetailActionButton active={interaction.reposted} count={post.repostCount} icon="repost" label="转发" to={socialPaths.repost(scope, post.id)} tone="primary" />
                   <DetailActionButton active={interaction.liked} count={post.likeCount} icon="like" label="喜欢" onClick={() => toggleLike(post.id, actorKey)} tone="danger" />
                   <DetailActionButton active={interaction.bookmarked} count={post.bookmarkCount} icon="bookmark" label="收藏" onClick={() => toggleBookmark(post.id, actorKey)} tone="primary" />
@@ -607,10 +619,10 @@ export function SocialPostDetailPage() {
           <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div>
               <h2 className="text-[18px] font-black text-white">回复列表</h2>
-              <p className="mt-1 text-[13px] text-white/42">{replies.length > 0 ? `${formatCount(replies.length)} 条公开回复` : "从这里继续这个讨论串"}</p>
+              <p className="mt-1 text-[13px] text-white/42">{replies.length > 0 ? `${formatCount(post.replyCount)} 条公开回复` : "从这里继续这个讨论串"}</p>
             </div>
             {canComment ? (
-              <button className="text-[13px] font-semibold text-[#d1ff4d]" onClick={() => navigate(socialPaths.post(scope, post.id), { state: socialReplyFocusState })} type="button">
+              <button className="text-[13px] font-semibold text-[#d1ff4d]" onClick={focusReply} type="button">
                 写回复
               </button>
             ) : (
@@ -619,7 +631,7 @@ export function SocialPostDetailPage() {
           </div>
 
           {replies.length > 0 ? (
-            <div className="mt-4 overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]">
+            <div className="mt-4 space-y-3">
               {replies.map((reply) => (
                 <ReplyListItem key={reply.id} post={reply} profiles={profiles} scope={scope} />
               ))}
@@ -657,6 +669,7 @@ export function SocialPostDetailPage() {
           text,
           postType: "reply"
         })}
+        ref={composerRef}
         targetIdentity={`${actorKey}:${post.id}`}
       />
     </div>

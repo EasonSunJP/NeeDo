@@ -125,6 +125,15 @@ describe("translations", () => {
     });
   });
 
+  it("localizes the canonical Social post-detail reply header", () => {
+    expect(translations["回复动态"]).toEqual({
+      "zh-Hant": "回覆動態",
+      ja: "投稿に返信",
+      en: "Reply to Post",
+      ko: "게시물에 답글"
+    });
+  });
+
   it("keeps truly unknown source text untouched", () => {
     const unknownText = "__test_unknown_translation_key__";
     expect(translateText(unknownText, "ko")).toBe(unknownText);

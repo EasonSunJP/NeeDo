@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { act } from "react";
+import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SocialPost } from "../types";
@@ -16,6 +16,37 @@ afterEach(() => {
 });
 
 describe("SocialQuickReplyComposer", () => {
+  it("exposes a focus handle that places the caret at the end of the rich reply draft", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const ref = createRef<{ focus: () => void }>();
+
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+          canComment
+          onSubmit={vi.fn()}
+          ref={ref}
+          targetIdentity="actor-mia:post-1"
+        />
+      );
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    await act(async () => {
+      editor.textContent = "继续回复";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => ref.current?.focus());
+
+    expect(ref.current).not.toBeNull();
+    expect(document.activeElement).toBe(editor);
+    expect(window.getSelection()?.anchorOffset).toBe(editor.childNodes.length);
+    await act(async () => root.unmount());
+  });
+
   it("uses the shared chat shell with an avatar, emoji control, and unclaimed plus control", async () => {
     const container = document.createElement("div");
     document.body.append(container);
