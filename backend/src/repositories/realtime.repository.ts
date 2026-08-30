@@ -22,6 +22,10 @@ import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination"
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
 import { AppError } from "../utils/app-error";
+import {
+  imMessageInclude as messageInclude,
+  persistImMessageInTransaction
+} from "./im-message-send.transaction";
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -658,22 +662,6 @@ export interface RealtimeRepositoryPort {
     input: CreateOrderStatusNotificationInput
   ) => Promise<NotificationPayload[]>;
 }
-
-const messageInclude = {
-  reactions: {
-    where: { deletedAt: null },
-    include: {
-      user: {
-        select: {
-          id: true,
-          username: true,
-          avatarUrl: true
-        }
-      }
-    },
-    orderBy: { id: "asc" as const }
-  }
-} satisfies Prisma.MessageInclude;
 
 const socialAuthorSelect = {
   id: true,
@@ -1360,165 +1348,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async createMessage(input: CreateMessageInput): Promise<CreateMessageOutcome> {
     return this.client.$transaction(async (tx) => {
-      const participant = await tx.conversationParticipant.findFirst({
-        where: {
-          conversationId: input.conversationId,
-          identityId: input.senderIdentityId ?? input.senderUserId,
-          deletedAt: null,
-          conversation: { deletedAt: null }
-        },
-        select: {
-          id: true,
-          createdAt: true,
-          conversation: {
-            select: {
-              type: true,
-              privacyModeEnabled: true,
-              disappearingTtlSeconds: true,
-              privacyPolicyVersion: true,
-              accessPolicy: true,
-              participants: {
-                where: { deletedAt: null },
-                select: {
-                  userId: true,
-                  identityId: true,
-                  identity: {
-                    select: {
-                      ownedContacts: {
-                        where: {
-                          contactIdentityId: input.senderIdentityId ?? input.senderUserId,
-                          blockedAt: { not: null },
-                          deletedAt: null
-                        },
-                        select: { id: true }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+      const transactionNow = new Date();
+      const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
+      const outcome = await persistImMessageInTransaction(tx, {
+        conversationId: input.conversationId,
+        senderUserId: input.senderUserId,
+        senderIdentityId,
+        type: this.messageTypeToDb(input.type),
+        content: input.content,
+        metadata: input.metadata,
+        transactionNow
       });
-
-      if (!participant) {
-        return { status: "not_found" };
-      }
-      if (
-        participant.conversation.type === ConversationType.DIRECT &&
-        participant.conversation.participants.some(
-          (conversationParticipant) =>
-            conversationParticipant.userId !== input.senderUserId &&
-            conversationParticipant.identity?.ownedContacts?.length > 0
-        )
-      ) {
-        return { status: "recipient_blocked" };
-      }
-      if (
-        participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED
-      ) {
-        const identityIds = participant.conversation.participants.map(
-          (item) => item.identityId
-        );
-        if (identityIds.length !== 2) {
-          return { status: "not_friends" };
-        }
-        const reciprocalContactCount = await tx.contact.count({
-          where: {
-            deletedAt: null,
-            OR: [
-              {
-                ownerIdentityId: identityIds[0],
-                contactIdentityId: identityIds[1]
-              },
-              {
-                ownerIdentityId: identityIds[1],
-                contactIdentityId: identityIds[0]
-              }
-            ]
-          }
-        });
-        if (reciprocalContactCount !== 2) {
-          return { status: "not_friends" };
-        }
-      }
-
-      const policy = await tx.imPolicy.findFirst({
-        where: { activeKey: "active", deletedAt: null },
-        select: {
-          textRetentionSeconds: true,
-          recallWindowSeconds: true,
-          version: true
-        }
-      });
-      const createdAt = new Date();
-      const recallWindowSeconds = policy?.recallWindowSeconds ?? 180;
-      const globalExpiresAt =
-        policy?.textRetentionSeconds === null || policy?.textRetentionSeconds === undefined
-          ? null
-          : new Date(createdAt.getTime() + policy.textRetentionSeconds * 1_000);
-      const privacyTtlSeconds = participant.conversation.disappearingTtlSeconds;
-      const usesPrivacyExpiry =
-        participant.conversation.type === ConversationType.GROUP &&
-        participant.conversation.privacyModeEnabled &&
-        typeof privacyTtlSeconds === "number" &&
-        Number.isInteger(privacyTtlSeconds) &&
-        privacyTtlSeconds >= 60 &&
-        privacyTtlSeconds <= 34_560_000;
-      const expiresAt = usesPrivacyExpiry
-        ? new Date(createdAt.getTime() + privacyTtlSeconds * 1_000)
-        : globalExpiresAt;
-      const message = await tx.message.create({
-        data: {
-          conversationId: input.conversationId,
-          senderUserId: input.senderUserId,
-          senderIdentityId: input.senderIdentityId ?? input.senderUserId,
-          type: this.messageTypeToDb(input.type),
-          content: input.content,
-          metadata: this.toJsonValue(input.metadata),
-          createdAt,
-          expiresAt,
-          recallDeadlineAt: new Date(createdAt.getTime() + recallWindowSeconds * 1_000),
-          privacyPolicyVersionAtSend: usesPrivacyExpiry
-            ? participant.conversation.privacyPolicyVersion
-            : null,
-          lifecycleVersion: policy?.version ?? 1
-        },
-        include: messageInclude
-      });
-
-      await tx.conversation.update({
-        where: { id: input.conversationId },
-        data: { updatedAt: new Date() }
-      });
-      await tx.conversationParticipant.updateMany({
-        where: {
-          conversationId: input.conversationId,
-          identityId: input.senderIdentityId ?? input.senderUserId,
-          deletedAt: null
-        },
-        data: {
-          unreadCount: 0,
-          hiddenAt: null,
-          lastReadMessageId: message.id,
-          lastReadAt: message.createdAt
-        }
-      });
-      await tx.conversationParticipant.updateMany({
-        where: {
-          conversationId: input.conversationId,
-          identityId: { not: input.senderIdentityId ?? input.senderUserId },
-          deletedAt: null
-        },
-        data: {
-          unreadCount: { increment: 1 },
-          hiddenAt: null
-        }
-      });
-
+      if (outcome.status !== "created") return outcome;
       return {
         status: "created",
-        message: this.mapMessage(message, input.senderIdentityId ?? input.senderUserId)
+        message: this.mapMessage(outcome.message, senderIdentityId)
       };
     });
   }

@@ -1,4 +1,4 @@
-import { ConversationType } from "@prisma/client";
+import { ConversationAccessPolicy, ConversationType } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
@@ -34,10 +34,15 @@ describe("RealtimeRepository group privacy message countdown", () => {
           id: 1,
           conversation: {
             type: ConversationType.GROUP,
+            accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
             privacyModeEnabled: true,
             disappearingTtlSeconds: 120,
             disappearingStartMode: "sent",
-            privacyPolicyVersion: 4
+            privacyPolicyVersion: 4,
+            participants: [
+              { userId: 7, identityId: 7, identity: { ownedContacts: [] } },
+              { userId: 8, identityId: 8, identity: { ownedContacts: [] } }
+            ]
           }
         })),
         updateMany: jest.fn(async () => ({ count: 1 }))

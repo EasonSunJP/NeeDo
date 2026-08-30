@@ -1,6 +1,15 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, realpath, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, join, resolve, sep } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rmdir,
+  stat,
+  unlink,
+  writeFile
+} from "node:fs/promises";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 
@@ -45,12 +54,19 @@ export interface ChatRecordMediaClone {
   mimeType: string;
   size: number;
   checksumSha256: string;
-  url: string;
+}
+
+export interface ChatRecordMediaRead {
+  bytes: Buffer;
+  mimeType: string;
+  size: number;
+  checksumSha256: string;
 }
 
 export interface ImChatRecordMediaStoragePort {
   clone(sourceUrl: string, mimeType: string): Promise<ChatRecordMediaClone>;
   delete(fileKey: string): Promise<void>;
+  read(checksumSha256: string, mimeType: string): Promise<ChatRecordMediaRead>;
 }
 
 export interface ImChatRecordMediaSourceRoot {
@@ -60,7 +76,6 @@ export interface ImChatRecordMediaSourceRoot {
 
 export interface ImChatRecordMediaFileStorageOptions {
   directory?: string;
-  publicBaseUrl?: string;
   sourceRoots: ImChatRecordMediaSourceRoot[];
   maxBytes?: number;
 }
@@ -75,13 +90,11 @@ const trimTrailingSlash = (value: string): string => value.replace(/\/+$/u, "");
 
 export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePort {
   private readonly directory: string;
-  private readonly publicBaseUrl: string;
   private readonly sourceRoots: ParsedPublicBase[];
   private readonly maxBytes: number;
 
   public constructor(options: ImChatRecordMediaFileStorageOptions) {
     this.directory = options.directory ?? "runtime/im-chat-record-media";
-    this.publicBaseUrl = trimTrailingSlash(options.publicBaseUrl ?? "/media/im-chat-record");
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     this.sourceRoots = options.sourceRoots.map((root) => this.parsePublicBase(root));
   }
@@ -102,29 +115,17 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
       }
 
       const checksumSha256 = createHash("sha256").update(bytes).digest("hex");
-      const fileKey = `${checksumSha256}.${metadata.extension}`;
+      const fileKey = `${checksumSha256}/${randomUUID()}/${checksumSha256}.${metadata.extension}`;
       const targetPath = this.targetPath(fileKey);
-      await mkdir(this.directory, { recursive: true });
-
-      let created = true;
-      try {
-        await writeFile(targetPath, bytes, { flag: "wx", mode: 0o600 });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException | undefined)?.code !== "EEXIST") throw error;
-        const existing = await readFile(targetPath);
-        if (createHash("sha256").update(existing).digest("hex") !== checksumSha256) {
-          throw this.unavailable();
-        }
-        created = false;
-      }
+      await mkdir(dirname(targetPath), { recursive: true, mode: 0o700 });
+      await writeFile(targetPath, bytes, { flag: "wx", mode: 0o600 });
 
       return {
-        created,
+        created: true,
         fileKey,
         mimeType,
         size: bytes.length,
-        checksumSha256,
-        url: `${this.publicBaseUrl}/${fileKey}`
+        checksumSha256
       };
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -133,10 +134,37 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
   }
 
   public async delete(fileKey: string): Promise<void> {
+    const targetPath = this.targetPath(fileKey);
     try {
-      await unlink(this.targetPath(fileKey));
+      await unlink(targetPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") throw error;
+    }
+    await this.removeEmptyDirectory(dirname(targetPath));
+    await this.removeEmptyDirectory(dirname(dirname(targetPath)));
+  }
+
+  public async read(checksumSha256: string, mimeType: string): Promise<ChatRecordMediaRead> {
+    const metadata = mediaMetadata[mimeType as ChatRecordMediaMimeType];
+    if (!metadata || !/^[a-f0-9]{64}$/u.test(checksumSha256)) throw this.unavailable();
+    try {
+      const checksumDirectory = resolve(join(this.directory, checksumSha256));
+      const attempts = await readdir(checksumDirectory, { withFileTypes: true });
+      for (const attempt of attempts.sort((left, right) => left.name.localeCompare(right.name))) {
+        if (!attempt.isDirectory() || !/^[0-9a-f-]{36}$/u.test(attempt.name)) continue;
+        const fileKey = `${checksumSha256}/${attempt.name}/${checksumSha256}.${metadata.extension}`;
+        const bytes = await readFile(this.targetPath(fileKey));
+        if (
+          createHash("sha256").update(bytes).digest("hex") === checksumSha256 &&
+          metadata.matches(bytes)
+        ) {
+          return { bytes, checksumSha256, mimeType, size: bytes.length };
+        }
+      }
+      throw this.unavailable();
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw this.unavailable(error);
     }
   }
 
@@ -198,8 +226,10 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
 
   private targetPath(fileKey: string): string {
     if (
-      !/^[a-f0-9]{64}\.(?:jpg|png|webp|webm|mp4|ogg)$/u.test(fileKey) ||
-      basename(fileKey) !== fileKey
+      !/^[a-f0-9]{64}\/[0-9a-f-]{36}\/[a-f0-9]{64}\.(?:jpg|png|webp|webm|mp4|ogg)$/u.test(
+        fileKey
+      ) ||
+      basename(fileKey) !== fileKey.split("/").at(-1)
     ) {
       throw this.unavailable();
     }
@@ -207,6 +237,15 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
     const path = resolve(join(directory, fileKey));
     if (!path.startsWith(`${directory}${sep}`)) throw this.unavailable();
     return path;
+  }
+
+  private async removeEmptyDirectory(path: string): Promise<void> {
+    try {
+      await rmdir(path);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | undefined)?.code;
+      if (code !== "ENOENT" && code !== "ENOTEMPTY") throw error;
+    }
   }
 
   private unavailable(cause?: unknown): AppError {

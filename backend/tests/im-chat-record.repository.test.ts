@@ -30,7 +30,8 @@ const message = {
   contentPurgedAt: null,
   privacyPolicyVersionAtSend: null,
   lifecycleVersion: 1,
-  reactionVersion: 0
+  reactionVersion: 0,
+  reactions: []
 };
 
 const deliveryInput = () => ({
@@ -61,8 +62,7 @@ const deliveryInput = () => ({
       media: null
     }
   ],
-  context,
-  now
+  context
 });
 
 describe("ImChatRecordRepository", () => {
@@ -102,7 +102,22 @@ describe("ImChatRecordRepository", () => {
           version: 1
         }))
       },
-      message: { count: jest.fn(async () => 1), create: jest.fn(async () => message) },
+      message: {
+        findMany: jest.fn(async () => [
+          {
+            id: 11,
+            type: MessageType.TEXT,
+            metadata: null,
+            recalledAt: null,
+            expiredAt: null,
+            expiresAt: null,
+            contentPurgedAt: null,
+            privacyPolicyVersionAtSend: null,
+            deletedAt: null
+          }
+        ]),
+        create: jest.fn(async () => message)
+      },
       imChatRecordDelivery: { create: jest.fn(async () => ({ id: 901 })) },
       conversation: { update: jest.fn(async () => ({ id: 99 })) },
       auditLog: { create: jest.fn(async () => ({ id: 1001 })) }
@@ -110,7 +125,7 @@ describe("ImChatRecordRepository", () => {
     const client = {
       $transaction: jest.fn(async (operation: (value: typeof tx) => unknown) => operation(tx))
     };
-    const repository = new ImChatRecordRepository(client as never);
+    const repository = new ImChatRecordRepository(client as never, { now: () => now });
 
     await expect(repository.createDelivery(deliveryInput())).resolves.toMatchObject({
       replayed: false,
@@ -126,16 +141,19 @@ describe("ImChatRecordRepository", () => {
     expect(tx.imChatRecordItem.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ bundleId: 501, position: 1, sourceMessageId: 11 })
     });
-    expect(tx.message.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        conversationId: 99,
-        senderUserId: 41,
-        senderIdentityId: 71,
-        metadata: expect.objectContaining({ needoMessageType: "chat-record" })
+    expect(tx.message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          conversationId: 99,
+          senderUserId: 41,
+          senderIdentityId: 71,
+          createdAt: now,
+          metadata: expect.objectContaining({ needoMessageType: "chat-record" })
+        })
       })
-    });
+    );
     expect(tx.imChatRecordDelivery.create).toHaveBeenCalledWith({
-      data: { bundleId: 501, conversationId: 99, messageId: 801 }
+      data: { bundleId: 501, conversationId: 99, createdAt: now, messageId: 801 }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -201,16 +219,84 @@ describe("ImChatRecordRepository", () => {
     expect(client.imChatRecordBundle.findUnique).toHaveBeenCalledTimes(1);
   });
 
-  it("lets the Prisma transaction reject atomically without retrying partial writes", async () => {
+  it("rolls back staged bundle and item writes when a later transaction write fails", async () => {
+    const committed = { bundles: [] as unknown[], items: [] as unknown[] };
     const client = {
-      $transaction: jest.fn(async () => {
-        throw new Error("item insert failed");
+      $transaction: jest.fn(async (operation: (value: unknown) => unknown) => {
+        const staged = { bundles: [...committed.bundles], items: [...committed.items] };
+        const tx = {
+          imChatRecordBundle: {
+            findUnique: jest.fn(async () => null),
+            create: jest.fn(async ({ data }) => {
+              staged.bundles.push(data);
+              return bundle;
+            })
+          },
+          conversationParticipant: {
+            findFirst: jest.fn(async ({ where }) =>
+              where.conversationId === 91
+                ? {
+                    createdAt: new Date("2026-08-31T07:00:00.000Z"),
+                    clearedThroughMessageId: null
+                  }
+                : {
+                    id: 1,
+                    conversation: {
+                      type: "DIRECT",
+                      accessPolicy: "BUSINESS_CONTEXT",
+                      privacyModeEnabled: false,
+                      disappearingTtlSeconds: null,
+                      privacyPolicyVersion: 0,
+                      participants: [
+                        { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+                        { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+                      ]
+                    }
+                  }
+            ),
+            updateMany: jest.fn()
+          },
+          message: {
+            findMany: jest.fn(async () => [
+              {
+                id: 11,
+                type: MessageType.TEXT,
+                metadata: null,
+                recalledAt: null,
+                expiredAt: null,
+                expiresAt: null,
+                contentPurgedAt: null,
+                privacyPolicyVersionAtSend: null,
+                deletedAt: null
+              }
+            ]),
+            create: jest.fn(async () => {
+              throw new Error("message insert failed");
+            })
+          },
+          imChatRecordItem: {
+            create: jest.fn(async ({ data }) => {
+              staged.items.push(data);
+              return { id: 701 };
+            })
+          },
+          mediaAsset: { create: jest.fn() },
+          contact: { count: jest.fn(async () => 2) },
+          imPolicy: { findFirst: jest.fn(async () => null) }
+        };
+        const result = await operation(tx);
+        committed.bundles = staged.bundles;
+        committed.items = staged.items;
+        return result;
       })
     };
     const repository = new ImChatRecordRepository(client as never);
 
-    await expect(repository.createDelivery(deliveryInput())).rejects.toThrow("item insert failed");
+    await expect(repository.createDelivery(deliveryInput())).rejects.toThrow(
+      "message insert failed"
+    );
     expect(client.$transaction).toHaveBeenCalledTimes(1);
+    expect(committed).toEqual({ bundles: [], items: [] });
   });
 
   it("rechecks every source message inside the transaction before creating a bundle", async () => {
@@ -223,7 +309,7 @@ describe("ImChatRecordRepository", () => {
           clearedThroughMessageId: null
         }))
       },
-      message: { count: jest.fn(async () => 0) }
+      message: { findMany: jest.fn(async () => []) }
     };
     const client = {
       $transaction: jest.fn(async (operation: (value: typeof tx) => unknown) => operation(tx))
@@ -248,15 +334,13 @@ describe("ImChatRecordRepository", () => {
             media: {
               checksumSha256: "c".repeat(64),
               mimeType: "image/png",
-              size: 16,
-              url: `/media/im-chat-record/${"c".repeat(64)}.png`
+              size: 16
             }
           },
           media: {
             checksumSha256: "c".repeat(64),
             mimeType: "image/png",
-            size: 16,
-            url: `/media/im-chat-record/${"c".repeat(64)}.png`
+            size: 16
           }
         }
       ]
@@ -272,7 +356,21 @@ describe("ImChatRecordRepository", () => {
           clearedThroughMessageId: null
         }))
       },
-      message: { count: jest.fn(async () => 1) },
+      message: {
+        findMany: jest.fn(async () => [
+          {
+            id: 11,
+            type: MessageType.TEXT,
+            metadata: null,
+            recalledAt: null,
+            expiredAt: null,
+            expiresAt: null,
+            contentPurgedAt: null,
+            privacyPolicyVersionAtSend: null,
+            deletedAt: null
+          }
+        ])
+      },
       imChatRecordItem: { create: jest.fn(async () => ({ id: 701 })) },
       mediaAsset: { create: jest.fn(async () => ({ id: 702 })) },
       imChatRecordFavorite: {
@@ -296,7 +394,8 @@ describe("ImChatRecordRepository", () => {
         usageType: "im_chat_record",
         ownerUserId: 41,
         ownerIdentityId: 71,
-        checksumSha256: "c".repeat(64)
+        checksumSha256: "c".repeat(64),
+        url: ""
       })
     });
     expect(tx.imChatRecordFavorite.create).toHaveBeenCalledWith({
@@ -326,5 +425,310 @@ describe("ImChatRecordRepository", () => {
         })
       })
     );
+  });
+
+  it("post-filters a returned bundle when its delivery is no longer visible", async () => {
+    const repository = new ImChatRecordRepository({
+      imChatRecordBundle: {
+        findFirst: jest.fn(async () => ({
+          ...bundle,
+          createdByIdentityId: 999,
+          favorites: [],
+          deliveries: [
+            {
+              message: {
+                id: 801,
+                createdAt: now,
+                deletedAt: null,
+                recalledAt: now,
+                contentPurgedAt: now,
+                expiredAt: null,
+                expiresAt: null,
+                userDeletions: []
+              },
+              conversation: {
+                participants: [
+                  {
+                    createdAt: new Date("2026-08-31T07:00:00.000Z"),
+                    clearedThroughMessageId: null
+                  }
+                ]
+              }
+            }
+          ]
+        }))
+      }
+    } as never);
+
+    await expect(
+      repository.getBundle({ publicId: bundle.publicId, userId: 41, identityId: 71 })
+    ).resolves.toBeNull();
+  });
+
+  it("applies the shared reciprocal-friendship gate to chat-record deliveries", async () => {
+    const messageCreate = jest.fn();
+    const tx = {
+      imChatRecordBundle: {
+        findUnique: jest.fn(async () => null),
+        create: jest.fn(async () => bundle)
+      },
+      imChatRecordItem: { create: jest.fn(async () => ({ id: 701 })) },
+      mediaAsset: { create: jest.fn() },
+      conversationParticipant: {
+        findFirst: jest.fn(async ({ where }) =>
+          where.conversationId === 91
+            ? { createdAt: new Date("2026-08-31T07:00:00.000Z"), clearedThroughMessageId: null }
+            : {
+                id: 1,
+                conversation: {
+                  type: "DIRECT",
+                  accessPolicy: "FRIENDSHIP_REQUIRED",
+                  privacyModeEnabled: false,
+                  disappearingTtlSeconds: null,
+                  privacyPolicyVersion: 0,
+                  participants: [
+                    { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+                    { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+                  ]
+                }
+              }
+        ),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn(async () => 0) },
+      message: {
+        findMany: jest.fn(async () => [
+          {
+            id: 11,
+            type: MessageType.TEXT,
+            metadata: null,
+            recalledAt: null,
+            expiredAt: null,
+            expiresAt: null,
+            contentPurgedAt: null,
+            privacyPolicyVersionAtSend: null,
+            deletedAt: null
+          }
+        ]),
+        create: messageCreate
+      },
+      imPolicy: { findFirst: jest.fn() },
+      conversation: { update: jest.fn() }
+    };
+    const repository = new ImChatRecordRepository({
+      $transaction: jest.fn(async (operation: (value: typeof tx) => unknown) => operation(tx))
+    } as never);
+
+    await expect(repository.createDelivery(deliveryInput())).rejects.toMatchObject({
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+    expect(messageCreate).not.toHaveBeenCalled();
+    expect(tx.conversation.update).not.toHaveBeenCalled();
+    expect(tx.conversationParticipant.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("uses a transaction-start clock and rejects a source that expired while media was cloning", async () => {
+    const transactionNow = new Date("2026-08-31T08:00:05.000Z");
+    const bundleCreate = jest.fn();
+    const tx = {
+      imChatRecordBundle: { findUnique: jest.fn(async () => null), create: bundleCreate },
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          createdAt: new Date("2026-08-31T07:00:00.000Z"),
+          clearedThroughMessageId: null
+        }))
+      },
+      message: {
+        findMany: jest.fn(async () => [
+          {
+            id: 11,
+            type: MessageType.TEXT,
+            metadata: null,
+            recalledAt: null,
+            expiredAt: null,
+            expiresAt: new Date("2026-08-31T08:00:01.000Z"),
+            contentPurgedAt: null,
+            privacyPolicyVersionAtSend: null,
+            deletedAt: null
+          }
+        ])
+      }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (value: typeof tx) => unknown) => operation(tx))
+    };
+    const repository = new ImChatRecordRepository(client as never, { now: () => transactionNow });
+
+    await expect(repository.createDelivery(deliveryInput())).rejects.toMatchObject({
+      message: "error.im.chat_record_source_unavailable"
+    });
+    expect(tx.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ expiresAt: null }, { expiresAt: { gt: transactionNow } }]
+        })
+      })
+    );
+    expect(bundleCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [MessageType.SYSTEM, null],
+    [MessageType.ORDER_STATUS, null],
+    [
+      MessageType.TEXT,
+      {
+        needoMessageType: "image",
+        needoMessageExt: { mimeType: "image/png", url: "/media/im/a.png" }
+      }
+    ]
+  ])(
+    "applies the source type and media gate again inside the transaction",
+    async (type, metadata) => {
+      const bundleCreate = jest.fn();
+      const tx = {
+        imChatRecordBundle: { findUnique: jest.fn(async () => null), create: bundleCreate },
+        conversationParticipant: {
+          findFirst: jest.fn(async () => ({
+            createdAt: new Date("2026-08-31T07:00:00.000Z"),
+            clearedThroughMessageId: null
+          }))
+        },
+        message: {
+          findMany: jest.fn(async () => [
+            {
+              id: 11,
+              type,
+              metadata,
+              recalledAt: null,
+              expiredAt: null,
+              expiresAt: null,
+              contentPurgedAt: null,
+              privacyPolicyVersionAtSend: null,
+              deletedAt: null
+            }
+          ])
+        }
+      };
+      const client = {
+        $transaction: jest.fn(async (operation: (value: typeof tx) => unknown) => operation(tx))
+      };
+      const repository = new ImChatRecordRepository(client as never);
+
+      await expect(repository.createDelivery(deliveryInput())).rejects.toMatchObject({
+        message: "error.im.chat_record_source_unavailable"
+      });
+      expect(bundleCreate).not.toHaveBeenCalled();
+    }
+  );
+
+  it("filters favorite rows and count by an active bundle", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const client = {
+      imChatRecordFavorite: { findMany, count },
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations))
+    };
+    const repository = new ImChatRecordRepository(client as never);
+
+    await expect(
+      repository.listFavorites({ identityId: 71, page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({ list: [], total: 0 });
+    const expectedWhere = {
+      ownerIdentityId: 71,
+      deletedAt: null,
+      bundle: { deletedAt: null }
+    };
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expectedWhere }));
+    expect(count).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it.each([
+    ["creator", { createdByIdentityId: 71, favorites: [], deliveries: [] }],
+    ["favorite", { createdByIdentityId: 999, favorites: [{ id: 1 }], deliveries: [] }],
+    [
+      "delivery",
+      {
+        createdByIdentityId: 999,
+        favorites: [],
+        deliveries: [
+          {
+            message: {
+              id: 801,
+              createdAt: now,
+              deletedAt: null,
+              recalledAt: null,
+              contentPurgedAt: null,
+              expiredAt: null,
+              expiresAt: null,
+              userDeletions: []
+            },
+            conversation: {
+              participants: [
+                {
+                  createdAt: new Date("2026-08-31T07:00:00.000Z"),
+                  clearedThroughMessageId: null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  ])("allows the active %s access branch", async (_branch, access) => {
+    const repository = new ImChatRecordRepository({
+      imChatRecordBundle: { findFirst: jest.fn(async () => ({ ...bundle, ...access })) }
+    } as never);
+
+    await expect(
+      repository.getBundle({ publicId: bundle.publicId, userId: 41, identityId: 71 })
+    ).resolves.toMatchObject({ id: bundle.id, publicId: bundle.publicId });
+  });
+
+  it("returns authorized media metadata without reading or returning a storage URL", async () => {
+    const checksum = "c".repeat(64);
+    const repository = new ImChatRecordRepository({
+      imChatRecordBundle: {
+        findFirst: jest.fn(async () => ({
+          ...bundle,
+          createdByIdentityId: 71,
+          favorites: [],
+          deliveries: []
+        }))
+      },
+      imChatRecordItem: {
+        findMany: jest.fn(async () => [
+          {
+            id: 701,
+            metadataSnapshot: {
+              media: { checksumSha256: checksum, mimeType: "image/png", size: 16 }
+            }
+          }
+        ])
+      },
+      mediaAsset: {
+        findFirst: jest.fn(async () => ({
+          entityId: 701,
+          checksumSha256: checksum,
+          mimeType: "image/png"
+        }))
+      }
+    } as never);
+
+    const result = await repository.resolveAuthorizedMedia({
+      publicId: bundle.publicId,
+      checksumSha256: checksum,
+      userId: 41,
+      identityId: 71
+    });
+
+    expect(result).toEqual({
+      publicId: bundle.publicId,
+      checksumSha256: checksum,
+      mimeType: "image/png",
+      size: 16
+    });
+    expect(result).not.toHaveProperty("url");
   });
 });

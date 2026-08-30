@@ -16,6 +16,7 @@ import type {
   ChatRecordMediaClone,
   ImChatRecordMediaStoragePort
 } from "./im-chat-record-media.storage";
+import { parseChatRecordSourcePolicy } from "./im-chat-record-source.policy";
 import type { RealtimeEventGatewayPort } from "./realtime-event.gateway";
 import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
 import { AppError } from "../utils/app-error";
@@ -86,8 +87,7 @@ export class ImChatRecordService {
       titleSnapshot: prepared.title,
       previewSnapshot: prepared.preview,
       items: prepared.items,
-      context,
-      now: currentTime
+      context
     };
 
     try {
@@ -136,8 +136,7 @@ export class ImChatRecordService {
       titleSnapshot: prepared.title,
       previewSnapshot: prepared.preview,
       items: prepared.items,
-      context,
-      now: currentTime
+      context
     };
 
     let result;
@@ -245,7 +244,7 @@ export class ImChatRecordService {
     auth: AuthenticatedAccessContext,
     publicId: string,
     checksumSha256: string
-  ): Promise<AuthorizedChatRecordMedia> {
+  ): Promise<AuthorizedChatRecordMedia & { bytes: Buffer }> {
     if (!/^[a-f0-9]{64}$/u.test(checksumSha256)) {
       throw this.notFound("error.im.chat_record_media_unavailable");
     }
@@ -257,7 +256,11 @@ export class ImChatRecordService {
       identityId: scope.identityId
     });
     if (!media) throw this.notFound("error.im.chat_record_media_unavailable");
-    return media;
+    const stored = await this.mediaStorage.read(media.checksumSha256, media.mimeType);
+    if (stored.size !== media.size) {
+      throw this.notFound("error.im.chat_record_media_unavailable");
+    }
+    return { ...media, bytes: stored.bytes };
   }
 
   private normalizeCommand(command: ChatRecordCommand): number[] {
@@ -318,17 +321,24 @@ export class ImChatRecordService {
     const items: ChatRecordPersistenceItem[] = [];
     try {
       for (const [index, message] of ordered.entries()) {
-        const mediaSource = this.mediaSource(message.metadata);
+        const sourcePolicy = parseChatRecordSourcePolicy(message.messageType, message.metadata);
+        if (!sourcePolicy) throw this.sourceUnavailable();
+        const mediaSource = sourcePolicy.kind === "media" ? sourcePolicy.media : null;
         const clone = mediaSource
           ? await this.mediaStorage.clone(mediaSource.url, mediaSource.mimeType)
           : null;
         if (clone) clones.push(clone);
+        if (
+          clone &&
+          (clone.mimeType !== mediaSource?.mimeType || clone.size !== mediaSource.fileSize)
+        ) {
+          throw this.sourceUnavailable();
+        }
         const media = clone
           ? {
               checksumSha256: clone.checksumSha256,
               mimeType: clone.mimeType,
-              size: clone.size,
-              url: clone.url
+              size: clone.size
             }
           : null;
         items.push({
@@ -350,9 +360,19 @@ export class ImChatRecordService {
       throw error;
     }
 
-    const senderNames = Array.from(
-      new Set(ordered.map((message) => message.senderDisplayName.trim()).filter(Boolean))
-    );
+    const senderNamesByIdentity = new Map<string, string>();
+    for (const message of ordered) {
+      const key =
+        message.senderIdentityId !== null
+          ? `identity:${message.senderIdentityId}`
+          : message.senderUserId !== null
+            ? `user:${message.senderUserId}`
+            : `message:${message.id}`;
+      if (!senderNamesByIdentity.has(key)) {
+        senderNamesByIdentity.set(key, message.senderDisplayName.trim() || "NeeDo");
+      }
+    }
+    const senderNames = [...senderNamesByIdentity.values()];
     if (senderNames.length === 0) senderNames.push("NeeDo");
     const titleKind: ChatRecordTitleKind =
       senderNames.length === 1 ? "single" : senderNames.length === 2 ? "pair" : "group";
@@ -378,18 +398,9 @@ export class ImChatRecordService {
       message.deletedAt ||
       message.hiddenForViewer ||
       message.disappearing ||
-      (message.expiresAt && message.expiresAt <= now)
+      (message.expiresAt && message.expiresAt <= now) ||
+      parseChatRecordSourcePolicy(message.messageType, message.metadata) === null
     );
-  }
-
-  private mediaSource(metadata: unknown): { url: string; mimeType: string } | null {
-    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
-    const extension = (metadata as Record<string, unknown>).needoMessageExt;
-    if (!extension || typeof extension !== "object" || Array.isArray(extension)) return null;
-    const { mimeType, url } = extension as Record<string, unknown>;
-    if (typeof url !== "string" && typeof mimeType !== "string") return null;
-    if (typeof url !== "string" || typeof mimeType !== "string") throw this.sourceUnavailable();
-    return { url, mimeType };
   }
 
   private previewLine(message: ChatRecordSourceMessage): string {

@@ -1,15 +1,11 @@
-import {
-  ConversationAccessPolicy,
-  ConversationType,
-  MessageRecallMode,
-  MessageType,
-  Prisma
-} from "@prisma/client";
+import { MessageRecallMode, MessageType, Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import type { AuthRequestContext } from "../services/auth.service";
 import type { MessagePayload } from "./realtime.repository";
+import { persistImMessageInTransaction } from "./im-message-send.transaction";
+import { parseChatRecordSourcePolicy } from "../services/im-chat-record-source.policy";
 import { AppError } from "../utils/app-error";
 
 export type ChatRecordTitleKind = "single" | "pair" | "group";
@@ -45,7 +41,6 @@ export interface ChatRecordMediaDescriptor {
   checksumSha256: string;
   mimeType: string;
   size: number;
-  url: string;
 }
 
 export interface ChatRecordPersistenceItem {
@@ -76,7 +71,6 @@ interface CreateChatRecordPersistenceBase {
   previewSnapshot: string;
   items: ChatRecordPersistenceItem[];
   context: AuthRequestContext;
-  now: Date;
 }
 
 export interface CreateChatRecordDeliveryPersistenceInput extends CreateChatRecordPersistenceBase {
@@ -147,7 +141,7 @@ export interface AuthorizedChatRecordMedia {
   publicId: string;
   checksumSha256: string;
   mimeType: string;
-  url: string;
+  size: number;
 }
 
 export interface ImChatRecordRepositoryPort {
@@ -227,7 +221,14 @@ const activeBundleAccessWhere = (input: { publicId: string; userId: number; iden
   }) satisfies Prisma.ImChatRecordBundleWhereInput;
 
 export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  private readonly now: () => Date;
+
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    options: { now?: () => Date } = {}
+  ) {
+    this.now = options.now ?? (() => new Date());
+  }
 
   public async readSourceMessages(input: {
     conversationId: number;
@@ -315,49 +316,41 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     input: CreateChatRecordDeliveryPersistenceInput
   ): Promise<ChatRecordDeliveryPayload> {
     return this.client.$transaction(async (transaction) => {
+      const transactionNow = this.now();
       const replay = await this.findCommandReplay(transaction, input);
       if (replay) return this.toDeliveryReplay(replay, input.requestFingerprint);
 
-      await this.assertSourceMessagesCurrent(transaction, input);
-      const participant = await this.requireDeliveryParticipant(transaction, input);
-      const createdBundle = await this.createBundleAndItems(transaction, input);
-      const message = await this.createDeliveryMessage(
-        transaction,
-        input,
-        participant.conversation
-      );
+      await this.assertSourceMessagesCurrent(transaction, input, transactionNow);
+      const createdBundle = await this.createBundleAndItems(transaction, input, transactionNow);
+      const send = await persistImMessageInTransaction(transaction, {
+        conversationId: input.targetConversationId,
+        senderUserId: input.createdByUserId,
+        senderIdentityId: input.createdByIdentityId,
+        type: MessageType.TEXT,
+        content: input.titleSnapshot,
+        metadata: {
+          needoMessageType: "chat-record",
+          needoMessageExt: {
+            bundlePublicId: input.publicId,
+            itemCount: input.items.length,
+            preview: input.previewSnapshot,
+            senderCount: input.senderNamesSnapshot.length,
+            title: input.titleSnapshot,
+            titleKind: input.titleKind
+          }
+        },
+        transactionNow
+      });
+      if (send.status !== "created") throw this.sendRejected(send.status);
+      const { message } = send;
 
       await transaction.imChatRecordDelivery.create({
         data: {
           bundleId: createdBundle.id,
           messageId: message.id,
-          conversationId: input.targetConversationId
-        }
-      });
-      await transaction.conversation.update({
-        where: { id: input.targetConversationId },
-        data: { updatedAt: input.now }
-      });
-      await transaction.conversationParticipant.updateMany({
-        where: {
           conversationId: input.targetConversationId,
-          identityId: input.createdByIdentityId,
-          deletedAt: null
-        },
-        data: {
-          unreadCount: 0,
-          hiddenAt: null,
-          lastReadMessageId: message.id,
-          lastReadAt: message.createdAt
+          createdAt: transactionNow
         }
-      });
-      await transaction.conversationParticipant.updateMany({
-        where: {
-          conversationId: input.targetConversationId,
-          identityId: { not: input.createdByIdentityId },
-          deletedAt: null
-        },
-        data: { unreadCount: { increment: 1 }, hiddenAt: null }
       });
       await transaction.auditLog.create({
         data: {
@@ -378,11 +371,8 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       return {
         replayed: false,
         bundle: this.mapBundle(createdBundle),
-        message: this.mapMessage(message, input.createdByIdentityId, input.now),
-        recipients: participant.conversation.participants.map(({ userId, identityId }) => ({
-          userId,
-          identityId
-        }))
+        message: this.mapMessage(message, input.createdByIdentityId, transactionNow),
+        recipients: send.recipients
       };
     });
   }
@@ -403,17 +393,18 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     input: CreateChatRecordFavoritePersistenceInput
   ): Promise<ChatRecordFavoriteCreationPayload> {
     return this.client.$transaction(async (transaction) => {
+      const transactionNow = this.now();
       const replay = await this.findCommandReplay(transaction, input);
       if (replay) return this.toFavoriteReplay(replay, input.requestFingerprint);
 
-      await this.assertSourceMessagesCurrent(transaction, input);
-      const createdBundle = await this.createBundleAndItems(transaction, input);
+      await this.assertSourceMessagesCurrent(transaction, input, transactionNow);
+      const createdBundle = await this.createBundleAndItems(transaction, input, transactionNow);
       const favorite = await transaction.imChatRecordFavorite.create({
         data: {
           bundleId: createdBundle.id,
           ownerUserId: input.createdByUserId,
           ownerIdentityId: input.createdByIdentityId,
-          createdAt: input.now
+          createdAt: transactionNow
         }
       });
       await transaction.auditLog.create({
@@ -516,7 +507,8 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
   }): Promise<ChatRecordFavoritePage> {
     const where = {
       ownerIdentityId: input.identityId,
-      deletedAt: null
+      deletedAt: null,
+      bundle: { deletedAt: null }
     } satisfies Prisma.ImChatRecordFavoriteWhereInput;
     const [rows, total] = await this.client.$transaction([
       this.client.imChatRecordFavorite.findMany({
@@ -583,29 +575,39 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
   }): Promise<AuthorizedChatRecordMedia | null> {
     const authorized = await this.getBundle(input);
     if (!authorized) return null;
-    const itemIds = await this.client.imChatRecordItem.findMany({
+    const items = await this.client.imChatRecordItem.findMany({
       where: { bundleId: authorized.id, deletedAt: null },
-      select: { id: true }
+      select: { id: true, metadataSnapshot: true }
     });
-    if (itemIds.length === 0) return null;
+    if (items.length === 0) return null;
     const asset = await this.client.mediaAsset.findFirst({
       where: {
         entityType: "im_chat_record_item",
-        entityId: { in: itemIds.map((item) => item.id) },
+        entityId: { in: items.map((item) => item.id) },
         usageType: "im_chat_record",
         checksumSha256: input.checksumSha256,
         isActive: true,
         deletedAt: null,
         purgedAt: null
       },
-      select: { checksumSha256: true, mimeType: true, url: true }
+      select: { entityId: true, checksumSha256: true, mimeType: true }
     });
     if (!asset?.checksumSha256) return null;
+    const descriptor = this.mediaDescriptor(
+      items.find((item) => item.id === asset.entityId)?.metadataSnapshot
+    );
+    if (
+      !descriptor ||
+      descriptor.checksumSha256 !== asset.checksumSha256 ||
+      descriptor.mimeType !== asset.mimeType
+    ) {
+      return null;
+    }
     return {
       publicId: input.publicId,
       checksumSha256: asset.checksumSha256,
       mimeType: asset.mimeType,
-      url: asset.url
+      size: descriptor.size
     };
   }
 
@@ -655,7 +657,8 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
 
   private async createBundleAndItems(
     transaction: TransactionClient,
-    input: CreateChatRecordPersistenceBase
+    input: CreateChatRecordPersistenceBase,
+    transactionNow: Date
   ) {
     const bundle = await transaction.imChatRecordBundle.create({
       data: {
@@ -671,7 +674,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
         senderNamesSnapshot: input.senderNamesSnapshot,
         titleSnapshot: input.titleSnapshot,
         previewSnapshot: input.previewSnapshot,
-        createdAt: input.now
+        createdAt: transactionNow
       }
     });
     for (const source of input.items) {
@@ -688,7 +691,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
           contentSnapshot: source.contentSnapshot,
           metadataSnapshot: this.toJsonValue(source.metadataSnapshot),
           sentAtSnapshot: source.sentAtSnapshot,
-          createdAt: input.now
+          createdAt: transactionNow
         }
       });
       if (source.media) {
@@ -698,12 +701,12 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
             entityId: item.id,
             ownerUserId: input.createdByUserId,
             ownerIdentityId: input.createdByIdentityId,
-            url: source.media.url,
+            url: "",
             mimeType: source.media.mimeType,
             usageType: "im_chat_record",
             sortOrder: source.position,
             checksumSha256: source.media.checksumSha256,
-            createdAt: input.now
+            createdAt: transactionNow
           }
         });
       }
@@ -713,7 +716,8 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
 
   private async assertSourceMessagesCurrent(
     transaction: TransactionClient,
-    input: CreateChatRecordPersistenceBase
+    input: CreateChatRecordPersistenceBase,
+    transactionNow: Date
   ): Promise<void> {
     const participant = await transaction.conversationParticipant.findFirst({
       where: {
@@ -727,7 +731,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     if (!participant) throw this.sourceUnavailable();
 
     const sourceMessageIds = input.items.map((item) => item.sourceMessageId);
-    const count = await transaction.message.count({
+    const messages = await transaction.message.findMany({
       where: {
         id: {
           in: sourceMessageIds,
@@ -742,137 +746,39 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
         contentPurgedAt: null,
         privacyPolicyVersionAtSend: null,
         deletedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: input.now } }],
+        OR: [{ expiresAt: null }, { expiresAt: { gt: transactionNow } }],
         userDeletions: {
           none: { identityId: input.createdByIdentityId, deletedAt: null }
         }
-      }
-    });
-    if (count !== input.items.length) throw this.sourceUnavailable();
-  }
-
-  private async requireDeliveryParticipant(
-    transaction: TransactionClient,
-    input: CreateChatRecordDeliveryPersistenceInput
-  ) {
-    const participant = await transaction.conversationParticipant.findFirst({
-      where: {
-        conversationId: input.targetConversationId,
-        identityId: input.createdByIdentityId,
-        deletedAt: null,
-        conversation: { deletedAt: null }
       },
       select: {
-        conversation: {
-          select: {
-            type: true,
-            accessPolicy: true,
-            privacyModeEnabled: true,
-            disappearingTtlSeconds: true,
-            privacyPolicyVersion: true,
-            participants: {
-              where: { deletedAt: null },
-              select: {
-                userId: true,
-                identityId: true,
-                identity: {
-                  select: {
-                    ownedContacts: {
-                      where: {
-                        contactIdentityId: input.createdByIdentityId,
-                        blockedAt: { not: null },
-                        deletedAt: null
-                      },
-                      select: { id: true }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        id: true,
+        type: true,
+        metadata: true,
+        recalledAt: true,
+        expiredAt: true,
+        expiresAt: true,
+        contentPurgedAt: true,
+        privacyPolicyVersionAtSend: true,
+        deletedAt: true
       }
     });
-    if (!participant) throw this.notFound("error.realtime.conversation_not_found");
     if (
-      participant.conversation.type === ConversationType.DIRECT &&
-      participant.conversation.participants.some(
-        (candidate) =>
-          candidate.identityId !== input.createdByIdentityId &&
-          candidate.identity.ownedContacts.length > 0
+      messages.length !== input.items.length ||
+      messages.some(
+        (message) =>
+          message.recalledAt !== null ||
+          message.expiredAt !== null ||
+          message.contentPurgedAt !== null ||
+          message.privacyPolicyVersionAtSend !== null ||
+          message.deletedAt !== null ||
+          (message.expiresAt !== null && message.expiresAt <= transactionNow) ||
+          parseChatRecordSourcePolicy(this.messageTypeFromDb(message.type), message.metadata) ===
+            null
       )
     ) {
-      throw this.forbidden("error.im.recipient_blocked");
+      throw this.sourceUnavailable();
     }
-    if (participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED) {
-      const identityIds = participant.conversation.participants.map(({ identityId }) => identityId);
-      const contactCount =
-        identityIds.length === 2
-          ? await transaction.contact.count({
-              where: {
-                deletedAt: null,
-                OR: [
-                  { ownerIdentityId: identityIds[0], contactIdentityId: identityIds[1] },
-                  { ownerIdentityId: identityIds[1], contactIdentityId: identityIds[0] }
-                ]
-              }
-            })
-          : 0;
-      if (contactCount !== 2) throw this.forbidden("error.im.not_friends");
-    }
-    return participant;
-  }
-
-  private async createDeliveryMessage(
-    transaction: TransactionClient,
-    input: CreateChatRecordDeliveryPersistenceInput,
-    conversation: {
-      type: ConversationType;
-      privacyModeEnabled: boolean;
-      disappearingTtlSeconds: number | null;
-      privacyPolicyVersion: number;
-    }
-  ) {
-    const policy = await transaction.imPolicy.findFirst({
-      where: { activeKey: "active", deletedAt: null },
-      select: { textRetentionSeconds: true, recallWindowSeconds: true, version: true }
-    });
-    const usesPrivacyExpiry =
-      conversation.type === ConversationType.GROUP &&
-      conversation.privacyModeEnabled &&
-      conversation.disappearingTtlSeconds !== null;
-    const retentionSeconds = usesPrivacyExpiry
-      ? conversation.disappearingTtlSeconds
-      : (policy?.textRetentionSeconds ?? null);
-    const expiresAt =
-      retentionSeconds === null ? null : new Date(input.now.getTime() + retentionSeconds * 1_000);
-    return transaction.message.create({
-      data: {
-        conversationId: input.targetConversationId,
-        senderUserId: input.createdByUserId,
-        senderIdentityId: input.createdByIdentityId,
-        type: MessageType.TEXT,
-        content: input.titleSnapshot,
-        metadata: {
-          needoMessageType: "chat-record",
-          needoMessageExt: {
-            bundlePublicId: input.publicId,
-            itemCount: input.items.length,
-            preview: input.previewSnapshot,
-            senderCount: input.senderNamesSnapshot.length,
-            title: input.titleSnapshot,
-            titleKind: input.titleKind
-          }
-        },
-        createdAt: input.now,
-        expiresAt,
-        recallDeadlineAt: new Date(
-          input.now.getTime() + (policy?.recallWindowSeconds ?? 180) * 1_000
-        ),
-        privacyPolicyVersionAtSend: usesPrivacyExpiry ? conversation.privacyPolicyVersion : null,
-        lifecycleVersion: policy?.version ?? 1
-      }
-    });
   }
 
   private toDeliveryReplay(
@@ -1041,6 +947,30 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     return value === null || value === undefined
       ? Prisma.JsonNull
       : (value as Prisma.InputJsonValue);
+  }
+
+  private mediaDescriptor(value: unknown): ChatRecordMediaDescriptor | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const media = (value as Record<string, unknown>).media;
+    if (!media || typeof media !== "object" || Array.isArray(media)) return null;
+    const { checksumSha256, mimeType, size } = media as Record<string, unknown>;
+    if (
+      typeof checksumSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(checksumSha256) ||
+      typeof mimeType !== "string" ||
+      !Number.isInteger(size) ||
+      (size as number) <= 0
+    ) {
+      return null;
+    }
+    return { checksumSha256, mimeType, size: size as number };
+  }
+
+  private sendRejected(status: "not_found" | "recipient_blocked" | "not_friends"): AppError {
+    if (status === "not_found") return this.notFound("error.realtime.conversation_not_found");
+    return this.forbidden(
+      status === "recipient_blocked" ? "error.im.recipient_blocked" : "error.im.not_friends"
+    );
   }
 
   private idempotencyConflict(): AppError {
