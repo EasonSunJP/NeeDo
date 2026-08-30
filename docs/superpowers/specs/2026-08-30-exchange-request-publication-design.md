@@ -277,29 +277,112 @@ At minimum, emit searchable audit actions for:
 
 Audit metadata contains identifiers, states, amount, currency, and rule versions, but no access tokens, contact details, or unredacted private address data.
 
-## 8. Frontend Design
+## 8. Unified High-Fidelity Publication UI
 
-The current high-fidelity fullscreen Request composer is extended in place. The list, Intelligence composer, Request detail, theme tokens, navigation, and mobile structure are preserved.
+### 8.1 Corrected visual authority
 
-Required Request controls:
+The user rejected the remaining dark bottom-sheet Intelligence composer and approved the earlier high-fidelity full-screen publication page as the visual authority for both Request and Intelligence. The approved composition has:
 
-- target-provider count selector, capped by the publication-context response;
-- quick/selective mode;
-- total/per-provider budget mode;
-- optional minimum and required maximum budget;
-- required Address 1;
-- optional Address 2 and Address 3 with independent general-visibility switches;
-- publisher identity-group visibility switch;
-- service window, title, details, locale, and current Request fields;
-- pre-submit fee/currency/frozen-funds disclosure.
+- one full-screen mobile canvas that covers the underlying bottom navigation;
+- a dark navy glass surface using the active client theme tokens;
+- one green illuminated floating header with a clear page title and circular close control;
+- a separate explanatory card followed by one disciplined form card;
+- rounded inset controls, paired date/time columns, segmented choices, and one centered primary action;
+- safe-area-aware scrolling with no fixed app navigation or floating action button overlapping the form.
 
-Every required label displays `*`. Address 1 has no privacy switch because it is always visible to authorized Request viewers. Optional address switches are disabled or cleared when their address line is empty.
+This change restores the approved layout language; it does not restore the old mock workflow, local state bridge, fabricated data, or deprecated page component. The implementation reuses `MobileFullscreenPage`, `MobileFullscreenHeader`, `MobileBottomActionBar`, `TitleWithInfo`, client theme tokens, and the formal Exchange API.
 
-The merchant Exchange composer gains an explicit Request/Intelligence choice when its RBAC allows Request publication. The customer composer remains Request-only; the technician composer remains Intelligence-only.
+### 8.2 Component boundary
 
-The UI does not calculate authority, membership limits, currency, fee, or financial outcomes. It renders server values and server error keys. User-authored Request bodies and comments retain their original language and are never automatically pseudo-translated.
+Both post types share one presentation and step controller:
 
-All new interface text is supplied in Simplified Chinese, Traditional Chinese, Japanese, English, and Korean through the existing Exchange i18n module.
+```text
+ExchangeComposer
+└── ExchangeComposerShell
+    ├── ComposerHeader
+    ├── ComposerIntroCard
+    ├── RequestComposerFields OR IntelligenceComposerFields
+    ├── ComposerReviewStep
+    └── ComposerPrimaryAction
+```
+
+`ExchangeComposerShell` owns the full-screen canvas, body-scroll containment, safe areas, edit/review step, close behavior, focus return, and action placement. `RequestComposerFields` and `IntelligenceComposerFields` own only their formal field contracts. `ComposerReviewStep` receives normalized draft values and never invents authority, prices, fee outcomes, or visibility.
+
+The form must not be implemented as one large condition-heavy component or as two copied full-screen pages. Shared visual behavior remains one authority while the two business schemas remain independently testable.
+
+### 8.3 Two-step flow
+
+Request and Intelligence use the same two-step interaction:
+
+1. **Edit:** enter and validate the formal fields.
+2. **Review:** inspect exactly what will be published, then perform the single API mutation.
+
+The edit action is labelled “Next”; the review action is labelled “Publish”. Back from review returns to the populated edit form. Closing asks for confirmation only when the user has changed a field. A failed publication remains on review, retains every field and the idempotency key for an identical retry, and presents the server error with a route back to the affected field. A changed payload receives a new idempotency key.
+
+No publication API call, wallet mutation, or success state occurs on “Next”. Request review prominently displays the server-provided publication fee, `NDP` or `TEST_NDP` currency, and frozen-funds consequence before the final action. Intelligence review does not display or imply a Request fee.
+
+### 8.4 Request edit fields
+
+The Request page title is “Send Request” and its explanatory card describes provider count, matching intent, budget, address disclosure, and the publication fee. The form card presents:
+
+1. post type;
+2. authored language;
+3. required title;
+4. service start date/time and service end date/time in paired controls;
+5. Request validity date/time using the existing `expiresAt` contract;
+6. required target-provider count capped by the publication-context response;
+7. required quick/selective match mode;
+8. required total/per-provider budget mode;
+9. optional hard minimum and required maximum budget;
+10. required Address 1;
+11. optional Address 2 and Address 3 with independent general-visibility switches;
+12. publisher identity-group visibility switch;
+13. required detail.
+
+Every required label visibly includes `*`. Address 1 has no privacy switch. Address 2/3 switches are disabled and cleared when the corresponding line is empty. The client displays the effective membership/shop limit but does not calculate or override it.
+
+The validity field retains the current publication-expiry meaning in this microstep. Claim-deadline and matching-close semantics remain excluded until the claim/matching design is approved.
+
+### 8.5 Intelligence edit fields
+
+The Intelligence page title is “Send Intelligence” and uses the same full-screen frame instead of the rejected bottom sheet. Its form card retains the existing formal Intelligence contract:
+
+1. post type;
+2. authored language;
+3. required title;
+4. activity start date/time and activity end date/time;
+5. required publication/recruitment expiry date/time;
+6. required store/onsite/flexible service mode segmented control;
+7. required public area;
+8. optional public store address and required service areas according to the selected service mode;
+9. optional original price and required campaign price;
+10. required detail.
+
+The UI continues to enforce positive duration, expiry compatibility, unique service areas, and campaign price not exceeding a supplied original price. It submits only the current formal Intelligence DTO and does not add fee, wallet, booking, or payment behavior.
+
+### 8.6 Visual and responsive details
+
+- The mobile canvas remains capped by the existing `480px` client shell on wider screens and fills the viewport on phones.
+- The header stays above the scroller and uses the current theme's primary green glow rather than hard-coded page colors.
+- Form cards use the existing client surface, background, line, text, muted, primary, and primary-contrast tokens.
+- Date and time are separate controls in two columns at supported widths; they remain two columns on the approved mobile reference and use `min-width: 0` to prevent overflow.
+- Keyboard focus is always visible. The close, back, Next, and Publish controls have explicit accessible names.
+- Reduced-motion preference disables non-essential header/action transitions.
+- The review action remains reachable above the safe area without showing the app bottom navigation.
+
+The one signature element is the illuminated green header edge from the approved reference. Other surfaces remain quiet so the form hierarchy, not decoration, carries the page.
+
+### 8.7 Removed invalid UI
+
+The rejected Intelligence bottom sheet is deleted after the full-screen implementation passes tests and browser comparison. The disabled reference-image upload tiles are also removed because this microstep has no formal persisted media publication contract. They cannot be retained as an unavailable control or replaced with a fake upload success.
+
+The list, post detail, theme selection, floating compose entry, and navigation destinations remain unchanged. Opening the composer hides the underlying bottom navigation through the full-screen portal; closing restores focus to the exact trigger.
+
+### 8.8 Identity, server authority, and localization
+
+The merchant composer exposes an explicit Request/Intelligence choice only when the current session has both formal permissions. Customer remains Request-only; technician remains Intelligence-only. The UI does not calculate identity eligibility, membership limits, currency, fees, financial outcomes, or private-field visibility. It renders the publication-context response and server error keys.
+
+User-authored titles, details, addresses, and comments retain their submitted language. They are never pseudo-translated. All labels, descriptions, errors, review copy, and actions are supplied in Simplified Chinese, Traditional Chinese, Japanese, English, and Korean through the existing Exchange i18n module.
 
 ## 9. Controlled Test-Data Rebuild
 
@@ -324,6 +407,7 @@ No direct fabricated engagement totals, mock arrays, localStorage business state
 - API integration tests for Zod rejection, OpenAPI permission declarations, customer cross-account 404 behavior, merchant/technician market reads, staff denial, explicit staff grant, redacted DTOs, owner DTOs, and pagination.
 - Ledger and reconciliation tests proving exact available/frozen/platform deltas for `NDP` and `TEST_NDP`.
 - Frontend tests for required markers, dynamic limits, merchant mode choice, budget modes, address switches, fee disclosure, server errors, and all five languages.
+- Frontend tests proving Request and Intelligence use the same full-screen shell, both use edit/review steps, the rejected bottom sheet is absent, split date/time controls do not overflow, dirty close is guarded, focus returns to the trigger, and unavailable upload controls are absent.
 - Existing Exchange, Booking, Schedule, Order, Wallet/Ledger, Payment, RBAC, and production-build regression suites.
 
 ### 10.2 Real database checks
@@ -343,6 +427,7 @@ Use the formal backend and the frontend owned by this worktree. With real test a
 - persisted state after refresh, logout/login, backend restart, and concurrent duplicate submission;
 - 20 upgraded Requests and unchanged 20 Intelligence posts with required interaction ranges;
 - desktop and mobile layouts, five languages, required markers, no overflow, and no application console errors.
+- visual comparison of both Request and Intelligence composers against the approved full-screen reference, including illuminated header, explanation/form cards, paired date/time rows, segmented controls, review screen, safe-area action placement, and absence of the underlying bottom navigation.
 
 No test/build result substitutes for this browser acceptance. The microstep stops after evidence is recorded and does not proceed to claims.
 
