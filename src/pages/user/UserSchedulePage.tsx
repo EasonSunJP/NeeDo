@@ -62,7 +62,12 @@ export function UserSchedulePage() {
       </FloatingHomeHeader>
 
       <div className="space-y-3 px-4 pb-28 pt-2">
-        <UnifiedUserCalendar currentCustomer={customer} formalOnly searchQuery={scheduleSearchQuery} />
+        <UnifiedUserCalendar
+          currentCustomer={customer}
+          formalOnly
+          searchQuery={scheduleSearchQuery}
+          showSourceDrawer
+        />
       </div>
     </MobileShell>
   );
