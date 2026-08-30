@@ -68,9 +68,11 @@ function SocialQuickReplyComposerState({
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationQuery, setLocationQuery] = useState("");
   const [locationLabel, setLocationLabel] = useState("");
+  const [locationCandidate, setLocationCandidate] = useState("");
   const albumInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const richInputRef = useRef<HTMLDivElement | null>(null);
+  const locationCandidateRef = useRef("");
   const pendingImageRef = useRef<PendingReplyImage | null>(null);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
@@ -165,6 +167,10 @@ function SocialQuickReplyComposerState({
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
+    if (!canComment || sending) {
+      input.value = "";
+      return;
+    }
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
@@ -210,6 +216,8 @@ function SocialQuickReplyComposerState({
       setDraft("");
       setPanel(null);
       setLocationLabel("");
+      locationCandidateRef.current = "";
+      setLocationCandidate("");
       setLocationQuery("");
       clearPendingImage();
       setSubmissionError(null);
@@ -220,24 +228,45 @@ function SocialQuickReplyComposerState({
     }
   };
 
+  const openLocation = () => {
+    if (!canComment || sending) return;
+    locationCandidateRef.current = locationLabel;
+    setLocationCandidate(locationLabel);
+    setLocationOpen(true);
+  };
+  const cancelLocation = () => {
+    locationCandidateRef.current = locationLabel;
+    setLocationCandidate(locationLabel);
+    setLocationOpen(false);
+  };
+  const confirmLocation = () => {
+    setLocationLabel(locationCandidateRef.current);
+    setLocationOpen(false);
+  };
+  const selectLocationCandidate = (value: string) => {
+    locationCandidateRef.current = value;
+    setLocationCandidate(value);
+  };
   const actions: ImChatComposerAction[] = [
     { key: "image", label: "相册", icon: "photo", run: () => albumInputRef.current?.click() },
     { key: "camera", label: "拍照", icon: "camera", run: () => cameraInputRef.current?.click() },
-    { key: "location", label: "位置", icon: "location", run: () => setLocationOpen(true) }
+    { key: "location", label: "位置", icon: "location", run: openLocation }
   ];
   const uploadPending = pendingImage?.status === "uploading";
+  const composerDisabled = !canComment || sending;
 
   if (locationOpen) {
     return (
       <div className="fixed inset-0 z-[100] overflow-y-auto bg-[color:var(--client-bg)]" data-social-quick-reply-location="true">
         <ComposerLocationSelector
           authorLocation={actor?.location}
-          onBack={() => setLocationOpen(false)}
+          onBack={cancelLocation}
+          onConfirm={confirmLocation}
           onQueryChange={setLocationQuery}
-          onSelect={setLocationLabel}
+          onSelect={selectLocationCandidate}
           options={buildSocialLocationOptions(actor?.location, locationQuery)}
           query={locationQuery}
-          selectedValue={locationLabel}
+          selectedValue={locationCandidate}
         />
       </div>
     );
@@ -252,7 +281,7 @@ function SocialQuickReplyComposerState({
         accept="image/jpeg,image/png,image/webp"
         aria-label="相册"
         className="hidden"
-        disabled={!canComment}
+        disabled={composerDisabled}
         onChange={handleImageChange}
         ref={albumInputRef}
         type="file"
@@ -262,7 +291,7 @@ function SocialQuickReplyComposerState({
         aria-label="拍照"
         capture="environment"
         className="hidden"
-        disabled={!canComment}
+        disabled={composerDisabled}
         onChange={handleImageChange}
         ref={cameraInputRef}
         type="file"
@@ -273,8 +302,12 @@ function SocialQuickReplyComposerState({
           <button
             aria-label="移除位置"
             className="focus-ring shrink-0 text-xs font-semibold text-[#d1ff4d]"
-            disabled={!canComment || sending}
-            onClick={() => setLocationLabel("")}
+            disabled={composerDisabled}
+            onClick={() => {
+              setLocationLabel("");
+              locationCandidateRef.current = "";
+              setLocationCandidate("");
+            }}
             type="button"
           >
             移除位置
@@ -288,7 +321,7 @@ function SocialQuickReplyComposerState({
             {pendingImage.status === "failed" ? (
               <button
                 className="focus-ring text-xs font-semibold text-[#d1ff4d]"
-                disabled={!canComment}
+                disabled={composerDisabled}
                 onClick={() => void uploadImage(pendingImage)}
                 type="button"
               >
@@ -298,7 +331,7 @@ function SocialQuickReplyComposerState({
             <button
               aria-label="移除图片"
               className="focus-ring text-xs font-semibold text-[#d1ff4d]"
-              disabled={!canComment || sending}
+              disabled={composerDisabled}
               onClick={clearPendingImage}
               type="button"
             >
@@ -309,7 +342,7 @@ function SocialQuickReplyComposerState({
       ) : null}
       <ImChatComposer
         actions={actions}
-        disabled={!canComment}
+        disabled={composerDisabled}
         draft={draft}
         isNight
         leadingAccessory={
@@ -321,7 +354,10 @@ function SocialQuickReplyComposerState({
             />
           </span>
         }
-        onDraftChange={setDraft}
+        nativeDisabledInput={!canComment}
+        onDraftChange={(value) => {
+          if (!sending) setDraft(value);
+        }}
         onPanelChange={setPanel}
         onRemovePendingImage={clearPendingImage}
         onSend={() => void submit()}

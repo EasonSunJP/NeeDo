@@ -275,13 +275,47 @@ describe("SocialQuickReplyComposer", () => {
     });
 
     expect(container.querySelector("[data-im-composer-disabled='true']")).not.toBeNull();
-    expect(container.querySelector("[aria-placeholder='仅好友可以评论']")).not.toBeNull();
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-placeholder="仅好友可以评论"]');
+    expect(textarea).not.toBeNull();
+    expect(textarea?.disabled).toBe(true);
     expect([...container.querySelectorAll<HTMLButtonElement>("button")].every((button) => button.disabled)).toBe(true);
-    expect(container.querySelector<HTMLElement>('[role="textbox"]')?.getAttribute("aria-disabled")).toBe("true");
     expect(container.querySelector<HTMLButtonElement>('[aria-label="打开表情面板"]')?.disabled).toBe(true);
     expect(container.querySelector<HTMLButtonElement>('[aria-label="打开更多功能"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="相册"]')?.disabled).toBe(true);
     expect(container.querySelector<HTMLInputElement>('input[aria-label="拍照"]')?.disabled).toBe(true);
     expect(container.querySelector<HTMLInputElement>('input[aria-label="拍照"]')?.getAttribute("capture")).toBe("environment");
+    await act(async () => root.unmount());
+  });
+
+  it("keeps a retained restricted draft in a native disabled textarea with a disabled send control", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const render = async (canComment: boolean) => {
+      await act(async () => {
+        root.render(
+          <SocialQuickReplyComposer
+            actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+            canComment={canComment}
+            onSubmit={vi.fn()}
+            targetIdentity="actor-mia:post-1"
+          />
+        );
+      });
+    };
+
+    await render(true);
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    await act(async () => {
+      editor.textContent = "保留但不可发送";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await render(false);
+
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-placeholder="仅好友可以评论"]');
+    expect(textarea?.disabled).toBe(true);
+    expect(textarea?.value).toBe("保留但不可发送");
+    expect([...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.disabled).toBe(true);
     await act(async () => root.unmount());
   });
 
@@ -414,6 +448,172 @@ describe("SocialQuickReplyComposer", () => {
       [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.getAttribute("aria-label") === "移除位置")?.click();
     });
     expect(container.textContent).not.toContain("东京 / 新宿区 / 新宿");
+    await act(async () => root.unmount());
+  });
+
+  it("discards a newly selected location when the selector Back control is used", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+          canComment
+          onSubmit={vi.fn()}
+          targetIdentity="actor-mia:post-1"
+        />
+      );
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="打开更多功能"]')?.click());
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "位置")?.click();
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "东京 / 新宿区 / 新宿")?.click();
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "确定并返回")?.click();
+    });
+    expect(container.textContent).toContain("东京 / 新宿区 / 新宿");
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="打开更多功能"]')?.click());
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "位置")?.click();
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "东京 / 涩谷区 / 涩谷")?.click();
+      container.querySelector<HTMLButtonElement>('[aria-label="返回"]')?.click();
+    });
+
+    expect(container.querySelector('[data-social-quick-reply-composer="true"]')).not.toBeNull();
+    expect(container.textContent).toContain("东京 / 新宿区 / 新宿");
+    expect(container.textContent).not.toContain("东京 / 涩谷区 / 涩谷");
+    await act(async () => root.unmount());
+  });
+
+  it("commits a newly selected location only when the selector Confirm control is used", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+          canComment
+          onSubmit={vi.fn()}
+          targetIdentity="actor-mia:post-1"
+        />
+      );
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="打开更多功能"]')?.click());
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "位置")?.click();
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "东京 / 涩谷区 / 涩谷")?.click();
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "确定并返回")?.click();
+    });
+
+    expect(container.textContent).toContain("东京 / 涩谷区 / 涩谷");
+    await act(async () => root.unmount());
+  });
+
+  it("locks same-target mutations during a delayed POST and restores the intact reply after rejection", async () => {
+    let rejectSubmit!: (reason: Error) => void;
+    const submitPromise = new Promise<SocialPost>((_resolve, reject) => {
+      rejectSubmit = reject;
+    });
+    const onSubmit = vi.fn()
+      .mockImplementationOnce(() => submitPromise)
+      .mockResolvedValueOnce({ id: "reply-after-retry" } as SocialPost);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:locked-preview");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const upload = vi.spyOn(realtimeApi, "uploadSocialMedia").mockResolvedValue({
+      publicId: "e".repeat(64),
+      fileSize: 3,
+      mimeType: "image/png",
+      url: "/media/content/e"
+    });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+          canComment
+          onSubmit={onSubmit}
+          targetIdentity="actor-mia:post-1"
+        />
+      );
+    });
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="打开更多功能"]')?.click());
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "位置")?.click();
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "东京 / 涩谷区 / 涩谷")?.click();
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "确定并返回")?.click();
+    });
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="相册"]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["png"], "locked.png", { type: "image/png" })]
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    await act(async () => {
+      editor.textContent = "提交中的正文";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.click();
+    });
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(editor.getAttribute("contenteditable")).toBe("false");
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="打开表情面板"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="相册"]')?.disabled).toBe(true);
+    expect([...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复中")?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="移除位置"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="移除图片"]')?.disabled).toBe(true);
+
+    const replacement = new File(["new"], "replacement.png", { type: "image/png" });
+    Object.defineProperty(input, "files", { configurable: true, value: [replacement] });
+    await act(async () => {
+      editor.textContent = "不应保留的改动";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(upload).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rejectSubmit(new Error("unexpected"));
+      await submitPromise.catch(() => undefined);
+    });
+
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')?.textContent).toBe("提交中的正文");
+    expect(container.textContent).toContain("东京 / 涩谷区 / 涩谷");
+    expect(container.querySelector('[data-im-composer-pending-image="true"] img')?.getAttribute("src")).toBe("/media/content/e");
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="打开表情面板"]')?.disabled).toBe(false);
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="相册"]')?.disabled).toBe(false);
+    expect([...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="移除位置"]')?.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="移除图片"]')?.disabled).toBe(false);
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("发布失败，请重试。");
+
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.click();
+      await Promise.resolve();
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')?.textContent).toBe("");
+    expect(container.textContent).not.toContain("东京 / 涩谷区 / 涩谷");
+    expect(container.querySelector('[data-im-composer-pending-image="true"]')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
     await act(async () => root.unmount());
   });
 

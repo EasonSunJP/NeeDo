@@ -38,6 +38,7 @@ import {
 import {
   encodeImComposerJudgement,
   getImReactionCategory,
+  materializeImComposerDraft,
   parseImComposerDraft,
   resolveImMessageRichText,
   type ImReactionCategory
@@ -555,6 +556,7 @@ function ImComposerRichInput({
   disabled,
   draft,
   inputRef,
+  nativeDisabled,
   onDraftChange,
   onEnterSubmit,
   placeholder
@@ -562,6 +564,7 @@ function ImComposerRichInput({
   disabled: boolean;
   draft: string;
   inputRef?: Ref<HTMLDivElement>;
+  nativeDisabled: boolean;
   onDraftChange: (value: string) => void;
   onEnterSubmit?: () => void;
   placeholder: string;
@@ -576,7 +579,7 @@ function ImComposerRichInput({
     const editor = editorRef.current;
     if (!editor || readImComposerValue(editor) === draft) return;
     renderImComposerValue(editor, draft);
-  }, [draft]);
+  }, [disabled, draft]);
 
   const handlePaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
     const text = event.clipboardData.getData("text/plain");
@@ -585,6 +588,22 @@ function ImComposerRichInput({
     insertPlainTextIntoImComposer(event.currentTarget, text);
     onDraftChange(readImComposerValue(event.currentTarget));
   };
+
+  if (disabled && nativeDisabled) {
+    return (
+      <div className="relative min-h-[24px]">
+        <textarea
+          aria-placeholder={placeholder}
+          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+          data-im-composer-native-input="true"
+          disabled
+          placeholder={placeholder}
+          rows={1}
+          value={materializeImComposerDraft(draft)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-[24px]">
@@ -676,6 +695,7 @@ export function ImChatComposer({
   recording = { active: false, cancel: false, durationSeconds: 0 },
   leadingAccessory,
   moreAction,
+  nativeDisabledInput = false,
   sendLabel = "发送",
   sendingLabel = "发送中",
   sending = false,
@@ -703,6 +723,7 @@ export function ImChatComposer({
   placeholder?: string;
   leadingAccessory?: ReactNode;
   moreAction?: { ariaLabel: string; run: () => void };
+  nativeDisabledInput?: boolean;
   recording?: ImChatComposerRecordingState;
   sendLabel?: string;
   sendingLabel?: string;
@@ -861,6 +882,7 @@ export function ImChatComposer({
                 disabled={disabled}
                 draft={draft}
                 inputRef={textareaRef}
+                nativeDisabled={nativeDisabledInput}
                 onDraftChange={onDraftChange}
                 onEnterSubmit={submitOnEnter ? onSend : undefined}
                 placeholder={blocked ? "你已将对方加入黑名单" : placeholder}

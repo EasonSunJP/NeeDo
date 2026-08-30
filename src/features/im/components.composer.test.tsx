@@ -399,6 +399,51 @@ describe("ImChatComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("uses a native disabled textarea only when the caller opts into that restricted-input contract", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          disabled
+          draft="受限草稿"
+          isNight
+          nativeDisabledInput
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+        />
+      );
+    });
+
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[data-im-composer-native-input="true"]');
+    expect(textarea).not.toBeNull();
+    expect(textarea?.disabled).toBe(true);
+    expect(textarea?.value).toBe("受限草稿");
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')).toBeNull();
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="正常聊天"
+          isNight
+          nativeDisabledInput
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+        />
+      );
+    });
+
+    expect(container.querySelector('textarea[data-im-composer-native-input="true"]')).toBeNull();
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')).not.toBeNull();
+    await act(async () => root.unmount());
+  });
+
   it("defines bottom-navigation glass, upward panel growth, touch targets, and reduced motion", () => {
     expect(stylesSource).toContain(".client-shell .im-composer-glass");
     expect(stylesSource).toContain(".im-chat-composer-stack");
