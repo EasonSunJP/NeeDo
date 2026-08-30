@@ -2,18 +2,47 @@
 
 Step 11 implements the first formal NDP wallet ledger. It uses integer NDP where `1 NDP = 1 JPY`; all wallet mutations must go through `LedgerService`, never direct balance updates.
 
+## Formal NDP and Test NDP
+
+Migration `20260830210000_exchange_test_ndp_foundation` extends the same Wallet/Ledger authority with two explicit currencies:
+
+- `NDP` is formal and settleable.
+- `TEST_NDP` is non-settleable test value. It cannot enter top-up, withdrawal, payout, external payment, formal settlement, or formal reconciliation/settlement exports.
+- `User.isTestAccount` is the server-side classification. A test user's active wallet currency is `TEST_NDP`; a formal user's active wallet currency is `NDP`.
+- Wallets, transaction headers, immutable entries, reconciliation rows, holds, and order-financial snapshots persist currency. Service/repository checks reject cross-currency relations instead of silently converting them.
+- Test-account provisioning uses idempotent audited ledger credits/debits. It never edits a balance directly. The local foundation calibration target is exactly `100,000 TEST_NDP` available per current account while preserving frozen balances.
+
+Wallet reads and finance reporting expose both currencies without adding them together as formal NDP:
+
+- `GET /api/v1/wallets/me` returns the active wallet, including `currency`.
+- `GET /api/v1/wallets/me/summary` returns `activeCurrency`, `ndp`, and `testNdp` available/frozen pairs.
+- `GET /api/v1/backoffice/finance/ndp-summary` returns each metric as `{ ndp, testNdp }` and returns formal-only `settleableNdp`.
+- Formal reconciliation and settlement export repositories always add `currency = NDP`/`ndpCurrency = NDP`; a client cannot request Test NDP through those endpoints.
+
+Operations account classification is paginated and RBAC-protected. A classification change and any required wallet provisioning are transactional and audited. The current local/test backfill is guarded and rerunnable:
+
+```bash
+npm run check:test-ndp-foundation -- --phase=preflight
+npm run backfill:test-ndp
+npm run prisma:migrate:deploy
+npm run backfill:test-ndp -- --apply
+npm run check:test-ndp-foundation -- --phase=postflight
+```
+
+The Exchange Request publication fee and its future operations-configured 1,000 NDP default are not activated in this foundation. Existing Booking/Request compatibility rules below remain unchanged until that later microstep.
+
 ## Tables
 
-- `wallets`: polymorphic wallet owner (`user`, `shop`, `platform`), `available_balance`, `frozen_balance`, `currency = NDP`.
-- `ledger_transactions`: idempotent transaction header with `idempotency_key`, reference, actor, amount, metadata, and status.
-- `wallet_ledgers`: immutable wallet entry rows with available/frozen deltas and after-balances.
-- `finance_reconciliations`: one reconciliation row per ledger transaction for finance review/export.
+- `wallets`: polymorphic wallet owner (`user`, `shop`, `platform`), `available_balance`, `frozen_balance`, and explicit `NDP | TEST_NDP` currency.
+- `ledger_transactions`: idempotent transaction header with `idempotency_key`, reference, actor, amount, currency, metadata, and status.
+- `wallet_ledgers`: immutable wallet entry rows with currency, available/frozen deltas, and after-balances.
+- `finance_reconciliations`: one currency-bearing reconciliation row per ledger transaction for finance review/export.
 - `platform_fee_rule_sets`, `platform_fee_rules`, `platform_fee_tiers`, `platform_fee_time_windows`: versioned fee rule definitions for Booking/Request fee preview and Booking settlement.
 - `fee_campaigns`: campaign discounts and fee waivers applied during fee calculation.
 - `fee_calculation_logs`: calculation snapshots with applied rule IDs, adjustments, campaign discount, and explanation.
-- `wallet_holds`: locked Booking/Request fee holds created at acceptance and consumed/released by later settlement.
+- `wallet_holds`: currency-bearing locked Booking/Request fee holds created at acceptance and consumed/released by later settlement.
 - `wallet_adjustment_requests`: identity-scoped manual top-up/withdrawal requests with idempotency key, review state, reviewer evidence, and an optional approved ledger-transaction link.
-- `order_financials`: one minimal financial summary per Booking/Request order for backoffice and merchant-admin finance views.
+- `order_financials`: one minimal financial summary per Booking/Request order with an NDP currency snapshot for backoffice and merchant-admin finance views.
 
 Manual service payments remain JPY records, not NDP wallet mutations. Confirming an `onsite` or `bank_transfer` payment updates the Booking payment snapshot and synchronizes the `order_financials` offline-income fields/timeline transactionally. NDP platform-fee holds and settlement remain exclusively inside `LedgerService`.
 - `audit_logs`: ledger mutations write audit rows with target type `ledger_transaction`.
@@ -64,6 +93,7 @@ Future changes should edit or version fee rules instead of adding ledger constan
 ## APIs
 
 - `GET /api/v1/wallets/me`
+- `GET /api/v1/wallets/me/summary`
 - `GET /api/v1/wallets/:id/ledger`
 - `POST /api/v1/wallet-adjustments`
 - `GET /api/v1/wallet-adjustments/me`
@@ -72,6 +102,7 @@ Future changes should edit or version fee rules instead of adding ledger constan
 - `GET /api/v1/finance/ledger/transactions`
 - `GET /api/v1/finance/reconciliation`
 - `GET /api/v1/finance/reconciliation/export`
+- `GET /api/v1/backoffice/finance/ndp-summary`
 - `GET /api/v1/finance/fee-rule-sets`
 - `POST /api/v1/finance/fee-rule-sets`
 - `PUT /api/v1/finance/fee-rule-sets/:id`

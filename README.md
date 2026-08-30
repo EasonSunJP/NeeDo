@@ -136,6 +136,24 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
 
 The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment text remains in its original language. Offer-taking, quotes, matching, booking/order creation, appointments, and payment remain explicitly deferred and have no Exchange route or control in this phase.
 
+### Exchange Test NDP Foundation
+
+Exchange fee work now has a single-wallet Test NDP foundation. Migration `20260830210000_exchange_test_ndp_foundation` adds server-authoritative account classification and an explicit `NDP | TEST_NDP` currency to the existing Wallet/Ledger, reconciliation, hold, and order-financial records; it does not create a second wallet or ledger system. `NDP` remains formally settleable. `TEST_NDP` is local/test value and is blocked from top-up, withdrawal, payout, external payment, and formal settlement/export paths.
+
+Every current local account is classified as a test account and is calibrated to exactly `100,000 TEST_NDP` available through idempotent, audited ledger transactions. `GET /api/v1/wallets/me` returns the active wallet currency, while `GET /api/v1/wallets/me/summary` returns separate formal and Test NDP balances. Paginated operations account management exposes the classification, separate balances, and permission-gated classification action. `GET /api/v1/backoffice/finance/ndp-summary` returns paired formal/Test NDP metrics; the formal value remains primary, Test NDP is secondary, and `settleableNdp` includes formal NDP only. Formal reconciliation and settlement CSV queries enforce `NDP` on the server.
+
+Run the guarded local preview/checks from `backend/` with the ignored `.env.dev` configuration:
+
+```bash
+npm run check:test-ndp-foundation -- --phase=preflight
+npm run backfill:test-ndp
+npm run prisma:migrate:deploy
+npm run backfill:test-ndp -- --apply
+npm run check:test-ndp-foundation -- --phase=postflight
+```
+
+These commands reject production-like targets. The Exchange Request publication fee, its operations-configured default of 1,000 NDP, claiming, matching, booking, and payment remain outside this foundation as separate later microsteps.
+
 The isolated formal Social seed updates the 210 simulation accounts plus the six fixed role-entry accounts without replacing booking/order data. It assigns realistic shop and person names, persists 15 posts per account (text, single image, multi-image, video, and quote), and creates exactly 36 mutual friends per account across shop service accounts, technicians, and general users.
 
 ```bash
