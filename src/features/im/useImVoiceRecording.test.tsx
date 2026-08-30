@@ -450,6 +450,47 @@ describe("useImVoiceRecording", () => {
     expect(audioPlay).not.toHaveBeenCalled();
   });
 
+  it("waits for replay readiness and invalidates a cancelled pending replay", async () => {
+    const recorder = await openRecording();
+    await finishRecorder(recorder);
+    const audio = container.querySelector<HTMLAudioElement>('[data-testid="preview-audio"]')!;
+
+    await act(async () => audio.dispatchEvent(new Event("pause")));
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_NOTHING,
+    });
+    audioPlay.mockClear();
+
+    let pendingReplay!: Promise<void>;
+    await act(async () => {
+      pendingReplay = latest.replay();
+      await Promise.resolve();
+    });
+    expect(audioPlay).not.toHaveBeenCalled();
+
+    await act(async () => {
+      audio.dispatchEvent(new Event("canplay"));
+      await pendingReplay;
+    });
+    expect(audioPlay).toHaveBeenCalledTimes(1);
+
+    await act(async () => audio.dispatchEvent(new Event("pause")));
+    audioPlay.mockClear();
+    await act(async () => {
+      pendingReplay = latest.replay();
+      await Promise.resolve();
+    });
+    expect(audioPlay).not.toHaveBeenCalled();
+
+    await act(async () => {
+      latest.cancel();
+      audio.dispatchEvent(new Event("canplay"));
+      await pendingReplay;
+    });
+    expect(audioPlay).not.toHaveBeenCalled();
+  });
+
   it("tracks preview playback, replays from zero, and finishes at the total duration", async () => {
     const recorder = await openRecording();
     await finishRecorder(recorder);

@@ -416,8 +416,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
         type: recorder.mimeType || chunks[0]?.type || "audio/webm",
       });
       if (chunks.length === 0 || recordedBlob.size === 0) {
-      generationRef.current += 1;
-      invalidatePendingPlayback();
+        generationRef.current += 1;
+        invalidatePendingPlayback();
         setBlob(null);
         setPreviewUrl(null);
         setDurationSeconds(0);
