@@ -35,8 +35,11 @@ describe("IM pages", () => {
     expect(markup).toContain('data-im-composer-disabled="true"');
     expect(markup).toContain('data-im-composer-control="voice-input"');
     expect(markup).toContain('data-im-composer-control="emoji-chat"');
+    expect(markup).toContain('data-im-composer-rich-input="true"');
+    expect(markup).toContain('aria-disabled="true"');
+    expect(markup).toContain('contentEditable="false"');
     expect(markup).toContain('placeholder="发送消息"');
-    expect(markup.match(/disabled=""/g)).toHaveLength(4);
+    expect(markup.match(/disabled=""/g)).toHaveLength(3);
   });
 
   it("recognizes only formal and legacy inaccessible-conversation errors", () => {
@@ -279,9 +282,8 @@ describe("IM pages", () => {
     );
     expect(recallSource).toContain("store.setDraft(conversationId, originalContent)");
     expect(recallSource).toContain("textareaRef.current?.focus()");
-    expect(recallSource).toContain(
-      "textareaRef.current?.setSelectionRange(originalContent.length, originalContent.length)",
-    );
+    expect(recallSource).toContain("range.selectNodeContents(editor)");
+    expect(recallSource).toContain("range.collapse(false)");
     expect(recallSource).toContain("发送超过3分钟后无法撤回");
     expect(recallSource).toContain("撤回失败，请稍后重试");
     const recallFailureStart = recallSource.indexOf(".catch((error: unknown) => {");
