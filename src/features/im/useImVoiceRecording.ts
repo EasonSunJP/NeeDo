@@ -53,6 +53,9 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const previewGenerationRef = useRef(0);
+  const autoPlaybackUrlRef = useRef<string | null>(null);
+  const playbackAttemptRef = useRef(0);
   const startedAtRef = useRef(0);
   const stoppedDurationRef = useRef(0);
   const stopRequestedRef = useRef(false);
@@ -92,6 +95,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
   }, []);
 
   const revokePreviewUrl = useCallback(() => {
+    playbackAttemptRef.current += 1;
+    autoPlaybackUrlRef.current = null;
     const currentUrl = objectUrlRef.current;
     objectUrlRef.current = null;
     if (currentUrl) {
@@ -146,19 +151,45 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     }
   }, [clearTimers, stopStream, transition]);
 
-  const attemptPlayback = useCallback(async (generation: number, resetTime: boolean) => {
+  const attemptPlayback = useCallback(async (
+    generation: number,
+    expectedUrl: string,
+    resetTime: boolean,
+  ) => {
     const audio = audioRef.current;
-    if (!audio || !objectUrlRef.current) return;
+    if (
+      !audio ||
+      objectUrlRef.current !== expectedUrl ||
+      audio.getAttribute("src") !== expectedUrl
+    ) {
+      return;
+    }
 
+    const attempt = playbackAttemptRef.current + 1;
+    playbackAttemptRef.current = attempt;
     if (resetTime) audio.currentTime = 0;
     try {
       await audio.play();
-      if (mountedRef.current && generationRef.current === generation) {
+      if (
+        mountedRef.current &&
+        playbackAttemptRef.current === attempt &&
+        generationRef.current === generation &&
+        objectUrlRef.current === expectedUrl &&
+        (phaseRef.current === "preview_paused" ||
+          phaseRef.current === "preview_playing")
+      ) {
         setError(null);
         transition("preview_playing");
       }
     } catch {
-      if (mountedRef.current && generationRef.current === generation) {
+      if (
+        mountedRef.current &&
+        playbackAttemptRef.current === attempt &&
+        generationRef.current === generation &&
+        objectUrlRef.current === expectedUrl &&
+        (phaseRef.current === "preview_paused" ||
+          phaseRef.current === "preview_playing")
+      ) {
         setError("error.im.voice_autoplay_blocked");
         transition("preview_paused");
       }
@@ -257,7 +288,23 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       const recordedBlob = new Blob(chunks, {
         type: recorder.mimeType || chunks[0]?.type || "audio/webm",
       });
+      if (chunks.length === 0 || recordedBlob.size === 0) {
+        generationRef.current += 1;
+        playbackAttemptRef.current += 1;
+        setBlob(null);
+        setPreviewUrl(null);
+        setDurationSeconds(0);
+        setRemainingSeconds(MAX_VOICE_RECORDING_SECONDS);
+        setProgress(0);
+        setError("error.im.voice_recording_failed");
+        transition("idle");
+        return;
+      }
+
       const url = URL.createObjectURL(recordedBlob);
+      playbackAttemptRef.current += 1;
+      autoPlaybackUrlRef.current = null;
+      previewGenerationRef.current = generation;
       objectUrlRef.current = url;
       setBlob(recordedBlob);
       setPreviewUrl(url);
@@ -266,7 +313,6 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       setProgress(measuredDuration / MAX_VOICE_RECORDING_SECONDS);
       setError(null);
       transition("preview_paused");
-      void attemptPlayback(generation, false);
     };
 
     try {
@@ -299,7 +345,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     limitRef.current = window.setTimeout(() => {
       stop("limit");
     }, MAX_VOICE_RECORDING_SECONDS * 1_000);
-  }, [attemptPlayback, clearTimers, stop, stopStream, transition]);
+  }, [clearTimers, stop, stopStream, transition]);
 
   const cancel = useCallback(() => {
     generationRef.current += 1;
@@ -328,7 +374,9 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     ) {
       return;
     }
-    await attemptPlayback(generationRef.current, true);
+    const currentUrl = objectUrlRef.current;
+    if (!currentUrl) return;
+    await attemptPlayback(generationRef.current, currentUrl, true);
   }, [attemptPlayback]);
 
   const beginSending = useCallback(() => {
@@ -339,6 +387,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     ) {
       return;
     }
+    playbackAttemptRef.current += 1;
     transition("sending");
     setError(null);
     pausePreview();
@@ -367,6 +416,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
     const markPaused = () => {
       if (phaseRef.current === "preview_playing") {
+        playbackAttemptRef.current += 1;
         transition("preview_paused");
       }
     };
@@ -378,23 +428,41 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     };
   }, [transition]);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    generationRef.current += 1;
-    clearTimers();
-    pausePreview();
-    const recorder = recorderRef.current;
-    recorderRef.current = null;
-    if (recorder && recorder.state !== "inactive" && !stopRequestedRef.current) {
-      stopRequestedRef.current = true;
-      try {
-        recorder.stop();
-      } catch {
-        // The owned stream and URL are still released below.
-      }
+  useEffect(() => {
+    const currentUrl = previewUrl;
+    if (
+      !currentUrl ||
+      objectUrlRef.current !== currentUrl ||
+      autoPlaybackUrlRef.current === currentUrl ||
+      phaseRef.current !== "preview_paused"
+    ) {
+      return;
     }
-    stopStream(streamRef.current);
-    revokePreviewUrl();
+    autoPlaybackUrlRef.current = currentUrl;
+    void attemptPlayback(previewGenerationRef.current, currentUrl, false);
+  }, [attemptPlayback, previewUrl]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      playbackAttemptRef.current += 1;
+      clearTimers();
+      pausePreview();
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      if (recorder && recorder.state !== "inactive" && !stopRequestedRef.current) {
+        stopRequestedRef.current = true;
+        try {
+          recorder.stop();
+        } catch {
+          // The owned stream and URL are still released below.
+        }
+      }
+      stopStream(streamRef.current);
+      revokePreviewUrl();
+    };
   }, [clearTimers, pausePreview, revokePreviewUrl, stopStream]);
 
   return {

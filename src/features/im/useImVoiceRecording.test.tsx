@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -149,6 +149,24 @@ describe("useImVoiceRecording", () => {
     expect(latest.progress).toBe(0);
   });
 
+  it("can open after the StrictMode effect cleanup and setup cycle", async () => {
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(
+      <StrictMode>
+        <HookProbe />
+      </StrictMode>,
+    ));
+
+    await act(async () => {
+      await latest.open();
+    });
+
+    expect(latest.phase).toBe("recording");
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+    expect(trackStop).not.toHaveBeenCalled();
+  });
+
   it("uses elapsed time for manual stop and never stops the recorder twice", async () => {
     const recorder = await openRecording();
 
@@ -203,6 +221,73 @@ describe("useImVoiceRecording", () => {
     expect(latest.phase).not.toBe("sending");
     expect(trackStop).toHaveBeenCalledTimes(1);
   });
+
+  it("commits the preview URL to the audio element before autoplay", async () => {
+    let srcAtPlay: string | null = null;
+    audioPlay.mockImplementation(function (this: HTMLMediaElement) {
+      srcAtPlay = this.getAttribute("src");
+      return Promise.resolve();
+    });
+    const recorder = await openRecording();
+
+    await finishRecorder(recorder);
+
+    expect(srcAtPlay).toBe("blob:needo-voice-1");
+    expect(audioPlay).toHaveBeenCalledTimes(1);
+    expect(latest.phase).toBe("preview_playing");
+  });
+
+  it("does not let a pending autoplay rejection escape the sending phase", async () => {
+    const playback = deferred<void>();
+    audioPlay.mockReturnValue(playback.promise);
+    const recorder = await openRecording();
+    await finishRecorder(recorder);
+
+    expect(latest.phase).toBe("preview_paused");
+    await act(async () => latest.beginSending());
+    expect(latest.phase).toBe("sending");
+
+    await act(async () => {
+      playback.reject(new DOMException("Autoplay blocked", "NotAllowedError"));
+      await Promise.resolve();
+    });
+    expect(latest.phase).toBe("sending");
+
+    await act(async () => latest.finishSending());
+    expect(latest.phase).toBe("idle");
+    expect(latest.blob).toBeNull();
+    expect(latest.previewUrl).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["no data", "zero-size data"])(
+    "rejects %s without creating or playing an empty preview",
+    async (dataCase) => {
+      const recorder = await openRecording();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+        latest.stop("manual");
+        if (dataCase === "zero-size data") {
+          recorder.emitData(new Blob([], { type: "audio/webm" }));
+        }
+        recorder.finishStop();
+        await Promise.resolve();
+      });
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(audioPlay).not.toHaveBeenCalled();
+      expect(latest.phase).toBe("idle");
+      expect(latest.error).toBe("error.im.voice_recording_failed");
+      expect(latest.blob).toBeNull();
+      expect(latest.previewUrl).toBeNull();
+      expect(latest.durationSeconds).toBe(0);
+      expect(latest.remainingSeconds).toBe(MAX_VOICE_RECORDING_SECONDS);
+      expect(latest.progress).toBe(0);
+      expect(trackStop).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 
   it("stops late permission tracks after cancellation without starting a recorder", async () => {
     const permission = deferred<MediaStream>();
