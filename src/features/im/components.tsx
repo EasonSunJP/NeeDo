@@ -2837,6 +2837,8 @@ export function ImQuotedMessagePreview({
   translation?: ImMessageTranslationOptions;
 }) {
   const caption = message.ext?.caption?.trim() ?? "";
+  const fileName = message.ext?.fileName ?? "";
+  const hasFileName = Boolean(fileName.trim());
 
   if (message.type === "system" || message.type === "recalled" || message.status === "recalled") {
     const label = message.type === "system"
@@ -2886,21 +2888,30 @@ export function ImQuotedMessagePreview({
   }
 
   if (message.type === "voice" || message.type === "file") {
-    const label = caption || (message.type === "file" ? message.ext?.fileName?.trim() ?? "" : "");
+    const hasLabel = Boolean(caption) || message.type === "file";
 
     return (
       <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-black/10">
           <ImIcon className="h-5 w-5 opacity-80" name={message.type === "voice" ? "mic" : "file"} />
         </span>
-        {label ? (
+        {hasLabel ? (
           <div data-im-quoted-media-caption="true">
-            <ImRichMessageText
-              className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
-              content={label}
-              richText={caption ? message.ext?.captionRichText : undefined}
-              translation={translation}
-            />
+            {caption ? (
+              <ImRichMessageText
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                content={caption}
+                richText={message.ext?.captionRichText}
+                translation={translation}
+              />
+            ) : (
+              <p
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                data-no-i18n={hasFileName ? "true" : undefined}
+              >
+                {hasFileName ? fileName : previewLabel("file")}
+              </p>
+            )}
           </div>
         ) : null}
       </div>
@@ -3022,13 +3033,21 @@ export function MessageBubble({
     }
 
     if (message.type === "file") {
+      const fileName = message.ext?.fileName ?? "";
+      const hasFileName = Boolean(fileName.trim());
+
       return (
         <div className="flex min-w-[220px] items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-black/6">
               <ImIcon name="file" />
-            </span>
+          </span>
           <div className="min-w-0">
-            <p className="truncate text-[14px] font-medium">{message.ext?.fileName ?? "未命名文件"}</p>
+            <p
+              className="truncate text-[14px] font-medium"
+              data-no-i18n={hasFileName ? "true" : undefined}
+            >
+              {hasFileName ? fileName : previewLabel("file")}
+            </p>
             <p className={cn("mt-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{formatSize(message.ext?.fileSize)}</p>
           </div>
         </div>

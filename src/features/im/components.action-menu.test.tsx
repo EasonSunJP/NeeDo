@@ -803,6 +803,109 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => root.unmount());
   });
 
+  it("keeps actual file names raw and protected with translation enabled or disabled", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const fileMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-file-name-1",
+      localId: "translation-file-name-1",
+      type: "file",
+      content: "/media/file.bin",
+      ext: { fileName: "文件" }
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-main-file-name": "true" },
+          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-file-name-enabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-file-name-disabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
+        )
+      ));
+    });
+
+    for (const selector of [
+      "[data-test-main-file-name]",
+      "[data-test-quoted-file-name-enabled]",
+      "[data-test-quoted-file-name-disabled]",
+    ]) {
+      const fileRoot = container.querySelector<HTMLElement>(selector);
+      expect(fileRoot?.textContent).toContain("文件");
+      expect(fileRoot?.textContent).not.toContain("ファイル");
+      expect(fileRoot?.querySelector("[data-no-i18n]")?.textContent).toBe("文件");
+    }
+
+    await act(async () => root.unmount());
+  });
+
+  it("translates quoted file captions according to the explicit option", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const fileMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-file-caption-1",
+      localId: "translation-file-caption-1",
+      type: "file",
+      content: "/media/file.bin",
+      ext: { caption: "测试测试", fileName: "文件" }
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-quoted-file-caption-enabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-file-caption-disabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
+        )
+      ));
+    });
+
+    expect(container.querySelector("[data-test-quoted-file-caption-enabled]")?.textContent).toBe("テストテスト");
+    expect(container.querySelector("[data-test-quoted-file-caption-disabled]")?.textContent).toBe("测试测试");
+
+    await act(async () => root.unmount());
+  });
+
+  it("leaves quoted and main fallback file labels on normal UI i18n", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const fileMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-file-fallback-1",
+      localId: "translation-file-fallback-1",
+      type: "file",
+      content: "/media/file.bin"
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-main-file-fallback": "true" },
+          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-file-fallback": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage, translation: japaneseTranslation })
+        )
+      ));
+    });
+
+    for (const selector of ["[data-test-main-file-fallback]", "[data-test-quoted-file-fallback]"]) {
+      const fallbackRoot = container.querySelector<HTMLElement>(selector);
+      expect(fallbackRoot?.textContent).toContain("文件");
+      expect(fallbackRoot?.querySelector("[data-no-i18n]")).toBeNull();
+    }
+
+    await act(async () => root.unmount());
+  });
+
   it("keeps quoted system and recalled labels outside the user text translation boundary", async () => {
     const container = document.createElement("div");
     document.body.append(container);
