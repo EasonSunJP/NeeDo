@@ -11,6 +11,8 @@ The canonical scoped post-detail URL is now the only reply destination. The two 
 
 Both valid redirects carry `{ focusSocialReply: true }`. An invalid or empty historical compose reply id returns to the scoped timeline. A bad legacy path id still reaches the canonical detail route and uses its existing not-found behavior.
 
+Legacy reply drafts are now handled only by a best-effort startup cleanup of the existing `needo.social.module.v2` object. Formal Provider state does not hydrate legacy drafts, no new draft-storage key is created, and no ongoing browser draft-persistence effect exists.
+
 Task 7 focus consumption/detail restyling and Task 8 plus-menu actions remain intentionally deferred.
 
 ## RED evidence
@@ -57,7 +59,8 @@ The failures were assertion failures against the old behavior, not syntax, impor
 ### Obsolete full reply UI deletion
 
 - Removed reply query parsing, reply parent lookup, reply post type, reply-specific draft key/payload, reply labels, reply preview, reply placeholder, and reply mutation input from `SocialComposerPage`.
-- Filtered legacy reply drafts out of `SocialDraftsPage`; removed their resume query and `回复草稿` label.
+- Removed reply-specific draft compatibility knowledge from `SocialDraftsPage`; it now renders valid new-post, edit, and quote drafts generically.
+- Removed legacy reply draft records in place at the Social startup storage boundary while preserving valid drafts and unrelated legacy fields.
 - Preserved root-post, edit, and quote composer behavior.
 
 ### Canonical reply navigation
@@ -97,13 +100,10 @@ npm run lint
   PASS — tsc -b --noEmit
 
 npm test
-  PASS — 252 files, 1,524 tests
+  PASS — 252 files, 1,527 tests
 
 npm run build
-  PASS — 494 modules transformed
-
-npm run verify:production-build
-  PASS — formal build; production bundle audit PASS (8 HTML entries, 23 assets)
+  PASS — 495 modules transformed
 
 git diff --check
   PASS
@@ -113,7 +113,7 @@ Build output retains existing non-fatal warnings about `SocialProfilePage.tsx` b
 
 ## Self-review
 
-- Scope: no backend, database, migration, provider, mock, deploy, or Task 7/8 implementation was added.
+- Scope: the only Provider change is the best-effort legacy reply-draft cleanup call at Social startup; no backend, database, migration, mock, deploy, or Task 7/8 implementation was added.
 - Data behavior: persisted replies and inline `createPost({ replyToPostId })` remain intact; only the deleted full-page reply composer and duplicate reply routes were removed.
 - Compatibility: new-post, edit, quote, repost, media, profile, notification, and search routes remain unchanged.
 - Lazy boundary: redirect logic executes before `FullSocialRoute`; the mocked lazy composer render count stays zero in the redirect test.
@@ -123,7 +123,9 @@ Build output retains existing non-fatal warnings about `SocialProfilePage.tsx` b
 - Shared plus control: still rendered under the shared `ImChatComposer`; it no longer navigates to obsolete UI and remains ready for Task 8 action injection.
 - No push or deployment was performed.
 
-## Files changed
+## Final changed-file inventory
+
+This inventory describes the final cleanup-only tree. The rejected intermediate `src/features/social/draft-storage.ts` subsystem does not exist in the final tree.
 
 - `src/App.tsx`
 - `src/App.test.tsx`
@@ -151,13 +153,13 @@ Build output retains existing non-fatal warnings about `SocialProfilePage.tsx` b
 
 ---
 
-## Review follow-up — reply-draft and obsolete-copy deletion
+## Rejected intermediate revision — permanent draft persistence attempt
 
-Task 6 review identified two remaining deletion gaps. Both were addressed without changing formal `SocialPost.replyToPostId`, `SocialCreatePostInput.replyToPostId`, or the real inline create-reply mutation.
+Task 6 review identified two remaining deletion gaps: obsolete reply-draft support and obsolete copy/tests. The first attempted fix removed the reply field and copy, but also introduced a new permanent browser draft-persistence subsystem. Although its tests passed, review rejected that subsystem because it was unscoped to account identity and could leak drafts across accounts. The cleanup-only behavior documented later in this report did **not** exist in this intermediate revision.
 
 ### Follow-up RED
 
-Tests were changed before the cleanup implementation. Command:
+Tests were changed before the intermediate implementation. Command:
 
 ```bash
 npm test -- src/features/social/formal-provider.test.ts src/features/social/pages/SocialComposerPage.test.tsx src/i18n/translations.test.ts src/features/im/components.composer.test.tsx
@@ -171,27 +173,28 @@ Tests       3 failed | 77 passed (80)
 exit code   1
 ```
 
-The three expected assertion failures proved that:
+The three expected assertion failures proved that the pre-follow-up code still lacked the requested draft/copy deletion behavior:
 
-- no persisted-draft hydration/cleanup function existed;
+- no persisted-draft compatibility/cleanup function existed;
 - `SocialComposerDraft` still contained `replyToPostId` and `SocialDraftsPage` still knew how to filter it;
 - the three obsolete translation keys were still present.
 
 The neutral generic IM composer label change passed immediately because it deliberately changes no IM behavior.
 
-### Follow-up implementation
+### Rejected intermediate implementation
 
 - Removed `replyToPostId` from `SocialComposerDraft`.
 - Removed reply-specific compatibility filtering from `SocialDraftsPage`; it now lists all valid scoped composer drafts generically.
-- Added cleanup-only `cleanupLegacySocialReplyDrafts` at the formal Social startup boundary.
-- The cleanup reads only the former `needo.social.module.v2` object, removes draft records that own `replyToPostId`, and rewrites that same object while preserving ordinary, quote, edit, malformed non-reply drafts, and unrelated fields.
-- Formal Provider state still starts from `emptyFormalSocialState`; no legacy draft is hydrated and no new draft key or ongoing browser persistence exists.
-- Browser storage access remains best-effort; unavailable or quota-rejected storage cannot block the formal Social UI.
+- Added the now-rejected `needo.social.composer-drafts.v1` browser-storage key and a draft-storage module.
+- Imported compatible legacy drafts from `needo.social.module.v2` into formal Provider state and persisted every subsequent formal draft change into the new key.
+- Sanitized and rewrote the old object's drafts during hydration, but also copied the retained drafts into the new permanent key; cleanup was therefore coupled to hydration and ongoing persistence rather than being cleanup-only.
 - Removed five-language translation rows for `打开完整回复`, `回复草稿`, and the old explanation that directed users into the full post composer.
 - Updated translation coverage to assert those obsolete keys stay absent while preserving `回复中` localization.
 - Replaced the generic IM composer test's Social-specific `打开完整回复` example with neutral `执行自定义操作`; IM behavior and the `moreAction` contract are unchanged.
 
-### Follow-up GREEN and verification
+### Rejected intermediate GREEN evidence
+
+These passing results belong only to the rejected permanent-persistence revision. They do not prove or describe cleanup-only behavior.
 
 Initial focused GREEN:
 
@@ -256,20 +259,20 @@ git diff --check
 
 Result: PASS with no output.
 
-### Follow-up self-review
+### Why this passing revision was rejected
 
-- The cleanup does not hydrate or persist composer drafts and does not restore old Social posts, profiles, interactions, notifications, mocks, or parallel business state.
-- The legacy full-state key is read only to physically remove reply drafts; unrelated legacy fields remain untouched.
-- Ordinary, quote, and edit draft records retain their exact content and ordering in the old object.
-- There is no `needo.social.composer-drafts.v1` key, formal state hydration, or every-draft persistence effect.
-- Formal reply post rendering, counts, parent relationships, and inline create-reply inputs remain present and covered by the full suite.
-- No backend, schema, migration, push, deployment, or Task 7/8 work was performed.
+- The new `needo.social.composer-drafts.v1` store was not scoped to an authenticated account and therefore could expose one account's drafts to another account using the same browser profile.
+- Hydrating legacy drafts into formal Provider state and persisting every draft was broader than Task 6's deletion/compatibility boundary.
+- Passing 80/117/1,526 tests did not make that account-boundary risk acceptable.
+- Review required deleting this subsystem and replacing it with the narrowly scoped, in-place cleanup documented and verified in the final section below.
 
 ---
 
 ## Final re-review fix — cleanup-only legacy draft removal
 
 Re-review correctly rejected the intermediate unscoped `needo.social.composer-drafts.v1` persistence because it could share drafts across accounts. That subsystem was removed completely.
+
+This final section and its 13/81/118/1,527 passing evidence are authoritative for the delivered cleanup-only state.
 
 ### Cleanup-only RED
 
