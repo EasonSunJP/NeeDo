@@ -62,6 +62,25 @@ describe("formal social adapter", () => {
     );
   });
 
+  it("prefers server-authoritative interaction counters and viewer state over legacy media snapshots", () => {
+    const mapped = mapFormalSocialPost({
+      ...formalPost,
+      counters: { likes: 31, reposts: 7, views: 922, bookmarks: 15 },
+      viewerInteraction: {
+        liked: true,
+        bookmarked: true,
+        shared: true
+      }
+    });
+
+    expect(mapped).toMatchObject({
+      likeCount: 31,
+      repostCount: 7,
+      viewCount: 922,
+      bookmarkCount: 15
+    });
+  });
+
   it("maps authoritative reply fields and valid rich text while safely dropping malformed metadata", () => {
     const mapped = mapFormalSocialPost({
       id: 701,

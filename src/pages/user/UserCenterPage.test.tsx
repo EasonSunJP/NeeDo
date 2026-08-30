@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import source from "./UserCenterPage.tsx?raw";
 
 describe("UserCenterPage", () => {
+  it("links the collection entry to the formal bookmarked-dynamics page", () => {
+    expect(source).toContain('{ label: "我的收藏", info: "已收藏的动态"');
+    expect(source).toContain('to: "/me/favorites"');
+    expect(source).not.toContain('to: "/categories?type=store"');
+  });
+
   it("has no legacy mock or static-preview fallback in the formal user center", () => {
     expect(source).not.toContain('from "../../data/mock"');
     expect(source).not.toContain("legacyOrderShortcuts");

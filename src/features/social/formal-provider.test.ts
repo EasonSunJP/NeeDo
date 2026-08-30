@@ -86,6 +86,20 @@ describe("formal social provider gate", () => {
     expect(source).not.toContain("FormalSocialCompatibilityProvider");
   });
 
+  it("uses formal APIs for likes, bookmarks, views, shares, and bookmarked-post loading", () => {
+    expect(source).toContain("realtimeApi.likeSocialPost");
+    expect(source).toContain("realtimeApi.unlikeSocialPost");
+    expect(source).toContain("realtimeApi.bookmarkSocialPost");
+    expect(source).toContain("realtimeApi.unbookmarkSocialPost");
+    expect(source).toContain("realtimeApi.recordSocialPostView");
+    expect(source).toContain("realtimeApi.shareSocialPostToFriends");
+    expect(source).toContain("bookmarked: true");
+    expect(source).toContain('event.type === "social.post.interaction.updated"');
+    expect(source).not.toContain("toggleLike: formalSocialMutationUnavailable");
+    expect(source).not.toContain("toggleBookmark: formalSocialMutationUnavailable");
+    expect(source).not.toContain("incrementView: () => undefined");
+  });
+
   it("waits for access-token restoration before loading protected social data", () => {
     expect(source).toContain("const { isRestoring, session } = useAuth();");
     expect(source).toContain("if (sessionUserId === null || isRestoring) return;");

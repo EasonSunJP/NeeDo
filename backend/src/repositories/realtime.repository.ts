@@ -250,12 +250,68 @@ export interface SocialPostPayload {
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
   viewerIsFriend: boolean;
+  counters: {
+    likes: number;
+    reposts: number;
+    views: number;
+    bookmarks: number;
+  };
+  viewerInteraction: {
+    liked: boolean;
+    bookmarked: boolean;
+    shared: boolean;
+  };
 }
 
 type SocialRelationshipMap = {
   follows: Set<string>;
   friendIdentityIds: Set<number>;
 };
+
+type SocialInteractionMap = {
+  likedPostIds: Set<number>;
+  bookmarkedPostIds: Set<number>;
+  sharedPostIds: Set<number>;
+};
+
+export interface SocialPostInteractionMutationInput {
+  postId: number;
+  actorUserId: number;
+  actorIdentityId?: number;
+  active: boolean;
+  context: AuthRequestContext;
+}
+
+export interface RecordSocialPostViewInput {
+  postId: number;
+  actorUserId: number;
+  actorIdentityId?: number;
+  context: AuthRequestContext;
+}
+
+export interface ShareSocialPostInput {
+  postId: number;
+  actorUserId: number;
+  actorIdentityId?: number;
+  targetUserIds: number[];
+  idempotencyKey: string;
+  context: AuthRequestContext;
+}
+
+export interface SocialPostInteractionMutationResult {
+  changed: boolean;
+  post: SocialPostPayload;
+}
+
+export interface SocialPostShareDelivery {
+  recipientUserId: number;
+  recipientIdentityId: number;
+  message: MessagePayload;
+}
+
+export interface ShareSocialPostResult extends SocialPostInteractionMutationResult {
+  deliveries: SocialPostShareDelivery[];
+}
 
 export interface FollowPayload {
   id: number;
@@ -486,6 +542,7 @@ export interface SocialPostListInput extends PaginationInput {
   authorUserId?: number;
   authorIdentityId?: number;
   replyToPostId?: number;
+  bookmarked?: boolean;
 }
 
 export interface SocialActivityStatusInput {
@@ -632,6 +689,16 @@ export interface RealtimeRepositoryPort {
     postId: number,
     userId?: number
   ) => Promise<SocialPostPayload | null>;
+  setSocialPostLike: (
+    input: SocialPostInteractionMutationInput
+  ) => Promise<SocialPostInteractionMutationResult | null>;
+  setSocialPostBookmark: (
+    input: SocialPostInteractionMutationInput
+  ) => Promise<SocialPostInteractionMutationResult | null>;
+  recordSocialPostView: (
+    input: RecordSocialPostViewInput
+  ) => Promise<SocialPostInteractionMutationResult | null>;
+  shareSocialPost: (input: ShareSocialPostInput) => Promise<ShareSocialPostResult | null>;
   getSocialActivityStatus: (
     input: SocialActivityStatusInput
   ) => Promise<SocialActivityStatusPayload | null>;
@@ -695,7 +762,13 @@ const socialPostInclude = {
     select: { id: true, type: true, displayName: true }
   },
   _count: {
-    select: { replies: { where: { deletedAt: null } } }
+    select: {
+      replies: { where: { deletedAt: null } },
+      likes: { where: { deletedAt: null } },
+      bookmarks: { where: { deletedAt: null } },
+      views: { where: { deletedAt: null } },
+      shares: { where: { deletedAt: null } }
+    }
   }
 } satisfies Prisma.SocialPostInclude;
 
@@ -3410,6 +3483,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
       ...(input.authorIdentityId ? { authorIdentityId: input.authorIdentityId } : {}),
       ...(input.replyToPostId ? { replyToPostId: input.replyToPostId } : {}),
+      ...(input.bookmarked
+        ? {
+            bookmarks: {
+              some: { actorIdentityId: identityId, deletedAt: null }
+            }
+          }
+        : {}),
       OR: [
         { visibility: SocialPostVisibility.PUBLIC },
         { authorIdentityId: identityId },
@@ -3436,14 +3516,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       this.client.socialPost.count({ where })
     ]);
 
-    const relationshipMap = await this.loadSocialRelationshipMap(
-      identityId,
-      list.map((socialPost) => socialPost.authorIdentityId)
-    );
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(
+        identityId,
+        list.map((socialPost) => socialPost.authorIdentityId)
+      ),
+      this.loadSocialInteractionMap(identityId, list.map((socialPost) => socialPost.id))
+    ]);
 
     return buildPaginatedResponse(
       list.map((socialPost) =>
-        this.mapSocialPost(socialPost, identityId, socialPost.authorIdentityId, relationshipMap)
+        this.mapSocialPost(
+          socialPost,
+          identityId,
+          socialPost.authorIdentityId,
+          relationshipMap,
+          interactionMap
+        )
       ),
       total,
       pagination
@@ -3482,14 +3571,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       return null;
     }
 
-    const relationshipMap = await this.loadSocialRelationshipMap(identityId, [
-      socialPost.authorIdentityId
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(identityId, [socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(identityId, [socialPost.id])
     ]);
     return this.mapSocialPost(
       socialPost,
       identityId,
       socialPost.authorIdentityId,
-      relationshipMap
+      relationshipMap,
+      interactionMap
     );
   }
 
@@ -4566,6 +4657,42 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return { follows, friendIdentityIds };
   }
 
+  private async loadSocialInteractionMap(
+    viewerIdentityId: number,
+    postIds: number[]
+  ): Promise<SocialInteractionMap> {
+    const uniquePostIds = [...new Set(postIds)];
+    if (uniquePostIds.length === 0) {
+      return {
+        likedPostIds: new Set(),
+        bookmarkedPostIds: new Set(),
+        sharedPostIds: new Set()
+      };
+    }
+
+    const [likes, bookmarks, shares] = await Promise.all([
+      this.client.socialPostLike.findMany({
+        where: { postId: { in: uniquePostIds }, actorIdentityId: viewerIdentityId, deletedAt: null },
+        select: { postId: true }
+      }),
+      this.client.socialPostBookmark.findMany({
+        where: { postId: { in: uniquePostIds }, actorIdentityId: viewerIdentityId, deletedAt: null },
+        select: { postId: true }
+      }),
+      this.client.socialPostShare.findMany({
+        where: { postId: { in: uniquePostIds }, actorIdentityId: viewerIdentityId, deletedAt: null },
+        select: { postId: true },
+        distinct: ["postId"]
+      })
+    ]);
+
+    return {
+      likedPostIds: new Set(likes.map((item) => item.postId)),
+      bookmarkedPostIds: new Set(bookmarks.map((item) => item.postId)),
+      sharedPostIds: new Set(shares.map((item) => item.postId))
+    };
+  }
+
   private mapSocialAuthor(
     author: SocialAuthorRecord,
     postIdentity?: { id: number; type: string; displayName: string | null }
@@ -4603,8 +4730,15 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     relationshipMap: SocialRelationshipMap = {
       follows: new Set(),
       friendIdentityIds: new Set()
+    },
+    interactionMap: SocialInteractionMap = {
+      likedPostIds: new Set(),
+      bookmarkedPostIds: new Set(),
+      sharedPostIds: new Set()
     }
   ): SocialPostPayload {
+    const envelope = this.jsonRecord(socialPost.media);
+    const legacyCounters = this.jsonRecord(envelope?.counters);
     return {
       id: socialPost.id,
       authorUserId: socialPost.authorUserId,
@@ -4623,6 +4757,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         viewerIdentityId === authorIdentityId ||
         relationshipMap.follows.has(`${authorIdentityId}:${viewerIdentityId}`),
       viewerIsFriend: relationshipMap.friendIdentityIds.has(authorIdentityId),
+      counters: {
+        likes: this.jsonCounter(legacyCounters?.likes, 0) + socialPost._count.likes,
+        reposts: this.jsonCounter(legacyCounters?.reposts, 0) + socialPost._count.shares,
+        views: this.jsonCounter(legacyCounters?.views, 1) + socialPost._count.views,
+        bookmarks: this.jsonCounter(legacyCounters?.bookmarks, 0) + socialPost._count.bookmarks
+      },
+      viewerInteraction: {
+        liked: interactionMap.likedPostIds.has(socialPost.id),
+        bookmarked: interactionMap.bookmarkedPostIds.has(socialPost.id),
+        shared: interactionMap.sharedPostIds.has(socialPost.id)
+      },
       author: this.mapSocialAuthor(socialPost.author, socialPost.authorIdentity)
     };
   }
