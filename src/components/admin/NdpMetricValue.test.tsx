@@ -11,4 +11,3 @@ describe("NdpMetricValue", () => {
     expect(markup).not.toContain("1,998 NDP");
   });
 });
-

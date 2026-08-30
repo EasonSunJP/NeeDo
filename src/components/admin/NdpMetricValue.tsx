@@ -8,4 +8,3 @@ export function NdpMetricValue({ ndp, testNdp }: { ndp: number; testNdp: number 
     </div>
   );
 }
-
