@@ -13668,7 +13668,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Send one validated raw-audio IM voice message",
         description:
-          "Requires Bearer authentication and message:create. Accepts at most 8 MiB and returns the existing RealtimeMessage contract.",
+          "Requires Bearer authentication and message:create. Accepts at most 8 MiB of pure audio. The server-probed duration is authoritative: media must contain audio, contain no video track, and be no longer than 59.5 seconds. Parser failures and unverifiable media fail closed. The response uses the existing RealtimeMessage contract.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -13687,6 +13687,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "durationSeconds",
             in: "query",
             required: true,
+            description:
+              "Integer client hint from 1 to 59 seconds. The server parses the media and accepts only when its authoritative rounded duration differs by at most one second.",
             schema: { type: "integer", minimum: 1, maximum: 59 }
           }
         ],
@@ -13703,7 +13705,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "201": jsonDataResponse("Created voice message", {
             $ref: "#/components/schemas/RealtimeMessage"
           }),
-          "400": { description: "Invalid path, query, duration, or audio bytes" },
+          "400": {
+            description:
+              "Invalid path or query, parser failure, unverifiable media, video-bearing media, over-limit authoritative duration, or client hint mismatch"
+          },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:create permission or send access" },
           "404": { description: "Conversation not found for current participant" },

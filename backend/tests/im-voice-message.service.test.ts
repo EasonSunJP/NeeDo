@@ -158,6 +158,21 @@ describe("ImVoiceMessageService", () => {
       result: { durationSeconds: 6, hasAudio: true, hasVideo: true }
     },
     {
+      label: "a missing video flag",
+      hint: 6,
+      result: { durationSeconds: 6, hasAudio: true }
+    },
+    {
+      label: "a malformed video flag from an injected probe",
+      hint: 6,
+      result: { durationSeconds: 6, hasAudio: true, hasVideo: "no" }
+    },
+    {
+      label: "null metadata from an injected probe",
+      hint: 6,
+      result: null
+    },
+    {
       label: "a non-finite duration from an injected probe",
       hint: 6,
       result: { durationSeconds: Number.NaN, hasAudio: true, hasVideo: false }

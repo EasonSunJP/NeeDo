@@ -366,6 +366,9 @@ describe("GET /api/v1/openapi.json", () => {
     const voicePath =
       response.body.paths["/api/v1/im/conversations/{conversationId}/voice"].post;
     expect(voicePath.security).toEqual([{ bearerAuth: [] }]);
+    expect(voicePath.description).toContain("server-probed duration is authoritative");
+    expect(voicePath.description).toContain("pure audio");
+    expect(voicePath.description).toContain("59.5 seconds");
     expect(voicePath.requestBody.content).toEqual(
       expect.objectContaining({
         "audio/webm": expect.any(Object),
@@ -377,6 +380,7 @@ describe("GET /api/v1/openapi.json", () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "durationSeconds",
+          description: expect.stringContaining("client hint"),
           schema: expect.objectContaining({ minimum: 1, maximum: 59 })
         })
       ])
