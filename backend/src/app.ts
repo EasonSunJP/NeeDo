@@ -38,6 +38,7 @@ import type { CompensationProfileRepositoryPort } from "./services/compensation-
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { ShopMembershipRepositoryPort } from "./repositories/shop-membership.repository";
+import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-membership-card-plan.repository";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
@@ -116,6 +117,7 @@ import { createCompensationProfileRoutes } from "./routes/compensation-profile.r
 import { createCoreReadRoutes } from "./routes/core-read.routes";
 import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createShopMembershipRoutes } from "./routes/shop-membership.routes";
+import { createShopMembershipCardPlanRoutes } from "./routes/shop-membership-card-plan.routes";
 import { createTechnicianProfileRoutes } from "./routes/technician-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
@@ -190,6 +192,7 @@ export interface AppDependencies {
   coreReadRepository?: CoreReadRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
   shopMembershipRepository?: ShopMembershipRepositoryPort;
+  shopMembershipCardPlanRepository?: ShopMembershipCardPlanRepositoryPort;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
@@ -321,6 +324,7 @@ export const createApp = (
   apiRouter.use(createCoreReadRoutes(resolvedDependencies));
   apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipRoutes(config, resolvedDependencies));
+  apiRouter.use(createShopMembershipCardPlanRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));

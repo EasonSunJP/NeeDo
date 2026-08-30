@@ -49,4 +49,41 @@ describe("shop membership OpenAPI", () => {
       ShopMembershipAnalytics: expect.any(Object)
     }));
   });
+
+  it("documents strict membership card plan and reward fee contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<string, unknown>;
+      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Partial<Record<"get" | "post" | "patch", Operation>>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const expected = [
+      ["/api/v1/merchant-admin/shop-membership-card-plans", "get"],
+      ["/api/v1/merchant-admin/shop-membership-card-plans", "post"],
+      ["/api/v1/merchant-admin/shop-membership-card-plans/{publicId}", "get"],
+      ["/api/v1/merchant-admin/shop-membership-card-plans/{publicId}/draft", "patch"],
+      ["/api/v1/merchant-admin/shop-membership-card-plans/{publicId}/preview", "post"],
+      ["/api/v1/merchant-admin/shop-membership-card-plans/{publicId}/publish", "post"],
+      ["/api/v1/merchant-admin/shop-membership-card-plans/{publicId}/retire", "post"],
+      ["/api/v1/backoffice/membership-reward-fee-policy", "get"],
+      ["/api/v1/backoffice/membership-reward-fee-policy/versions", "post"]
+    ] as const;
+    for (const [path, method] of expected) {
+      const operation = document.paths[path][method];
+      expect(operation?.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation?.responses).toEqual(expect.objectContaining({
+        "400": expect.any(Object), "401": expect.any(Object), "403": expect.any(Object),
+        "404": expect.any(Object), "409": expect.any(Object)
+      }));
+    }
+    expect(document.components.schemas.MembershipRewardRule).toMatchObject({
+      discriminator: { propertyName: "kind" },
+      oneOf: expect.arrayContaining([expect.objectContaining({ $ref: expect.stringContaining("FixedPerCompletion") })])
+    });
+    expect(document.components.schemas.ShopMembershipCardPlanDraftRequest).toMatchObject({ additionalProperties: false });
+    expect(document.components.schemas.MembershipRewardFeeVersionCreateRequest).toMatchObject({ additionalProperties: false });
+  });
 });
