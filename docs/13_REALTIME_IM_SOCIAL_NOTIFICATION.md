@@ -288,9 +288,9 @@
 
 ### 只影响显示的自动翻译
 
-- 用户消息正文节点显式标记 `data-no-i18n`，阻止全局 `I18nRuntime` 在开关关闭时改写消息。开关开启后，共享纯函数只对 rich-text 中的文字片段调用现有 App `translateText`；判断贴纸 SVG/结构化 token、原始正文与 metadata 不变，也未接入 DeepL、Google Translate、OpenAI 或其他外部翻译服务。
-- 已覆盖当前已加载历史与新消息正文、引用正文、图片/视频说明、会话列表与置顶摘要、会话内搜索预览以及复制结果；这些显示均跟随当前 App 语言。关闭开关会直接从 Store 的原始消息重新渲染原文，不需要回写或重新拉取。
-- 系统消息、撤回残留、文件名、媒体/卡片 UI 标签和动态值按各自既有显示策略处理，不冒充用户正文翻译。转发、重发、撤回恢复、搜索输入以及发送/持久化链路继续读取原始 `ConversationMessage`；任何派生翻译都不会写入 Store、REST/SSE payload 或数据库。
+- 用户消息正文节点显式标记 `data-no-i18n`，阻止全局 `I18nRuntime` 把用户内容误当界面文案。开关开启后，共享纯函数只对聊天页中对方消息气泡的 rich-text 文字片段调用现有 App `translateText`；对方图片/视频消息的说明文字使用同一边界。判断贴纸 SVG/结构化 token、原始正文与 metadata 不变，也未接入 DeepL、Google Translate、OpenAI 或其他外部翻译服务。
+- 当前账号自己发送的消息、气泡内引用、输入框上方待发送引用、会话列表摘要、置顶摘要、会话内搜索结果和复制结果始终使用原文，不读取自动翻译偏好。系统消息、撤回残留、文件名、卡片字段和判断贴纸也不进入自动翻译。
+- 关闭开关会直接从 Store 的原始消息重新渲染对方气泡原文，不需要回写或重新拉取。转发、重发、撤回恢复、搜索输入以及发送/持久化链路继续读取原始 `ConversationMessage`；任何派生翻译都不会写入 Store、REST/SSE payload 或数据库。
 
 ### 联系人语言与好友状态修复
 
@@ -302,15 +302,16 @@
 ### 2026-08-31 自动化验证记录
 
 - 聚焦后端命令 `npm --prefix backend test -- conversation-auto-translate-schema.test.ts realtime-api.test.ts realtime-service.test.ts realtime-repository-identity.test.ts friend-request-lifecycle.repository.test.ts openapi.test.ts`：沙箱内首次因 Supertest 临时监听 `0.0.0.0` 返回 `listen EPERM`；在受控权限下原命令重跑通过，`8` 个 suites、`100` 个 tests、`0` failures。Jest 的 `openapi.test.ts` 正则同时匹配仓库已有的 `backoffice-profile-detail-openapi.test.ts` 与 `exchange.openapi.test.ts`，所以实际为 8 个 suites。
-- 聚焦前端命令 `npm test -- src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/message-translation.test.ts src/features/im/components.action-menu.test.tsx src/features/im/chat-home.test.tsx src/features/im/language-display.test.ts src/features/im/ConversationIdentityProfileCard.test.tsx src/features/im/friend-request-presentation.test.ts src/features/im/pages.test.tsx src/i18n/I18nProvider.test.ts src/i18n/translations.test.ts`：`11` 个 test files、`178` 个 tests 全部通过。
+- 范围收窄先把错误行为改成测试预期，确认旧实现产生 `13` 个失败，再修改实现；收窄后的 IM 聚焦回归为 `8` 个 test files、`145` 个 tests 全部通过。语言能力和好友按钮独立回归为 `6` 个 test files、`94` 个 tests 全部通过；前端全量为 `264` 个 test files、`1,675` 个 tests 全部通过。
+- 后端偏好、目录资料、好友申请生命周期和 OpenAPI 聚焦回归为 `9` 个 suites、`117` 个 tests 全部通过。新工作树首次运行前先执行 `npm run prisma:generate`；未连接或修改数据库。
 - `npm --prefix backend run prisma:generate`、`npm --prefix backend run lint`、`npm --prefix backend run build` 与根目录 `npm run lint` 均退出 `0`。计划命令 `npm --prefix backend exec -- prisma validate` 从仓库根目录解析 schema，因找不到 `./prisma/schema.prisma` 退出 `1`；在 `backend/` 目录执行等价的 `npm exec -- prisma validate` 后正式 schema 校验通过。
-- `npm run verify:production-build` 当前为 **GREEN**：Vite 成功转换 `496` 个模块，生成的 `i18n-C9-qJbNK.js` 为 `3,703,026` bytes；生产审计的 i18n 默认预算按本切片实测值精确增加 `2,048` bytes 至 `3,704,096` bytes，保留 `1,070` bytes 余量，`audit:production-bundle` 通过 `8` 个 HTML entries 与 `23` 个 assets，总命令退出 `0`。边界测试同时证明实测产物可通过，而 `3,704,097` bytes（预算上方 `1` byte）仍被拒绝；`4,000,000` bytes main 预算、禁止运行时标记和资源引用检查均未改变。同次构建仍显示仓库既有的 `SocialProfilePage.tsx` 静态/动态混合导入警告和大 chunk 警告，但不影响既有门禁判定。
-- `git diff --check` 与从基线 `cbf05a86` 到当前实现 HEAD 的 `git diff --check cbf05a86..HEAD` 均通过。禁止模式扫描只命中仓库既有的 IM 草稿/滚动/筛选/最近表情等 UI 状态持久化，以及一个新增测试的 `window.localStorage.clear()` 清理；实现差异没有新增浏览器业务偏好、`TODO`、`FIXME`、`not implemented`、`sessionStorage` 或外部翻译提供商引用。人工差异核对确认派生翻译只进入 render/copy helpers，没有赋回 `ConversationMessage`、Store 或发送/转发/重发/撤回输入。
+- `npm run verify:production-build` 当前为 **GREEN**：Vite 成功转换 `503` 个模块，生成的 `i18n-B5Wo-LxK.js` 为 `3,703,025` bytes、`main-eHabnjBK.js` 为 `3,389,214` bytes；生产审计通过 `8` 个 HTML entries 与 `23` 个 assets，总命令退出 `0`。同次构建仍显示仓库既有的 `SocialProfilePage.tsx` 静态/动态混合导入警告和大 chunk 警告，但不影响既有门禁判定。
+- `git diff --check` 与从基线 `cbf05a86` 到当前实现 HEAD 的 `git diff --check cbf05a86..HEAD` 均通过。禁止模式扫描只命中仓库既有的 IM 草稿/滚动/筛选/最近表情等 UI 状态持久化，以及一个新增测试的 `window.localStorage.clear()` 清理；实现差异没有新增浏览器业务偏好、`TODO`、`FIXME`、`not implemented`、`sessionStorage` 或外部翻译提供商引用。人工差异核对确认派生翻译只进入对方气泡 render helper，没有赋回 `ConversationMessage`、Store 或发送/转发/重发/撤回输入。
 
 ### 仍待授权的正式验收
 
 - 本轮没有应用 `20260831120000_conversation_auto_translate_messages` migration，没有修改正式数据库，没有启动或接管浏览器端口，没有发送测试消息，也没有执行部署或线上验收。
-- 生产 bundle 预算门禁已恢复为 GREEN；仍需用户明确授权，才可在受控本地正式环境核对端口/工作树归属、应用 migration、用双方真实测试身份验证默认关闭与身份/对端隔离、验证 `测试测试` 的历史/新消息开关与刷新持久化、检查贴纸/引用/说明/复制/置顶/列表/搜索/转发原始 payload、核对真实资料语言与移动端换行、检查 console/请求/安全区，并清理临时消息与偏好。
+- 生产 bundle 预算门禁已恢复为 GREEN；仍需用户明确授权，才可在受控本地正式环境核对端口/工作树归属、应用 migration、用双方真实测试身份验证默认关闭与身份/对端隔离、验证 `测试测试` 的历史/新消息开关与刷新持久化、验证只有对方气泡正文和对方媒体说明发生显示翻译，并检查本人消息、贴纸、引用、复制、置顶、列表、搜索、转发仍使用原始 payload；同时核对真实资料语言与移动端换行、console/请求/安全区，并清理临时消息与偏好。
 
 ## 6.23 点击录音、自动试听与正式语音消息（2026-08-31）
 

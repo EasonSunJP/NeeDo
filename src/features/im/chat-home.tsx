@@ -23,7 +23,6 @@ const unifiedChatHomeCompactContentClassName = "scrollbar-none relative z-10 min
 export type ImRuntimeI18nPreview = {
   text: string;
   isDraft?: boolean;
-  translationEligible?: boolean;
   runtimeI18nProtected?: boolean;
   uiLabel?: string;
   dynamicValue?: string;

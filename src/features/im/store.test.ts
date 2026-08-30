@@ -186,7 +186,6 @@ describe("formal IM recall terminal precedence", () => {
           lastMessagePreview: "原消息",
           lastMessageType: "text",
           lastMessageStatus: "sent",
-          lastMessagePreviewProvenance: "user-text",
         })],
         members: [],
       }),
@@ -214,9 +213,7 @@ describe("formal IM recall terminal precedence", () => {
       lastMessagePreview: "你撤回了一条消息",
       lastMessageType: "recalled",
       lastMessageStatus: "recalled",
-      lastMessagePreviewProvenance: "ui-label",
     });
-    expect(store?.conversations[0].lastMessagePreviewDynamicValue).toBeUndefined();
   });
 
   it("recomputes the current last-message summary for message-only SSE recall", async () => {
@@ -244,7 +241,6 @@ describe("formal IM recall terminal precedence", () => {
         lastMessagePreview: "原消息",
         lastMessageType: "text",
         lastMessageStatus: "sent",
-        lastMessagePreviewProvenance: "user-text",
       })],
       members: [],
     });
@@ -272,9 +268,7 @@ describe("formal IM recall terminal precedence", () => {
       lastMessagePreview: "你撤回了一条消息",
       lastMessageType: "recalled",
       lastMessageStatus: "recalled",
-      lastMessagePreviewProvenance: "ui-label",
     });
-    expect(store?.conversations[0].lastMessagePreviewDynamicValue).toBeUndefined();
     expect(bootstrap).toHaveBeenCalledTimes(1);
   });
 });
@@ -383,7 +377,6 @@ describe("formal IM resend payload integrity", () => {
         lastMessagePreview: "测试OK",
         lastMessageType: "text",
         lastMessageStatus: "sent",
-        lastMessagePreviewProvenance: "user-text",
       }),
       message: confirmedMessage,
     });

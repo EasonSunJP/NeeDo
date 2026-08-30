@@ -109,13 +109,7 @@ import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contac
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
-import {
-  getImMessageCopyText,
-  getImMessageDisplayText,
-  getImPreviewDisplayText,
-  isImConversationPreviewRuntimeProtected,
-  isImConversationPreviewTranslationEligible,
-} from "./message-translation";
+import { getImMessageCopyText } from "./message-translation";
 import {
   FriendDeletionConfirmDialog,
   useFriendDeletionConfirmation,
@@ -133,7 +127,7 @@ import {
 import {
   buildContactSections,
   buildConversationRowPreview,
-  buildMessagePreviewDescriptor,
+  buildMessagePreview,
   buildMediaBuckets,
   buildTimeSeparatedMessages,
   formatConversationTime,
@@ -1184,89 +1178,86 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
   return resolveImProfilePath(scope, getConversationPartner(store, conversation));
 }
 
-function buildConversationDisplayPreview(
-  conversation: Conversation,
-  language: ReturnType<typeof useI18n>["language"],
-): ImRuntimeI18nPreview {
+function getPreviewLabelForMessageType(messageType: ConversationMessage["type"] | undefined) {
+  if (messageType === "contact-card") return "[名片]";
+  if (messageType === "service-card") return "[服务]";
+  if (messageType === "schedule-invite") return "[日程邀请]";
+  return undefined;
+}
+
+function buildConversationRawPreview(conversation: Conversation): ImRuntimeI18nPreview {
   const preview = buildConversationRowPreview(conversation);
 
   if (preview.isDraft) {
     return {
       ...preview,
-      translationEligible: false,
       runtimeI18nProtected: true,
     };
   }
 
-  const hasVisibleLastMessage = !conversation.privacyModeEnabled
-    && Boolean(conversation.lastMessagePreview);
-  const translationEligible = conversation.type !== "system"
-    && hasVisibleLastMessage
-    && isImConversationPreviewTranslationEligible(conversation);
-  const runtimeI18nProtected = hasVisibleLastMessage
-    && isImConversationPreviewRuntimeProtected(conversation);
-  const uiLabel = conversation.lastMessagePreviewProvenance === "ui-label-with-dynamic-value"
-    ? conversation.lastMessageType === "contact-card"
-      ? "[名片]"
-      : conversation.lastMessageType === "service-card"
-        ? "[服务]"
-        : conversation.lastMessageType === "schedule-invite"
-          ? "[日程邀请]"
-          : undefined
+  if (
+    conversation.type === "system"
+    || conversation.privacyModeEnabled
+    || conversation.lastMessageStatus === "recalled"
+  ) {
+    return preview;
+  }
+
+  if (
+    conversation.lastMessageType === "text"
+    || conversation.lastMessageType === "emoji"
+    || (conversation.lastMessageType === "file" && preview.text !== "文件")
+  ) {
+    return { ...preview, runtimeI18nProtected: true };
+  }
+
+  const uiLabel = getPreviewLabelForMessageType(conversation.lastMessageType);
+  const prefix = uiLabel ? `${uiLabel} ` : "";
+  const dynamicValue = prefix && preview.text.startsWith(prefix)
+    ? preview.text.slice(prefix.length)
     : undefined;
 
   return {
     ...preview,
-    text: translationEligible
-      ? getImPreviewDisplayText(preview.text, {
-          enabled: conversation.autoTranslateMessages,
-          language,
-        })
-      : preview.text,
-    translationEligible,
-    runtimeI18nProtected,
-    uiLabel,
-    dynamicValue: runtimeI18nProtected
-      ? conversation.lastMessagePreviewDynamicValue
-      : undefined,
+    runtimeI18nProtected: Boolean(dynamicValue),
+    uiLabel: dynamicValue ? uiLabel : undefined,
+    dynamicValue,
   };
 }
 
-function buildMessageDisplayPreview(
+function buildMessageRawPreview(
   message: ConversationMessage,
-  conversation: Conversation | undefined,
-  language: ReturnType<typeof useI18n>["language"],
   currentUserId: string,
   usersById: Record<string, ImUser>,
 ): ImRuntimeI18nPreview {
-  const descriptor = buildMessagePreviewDescriptor(
-    message,
-    currentUserId,
-    usersById,
-  );
-  const policySource = {
-    type: conversation?.type ?? "single",
-    lastMessageStatus: message.status,
-    lastMessagePreviewProvenance: descriptor.provenance,
-  } satisfies Pick<
-    Conversation,
-    "type" | "lastMessageStatus" | "lastMessagePreviewProvenance"
-  >;
-  const translationEligible = conversation?.type !== "system"
-    && isImConversationPreviewTranslationEligible(policySource);
-  const runtimeI18nProtected = isImConversationPreviewRuntimeProtected(policySource);
+  const text = buildMessagePreview(message, currentUserId, usersById);
+
+  if (message.type === "system" || message.type === "recalled" || message.status === "recalled") {
+    return { text };
+  }
+
+  if (message.type === "text" || message.type === "emoji") {
+    return { text, runtimeI18nProtected: true };
+  }
+
+  if (message.type === "file" && message.ext?.fileName?.trim()) {
+    return { text, runtimeI18nProtected: true };
+  }
+
+  const uiLabel = getPreviewLabelForMessageType(message.type);
+  const dynamicValue = message.type === "contact-card"
+    ? message.ext?.contactCard?.displayName?.trim()
+    : message.type === "service-card"
+      ? message.ext?.serviceCard?.name?.trim()
+      : message.type === "schedule-invite"
+        ? message.ext?.scheduleInvite?.title?.trim()
+        : undefined;
 
   return {
-    text: translationEligible
-      ? getImMessageDisplayText(message.content, message.ext?.richText, {
-          enabled: conversation?.autoTranslateMessages ?? false,
-          language,
-        })
-      : descriptor.text,
-    translationEligible,
-    runtimeI18nProtected,
-    uiLabel: descriptor.uiLabel,
-    dynamicValue: descriptor.dynamicValue,
+    text,
+    runtimeI18nProtected: Boolean(uiLabel && dynamicValue),
+    uiLabel: dynamicValue ? uiLabel : undefined,
+    dynamicValue,
   };
 }
 
@@ -1606,7 +1597,6 @@ export function ImMessagesEntryPage() {
 
 export function ImConversationListPage() {
   const { store, config, scope } = useImRuntime();
-  const { language } = useI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryFromParams = searchParams.get("q") ?? "";
@@ -1893,7 +1883,7 @@ export function ImConversationListPage() {
   }, [pinnedCollapsed, pinnedCollapsedStorageKey]);
 
   const renderConversationItem = (conversation: Conversation, showDivider: boolean) => {
-    const preview = buildConversationDisplayPreview(conversation, language);
+    const preview = buildConversationRawPreview(conversation);
     const title = getConversationDisplayName(store, conversation);
     const pinActionLabel = conversation.isPinned ? "取消置顶" : "置顶";
     const avatarTarget = getConversationProfileTarget(scope, store, conversation);
@@ -3924,7 +3914,6 @@ function ImTagCampaignSheet({
 
 export function ImSearchPage() {
   const { scope, store, config } = useImRuntime();
-  const { language } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const conversationId = searchParams.get("conversationId") ?? undefined;
@@ -4039,7 +4028,7 @@ export function ImSearchPage() {
                   group={conversation.type === "group"}
                   key={conversation.id}
                   privacyMode={conversation.privacyModeEnabled}
-                  preview={buildConversationDisplayPreview(conversation, language)}
+                  preview={buildConversationRawPreview(conversation)}
                   time={formatConversationTime(conversation.lastMessageTime)}
                   title={getConversationDisplayName(store, conversation)}
                   to={config.routes.conversation(conversation.id)}
@@ -4053,11 +4042,8 @@ export function ImSearchPage() {
             <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>聊天记录</SectionTag>
               {result.messages.map((message) => {
-                const owningConversation = store.conversations.find((conversation) => conversation.id === message.conversationId);
-                const preview = buildMessageDisplayPreview(
+                const preview = buildMessageRawPreview(
                   message,
-                  owningConversation,
-                  language,
                   store.currentUserId ?? "",
                   store.usersById,
                 );
@@ -5793,12 +5779,7 @@ export function ImConversationRoomPage({
     );
 
   const copyMessageContent = async (message: ConversationMessage) => {
-    const root = messageRefs.current[message.id];
-    const selection = window.getSelection();
-    const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
-      ? selection.toString().trim()
-      : "";
-    const content = getImMessageCopyText(message, selectedContent, messageTranslation);
+    const content = getImMessageCopyText(message);
     closeMessageMenu();
 
     try {
@@ -6095,10 +6076,8 @@ export function ImConversationRoomPage({
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
                   const senderName = getConversationMemberDisplayName(sender) ?? "消息";
-                  const preview = buildMessageDisplayPreview(
+                  const preview = buildMessageRawPreview(
                     message,
-                    conversation,
-                    language,
                     store.currentUserId ?? "",
                     store.usersById,
                   );
@@ -6311,7 +6290,7 @@ export function ImConversationRoomPage({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">回复消息</p>
-                      <ImQuotedMessagePreview message={quotedMessage} translation={messageTranslation} />
+                      <ImQuotedMessagePreview message={quotedMessage} />
                     </div>
                     <button className="text-ink/32" onClick={() => setQuotedMessageId(undefined)} type="button">
                       取消

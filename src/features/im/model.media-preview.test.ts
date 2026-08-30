@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMessagePreview,
-  buildMessagePreviewDescriptor,
   type ConversationMessage,
   type MessageExt,
 } from "./model";
@@ -77,47 +76,11 @@ describe("buildMessagePreview media summaries", () => {
     ).toBe("明天下午三点可以。");
   });
 
-  it("derives preview provenance from the raw message payload", () => {
-    expect(
-      buildMessagePreviewDescriptor(
-        message("text", "系统消息 语音通话 changed left"),
-        "user-1",
-        {},
-      ),
-    ).toEqual({
-      text: "系统消息 语音通话 changed left",
-      provenance: "user-text",
-    });
-    expect(
-      buildMessagePreviewDescriptor(
-        message("file", "/media/file", { fileName: "报价单.pdf" }),
-        "user-1",
-        {},
-      ),
-    ).toEqual({
-      text: "报价单.pdf",
-      provenance: "dynamic-value",
-      dynamicValue: "报价单.pdf",
-    });
-    expect(
-      buildMessagePreviewDescriptor(
-        message("file", "/media/file", { fileName: "   " }),
-        "user-1",
-        {},
-      ),
-    ).toEqual({ text: "文件", provenance: "ui-label" });
-  });
-
   it.each([
-    ["contact-card", { contactCard: { userId: "2", displayName: "系统消息", avatar: "", profileKind: "person" as const } }, "[名片]", "系统消息"],
-    ["service-card", { serviceCard: { serviceId: "3", name: "changed 服务", cover: "", summary: "", priceLabel: "¥1" } }, "[服务]", "changed 服务"],
-    ["schedule-invite", { scheduleInvite: { scheduleId: "4", title: "left 日程", date: "2026-09-01", timeRange: "10:00" } }, "[日程邀请]", "left 日程"],
-  ] as const)("keeps the static %s prefix separate from its dynamic value", (type, ext, uiLabel, dynamicValue) => {
-    expect(buildMessagePreviewDescriptor(message(type, "", ext), "user-1", {})).toEqual({
-      text: `${uiLabel} ${dynamicValue}`,
-      provenance: "ui-label-with-dynamic-value",
-      uiLabel,
-      dynamicValue,
-    });
+    ["contact-card", { contactCard: { userId: "2", displayName: "系统消息", avatar: "", profileKind: "person" as const } }, "[名片] 系统消息"],
+    ["service-card", { serviceCard: { serviceId: "3", name: "changed 服务", cover: "", summary: "", priceLabel: "¥1" } }, "[服务] changed 服务"],
+    ["schedule-invite", { scheduleInvite: { scheduleId: "4", title: "left 日程", date: "2026-09-01", timeRange: "10:00" } }, "[日程邀请] left 日程"],
+  ] as const)("keeps the %s preview text unchanged", (type, ext, expected) => {
+    expect(buildMessagePreview(message(type, "", ext), "user-1", {})).toBe(expected);
   });
 });

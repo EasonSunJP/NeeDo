@@ -537,7 +537,7 @@ describe("IM pages", () => {
     const quotedBarSource = componentSource.slice(quotedBarStart, composerStart);
 
     expect(quotedBarSource).toContain(
-      "<ImQuotedMessagePreview message={quotedMessage} translation={messageTranslation} />",
+      "<ImQuotedMessagePreview message={quotedMessage} />",
     );
     expect(quotedBarSource).not.toContain('quotedMessage.content || "媒体消息"');
   });
