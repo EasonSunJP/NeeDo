@@ -9,7 +9,10 @@ import type {
   AffiliatePlatformFeeRuleListInput,
   AffiliatePlatformFeeRuleMutationInput,
   AffiliatePlatformFeeRuleMutationResult,
-  AffiliatePlatformFeeRuleRecord
+  AffiliatePlatformFeeRuleRecord,
+  AffiliatePlatformFeeRuleSummary,
+  AffiliatePlatformFeeShopOption,
+  AffiliatePlatformFeeShopOptionInput
 } from "../services/affiliate-platform-fee.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import { toAuditLogCreateData } from "./audit-log.repository";
@@ -27,6 +30,7 @@ const ruleSelect = {
   reason: true,
   createdAt: true,
   updatedAt: true,
+  shop: { select: { name: true, city: true } },
   createdBy: { select: { needoId: true } },
   updatedBy: { select: { needoId: true } }
 } satisfies Prisma.AffiliatePlatformFeeRuleSelect;
@@ -110,6 +114,74 @@ export class AffiliatePlatformFeeRepository implements AffiliatePlatformFeeRepos
       total,
       pagination
     );
+  }
+
+  public async getGlobalSummary(
+    evaluatedAt: Date
+  ): Promise<AffiliatePlatformFeeRuleSummary> {
+    const baseWhere = { scopeKey: "global", deletedAt: null } as const;
+    const [current, nextScheduled, latest] = await Promise.all([
+      this.client.affiliatePlatformFeeRule.findFirst({
+        where: {
+          ...baseWhere,
+          effectiveFrom: { lte: evaluatedAt },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: evaluatedAt } }]
+        },
+        orderBy: [{ version: "desc" }, { id: "desc" }],
+        select: ruleSelect
+      }),
+      this.client.affiliatePlatformFeeRule.findFirst({
+        where: { ...baseWhere, effectiveFrom: { gt: evaluatedAt } },
+        orderBy: [{ effectiveFrom: "asc" }, { version: "asc" }],
+        select: ruleSelect
+      }),
+      this.client.affiliatePlatformFeeRule.findFirst({
+        where: baseWhere,
+        orderBy: [{ version: "desc" }, { id: "desc" }],
+        select: ruleSelect
+      })
+    ]);
+
+    return {
+      evaluatedAt,
+      current: current ? this.mapRule(current) : null,
+      nextScheduled: nextScheduled ? this.mapRule(nextScheduled) : null,
+      latestVersion: latest?.version ?? 0
+    };
+  }
+
+  public async listEligibleShops(
+    input: AffiliatePlatformFeeShopOptionInput
+  ): Promise<ReturnType<typeof buildPaginatedResponse<AffiliatePlatformFeeShopOption>>> {
+    const pagination = toPrismaPagination(input);
+    const keyword = input.keyword?.trim();
+    const numericId = keyword && /^\d+$/.test(keyword) ? Number(keyword) : null;
+    const where: Prisma.ShopWhereInput = {
+      deletedAt: null,
+      status: "published",
+      ...(keyword
+        ? {
+            OR: [
+              { name: { contains: keyword } },
+              ...(numericId && Number.isSafeInteger(numericId) && numericId > 0
+                ? [{ id: numericId }]
+                : [])
+            ]
+          }
+        : {})
+    };
+    const [list, total] = await Promise.all([
+      this.client.shop.findMany({
+        where,
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        skip: pagination.skip,
+        take: pagination.take,
+        select: { id: true, name: true, city: true }
+      }),
+      this.client.shop.count({ where })
+    ]);
+
+    return buildPaginatedResponse(list, total, pagination);
   }
 
   public async createRuleVersion(
@@ -212,6 +284,8 @@ export class AffiliatePlatformFeeRepository implements AffiliatePlatformFeeRepos
       scopeType: rule.scopeType === PrismaAffiliatePlatformFeeScopeType.GLOBAL ? "global" : "shop",
       scopeKey: rule.scopeKey,
       shopId: rule.shopId,
+      shopName: rule.shop?.name ?? null,
+      shopCity: rule.shop?.city ?? null,
       feeBps: rule.feeBps,
       version: rule.version,
       effectiveFrom: rule.effectiveFrom,

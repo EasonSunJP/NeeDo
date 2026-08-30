@@ -10,8 +10,10 @@ import { AffiliatePlatformFeeRepository } from "../repositories/affiliate-platfo
 import { AffiliatePlatformFeeService } from "../services/affiliate-platform-fee.service";
 import { AuditLogService } from "../services/audit-log.service";
 import {
+  affiliatePlatformFeeShopOptionQuerySchema,
   affiliatePlatformFeeRuleCreateBodySchema,
-  affiliatePlatformFeeRuleListQuerySchema
+  affiliatePlatformFeeRuleListQuerySchema,
+  affiliatePlatformFeeRuleSummaryQuerySchema
 } from "../validators/affiliate-platform-fee.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -36,6 +38,20 @@ export const createAffiliatePlatformFeeRoutes = (
     );
   const controller = new AffiliatePlatformFeeController(service);
 
+  router.get(
+    "/backoffice/affiliate/fee-rules/summary",
+    authenticate(),
+    createAuthorizeMiddleware(AFFILIATE_PLATFORM_FEE_ROUTE_PERMISSIONS.read),
+    validateRequest({ query: affiliatePlatformFeeRuleSummaryQuerySchema }),
+    controller.getGlobalSummary
+  );
+  router.get(
+    "/backoffice/affiliate/fee-rule-shops",
+    authenticate(),
+    createAuthorizeMiddleware(AFFILIATE_PLATFORM_FEE_ROUTE_PERMISSIONS.read),
+    validateRequest({ query: affiliatePlatformFeeShopOptionQuerySchema }),
+    controller.listEligibleShops
+  );
   router.get(
     "/backoffice/affiliate/fee-rules",
     authenticate(),

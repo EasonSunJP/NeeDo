@@ -12,6 +12,8 @@ export interface AffiliatePlatformFeeRuleRecord {
   scopeType: AffiliatePlatformFeeScope;
   scopeKey: string;
   shopId: number | null;
+  shopName: string | null;
+  shopCity: string | null;
   feeBps: number;
   version: number;
   effectiveFrom: Date;
@@ -22,6 +24,23 @@ export interface AffiliatePlatformFeeRuleRecord {
   updatedByNeedoId: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface AffiliatePlatformFeeRuleSummary {
+  evaluatedAt: Date;
+  current: AffiliatePlatformFeeRuleRecord | null;
+  nextScheduled: AffiliatePlatformFeeRuleRecord | null;
+  latestVersion: number;
+}
+
+export interface AffiliatePlatformFeeShopOption {
+  id: number;
+  name: string;
+  city: string;
+}
+
+export interface AffiliatePlatformFeeShopOptionInput extends PaginationInput {
+  keyword?: string;
 }
 
 export interface AffiliateTaskFeeSnapshot {
@@ -69,6 +88,12 @@ export interface AffiliatePlatformFeeRepositoryPort {
   listRules: (
     input: AffiliatePlatformFeeRuleListInput
   ) => Promise<PaginatedResponse<AffiliatePlatformFeeRuleRecord>>;
+  getGlobalSummary: (
+    evaluatedAt: Date
+  ) => Promise<AffiliatePlatformFeeRuleSummary>;
+  listEligibleShops: (
+    input: AffiliatePlatformFeeShopOptionInput
+  ) => Promise<PaginatedResponse<AffiliatePlatformFeeShopOption>>;
   createRuleVersion: (
     input: AffiliatePlatformFeeRuleMutationInput
   ) => Promise<AffiliatePlatformFeeRuleMutationResult>;
@@ -150,6 +175,22 @@ export class AffiliatePlatformFeeService {
   ): Promise<PaginatedResponse<AffiliatePlatformFeeRuleRecord>> {
     this.assertOperationsIdentity(actor);
     return this.repository.listRules(input);
+  }
+
+  public async getGlobalSummary(
+    actor: AuthenticatedAccessContext,
+    evaluatedAt = new Date()
+  ): Promise<AffiliatePlatformFeeRuleSummary> {
+    this.assertOperationsIdentity(actor);
+    return this.repository.getGlobalSummary(evaluatedAt);
+  }
+
+  public async listEligibleShops(
+    actor: AuthenticatedAccessContext,
+    input: AffiliatePlatformFeeShopOptionInput
+  ): Promise<PaginatedResponse<AffiliatePlatformFeeShopOption>> {
+    this.assertOperationsIdentity(actor);
+    return this.repository.listEligibleShops(input);
   }
 
   public async createRuleVersion(

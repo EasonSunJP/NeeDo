@@ -32,6 +32,8 @@ const globalRule: AffiliatePlatformFeeRuleRecord = {
   scopeType: "global",
   scopeKey: "global",
   shopId: null,
+  shopName: null,
+  shopCity: null,
   feeBps: 1000,
   version: 1,
   effectiveFrom: new Date("2026-08-01T00:00:00.000Z"),
@@ -57,6 +59,18 @@ const createRepository = (): jest.Mocked<AffiliatePlatformFeeRepositoryPort> =>
       void input;
       return { list: [globalRule], total: 1, page: 1, page_size: 20 };
     }),
+    getGlobalSummary: jest.fn(async (evaluatedAt: Date) => ({
+      evaluatedAt,
+      current: globalRule,
+      nextScheduled: null,
+      latestVersion: globalRule.version
+    })),
+    listEligibleShops: jest.fn(async (input) => ({
+      list: [{ id: 11, name: "GINZA Calm Body", city: "Tokyo" }],
+      total: 1,
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 20
+    })),
     createRuleVersion: jest.fn(async (input) => ({
       kind: "created" as const,
       value: {
@@ -160,6 +174,42 @@ describe("AffiliatePlatformFeeService", () => {
     ).rejects.toMatchObject({ message: "error.identity_forbidden", statusCode: 403 });
     expect(repository.listRules).not.toHaveBeenCalled();
     expect(repository.createRuleVersion).not.toHaveBeenCalled();
+  });
+
+  it("requires a platform identity for summary and eligible-shop reads", async () => {
+    const repository = createRepository();
+    const service = new AffiliatePlatformFeeService(repository, createAudit());
+
+    await expect(service.getGlobalSummary(merchantActor, now)).rejects.toMatchObject({
+      message: "error.identity_forbidden",
+      statusCode: 403
+    });
+    await expect(
+      service.listEligibleShops(merchantActor, { keyword: "GINZA", page: 1, pageSize: 10 })
+    ).rejects.toMatchObject({ message: "error.identity_forbidden", statusCode: 403 });
+    expect(repository.getGlobalSummary).not.toHaveBeenCalled();
+    expect(repository.listEligibleShops).not.toHaveBeenCalled();
+  });
+
+  it("delegates summary and eligible-shop reads for a finance operator", async () => {
+    const repository = createRepository();
+    const service = new AffiliatePlatformFeeService(repository, createAudit());
+
+    await expect(service.getGlobalSummary(financeActor, now)).resolves.toMatchObject({
+      current: { feeBps: 1000 },
+      latestVersion: 1
+    });
+    await expect(
+      service.listEligibleShops(financeActor, { keyword: "GINZA", page: 1, pageSize: 10 })
+    ).resolves.toMatchObject({
+      list: [{ id: 11, name: "GINZA Calm Body", city: "Tokyo" }]
+    });
+    expect(repository.getGlobalSummary).toHaveBeenCalledWith(now);
+    expect(repository.listEligibleShops).toHaveBeenCalledWith({
+      keyword: "GINZA",
+      page: 1,
+      pageSize: 10
+    });
   });
 
   it("creates an audited immutable version with the operator reason", async () => {

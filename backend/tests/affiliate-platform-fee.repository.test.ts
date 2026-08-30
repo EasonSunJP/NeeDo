@@ -150,4 +150,122 @@ describe("AffiliatePlatformFeeRepository", () => {
     expect(transaction.affiliatePlatformFeeRule.create).not.toHaveBeenCalled();
     expect(transaction.auditLog.create).not.toHaveBeenCalled();
   });
+
+  it("projects shop labels with each fee rule in the same paginated query", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        ...rule,
+        scopeType: "SHOP",
+        scopeKey: "shop:11",
+        shopId: 11,
+        shop: { name: "GINZA Calm Body", city: "Tokyo" }
+      }
+    ]);
+    const count = jest.fn().mockResolvedValue(1);
+    const client = {
+      affiliatePlatformFeeRule: { count, findMany }
+    } as unknown as PrismaClient;
+    const repository = new AffiliatePlatformFeeRepository(client);
+
+    await expect(
+      repository.listRules({ page: 1, pageSize: 20, scopeType: "shop" })
+    ).resolves.toMatchObject({
+      list: [
+        {
+          shopId: 11,
+          shopName: "GINZA Calm Body",
+          shopCity: "Tokyo"
+        }
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1
+    });
+    expect(findMany.mock.calls[0]?.[0]?.select).toMatchObject({
+      shop: { select: { city: true, name: true } }
+    });
+  });
+
+  it("finds the current, earliest future, and latest global versions at one instant", async () => {
+    const current = {
+      ...rule,
+      effectiveTo: new Date("2026-09-01T00:00:00.000Z"),
+      shop: null
+    };
+    const future = {
+      ...rule,
+      id: 42,
+      version: 2,
+      effectiveFrom: new Date("2026-09-01T00:00:00.000Z"),
+      shop: null
+    };
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(future)
+      .mockResolvedValueOnce(future);
+    const client = {
+      affiliatePlatformFeeRule: { findFirst }
+    } as unknown as PrismaClient;
+    const repository = new AffiliatePlatformFeeRepository(client);
+
+    await expect(repository.getGlobalSummary(now)).resolves.toMatchObject({
+      evaluatedAt: now,
+      current: { version: 1 },
+      nextScheduled: { version: 2 },
+      latestVersion: 2
+    });
+    expect(findFirst).toHaveBeenCalledTimes(3);
+    expect(findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          scopeKey: "global",
+          deletedAt: null,
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }]
+        }
+      })
+    );
+    expect(findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          scopeKey: "global",
+          deletedAt: null,
+          effectiveFrom: { gt: now }
+        },
+        orderBy: [{ effectiveFrom: "asc" }, { version: "asc" }]
+      })
+    );
+  });
+
+  it("searches only published non-deleted shops and returns minimal fields", async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 11, name: "GINZA Calm Body", city: "Tokyo" }]);
+    const count = jest.fn().mockResolvedValue(1);
+    const client = { shop: { count, findMany } } as unknown as PrismaClient;
+    const repository = new AffiliatePlatformFeeRepository(client);
+
+    await expect(
+      repository.listEligibleShops({ keyword: "11", page: 1, pageSize: 10 })
+    ).resolves.toEqual({
+      list: [{ id: 11, name: "GINZA Calm Body", city: "Tokyo" }],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        status: "published",
+        OR: [{ name: { contains: "11" } }, { id: 11 }]
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: 0,
+      take: 10,
+      select: { id: true, name: true, city: true }
+    });
+  });
 });

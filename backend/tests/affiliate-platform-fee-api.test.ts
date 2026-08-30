@@ -83,6 +83,8 @@ const createFixture = () => {
     scopeType: "global",
     scopeKey: "global",
     shopId: null,
+    shopName: null,
+    shopCity: null,
     feeBps: 1000,
     version: 1,
     effectiveFrom: now,
@@ -96,6 +98,18 @@ const createFixture = () => {
   };
   const affiliatePlatformFeeService = {
     listRules: jest.fn(async () => ({ list: [rule], total: 1, page: 1, page_size: 20 })),
+    getGlobalSummary: jest.fn(async () => ({
+      evaluatedAt: now,
+      current: rule,
+      nextScheduled: null,
+      latestVersion: 1
+    })),
+    listEligibleShops: jest.fn(async () => ({
+      list: [{ id: 11, name: "GINZA Calm Body", city: "Tokyo" }],
+      total: 1,
+      page: 1,
+      page_size: 10
+    })),
     createRuleVersion: jest.fn(async (_actor, _context, input) => ({
       ...rule,
       feeBps: input.feeBps,
@@ -174,6 +188,66 @@ describe("Affiliate platform fee rule HTTP API", () => {
         reason: "业务费率调整"
       })
     );
+  });
+
+  it("returns a server-evaluated global summary to an authorized reader", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/affiliate/fee-rules/summary?scopeType=global")
+      .set("Authorization", `Bearer ${fixture.tokens[2]}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      current: { feeBps: 1000, version: 1 },
+      nextScheduled: null,
+      latestVersion: 1
+    });
+    expect(fixture.affiliatePlatformFeeService.getGlobalSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 2 })
+    );
+  });
+
+  it("returns only minimal published-shop options through the fee-rule permission", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .get(
+        "/api/v1/backoffice/affiliate/fee-rule-shops?keyword=GINZA&page=1&pageSize=10"
+      )
+      .set("Authorization", `Bearer ${fixture.tokens[2]}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual({
+      list: [{ id: 11, name: "GINZA Calm Body", city: "Tokyo" }],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    expect(fixture.affiliatePlatformFeeService.listEligibleShops).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 2 }),
+      { keyword: "GINZA", page: 1, pageSize: 10 }
+    );
+    expect(JSON.stringify(response.body)).not.toMatch(/owner|email|phone|bank/i);
+  });
+
+  it("protects summary and shop-option reads and rejects unknown query fields", async () => {
+    const fixture = createFixture();
+    const authorization = `Bearer ${fixture.tokens[2]}`;
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/affiliate/fee-rules/summary?scopeType=global&unknown=1")
+      .set("Authorization", authorization)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/affiliate/fee-rule-shops?pageSize=101")
+      .set("Authorization", authorization)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/affiliate/fee-rules/summary?scopeType=global")
+      .expect(401);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/affiliate/fee-rule-shops")
+      .set("Authorization", `Bearer ${fixture.tokens[4]}`)
+      .expect(403);
   });
 
   it("allows operator and viewer reads but blocks writes and unauthorized access", async () => {
