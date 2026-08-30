@@ -2139,7 +2139,7 @@ model SocialPost {
   content          String               @db.Text
   media            Json?
   visibility       SocialPostVisibility @default(PUBLIC)
-  replyToPostId    Int?                 @map("reply_to_post_id")
+  replyToPostId Int? @map("reply_to_post_id")
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
   deletedAt        DateTime?            @map("deleted_at")

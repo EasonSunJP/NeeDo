@@ -1,4 +1,5 @@
 import { httpClient } from "../../api/httpClient";
+import "./i18n";
 
 export type ShopMembershipStatus = "active" | "ended";
 export type ShopMembershipCardType = "stored_value" | "count" | "benefit";
