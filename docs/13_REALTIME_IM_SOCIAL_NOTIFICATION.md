@@ -330,6 +330,14 @@
 - A1 聚焦后端验证为 6 个套件、85 项测试全部通过；后端全量为 328 个套件、2228 项测试通过，另有 10 个套件、38 项按既有配置跳过。后端 lint、TypeScript build、正式前端 production build 与 bundle audit 均通过。独立代码审查关闭了 Worker 缓冲区复制与生命周期测试问题，最终 P0–P3 均为零。
 - B1 已在隔离正式本地运行中完成浏览器录音验收：单击语音入口、授权麦克风、停止后自动试听、手动重放，以及 X / 重放 / 纸飞机按钮均已验证；为避免产生业务数据，验收未点击发送。`npm audit --omit=dev` 仍报告现有其他依赖路径中的 12 项告警（1 low、4 moderate、7 high），新增 `music-metadata` 路径未出现在告警列表，本切片未执行自动升级。
 
+## 6.25 可听语音预览与居中放大控制（2026-08-31）
+
+- 自动化聚焦命令 `npm test -- src/features/im/useImVoiceRecording.test.tsx src/features/im/ImVoiceRecordingOverlay.test.tsx src/features/im/pages.test.ts src/features/im/pages.test.tsx src/features/im/components.composer.test.tsx src/i18n/translations.test.ts` 通过：6 个 test files、154 个 tests、0 failures。
+- 根目录 `npm test` 通过：264 个 test files、1,679 个 tests、0 failures。
+- `npm run i18n:audit` 退出码为 0；本次输出摘要为 `zhSourceCount=12195`、`nonZhSourceCount=3200`、`coveredCount=7328`、`recoverableFromIndexedCount=0`、`missingCount=4867`。任务要求的既有 5 秒超时在本次重跑中未出现。
+- `git diff --check` 通过。`npm run lint` 与 `npm run verify:production-build` 均因同一个当前 TypeScript 错误退出：`src/features/im/useImVoiceRecording.test.tsx:172:27`（`'this' implicitly has type 'any' because it does not have a type annotation.`）；本次没有放宽或修改门禁。
+- 浏览器/正式运行验收尚未由本任务执行：未确认 `http://127.0.0.1:5180/user.html#/messages/2546` 的监听归属、单击打开、440×956 与 320×956 的居中及 72×72 CSS 像素按钮、录音/预览控件切换、音频元素未静音与播放时间推进、实际可听录音与重放、取消后无新消息，或持续静音输入轨道的本地化提示。因此浏览器视觉、权限、音频听感、失败重试、双账号 SSE/重载播放均保持待主控验收，不能标记为已通过。
+
 ---
 
 ## 7. 给 Codex 的命令
