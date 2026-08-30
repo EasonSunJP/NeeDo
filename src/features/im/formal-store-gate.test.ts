@@ -16,4 +16,12 @@ describe("formal IM legacy-store gate", () => {
     expect(source).toContain("const emptyConversationMessages: ConversationMessage[] = [];");
     expect(source).toContain("snapshotData.messagesByConversation[conversationId] ?? emptyConversationMessages");
   });
+
+  it("uses verified friend requests instead of a direct-add shortcut", () => {
+    expect(source).not.toContain("api.addContact");
+    expect(source).not.toContain("async function addContact");
+    expect(source).toContain("api.getDirectoryProfile(userId)");
+    expect(source).toContain("api.sendFriendRequest(targetUserId, message)");
+    expect(source).toContain("refresh: refreshBootstrap");
+  });
 });

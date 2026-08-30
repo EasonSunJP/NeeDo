@@ -5,6 +5,7 @@ import {
   ImContactTagsPage as RichImContactTagsPage,
   ImConversationInfoPage as RichImConversationInfoPage,
   ImConversationRoomRoutePage as RichImConversationRoomRoutePage,
+  ImDirectoryProfilePage as RichImDirectoryProfilePage,
   ImFriendRequestsPage as RichImFriendRequestsPage,
   ImMediaRecordsPage as RichImMediaRecordsPage,
   ImMessagesEntryPage as RichImMessagesEntryPage,
@@ -25,6 +26,9 @@ export function ImContactsListPage() {
 }
 export function ImFriendRequestsPage() {
   return <RichImFriendRequestsPage />;
+}
+export function ImDirectoryProfilePage() {
+  return <RichImDirectoryProfilePage />;
 }
 export function ImNewConversationPage() {
   return <RichImNewConversationPage />;

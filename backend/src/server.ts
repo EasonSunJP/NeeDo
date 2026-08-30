@@ -13,10 +13,12 @@ import { IdentityApplicationPurgeRepository } from "./repositories/identity-appl
 import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
+import { RealtimeRepository } from "./repositories/realtime.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
 import { BookingUserRewardExpiryService } from "./services/booking-user-reward-expiry.service";
 import { ContentPublicationSchedulerService } from "./services/content-publication-scheduler.service";
+import { FriendRequestExpiryService } from "./services/friend-request-expiry.service";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
@@ -30,6 +32,7 @@ import { AffiliateTaskExpiryWorker } from "./workers/affiliate-task-expiry.worke
 import { BookingUserRewardExpiryWorker } from "./workers/booking-user-reward-expiry.worker";
 import { ExchangePostExpiryWorker } from "./workers/exchange-post-expiry.worker";
 import { ContentPublicationWorker } from "./workers/content-publication.worker";
+import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
 
@@ -59,6 +62,12 @@ const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
   ),
   logger,
   env.IDENTITY_APPLICATION_PURGE_INTERVAL_MS
+);
+const friendRequestExpiryWorker = new FriendRequestExpiryWorker(
+  new FriendRequestExpiryService(new RealtimeRepository(), realtimeEventGateway),
+  logger,
+  env.FRIEND_REQUEST_EXPIRY_INTERVAL_MS,
+  env.FRIEND_REQUEST_EXPIRY_BATCH_SIZE
 );
 const affiliateTaskExpiryWorker = new AffiliateTaskExpiryWorker(
   new AffiliateTaskExpiryService(
@@ -125,6 +134,7 @@ const server = app.listen(env.PORT, () => {
     },
     "NeeDo backend started"
   );
+  friendRequestExpiryWorker.start();
   identityApplicationPurgeWorker.start();
   affiliateTaskExpiryWorker.start();
   bookingUserRewardExpiryWorker.start();
@@ -152,6 +162,7 @@ const shutdown = createShutdownHandler({
     contentPublicationWorker.stop();
     affiliateAllianceInvitationExpiryWorker.stop();
     affiliateTaskExpiryWorker.stop();
+    friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
   }

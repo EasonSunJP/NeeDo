@@ -73,8 +73,11 @@ describe("RealtimeRepository group privacy message countdown", () => {
         })
       }));
       expect(result).toMatchObject({
-        expiresAt: new Date("2026-08-30T06:02:00.000Z"),
-        privacyPolicyVersionAtSend: 4
+        status: "created",
+        message: {
+          expiresAt: new Date("2026-08-30T06:02:00.000Z"),
+          privacyPolicyVersionAtSend: 4
+        }
       });
     } finally {
       jest.useRealTimers();

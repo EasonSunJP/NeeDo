@@ -25,6 +25,7 @@ import type {
   ConversationMember,
   ConversationMessage,
   CreateConversationPrivacyOptions,
+  DirectoryProfile,
   FriendRequest,
   ImBootstrapPayload,
   ImMessageType,
@@ -191,28 +192,6 @@ function toImUser(participant: RealtimeParticipant): ImUser {
     source: "formal_api",
     tags: [],
     userIdLabel: participant.needoId,
-    canCall: false,
-    canVideoCall: false,
-  };
-}
-
-function toPlaceholderUser(userId: number): ImUser {
-  const id = String(userId);
-  const nickname = `用户 ${userId}`;
-
-  return {
-    id,
-    accountId: "",
-    nickname,
-    avatar: buildInitialAvatar(nickname, "person"),
-    status: "active",
-    searchableFields: [nickname],
-    sortKey: nickname,
-    profileKind: "person",
-    entityType: "user",
-    source: "formal_api",
-    tags: [],
-    userIdLabel: "",
     canCall: false,
     canVideoCall: false,
   };
@@ -418,7 +397,9 @@ export function shouldForwardFormalImEvent(event: FormalRealtimeEvent) {
     event.type.startsWith("message.") ||
     event.type.startsWith("conversation.") ||
     event.type.startsWith("friend_request.") ||
-    event.type.startsWith("contact.")
+    event.type.startsWith("contact.") ||
+    event.type.startsWith("friendship.") ||
+    event.type.startsWith("social.follow.")
   );
 }
 
@@ -426,8 +407,10 @@ function getOtherParticipant(
   conversation: RealtimeConversation,
   currentUserId: number,
 ) {
-  return conversation.participants.find(
-    (participant) => participant.userId !== currentUserId,
+  return (
+    conversation.participants.find(
+      (participant) => participant.userId !== currentUserId,
+    ) ?? conversation.directPeer ?? undefined
   );
 }
 
@@ -450,8 +433,11 @@ function toConversation(
     type: isDirect ? "single" : "group",
     title,
     avatar: isDirect ? (otherParticipant?.avatarUrl ?? "") : "",
-    memberIds: conversation.participants.map((participant) =>
-      String(participant.userId),
+    memberIds: Array.from(
+      new Set([
+        ...conversation.participants.map((participant) => String(participant.userId)),
+        ...(isDirect && otherParticipant ? [String(otherParticipant.userId)] : []),
+      ]),
     ),
     contactUserId:
       isDirect && otherParticipant
@@ -513,6 +499,8 @@ function toFriendRequest(friendRequest: RealtimeFriendRequest): FriendRequest {
     requestMessage: friendRequest.message ?? "",
     status: friendRequest.status,
     createdAt: friendRequest.createdAt,
+    expiresAt: friendRequest.expiresAt,
+    expiredAt: friendRequest.expiredAt ?? undefined,
     handledAt: friendRequest.respondedAt ?? undefined,
   };
 }
@@ -558,6 +546,12 @@ function buildBootstrap(
     conversation.participants.forEach((participant) => {
       userMap.set(String(participant.userId), toImUser(participant));
     });
+    if (conversation.directPeer) {
+      userMap.set(
+        String(conversation.directPeer.userId),
+        toImUser(conversation.directPeer),
+      );
+    }
   });
   contacts.forEach((contact) => {
     userMap.set(String(contact.contactUserId), toImUser(contact.contactUser));
@@ -566,11 +560,13 @@ function buildBootstrap(
     userMap.set(String(technician.userId), toOrganizationUser(technician));
   });
   friendRequests.forEach((friendRequest) => {
-    [friendRequest.requesterUserId, friendRequest.targetUserId].forEach(
-      (userId) => {
-        const id = String(userId);
-        if (!userMap.has(id)) userMap.set(id, toPlaceholderUser(userId));
-      },
+    userMap.set(
+      String(friendRequest.requesterUserId),
+      toImUser(friendRequest.requester),
+    );
+    userMap.set(
+      String(friendRequest.targetUserId),
+      toImUser(friendRequest.target),
     );
   });
 
@@ -652,7 +648,10 @@ export function createFormalImApi({
 
   const getConversation = async (conversationId: string) => {
     const conversation = await findConversation(conversationId);
-    const users = conversation.participants.map(toImUser);
+    const users = [
+      ...conversation.participants,
+      ...(conversation.directPeer ? [conversation.directPeer] : []),
+    ].map(toImUser);
 
     return {
       conversation: toConversation(conversation, currentUser.id),
@@ -681,9 +680,48 @@ export function createFormalImApi({
       });
       return { users: response.list.map(toImUser) };
     },
-    async addContact(targetUserId: string) {
+    async getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
+      const profile = await realtimeApi.getDirectoryProfile(toNumericId(userId));
       return {
-        contact: toContact(await realtimeApi.addContact(toNumericId(targetUserId))),
+        user: toImUser(profile.user),
+        identityCard: {
+          entityType: profile.identityCard.entityType,
+          profileId: profile.identityCard.profileId === null
+            ? undefined
+            : String(profile.identityCard.profileId),
+          displayName: profile.identityCard.displayName,
+          identityLabel: profile.identityCard.identityLabel ?? undefined,
+          verified: profile.identityCard.verified,
+          creditValue: profile.identityCard.creditValue === null
+            ? undefined
+            : Number(profile.identityCard.creditValue),
+          creditReviewCount: profile.identityCard.creditReviewCount,
+          gender: profile.identityCard.gender ?? undefined,
+          age: profile.identityCard.age ?? undefined,
+          heightCm: profile.identityCard.heightCm === null
+            ? undefined
+            : Number(profile.identityCard.heightCm),
+          languages: profile.identityCard.languages,
+          city: profile.identityCard.city ?? undefined,
+          serviceArea: profile.identityCard.serviceArea ?? undefined,
+          yearsExperience: profile.identityCard.yearsExperience ?? undefined,
+          bio: profile.identityCard.bio ?? undefined,
+        },
+        relationship: profile.relationship,
+        contactId: profile.contactId === null ? undefined : String(profile.contactId),
+        friendRequest: profile.friendRequest
+          ? toFriendRequest(profile.friendRequest)
+          : undefined,
+      };
+    },
+    async sendFriendRequest(targetUserId: string, message?: string) {
+      const result = await realtimeApi.createFriendRequest({
+        targetUserId: toNumericId(targetUserId),
+        ...(message?.trim() ? { message: message.trim() } : {}),
+      });
+      return {
+        friendRequest: toFriendRequest(result.friendRequest),
+        created: result.created,
       };
     },
     async getContact(contactId: string) {
@@ -719,18 +757,12 @@ export function createFormalImApi({
     async deleteContact(contactId: string) {
       const deleted = await realtimeApi.deleteContact(toNumericId(contactId));
       return {
-        contact: {
-          id: String(deleted.contactId),
-          ownerUserId: String(deleted.ownerUserId),
-          targetUserId: String(deleted.contactUserId),
-          relationStatus: "deleted",
-          source: "formal_api",
-          tags: [],
-          isStarred: false,
-          isBlocked: false,
-          createdAt: deleted.deletedAt,
-          updatedAt: deleted.deletedAt,
-        },
+        contactId,
+        counterpartUserId: String(deleted.counterpartUserId),
+        deletedConversationId:
+          deleted.deletedConversationId === null
+            ? undefined
+            : String(deleted.deletedConversationId),
       };
     },
     async listFriendRequests() {
@@ -771,7 +803,10 @@ export function createFormalImApi({
           toConversation(conversation, currentUser.id),
         ),
         users: conversations.flatMap((conversation) =>
-          conversation.participants.map(toImUser),
+          [
+            ...conversation.participants,
+            ...(conversation.directPeer ? [conversation.directPeer] : []),
+          ].map(toImUser),
         ),
       };
     },

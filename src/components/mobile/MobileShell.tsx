@@ -106,6 +106,10 @@ function getNavAriaLabel(label: string, notificationCount: number) {
   return notificationCount > 0 ? `${label}，${notificationCount} 条新提醒` : label;
 }
 
+function isContactsDestination(item: MobileNavItem, role: ClientPortalRole) {
+  return normalizeNavPath(item.to) === `${getRolePathPrefix(role)}/contacts`;
+}
+
 function NeedoFeaturedNavButton({ className }: { className?: string }) {
   return (
     <img
@@ -482,7 +486,12 @@ export function MobileShell({
                       >
                         <MobileNavIcon name={item.icon} />
                         {notificationCount > 0 ? (
-                          <NotificationBadge className="absolute -right-2 -top-2 z-20" count={notificationCount} size="sm" />
+                          <NotificationBadge
+                            className="absolute -right-2 -top-2 z-20"
+                            count={notificationCount}
+                            dot={isContactsDestination(item, portalRole)}
+                            size="sm"
+                          />
                         ) : null}
                       </span>
                       <span>{item.label}</span>

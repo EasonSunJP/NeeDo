@@ -1060,6 +1060,7 @@ export function ImEntryCell({
   title,
   caption,
   badge,
+  badgeDot = false,
   to,
   onClick
 }: {
@@ -1067,6 +1068,7 @@ export function ImEntryCell({
   title: string;
   caption?: string;
   badge?: string | number;
+  badgeDot?: boolean;
   to?: string;
   onClick?: () => void;
 }) {
@@ -1074,7 +1076,7 @@ export function ImEntryCell({
     <div className="flex items-center gap-3 px-4 py-3.5">
       <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)] shadow-[0_10px_24px_rgba(15,143,92,0.12)]">
         {typeof badge === "number" && badge > 0 ? (
-          <NotificationBadge className="absolute -right-1 -top-1" count={badge} size="sm" />
+          <NotificationBadge className="absolute -right-1 -top-1" count={badge} dot={badgeDot} size="sm" />
         ) : badge ? (
           <span className="absolute -right-1 -top-1 rounded-full bg-[#f54a46] px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
             {badge}
@@ -2863,8 +2865,10 @@ export function MessageBubble({
     ? message.status === "sending"
       ? "发送中"
       : message.status === "failed"
-        ? message.failureReason === "recipient_blocked"
+      ? message.failureReason === "recipient_blocked"
           ? "对方将你拉黑，信息发送失败"
+          : message.failureReason === "not_friends"
+            ? "对方不是你的好友，信息发送失败"
           : "发送失败"
         : undefined
     : undefined;
