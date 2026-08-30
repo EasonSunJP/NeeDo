@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  DASHBOARD_PERIODS,
+  MAX_DASHBOARD_CUSTOM_RANGE_DAYS,
+  type DashboardPeriod
+} from "../domain/dashboard-period";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -53,15 +58,7 @@ const technicianRankingPeriodSchema = z.enum([
 ]);
 const technicianRankingSortSchema = z.enum(["revenue", "completedOrders", "workingDays"]);
 
-const dashboardPeriodSchema = z.enum([
-  "today",
-  "last7days",
-  "last30days",
-  "week",
-  "month",
-  "year",
-  "custom"
-]);
+const dashboardPeriodSchema = z.enum(DASHBOARD_PERIODS);
 
 const dashboardQueryBaseSchema = z
   .object({
@@ -73,7 +70,7 @@ const dashboardQueryBaseSchema = z
   .strict();
 
 const refineDashboardQuery = (
-  value: { period: z.infer<typeof dashboardPeriodSchema>; from?: string; to?: string },
+  value: { period: DashboardPeriod; from?: string; to?: string },
   context: z.RefinementCtx
 ) => {
   const hasBoundaries = Boolean(value.from || value.to);
@@ -88,8 +85,12 @@ const refineDashboardQuery = (
     if (inclusiveDays < 1) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "to must not be before from" });
     }
-    if (inclusiveDays > 366) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "custom period must not exceed 366 days" });
+    if (inclusiveDays > MAX_DASHBOARD_CUSTOM_RANGE_DAYS) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["to"],
+        message: `custom period must not exceed ${MAX_DASHBOARD_CUSTOM_RANGE_DAYS} days`
+      });
     }
   }
 };

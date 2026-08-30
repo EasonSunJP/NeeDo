@@ -1,11 +1,20 @@
-export type DashboardPeriod =
-  | "today"
-  | "last7days"
-  | "last30days"
-  | "week"
-  | "month"
-  | "year"
-  | "custom";
+export const DASHBOARD_PERIODS = [
+  "today",
+  "last7days",
+  "last30days",
+  "week",
+  "month",
+  "year",
+  "custom"
+] as const;
+
+export type DashboardPeriod = (typeof DASHBOARD_PERIODS)[number];
+
+export interface DashboardPeriodQuery {
+  period: DashboardPeriod;
+  from?: string;
+  to?: string;
+}
 
 export type DashboardGranularity = "hour" | "day" | "month";
 
@@ -31,7 +40,7 @@ export interface DashboardWindow {
 
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_CUSTOM_RANGE_DAYS = 366;
+export const MAX_DASHBOARD_CUSTOM_RANGE_DAYS = 366;
 
 export const formatCalendarDate = (year: number, month: number, day: number): string =>
   `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day
@@ -95,7 +104,7 @@ const monthEndDate = (date: string): string => {
 };
 
 const resolveDates = (
-  query: Pick<DashboardWindowQuery, "period" | "from" | "to">,
+  query: DashboardPeriodQuery,
   now: Date
 ): { fromDate: string; toDate: string } => {
   const today = toTokyoCalendarDate(now);
@@ -126,8 +135,8 @@ const resolveDates = (
       if (days < 1) {
         throw new Error("Custom period start must not be after its end");
       }
-      if (days > MAX_CUSTOM_RANGE_DAYS) {
-        throw new Error("Custom period must not exceed 366 days");
+      if (days > MAX_DASHBOARD_CUSTOM_RANGE_DAYS) {
+        throw new Error(`Custom period must not exceed ${MAX_DASHBOARD_CUSTOM_RANGE_DAYS} days`);
       }
       return { fromDate: query.from, toDate: query.to };
     }
@@ -184,14 +193,8 @@ const resolveBuckets = (
   return buckets;
 };
 
-export interface DashboardWindowQuery {
-  period: DashboardPeriod;
-  from?: string;
-  to?: string;
-}
-
 export const resolveDashboardWindow = (
-  query: DashboardWindowQuery,
+  query: DashboardPeriodQuery,
   now = new Date()
 ): DashboardWindow => {
   const { fromDate, toDate } = resolveDates(query, now);

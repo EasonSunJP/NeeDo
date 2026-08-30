@@ -1,4 +1,8 @@
-import { resolveDashboardWindow } from "../src/domain/dashboard-period";
+import {
+  DASHBOARD_PERIODS,
+  MAX_DASHBOARD_CUSTOM_RANGE_DAYS,
+  resolveDashboardWindow
+} from "../src/domain/dashboard-period";
 
 const now = new Date("2026-08-31T03:00:00.000Z");
 
@@ -42,6 +46,51 @@ describe("dashboard reporting windows", () => {
     ]);
   });
 
+  it("accepts an inclusive 366-day custom window and rejects 367 days", () => {
+    expect(
+      resolveDashboardWindow(
+        { period: "custom", from: "2024-02-29", to: "2025-02-28" },
+        now
+      )
+    ).toMatchObject({ fromDate: "2024-02-29", toDate: "2025-02-28" });
+    expect(() =>
+      resolveDashboardWindow(
+        { period: "custom", from: "2024-02-29", to: "2025-03-01" },
+        now
+      )
+    ).toThrow(`Custom period must not exceed ${MAX_DASHBOARD_CUSTOM_RANGE_DAYS} days`);
+  });
+
+  it("provides stable hourly and daily bucket descriptors", () => {
+    const hourly = resolveDashboardWindow({ period: "today" }, now).buckets;
+    const daily = resolveDashboardWindow({ period: "last7days" }, now).buckets;
+
+    expect(hourly[0]).toEqual({
+      key: "00:00",
+      label: "00:00",
+      fromInclusive: new Date("2026-08-30T15:00:00.000Z"),
+      toExclusive: new Date("2026-08-30T16:00:00.000Z")
+    });
+    expect(hourly[23]).toEqual({
+      key: "23:00",
+      label: "23:00",
+      fromInclusive: new Date("2026-08-31T14:00:00.000Z"),
+      toExclusive: new Date("2026-08-31T15:00:00.000Z")
+    });
+    expect(daily[0]).toEqual({
+      key: "2026-08-25",
+      label: "08-25",
+      fromInclusive: new Date("2026-08-24T15:00:00.000Z"),
+      toExclusive: new Date("2026-08-25T15:00:00.000Z")
+    });
+    expect(daily[6]).toEqual({
+      key: "2026-08-31",
+      label: "08-31",
+      fromInclusive: new Date("2026-08-30T15:00:00.000Z"),
+      toExclusive: new Date("2026-08-31T15:00:00.000Z")
+    });
+  });
+
   it("uses a matching-duration previous window", () => {
     const result = resolveDashboardWindow({ period: "last7days" }, now);
 
@@ -66,5 +115,30 @@ describe("dashboard reporting windows", () => {
       "2026-03",
       "2026-04"
     ]);
+    expect(result.buckets[0]).toEqual({
+      key: "2026-01",
+      label: "2026-01",
+      fromInclusive: new Date("2025-12-31T15:00:00.000Z"),
+      toExclusive: new Date("2026-01-31T15:00:00.000Z")
+    });
+    expect(result.buckets[3]).toEqual({
+      key: "2026-04",
+      label: "2026-04",
+      fromInclusive: new Date("2026-03-31T15:00:00.000Z"),
+      toExclusive: new Date("2026-04-03T15:00:00.000Z")
+    });
+  });
+
+  it("exports one canonical dashboard period contract", () => {
+    expect(DASHBOARD_PERIODS).toEqual([
+      "today",
+      "last7days",
+      "last30days",
+      "week",
+      "month",
+      "year",
+      "custom"
+    ]);
+    expect(MAX_DASHBOARD_CUSTOM_RANGE_DAYS).toBe(366);
   });
 });
