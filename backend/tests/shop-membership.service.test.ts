@@ -56,6 +56,21 @@ function repository(overrides: Partial<jest.Mocked<ShopMembershipRepositoryPort>
 }
 
 describe("ShopMembershipService", () => {
+  it.each(["merchant_owner", "merchant_staff"])(
+    "accepts the formal %s shop identity",
+    async (currentIdentityType) => {
+      const repo = repository();
+      const service = new ShopMembershipService(repo, { createInput: jest.fn() }, () => now);
+
+      await service.listMerchantMemberships(
+        merchant({ currentIdentityType }),
+        { page: 1, pageSize: 20 }
+      );
+
+      expect(repo.listMemberships).toHaveBeenCalledWith(71, { page: 1, pageSize: 20 });
+    }
+  );
+
   it("does not expose operation activity through the read-only overview permission", async () => {
     const activity = { id: "membership:31:created", action: "membership_created" as const, membershipPublicId: "membership-31", customerNeedoId: "u0000000041", customerDisplayName: "王小美", actorName: "店主", occurredAt: now };
     const repo = repository({

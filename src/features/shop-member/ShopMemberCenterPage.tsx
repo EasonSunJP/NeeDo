@@ -20,9 +20,9 @@ import {
 
 type MemberSection = "overview" | "members" | "cards" | "activity" | "analytics";
 type PageState<T> =
-  | { status: "loading"; data: null; message: "" }
-  | { status: "ready"; data: T; message: "" }
-  | { status: "error"; data: null; message: string };
+  | { status: "loading"; data: null; message: ""; requestKey?: string }
+  | { status: "ready"; data: T; message: ""; requestKey?: string }
+  | { status: "error"; data: null; message: string; requestKey?: string };
 
 const sectionTabs: Array<{ label: string; value: MemberSection }> = [
   { label: "概览", value: "overview" },
@@ -50,6 +50,28 @@ function describeError(error: unknown) {
     if (error.status === 404) return "会员记录不存在或不属于当前店铺";
   }
   return "会员数据读取失败，请检查网络后重试";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExpectedSectionData(section: MemberSection, value: unknown) {
+  if (!isRecord(value)) return false;
+  if (section === "overview") {
+    return isRecord(value.shop)
+      && typeof value.activeMemberCount === "number"
+      && Array.isArray(value.recentActivities);
+  }
+  if (section === "analytics") {
+    return typeof value.activeMemberCount === "number"
+      && typeof value.newMemberCount === "number"
+      && Array.isArray(value.dailyNewMembers);
+  }
+  return Array.isArray(value.list)
+    && typeof value.total === "number"
+    && typeof value.page === "number"
+    && typeof value.page_size === "number";
 }
 
 function formatDate(value: string | null, includeTime = false) {
@@ -171,6 +193,38 @@ function EnrollmentDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   return <div aria-modal="true" className="fixed inset-0 z-[120] grid place-items-end bg-black/58 p-3 backdrop-blur-sm sm:place-items-center" role="dialog"><section className="max-h-[88dvh] w-full max-w-[520px] overflow-y-auto rounded-[30px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-4 text-[color:var(--client-text)] shadow-[0_28px_90px_rgba(0,0,0,0.55)]"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black text-[color:var(--client-primary)]">当前店铺</p><h2 className="mt-1 text-xl font-black">开通会员</h2><p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">仅可选择与本店有正式预约关系的用户</p></div><button aria-label="关闭开通会员" className={cn(insetClassName, "grid h-10 w-10 place-items-center text-lg font-black")} onClick={onClose} type="button">×</button></div><form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); void runSearch(); }}><input aria-label="搜索用户" className={cn(insetClassName, "min-h-11 min-w-0 flex-1 px-4 text-sm font-bold outline-none focus:border-[color:var(--client-primary)]")} onChange={(event) => setKeyword(event.target.value)} placeholder="NeeDoID 或姓名" value={keyword} /><button className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)]" type="submit">搜索</button></form>{feedback ? <p className="mt-3 text-sm font-bold text-red-500" role="alert">{feedback}</p> : null}<div className="mt-4 space-y-2">{search.status === "loading" ? <p className="py-6 text-center text-sm font-bold text-[color:var(--client-muted)]">正在搜索正式用户</p> : null}{search.status === "error" ? <PageStatus message={search.message} onRetry={() => void runSearch()} title="候选用户读取失败" /> : null}{search.status === "ready" && keyword.trim() && !search.data.list.length ? <p className="py-6 text-center text-sm font-bold text-[color:var(--client-muted)]">没有找到可开通的用户</p> : null}{search.status === "ready" ? search.data.list.map((candidate) => <div className={cn(insetClassName, "flex items-center gap-3 p-3")} key={candidate.customerNeedoId}><div className="grid h-10 w-10 place-items-center rounded-[15px] bg-[color:var(--client-primary-soft)] font-black text-[color:var(--client-primary)]">{candidate.displayName.slice(0, 1)}</div><div className="min-w-0 flex-1"><strong className="block truncate text-sm">{candidate.displayName}</strong><p className="mt-0.5 truncate text-xs font-semibold text-[color:var(--client-muted)]">{candidate.customerNeedoId} · 最近预约 {formatDate(candidate.lastOrderAt)}</p></div><button className="min-h-10 rounded-full border border-[color:var(--client-primary)] px-4 text-xs font-black text-[color:var(--client-primary)] disabled:opacity-40" disabled={Boolean(savingId)} onClick={async () => { setSavingId(candidate.customerNeedoId); setFeedback(""); try { await merchantShopMembershipApi.enroll(candidate.customerNeedoId); onCreated(); } catch (error) { setFeedback(error instanceof ApiClientError && error.status === 409 ? "该用户已经是当前店铺会员" : describeError(error)); setSavingId(""); } }} type="button">{savingId === candidate.customerNeedoId ? "开通中" : "开通"}</button></div>) : null}</div></section></div>;
 }
 
+function ShopMembershipSectionContent({ activeSection, canEnroll, onEnroll, revision }: { activeSection: MemberSection; canEnroll: boolean; onEnroll: () => void; revision: number }) {
+  const [page, setPage] = useState(1);
+  const [retryRevision, setRetryRevision] = useState(0);
+  const currentRequestKey = `${activeSection}:${page}:${revision}:${retryRevision}`;
+  const [state, setState] = useState<PageState<ShopMembershipOverview | PaginatedShopMemberships<MerchantShopMembershipListItem> | PaginatedShopMemberships<MerchantShopMembershipCard> | PaginatedShopMemberships<ShopMembershipActivity> | ShopMembershipAnalytics>>({ status: "loading", data: null, message: "", requestKey: currentRequestKey });
+
+  useEffect(() => {
+    let active = true;
+    setState({ status: "loading", data: null, message: "", requestKey: currentRequestKey });
+    const request = activeSection === "overview" ? merchantShopMembershipApi.overview()
+      : activeSection === "members" ? merchantShopMembershipApi.list({ page, pageSize: 20 })
+      : activeSection === "cards" ? merchantShopMembershipApi.cards({ page, pageSize: 20 })
+      : activeSection === "activity" ? merchantShopMembershipApi.activities({ page, pageSize: 20 })
+      : merchantShopMembershipApi.analytics("last30days");
+    request.then((data) => { if (active) setState({ status: "ready", data, message: "", requestKey: currentRequestKey }); }).catch((error) => { if (active) setState({ status: "error", data: null, message: describeError(error), requestKey: currentRequestKey }); });
+    return () => { active = false; };
+  }, [activeSection, currentRequestKey, page]);
+
+  const content = useMemo(() => {
+    if (state.requestKey !== currentRequestKey || state.status === "loading") return <PageStatus title="正在读取会员数据" />;
+    if (state.status === "error") return <PageStatus message={state.message} onRetry={() => setRetryRevision((value) => value + 1)} title="会员数据读取失败" />;
+    if (!hasExpectedSectionData(activeSection, state.data)) return <PageStatus message="会员数据响应格式异常，请重新加载" onRetry={() => setRetryRevision((value) => value + 1)} title="会员数据读取失败" />;
+    if (activeSection === "overview") return <OverviewView canEnroll={canEnroll} data={state.data as ShopMembershipOverview} onEnroll={onEnroll} />;
+    if (activeSection === "members") return <MembersView canEnroll={canEnroll} onEnroll={onEnroll} onPageChange={setPage} page={page} result={state.data as PaginatedShopMemberships<MerchantShopMembershipListItem>} />;
+    if (activeSection === "cards") return <CardsView onPageChange={setPage} page={page} result={state.data as PaginatedShopMemberships<MerchantShopMembershipCard>} />;
+    if (activeSection === "activity") return <ActivityView onPageChange={setPage} page={page} result={state.data as PaginatedShopMemberships<ShopMembershipActivity>} />;
+    return <AnalyticsView data={state.data as ShopMembershipAnalytics} />;
+  }, [activeSection, canEnroll, currentRequestKey, onEnroll, page, state]);
+
+  return <div className="mt-4">{content}</div>;
+}
+
 export function ShopMemberCenterPage() {
   const navigate = useNavigate();
   const { section } = useParams();
@@ -182,33 +236,8 @@ export function ShopMemberCenterPage() {
   const visibleSectionTabs = sectionTabs.filter((item) =>
     item.value === "activity" ? canViewActivity : item.value === "analytics" ? canViewAnalytics : true
   );
-  const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
   const [enrollmentOpen, setEnrollmentOpen] = useState(false);
-  const [state, setState] = useState<PageState<ShopMembershipOverview | PaginatedShopMemberships<MerchantShopMembershipListItem> | PaginatedShopMemberships<MerchantShopMembershipCard> | PaginatedShopMemberships<ShopMembershipActivity> | ShopMembershipAnalytics>>({ status: "loading", data: null, message: "" });
 
-  useEffect(() => { setPage(1); }, [activeSection]);
-  useEffect(() => {
-    let active = true;
-    setState({ status: "loading", data: null, message: "" });
-    const request = activeSection === "overview" ? merchantShopMembershipApi.overview()
-      : activeSection === "members" ? merchantShopMembershipApi.list({ page, pageSize: 20 })
-      : activeSection === "cards" ? merchantShopMembershipApi.cards({ page, pageSize: 20 })
-      : activeSection === "activity" ? merchantShopMembershipApi.activities({ page, pageSize: 20 })
-      : merchantShopMembershipApi.analytics("last30days");
-    request.then((data) => { if (active) setState({ status: "ready", data, message: "" }); }).catch((error) => { if (active) setState({ status: "error", data: null, message: describeError(error) }); });
-    return () => { active = false; };
-  }, [activeSection, page, revision]);
-
-  const content = useMemo(() => {
-    if (state.status === "loading") return <PageStatus title="正在读取会员数据" />;
-    if (state.status === "error") return <PageStatus message={state.message} onRetry={() => setRevision((value) => value + 1)} title="会员数据读取失败" />;
-    if (activeSection === "overview") return <OverviewView canEnroll={canEnroll} data={state.data as ShopMembershipOverview} onEnroll={() => setEnrollmentOpen(true)} />;
-    if (activeSection === "members") return <MembersView canEnroll={canEnroll} onEnroll={() => setEnrollmentOpen(true)} onPageChange={setPage} page={page} result={state.data as PaginatedShopMemberships<MerchantShopMembershipListItem>} />;
-    if (activeSection === "cards") return <CardsView onPageChange={setPage} page={page} result={state.data as PaginatedShopMemberships<MerchantShopMembershipCard>} />;
-    if (activeSection === "activity") return <ActivityView onPageChange={setPage} page={page} result={state.data as PaginatedShopMemberships<ShopMembershipActivity>} />;
-    return <AnalyticsView data={state.data as ShopMembershipAnalytics} />;
-  }, [activeSection, canEnroll, page, state]);
-
-  return <MobileShell showBottomNav={false}><MobileFullscreenHeader action={<TestFeatureBadge />} onBack={() => navigate(-1)} subtitle="店铺私域会员与会员卡状态" title="会员中心" /><main className="mx-auto w-full max-w-[880px] px-4 pb-28 pt-4"><FeatureSegmentedTabs items={visibleSectionTabs} onChange={(next) => navigate(next === "overview" ? "/merchant/member" : `/merchant/member/${next}`)} value={activeSection} variant="header" /><div className="mt-4">{content}</div></main>{enrollmentOpen ? <EnrollmentDialog onClose={() => setEnrollmentOpen(false)} onCreated={() => { setEnrollmentOpen(false); setRevision((value) => value + 1); }} /> : null}</MobileShell>;
+  return <MobileShell showBottomNav={false}><MobileFullscreenHeader action={<TestFeatureBadge />} onBack={() => navigate(-1)} subtitle="店铺私域会员与会员卡状态" title="会员中心" /><main className="mx-auto w-full max-w-[880px] px-4 pb-28 pt-4"><FeatureSegmentedTabs items={visibleSectionTabs} onChange={(next) => navigate(next === "overview" ? "/merchant/member" : `/merchant/member/${next}`)} value={activeSection} variant="header" /><ShopMembershipSectionContent activeSection={activeSection} canEnroll={canEnroll} key={activeSection} onEnroll={() => setEnrollmentOpen(true)} revision={revision} /></main>{enrollmentOpen ? <EnrollmentDialog onClose={() => setEnrollmentOpen(false)} onCreated={() => { setEnrollmentOpen(false); setRevision((value) => value + 1); }} /> : null}</MobileShell>;
 }

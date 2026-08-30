@@ -30,4 +30,12 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain('hasPermission("shop.member.analytics.view")');
     expect(source).toContain('hasPermission("shop.member.operation_log.view")');
   });
+
+  it("does not render a newly selected section with the previous response shape", () => {
+    expect(source).toContain("currentRequestKey");
+    expect(source).toContain("state.requestKey !== currentRequestKey");
+    expect(source).toContain("key={activeSection}");
+    expect(source).toContain("hasExpectedSectionData");
+    expect(source).toContain("会员数据响应格式异常");
+  });
 });

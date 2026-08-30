@@ -12,6 +12,8 @@ import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.serv
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
 
+const merchantShopIdentityTypes = new Set(["merchant", "merchant_owner", "merchant_staff"]);
+
 export class ShopMembershipService {
   public constructor(
     private readonly repository: ShopMembershipRepositoryPort,
@@ -116,7 +118,8 @@ export class ShopMembershipService {
 
   private requireMerchantShop(actor: AuthenticatedAccessContext): number {
     if (
-      actor.currentIdentityType !== "merchant" ||
+      !actor.currentIdentityType ||
+      !merchantShopIdentityTypes.has(actor.currentIdentityType) ||
       actor.currentIdentityScopeType !== "shop" ||
       !actor.currentIdentityScopeId
     ) {
