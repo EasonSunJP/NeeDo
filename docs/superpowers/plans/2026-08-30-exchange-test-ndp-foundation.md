@@ -31,7 +31,7 @@
 ### Database and migration safety
 
 - `backend/prisma/schema.prisma`: account classification, Test NDP transaction vocabulary, reconciliation state, and currency snapshots.
-- `backend/prisma/migrations/20260830120000_exchange_test_ndp_foundation/migration.sql`: additive schema changes plus guarded current-data reclassification.
+- `backend/prisma/migrations/20260830210000_exchange_test_ndp_foundation/migration.sql`: additive schema changes plus guarded current-data reclassification.
 - `backend/scripts/check-test-ndp-foundation.ts`: local-only preflight/postflight invariant checker.
 - `backend/tests/exchange-test-ndp-schema.test.ts`: static Prisma and migration contract.
 - `backend/tests/check-test-ndp-foundation-script.test.ts`: checker safety contract.
@@ -80,7 +80,7 @@
 
 **Files:**
 - Create: `backend/tests/exchange-test-ndp-schema.test.ts`
-- Create: `backend/prisma/migrations/20260830120000_exchange_test_ndp_foundation/migration.sql`
+- Create: `backend/prisma/migrations/20260830210000_exchange_test_ndp_foundation/migration.sql`
 - Modify: `backend/prisma/schema.prisma`
 
 **Interfaces:**
@@ -97,7 +97,7 @@ describe("Exchange Test NDP foundation schema", () => {
   const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
   const migrationPath = join(
     process.cwd(),
-    "prisma/migrations/20260830120000_exchange_test_ndp_foundation/migration.sql"
+    "prisma/migrations/20260830210000_exchange_test_ndp_foundation/migration.sql"
   );
   const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
 
@@ -230,7 +230,7 @@ Expected: Prisma generation succeeds and the schema contract passes.
 - [ ] **Step 6: Commit the schema boundary**
 
 ```bash
-git add backend/prisma/schema.prisma backend/prisma/migrations/20260830120000_exchange_test_ndp_foundation/migration.sql backend/tests/exchange-test-ndp-schema.test.ts
+git add backend/prisma/schema.prisma backend/prisma/migrations/20260830210000_exchange_test_ndp_foundation/migration.sql backend/tests/exchange-test-ndp-schema.test.ts
 git commit -m "feat(ledger): add Test NDP schema foundation"
 ```
 
@@ -852,7 +852,7 @@ git commit -m "feat(ledger): provision audited Test NDP balances"
 - Modify: `backend/src/services/auth.service.ts`
 - Modify: `backend/src/constants/permissions.constants.ts`
 - Modify: `backend/src/api/openapi.ts`
-- Modify: `backend/prisma/migrations/20260830120000_exchange_test_ndp_foundation/migration.sql`
+- Modify: `backend/prisma/migrations/20260830210000_exchange_test_ndp_foundation/migration.sql`
 - Modify: `backend/tests/helpers/step06-fixture.ts`
 - Modify: `backend/tests/user-api.test.ts`
 - Modify: `backend/tests/auth.test.ts`
@@ -1054,7 +1054,7 @@ Expected: all selected suites PASS; user list remains paginated and fixture quer
 - [ ] **Step 8: Commit account management**
 
 ```bash
-git add backend/src/repositories/test-account.repository.ts backend/src/services/test-account.service.ts backend/src/controllers/test-account.controller.ts backend/src/validators/test-account.validator.ts backend/src/repositories/user.repository.ts backend/src/services/user.service.ts backend/src/routes/user.routes.ts backend/src/repositories/auth.repository.ts backend/src/services/auth.service.ts backend/src/constants/permissions.constants.ts backend/src/api/openapi.ts backend/prisma/migrations/20260830120000_exchange_test_ndp_foundation/migration.sql backend/tests/helpers/step06-fixture.ts backend/tests/user-api.test.ts backend/tests/auth.test.ts backend/tests/auth-permissions.test.ts backend/tests/openapi.test.ts
+git add backend/src/repositories/test-account.repository.ts backend/src/services/test-account.service.ts backend/src/controllers/test-account.controller.ts backend/src/validators/test-account.validator.ts backend/src/repositories/user.repository.ts backend/src/services/user.service.ts backend/src/routes/user.routes.ts backend/src/repositories/auth.repository.ts backend/src/services/auth.service.ts backend/src/constants/permissions.constants.ts backend/src/api/openapi.ts backend/prisma/migrations/20260830210000_exchange_test_ndp_foundation/migration.sql backend/tests/helpers/step06-fixture.ts backend/tests/user-api.test.ts backend/tests/auth.test.ts backend/tests/auth-permissions.test.ts backend/tests/openapi.test.ts
 git commit -m "feat(users): manage audited test account classification"
 ```
 

@@ -184,6 +184,7 @@ enum LedgerTransactionType {
   AFFILIATE_REWARD_SETTLEMENT          @map("affiliate_reward_settlement")
   AFFILIATE_REWARD_REVERSAL            @map("affiliate_reward_reversal")
   AFFILIATE_REWARD_RECOVERY            @map("affiliate_reward_recovery")
+  TEST_BALANCE_CALIBRATION             @map("test_balance_calibration")
 
   @@map("ledger_transaction_type")
 }
@@ -370,8 +371,9 @@ enum AffiliateAllianceInvitationStatus {
 }
 
 enum FinanceReconciliationStatus {
-  PENDING  @map("pending")
-  EXPORTED @map("exported")
+  PENDING   @map("pending")
+  EXPORTED  @map("exported")
+  TEST_ONLY @map("test_only")
 
   @@map("finance_reconciliation_status")
 }
@@ -596,6 +598,7 @@ model User {
   username            String               @db.VarChar(100)
   avatarUrl           String?              @map("avatar_url") @db.VarChar(500)
   isActive            Boolean              @default(true) @map("is_active")
+  isTestAccount       Boolean              @default(false) @map("is_test_account")
   sessionGeneration   Int                  @default(0) @map("session_generation")
   lastLoginAt         DateTime?            @map("last_login_at")
   createdAt           DateTime             @default(now()) @map("created_at")
@@ -702,6 +705,7 @@ model User {
   @@index([phone])
   @@index([primaryIdentityType])
   @@index([isActive])
+  @@index([isTestAccount, deletedAt], map: "users_test_account_deleted_idx")
   @@index([deletedAt])
   @@map("users")
 }
@@ -3013,6 +3017,7 @@ model WalletHold {
   holdAmountNdp     Int             @default(0) @map("hold_amount_ndp")
   capturedAmountNdp Int             @default(0) @map("captured_amount_ndp")
   releasedAmountNdp Int             @default(0) @map("released_amount_ndp")
+  currency          String          @default("NDP") @db.VarChar(10)
   status            String          @default("active") @db.VarChar(40)
   idempotencyKey    String          @unique @map("idempotency_key") @db.VarChar(180)
   calculationLogId  Int?            @map("calculation_log_id")
@@ -3029,6 +3034,7 @@ model WalletHold {
   @@index([bookingOrderId])
   @@index([feeType])
   @@index([status])
+  @@index([currency, status], map: "wallet_holds_currency_status_idx")
   @@index([deletedAt])
   @@map("wallet_holds")
 }
@@ -3037,6 +3043,7 @@ model OrderFinancial {
   id                                  Int                   @id @default(autoincrement())
   bookingOrderId                      Int                   @unique @map("booking_order_id")
   orderType                           String                @default("booking") @map("order_type") @db.VarChar(40)
+  ndpCurrency                         String                @default("NDP") @map("ndp_currency") @db.VarChar(10)
   customerUserId                      Int                   @map("customer_user_id")
   shopId                              Int                   @map("shop_id")
   technicianProfileId                 Int?                  @map("technician_profile_id")
@@ -3104,6 +3111,7 @@ model OrderFinancial {
   @@index([serviceIncomeReportedAt])
   @@index([serviceIncomeConfirmedAt])
   @@index([settlementStatus])
+  @@index([ndpCurrency, createdAt], map: "order_financials_ndp_currency_created_idx")
   @@index([platformFeeWalletId, platformFeeDebtStatus, platformFeeAcceptedAt, id], map: "order_financials_wallet_debt_accepted_idx")
   @@index([userRewardStatus, userRewardDeadlineAt, id], map: "order_financials_reward_deadline_idx")
   @@index([deletedAt])
