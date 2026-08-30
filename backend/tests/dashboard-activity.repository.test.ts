@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import type { DashboardFinanceFacts } from "../src/domain/dashboard";
 import { resolveDashboardWindow } from "../src/domain/dashboard-period";
 import { DashboardRepository } from "../src/repositories/dashboard.repository";
 
@@ -14,6 +15,15 @@ const window = resolveDashboardWindow(
   { period: "last7days" },
   new Date("2026-08-31T03:00:00.000Z")
 );
+
+const storedCityFixtures = [
+  { city: "Tokyo", deletedAt: null },
+  { city: "   ", deletedAt: null },
+  { city: "Kyoto", deletedAt: new Date("2026-08-01T00:00:00.000Z") },
+  { city: " Tokyo ", deletedAt: null },
+  { city: "Osaka", deletedAt: null },
+  { city: "Tokyo", deletedAt: null }
+];
 
 const createClient = () => {
   const scheduleCount = jest
@@ -35,6 +45,33 @@ const createClient = () => {
     .mockResolvedValueOnce({ _sum: { priceAmount: 1_800 } });
   const queryRaw = jest.fn(async (query: SqlQuery) => {
     const sql = queryText(query);
+    if (sql.includes("dashboard_available_cities")) {
+      return [...new Set(
+        storedCityFixtures
+          .filter((row) => row.deletedAt === null && row.city.trim() !== "")
+          .map((row) => row.city.trim())
+      )].sort().map((city) => ({ city }));
+    }
+    if (sql.includes("dashboard_city_activity_scalars")) {
+      return [
+        {
+          periodKey: "current",
+          availableScheduleSlots: 8n,
+          serviceGmvJpy: 4_200n,
+          newCustomers: 3n,
+          shopCount: 11n,
+          pendingOrders: 4n
+        },
+        {
+          periodKey: "previous",
+          availableScheduleSlots: 5n,
+          serviceGmvJpy: 1_800n,
+          newCustomers: 1n,
+          shopCount: 10n,
+          pendingOrders: 0n
+        }
+      ];
+    }
     if (sql.includes("dashboard_active_technicians")) {
       return [
         { periodKey: "current", aggregateValue: 6n },
@@ -103,6 +140,74 @@ const createClient = () => {
 };
 
 describe("DashboardRepository activity and supply aggregates", () => {
+  it("normalizes, filters, and deduplicates cities while using the same TRIM scope", async () => {
+    const fixture = createClient();
+    const financeFacts = {
+      platformNetRevenue: { ndp: 0, testNdp: 0 },
+      frozen: { ndp: 0, testNdp: 0 },
+      userReward: { ndp: 0, testNdp: 0 },
+      walletStock: { ndp: 0, testNdp: 0 },
+      withdrawn: { ndp: 0, testNdp: 0 },
+      shopNdpCost: null,
+      bucketPlatformNetRevenueNdp: new Map(),
+      bucketFrozenNdp: new Map(),
+      bucketShopEstimatedGrossProfitJpy: new Map()
+    } satisfies DashboardFinanceFacts;
+    const repository = new DashboardRepository(
+      fixture.client,
+      { getFinanceFacts: jest.fn(async () => financeFacts) },
+      { getMerchantFacts: jest.fn(async () => null) }
+    );
+
+    const result = await repository.getDashboard({
+      scope: { kind: "platform" },
+      city: "Tokyo",
+      window
+    });
+
+    expect(result.availableCities).toEqual(["Osaka", "Tokyo"]);
+    const queries = fixture.queryRaw.mock.calls.map(([query]) => ({
+      sql: queryText(query as SqlQuery),
+      values: (query as SqlQuery).values ?? []
+    }));
+    const availableCities = queries.find(({ sql }) =>
+      sql.includes("dashboard_available_cities")
+    );
+    expect(availableCities?.sql).toContain("SELECT DISTINCT TRIM(shop.city) AS city");
+    expect(availableCities?.sql).toContain("shop.deleted_at IS NULL");
+    expect(availableCities?.sql).toContain("TRIM(shop.city) <>");
+    expect(availableCities?.sql).toContain("ORDER BY city ASC");
+
+    const scalar = queries.find(({ sql }) =>
+      sql.includes("dashboard_city_activity_scalars")
+    );
+    expect(scalar?.sql).toContain("TRIM(shop.city) =");
+    expect(scalar?.sql).toContain("TRIM(profile.city) =");
+
+    for (const marker of [
+      "dashboard_active_technicians",
+      "dashboard_completed_customers",
+      "dashboard_shop_stock",
+      "dashboard_order_series",
+      "dashboard_schedule_series"
+    ]) {
+      expect(queries.find(({ sql }) => sql.includes(marker))?.sql).toContain(
+        "TRIM(shop.city) ="
+      );
+    }
+    const technicians = queries.find(({ sql }) =>
+      sql.includes("dashboard_registered_technicians")
+    );
+    expect(technicians?.sql).toContain("TRIM(profile.city) =");
+    expect(technicians?.sql).toContain("TRIM(direct_shop.city) =");
+    expect(technicians?.sql).toContain("TRIM(affiliation_shop.city) =");
+    expect(
+      queries
+        .filter(({ sql }) => !sql.includes("dashboard_available_cities"))
+        .every(({ values }) => values.includes("Tokyo"))
+    ).toBe(true);
+  });
+
   it("returns current, previous, and a complete server-bucket skeleton from bounded queries", async () => {
     const fixture = createClient();
     const repository = new DashboardRepository(fixture.client);
@@ -237,46 +342,11 @@ describe("DashboardRepository activity and supply aggregates", () => {
       window
     });
 
-    expect(fixture.scheduleCount).toHaveBeenNthCalledWith(1, {
-      where: {
-        deletedAt: null,
-        status: "AVAILABLE",
-        startsAt: { lt: window.toExclusive },
-        endsAt: { gt: window.fromInclusive },
-        shop: { city: "Tokyo", deletedAt: null }
-      }
-    });
-    expect(fixture.customerCount).toHaveBeenNthCalledWith(1, {
-      where: {
-        deletedAt: null,
-        createdAt: { gte: window.fromInclusive, lt: window.toExclusive },
-        city: "Tokyo"
-      }
-    });
-    expect(fixture.shopCount).toHaveBeenNthCalledWith(1, {
-      where: {
-        deletedAt: null,
-        createdAt: { lt: window.toExclusive },
-        city: "Tokyo"
-      }
-    });
-    expect(fixture.pendingOrderCount).toHaveBeenCalledWith({
-      where: {
-        deletedAt: null,
-        status: "PENDING",
-        shop: { city: "Tokyo", deletedAt: null }
-      }
-    });
-    expect(fixture.orderAggregate).toHaveBeenNthCalledWith(1, {
-      where: {
-        deletedAt: null,
-        status: "COMPLETED",
-        paymentStatus: { notIn: ["REFUND_PENDING", "REFUNDED"] },
-        startsAt: { gte: window.fromInclusive, lt: window.toExclusive },
-        shop: { city: "Tokyo", deletedAt: null }
-      },
-      _sum: { priceAmount: true }
-    });
+    expect(fixture.scheduleCount).not.toHaveBeenCalled();
+    expect(fixture.customerCount).not.toHaveBeenCalled();
+    expect(fixture.shopCount).not.toHaveBeenCalled();
+    expect(fixture.pendingOrderCount).not.toHaveBeenCalled();
+    expect(fixture.orderAggregate).not.toHaveBeenCalled();
 
     const queries = fixture.queryRaw.mock.calls.map(([query]) => ({
       sql: queryText(query as SqlQuery),
@@ -290,6 +360,17 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(active?.sql).toContain("profile.deleted_at IS NULL");
     expect(active?.values).toContain("cancelled");
 
+    const scalars = queries.find(({ sql }) =>
+      sql.includes("dashboard_city_activity_scalars")
+    );
+    expect(scalars?.sql).toContain("slot.starts_at < period.to_exclusive");
+    expect(scalars?.sql).toContain("booking.starts_at >= period.from_inclusive");
+    expect(scalars?.sql).toContain("booking.payment_status NOT IN");
+    expect(scalars?.sql).toContain("profile.created_at < period.to_exclusive");
+    expect(scalars?.sql).toContain("shop.created_at < period.to_exclusive");
+    expect(scalars?.sql).toContain("TRIM(profile.city) =");
+    expect(scalars?.sql.match(/TRIM\(shop\.city\) =/gu)).toHaveLength(4);
+
     const technicians = queries.find(({ sql }) =>
       sql.includes("dashboard_registered_technicians")
     );
@@ -298,8 +379,8 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(technicians?.sql).toContain("affiliation.deleted_at IS NULL");
     expect(technicians?.sql).toContain("affiliation.starts_at < cutoffs.cutoff");
     expect(technicians?.sql).toContain("affiliation.ends_at >= cutoffs.cutoff");
-    expect(technicians?.sql).toContain("direct_shop.city =");
-    expect(technicians?.sql).toContain("affiliation_shop.city =");
+    expect(technicians?.sql).toContain("TRIM(direct_shop.city) =");
+    expect(technicians?.sql).toContain("TRIM(affiliation_shop.city) =");
     expect(technicians?.values).toEqual(expect.arrayContaining(["active", "Tokyo"]));
 
     const orders = queries.find(({ sql }) => sql.includes("dashboard_order_series"));
@@ -330,7 +411,7 @@ describe("DashboardRepository activity and supply aggregates", () => {
       expect.arrayContaining(["available", "booked", "Tokyo"])
     );
 
-    expect(fixture.queryRaw).toHaveBeenCalledTimes(6);
+    expect(fixture.queryRaw).toHaveBeenCalledTimes(7);
     expect(queries.every(({ values }) => values.includes("Tokyo"))).toBe(true);
   });
 

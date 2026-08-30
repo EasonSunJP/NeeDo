@@ -47,6 +47,35 @@ interface AvailableCityRow {
   city: string;
 }
 
+interface CityActivityScalarRow extends PeriodAggregateRow {
+  availableScheduleSlots?: NumericValue;
+  available_schedule_slots?: NumericValue;
+  serviceGmvJpy?: NumericValue;
+  service_gmv_jpy?: NumericValue;
+  newCustomers?: NumericValue;
+  new_customers?: NumericValue;
+  shopCount?: NumericValue;
+  shop_count?: NumericValue;
+  pendingOrders?: NumericValue;
+  pending_orders?: NumericValue;
+}
+
+interface ActivityScalarFacts {
+  current: {
+    availableScheduleSlots: number;
+    serviceGmvJpy: number;
+    newCustomers: number | null;
+    shopCount: number | null;
+    pendingOrders: number;
+  };
+  previous: {
+    availableScheduleSlots: number;
+    serviceGmvJpy: number;
+    newCustomers: number | null;
+    shopCount: number | null;
+  };
+}
+
 const periodKey = (row: PeriodAggregateRow): string => row.periodKey ?? row.period_key ?? "";
 const periodValue = (row: PeriodAggregateRow): NumericValue =>
   row.aggregateValue ?? row.aggregate_value;
@@ -90,42 +119,10 @@ export class DashboardRepository {
     const { window } = input;
     const shopId = input.scope.kind === "shop" ? input.scope.shopId : null;
     const city = input.scope.kind === "platform" ? input.city : null;
-    const currentScheduleWhere = this.scheduleWhere(
-      shopId,
-      city,
-      window.fromInclusive,
-      window.toExclusive
-    );
-    const previousScheduleWhere = this.scheduleWhere(
-      shopId,
-      city,
-      window.previousFromInclusive,
-      window.previousToExclusive
-    );
-    const currentCompletedWhere = this.completedGmvWhere(
-      shopId,
-      city,
-      window.fromInclusive,
-      window.toExclusive
-    );
-    const previousCompletedWhere = this.completedGmvWhere(
-      shopId,
-      city,
-      window.previousFromInclusive,
-      window.previousToExclusive
-    );
     const isPlatform = input.scope.kind === "platform";
 
     const [
-      currentAvailableSlots,
-      previousAvailableSlots,
-      currentGmv,
-      previousGmv,
-      pendingOrders,
-      currentNewCustomers,
-      previousNewCustomers,
-      currentShopCount,
-      previousShopCount,
+      scalars,
       activeRows,
       completedCustomerRows,
       registeredTechnicianRows,
@@ -133,45 +130,7 @@ export class DashboardRepository {
       orderRows,
       scheduleRows
     ] = await Promise.all([
-      this.client.scheduleSlot.count({ where: currentScheduleWhere }),
-      this.client.scheduleSlot.count({ where: previousScheduleWhere }),
-      this.client.bookingOrder.aggregate({
-        where: currentCompletedWhere,
-        _sum: { priceAmount: true }
-      }),
-      this.client.bookingOrder.aggregate({
-        where: previousCompletedWhere,
-        _sum: { priceAmount: true }
-      }),
-      this.client.bookingOrder.count({ where: this.pendingOrderWhere(shopId, city) }),
-      isPlatform
-        ? this.client.customerProfile.count({
-            where: this.customerWhere(
-              city,
-              window.fromInclusive,
-              window.toExclusive
-            )
-          })
-        : Promise.resolve(null),
-      isPlatform
-        ? this.client.customerProfile.count({
-            where: this.customerWhere(
-              city,
-              window.previousFromInclusive,
-              window.previousToExclusive
-            )
-          })
-        : Promise.resolve(null),
-      isPlatform
-        ? this.client.shop.count({
-            where: this.shopWhere(city, window.toExclusive)
-          })
-        : Promise.resolve(null),
-      isPlatform
-        ? this.client.shop.count({
-            where: this.shopWhere(city, window.previousToExclusive)
-          })
-        : Promise.resolve(null),
+      this.getActivityScalarFacts(input, shopId, city),
       this.queryActiveTechnicians(input),
       this.queryCompletedCustomers(input),
       this.queryRegisteredTechnicians(input),
@@ -207,22 +166,22 @@ export class DashboardRepository {
 
     return {
       current: {
-        availableScheduleSlots: currentAvailableSlots,
+        availableScheduleSlots: scalars.current.availableScheduleSlots,
         activeTechnicians: activeByPeriod.get("current") ?? 0,
         registeredTechnicians: techniciansByPeriod.get("current") ?? 0,
-        shopCount: currentShopCount,
-        newCustomers: currentNewCustomers,
-        pendingOrders,
-        serviceGmvJpy: this.toNumber(currentGmv._sum.priceAmount),
+        shopCount: scalars.current.shopCount,
+        newCustomers: scalars.current.newCustomers,
+        pendingOrders: scalars.current.pendingOrders,
+        serviceGmvJpy: scalars.current.serviceGmvJpy,
         completedCustomerCount: customersByPeriod.get("current") ?? 0
       },
       previous: {
-        availableScheduleSlots: previousAvailableSlots,
+        availableScheduleSlots: scalars.previous.availableScheduleSlots,
         activeTechnicians: activeByPeriod.get("previous") ?? 0,
         registeredTechnicians: techniciansByPeriod.get("previous") ?? 0,
-        shopCount: previousShopCount,
-        newCustomers: previousNewCustomers,
-        serviceGmvJpy: this.toNumber(previousGmv._sum.priceAmount),
+        shopCount: scalars.previous.shopCount,
+        newCustomers: scalars.previous.newCustomers,
+        serviceGmvJpy: scalars.previous.serviceGmvJpy,
         completedCustomerCount: customersByPeriod.get("previous") ?? 0
       },
       buckets: window.buckets.map((bucket) => {
@@ -251,18 +210,192 @@ export class DashboardRepository {
 
     const rows = await this.client.$queryRaw<AvailableCityRow[]>(Prisma.sql`
       /* dashboard_available_cities */
-      SELECT DISTINCT shop.city
+      SELECT DISTINCT TRIM(shop.city) AS city
       FROM shops AS shop
       WHERE shop.deleted_at IS NULL
         AND TRIM(shop.city) <> ${""}
-      ORDER BY shop.city ASC
+      ORDER BY city ASC
     `);
     return rows.map((row) => row.city);
   }
 
+  private async getActivityScalarFacts(
+    input: DashboardAggregateInput,
+    shopId: number | null,
+    city: string | null
+  ): Promise<ActivityScalarFacts> {
+    if (input.scope.kind === "platform" && city) {
+      return this.queryCityActivityScalarFacts(input, city);
+    }
+
+    const { window } = input;
+    const [
+      currentAvailableScheduleSlots,
+      previousAvailableScheduleSlots,
+      currentGmv,
+      previousGmv,
+      pendingOrders,
+      currentNewCustomers,
+      previousNewCustomers,
+      currentShopCount,
+      previousShopCount
+    ] = await Promise.all([
+      this.client.scheduleSlot.count({
+        where: this.scheduleWhere(shopId, window.fromInclusive, window.toExclusive)
+      }),
+      this.client.scheduleSlot.count({
+        where: this.scheduleWhere(
+          shopId,
+          window.previousFromInclusive,
+          window.previousToExclusive
+        )
+      }),
+      this.client.bookingOrder.aggregate({
+        where: this.completedGmvWhere(
+          shopId,
+          window.fromInclusive,
+          window.toExclusive
+        ),
+        _sum: { priceAmount: true }
+      }),
+      this.client.bookingOrder.aggregate({
+        where: this.completedGmvWhere(
+          shopId,
+          window.previousFromInclusive,
+          window.previousToExclusive
+        ),
+        _sum: { priceAmount: true }
+      }),
+      this.client.bookingOrder.count({ where: this.pendingOrderWhere(shopId) }),
+      input.scope.kind === "platform"
+        ? this.client.customerProfile.count({
+            where: this.customerWhere(window.fromInclusive, window.toExclusive)
+          })
+        : Promise.resolve(null),
+      input.scope.kind === "platform"
+        ? this.client.customerProfile.count({
+            where: this.customerWhere(
+              window.previousFromInclusive,
+              window.previousToExclusive
+            )
+          })
+        : Promise.resolve(null),
+      input.scope.kind === "platform"
+        ? this.client.shop.count({ where: this.shopWhere(window.toExclusive) })
+        : Promise.resolve(null),
+      input.scope.kind === "platform"
+        ? this.client.shop.count({ where: this.shopWhere(window.previousToExclusive) })
+        : Promise.resolve(null)
+    ]);
+
+    return {
+      current: {
+        availableScheduleSlots: currentAvailableScheduleSlots,
+        serviceGmvJpy: this.toNumber(currentGmv._sum.priceAmount),
+        newCustomers: currentNewCustomers,
+        shopCount: currentShopCount,
+        pendingOrders
+      },
+      previous: {
+        availableScheduleSlots: previousAvailableScheduleSlots,
+        serviceGmvJpy: this.toNumber(previousGmv._sum.priceAmount),
+        newCustomers: previousNewCustomers,
+        shopCount: previousShopCount
+      }
+    };
+  }
+
+  private async queryCityActivityScalarFacts(
+    input: DashboardAggregateInput,
+    city: string
+  ): Promise<ActivityScalarFacts> {
+    const periods = this.periodTable(input);
+    const rows = await this.client.$queryRaw<CityActivityScalarRow[]>(Prisma.sql`
+      /* dashboard_city_activity_scalars */
+      WITH periods AS (${periods})
+      SELECT
+        period.period_key AS periodKey,
+        (
+          SELECT COUNT(slot.id)
+          FROM schedule_slots AS slot
+          INNER JOIN shops AS shop
+            ON shop.id = slot.shop_id
+            AND shop.deleted_at IS NULL
+          WHERE slot.deleted_at IS NULL
+            AND slot.status = ${"available"}
+            AND slot.starts_at < period.to_exclusive
+            AND slot.ends_at > period.from_inclusive
+            AND TRIM(shop.city) = ${city}
+        ) AS availableScheduleSlots,
+        (
+          SELECT COALESCE(SUM(booking.price_amount), 0)
+          FROM booking_orders AS booking
+          INNER JOIN shops AS shop
+            ON shop.id = booking.shop_id
+            AND shop.deleted_at IS NULL
+          WHERE booking.deleted_at IS NULL
+            AND booking.status = ${"completed"}
+            AND booking.payment_status NOT IN (${"refund_pending"}, ${"refunded"})
+            AND booking.starts_at >= period.from_inclusive
+            AND booking.starts_at < period.to_exclusive
+            AND TRIM(shop.city) = ${city}
+        ) AS serviceGmvJpy,
+        (
+          SELECT COUNT(profile.id)
+          FROM customer_profiles AS profile
+          WHERE profile.deleted_at IS NULL
+            AND profile.created_at >= period.from_inclusive
+            AND profile.created_at < period.to_exclusive
+            AND TRIM(profile.city) = ${city}
+        ) AS newCustomers,
+        (
+          SELECT COUNT(shop.id)
+          FROM shops AS shop
+          WHERE shop.deleted_at IS NULL
+            AND shop.created_at < period.to_exclusive
+            AND TRIM(shop.city) = ${city}
+        ) AS shopCount,
+        CASE WHEN period.period_key = ${"current"} THEN (
+          SELECT COUNT(booking.id)
+          FROM booking_orders AS booking
+          INNER JOIN shops AS shop
+            ON shop.id = booking.shop_id
+            AND shop.deleted_at IS NULL
+          WHERE booking.deleted_at IS NULL
+            AND booking.status = ${"pending"}
+            AND TRIM(shop.city) = ${city}
+        ) ELSE 0 END AS pendingOrders
+      FROM periods AS period
+    `);
+    const byPeriod = new Map(rows.map((row) => [periodKey(row), row]));
+    const current = byPeriod.get("current");
+    const previous = byPeriod.get("previous");
+
+    return {
+      current: {
+        availableScheduleSlots: this.toNumber(
+          current?.availableScheduleSlots ?? current?.available_schedule_slots
+        ),
+        serviceGmvJpy: this.toNumber(current?.serviceGmvJpy ?? current?.service_gmv_jpy),
+        newCustomers: this.toNumber(current?.newCustomers ?? current?.new_customers),
+        shopCount: this.toNumber(current?.shopCount ?? current?.shop_count),
+        pendingOrders: this.toNumber(current?.pendingOrders ?? current?.pending_orders)
+      },
+      previous: {
+        availableScheduleSlots: this.toNumber(
+          previous?.availableScheduleSlots ?? previous?.available_schedule_slots
+        ),
+        serviceGmvJpy: this.toNumber(
+          previous?.serviceGmvJpy ?? previous?.service_gmv_jpy
+        ),
+        newCustomers: this.toNumber(previous?.newCustomers ?? previous?.new_customers),
+        shopCount: this.toNumber(previous?.shopCount ?? previous?.shop_count)
+      }
+    };
+  }
+
   private scheduleWhere(
     shopId: number | null,
-    city: string | null,
     fromInclusive: Date,
     toExclusive: Date
   ): Prisma.ScheduleSlotWhereInput {
@@ -271,13 +404,12 @@ export class DashboardRepository {
       status: "AVAILABLE",
       startsAt: { lt: toExclusive },
       endsAt: { gt: fromInclusive },
-      ...this.prismaRelatedShopScope(shopId, city)
+      ...this.prismaRelatedShopScope(shopId)
     };
   }
 
   private completedGmvWhere(
     shopId: number | null,
-    city: string | null,
     fromInclusive: Date,
     toExclusive: Date
   ): Prisma.BookingOrderWhereInput {
@@ -286,51 +418,43 @@ export class DashboardRepository {
       status: "COMPLETED",
       paymentStatus: { notIn: ["REFUND_PENDING", "REFUNDED"] },
       startsAt: { gte: fromInclusive, lt: toExclusive },
-      ...this.prismaRelatedShopScope(shopId, city)
+      ...this.prismaRelatedShopScope(shopId)
     };
   }
 
-  private pendingOrderWhere(
-    shopId: number | null,
-    city: string | null
-  ): Prisma.BookingOrderWhereInput {
+  private pendingOrderWhere(shopId: number | null): Prisma.BookingOrderWhereInput {
     return {
       deletedAt: null,
       status: "PENDING",
-      ...this.prismaRelatedShopScope(shopId, city)
+      ...this.prismaRelatedShopScope(shopId)
     };
   }
 
   private prismaRelatedShopScope(
-    shopId: number | null,
-    city: string | null
+    shopId: number | null
   ): { shopId?: number; shop: Prisma.ShopWhereInput } {
     return {
       ...(shopId ? { shopId } : {}),
       shop: {
-        deletedAt: null,
-        ...(city ? { city } : {})
+        deletedAt: null
       }
     };
   }
 
   private customerWhere(
-    city: string | null,
     fromInclusive: Date,
     toExclusive: Date
   ): Prisma.CustomerProfileWhereInput {
     return {
       deletedAt: null,
-      createdAt: { gte: fromInclusive, lt: toExclusive },
-      ...(city ? { city } : {})
+      createdAt: { gte: fromInclusive, lt: toExclusive }
     };
   }
 
-  private shopWhere(city: string | null, toExclusive: Date): Prisma.ShopWhereInput {
+  private shopWhere(toExclusive: Date): Prisma.ShopWhereInput {
     return {
       deletedAt: null,
-      createdAt: { lt: toExclusive },
-      ...(city ? { city } : {})
+      createdAt: { lt: toExclusive }
     };
   }
 
@@ -398,7 +522,7 @@ export class DashboardRepository {
   ): Prisma.Sql {
     const filters: Prisma.Sql[] = [Prisma.sql`shop.deleted_at IS NULL`];
     if (shopId) filters.push(Prisma.sql`${relatedShopId} = ${shopId}`);
-    if (city) filters.push(Prisma.sql`shop.city = ${city}`);
+    if (city) filters.push(Prisma.sql`TRIM(shop.city) = ${city}`);
     return Prisma.join(filters, " AND ");
   }
 
@@ -482,9 +606,9 @@ export class DashboardRepository {
       ? Prisma.sql`(direct_shop.id = ${shopId} OR affiliation_shop.id = ${shopId})`
       : city
         ? Prisma.sql`(
-            profile.city = ${city}
-            OR direct_shop.city = ${city}
-            OR affiliation_shop.city = ${city}
+            TRIM(profile.city) = ${city}
+            OR TRIM(direct_shop.city) = ${city}
+            OR TRIM(affiliation_shop.city) = ${city}
           )`
         : Prisma.sql`1 = 1`;
     return this.client.$queryRaw<PeriodAggregateRow[]>(Prisma.sql`
@@ -517,7 +641,7 @@ export class DashboardRepository {
   private async queryShopStock(input: DashboardAggregateInput): Promise<PeriodAggregateRow[]> {
     const cutoffs = this.cutoffTable(input);
     const city = input.city;
-    const cityScope = city ? Prisma.sql`AND shop.city = ${city}` : Prisma.empty;
+    const cityScope = city ? Prisma.sql`AND TRIM(shop.city) = ${city}` : Prisma.empty;
     return this.client.$queryRaw<PeriodAggregateRow[]>(Prisma.sql`
       /* dashboard_shop_stock */
       WITH cutoffs AS (${cutoffs})

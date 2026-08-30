@@ -196,7 +196,7 @@ export class DashboardFinanceRepository implements DashboardFinanceReader {
   private bookingScope(shopId: number | null, city: string | null): Prisma.Sql {
     const filters: Prisma.Sql[] = [Prisma.sql`shop.deleted_at IS NULL`];
     if (shopId) filters.push(Prisma.sql`booking.shop_id = ${shopId}`);
-    if (city) filters.push(Prisma.sql`shop.city = ${city}`);
+    if (city) filters.push(Prisma.sql`TRIM(shop.city) = ${city}`);
     return Prisma.join(filters, " AND ");
   }
 

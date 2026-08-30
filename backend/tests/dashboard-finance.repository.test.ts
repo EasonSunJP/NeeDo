@@ -137,6 +137,7 @@ describe("DashboardRepository formal finance aggregates", () => {
     expect(flows?.sql.match(/shop\.id = booking\.shop_id/gu)).toHaveLength(2);
     expect(flows?.sql).not.toContain("shop.id = financial.shop_id");
     expect(flows?.sql).toContain("shop.deleted_at IS NULL");
+    expect(flows?.sql).toContain("TRIM(shop.city) =");
     expect(flows?.values).toEqual(expect.arrayContaining(["paid", "Tokyo"]));
   });
 
@@ -162,6 +163,7 @@ describe("DashboardRepository formal finance aggregates", () => {
     expect(frozen?.sql).toContain("hold.captured_amount_ndp");
     expect(frozen?.sql).toContain("hold.released_amount_ndp");
     expect(frozen?.sql).toContain("hold.deleted_at IS NULL");
+    expect(frozen?.sql).toContain("TRIM(shop.city) =");
     expect(frozen?.values).toContain("Tokyo");
 
     const wallet = queries.find(({ sql }) => sql.includes("dashboard_wallet_stock"));
