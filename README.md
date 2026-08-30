@@ -190,6 +190,31 @@ capacity tier.
 
 All portals require a formal authenticated session. Local preview, acceptance, and production use the same authorization path.
 
+### Formal Social single reply acceptance
+
+The canonical Social reply surface is the post detail page in every portal. Historical reply URLs immediately replace themselves with that detail route and focus the fixed chat-style composer; they never mount a second reply UI. The additive migration is `20260831000000_social_reply_relation`. Run the guarded local checks before and after applying it:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:social-reply-relations -- --phase=preflight
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run check:social-reply-relations -- --phase=postflight
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+```
+
+The checker rejects production-like or remote databases. Preflight writes its recoverable legacy snapshot only under ignored `backend/.data/`; postflight requires the same total post count, the expected backfilled relations, zero orphan relations, and the reply index and foreign key.
+
+Use this route matrix with authenticated formal accounts. In each row, verify the header is `回复动态`, the reply icon count equals `回复列表`, every reply is an independent card, both historical routes replace to the canonical detail, and the bottom composer retains avatar, emoji, and the shared `+` actions `相册 / 拍照 / 位置`.
+
+| Portal | Canonical detail | Historical reply deep link | Historical compose link |
+|---|---|---|---|
+| Customer | `user.html#/moments/posts/:postId` | `user.html#/moments/posts/:postId/replies` | `user.html#/moments/compose?replyToPostId=:postId` |
+| Merchant | `merchant.html#/merchant/moments/posts/:postId` | `merchant.html#/merchant/moments/posts/:postId/replies` | `merchant.html#/merchant/moments/compose?replyToPostId=:postId` |
+| Technician | `technician.html#/technician/moments/posts/:postId` | `technician.html#/technician/moments/posts/:postId/replies` | `technician.html#/technician/moments/compose?replyToPostId=:postId` |
+
+Submit text, a judgement sticker, an image, and a location through the formal API, then reload. The detail count and list total must match; the judgement must remain an SVG image, the uploaded media and location must remain visible inside their reply cards, and unstructured plain text such as `Pending` must remain text. Repeat at 440×956 and 320×956 while checking horizontal overflow, the last card above the fixed composer, console errors, and failed requests. Before judging the result, confirm ports 5180 and 3000 belong to the intended worktree/runtime; a listener from another worktree is not valid acceptance evidence.
+
+Local acceptance recorded on 2026-08-31 used `needo_dev`: preflight found 51,818 posts and four valid legacy reply relations; postflight kept the same post total, backfilled all four relations, reported zero orphans, and found the required index and foreign key. The final isolated regression run passed 254 frontend files / 1,555 tests and 325 backend suites / 2,158 tests, with 10 suites / 38 environment-conditional backend tests reported as skipped. Authenticated user, merchant, and technician routes were checked at mobile widths; the four formal reply types were submitted to post `64773`, and reload showed the authoritative count and list total both at seven with sticker, image, and location presentation preserved.
+
 ### Formal friend verification
 
 Adding a contact now uses the persisted Step 13 friend-request flow rather than direct Contact creation. Search opens the target's formal identity profile first; a request remains actionable for exactly 72 hours by database UTC time. Repeating the same pending request does not refresh its timestamp or notification, while rejection permits immediate reapplication and expiry permits a newly notified request. Acceptance atomically creates reciprocal Contact and Follow rows.
