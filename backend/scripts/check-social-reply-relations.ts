@@ -10,11 +10,17 @@ type ReplySnapshot = {
 
 type ReplyCheckPhase = "preflight" | "postflight";
 
+export type SocialReplyRelationRuntimeEnvironment = {
+  NODE_ENV?: string;
+  DEPLOY_ENV?: string;
+  DATABASE_URL?: string;
+};
+
 const BLOCKED_ENVIRONMENTS = new Set(["staging", "prod", "production"]);
 const LOOPBACK_DATABASE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const PRODUCTION_LIKE_DATABASE_NAME = /(^|[_-])(prod|production|staging)([_-]|$)/i;
 
-const assert = (condition: unknown, message: string): asserts condition => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
@@ -29,13 +35,11 @@ const resolvePhase = (argumentsList: string[]): ReplyCheckPhase => {
   return phase;
 };
 
-const loadLocalEnvironment = (): string => {
-  const envFile = process.env.ENV_FILE?.trim() || ".env.dev";
-  assert(existsSync(envFile), `environment file was not found: ${envFile}`);
-  loadDotenv({ path: envFile, override: true });
-
-  const nodeEnvironment = process.env.NODE_ENV?.trim().toLowerCase() ?? "";
-  const deployEnvironment = process.env.DEPLOY_ENV?.trim().toLowerCase() ?? "";
+export const assertSafeSocialReplyRelationRuntime = (
+  environment: SocialReplyRelationRuntimeEnvironment
+): string => {
+  const nodeEnvironment = environment.NODE_ENV?.trim().toLowerCase() ?? "";
+  const deployEnvironment = environment.DEPLOY_ENV?.trim().toLowerCase() ?? "";
   assert(
     !BLOCKED_ENVIRONMENTS.has(nodeEnvironment) && !BLOCKED_ENVIRONMENTS.has(deployEnvironment),
     "Social reply relation check rejects staging and production environments"
@@ -43,7 +47,7 @@ const loadLocalEnvironment = (): string => {
 
   let databaseUrl: URL;
   try {
-    databaseUrl = new URL(process.env.DATABASE_URL || "");
+    databaseUrl = new URL(environment.DATABASE_URL || "");
   } catch {
     throw new Error("DATABASE_URL must be a valid URL");
   }
@@ -53,13 +57,26 @@ const loadLocalEnvironment = (): string => {
     "Social reply relation check only accepts a loopback MySQL host"
   );
 
-  const databaseName = databaseUrl.pathname.replace(/^\//, "");
+  let databaseName: string;
+  try {
+    databaseName = decodeURIComponent(databaseUrl.pathname.replace(/^\//, ""));
+  } catch {
+    throw new Error("DATABASE_URL database name must use valid URL encoding");
+  }
   assert(databaseName.length > 0, "DATABASE_URL must include a database name");
+  assert(!databaseName.includes("/"), "DATABASE_URL must include one database name");
   assert(
     !PRODUCTION_LIKE_DATABASE_NAME.test(databaseName),
     "Social reply relation check rejects production-like database names"
   );
   return databaseName;
+};
+
+const loadLocalEnvironment = (): string => {
+  const envFile = process.env.ENV_FILE?.trim() || ".env.dev";
+  assert(existsSync(envFile), `environment file was not found: ${envFile}`);
+  loadDotenv({ path: envFile, override: true });
+  return assertSafeSocialReplyRelationRuntime(process.env);
 };
 
 const snapshotPath = resolve(process.cwd(), ".data/social-reply-relation-preflight.json");
@@ -144,10 +161,10 @@ const main = async (): Promise<void> => {
       `
     ]);
 
-    const backfilledRelations = countFrom(backfilledRow);
-    const orphanedRelations = countFrom(orphanedRow);
-    const replyParentIndexCount = countFrom(indexRow);
-    const replyParentForeignKeyCount = countFrom(foreignKeyRow);
+    const backfilledRelations = countFrom(backfilledRow[0]);
+    const orphanedRelations = countFrom(orphanedRow[0]);
+    const replyParentIndexCount = countFrom(indexRow[0]);
+    const replyParentForeignKeyCount = countFrom(foreignKeyRow[0]);
     assert(totalPosts === snapshot.totalPosts, "total post count changed since preflight");
     assert(
       backfilledRelations === snapshot.validLegacyReplies,
