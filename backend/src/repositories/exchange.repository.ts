@@ -255,7 +255,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                   demand: {
                     create: {
                       budgetMinJpy: input.input.budgetMinJpy,
-                      budgetMaxJpy: input.input.budgetMaxJpy
+                      budgetMaxJpy: input.input.budgetMaxJpy,
+                      addressLine1: input.input.areaLabel
                     }
                   }
                 }

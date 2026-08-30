@@ -188,7 +188,7 @@ export interface WalletHoldPayload {
   id: number;
   ownerType: WalletOwnerType;
   ownerId: number;
-  bookingOrderId: number;
+  bookingOrderId: number | null;
   feeType: FeeType;
   holdAmountNdp: number;
   capturedAmountNdp: number;

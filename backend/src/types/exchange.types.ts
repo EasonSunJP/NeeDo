@@ -24,7 +24,7 @@ export interface ExchangeViewerState {
 }
 
 export interface ExchangeDemandPayload {
-  budgetMinJpy: number;
+  budgetMinJpy: number | null;
   budgetMaxJpy: number;
 }
 

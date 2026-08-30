@@ -417,7 +417,13 @@ describe("ExchangePostRepository", () => {
           type: "DEMAND",
           status: "PUBLISHED",
           idempotencyKey: "publish-demand-0001",
-          demand: { create: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 } }
+          demand: {
+            create: {
+              budgetMinJpy: 8_000,
+              budgetMaxJpy: 12_000,
+              addressLine1: "渋谷区"
+            }
+          }
         }),
         include: expect.any(Object)
       })

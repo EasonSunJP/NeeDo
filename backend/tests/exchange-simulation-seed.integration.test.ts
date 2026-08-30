@@ -64,7 +64,13 @@ describeIntegration("formal Exchange simulation seed", () => {
         serviceEndAt: new Date("2026-10-01T02:00:00.000Z"),
         expiresAt: new Date("2026-10-01T08:00:00.000Z"),
         idempotencyKey: `manual-exchange-integration:${randomUUID()}`,
-        demand: { create: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 } }
+        demand: {
+          create: {
+            budgetMinJpy: 8_000,
+            budgetMaxJpy: 12_000,
+            addressLine1: "渋谷区"
+          }
+        }
       }
     });
     manualPostId = manual.id;
