@@ -168,7 +168,7 @@ import {
   type GroupPrivacyCountdownField,
   type GroupPrivacyCountdownInput,
 } from "./privacy-countdown";
-import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImProfilePath } from "./role-config";
+import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImContactInformationPath, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
 import {
   getBlockedContacts,
@@ -233,7 +233,7 @@ export function resolveDirectoryProfileActions(
   currentUserId: string,
   nowMs: number = Date.now(),
 ): DirectoryProfileAction[] {
-  if (profile.relationship === "friend") {
+  if (profile.relationship === "friend" || profile.relationship === "self") {
     return [];
   }
 
@@ -2721,6 +2721,7 @@ export function ImDirectoryProfilePage() {
     ? socialPaths.accountProfile(scope as SocialPortalScope, numericUserId)
     : undefined;
   const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend";
+  const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
 
@@ -2890,10 +2891,12 @@ export function ImDirectoryProfilePage() {
               user={profile.user}
               viewerScope={scope}
             />
-            <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
-              <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
-              <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>
-            </section>
+            {!isSelfProfile ? (
+              <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
+                <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
+                <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>
+              </section>
+            ) : null}
             {activityTo ? <ImContactActivityEntry status={activityStatus} to={activityTo} /> : null}
             {mutationError ? (
               <p className="rounded-[18px] border border-[color:color-mix(in_srgb,#f15a63_48%,var(--client-line))] bg-[color:color-mix(in_srgb,#f15a63_10%,var(--client-surface))] px-4 py-3 text-sm font-bold text-[color:color-mix(in_srgb,#f15a63_82%,var(--client-text))]" role="alert">
@@ -2903,7 +2906,7 @@ export function ImDirectoryProfilePage() {
           </div>
         )}
       </main>
-      {profile && !isFriendProfile ? (
+      {profile && !isFriendProfile && !isSelfProfile ? (
         <ImFriendProfileActionBar
           actions={actions}
           currentUserId={store.currentUserId ?? ""}
@@ -5000,7 +5003,7 @@ export function ImConversationRoomPage({
 
     return anonymousIdentity ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code) : user?.avatar;
   };
-  const getConversationMemberProfilePath = (user?: ImUser) => hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user);
+  const getConversationMemberProfilePath = (user?: ImUser) => resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive);
   const currentSocialActor = social.profiles[social.getActorForScope(scope as SocialPortalScope)];
   const currentReactionPerson = useMemo<ImReactionPerson>(() => {
     const currentAnonymousIdentity = getAnonymousMemberIdentity(currentUser?.id);
@@ -7225,7 +7228,7 @@ export function ImConversationInfoPage() {
   const groupOwnerAnonymousIdentity = groupOwner ? anonymousMemberIdentityByUserId.get(groupOwner.member.userId) : undefined;
   const groupOwnerDisplayName = groupOwner ? groupOwnerAnonymousIdentity?.displayName ?? groupOwner.member.nicknameInGroup ?? groupOwner.user.nickname : "";
   const groupOwnerAvatar = groupOwner ? (groupOwnerAnonymousIdentity ? buildAnonymousGroupAvatarDataUrl(groupOwnerAnonymousIdentity.code) : groupOwner.user.avatar) : undefined;
-  const groupOwnerProfilePath = groupOwner && !hiddenMemberProfilesActive ? resolveImProfilePath(scope, groupOwner.user) : undefined;
+  const groupOwnerProfilePath = resolveImContactInformationPath(scope, groupOwner?.user, hiddenMemberProfilesActive);
   const infoCardProfileRef = user ? resolveContactCardProfileRef(buildContactCardPayload(user), user) : undefined;
   const infoCardDetailTo = user
     ? resolveImProfilePath(scope, user) ?? (infoCardProfileRef ? getScopedProfileDetailPath(scope, infoCardProfileRef.entityType, infoCardProfileRef.id) : undefined)
@@ -7622,7 +7625,7 @@ export function ImConversationInfoPage() {
                   const anonymousIdentity = anonymousMemberIdentityByUserId.get(member.userId);
                   const displayName = anonymousIdentity?.displayName ?? member.nicknameInGroup ?? user.nickname;
                   const avatar = anonymousIdentity ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code) : user.avatar;
-                  const profilePath = hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user);
+                  const profilePath = resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive);
 
                   return (
                     <div className="text-center" key={member.id}>

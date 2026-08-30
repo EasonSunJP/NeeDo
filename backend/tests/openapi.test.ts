@@ -343,6 +343,9 @@ describe("GET /api/v1/openapi.json", () => {
         identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" }
       }
     });
+    expect(
+      response.body.components.schemas.RealtimeDirectoryProfile.properties.relationship.enum
+    ).toEqual(["none", "friend", "incoming_pending", "outgoing_pending", "self"]);
     expect(response.body.components.schemas.RealtimeDirectoryIdentityCard).toMatchObject({
       required: expect.arrayContaining([
         "entityType",

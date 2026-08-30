@@ -4,7 +4,10 @@ import {
   getFriendRequestLabel,
   resolveDirectoryProfileActions,
 } from "./pages";
-import { getImRoleConfig } from "./role-config";
+import {
+  getImRoleConfig,
+  resolveImContactInformationPath,
+} from "./role-config";
 
 const pendingRequest: FriendRequest = {
   id: "51",
@@ -97,6 +100,13 @@ describe("friend request presentation", () => {
         "1",
       ),
     ).toEqual([]);
+    expect(
+      resolveDirectoryProfileActions(
+        { ...profile, relationship: "self" },
+        null,
+        "1",
+      ),
+    ).toEqual([]);
   });
 
   it("builds a scoped directory profile route before contact-id routes", () => {
@@ -109,5 +119,22 @@ describe("friend request presentation", () => {
     expect(getImRoleConfig("technician").routes.directoryProfile("167")).toBe(
       "/technician/contacts/directory/167",
     );
+  });
+
+  it("routes each identifiable avatar to that account's scoped contact information", () => {
+    expect(resolveImContactInformationPath("user", profile.user)).toBe(
+      "/contacts/directory/2",
+    );
+    expect(resolveImContactInformationPath("merchant", profile.user)).toBe(
+      "/merchant/contacts/directory/2",
+    );
+    expect(resolveImContactInformationPath("technician", profile.user)).toBe(
+      "/technician/contacts/directory/2",
+    );
+  });
+
+  it("does not reveal unknown or privacy-hidden group identities", () => {
+    expect(resolveImContactInformationPath("user", undefined)).toBeUndefined();
+    expect(resolveImContactInformationPath("user", profile.user, true)).toBeUndefined();
   });
 });

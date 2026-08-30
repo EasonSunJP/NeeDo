@@ -1643,7 +1643,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" },
           relationship: {
             type: "string",
-            enum: ["none", "friend", "incoming_pending", "outgoing_pending"]
+            enum: ["none", "friend", "incoming_pending", "outgoing_pending", "self"]
           },
           contactId: { type: "integer", nullable: true },
           friendRequest: {
