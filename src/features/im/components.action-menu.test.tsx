@@ -3,7 +3,7 @@
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ImMessageActionSheet, MessageBubble } from "./components";
+import { ImMessageActionSheet, ImQuotedMessagePreview, MessageBubble } from "./components";
 import type { ImMessageActionSheetItem } from "./components";
 import type { ConversationMessage } from "./model";
 
@@ -680,6 +680,119 @@ describe("MessageBubble quoted media", () => {
     expect(container.querySelector('[data-im-quoted-media="image"] img')).not.toBeNull();
     expect(container.textContent).not.toContain(quotedMessage.content);
     expect(container.querySelector('[data-im-quoted-media-caption="true"]')).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+});
+
+describe("MessageBubble translation display boundary", () => {
+  const japaneseTranslation = { enabled: true, language: "ja" } as const;
+  const messageBase = {
+    conversationId: "conversation-translation-1",
+    senderId: "sender-1",
+    status: "sent" as const,
+    sentAt: "2026-08-30T00:00:00.000Z",
+    clientSeq: 1
+  };
+
+  it("renders disabled and enabled body text explicitly", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const message: ConversationMessage = {
+      ...messageBase,
+      id: "translation-body-1",
+      localId: "translation-body-1",
+      type: "text",
+      content: "测试测试"
+    };
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: true }));
+    });
+    expect(container.textContent).toContain("测试测试");
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: true, translation: japaneseTranslation }));
+    });
+    expect(container.textContent).toContain("テストテスト");
+    expect(container.querySelector('[data-no-i18n][data-im-message-selectable-text="true"]')).not.toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps judgement SVGs while translating only adjacent rich text", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const message: ConversationMessage = {
+      ...messageBase,
+      id: "translation-judgement-1",
+      localId: "translation-judgement-1",
+      type: "text",
+      content: "Done测试OK",
+      ext: {
+        richText: {
+          version: 1,
+          parts: [
+            { type: "judgement", value: "Done" },
+            { type: "text", value: "测试" },
+            { type: "judgement", value: "OK" }
+          ]
+        }
+      }
+    };
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: true, translation: japaneseTranslation }));
+    });
+
+    const richText = container.querySelector<HTMLElement>('[data-im-message-rich-text="true"]');
+    expect(richText?.textContent).toBe("テスト");
+    expect([...richText!.querySelectorAll("img")].map((image) => image.alt)).toEqual(["Done", "OK"]);
+
+    await act(async () => root.unmount());
+  });
+
+  it("applies the same boundary to media and quoted captions", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const mediaMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-media-1",
+      localId: "translation-media-1",
+      type: "image",
+      content: "/media/image.jpg",
+      ext: { caption: "测试测试", thumbnailUrl: "/media/thumb.jpg" }
+    };
+    const quotedText: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-text-1",
+      localId: "translation-quoted-text-1",
+      type: "text",
+      content: "测试测试"
+    };
+    const quotedMedia: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-media-1",
+      localId: "translation-quoted-media-1",
+      type: "video",
+      content: "/media/video.mp4",
+      ext: { caption: "测试测试", thumbnailUrl: "/media/video.jpg" }
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement(MessageBubble, { message: mediaMessage, isMine: true, translation: japaneseTranslation }),
+        createElement(ImQuotedMessagePreview, { message: quotedText, translation: japaneseTranslation }),
+        createElement(ImQuotedMessagePreview, { message: quotedMedia, translation: japaneseTranslation })
+      ));
+    });
+
+    expect(container.textContent).toContain("テストテスト");
+    expect(container.querySelectorAll("[data-no-i18n]").length).toBe(3);
+    expect(container.querySelector('[data-im-quoted-media-caption="true"] [data-no-i18n]')?.textContent).toBe("テストテスト");
 
     await act(async () => root.unmount());
   });

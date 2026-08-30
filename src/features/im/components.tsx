@@ -39,10 +39,15 @@ import {
   encodeImComposerJudgement,
   getImReactionCategory,
   parseImComposerDraft,
-  resolveImMessageRichText,
   type ImReactionCategory
 } from "./reaction-policy";
+import { getImMessageDisplayParts, type ImMessageTranslationOptions } from "./message-translation";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
+
+const defaultImMessageTranslation: ImMessageTranslationOptions = {
+  enabled: false,
+  language: "zh"
+};
 
 export function ImIcon({
   name,
@@ -2786,14 +2791,16 @@ function ImRichMessageText({
   className,
   content,
   richText,
+  translation = defaultImMessageTranslation,
   selectable = false,
 }: {
   className?: string;
   content: string;
   richText?: MessageExt["richText"];
+  translation?: ImMessageTranslationOptions;
   selectable?: boolean;
 }) {
-  const parts = resolveImMessageRichText(content, richText);
+  const parts = getImMessageDisplayParts(content, richText, translation);
   const hasJudgement = parts.some((part) => part.type === "judgement");
 
   return (
@@ -2801,6 +2808,7 @@ function ImRichMessageText({
       className={className}
       data-im-message-rich-text={hasJudgement ? "true" : undefined}
       data-im-message-selectable-text={selectable ? "true" : undefined}
+      data-no-i18n="true"
     >
       {parts.map((part, index) =>
         part.type === "judgement" ? (
@@ -2821,10 +2829,12 @@ function ImRichMessageText({
 
 export function ImQuotedMessagePreview({
   message,
-  className
+  className,
+  translation = defaultImMessageTranslation
 }: {
   message: ConversationMessage;
   className?: string;
+  translation?: ImMessageTranslationOptions;
 }) {
   const caption = message.ext?.caption?.trim() ?? "";
 
@@ -2855,6 +2865,7 @@ export function ImQuotedMessagePreview({
               className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
               content={caption}
               richText={message.ext?.captionRichText}
+              translation={translation}
             />
           </div>
         ) : null}
@@ -2871,9 +2882,14 @@ export function ImQuotedMessagePreview({
           <ImIcon className="h-5 w-5 opacity-80" name={message.type === "voice" ? "mic" : "file"} />
         </span>
         {label ? (
-          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
-            {label}
-          </p>
+          <div data-im-quoted-media-caption="true">
+            <ImRichMessageText
+              className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+              content={label}
+              richText={caption ? message.ext?.captionRichText : undefined}
+              translation={translation}
+            />
+          </div>
         ) : null}
       </div>
     );
@@ -2884,6 +2900,7 @@ export function ImQuotedMessagePreview({
       className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}
       content={message.content || previewLabel(message.type)}
       richText={message.ext?.richText}
+      translation={translation}
     />
   );
 }
@@ -2904,7 +2921,8 @@ export function MessageBubble({
   onPreviewMedia,
   onOpenContact,
   renderContactCard,
-  renderContactCardAction
+  renderContactCardAction,
+  translation = defaultImMessageTranslation
 }: {
   message: ConversationMessage;
   isMine: boolean;
@@ -2922,6 +2940,7 @@ export function MessageBubble({
   onOpenContact?: (userId: string) => void;
   renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
+  translation?: ImMessageTranslationOptions;
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const disappearing = message.ext?.disappearing;
@@ -2942,6 +2961,7 @@ export function MessageBubble({
           )}
           content={message.content}
           richText={message.ext?.richText}
+          translation={translation}
           selectable
         />
       );
@@ -2963,6 +2983,7 @@ export function MessageBubble({
               className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
               content={message.ext.caption}
               richText={message.ext.captionRichText}
+              translation={translation}
               selectable
             />
           ) : null}
@@ -3140,7 +3161,7 @@ export function MessageBubble({
         )}
         <div className="min-w-0 flex-1">
           <p className="line-clamp-1 text-[13px] font-black">{quotedAuthor}</p>
-          <ImQuotedMessagePreview message={quotedMessage} />
+          <ImQuotedMessagePreview message={quotedMessage} translation={translation} />
         </div>
       </div>
     </div>
