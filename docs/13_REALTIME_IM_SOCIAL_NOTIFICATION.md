@@ -335,8 +335,9 @@
 - 自动化聚焦命令 `npm test -- src/features/im/useImVoiceRecording.test.tsx src/features/im/ImVoiceRecordingOverlay.test.tsx src/features/im/pages.test.ts src/features/im/pages.test.tsx src/features/im/components.composer.test.tsx src/i18n/translations.test.ts` 通过：6 个 test files、154 个 tests、0 failures。
 - 根目录 `npm test` 通过：264 个 test files、1,679 个 tests、0 failures。
 - `npm run i18n:audit` 退出码为 0；本次输出摘要为 `zhSourceCount=12195`、`nonZhSourceCount=3200`、`coveredCount=7328`、`recoverableFromIndexedCount=0`、`missingCount=4867`。任务要求的既有 5 秒超时在本次重跑中未出现。
-- `git diff --check` 通过。`npm run lint` 与 `npm run verify:production-build` 均因同一个当前 TypeScript 错误退出：`src/features/im/useImVoiceRecording.test.tsx:172:27`（`'this' implicitly has type 'any' because it does not have a type annotation.`）；本次没有放宽或修改门禁。
-- 浏览器/正式运行验收尚未由本任务执行：未确认 `http://127.0.0.1:5180/user.html#/messages/2546` 的监听归属、单击打开、440×956 与 320×956 的居中及 72×72 CSS 像素按钮、录音/预览控件切换、音频元素未静音与播放时间推进、实际可听录音与重放、取消后无新消息，或持续静音输入轨道的本地化提示。因此浏览器视觉、权限、音频听感、失败重试、双账号 SSE/重载播放均保持待主控验收，不能标记为已通过。
+- 补齐测试 mock 的严格 `this: HTMLMediaElement` 类型后，`npm run lint` 通过；`npm run verify:production-build` 完成 TypeScript、formal Vite build 与 production bundle audit，8 个 HTML 入口和 23 个资产检查通过。最终 `git diff --check` 通过，没有放宽门禁。
+- 随后主工作树出现与本语音切片无关的 Social 并行修改；本任务复核时 `npm run lint` 与 `npm run verify:production-build` 均在 `src/features/social/formal-adapter.test.ts:68:7` 因 `counters` 不属于 `RealtimeSocialPost` 而退出。该并行修改未纳入本次文档提交，也未放宽门禁。
+- 正式运行监听已确认来自当前检出：前端 `5180` 的 cwd 为仓库根目录，后端 `3000` 的 cwd 为 `backend/`。在 `http://127.0.0.1:5180/user.html#/messages/2546` 实测单击打开、录音态 X + 停止、预览态 X + 重放 + 发送、动作区 `top-[57%]`、72×72 CSS 像素按钮、Blob 音频 `muted=false` / `defaultMuted=false` / `playsinline=true` 及播放进度；用户确认实际录音回放有声。440×956、320×956、持续静音输入提示、失败重试及双账号 SSE/重载播放仍未在本切片重新验收。
 
 ---
 
