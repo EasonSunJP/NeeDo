@@ -1,13 +1,14 @@
+// @vitest-environment jsdom
+
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ImApi } from "./contract";
-import type { ConversationMessage } from "./model";
+import type { ConversationMessage, ImStoreUpdate } from "./model";
 import {
   buildCachedImSearchResults,
-  createScopedStore,
   getIncomingPendingFriendRequestCount,
   getMessageFailureReason,
   getForwardableMessagePayload,
@@ -15,28 +16,42 @@ import {
   preferTerminalMessage,
   selectLatestFriendRequestsByCounterpart,
   upsertConversationMessage,
+  useImStore,
 } from "./store";
+
+const voiceStoreRuntime = vi.hoisted(() => ({
+  api: undefined as unknown,
+  onUpdate: undefined as unknown,
+  session: undefined as unknown,
+  subscribeUpdates: undefined as unknown,
+}));
+
+vi.mock("../../auth/AuthProvider", () => ({
+  useAuth: () => ({ session: voiceStoreRuntime.session }),
+}));
+
+vi.mock("./formal-api", () => ({
+  createFormalImApi: () => voiceStoreRuntime.api,
+  subscribeFormalImUpdates: (onUpdate: unknown) =>
+    (voiceStoreRuntime.subscribeUpdates as (callback: unknown) => () => void)(
+      onUpdate,
+    ),
+}));
 
 const sentAt = "2026-08-25T10:00:00.000Z";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-let dom: JSDOM;
-
 beforeEach(() => {
-  dom = new JSDOM("<!doctype html><html><body></body></html>", {
-    url: "http://localhost/",
-  });
-  Object.assign(globalThis, {
-    document: dom.window.document,
-    window: dom.window,
-  });
+  voiceStoreRuntime.api = undefined;
+  voiceStoreRuntime.onUpdate = undefined;
+  voiceStoreRuntime.session = undefined;
+  voiceStoreRuntime.subscribeUpdates = undefined;
 });
 
 afterEach(() => {
   window.localStorage.clear();
   document.body.replaceChildren();
-  dom.window.close();
   vi.restoreAllMocks();
 });
 
@@ -83,7 +98,7 @@ describe("formal IM recall terminal precedence", () => {
   });
 
   it("awaits the conversation-scoped standard recall before upserting the result", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "src/features/im/store.ts"), "utf8");
     expect(source).toContain(
       'async function recallMessage(conversationId: string, messageId: string, mode: "standard")',
     );
@@ -95,7 +110,10 @@ describe("formal IM recall terminal precedence", () => {
 });
 
 describe("formal IM voice send state", () => {
-  function renderStore(sendVoiceMessage: ImApi["sendVoiceMessage"]) {
+  function renderStore(
+    userId: number,
+    sendVoiceMessage: ImApi["sendVoiceMessage"],
+  ) {
     const existingMessage = message({ id: "699", localId: "699" });
     const api = {
       bootstrap: vi.fn().mockResolvedValue({
@@ -129,16 +147,25 @@ describe("formal IM voice send state", () => {
       }),
       sendVoiceMessage,
     } as unknown as ImApi;
-    const scoped = createScopedStore("user", {
-      api: api as ReturnType<typeof import("./formal-api").createFormalImApi>,
-      subscribeUpdates: () => () => undefined,
+    const subscribeUpdates = vi.fn((onUpdate: (update: ImStoreUpdate) => void) => {
+      voiceStoreRuntime.onUpdate = onUpdate;
+      return () => undefined;
     });
+    voiceStoreRuntime.api = api;
+    voiceStoreRuntime.session = {
+      id: userId,
+      activePublicId: `u${String(userId).padStart(10, "0")}`,
+      primaryPublicId: `u${String(userId).padStart(10, "0")}`,
+      username: `voice-test-${userId}`,
+      avatarUrl: null,
+    };
+    voiceStoreRuntime.subscribeUpdates = subscribeUpdates;
     const container = document.createElement("div");
     const root = createRoot(container);
-    let latest: ReturnType<typeof scoped.useStore> | undefined;
+    let latest: ReturnType<typeof useImStore> | undefined;
 
     function StoreHarness() {
-      latest = scoped.useStore();
+      latest = useImStore("user");
       return null;
     }
 
@@ -170,7 +197,7 @@ describe("formal IM voice send state", () => {
     const sendVoiceMessage = vi
       .fn<ImApi["sendVoiceMessage"]>()
       .mockRejectedValue(new Error("error.network.timeout"));
-    const harness = renderStore(sendVoiceMessage);
+    const harness = renderStore(10_001, sendVoiceMessage);
     await harness.mount();
     const beforeMessages = harness.latest.messagesByConversation["91"];
     const beforeConversation = harness.latest.conversations[0];
@@ -198,7 +225,7 @@ describe("formal IM voice send state", () => {
     const sendVoiceMessage = vi
       .fn<ImApi["sendVoiceMessage"]>()
       .mockResolvedValue({ message: authoritativeMessage });
-    const harness = renderStore(sendVoiceMessage);
+    const harness = renderStore(10_002, sendVoiceMessage);
     await harness.mount();
 
     const result = await harness.latest.sendVoiceMessage(
@@ -217,6 +244,62 @@ describe("formal IM voice send state", () => {
       updatedAt: authoritativeMessage.sentAt,
     });
     await harness.unmount();
+  });
+
+  it("deduplicates an in-flight SSE voice message against the authoritative REST result", async () => {
+    let resolveResponse: ((response: { message: ConversationMessage }) => void) | undefined;
+    const response = new Promise<{ message: ConversationMessage }>((resolve) => {
+      resolveResponse = resolve;
+    });
+    const authoritativeMessage = message({
+      id: "703",
+      localId: "703",
+      type: "voice",
+      content: "语音",
+      sentAt: "2026-08-25T10:02:00.000Z",
+    });
+    const sendVoiceMessage = vi
+      .fn<ImApi["sendVoiceMessage"]>()
+      .mockReturnValue(response);
+    const harness = renderStore(10_003, sendVoiceMessage);
+    await harness.mount();
+
+    const pending = harness.latest.sendVoiceMessage(
+      "91",
+      new Blob(["voice"], { type: "audio/webm" }),
+      { durationSeconds: 6, fileName: "voice.webm" },
+    );
+    await expect.poll(() => sendVoiceMessage.mock.calls.length).toBe(1);
+
+    await act(async () => {
+      (voiceStoreRuntime.onUpdate as (update: ImStoreUpdate) => void)({
+        type: "message.created",
+        message: authoritativeMessage,
+      });
+      await Promise.resolve();
+    });
+    expect(harness.latest.messagesByConversation["91"].filter((item) => item.id === "703")).toHaveLength(1);
+
+    await act(async () => {
+      resolveResponse?.({ message: authoritativeMessage });
+      await pending;
+    });
+
+    await expect(pending).resolves.toBe(authoritativeMessage);
+    expect(harness.latest.messagesByConversation["91"].filter((item) => item.id === "703")).toEqual([
+      authoritativeMessage,
+    ]);
+    expect(harness.latest.conversations[0]).toMatchObject({
+      lastMessagePreview: "音频",
+      lastMessageTime: authoritativeMessage.sentAt,
+      updatedAt: authoritativeMessage.sentAt,
+    });
+    await harness.unmount();
+  });
+
+  it("keeps the scoped Store factory internal to the module", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/features/im/store.ts"), "utf8");
+    expect(source).not.toContain("export function createScopedStore");
   });
 });
 
@@ -298,7 +381,7 @@ describe("formal IM forwarding", () => {
   });
 
   it("uses the normal formal send path instead of the unavailable forward stub", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "src/features/im/store.ts"), "utf8");
     const start = source.indexOf("async function forwardMessage");
     const end = source.indexOf("async function pinConversation", start);
     const forwardSource = source.slice(start, end);
@@ -404,7 +487,7 @@ describe("formal IM quick reactions", () => {
   });
 
   it("upserts the authoritative reaction response into the shared message store", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "src/features/im/store.ts"), "utf8");
     const start = source.indexOf("async function setMessageReaction");
     const end = source.indexOf("async function recallMessage", start);
     const reactionSource = source.slice(start, end);

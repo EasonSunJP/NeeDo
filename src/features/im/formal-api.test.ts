@@ -631,6 +631,62 @@ describe("formal IM adapter", () => {
     expect(createMessage).not.toHaveBeenCalled();
   });
 
+  it("keeps the voice Blob, MIME type, and metadata query intact for the realtime endpoint", async () => {
+    const blob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], {
+      type: "audio/webm;codecs=opus",
+    });
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 703,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+    const createMessage = vi.spyOn(realtimeApi, "createMessage");
+
+    await realtimeApi.createVoiceMessage(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+
+    expect(request).toHaveBeenCalledWith("/im/conversations/91/voice", {
+      body: blob,
+      headers: { "Content-Type": "audio/webm;codecs=opus" },
+      method: "POST",
+      query: { durationSeconds: 6, fileName: "voice.webm" },
+    });
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it("falls back to audio/webm when the voice Blob has no MIME type", async () => {
+    const blob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])]);
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 704,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+
+    await realtimeApi.createVoiceMessage(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      "/im/conversations/91/voice",
+      expect.objectContaining({
+        body: blob,
+        headers: { "Content-Type": "audio/webm" },
+        query: { durationSeconds: 6, fileName: "voice.webm" },
+      }),
+    );
+  });
+
   it("persists message reactions through the formal API and maps the saved people", async () => {
     const setMessageReaction = vi
       .spyOn(realtimeApi, "setMessageReaction")

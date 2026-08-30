@@ -309,7 +309,7 @@ type ScopedStoreBackend = {
   subscribeUpdates: (onUpdate: (update: ImStoreUpdate) => void) => () => void;
 };
 
-export function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
+function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   const { api } = backend;
   const listeners = new Set<() => void>();
   let realtimeUnsubscribe: (() => void) | null = null;
