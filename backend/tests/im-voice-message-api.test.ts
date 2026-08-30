@@ -4,9 +4,40 @@ import { join } from "node:path";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
+import { ERROR_CODES } from "../src/constants/error-codes";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { AppError } from "../src/utils/app-error";
 
 const validWebm = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
+const validMp4 = Buffer.concat([
+  Buffer.from([0x00, 0x00, 0x00, 0x0c]),
+  Buffer.from("ftyp", "ascii"),
+  Buffer.from("M4A ", "ascii")
+]);
+const validOgg = Buffer.from("OggS", "ascii");
+const voiceVariants = [
+  {
+    label: "WebM with codecs parameter",
+    bytes: validWebm,
+    contentType: "audio/webm;codecs=opus",
+    fileName: "voice.webm",
+    mimeType: "audio/webm"
+  },
+  {
+    label: "MP4",
+    bytes: validMp4,
+    contentType: "audio/mp4",
+    fileName: "voice.mp4",
+    mimeType: "audio/mp4"
+  },
+  {
+    label: "Ogg",
+    bytes: validOgg,
+    contentType: "audio/ogg",
+    fileName: "voice.ogg",
+    mimeType: "audio/ogg"
+  }
+] as const;
 const createdAt = new Date("2026-08-31T00:00:00.000Z");
 const voiceMessage = {
   id: 501,
@@ -37,7 +68,10 @@ const voiceMessage = {
   createdAt
 };
 
-const createFixture = async (permissionCodes = ["message:create"]) => {
+const createFixture = async (
+  permissionCodes = ["message:create"],
+  send = jest.fn(async () => voiceMessage)
+) => {
   const directory = await mkdtemp(join(tmpdir(), "needo-im-voice-api-"));
   const user = {
     id: 41,
@@ -77,9 +111,7 @@ const createFixture = async (permissionCodes = ["message:create"]) => {
       }
     ]
   };
-  const voiceService = {
-    send: jest.fn(async () => voiceMessage)
-  };
+  const voiceService = { send };
   const app = createApp(
     { ...env, IM_MEDIA_STORAGE_DIR: directory },
     {
@@ -147,30 +179,52 @@ describe("IM voice message HTTP API", () => {
     await rm(fixture.directory, { recursive: true, force: true });
   });
 
-  it("normalizes content-type parameters and returns the existing realtime message envelope", async () => {
-    const fixture = await createFixture();
-    const response = await sendVoice(fixture, {
-      bytes: validWebm,
-      contentType: "audio/webm;codecs=opus",
-      durationSeconds: 59
-    });
-
-    expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({
-      code: 0,
-      message: "success",
-      data: { id: 501, conversationId: 91 }
-    });
-    expect(fixture.voiceService.send).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 41 }),
-      expect.objectContaining({
-        bytes: validWebm,
-        conversationId: 91,
+  it.each(voiceVariants)(
+    "accepts $label raw audio and passes normalized $mimeType to the service",
+    async ({ bytes, contentType, fileName, mimeType }) => {
+      const fixture = await createFixture();
+      const response = await sendVoice(fixture, {
+        bytes,
+        contentType,
         durationSeconds: 59,
-        fileName: "voice.webm",
-        mimeType: "audio/webm"
-      })
-    );
+        fileName
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        code: 0,
+        message: "success",
+        data: { id: 501, conversationId: 91 }
+      });
+      expect(fixture.voiceService.send).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 41 }),
+        expect.objectContaining({
+          bytes,
+          conversationId: 91,
+          durationSeconds: 59,
+          fileName,
+          mimeType
+        })
+      );
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  );
+
+  it("preserves a downstream AppError status and message", async () => {
+    const serviceError = new AppError({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+    const send = jest.fn(async () => {
+      throw serviceError;
+    });
+    const fixture = await createFixture(["message:create"], send);
+    const response = await sendVoice(fixture);
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe("error.im.not_friends");
+    expect(send).toHaveBeenCalledTimes(1);
     await rm(fixture.directory, { recursive: true, force: true });
   });
 
