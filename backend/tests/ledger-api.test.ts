@@ -158,17 +158,39 @@ const createFixture = async () => {
     ]
   };
   const ledgerRepository = {
-    findUserAccountClassification: jest.fn(async () => ({ isTestAccount: false })),
+    findUserAccountClassification: jest.fn(async () => ({ isTestAccount: true })),
     findWallet: jest.fn(async () => ({
       id: 1,
       ownerType: "user",
       ownerId: 7,
-      currency: "NDP",
-      availableBalance: 100,
+      currency: "TEST_NDP",
+      availableBalance: 100_000,
       frozenBalance: 0,
       createdAt: now,
       updatedAt: now
     })),
+    findWallets: jest.fn(async () => [
+      {
+        id: 1,
+        ownerType: "user",
+        ownerId: 7,
+        currency: "TEST_NDP",
+        availableBalance: 100_000,
+        frozenBalance: 0,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 2,
+        ownerType: "user",
+        ownerId: 7,
+        currency: "NDP",
+        availableBalance: 999,
+        frozenBalance: 12,
+        createdAt: now,
+        updatedAt: now
+      }
+    ]),
     listWalletLedger: jest.fn(async () => ({
       list: [],
       total: 0,
@@ -270,8 +292,20 @@ describe("Step 11 wallet ledger and finance APIs", () => {
         expect(response.body.data).toMatchObject({
           ownerType: "user",
           ownerId: 7,
-          currency: "NDP",
-          availableBalance: 100
+          currency: "TEST_NDP",
+          availableBalance: 100_000
+        });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/wallets/me/summary")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toEqual({
+          activeCurrency: "TEST_NDP",
+          ndp: { available: 999, frozen: 12 },
+          testNdp: { available: 100_000, frozen: 0 }
         });
       });
 

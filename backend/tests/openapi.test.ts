@@ -428,6 +428,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/confirm");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/refund");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me");
+    expect(response.body.paths).toHaveProperty("/api/v1/wallets/me/summary");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/{id}/ledger");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/ledger/transactions");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/dashboard");
@@ -435,6 +436,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/schedule");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements/export");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/ndp-summary");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technician-rankings");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technician-rankings/export");
@@ -810,6 +812,11 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("ScheduleSlot");
     expect(response.body.components.schemas).toHaveProperty("BookingOrder");
     expect(response.body.components.schemas).toHaveProperty("Wallet");
+    expect(response.body.components.schemas).toHaveProperty("WalletSummary");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeNdpSummary");
+    expect(response.body.components.schemas.BackofficeNdpSummary.required).toEqual(
+      expect.arrayContaining(["todayNdpConsumption", "platformNetRevenue", "settleableNdp"])
+    );
     expect(response.body.components.schemas).toHaveProperty("LedgerTransaction");
     expect(response.body.components.schemas.RealtimeMessage.required).toEqual(
       expect.arrayContaining([

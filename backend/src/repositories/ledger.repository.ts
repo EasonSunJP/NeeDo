@@ -966,6 +966,24 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return wallet ? this.mapWallet(wallet) : null;
   }
 
+  public async findWallets(input: {
+    ownerType: WalletOwnerType;
+    ownerId: number;
+    currencies: LedgerCurrency[];
+  }): Promise<WalletPayload[]> {
+    const wallets = await this.client.wallet.findMany({
+      where: {
+        ownerType: this.ownerTypeToDb(input.ownerType),
+        ownerId: input.ownerId,
+        currency: { in: input.currencies },
+        deletedAt: null
+      },
+      orderBy: { id: "asc" }
+    });
+
+    return wallets.map((wallet) => this.mapWallet(wallet));
+  }
+
   public async listWalletLedger(
     input: WalletLedgerListInput
   ): Promise<PaginatedResponse<WalletLedgerPayload>> {

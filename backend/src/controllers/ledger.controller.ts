@@ -33,6 +33,24 @@ export class LedgerController {
     }
   };
 
+  public getMyWalletSummary = async (
+    _request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.ledgerService.getMyWalletSummary(this.getActor(response))
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
   public createWalletAdjustmentRequest = async (
     request: Request,
     response: Response,

@@ -382,6 +382,32 @@ const createFixture = async () => {
       page: 1,
       page_size: 20
     })),
+    summarizeNdpByCurrency: jest.fn(async () => [
+      {
+        ndpCurrency: "NDP",
+        bPlatformFeeActualNdp: 700,
+        cRequestFeeActualNdp: 300,
+        penaltyNdp: 10,
+        userRewardNdp: 100,
+        compensationToUserNdp: 50,
+        bPlatformFeeHoldNdp: 800,
+        cRequestFeeHoldNdp: 350,
+        releasedNdp: 25,
+        campaignDiscountNdp: 40
+      },
+      {
+        ndpCurrency: "TEST_NDP",
+        bPlatformFeeActualNdp: 999,
+        cRequestFeeActualNdp: 99,
+        penaltyNdp: 2,
+        userRewardNdp: 50,
+        compensationToUserNdp: 10,
+        bPlatformFeeHoldNdp: 1200,
+        cRequestFeeHoldNdp: 200,
+        releasedNdp: 20,
+        campaignDiscountNdp: 30
+      }
+    ]),
     exportFinanceSettlements: jest.fn(async () => ({
       filename: "merchant-finance-settlements.csv",
       contentType: "text/csv; charset=utf-8",
@@ -1038,6 +1064,53 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     );
   });
 
+  it("reports formal and Test NDP separately while keeping settlement formal-only", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/finance/ndp-summary?date=2026-05-25")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual({
+      period: { date: "2026-05-25", timeZone: "Asia/Tokyo" },
+      todayNdpConsumption: { ndp: 1010, testNdp: 1100 },
+      platformNetRevenue: { ndp: 860, testNdp: 1040 },
+      requestFeeRevenue: { ndp: 300, testNdp: 99 },
+      userRewardCost: { ndp: 100, testNdp: 50 },
+      pendingHold: { ndp: 125, testNdp: 282 },
+      campaignDiscount: { ndp: 40, testNdp: 30 },
+      settleableNdp: 860
+    });
+    expect(fixture.backofficeRepository.summarizeNdpByCurrency).toHaveBeenCalledWith({
+      fromInclusive: new Date("2026-05-24T15:00:00.000Z"),
+      toExclusive: new Date("2026-05-25T15:00:00.000Z")
+    });
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorId: 1,
+          action: "backoffice.finance.ndp_summary.read",
+          targetType: "finance_ndp_summary",
+          metadata: { date: "2026-05-25", timeZone: "Asia/Tokyo" }
+        })
+      ])
+    );
+  });
+
+  it("rejects invalid NDP summary calendar dates before repository access", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/finance/ndp-summary?date=2026-02-30")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+
+    expect(fixture.backofficeRepository.summarizeNdpByCurrency).not.toHaveBeenCalled();
+  });
+
   it("blocks users without the matching backoffice permission", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("viewer@example.com");
@@ -1050,7 +1123,14 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN);
       });
     expect(fixture.backofficeRepository.listOrders).not.toHaveBeenCalled();
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/finance/ndp-summary")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+    expect(fixture.backofficeRepository.summarizeNdpByCurrency).not.toHaveBeenCalled();
   });
+
 
   it("scopes merchant-admin orders and exports to the authenticated shop", async () => {
     const fixture = await createFixture();

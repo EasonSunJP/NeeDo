@@ -2,6 +2,48 @@ import { ERROR_CODES } from "../src/constants/error-codes";
 import { LedgerRepository } from "../src/repositories/ledger.repository";
 
 describe("LedgerRepository wallet creation", () => {
+  it("loads formal and Test NDP balances in one owner-scoped query", async () => {
+    const now = new Date("2026-08-30T00:00:00.000Z");
+    const findMany = jest.fn(async () => [
+      {
+        id: 1,
+        ownerType: "USER",
+        ownerId: 7,
+        currency: "TEST_NDP",
+        availableBalance: 100_000,
+        frozenBalance: 0,
+        createdAt: now,
+        updatedAt: now
+      }
+    ]);
+    const repository = new LedgerRepository({ wallet: { findMany } } as never);
+
+    await expect(
+      repository.findWallets({
+        ownerType: "user",
+        ownerId: 7,
+        currencies: ["NDP", "TEST_NDP"]
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        ownerType: "user",
+        ownerId: 7,
+        currency: "TEST_NDP",
+        availableBalance: 100_000
+      })
+    ]);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        ownerType: "USER",
+        ownerId: 7,
+        currency: { in: ["NDP", "TEST_NDP"] },
+        deletedAt: null
+      },
+      orderBy: { id: "asc" }
+    });
+  });
+
   it("resolves a technician profile to its global active user wallet owner", async () => {
     const findFirst = jest.fn().mockResolvedValue({ userId: 501 });
     const repository = new LedgerRepository({

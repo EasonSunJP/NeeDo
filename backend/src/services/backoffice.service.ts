@@ -5,6 +5,7 @@ import type {
   BackofficeCustomerMembershipGrantBody,
   BackofficeCustomerUpdateBody,
   BackofficeListQuery,
+  BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
   BackofficeServiceCreateBody,
   BackofficeServiceUpdateBody,
@@ -20,6 +21,7 @@ import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { LedgerCurrency } from "./ledger-currency.service";
 
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -563,6 +565,38 @@ export interface BackofficeCsvExportPayload {
   content: string;
 }
 
+export interface BackofficeNdpAggregate {
+  ndpCurrency: LedgerCurrency;
+  bPlatformFeeActualNdp: number;
+  cRequestFeeActualNdp: number;
+  penaltyNdp: number;
+  userRewardNdp: number;
+  compensationToUserNdp: number;
+  bPlatformFeeHoldNdp: number;
+  cRequestFeeHoldNdp: number;
+  releasedNdp: number;
+  campaignDiscountNdp: number;
+}
+
+export interface NdpAmountPair {
+  ndp: number;
+  testNdp: number;
+}
+
+export interface BackofficeNdpSummaryPayload {
+  period: {
+    date: string;
+    timeZone: "Asia/Tokyo";
+  };
+  todayNdpConsumption: NdpAmountPair;
+  platformNetRevenue: NdpAmountPair;
+  requestFeeRevenue: NdpAmountPair;
+  userRewardCost: NdpAmountPair;
+  pendingHold: NdpAmountPair;
+  campaignDiscount: NdpAmountPair;
+  settleableNdp: number;
+}
+
 export interface BackofficeRepositoryPort {
   getDashboard: (scope: BackofficeScope) => Promise<BackofficeDashboardPayload>;
   listOrders: (
@@ -577,6 +611,10 @@ export interface BackofficeRepositoryPort {
   exportFinanceSettlements: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<BackofficeCsvExportPayload>;
+  summarizeNdpByCurrency: (input: {
+    fromInclusive: Date;
+    toExclusive: Date;
+  }) => Promise<BackofficeNdpAggregate[]>;
   listTechnicians: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeTechnicianPayload>>;
@@ -621,7 +659,8 @@ export class BackofficeService {
 
   public constructor(
     private readonly repository: BackofficeRepositoryPort,
-    private readonly auditLogService: AuditLogService
+    private readonly auditLogService: AuditLogService,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   public async getPlatformDashboard(
@@ -699,6 +738,71 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.finance.list", "finance_reconciliation");
 
     return this.repository.listFinanceSettlements({ scope: "platform", ...input });
+  }
+
+  public async getPlatformNdpSummary(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeNdpSummaryQuery
+  ): Promise<BackofficeNdpSummaryPayload> {
+    const date = input.date ?? toTokyoCalendarDate(this.now());
+    const fromInclusive = startOfTokyoCalendarDate(date);
+    const toExclusive = startOfTokyoCalendarDate(shiftCalendarDate(date, 1));
+    await this.record(actor, context, "backoffice.finance.ndp_summary.read", "finance_ndp_summary", {
+      date,
+      timeZone: "Asia/Tokyo"
+    });
+
+    const aggregates = await this.repository.summarizeNdpByCurrency({
+      fromInclusive,
+      toExclusive
+    });
+    const byCurrency = new Map(aggregates.map((aggregate) => [aggregate.ndpCurrency, aggregate]));
+    const empty: BackofficeNdpAggregate = {
+      ndpCurrency: "NDP",
+      bPlatformFeeActualNdp: 0,
+      cRequestFeeActualNdp: 0,
+      penaltyNdp: 0,
+      userRewardNdp: 0,
+      compensationToUserNdp: 0,
+      bPlatformFeeHoldNdp: 0,
+      cRequestFeeHoldNdp: 0,
+      releasedNdp: 0,
+      campaignDiscountNdp: 0
+    };
+    const formal = byCurrency.get("NDP") ?? empty;
+    const test = byCurrency.get("TEST_NDP") ?? { ...empty, ndpCurrency: "TEST_NDP" };
+    const pair = (selector: (aggregate: BackofficeNdpAggregate) => number): NdpAmountPair => ({
+      ndp: selector(formal),
+      testNdp: selector(test)
+    });
+    const consumption = (aggregate: BackofficeNdpAggregate): number =>
+      aggregate.bPlatformFeeActualNdp +
+      aggregate.cRequestFeeActualNdp +
+      aggregate.penaltyNdp;
+    const netRevenue = (aggregate: BackofficeNdpAggregate): number =>
+      consumption(aggregate) - aggregate.userRewardNdp - aggregate.compensationToUserNdp;
+    const pendingHold = (aggregate: BackofficeNdpAggregate): number =>
+      Math.max(
+        0,
+        aggregate.bPlatformFeeHoldNdp +
+          aggregate.cRequestFeeHoldNdp -
+          aggregate.bPlatformFeeActualNdp -
+          aggregate.cRequestFeeActualNdp -
+          aggregate.releasedNdp
+      );
+    const platformNetRevenue = pair(netRevenue);
+
+    return {
+      period: { date, timeZone: "Asia/Tokyo" },
+      todayNdpConsumption: pair(consumption),
+      platformNetRevenue,
+      requestFeeRevenue: pair((aggregate) => aggregate.cRequestFeeActualNdp),
+      userRewardCost: pair((aggregate) => aggregate.userRewardNdp),
+      pendingHold: pair(pendingHold),
+      campaignDiscount: pair((aggregate) => aggregate.campaignDiscountNdp),
+      settleableNdp: platformNetRevenue.ndp
+    };
   }
 
   public async listMerchantFinance(

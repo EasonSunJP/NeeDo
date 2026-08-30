@@ -37,6 +37,12 @@ const calendarDateSchema = z
     );
   }, "Invalid calendar date");
 
+export const backofficeNdpSummaryQuerySchema = z
+  .object({
+    date: calendarDateSchema.optional()
+  })
+  .strict();
+
 const technicianRankingPeriodSchema = z.enum([
   "today",
   "last7days",
@@ -203,6 +209,7 @@ export const backofficeServiceUpdateBodySchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
+export type BackofficeNdpSummaryQuery = z.infer<typeof backofficeNdpSummaryQuerySchema>;
 export type BackofficeTimelineQuery = z.infer<typeof backofficeTimelineQuerySchema>;
 export type TechnicianRankingPeriod = z.infer<typeof technicianRankingPeriodSchema>;
 export type TechnicianRankingSort = z.infer<typeof technicianRankingSortSchema>;

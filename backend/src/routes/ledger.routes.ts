@@ -58,6 +58,12 @@ export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependenc
     authorize(LEDGER_ROUTE_PERMISSIONS.walletRead),
     controller.getMyWallet
   );
+  router.get(
+    "/wallets/me/summary",
+    authenticate(),
+    authorize(LEDGER_ROUTE_PERMISSIONS.walletRead),
+    controller.getMyWalletSummary
+  );
   router.post(
     "/wallet-adjustments",
     authenticate(),

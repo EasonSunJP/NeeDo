@@ -480,6 +480,48 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
 }
 
 describe("LedgerService wallet mutations", () => {
+  it("returns both wallet balances with the account's active Test NDP currency", async () => {
+    const findWallets = jest.fn(async () => [
+      {
+        id: 1,
+        ownerType: "user",
+        ownerId: 7,
+        currency: "TEST_NDP",
+        availableBalance: 100_000,
+        frozenBalance: 1_000,
+        createdAt: now,
+        updatedAt: now
+      }
+    ]);
+    const service = new LedgerService({
+      findUserAccountClassification: jest.fn(async () => ({ isTestAccount: true })),
+      findWallets
+    } as never);
+
+    await expect(
+      service.getMyWalletSummary({
+        userId: 7,
+        email: "test@example.com",
+        accessTokenJti: "wallet-summary",
+        accessTokenExpiresAt: 1_800_000_000,
+        currentIdentityType: "customer",
+        currentIdentityScopeType: "global",
+        currentIdentityScopeId: null,
+        roles: ["customer"],
+        permissions: ["wallet:read"]
+      })
+    ).resolves.toEqual({
+      activeCurrency: "TEST_NDP",
+      ndp: { available: 0, frozen: 0 },
+      testNdp: { available: 100_000, frozen: 1_000 }
+    });
+    expect(findWallets).toHaveBeenCalledWith({
+      ownerType: "user",
+      ownerId: 7,
+      currencies: ["NDP", "TEST_NDP"]
+    });
+  });
+
   it.each([
     [false, "NDP"],
     [true, "TEST_NDP"]

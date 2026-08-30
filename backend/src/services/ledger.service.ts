@@ -69,6 +69,18 @@ export interface WalletPayload {
   updatedAt: Date;
 }
 
+export interface WalletSummaryPayload {
+  activeCurrency: LedgerCurrency;
+  ndp: {
+    available: number;
+    frozen: number;
+  };
+  testNdp: {
+    available: number;
+    frozen: number;
+  };
+}
+
 export type WalletAdjustmentType = "topup" | "withdrawal";
 export type WalletAdjustmentStatus = "pending" | "approved" | "rejected";
 
@@ -449,6 +461,11 @@ export interface LedgerRepositoryPort {
   }) => Promise<WalletHoldPayload>;
   upsertOrderFinancial?: (input: OrderFinancialUpsertInput) => Promise<void>;
   findWallet?: (input: WalletLookupInput) => Promise<WalletPayload | null>;
+  findWallets?: (input: {
+    ownerType: WalletOwnerType;
+    ownerId: number;
+    currencies: LedgerCurrency[];
+  }) => Promise<WalletPayload[]>;
   listWalletLedger?: (
     input: WalletLedgerListInput
   ) => Promise<PaginatedResponse<WalletLedgerPayload>>;
@@ -2705,6 +2722,38 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     });
 
     return wallet;
+  }
+
+  public async getMyWalletSummary(
+    actor: AuthenticatedAccessContext
+  ): Promise<WalletSummaryPayload> {
+    if (!this.repository.findWallets) {
+      throw this.repositoryUnavailableError();
+    }
+
+    const owner = this.walletOwnerForReadActor(actor);
+    const [activeCurrency, wallets] = await Promise.all([
+      this.resolveCurrencyForUser(this.repository, actor.userId),
+      this.repository.findWallets({
+        ...owner,
+        currencies: ["NDP", "TEST_NDP"]
+      })
+    ]);
+    const balances = new Map(wallets.map((wallet) => [wallet.currency, wallet]));
+    const ndp = balances.get("NDP");
+    const testNdp = balances.get("TEST_NDP");
+
+    return {
+      activeCurrency,
+      ndp: {
+        available: ndp?.availableBalance ?? 0,
+        frozen: ndp?.frozenBalance ?? 0
+      },
+      testNdp: {
+        available: testNdp?.availableBalance ?? 0,
+        frozen: testNdp?.frozenBalance ?? 0
+      }
+    };
   }
 
   public async getWallet(input: WalletLookupInput): Promise<WalletPayload> {

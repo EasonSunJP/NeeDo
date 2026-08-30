@@ -7,6 +7,7 @@ import {
   backofficeCustomerUpdateBodySchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
   backofficeServiceUpdateBodySchema,
@@ -101,6 +102,14 @@ export class BackofficeController {
       getAuthenticatedAccess(response),
       getRequestContext(request),
       backofficeListQuerySchema.parse(request.query)
+    )
+  );
+
+  public platformNdpSummary = this.createListHandler((service, request, response) =>
+    service.getPlatformNdpSummary(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeNdpSummaryQuerySchema.parse(request.query)
     )
   );
 

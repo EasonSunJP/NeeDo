@@ -3234,11 +3234,71 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           id: { type: "integer" },
           ownerType: { type: "string", enum: ["user", "shop", "platform"] },
           ownerId: { type: "integer" },
-          currency: { type: "string", enum: ["NDP"] },
+          currency: { type: "string", enum: ["NDP", "TEST_NDP"] },
           availableBalance: { type: "integer" },
           frozenBalance: { type: "integer" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      WalletSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["activeCurrency", "ndp", "testNdp"],
+        properties: {
+          activeCurrency: { type: "string", enum: ["NDP", "TEST_NDP"] },
+          ndp: { $ref: "#/components/schemas/WalletBalance" },
+          testNdp: { $ref: "#/components/schemas/WalletBalance" }
+        }
+      },
+      WalletBalance: {
+        type: "object",
+        additionalProperties: false,
+        required: ["available", "frozen"],
+        properties: {
+          available: { type: "integer" },
+          frozen: { type: "integer" }
+        }
+      },
+      NdpAmountPair: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ndp", "testNdp"],
+        properties: {
+          ndp: { type: "integer" },
+          testNdp: { type: "integer" }
+        }
+      },
+      BackofficeNdpSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "period",
+          "todayNdpConsumption",
+          "platformNetRevenue",
+          "requestFeeRevenue",
+          "userRewardCost",
+          "pendingHold",
+          "campaignDiscount",
+          "settleableNdp"
+        ],
+        properties: {
+          period: {
+            type: "object",
+            additionalProperties: false,
+            required: ["date", "timeZone"],
+            properties: {
+              date: { type: "string", format: "date" },
+              timeZone: { type: "string", enum: ["Asia/Tokyo"] }
+            }
+          },
+          todayNdpConsumption: { $ref: "#/components/schemas/NdpAmountPair" },
+          platformNetRevenue: { $ref: "#/components/schemas/NdpAmountPair" },
+          requestFeeRevenue: { $ref: "#/components/schemas/NdpAmountPair" },
+          userRewardCost: { $ref: "#/components/schemas/NdpAmountPair" },
+          pendingHold: { $ref: "#/components/schemas/NdpAmountPair" },
+          campaignDiscount: { $ref: "#/components/schemas/NdpAmountPair" },
+          settleableNdp: { type: "integer" }
         }
       },
       WalletAdjustmentRequest: {
@@ -9712,6 +9772,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/wallets/me/summary`]: {
+      get: {
+        tags: ["Ledger"],
+        summary: "Current user's formal and Test NDP wallet summary",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Dual-currency wallet balance summary",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/WalletSummary" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     [`${config.API_PREFIX}/wallets/{id}/ledger`]: {
       get: {
         tags: ["Ledger"],
@@ -9998,6 +10083,43 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Paginated backoffice finance settlements" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/finance/ndp-summary`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Daily formal and Test NDP finance summary",
+        description:
+          "Uses Asia/Tokyo calendar boundaries. Test NDP is reported separately and excluded from settleableNdp.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "date",
+            in: "query",
+            required: false,
+            schema: { type: "string", format: "date" }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Paired NDP finance metrics",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/BackofficeNdpSummary" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "Invalid calendar date" },
+          "403": { description: "Missing backoffice finance permission" }
         }
       }
     },

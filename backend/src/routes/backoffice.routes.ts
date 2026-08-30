@@ -14,6 +14,7 @@ import {
   backofficeCustomerUpdateBodySchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
   backofficeServiceUpdateBodySchema,
@@ -98,6 +99,13 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.finance),
     validateRequest({ query: backofficeListQuerySchema }),
     controller.platformFinance
+  );
+  router.get(
+    "/backoffice/finance/ndp-summary",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.finance),
+    validateRequest({ query: backofficeNdpSummaryQuerySchema }),
+    controller.platformNdpSummary
   );
   router.get(
     "/backoffice/finance/settlements/export",

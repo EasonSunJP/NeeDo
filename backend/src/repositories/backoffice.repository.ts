@@ -15,6 +15,7 @@ import { PublicIdentifierRepository } from "./public-identifier.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
+import { LedgerCurrencyService } from "../services/ledger-currency.service";
 import {
   type BackofficeCsvExportPayload,
   type BackofficeAccountPayload,
@@ -26,6 +27,7 @@ import {
   type BackofficeCustomerMembershipGrantPayload,
   type BackofficeDashboardPayload,
   type BackofficeFinanceSettlementPayload,
+  type BackofficeNdpAggregate,
   type BackofficeOrderPayload,
   type BackofficeRepositoryPort,
   type BackofficeScheduleSlotPayload,
@@ -432,7 +434,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   public async exportFinanceSettlements(
     input: BackofficeScope & BackofficeListQuery
   ): Promise<BackofficeCsvExportPayload> {
-    const where = this.financeWhere(input, input);
+    const where: Prisma.OrderFinancialWhereInput = {
+      ...this.financeWhere(input, input),
+      ndpCurrency: "NDP"
+    };
     const rows = await this.client.orderFinancial.findMany({
       where,
       include: this.financeInclude(),
@@ -511,6 +516,46 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       contentType: "text/csv; charset=utf-8",
       content
     };
+  }
+
+  public async summarizeNdpByCurrency(input: {
+    fromInclusive: Date;
+    toExclusive: Date;
+  }): Promise<BackofficeNdpAggregate[]> {
+    const rows = await this.client.orderFinancial.groupBy({
+      by: ["ndpCurrency"],
+      where: {
+        deletedAt: null,
+        createdAt: {
+          gte: input.fromInclusive,
+          lt: input.toExclusive
+        }
+      },
+      _sum: {
+        bPlatformFeeActualNdp: true,
+        cRequestFeeActualNdp: true,
+        penaltyNdp: true,
+        userRewardNdp: true,
+        compensationToUserNdp: true,
+        bPlatformFeeHoldNdp: true,
+        cRequestFeeHoldNdp: true,
+        releasedNdp: true,
+        campaignDiscountNdp: true
+      }
+    });
+
+    return rows.map((row) => ({
+      ndpCurrency: LedgerCurrencyService.fromStored(row.ndpCurrency),
+      bPlatformFeeActualNdp: row._sum.bPlatformFeeActualNdp ?? 0,
+      cRequestFeeActualNdp: row._sum.cRequestFeeActualNdp ?? 0,
+      penaltyNdp: row._sum.penaltyNdp ?? 0,
+      userRewardNdp: row._sum.userRewardNdp ?? 0,
+      compensationToUserNdp: row._sum.compensationToUserNdp ?? 0,
+      bPlatformFeeHoldNdp: row._sum.bPlatformFeeHoldNdp ?? 0,
+      cRequestFeeHoldNdp: row._sum.cRequestFeeHoldNdp ?? 0,
+      releasedNdp: row._sum.releasedNdp ?? 0,
+      campaignDiscountNdp: row._sum.campaignDiscountNdp ?? 0
+    }));
   }
 
   public async listTechnicians(
