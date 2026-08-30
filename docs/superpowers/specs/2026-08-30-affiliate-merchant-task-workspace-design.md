@@ -159,13 +159,14 @@ type MerchantAffiliatePublisherOption = {
   publisherType: "shop" | "merchant_account";
   merchantAccountId: number | null;
   shopId: number | null;
+  publicId: string | null;
   displayName: string;
   current: boolean;
   manageableShopCount: number;
 };
 ```
 
-`merchantAccountId` 和 `shopId` 是后续 API 请求所需的技术字段。前端不得把 `merchantAccountId` 渲染、复制、搜索或作为商户编号展示。商户主体只显示正式商户名称；单店主体显示店铺名称和店铺公开 ID。
+`merchantAccountId` 和 `shopId` 是后续 API 请求所需的技术字段。前端不得把 `merchantAccountId` 渲染、复制、搜索或作为商户编号展示。商户主体只显示正式商户名称且 `publicId` 为 `null`；单店主体显示店铺名称和店铺公开 ID。
 
 接口使用 `page:merchant-affiliate-task`，必须分页，默认每页 20，最大 100。Repository 负责范围过滤，Service 负责当前会话和主体可管理性规则，Controller 只处理请求响应。
 
@@ -202,11 +203,13 @@ type MerchantAffiliateShopOption = {
 
 ```text
 GET /api/v1/merchant-admin/affiliate/services
-  ?shopIds=...
+  ?publisherType=shop|merchant_account
+  &merchantAccountId=...
+  &shopIds=...
   &page=1&pageSize=20&keyword=...
 ```
 
-后端先验证所有 `shopIds` 都属于当前选定且可管理的发布主体，再返回有效服务。响应项至少包含：
+`shop` 主体不得带 `merchantAccountId`；`merchant_account` 主体必须带当前会话可管理的 `merchantAccountId`。后端先验证所有 `shopIds` 都属于这个明确选定且可管理的发布主体，再返回有效服务。响应项至少包含：
 
 ```ts
 type MerchantAffiliateServiceOption = {
@@ -416,6 +419,7 @@ ja -> en -> ko -> zh-TW -> zh-CN
 - 发布主体范围变化：重新读取主体并清理失效选择。
 - `error.affiliate.publisher_scope_invalid`：发布主体或店铺不再可管理。
 - `error.affiliate.service_scope_invalid`：服务已失效或不属于所选店铺。
+- `error.affiliate.shop_public_id_unavailable`：正式店铺公开 ID 缺失，阻止页面退回显示数据库店铺 ID。
 - `error.affiliate.platform_fee_rate_mismatch`：多店费率不一致，禁止提交。
 - 余额不足：显示佣金、平台费和总缺口，不伪造余额。
 - `error.affiliate.task_content_required`：定位到缺失语言。
