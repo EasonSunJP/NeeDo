@@ -467,3 +467,128 @@ git commit -m "feat(social): align quick reply with chat composer"
 
 Expected: the commit contains only the four listed Social files.
 
+---
+
+### Task 3: Record the micro-step and complete release-proportionate verification
+
+**Files:**
+- Modify: `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`
+- Verify only: `src/features/im/components.tsx`
+- Verify only: `src/features/social/components/SocialQuickReplyComposer.tsx`
+- Verify only: `src/features/social/pages/SocialPostDetailPage.tsx`
+
+**Interfaces:**
+- Consumes: The completed shared composer and Social wrapper from Tasks 1-2.
+- Produces: A Step 13 completion record and fresh automated/build/browser evidence.
+
+- [ ] **Step 1: Add the exact Step 13 completion record**
+
+Append this section before `## 7. 给 Codex 的命令` in `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`:
+
+```markdown
+## 6.19 动态详情回复栏复用聊天输入框（2026-08-30）
+
+- 用户端、商户端和技师端共用的动态详情页底部快捷回复栏改为复用正式聊天 `ImChatComposer`，不再维护独立黑色渐变 footer、输入框尺寸和按钮样式。
+- Social 左侧使用当前认证账号的 40×40 圆形头像替代聊天语音按钮；聊天默认语音输入、录音和既有行为保持不变。
+- Social 保留共享表情面板；“+”进入当前动态的既有完整回复页，继续使用正式 Social 图片、地点、提醒对象、可见范围和评论权限流程，不复制聊天专用订单、通话或支付动作。
+- 快捷回复继续通过正式 Social provider/API 创建；提交会裁剪并物化共享 composer 草稿，成功后才清空，受限评论状态保留可见输入栏并原生禁用交互。
+- 本节只修改共享前端组件、Social 快捷回复接线、测试与文档；不新增 API、schema、migration、mock、轮询或浏览器业务持久化。
+```
+
+- [ ] **Step 2: Run targeted tests**
+
+Run:
+
+```bash
+npm test -- src/features/im/components.composer.test.tsx src/features/im/pages.test.tsx src/features/social/components/SocialQuickReplyComposer.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts
+```
+
+Expected: 4 test files PASS with 0 failures.
+
+- [ ] **Step 3: Run the full frontend test suite**
+
+Run:
+
+```bash
+npm test
+```
+
+Expected: exit code 0 and 0 failing test files. If an unrelated dirty-file test fails, preserve that file, record its exact failure, and continue only with checks that isolate this slice; do not repair unrelated work without authorization.
+
+- [ ] **Step 4: Run strict TypeScript/lint and formal production build**
+
+Run:
+
+```bash
+npm run lint
+npm run verify:production-build
+```
+
+Expected: both commands exit 0. The formal production bundle audit reports no mock/static-demo code in the formal output.
+
+- [ ] **Step 5: Identify the runtime owner before browser acceptance**
+
+Run read-only checks:
+
+```bash
+lsof -nP -iTCP:5180 -sTCP:LISTEN
+curl -I -s http://127.0.0.1:5180/user.html
+curl -s http://127.0.0.1:3000/api/v1/health
+curl -s http://127.0.0.1:3000/api/v1/ready
+```
+
+Expected: frontend HTTP 200, backend health `ok`, backend readiness `ready`, and the process serving 5180 belongs to this checkout. If 5180 belongs to another worktree, do not judge this implementation there; start or reuse the intended checkout according to `README.md`.
+
+- [ ] **Step 6: Run mobile browser acceptance against the actual Social post-detail route**
+
+Use an existing formal authenticated account and navigate from `/user.html#/moments` into a real post detail. At 440×956 and 320×800, verify:
+
+```text
+- Shared glass composer is fixed at the bottom and remains inside the Social 720px content width.
+- Current account avatar occupies the former 40×40 voice position; no voice button is present.
+- Emoji opens and closes the shared panel; selecting a value inserts it in the draft.
+- Empty draft shows the plus control; plus opens the full composer with the same replyToPostId.
+- Non-empty draft shows “回复”; submitting creates exactly one visible/public reply and clears the draft after success.
+- Restricted-comment post keeps the composer visible but disables editing, emoji, plus, and send.
+- The final reply/content scrolls above the composer; no horizontal overflow or hidden control exists.
+- Browser console has no new errors, unhandled rejections, failed Social mutation, or React warning.
+```
+
+Capture a fresh screenshot at 440×956 as the visual handoff evidence.
+
+- [ ] **Step 7: Run diff and forbidden-pattern checks**
+
+Run:
+
+```bash
+git diff --check
+git diff --name-only HEAD~2..HEAD
+rg -n "TODO|FIXME|not implemented|mock|fake API" src/features/im/components.tsx src/features/social/components/SocialQuickReplyComposer.tsx src/features/social/pages/SocialPostDetailPage.tsx
+```
+
+Expected: no whitespace errors; changed files are limited to planned composer/Social/tests/docs files; forbidden-pattern matches are absent from new production logic.
+
+- [ ] **Step 8: Commit the completion record**
+
+```bash
+git add docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md
+git commit -m "docs: record Social quick-reply composer alignment"
+```
+
+Expected: the commit contains only `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`.
+
+- [ ] **Step 9: Final evidence review**
+
+Review the approved design spec line by line and report:
+
+```text
+- Modified files.
+- Interfaces changed: ImChatComposer optional presentation/action props only; no API routes.
+- Schema/migrations: none.
+- RED and GREEN commands with observed failure/pass reasons.
+- Targeted/full tests, lint, formal build, health/readiness, and browser acceptance results.
+- Any incomplete item with its exact blocker.
+- Local commits only; no push or deployment.
+```
+
+Do not claim completion unless every claimed item has fresh command or browser evidence from this execution.
