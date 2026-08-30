@@ -2841,7 +2841,7 @@ export function ImQuotedMessagePreview({
   if (message.type === "system" || message.type === "recalled" || message.status === "recalled") {
     const label = message.type === "system"
       ? message.content
-      : getRecallResidueLabel(false);
+      : previewLabel("recalled");
 
     return (
       <p className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}>

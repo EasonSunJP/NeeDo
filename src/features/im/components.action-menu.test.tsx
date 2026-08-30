@@ -818,7 +818,8 @@ describe("MessageBubble translation display boundary", () => {
       ...messageBase,
       id: "translation-quoted-recalled-1",
       localId: "translation-quoted-recalled-1",
-      type: "recalled",
+      senderId: "current-user",
+      type: "text",
       content: "",
       status: "recalled"
     };
@@ -837,7 +838,7 @@ describe("MessageBubble translation display boundary", () => {
     const systemRoot = container.querySelector<HTMLElement>("[data-test-quoted-system]");
     const recalledRoot = container.querySelector<HTMLElement>("[data-test-quoted-recalled]");
     expect(systemRoot?.textContent).toBe("测试测试");
-    expect(recalledRoot?.textContent).toBe("对方撤回了一条消息");
+    expect(recalledRoot?.textContent).toBe("撤回消息");
     expect(systemRoot?.querySelector("[data-no-i18n]")).toBeNull();
     expect(recalledRoot?.querySelector("[data-no-i18n]")).toBeNull();
     expect(systemRoot?.querySelector("[data-im-message-rich-text]")).toBeNull();
