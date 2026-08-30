@@ -247,6 +247,8 @@ OpenAPI 同步声明请求字段和响应字段；不新增路由、权限、轮
 
 完成前运行定向前后端测试、Prisma generate/validate、完整 lint、相关 build 和 `npm run verify:production-build`。若本地正式数据库 migration 未获授权应用，只能报告 migration 文件与只读验证结果，不能声称数据库或浏览器持久化验收完成。
 
+生产构建的 i18n chunk 预算必须继续作为精确门禁，而不是被取消或任意放宽。本微步骤新增五语言正式文案后，实际 chunk 为 `3,703,026` bytes，超过既有 `3,702,048` bytes 预算 `978` bytes。沿用仓库已经采用的最小 `2 KiB` 增量规则，只允许把 i18n 预算调整为 `3,704,096` bytes，并用边界测试证明 `3,703,026` bytes 通过而 `3,704,097` bytes 失败；main chunk 和其他生产审计规则保持不变。
+
 ## 非目标
 
 - 不引入 Google、DeepL、OpenAI 或其他外部翻译供应商。

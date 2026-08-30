@@ -949,6 +949,42 @@ Do not describe this as deployed or live acceptance unless deployment and a live
 
 ---
 
+### Task 10: Preserve the production bundle gate with a measured i18n budget
+
+**Files:**
+
+- Modify: `scripts/audit-production-bundle-lib.test.mjs`
+- Modify: `scripts/audit-production-bundle-lib.mjs`
+- Modify: `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`
+
+- [ ] **Step 1: Add a failing default-budget boundary test**
+
+Extend the bundle fixture so its generated i18n asset can be an exact byte size. Prove the actual feature bundle size, `3,703,026` bytes, is accepted by the default budget and `3,704,097` bytes is rejected.
+
+Run the focused test before implementation and confirm the actual-size assertion fails against the old `3,702,048` byte budget.
+
+- [ ] **Step 2: Apply only the measured 2 KiB i18n increment**
+
+Change only the default i18n budget from `3,702,048` to `3,704,096` bytes. Keep the `4,000,000` main budget, forbidden markers, asset checks, and all other production audit behavior unchanged.
+
+- [ ] **Step 3: Re-run the focused test and production build gate**
+
+```bash
+npx vitest run scripts/audit-production-bundle-lib.test.mjs
+npm run verify:production-build
+```
+
+Expected: both commands exit 0. Record the generated i18n filename, actual byte size, and new budget in the Step 13 verification note.
+
+- [ ] **Step 4: Commit only the measured gate update**
+
+```bash
+git add scripts/audit-production-bundle-lib.test.mjs scripts/audit-production-bundle-lib.mjs docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md
+git commit -m "test(build): calibrate i18n bundle budget"
+```
+
+---
+
 ## Final Self-Review Gate
 
 Before reporting completion, answer each with evidence:
