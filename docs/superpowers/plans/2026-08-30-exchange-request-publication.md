@@ -4,18 +4,20 @@
 
 **Goal:** Publish an upgraded NeeDo Exchange Request through the existing formal Exchange stack while atomically freezing the active globally configured Request fee in the existing Wallet/Ledger system, then capture that hold on publisher withdrawal or release it on natural unmatched expiry.
 
-**Architecture:** Extend `ExchangePost`/`ExchangeDemand` as the Request aggregate, keep `ExchangeService` as the orchestration boundary, and add one Request-specific immutable financial snapshot backed by the existing versioned fee rules, wallet holds, ledger entries, reconciliations, RBAC, and audit logs. The same database transaction owns Request creation and fee freeze; terminal transitions use guarded state changes and the same ledger authority. The current high-fidelity React composer, operations demand page, finance metrics, and authenticated simulation tools are extended in place.
+**Architecture:** Extend `ExchangePost`/`ExchangeDemand` as the Request aggregate, keep `ExchangeService` as the orchestration boundary, and add one Request-specific immutable financial snapshot backed by the existing versioned fee rules, wallet holds, ledger entries, reconciliations, RBAC, and audit logs. The same database transaction owns Request creation and fee freeze; terminal transitions use guarded state changes and the same ledger authority. Request and Intelligence share one approved full-screen edit/review publication shell while retaining separate typed field panels and formal API contracts; operations demand, finance, and authenticated simulation tools are extended in place.
 
 **Tech Stack:** Node.js 22, Express, TypeScript strict mode, Prisma 7, MySQL 8, Redis, Zod, JWT/RBAC, OpenAPI, Jest/Supertest, React 19, Vite, Vitest, existing five-language Exchange i18n.
 
 ## Global Constraints
 
 - Work only in `/Users/eason/Documents/New project/.worktrees/exchange-request-publication` on branch `codex/exchange-request-publication`.
-- The approved design is `docs/superpowers/specs/2026-08-30-exchange-request-publication-design.md` at commit `d2478fbe`.
+- The approved design is `docs/superpowers/specs/2026-08-30-exchange-request-publication-design.md` at commit `e429f1d5`.
 - This is one microstep. Stop after formal Request publication, its pre-match terminal finance paths, data rebuild, and browser acceptance.
 - Do not implement provider claims, matching, availability reservation, booking/order creation, IM, or payment in this plan.
 - Do not add mock data, demo state, fake APIs, fake payment outcomes, localStorage business state, or a second wallet/ledger implementation.
-- Preserve the current high-fidelity Exchange list, detail, Intelligence composer, navigation, responsive layout, and five-language behavior.
+- Preserve the current high-fidelity Exchange list, detail, navigation, responsive layout, five-language behavior, and formal Intelligence field/API contract.
+- Replace the rejected Intelligence bottom sheet; Request and Intelligence must use the approved full-screen glass composer, paired date/time controls, and edit/review flow.
+- Remove disabled publication upload controls until a formal persisted media contract is separately approved.
 - Preserve Booking's `c_request_dispatch_fee`; the new Request publication fee has its own family and ledger vocabulary.
 - Every protected mutation uses Zod, OpenAPI, RBAC, idempotency/concurrency protection, audit records, and database persistence.
 - Customer Request isolation remains server-authoritative; provider views must never expose non-public address lines, hidden publisher identity, phone, or email.
@@ -73,10 +75,15 @@
 ### Frontend and operations
 
 - `src/features/exchange/types.ts`, `src/features/exchange/api.ts`: formal Request DTOs and publication-context client.
-- `src/features/exchange/ExchangeComposer.tsx`: existing fullscreen composer with target, modes, addresses, visibility, and fee disclosure.
+- `src/features/exchange/ExchangeComposer.tsx`: trigger, authorized post-type selection, draft/step orchestration, and formal submission.
+- `src/features/exchange/exchange-composer-model.ts`: shared date/time, money, nullable-text, and composer-error normalization helpers.
+- `src/features/exchange/ExchangeComposerShell.tsx`: shared approved full-screen glass frame, header, safe-area scroller, dirty-close guard, review navigation, and action placement.
+- `src/features/exchange/RequestComposerFields.tsx`: typed Request edit controls and normalization.
+- `src/features/exchange/IntelligenceComposerFields.tsx`: typed Intelligence edit controls and normalization.
+- `src/features/exchange/ExchangePublicationReview.tsx`: exact normalized review values and Request-only fee disclosure.
 - `src/features/exchange/ExchangePostDetailPage.tsx`: server-projected address and publisher rendering.
 - `src/features/exchange/i18n.ts`: Simplified Chinese, Traditional Chinese, Japanese, English, and Korean labels/errors.
-- `src/features/exchange/ExchangeComposer.test.tsx`, `src/features/exchange/api.test.ts`, `src/features/exchange/ExchangePostDetailPage.test.tsx`: client behavior and disclosure tests.
+- `src/features/exchange/ExchangeComposerShell.test.tsx`, `src/features/exchange/RequestComposerFields.test.tsx`, `src/features/exchange/ExchangeComposer.test.tsx`, `src/features/exchange/api.test.ts`, `src/features/exchange/ExchangePostDetailPage.test.tsx`: shared full-screen composition, two-step flow, client behavior, and disclosure tests.
 - `src/api/exchangeRequestFee.ts`, `src/components/admin/ExchangeRequestFeePanel.tsx`, `src/pages/admin/NeedoExchangeAdminPage.tsx`: versioned 1,000 NDP fee administration inside the existing demand page.
 - `backend/src/repositories/backoffice.repository.ts`, `backend/src/services/backoffice.service.ts`, `src/api/backofficeRealData.ts`, `src/pages/admin/FinancePage.tsx`: paired formal/Test Request consumption and formal-only settlement totals.
 - `backend/tests/backoffice-ndp-reporting.repository.test.ts`, `backend/tests/backoffice-ndp-summary.service.test.ts`, `src/pages/admin/FinancePage.test.ts`: finance aggregation coverage.
@@ -1095,9 +1102,361 @@ git commit -m "feat(exchange): expose Request publication contracts"
 
 ---
 
-### Task 8: Extend the high-fidelity Request composer and detail projection
+### Task 8: Unify Request and Intelligence in the approved full-screen composer
 
 **Files:**
+- Create: `src/features/exchange/ExchangeComposerShell.tsx`
+- Create: `src/features/exchange/ExchangePublicationReview.tsx`
+- Create: `src/features/exchange/IntelligenceComposerFields.tsx`
+- Create: `src/features/exchange/exchange-composer-model.ts`
+- Create: `src/features/exchange/ExchangeComposerShell.test.tsx`
+- Modify: `src/features/exchange/ExchangeComposer.tsx`
+- Modify: `src/features/exchange/ExchangeComposer.test.tsx`
+- Modify: `src/features/exchange/i18n.ts`
+
+**Interfaces:**
+- `ExchangeComposerShell` is the only full-screen edit/review frame for both post types.
+- `IntelligenceComposerFields` returns the current formal `PublishExchangeIntelligenceInput`; it does not alter the backend Intelligence contract.
+- “Next” performs client validation only; “Publish” performs the API mutation.
+- Dirty close uses the existing `ClientActionDialog`, and successful close returns focus to the compose trigger.
+
+- [ ] **Step 1: Add failing shared-shell and Intelligence restoration tests**
+
+```tsx
+async function renderAndOpen(context: "user" | "merchant" | "technician") {
+  await act(async () => root.render(<ExchangeComposer context={context} onPublished={vi.fn()} />));
+  const trigger = container.querySelector<HTMLButtonElement>('[data-action="open-composer"]');
+  if (!trigger) throw new Error("missing compose trigger");
+  await act(async () => trigger.click());
+  return trigger;
+}
+
+function clickAction(action: "composer-next" | "composer-publish") {
+  const button = document.body.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+  if (!button) throw new Error(`missing ${action}`);
+  button.click();
+}
+
+function fillValidIntelligenceDraft() {
+  const values = {
+    title: "今晚 22 点后可预约",
+    detail: "支持平台内确认后到店或预约。",
+    areaLabel: "六本木",
+    serviceStartDate: "2026-08-30",
+    serviceStartTime: "22:00",
+    serviceEndDate: "2026-08-31",
+    serviceEndTime: "01:00",
+    expiresDate: "2026-08-31",
+    expiresTime: "01:00",
+    addressLabel: "東京都港区六本木 3-2-1",
+    serviceAreas: "港区",
+    originalPriceJpy: "16000",
+    campaignPriceJpy: "12800"
+  };
+  Object.entries(values).forEach(([name, value]) => {
+    const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+    if (!input) throw new Error(`missing ${name}`);
+    setInputValue(input, value);
+  });
+}
+
+it.each([
+  ["user", "发送需求"],
+  ["technician", "发送情报"]
+] as const)("opens %s publication in the approved full-screen shell", async (context, title) => {
+  await renderAndOpen(context);
+  expect(document.body.querySelector('[data-testid="exchange-composer-shell"]')).not.toBeNull();
+  expect(document.body.querySelector('.client-mobile-fullscreen-page')).not.toBeNull();
+  expect(document.body.textContent).toContain(title);
+  expect(document.body.querySelector('[data-testid="exchange-intelligence-bottom-sheet"]')).toBeNull();
+});
+
+it("does not publish on Next and publishes only from review", async () => {
+  await renderAndOpen("technician");
+  fillValidIntelligenceDraft();
+  await act(async () => clickAction("composer-next"));
+  expect(publishExchangePost).not.toHaveBeenCalled();
+  expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+  await act(async () => clickAction("composer-publish"));
+  expect(publishExchangePost).toHaveBeenCalledTimes(1);
+});
+
+it("splits date and time controls and removes unavailable upload controls", async () => {
+  await renderAndOpen("technician");
+  expect(document.body.querySelector('[name="serviceStartDate"]')).not.toBeNull();
+  expect(document.body.querySelector('[name="serviceStartTime"]')).not.toBeNull();
+  expect(document.body.querySelector('[type="datetime-local"]')).toBeNull();
+  expect(document.body.querySelector('[data-action="reference-upload-deferred"]')).toBeNull();
+});
+```
+
+Add one test that edits a field, clicks close, verifies the `ClientActionDialog`, cancels, then confirms discard and verifies focus returns to the original trigger.
+
+- [ ] **Step 2: Run the shell tests and confirm the red state**
+
+Run:
+
+```bash
+npm test -- src/features/exchange/ExchangeComposerShell.test.tsx src/features/exchange/ExchangeComposer.test.tsx
+```
+
+Expected: FAIL because Intelligence still uses the rejected bottom sheet, no shared shell exists, and the current form submits directly.
+
+- [ ] **Step 3: Add the shared shell and review components**
+
+```tsx
+export type ExchangeComposerStep = "edit" | "review";
+
+export function ExchangeComposerShell({
+  title,
+  introTitle,
+  introDescription,
+  step,
+  dirty,
+  pending,
+  onBack,
+  onClose,
+  onNext,
+  onPublish,
+  language,
+  children,
+  review
+}: {
+  title: string;
+  introTitle: string;
+  introDescription: string;
+  step: ExchangeComposerStep;
+  dirty: boolean;
+  pending: boolean;
+  onBack: () => void;
+  onClose: () => void;
+  onNext: () => void;
+  onPublish: () => void;
+  language: Language;
+  children: ReactNode;
+  review: ReactNode;
+}) {
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const requestClose = () => dirty ? setDiscardOpen(true) : onClose();
+
+  return (
+    <MobileFullscreenPage className="z-[80]" innerClassName="client-glass-page-surface">
+      <div data-testid="exchange-composer-shell">
+        <MobileFullscreenHeader
+          className="needo-composer-glass-header"
+          onBack={step === "review" ? onBack : undefined}
+          onClose={requestClose}
+          showSpacer={false}
+          title={title}
+        />
+      </div>
+      <main aria-label={title} aria-modal="true" className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+9rem)] pt-[calc(env(safe-area-inset-top)+86px)]" role="dialog">
+        {step === "edit" ? <>
+          <section className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
+            <TitleWithInfo as="h2" info={introDescription} label={introTitle} title={introTitle} titleClassName="text-xl font-black" variant="client" />
+          </section>
+          {children}
+        </> : review}
+      </main>
+      <MobileBottomActionBar contentClassName="flex justify-center">
+        <button className="pointer-events-auto min-h-12 min-w-[240px] rounded-full bg-[color:var(--client-primary)] px-8 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-soft disabled:opacity-50" data-action={step === "edit" ? "composer-next" : "composer-publish"} disabled={pending} onClick={step === "edit" ? onNext : onPublish} type="button">
+          {step === "edit" ? exchangeText("next", language) : exchangeText(pending ? "publishing" : "publish", language)}
+        </button>
+      </MobileBottomActionBar>
+      <ComposerDiscardDialog language={language} open={discardOpen} onCancel={() => setDiscardOpen(false)} onDiscard={onClose} />
+    </MobileFullscreenPage>
+  );
+}
+```
+
+Implement the close guard with the existing formal dialog:
+
+```tsx
+function ComposerDiscardDialog({
+  open,
+  onCancel,
+  onDiscard,
+  language
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onDiscard: () => void;
+  language: Language;
+}) {
+  return (
+    <ClientActionDialog
+      actions={<div className="grid grid-cols-2 gap-3">
+        <button className="focus-ring h-11 rounded-full border border-[color:var(--client-line)]" onClick={onCancel} type="button">{exchangeText("continueEditing", language)}</button>
+        <button className="focus-ring h-11 rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" onClick={onDiscard} type="button">{exchangeText("discardChanges", language)}</button>
+      </div>}
+      closeOnBackdrop={false}
+      description={exchangeText("discardComposerDescription", language)}
+      onClose={onCancel}
+      open={open}
+      panelClassName="max-w-[360px]"
+      title={exchangeText("discardComposerTitle", language)}
+    />
+  );
+}
+
+export function ExchangePublicationReview({ typeLabel, rows, detail, publicationFee }: {
+  typeLabel: string;
+  rows: Array<{ label: string; value: string }>;
+  detail: string;
+  publicationFee?: { amountNdp: number; currency: "NDP" | "TEST_NDP" };
+}) {
+  return (
+    <section className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel" data-testid="exchange-publication-review">
+      <h2 className="text-xl font-black">{typeLabel}</h2>
+      <dl className="mt-4 grid grid-cols-2 gap-3">{rows.map((row) => <div className="rounded-xl bg-[color:var(--client-bg-soft)] p-3" key={row.label}><dt className="text-xs text-[color:var(--client-muted)]">{row.label}</dt><dd className="mt-1 break-words text-sm font-black">{row.value}</dd></div>)}</dl>
+      <p className="mt-3 whitespace-pre-wrap rounded-xl bg-[color:var(--client-bg-soft)] p-3 text-sm leading-6">{detail}</p>
+      {publicationFee ? <p className="mt-3 rounded-xl border border-[color:var(--client-primary)] p-3 text-sm font-black">{publicationFee.amountNdp.toLocaleString()} {publicationFee.currency}</p> : null}
+    </section>
+  );
+}
+```
+
+- [ ] **Step 4: Extract and normalize the formal Intelligence fields**
+
+Add the shared normalization vocabulary first:
+
+```ts
+export type ExchangeComposerErrorKey =
+  | "required"
+  | "invalidWindow"
+  | "invalidBudget"
+  | "invalidPrice"
+  | "targetProviderLimit"
+  | "contextFailed"
+  | "publishFailed";
+
+export function combineLocalDateTime(date: string, time: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const value = new Date(`${date}T${time}`);
+  return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+}
+
+export function nullableTrim(value: string): string | null {
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+export function requiredMoney(value: string): number | null {
+  const amount = Number(value);
+  return value.trim() !== "" && Number.isInteger(amount) && amount >= 0 && amount <= 1_000_000_000
+    ? amount
+    : null;
+}
+
+export function optionalMoney(value: string): { valid: true; value: number | null } | { valid: false } {
+  if (value.trim() === "") return { valid: true, value: null };
+  const amount = requiredMoney(value);
+  return amount === null ? { valid: false } : { valid: true, value: amount };
+}
+```
+
+Then define the Intelligence draft:
+
+```ts
+export type IntelligenceComposerDraft = {
+  contentLocale: ExchangeContentLocale;
+  title: string;
+  detail: string;
+  areaLabel: string;
+  serviceStartDate: string;
+  serviceStartTime: string;
+  serviceEndDate: string;
+  serviceEndTime: string;
+  expiresDate: string;
+  expiresTime: string;
+  serviceMode: ExchangeServiceMode;
+  addressLabel: string;
+  serviceAreas: string;
+  originalPriceJpy: string;
+  campaignPriceJpy: string;
+};
+
+export function normalizeIntelligenceDraft(
+  draft: IntelligenceComposerDraft
+): { ok: true; value: PublishExchangeIntelligenceInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
+  const serviceStartAt = combineLocalDateTime(draft.serviceStartDate, draft.serviceStartTime);
+  const serviceEndAt = combineLocalDateTime(draft.serviceEndDate, draft.serviceEndTime);
+  const expiresAt = combineLocalDateTime(draft.expiresDate, draft.expiresTime);
+  const enteredServiceAreas = Array.from(new Set(draft.serviceAreas.split(/[,，、]/u).map((value) => value.trim()).filter(Boolean)));
+  const serviceAreas = enteredServiceAreas.length > 0
+    ? enteredServiceAreas
+    : draft.serviceMode === "store" && draft.areaLabel.trim()
+      ? [draft.areaLabel.trim()]
+      : [];
+  const originalPrice = optionalMoney(draft.originalPriceJpy);
+  const campaignPriceJpy = requiredMoney(draft.campaignPriceJpy);
+  if (!draft.title.trim() || !draft.detail.trim() || !draft.areaLabel.trim() || !serviceStartAt || !serviceEndAt || !expiresAt || campaignPriceJpy === null) return { ok: false, errorKey: "required" };
+  if (!originalPrice.valid) return { ok: false, errorKey: "invalidPrice" };
+  const originalPriceJpy = originalPrice.value;
+  if (!(serviceStartAt < serviceEndAt && serviceEndAt <= expiresAt)) return { ok: false, errorKey: "invalidWindow" };
+  if (originalPriceJpy !== null && campaignPriceJpy > originalPriceJpy) return { ok: false, errorKey: "invalidPrice" };
+  if (serviceAreas.length === 0) return { ok: false, errorKey: "required" };
+  return { ok: true, value: {
+    type: "intelligence",
+    title: draft.title.trim(),
+    detail: draft.detail.trim(),
+    contentLocale: draft.contentLocale,
+    areaLabel: draft.areaLabel.trim(),
+    serviceStartAt,
+    serviceEndAt,
+    expiresAt,
+    serviceMode: draft.serviceMode,
+    addressLabel: draft.serviceMode === "store" ? nullableTrim(draft.addressLabel) : null,
+    serviceAreas,
+    originalPriceJpy,
+    campaignPriceJpy
+  } };
+}
+```
+
+Render authored language, title, three paired date/time rows, service-mode segmented control, public area, conditional address/service areas, two price columns, and detail inside the approved form card. Every required label contains `*`.
+
+- [ ] **Step 5: Wire the two-step controller, retry key, and focus return**
+
+`ExchangeComposer` stores `step`, normalized pending payload, and `{ serializedPayload, idempotencyKey }`. “Next” validates and stores the normalized payload. “Publish” reuses the key only while `JSON.stringify(payload)` is unchanged. On success reset the correct draft, close the portal, and restore trigger focus with `queueMicrotask`.
+
+```ts
+const publicationAttempt = useRef<{ serializedPayload: string; idempotencyKey: string } | null>(null);
+const keyFor = (payload: PublishExchangePostInput) => {
+  const serializedPayload = JSON.stringify(payload);
+  if (publicationAttempt.current?.serializedPayload === serializedPayload) {
+    return publicationAttempt.current.idempotencyKey;
+  }
+  const next = { serializedPayload, idempotencyKey: globalThis.crypto.randomUUID() };
+  publicationAttempt.current = next;
+  return next.idempotencyKey;
+};
+```
+
+Remove the bottom-sheet branch, the duplicate native language select, all `datetime-local` inputs, disabled upload tiles, `UploadIcon`, and the single-step submit button. Keep the floating trigger and current formal API call.
+
+- [ ] **Step 6: Run the restored composer tests and commit**
+
+Run:
+
+```bash
+npm test -- src/features/exchange/ExchangeComposerShell.test.tsx src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/api.test.ts
+```
+
+Then:
+
+```bash
+git add src/features/exchange/ExchangeComposerShell.tsx src/features/exchange/ExchangePublicationReview.tsx src/features/exchange/IntelligenceComposerFields.tsx src/features/exchange/exchange-composer-model.ts src/features/exchange/ExchangeComposerShell.test.tsx src/features/exchange/ExchangeComposer.tsx src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/i18n.ts
+git commit -m "feat(exchange): unify full-screen publication UI"
+```
+
+---
+
+### Task 9: Add the upgraded Request fields and server-projected detail
+
+**Files:**
+- Create: `src/features/exchange/RequestComposerFields.tsx`
+- Create: `src/features/exchange/RequestComposerFields.test.tsx`
 - Modify: `src/features/exchange/types.ts`
 - Modify: `src/features/exchange/api.ts`
 - Modify: `src/features/exchange/ExchangeComposer.tsx`
@@ -1108,36 +1467,95 @@ git commit -m "feat(exchange): expose Request publication contracts"
 - Modify: `src/features/exchange/ExchangePostDetailPage.test.tsx`
 
 **Interfaces:**
-- The UI fetches the server publication context before enabling Request submit.
-- Customer has Request only; technician has Intelligence only; permitted merchant has an explicit Request/Intelligence choice.
-- Every required label contains a visible `*`; address 1 has no visibility switch.
+- The UI fetches the server publication context before enabling Request review or publication.
+- Customer has Request only; technician has Intelligence only; a merchant with both session permissions receives the Request/Intelligence selector.
+- `RequestComposerFields` returns the exact upgraded `PublishExchangeDemandInput` and clears optional-address visibility when the line is empty.
+- The detail page renders only server-projected publisher and address fields.
 
-- [ ] **Step 1: Add failing high-fidelity composer tests**
+- [ ] **Step 1: Add failing Request field, authority, and review tests**
 
 ```tsx
-it("renders server-capped Request fields and required markers", async () => {
-  api.getRequestPublicationContext.mockResolvedValue(context({ maxTargetProviderCount: 3, amountNdp: 1000 }));
-  render(<ExchangeComposer context={customerContext} onClose={vi.fn()} onPublished={vi.fn()} />);
-  expect(await screen.findByLabelText(/目标服务人数 \*/)).toHaveAttribute("max", "3");
-  expect(screen.getByLabelText(/地址1 \*/)).toBeInTheDocument();
-  expect(screen.queryByLabelText(/地址1.*公开/)).not.toBeInTheDocument();
-  expect(screen.getByText(/1,000 Test NDP/)).toBeInTheDocument();
+const { authHasPermission } = vi.hoisted(() => ({
+  authHasPermission: vi.fn<(permission: string) => boolean>()
+}));
+
+vi.mock("../../auth/AuthProvider", () => ({
+  useOptionalAuth: () => ({ hasPermission: authHasPermission })
+}));
+
+function fillValidRequestDraft() {
+  const values = {
+    title: "需要三位技师提供服务",
+    detail: "请按指定时间到达并通过平台联系。",
+    serviceStartDate: "2026-09-02",
+    serviceStartTime: "13:00",
+    serviceEndDate: "2026-09-02",
+    serviceEndTime: "16:00",
+    expiresDate: "2026-09-02",
+    expiresTime: "16:00",
+    targetProviderCount: "3",
+    budgetMinJpy: "15000",
+    budgetMaxJpy: "30000",
+    addressLine1: "東京都港区六本木",
+    addressLine2: "3-2-1",
+    addressLine3: "Room 1201"
+  };
+  Object.entries(values).forEach(([name, value]) => {
+    const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+    if (!input) throw new Error(`missing ${name}`);
+    setInputValue(input, value);
+  });
+}
+
+it("renders the server cap, required markers, and Request-only fee review", async () => {
+  vi.mocked(getRequestPublicationContext).mockResolvedValue({
+    canPublish: true,
+    capacitySource: "customer_membership",
+    membershipLevel: "gold",
+    maxTargetProviderCount: 3,
+    publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 1 }
+  });
+  await renderAndOpen("user");
+  await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
+  expect(document.body.querySelector<HTMLInputElement>('[name="targetProviderCount"]')?.getAttribute("max")).toBe("3");
+  expect(document.body.textContent).toContain("地址1 *");
+  expect(document.body.textContent).toContain("预算上限 *");
+  expect(document.body.querySelector('[name="addressLine1Public"]')).toBeNull();
+  fillValidRequestDraft();
+  await act(async () => clickAction("composer-next"));
+  expect(document.body.textContent).toContain("1,000 Test NDP");
+  expect(publishExchangePost).not.toHaveBeenCalled();
 });
 
-it("lets an authorized merchant choose Request or Intelligence", async () => {
-  render(<ExchangeComposer context={merchantWithDemandPermission} onClose={vi.fn()} onPublished={vi.fn()} />);
-  expect(await screen.findByRole("radio", { name: "Request" })).toBeEnabled();
-  expect(screen.getByRole("radio", { name: "情报" })).toBeEnabled();
+it("clears visibility when an optional address is emptied", async () => {
+  await renderAndOpen("user");
+  const address = document.body.querySelector<HTMLInputElement>('[name="addressLine2"]')!;
+  const visible = document.body.querySelector<HTMLInputElement>('[name="addressLine2Public"]')!;
+  setInputValue(address, "Room 1201");
+  await act(async () => visible.click());
+  setInputValue(address, "");
+  expect(visible.disabled).toBe(true);
+  expect(visible.checked).toBe(false);
+});
+
+it("lets only a merchant with both permissions choose Request or Intelligence", async () => {
+  authHasPermission.mockImplementation((permission) => ["exchange:posts:create-demand", "exchange:posts:create-intelligence"].includes(permission));
+  await renderAndOpen("merchant");
+  expect(document.body.querySelector('[data-testid="exchange-post-type-selector"]')).not.toBeNull();
 });
 ```
 
-- [ ] **Step 2: Run frontend contracts and confirm the red state**
+- [ ] **Step 2: Run Request frontend contracts and confirm the red state**
 
-Run: `npm test -- src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/api.test.ts src/features/exchange/ExchangePostDetailPage.test.tsx`
+Run:
 
-Expected: FAIL because the context call and upgraded controls are absent.
+```bash
+npm test -- src/features/exchange/RequestComposerFields.test.tsx src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/api.test.ts src/features/exchange/ExchangePostDetailPage.test.tsx
+```
 
-- [ ] **Step 3: Add formal client types and API calls**
+Expected: FAIL because the publication context client, upgraded Request fields, and redacted detail types are absent.
+
+- [ ] **Step 3: Add the formal client types and publication-context call**
 
 ```ts
 export interface ExchangeRequestPublicationContext {
@@ -1149,60 +1567,104 @@ export interface ExchangeRequestPublicationContext {
 }
 
 export const getRequestPublicationContext = (): Promise<ExchangeRequestPublicationContext> =>
-  httpClient.get("/exchange/request-publication-context").then(unwrapData);
+  httpClient.request<ExchangeRequestPublicationContext>("/exchange/request-publication-context");
 ```
 
-Update the demand request type to the exact validator keys. Keep Intelligence types and endpoints unchanged.
+Update `ExchangePost.publisher` to `ExchangeActor | null`, define the Request address/disclosure DTO from Task 3, and replace `PublishExchangeDemandInput` with the exact upgraded validator keys.
 
-- [ ] **Step 4: Extend the existing composer in place**
-
-Use the current fullscreen shell, typography, spacing, theme tokens, submit flow, and responsive footer. Add controlled inputs for target count, quick/selective, total/per-provider, optional minimum, required maximum, three address lines, Address2/3 public switches, identity-group visibility, and server fee disclosure. Disable/clear an optional address switch when its line is empty. Use one fresh idempotency key per user submit and retain it only for transport retry of the identical body.
+- [ ] **Step 4: Implement Request draft normalization and controls**
 
 ```ts
-const demandBody = {
-  type: "demand" as const,
-  title: form.title.trim(),
-  detail: form.detail.trim(),
-  contentLocale: form.contentLocale,
-  serviceStartAt: form.serviceStartAt,
-  serviceEndAt: form.serviceEndAt,
-  expiresAt: form.expiresAt,
-  targetProviderCount: Number(form.targetProviderCount),
-  matchMode: form.matchMode,
-  budgetMode: form.budgetMode,
-  budgetMinJpy: form.budgetMinJpy === "" ? null : Number(form.budgetMinJpy),
-  budgetMaxJpy: Number(form.budgetMaxJpy),
-  addressLine1: form.addressLine1.trim(),
-  addressLine2: nullableTrim(form.addressLine2),
-  addressLine3: nullableTrim(form.addressLine3),
-  addressLine2Public: form.addressLine2.trim() !== "" && form.addressLine2Public,
-  addressLine3Public: form.addressLine3.trim() !== "" && form.addressLine3Public,
-  publisherIdentityPublic: form.publisherIdentityPublic
+export type RequestComposerDraft = {
+  contentLocale: ExchangeContentLocale;
+  title: string;
+  detail: string;
+  serviceStartDate: string;
+  serviceStartTime: string;
+  serviceEndDate: string;
+  serviceEndTime: string;
+  expiresDate: string;
+  expiresTime: string;
+  targetProviderCount: string;
+  matchMode: "quick" | "selective";
+  budgetMode: "total" | "per_provider";
+  budgetMinJpy: string;
+  budgetMaxJpy: string;
+  addressLine1: string;
+  addressLine2: string;
+  addressLine3: string;
+  addressLine2Public: boolean;
+  addressLine3Public: boolean;
+  publisherIdentityPublic: boolean;
 };
+
+export function normalizeRequestDraft(
+  draft: RequestComposerDraft,
+  context: ExchangeRequestPublicationContext
+): { ok: true; value: PublishExchangeDemandInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
+  const targetProviderCount = Number(draft.targetProviderCount);
+  const budgetMinimum = optionalMoney(draft.budgetMinJpy);
+  const budgetMaxJpy = requiredMoney(draft.budgetMaxJpy);
+  const serviceStartAt = combineLocalDateTime(draft.serviceStartDate, draft.serviceStartTime);
+  const serviceEndAt = combineLocalDateTime(draft.serviceEndDate, draft.serviceEndTime);
+  const expiresAt = combineLocalDateTime(draft.expiresDate, draft.expiresTime);
+  if (!draft.title.trim() || !draft.detail.trim() || !draft.addressLine1.trim() || !serviceStartAt || !serviceEndAt || !expiresAt || budgetMaxJpy === null) return { ok: false, errorKey: "required" };
+  if (!budgetMinimum.valid) return { ok: false, errorKey: "invalidBudget" };
+  const budgetMinJpy = budgetMinimum.value;
+  if (!Number.isInteger(targetProviderCount) || targetProviderCount < 1 || targetProviderCount > context.maxTargetProviderCount) return { ok: false, errorKey: "targetProviderLimit" };
+  if (!(serviceStartAt < serviceEndAt && serviceEndAt <= expiresAt)) return { ok: false, errorKey: "invalidWindow" };
+  if (budgetMinJpy !== null && budgetMinJpy > budgetMaxJpy) return { ok: false, errorKey: "invalidBudget" };
+  const addressLine2 = nullableTrim(draft.addressLine2);
+  const addressLine3 = nullableTrim(draft.addressLine3);
+  return { ok: true, value: {
+    type: "demand",
+    title: draft.title.trim(),
+    detail: draft.detail.trim(),
+    contentLocale: draft.contentLocale,
+    serviceStartAt,
+    serviceEndAt,
+    expiresAt,
+    targetProviderCount,
+    matchMode: draft.matchMode,
+    budgetMode: draft.budgetMode,
+    budgetMinJpy,
+    budgetMaxJpy,
+    addressLine1: draft.addressLine1.trim(),
+    addressLine2,
+    addressLine3,
+    addressLine2Public: addressLine2 !== null && draft.addressLine2Public,
+    addressLine3Public: addressLine3 !== null && draft.addressLine3Public,
+    publisherIdentityPublic: draft.publisherIdentityPublic
+  } };
+}
 ```
 
-- [ ] **Step 5: Render only server-projected detail fields and add five languages**
+Render authored language, three paired date/time rows, target count, quick/selective, total/per-provider, optional minimum, required maximum, three address lines, two optional-address switches, identity disclosure, and detail. Use the shared full-screen shell and review component from Task 8.
 
-`ExchangePostDetailPage` treats `publisher=null` as hidden, renders address line 1 always, and renders optional lines only when present in the DTO. It must not infer visibility from the current role. Add all new labels, help text, fee disclosure, and server error keys to `zh-CN`, `zh-TW`, `ja`, `en`, and `ko`; authored Request text remains unchanged.
+- [ ] **Step 5: Wire server authority, redacted detail, and five languages**
 
-- [ ] **Step 6: Run frontend tests and commit**
+Use `useOptionalAuth()?.hasPermission` for merchant type availability; never infer a spending permission from portal name. Fetch publication context when Request becomes active, disable Next while loading, and render server errors without falling back to a locally calculated limit or fee.
+
+`ExchangePostDetailPage` treats `publisher=null` as hidden, always renders server-returned Address 1, renders optional lines only when non-null, and never infers visibility from portal or identity. Add shell, edit/review, dirty-close, Request field, fee, and server error copy to `zh`, `zh-Hant`, `ja`, `en`, and `ko`; authored content remains unchanged.
+
+- [ ] **Step 6: Run Request/detail tests and commit**
 
 Run:
 
 ```bash
-npm test -- src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/api.test.ts src/features/exchange/ExchangePostDetailPage.test.tsx src/features/exchange/ExchangeFeedPage.test.tsx
+npm test -- src/features/exchange/RequestComposerFields.test.tsx src/features/exchange/ExchangeComposerShell.test.tsx src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/api.test.ts src/features/exchange/ExchangePostDetailPage.test.tsx src/features/exchange/ExchangeFeedPage.test.tsx
 ```
 
 Then:
 
 ```bash
-git add src/features/exchange/types.ts src/features/exchange/api.ts src/features/exchange/ExchangeComposer.tsx src/features/exchange/ExchangePostDetailPage.tsx src/features/exchange/i18n.ts src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/api.test.ts src/features/exchange/ExchangePostDetailPage.test.tsx
-git commit -m "feat(exchange): extend high-fidelity Request composer"
+git add src/features/exchange/RequestComposerFields.tsx src/features/exchange/RequestComposerFields.test.tsx src/features/exchange/types.ts src/features/exchange/api.ts src/features/exchange/ExchangeComposer.tsx src/features/exchange/ExchangePostDetailPage.tsx src/features/exchange/i18n.ts src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/api.test.ts src/features/exchange/ExchangePostDetailPage.test.tsx
+git commit -m "feat(exchange): add formal Request composer fields"
 ```
 
 ---
 
-### Task 9: Add Request fee operations UI and paired finance reporting
+### Task 10: Add Request fee operations UI and paired finance reporting
 
 **Files:**
 - Create: `src/api/exchangeRequestFee.ts`
@@ -1310,7 +1772,7 @@ git commit -m "feat(exchange): report Request fees in operations"
 
 ---
 
-### Task 10: Rebuild 20 Requests through authenticated formal APIs
+### Task 11: Rebuild 20 Requests through authenticated formal APIs
 
 **Files:**
 - Modify: `backend/src/simulation/exchange-simulation-plan.ts`
@@ -1408,7 +1870,7 @@ git commit -m "test(exchange): rebuild formal Request fixtures through API"
 
 ---
 
-### Task 11: Apply the migration locally and run the complete automated gate
+### Task 12: Apply the migration locally and run the complete automated gate
 
 **Files:**
 - Create: `backend/tests/exchange-request-publication-migration.test.ts`
@@ -1477,7 +1939,7 @@ npm test -- tests/ledger-service.test.ts tests/ledger.repository.test.ts tests/b
 npm run lint
 npm run build
 cd ..
-npm test -- src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/ExchangePostDetailPage.test.tsx src/features/exchange/ExchangeFeedPage.test.tsx src/components/admin/ExchangeRequestFeePanel.test.tsx src/pages/admin/FinancePage.test.ts
+npm test -- src/features/exchange/ExchangeComposerShell.test.tsx src/features/exchange/RequestComposerFields.test.tsx src/features/exchange/ExchangeComposer.test.tsx src/features/exchange/ExchangePostDetailPage.test.tsx src/features/exchange/ExchangeFeedPage.test.tsx src/components/admin/ExchangeRequestFeePanel.test.tsx src/pages/admin/FinancePage.test.ts
 npm run lint
 npm run verify:production-build
 ```
@@ -1493,7 +1955,7 @@ git commit -m "test(exchange): verify Request publication foundation"
 
 ---
 
-### Task 12: Rebuild formal test data and perform real browser acceptance
+### Task 13: Rebuild formal test data and perform real browser acceptance
 
 **Files:**
 - Modify: `docs/verification/2026-08-30-exchange-request-publication.md`
@@ -1554,7 +2016,18 @@ In browser plus independent API/database reads verify:
 
 - [ ] **Step 5: Accept high-fidelity desktop/mobile and all five languages**
 
-At desktop and mobile widths verify composer/list/detail/admin fee/finance views, required `*` markers, address switch behavior, keyboard focus, loading/error/retry states, no horizontal overflow, no hidden action panels, and no application console errors. Switch through Simplified Chinese, Traditional Chinese, Japanese, English, and Korean; authored Request and comment content must remain in its stored original language.
+At `390×844`, `430×932`, and a desktop viewport, compare both publication paths with the approved full-screen reference and verify:
+
+1. Request and Intelligence use the same full-screen navy glass canvas and illuminated green header edge; neither uses the rejected rounded bottom sheet.
+2. The underlying app bottom navigation and floating compose action are absent while the composer portal is open.
+3. The explanation card, form card, paired date/time controls, segmented controls, and centered action preserve the approved hierarchy.
+4. “Next” does not call the API; Back preserves every value; only review offers “Publish”.
+5. Edited close opens the in-app discard dialog; cancel preserves the draft; confirmed discard returns keyboard focus to the exact trigger.
+6. Request review shows the server fee/currency/freeze consequence; Intelligence review contains no Request fee.
+7. Required `*` markers, address switch behavior, loading/error/retry states, and visible keyboard focus work without horizontal overflow or hidden action panels.
+8. No disabled upload tiles, native `datetime-local` overflow, application console error, or failed network request appears.
+
+Save matching screenshots for both edit and review steps at mobile and desktop sizes. Switch through Simplified Chinese, Traditional Chinese, Japanese, English, and Korean; interface copy must be complete while authored Request, Intelligence, and comment content remains in its stored original language.
 
 - [ ] **Step 6: Record evidence, run the completion guard, and commit**
 
@@ -1589,4 +2062,5 @@ Stop here and report the microstep. Do not begin claim or matching design until 
 - [ ] Fee history is versioned, list endpoints are paginated, mutations are Zod/RBAC/OpenAPI/audited, and payload replay is conflict-safe.
 - [ ] Old demands are soft-deleted with recovery evidence; Intelligence is preserved; replacement content uses formal authenticated APIs.
 - [ ] Automated tests, real MySQL inspection, desktop/mobile browser acceptance, five languages, console, and persistence are mandatory stop gates.
+- [ ] Request and Intelligence share the approved full-screen edit/review shell; the rejected bottom sheet, app-nav overlap, and unavailable upload controls are absent.
 - [ ] No task authorizes push, deployment, external payment, real charge, claim, matching, booking conversion, or payment work.
