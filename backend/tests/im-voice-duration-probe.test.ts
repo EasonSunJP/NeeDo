@@ -7,7 +7,6 @@ import {
   WorkerIsolatedImVoiceDurationProbe,
   type ImVoiceDurationProbeWorker,
   type ImVoiceDurationProbeWorkerFactory,
-  type ImVoiceDurationWorkerInput,
   type ImVoiceDurationWorkerOptions
 } from "../src/services/im-voice-duration-probe";
 
@@ -21,6 +20,17 @@ const expectStableInvalidError = (promise: Promise<unknown>) =>
   });
 
 class ControlledWorker extends EventEmitter implements ImVoiceDurationProbeWorker {
+  public readonly deliveries: Array<{
+    message: unknown;
+    transferredByteLengths: number[];
+  }> = [];
+  public readonly postMessage = jest.fn(
+    (message: unknown, transferList: readonly ArrayBuffer[] = []) => {
+      const transferredByteLengths = transferList.map((buffer) => buffer.byteLength);
+      const delivered = structuredClone(message, { transfer: [...transferList] });
+      this.deliveries.push({ message: delivered, transferredByteLengths });
+    }
+  );
   public readonly terminate = jest.fn(async () => 0);
 
   public succeed(result: unknown): void {
@@ -39,6 +49,17 @@ class ControlledWorker extends EventEmitter implements ImVoiceDurationProbeWorke
     this.emit("exit", code);
   }
 }
+
+const readDeliveredBytes = (worker: ControlledWorker): Buffer => {
+  const message = worker.deliveries[0]?.message;
+  if (!message || typeof message !== "object") throw new Error("missing worker delivery");
+  const input = message as {
+    bytes: ArrayBuffer;
+    byteLength: number;
+    byteOffset: number;
+  };
+  return Buffer.from(input.bytes, input.byteOffset, input.byteLength);
+};
 
 describe("WorkerIsolatedImVoiceDurationProbe", () => {
   it.each([
@@ -155,6 +176,7 @@ describe("WorkerIsolatedImVoiceDurationProbe", () => {
     const worker = new ControlledWorker();
     let source = "";
     let options: ImVoiceDurationWorkerOptions | undefined;
+    const input = Buffer.from("worker input");
     const probe = new WorkerIsolatedImVoiceDurationProbe({
       workerFactory: (nextSource: string, nextOptions: ImVoiceDurationWorkerOptions) => {
         source = nextSource;
@@ -163,34 +185,33 @@ describe("WorkerIsolatedImVoiceDurationProbe", () => {
       }
     });
 
-    const pending = probe.probe(Buffer.from("worker input"), "audio/ogg");
+    const pending = probe.probe(input, "audio/ogg");
 
     expect(source).toContain('require("music-metadata")');
+    expect(source).toContain('parentPort.once("message"');
+    expect(source).toContain("Buffer.from(message.bytes, message.byteOffset, message.byteLength)");
     expect(options).toMatchObject({
       eval: true,
       resourceLimits: {
         maxOldGenerationSizeMb: 32,
         maxYoungGenerationSizeMb: 8,
         stackSizeMb: 2
-      },
-      workerData: {
-        mimeType: "audio/ogg"
       }
     });
-    expect(Buffer.from(options!.workerData.bytes).toString()).toBe("worker input");
+    expect(options).not.toHaveProperty("workerData");
+    expect(worker.postMessage).toHaveBeenCalledTimes(1);
+    expect(readDeliveredBytes(worker).toString()).toBe("worker input");
+    expect(worker.deliveries[0]?.message).toMatchObject({ mimeType: "audio/ogg" });
+    expect(worker.deliveries[0]?.transferredByteLengths).toEqual([input.byteLength]);
+    expect(input.toString()).toBe("worker input");
 
     worker.succeed({ durationSeconds: 1, hasAudio: true, hasVideo: false });
     await expect(pending).resolves.toBeDefined();
   });
 
-  it("runs two workers, drains eight queued probes FIFO, and rejects the ninth queued probe", async () => {
+  it("copies only active jobs, transfers ownership, drains FIFO, and rejects queue overflow", async () => {
     const workers: ControlledWorker[] = [];
-    const inputs: ImVoiceDurationWorkerInput[] = [];
-    const workerFactory: ImVoiceDurationProbeWorkerFactory = (
-      _source: string,
-      options: ImVoiceDurationWorkerOptions
-    ) => {
-      inputs.push(options.workerData);
+    const workerFactory: ImVoiceDurationProbeWorkerFactory = () => {
       const worker = new ControlledWorker();
       workers.push(worker);
       return worker;
@@ -199,18 +220,28 @@ describe("WorkerIsolatedImVoiceDurationProbe", () => {
       workerFactory
     });
 
-    const accepted = Array.from({ length: 10 }, (_, index) =>
-      probe.probe(Buffer.from(`probe-${index}`), "audio/webm")
+    const sourceBuffers = Array.from({ length: 10 }, (_, index) => Buffer.from(`probe-${index}`));
+    const accepted = sourceBuffers.map((bytes) => probe.probe(bytes, "audio/webm"));
+    const overflowAssertion = expectStableInvalidError(
+      probe.probe(Buffer.from("probe-overflow"), "audio/webm")
     );
-    const overflow = probe.probe(Buffer.from("probe-overflow"), "audio/webm");
 
     expect(workers).toHaveLength(2);
-    await expectStableInvalidError(overflow);
+    expect(workers.reduce((total, worker) => total + worker.postMessage.mock.calls.length, 0)).toBe(
+      2
+    );
+    sourceBuffers[2]!.write("queued!");
+    await overflowAssertion;
 
     for (let index = 0; index < accepted.length; index += 1) {
+      const expected = index === 2 ? "queued!" : `probe-${index}`;
+      expect(readDeliveredBytes(workers[index]!).toString()).toBe(expected);
+      expect(workers[index]!.deliveries[0]?.transferredByteLengths).toEqual([
+        sourceBuffers[index]!.byteLength
+      ]);
+      expect(sourceBuffers[index]!.buffer.byteLength).toBeGreaterThan(0);
       workers[index]!.succeed({ durationSeconds: 1, hasAudio: true, hasVideo: false });
       await expect(accepted[index]).resolves.toBeDefined();
-      expect(Buffer.from(inputs[index]!.bytes).toString()).toBe(`probe-${index}`);
     }
 
     expect(workers).toHaveLength(10);
@@ -274,4 +305,90 @@ describe("WorkerIsolatedImVoiceDurationProbe", () => {
       await expect(final).resolves.toBeDefined();
     }
   );
+
+  it("continues FIFO work when the worker factory throws for a queued job", async () => {
+    const workers: ControlledWorker[] = [];
+    let calls = 0;
+    const probe = new WorkerIsolatedImVoiceDurationProbe({
+      maxActiveWorkers: 1,
+      workerFactory: () => {
+        calls += 1;
+        if (calls === 2) throw new Error("factory failed");
+        const worker = new ControlledWorker();
+        workers.push(worker);
+        return worker;
+      }
+    });
+
+    const first = probe.probe(Buffer.from("first"), "audio/webm");
+    const failed = probe.probe(Buffer.from("failed"), "audio/webm");
+    const successor = probe.probe(Buffer.from("successor"), "audio/webm");
+
+    workers[0]!.succeed({ durationSeconds: 1, hasAudio: true, hasVideo: false });
+    await expect(first).resolves.toBeDefined();
+    await expectStableInvalidError(failed);
+    expect(workers).toHaveLength(2);
+    expect(readDeliveredBytes(workers[1]!).toString()).toBe("successor");
+
+    workers[1]!.succeed({ durationSeconds: 1, hasAudio: true, hasVideo: false });
+    await expect(successor).resolves.toBeDefined();
+  });
+
+  it("continues queued work after a timeout and ignores late worker exit", async () => {
+    const workers: ControlledWorker[] = [];
+    const probe = new WorkerIsolatedImVoiceDurationProbe({
+      maxActiveWorkers: 1,
+      timeoutMs: 10,
+      workerFactory: () => {
+        const worker = new ControlledWorker();
+        workers.push(worker);
+        return worker;
+      }
+    });
+
+    const timedOut = probe.probe(Buffer.from("timeout"), "audio/webm");
+    const successor = probe.probe(Buffer.from("successor"), "audio/webm");
+
+    await expectStableInvalidError(timedOut);
+    expect(workers[0]!.terminate).toHaveBeenCalledTimes(1);
+    expect(workers).toHaveLength(2);
+    workers[0]!.exit(1);
+    expect(workers).toHaveLength(2);
+
+    workers[1]!.succeed({ durationSeconds: 1, hasAudio: true, hasVideo: false });
+    await expect(successor).resolves.toBeDefined();
+  });
+
+  it("settles and releases exactly once when termination rejects", async () => {
+    const workers: ControlledWorker[] = [];
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const probe = new WorkerIsolatedImVoiceDurationProbe({
+        maxActiveWorkers: 1,
+        workerFactory: () => {
+          const worker = new ControlledWorker();
+          workers.push(worker);
+          return worker;
+        }
+      });
+
+      const first = probe.probe(Buffer.from("first"), "audio/webm");
+      const successor = probe.probe(Buffer.from("successor"), "audio/webm");
+      workers[0]!.terminate.mockRejectedValueOnce(new Error("terminate failed"));
+      workers[0]!.succeed({ durationSeconds: 1, hasAudio: true, hasVideo: false });
+      workers[0]!.exit(1);
+
+      await expect(first).resolves.toBeDefined();
+      expect(workers[0]!.terminate).toHaveBeenCalledTimes(1);
+      expect(workers).toHaveLength(2);
+      workers[1]!.succeed({ durationSeconds: 1, hasAudio: true, hasVideo: false });
+      await expect(successor).resolves.toBeDefined();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });

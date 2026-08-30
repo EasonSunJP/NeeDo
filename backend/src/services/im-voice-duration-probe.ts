@@ -9,15 +9,15 @@ const DEFAULT_MAX_QUEUED_PROBES = 8;
 
 const WORKER_SOURCE = String.raw`
 "use strict";
-const { parentPort, workerData } = require("node:worker_threads");
+const { parentPort } = require("node:worker_threads");
 const { parseBuffer } = require("music-metadata");
 
-(async () => {
+parentPort.once("message", async (message) => {
   try {
-    const bytes = Buffer.from(workerData.bytes);
+    const bytes = Buffer.from(message.bytes, message.byteOffset, message.byteLength);
     const metadata = await parseBuffer(
       bytes,
-      { mimeType: workerData.mimeType, size: bytes.length },
+      { mimeType: message.mimeType, size: bytes.length },
       { duration: true, skipCovers: true }
     );
     parentPort.postMessage({
@@ -31,7 +31,7 @@ const { parseBuffer } = require("music-metadata");
   } catch {
     parentPort.postMessage({ ok: false });
   }
-})().catch(() => parentPort.postMessage({ ok: false }));
+});
 `;
 
 export interface ImVoiceDurationMetadata {
@@ -45,7 +45,9 @@ export interface ImVoiceDurationProbePort {
 }
 
 export interface ImVoiceDurationWorkerInput {
-  bytes: Uint8Array;
+  bytes: ArrayBuffer;
+  byteLength: number;
+  byteOffset: number;
   mimeType: ImVoiceMimeType;
 }
 
@@ -56,7 +58,6 @@ export interface ImVoiceDurationWorkerOptions {
     maxYoungGenerationSizeMb: number;
     stackSizeMb: number;
   };
-  workerData: ImVoiceDurationWorkerInput;
 }
 
 export interface ImVoiceDurationProbeWorker {
@@ -66,6 +67,7 @@ export interface ImVoiceDurationProbeWorker {
   once(event: "message", listener: (message: unknown) => void): void;
   once(event: "error", listener: (error: Error) => void): void;
   once(event: "exit", listener: (code: number) => void): void;
+  postMessage(message: ImVoiceDurationWorkerInput, transferList: readonly ArrayBuffer[]): void;
   terminate(): Promise<number>;
 }
 
@@ -75,7 +77,8 @@ export type ImVoiceDurationProbeWorkerFactory = (
 ) => ImVoiceDurationProbeWorker;
 
 interface ProbeJob {
-  input: ImVoiceDurationWorkerInput;
+  bytes: Buffer;
+  mimeType: ImVoiceMimeType;
   reject(error: AppError): void;
   resolve(metadata: ImVoiceDurationMetadata): void;
 }
@@ -130,7 +133,8 @@ export class WorkerIsolatedImVoiceDurationProbe implements ImVoiceDurationProbeP
 
     return new Promise<ImVoiceDurationMetadata>((resolve, reject) => {
       const job: ProbeJob = {
-        input: { bytes: Uint8Array.from(bytes), mimeType },
+        bytes,
+        mimeType,
         reject,
         resolve
       };
@@ -152,8 +156,7 @@ export class WorkerIsolatedImVoiceDurationProbe implements ImVoiceDurationProbeP
           maxOldGenerationSizeMb: 32,
           maxYoungGenerationSizeMb: 8,
           stackSizeMb: 2
-        },
-        workerData: job.input
+        }
       });
     } catch (error) {
       this.releaseSlot();
@@ -202,6 +205,21 @@ export class WorkerIsolatedImVoiceDurationProbe implements ImVoiceDurationProbeP
       void settle(undefined, this.invalid(new Error("voice duration worker timed out")));
     }, this.timeoutMs);
     timeout.unref();
+
+    try {
+      const bytes = Uint8Array.from(job.bytes);
+      worker.postMessage(
+        {
+          bytes: bytes.buffer,
+          byteLength: bytes.byteLength,
+          byteOffset: bytes.byteOffset,
+          mimeType: job.mimeType
+        },
+        [bytes.buffer]
+      );
+    } catch (error) {
+      void settle(undefined, this.invalid(error));
+    }
   }
 
   private releaseSlot(): void {
