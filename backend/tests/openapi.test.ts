@@ -833,6 +833,17 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("PayrollCsvExport");
     expect(response.body.components.schemas).toHaveProperty("PayrollAdjustmentRequest");
     expect(response.body.components.schemas).toHaveProperty("RealtimeConversation");
+    expect(
+      response.body.components.schemas.RealtimeConversation.properties.disappearingTtlSeconds.maximum
+    ).toBe(359_940);
+    expect(
+      response.body.paths["/api/v1/im/conversations"].post.requestBody.content["application/json"]
+        .schema.properties.disappearingTtlSeconds.maximum
+    ).toBe(359_940);
+    expect(
+      response.body.paths["/api/v1/im/conversations/{conversationId}/privacy"].patch.requestBody
+        .content["application/json"].schema.properties.disappearingTtlSeconds.maximum
+    ).toBe(359_940);
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessage");
     expect(response.body.components.schemas.RealtimeMessage.required).toContain("reactions");
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessageReaction");

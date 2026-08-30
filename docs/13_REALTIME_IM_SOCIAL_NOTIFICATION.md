@@ -214,6 +214,8 @@
 
 - 群聊开启隐私模式后，新消息在服务端创建事务内快照当前 `privacyPolicyVersion`，并以服务端 `createdAt + disappearingTtlSeconds` 写入不可变 `expiresAt`；后续修改群设置不会回写旧消息期限。
 - 正式消息 API / OpenAPI 返回 `expiresAt` 与 `privacyPolicyVersionAtSend`。前端只用这两个服务端权威字段生成倒计时，不再信任客户端 metadata 中可伪造的消失时间。
+- 群聊隐私倒计时编辑器只显示小时和分钟；小时范围为 `0–99`，分钟范围为 `0–59`。超限时显示“时间上限最大为99小时59分钟”并阻止创建或保存。
+- 正式创建与隐私更新 API 将 `disappearingTtlSeconds` 统一限制为 `60–359940` 秒；不新增 schema 或 migration。
 - 消息历史和会话摘要在清理 worker 提交前也会过滤已到期消息，避免刷新页面短暂恢复；1 秒周期 worker 到期后在串行化事务中清空正文与 metadata、删除回应和本人删除记录、写入无正文的审计及删除同步记录，再硬删除隐私消息。
 - 到期提交后向发送时的群成员发布不含正文的 `message.deleted` SSE，当前会话立即补拉并移除消息；同时修复未读数、已读游标和会话最后消息时间。
 - 本节沿用现有 `messages`、`im_deletion_sync` 与审计结构，不新增 migration、mock、轮询或平行消息实现。

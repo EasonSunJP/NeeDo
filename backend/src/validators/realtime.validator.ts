@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  IM_PRIVACY_TTL_MAX_SECONDS,
+  IM_PRIVACY_TTL_MIN_SECONDS
+} from "../constants/im-privacy";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -64,7 +68,13 @@ export const conversationListQuerySchema = z.object({
 const conversationPrivacyFields = {
   privacyModeEnabled: z.boolean().optional(),
   hideMemberProfiles: z.boolean().optional(),
-  disappearingTtlSeconds: z.coerce.number().int().min(60).max(34_560_000).nullable().optional(),
+  disappearingTtlSeconds: z.coerce
+    .number()
+    .int()
+    .min(IM_PRIVACY_TTL_MIN_SECONDS)
+    .max(IM_PRIVACY_TTL_MAX_SECONDS)
+    .nullable()
+    .optional(),
   disappearingStartMode: z.enum(["sent", "read_by_all"]).optional()
 };
 

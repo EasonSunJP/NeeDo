@@ -1636,6 +1636,59 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       });
   });
 
+  it("rejects group privacy countdowns above 99 hours 59 minutes", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    const rejectedCreate = await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        type: "group",
+        title: "Privacy countdown boundary",
+        participantUserIds: [2],
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_941,
+        disappearingStartMode: "sent"
+      })
+      .expect(400);
+    expect(rejectedCreate.body.message).toBe("error.validation");
+
+    const validCreate = await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        type: "group",
+        title: "Privacy countdown boundary",
+        participantUserIds: [2],
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_940,
+        disappearingStartMode: "sent"
+      })
+      .expect(201);
+
+    const rejectedUpdate = await request(fixture.app)
+      .patch(`/api/v1/im/conversations/${validCreate.body.data.id}/privacy`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_941,
+        disappearingStartMode: "read_by_all"
+      })
+      .expect(400);
+    expect(rejectedUpdate.body.message).toBe("error.validation");
+
+    await request(fixture.app)
+      .patch(`/api/v1/im/conversations/${validCreate.body.data.id}/privacy`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 359_940,
+        disappearingStartMode: "read_by_all"
+      })
+      .expect(200);
+  });
+
   it("recalls an owned message through the protected formal endpoint", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");
