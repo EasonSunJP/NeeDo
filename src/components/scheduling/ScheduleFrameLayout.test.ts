@@ -94,6 +94,13 @@ describe("shared schedule frame layout", () => {
     expect(stepModeSelectionSource).toContain("<InfoTooltipTrigger");
   });
 
+  it("keeps the mode-selection action buttons free of a shared outer dock", () => {
+    expect(stepModeSelectionSource).toContain('className="flex flex-wrap items-center justify-center gap-3"');
+    expect(stepModeSelectionSource).not.toContain('isMobileSurface && "schedule-wizard-action-dock rounded-[28px] p-2"');
+    expect(stepModeSelectionSource).toContain('className={cn(secondaryButtonClass, "min-w-[132px]")}');
+    expect(stepModeSelectionSource).toContain('className={cn(primaryButtonClass, "min-w-[196px]")}');
+  });
+
   it("does not apply page theme background classes to the user calendar table itself", () => {
     expect(unifiedCalendarSource).toContain('<UnifiedCalendarSurface data-unified-user-calendar="true">');
     expect(unifiedCalendarSource).not.toContain("themeRootClassName");

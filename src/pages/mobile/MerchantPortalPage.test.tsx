@@ -35,6 +35,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(scheduleHeaderSource).toContain('name="search"');
     expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
     expect(shellSource).toContain("showBottomNav={!isMerchantAppointmentsView}");
+    expect(merchantSource).toContain('activeView === "schedule" && "relative z-30"');
     expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("searchQuery={merchantAppointmentSearchQuery}");

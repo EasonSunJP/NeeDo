@@ -2449,7 +2449,8 @@ function MerchantPortalContent({
               ? "px-4 pb-4 pt-0"
               : activeView === "dashboard"
                 ? "space-y-4 px-4 pb-4 pt-2"
-                : "space-y-4 px-4 py-4"
+                : "space-y-4 px-4 py-4",
+          activeView === "schedule" && "relative z-30"
         )}
       >
         {activeView === "dashboard" ? (

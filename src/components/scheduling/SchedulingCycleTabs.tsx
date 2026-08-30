@@ -72,8 +72,16 @@ function formatCycleEndDate(dateKey: string) {
   return `~${Number(month)}月${Number(day)}日`;
 }
 
-function getSlotPeriod(cycle: DispatchCycle | null) {
-  return cycle ? formatCycleEndDate(cycle.periodEnd) : "未创建";
+function formatCycleStartDate(date: Date) {
+  return `${date.getMonth() + 1}月${date.getDate()}日~`;
+}
+
+function getSlotPeriod(slotKey: SchedulingCycleSlotKey, cycle: DispatchCycle | null) {
+  if (!cycle) {
+    return "未创建";
+  }
+
+  return slotKey === "builder" ? formatCycleStartDate(new Date()) : formatCycleEndDate(cycle.periodEnd);
 }
 
 function SchedulingCycleTabButton({
@@ -82,9 +90,11 @@ function SchedulingCycleTabButton({
   disabled,
   label,
   onClick,
+  slotKey,
   surface
 }: Omit<SchedulingCycleTab, "key"> & {
   active: boolean;
+  slotKey: SchedulingCycleSlotKey;
   surface: SchedulingCycleSurface;
 }) {
   const isMobileSurface = surface === "mobile";
@@ -106,7 +116,7 @@ function SchedulingCycleTabButton({
       type="button"
     >
       <strong className="block truncate text-sm font-black sm:text-base">{label}</strong>
-      <p className="mt-2 truncate text-xs font-semibold opacity-75 sm:text-sm">{getSlotPeriod(cycle)}</p>
+      <p className="mt-2 truncate text-xs font-semibold opacity-75 sm:text-sm">{getSlotPeriod(slotKey, cycle)}</p>
     </button>
   );
 }
@@ -135,6 +145,7 @@ export function SchedulingCycleTabs({
           key={slot.key}
           label={slot.label}
           onClick={slot.onClick}
+          slotKey={slot.key}
           surface={surface}
         />
       ))}
