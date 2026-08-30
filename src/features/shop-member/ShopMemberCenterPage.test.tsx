@@ -27,5 +27,7 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain("会员数据读取失败");
     expect(source).toContain("重新加载");
     expect(source).toContain('hasPermission("shop.member.create")');
+    expect(source).toContain('hasPermission("shop.member.analytics.view")');
+    expect(source).toContain('hasPermission("shop.member.operation_log.view")');
   });
 });

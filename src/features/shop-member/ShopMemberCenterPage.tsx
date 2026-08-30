@@ -177,6 +177,11 @@ export function ShopMemberCenterPage() {
   const { hasPermission } = useAuth();
   const activeSection = resolveSection(section);
   const canEnroll = hasPermission("shop.member.create");
+  const canViewActivity = hasPermission("shop.member.operation_log.view");
+  const canViewAnalytics = hasPermission("shop.member.analytics.view");
+  const visibleSectionTabs = sectionTabs.filter((item) =>
+    item.value === "activity" ? canViewActivity : item.value === "analytics" ? canViewAnalytics : true
+  );
   const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
   const [enrollmentOpen, setEnrollmentOpen] = useState(false);
@@ -205,5 +210,5 @@ export function ShopMemberCenterPage() {
     return <AnalyticsView data={state.data as ShopMembershipAnalytics} />;
   }, [activeSection, canEnroll, page, state]);
 
-  return <MobileShell showBottomNav={false}><MobileFullscreenHeader action={<TestFeatureBadge />} onBack={() => navigate(-1)} subtitle="店铺私域会员与会员卡状态" title="会员中心" /><main className="mx-auto w-full max-w-[880px] px-4 pb-28 pt-4"><FeatureSegmentedTabs items={sectionTabs} onChange={(next) => navigate(next === "overview" ? "/merchant/member" : `/merchant/member/${next}`)} value={activeSection} variant="header" /><div className="mt-4">{content}</div></main>{enrollmentOpen ? <EnrollmentDialog onClose={() => setEnrollmentOpen(false)} onCreated={() => { setEnrollmentOpen(false); setRevision((value) => value + 1); }} /> : null}</MobileShell>;
+  return <MobileShell showBottomNav={false}><MobileFullscreenHeader action={<TestFeatureBadge />} onBack={() => navigate(-1)} subtitle="店铺私域会员与会员卡状态" title="会员中心" /><main className="mx-auto w-full max-w-[880px] px-4 pb-28 pt-4"><FeatureSegmentedTabs items={visibleSectionTabs} onChange={(next) => navigate(next === "overview" ? "/merchant/member" : `/merchant/member/${next}`)} value={activeSection} variant="header" /><div className="mt-4">{content}</div></main>{enrollmentOpen ? <EnrollmentDialog onClose={() => setEnrollmentOpen(false)} onCreated={() => { setEnrollmentOpen(false); setRevision((value) => value + 1); }} /> : null}</MobileShell>;
 }

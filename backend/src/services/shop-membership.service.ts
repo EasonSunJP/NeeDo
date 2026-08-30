@@ -26,7 +26,9 @@ export class ShopMembershipService {
     const expiryCutoff = new Date(todayStart.getTime() + 30 * 24 * 60 * 60 * 1000);
     const overview = await this.repository.getOverview(shopId, todayStart, expiryCutoff);
     if (!overview) throw this.notFound("error.shop_membership.shop_not_found");
-    return overview;
+    return actor.permissions.includes("shop.member.operation_log.view")
+      ? overview
+      : { ...overview, recentActivities: [] };
   }
 
   public async listMerchantMemberships(actor: AuthenticatedAccessContext, input: MembershipListInput) {

@@ -56,6 +56,25 @@ function repository(overrides: Partial<jest.Mocked<ShopMembershipRepositoryPort>
 }
 
 describe("ShopMembershipService", () => {
+  it("does not expose operation activity through the read-only overview permission", async () => {
+    const activity = { id: "membership:31:created", action: "membership_created" as const, membershipPublicId: "membership-31", customerNeedoId: "u0000000041", customerDisplayName: "王小美", actorName: "店主", occurredAt: now };
+    const repo = repository({
+      getOverview: jest.fn(async (shopId, todayStart, expiryCutoff) => {
+        void shopId;
+        void todayStart;
+        void expiryCutoff;
+        return { shop: detail.shop, activeMemberCount: 1, todayNewMemberCount: 1, activeCardCount: 0, expiringSoonCardCount: 0, recentActivities: [activity] };
+      })
+    });
+    const service = new ShopMembershipService(repo, { createInput: jest.fn() }, () => now);
+
+    const staffOverview = await service.getMerchantOverview(merchant({ permissions: ["shop.member.view"] }));
+    const ownerOverview = await service.getMerchantOverview(merchant({ permissions: ["shop.member.view", "shop.member.operation_log.view"] }));
+
+    expect(staffOverview.recentActivities).toEqual([]);
+    expect(ownerOverview.recentActivities).toEqual([activity]);
+  });
+
   it("rejects non-shop merchant identities before repository access", async () => {
     const repo = repository();
     const service = new ShopMembershipService(repo, { createInput: jest.fn() }, () => now);
