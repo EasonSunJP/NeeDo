@@ -2437,4 +2437,20 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       total: 0
     });
   });
+
+  it("accepts a first-class reply relation filter for paginated social lists", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/social/posts?replyToPostId=700&page=2&pageSize=100")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200);
+
+    expect(fixture.realtimeRepository.listSocialPosts).toHaveBeenLastCalledWith(
+      1,
+      { page: 2, pageSize: 100, replyToPostId: 700 },
+      1
+    );
+  });
 });

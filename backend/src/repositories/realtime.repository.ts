@@ -470,6 +470,7 @@ export type UpdateSocialPostResult = CreateSocialPostResult;
 export interface SocialPostListInput extends PaginationInput {
   authorUserId?: number;
   authorIdentityId?: number;
+  replyToPostId?: number;
 }
 
 export interface SocialActivityStatusInput {
@@ -3289,6 +3290,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       deletedAt: null,
       ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
       ...(input.authorIdentityId ? { authorIdentityId: input.authorIdentityId } : {}),
+      ...(input.replyToPostId ? { replyToPostId: input.replyToPostId } : {}),
       OR: [
         { visibility: SocialPostVisibility.PUBLIC },
         { authorIdentityId: identityId },

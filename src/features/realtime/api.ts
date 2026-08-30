@@ -393,14 +393,20 @@ export const realtimeApi = {
   rejectFriendRequest(id: number) {
     return httpClient.request<RealtimeFriendRequest>(`/im/friend-requests/${id}/reject`, { method: "POST" });
   },
-  listSocialPosts(query: PageQuery & { authorUserId?: number } = {}) {
-    return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", { query });
+  listSocialPosts(
+    query: PageQuery & { authorUserId?: number; replyToPostId?: number } = {},
+    options: { signal?: AbortSignal } = {}
+  ) {
+    return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", {
+      query,
+      signal: options.signal
+    });
   },
   getSocialActivityStatus(userId: number) {
     return httpClient.request<RealtimeSocialActivityStatus>(`/social/users/${userId}/activity-status`);
   },
-  getSocialPost(id: number) {
-    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`);
+  getSocialPost(id: number, options: { signal?: AbortSignal } = {}) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { signal: options.signal });
   },
   createSocialPost(input: RealtimeSocialCreatePostInput) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });

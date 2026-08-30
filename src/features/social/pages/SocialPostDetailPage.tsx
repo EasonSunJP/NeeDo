@@ -519,19 +519,23 @@ export function SocialPostDetailPage() {
     markShared,
     toggleBookmark,
     toggleLike,
-    createPost
+    createPost,
+    ensurePostThread,
+    releasePostThread
   } = useSocial();
   const actorKey = getActorForScope(scope);
   const actor = profiles[actorKey];
   const post = postId ? getPostById(postId, actorKey) : undefined;
   const postAuthorKey = post ? profileKey({ entityType: post.authorType, id: post.authorId }) : "";
   const author = post ? profiles[postAuthorKey] : undefined;
+  const { language } = useOptionalI18n();
   const { theme } = useClientTheme();
   const shellClassName = cn("client-shell client-theme-night min-h-[100dvh] bg-[#000000] text-white", getClientThemeClassName(theme));
   const quotedPost = post?.quotePostId ? getPostById(post.quotePostId, actorKey) : undefined;
   const ancestors = useMemo(() => (postId ? getAncestors(postId) : []), [getAncestors, postId]);
   const replies = useMemo(() => (postId ? getReplies(postId) : []), [getReplies, postId]);
   const relatedPosts = useMemo(() => (postId ? getRelatedPosts(postId).slice(0, 4) : []), [getRelatedPosts, postId]);
+  const [threadLoadStatus, setThreadLoadStatus] = useState<"loading" | "ready" | "not-found" | "error">("loading");
   const viewedRef = useRef<string | null>(null);
   const composerRef = useRef<SocialQuickReplyComposerHandle>(null);
   const mountedComposerTargetRef = useRef<string | null>(null);
@@ -543,6 +547,32 @@ export function SocialPostDetailPage() {
     mountedComposerTargetRef.current = handle ? composerTargetIdentity : null;
   }, [composerTargetIdentity]);
   const focusReply = () => composerRef.current?.focus();
+
+  useEffect(() => {
+    if (!postId) {
+      setThreadLoadStatus("not-found");
+      return undefined;
+    }
+
+    let mounted = true;
+    setThreadLoadStatus("loading");
+    void ensurePostThread(postId)
+      .then((available) => {
+        if (mounted) {
+          setThreadLoadStatus(available ? "ready" : "not-found");
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setThreadLoadStatus("error");
+        }
+      });
+
+    return () => {
+      mounted = false;
+      releasePostThread(postId);
+    };
+  }, [ensurePostThread, postId, releasePostThread]);
 
   useEffect(() => {
     if (!postId || viewedRef.current === postId) {
@@ -599,6 +629,21 @@ export function SocialPostDetailPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [composerTargetIdentity, location.hash, location.key, location.pathname, location.search, location.state, navigate, post, routeTargetIdentity]);
 
+  if (!post && threadLoadStatus === "loading") {
+    return (
+      <div className={shellClassName}>
+        <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
+
+        <main aria-busy="true" className="mx-auto max-w-[720px] animate-pulse px-4 pb-20 pt-4">
+          <div className="h-11 w-11 rounded-full bg-white/10" />
+          <div className="mt-4 h-5 w-40 rounded-full bg-white/10" />
+          <div className="mt-3 h-4 w-full rounded-full bg-white/[0.07]" />
+          <div className="mt-2 h-4 w-3/4 rounded-full bg-white/[0.07]" />
+        </main>
+      </div>
+    );
+  }
+
   if (!post) {
     return (
       <div className={shellClassName}>
@@ -607,8 +652,11 @@ export function SocialPostDetailPage() {
         <main className="mx-auto max-w-[720px] px-4 pb-20 pt-4">
           <SocialEmptyState
             action={<PrimaryButton to={socialPaths.timeline(scope)}>返回动态页</PrimaryButton>}
-            description="这条动态可能已删除，或当前链接已经失效。"
-            title="动态不存在"
+            description={translateText(
+              threadLoadStatus === "error" ? "数据加载失败，请检查网络后重试" : "这条动态可能已删除，或当前链接已经失效。",
+              language
+            )}
+            title={translateText(threadLoadStatus === "error" ? "当前数据集加载失败" : "动态不存在", language)}
           />
         </main>
       </div>

@@ -87,7 +87,11 @@ const quotePost = makePost({ id: "3", authorId: "4", text: "引用正文" });
 function makeSocialValue(
   posts: SocialPost[],
   isPostAvailable: (postId: string) => boolean,
-  getActorForScope: () => string = () => "user:1"
+  getActorForScope: () => string = () => "user:1",
+  threadLifecycle: {
+    ensurePostThread?: (postId: string) => Promise<boolean>;
+    releasePostThread?: (postId: string) => void;
+  } = {}
 ) {
   return {
     state: { friends: {}, follows: {} },
@@ -104,7 +108,9 @@ function makeSocialValue(
     toggleLike: vi.fn(),
     createPost: vi.fn(),
     deletePost: vi.fn(),
-    togglePinPost: vi.fn()
+    togglePinPost: vi.fn(),
+    ensurePostThread: threadLifecycle.ensurePostThread ?? vi.fn(async () => true),
+    releasePostThread: threadLifecycle.releasePostThread ?? vi.fn()
   };
 }
 
@@ -199,6 +205,27 @@ beforeEach(() => {
 });
 
 describe("SocialPostDetailPage runtime reply behavior", () => {
+  it("hydrates a direct detail before deciding that an absent bootstrap post does not exist", async () => {
+    let resolveThread: ((available: boolean) => void) | undefined;
+    const ensurePostThread = vi.fn(() => new Promise<boolean>((resolve) => { resolveThread = resolve; }));
+    const releasePostThread = vi.fn();
+    socialMock.value = makeSocialValue([], () => false, () => "user:1", {
+      ensurePostThread,
+      releasePostThread
+    });
+
+    const rendered = await renderDetail({ pathname: "/moments/posts/700" });
+
+    expect(ensurePostThread).toHaveBeenCalledWith("700");
+    expect(rendered.container.textContent).not.toContain("动态不存在");
+
+    await act(async () => { resolveThread?.(false); });
+    expect(rendered.container.textContent).toContain("动态不存在");
+
+    await act(async () => rendered.root.unmount());
+    expect(releasePostThread).toHaveBeenCalledWith("700");
+  });
+
   it("retains the focus request until a delayed post and composer are mounted", async () => {
     let postAvailable = false;
     socialMock.value = makeSocialValue([rootPost], () => postAvailable);

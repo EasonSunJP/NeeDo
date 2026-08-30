@@ -1,6 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
-import { realtimeApi, subscribeRealtimeEvents, type RealtimeNotification, type RealtimeSocialPost } from "../realtime/api";
+import {
+  realtimeApi,
+  subscribeRealtimeEvents,
+  type PaginatedRealtimeData,
+  type RealtimeNotification,
+  type RealtimeSocialPost
+} from "../realtime/api";
 import { normalizeImMessageRichText } from "../im/reaction-policy";
 import type {
   PostInteractionState,
@@ -83,6 +90,8 @@ type SocialContextValue = {
   markNotificationsRead: (recipientKey: string) => void;
   refreshFeeds: () => void;
   ensureAccountProfile: (userId: number) => Promise<SocialProfile | undefined>;
+  ensurePostThread: (postId: string) => Promise<boolean>;
+  releasePostThread: (postId: string) => void;
 };
 
 const SocialContext = createContext<SocialContextValue | null>(null);
@@ -123,6 +132,68 @@ export function mergeCreatedFormalSocialPost(
   ]);
 }
 
+export function mergeFormalSocialBootstrapPosts(
+  currentPosts: SocialPost[],
+  nextPosts: SocialPost[],
+  activePostThreadIds: ReadonlySet<string>
+): SocialPost[] {
+  const nextPostIds = new Set(nextPosts.map((post) => post.id));
+
+  return sortPostsByNewest([
+    ...nextPosts,
+    ...currentPosts.filter((post) =>
+      (activePostThreadIds.has(post.id) ||
+        (post.replyToPostId !== undefined && activePostThreadIds.has(post.replyToPostId))) &&
+      !nextPostIds.has(post.id)
+    )
+  ]);
+}
+
+export function getActiveFormalSocialThreadIdsForEvent(
+  activePostThreadIds: ReadonlySet<string>,
+  payload: unknown
+): string[] {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const candidate = payload as { id?: unknown; replyToPostId?: unknown };
+  const postId = typeof candidate.id === "number" && Number.isSafeInteger(candidate.id)
+    ? String(candidate.id)
+    : undefined;
+  const replyToPostId = typeof candidate.replyToPostId === "number" && Number.isSafeInteger(candidate.replyToPostId)
+    ? String(candidate.replyToPostId)
+    : undefined;
+
+  return [...activePostThreadIds].filter((activePostId) =>
+    activePostId === postId || activePostId === replyToPostId
+  );
+}
+
+export function mergeHydratedFormalSocialPostThread(
+  currentPosts: SocialPost[],
+  hydratedPosts: SocialPost[],
+  postId: string
+): SocialPost[] {
+  const hydratedPostIds = new Set(hydratedPosts.map((post) => post.id));
+
+  return sortPostsByNewest([
+    ...hydratedPosts,
+    ...currentPosts.filter((post) =>
+      post.id !== postId &&
+      post.replyToPostId !== postId &&
+      !hydratedPostIds.has(post.id)
+    )
+  ]);
+}
+
+export function removeFormalSocialPostThread(
+  posts: SocialPost[],
+  postId: string
+): SocialPost[] {
+  return posts.filter((post) => post.id !== postId && post.replyToPostId !== postId);
+}
+
 export async function createFormalSocialPost(
   request: () => Promise<RealtimeSocialPost>,
   onSuccess: (created: RealtimeSocialPost, mapped: SocialPost) => void
@@ -131,6 +202,62 @@ export async function createFormalSocialPost(
   const mapped = mapFormalSocialPost(created);
   onSuccess(created, mapped);
   return mapped;
+}
+
+type FormalSocialPostThreadApi = {
+  getSocialPost: (id: number, options?: { signal?: AbortSignal }) => Promise<RealtimeSocialPost>;
+  listSocialPosts: (query: {
+    page: number;
+    pageSize: number;
+    replyToPostId: number;
+  }, options?: { signal?: AbortSignal }) => Promise<PaginatedRealtimeData<RealtimeSocialPost>>;
+};
+
+export function buildFormalSocialSessionKey(
+  userId: number | null,
+  identityId: number | null
+): string {
+  return `${userId ?? "guest"}:${identityId ?? "none"}`;
+}
+
+export function shouldCommitFormalSocialRequest(
+  requestedSessionKey: string,
+  currentSessionKey: string,
+  retained = true
+): boolean {
+  return retained && requestedSessionKey === currentSessionKey;
+}
+
+export async function fetchFormalSocialPostThread(
+  postId: number,
+  api: FormalSocialPostThreadApi = realtimeApi,
+  signal?: AbortSignal
+): Promise<{ parent: RealtimeSocialPost; replies: RealtimeSocialPost[] }> {
+  const pageSize = 100;
+  const [parent, firstPage] = await Promise.all([
+    api.getSocialPost(postId, { signal }),
+    api.listSocialPosts({ page: 1, pageSize, replyToPostId: postId }, { signal })
+  ]);
+  const repliesById = new Map(firstPage.list.map((reply) => [reply.id, reply]));
+  const lastPage = Math.ceil(firstPage.total / pageSize);
+
+  for (let page = 2; page <= lastPage; page += 1) {
+    const previousSize = repliesById.size;
+    const nextPage = await api.listSocialPosts(
+      { page, pageSize, replyToPostId: postId },
+      { signal }
+    );
+    nextPage.list.forEach((reply) => repliesById.set(reply.id, reply));
+    if (nextPage.list.length === 0 || repliesById.size === previousSize) {
+      throw new Error("error.social.thread_incomplete");
+    }
+  }
+
+  if (repliesById.size < firstPage.total) {
+    throw new Error("error.social.thread_incomplete");
+  }
+
+  return { parent, replies: [...repliesById.values()] };
 }
 
 export function resolveFormalSocialUpdateRichText(content: string, richText: unknown) {
@@ -171,17 +298,27 @@ function mapFormalNotification(
 
 function FormalSocialProvider({ children }: { children: ReactNode }) {
   const { isRestoring, session } = useAuth();
-  const [state, setState] = useState<SocialState>(emptyFormalSocialState);
-  const [profiles, setProfiles] = useState<Record<string, SocialProfile>>({});
-  const accountProfileRequestsRef = useRef(new Map<number, Promise<SocialProfile | undefined>>());
+  const [storedState, setState] = useState<SocialState>(emptyFormalSocialState);
+  const [storedProfiles, setProfiles] = useState<Record<string, SocialProfile>>({});
+  const accountProfileRequestsRef = useRef(new Map<string, Promise<SocialProfile | undefined>>());
+  const activePostThreadIdsRef = useRef(new Set<string>());
+  const activePostThreadProfilesRef = useRef(new Map<string, Record<string, SocialProfile>>());
+  const postThreadRequestsRef = useRef(new Map<string, Promise<boolean>>());
+  const postThreadAbortControllersRef = useRef(new Map<string, AbortController>());
   const sessionUserId = session?.id ?? null;
+  const sessionIdentityId = session?.currentIdentity?.id ?? null;
   const sessionIdentityType = session?.currentIdentity?.type;
   const sessionUsername = session?.username ?? "";
   const sessionAvatarUrl = session?.avatarUrl ?? null;
   const sessionLoggedInAt = session?.loggedInAt ?? "";
+  const formalSessionKey = buildFormalSocialSessionKey(sessionUserId, sessionIdentityId);
+  const currentFormalSessionKeyRef = useRef(formalSessionKey);
+  currentFormalSessionKeyRef.current = formalSessionKey;
+  const [stateScopeKey, setStateScopeKey] = useState(formalSessionKey);
 
   const ensureAccountProfile = useCallback((userId: number) => {
-    const pendingRequest = accountProfileRequestsRef.current.get(userId);
+    const requestKey = `${formalSessionKey}:${userId}`;
+    const pendingRequest = accountProfileRequestsRef.current.get(requestKey);
     if (pendingRequest) {
       return pendingRequest;
     }
@@ -190,12 +327,19 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       return Promise.resolve(undefined);
     }
 
-    const request = (async () => {
+    let request!: Promise<SocialProfile | undefined>;
+    request = (async () => {
       try {
         const [activityStatus, postPage] = await Promise.all([
           realtimeApi.getSocialActivityStatus(userId),
           realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: userId })
         ]);
+        if (!shouldCommitFormalSocialRequest(
+          formalSessionKey,
+          currentFormalSessionKeyRef.current
+        )) {
+          return undefined;
+        }
         const profile = mapFormalSocialProfile(activityStatus.profile);
         const targetKey = profileKey(profile);
         const postProfiles = mapFormalSocialProfiles(postPage.list);
@@ -206,6 +350,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         const mappedPosts = postPage.list.map(mapFormalSocialPost);
         const actorKey = `${formalEntityType(sessionIdentityType)}:${sessionUserId}`;
 
+        setStateScopeKey(formalSessionKey);
         setProfiles((current) => ({ ...current, ...postProfiles, [targetKey]: mergedProfile }));
         setState((current) => {
           const mappedPostIds = new Set(mappedPosts.map((post) => post.id));
@@ -239,13 +384,134 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
         return mergedProfile;
       } finally {
-        accountProfileRequestsRef.current.delete(userId);
+        if (accountProfileRequestsRef.current.get(requestKey) === request) {
+          accountProfileRequestsRef.current.delete(requestKey);
+        }
       }
     })();
 
-    accountProfileRequestsRef.current.set(userId, request);
+    accountProfileRequestsRef.current.set(requestKey, request);
     return request;
-  }, [isRestoring, sessionIdentityType, sessionUserId]);
+  }, [formalSessionKey, isRestoring, sessionIdentityType, sessionUserId]);
+
+  const ensurePostThread = useCallback((postId: string) => {
+    const numericPostId = Number(postId);
+    if (
+      sessionUserId === null ||
+      isRestoring ||
+      !Number.isSafeInteger(numericPostId) ||
+      numericPostId <= 0
+    ) {
+      return Promise.resolve(false);
+    }
+
+    activePostThreadIdsRef.current.add(postId);
+    const requestKey = `${formalSessionKey}:${postId}`;
+    const pendingRequest = postThreadRequestsRef.current.get(requestKey);
+    if (pendingRequest) {
+      return pendingRequest;
+    }
+
+    const controller = new AbortController();
+    postThreadAbortControllersRef.current.set(requestKey, controller);
+    let request!: Promise<boolean>;
+    request = (async () => {
+      try {
+        const { parent, replies } = await fetchFormalSocialPostThread(
+          numericPostId,
+          realtimeApi,
+          controller.signal
+        );
+        if (!shouldCommitFormalSocialRequest(
+          formalSessionKey,
+          currentFormalSessionKeyRef.current,
+          activePostThreadIdsRef.current.has(postId)
+        )) {
+          return false;
+        }
+
+        const rawPosts = [parent, ...replies];
+        const mappedPosts = rawPosts.map(mapFormalSocialPost);
+        const threadProfiles = mapFormalSocialProfiles(rawPosts);
+        const actorKey = `${formalEntityType(sessionIdentityType)}:${sessionUserId}`;
+
+        if (activePostThreadIdsRef.current.has(postId)) {
+          activePostThreadProfilesRef.current.set(postId, threadProfiles);
+        }
+        setProfiles((current) => ({ ...current, ...threadProfiles }));
+        setStateScopeKey(formalSessionKey);
+        setState((current) => {
+          const nextFollows = { ...current.follows };
+          const nextFriends = { ...current.friends };
+
+          rawPosts.forEach((rawPost, index) => {
+            const authorKey = postAuthorKey(mappedPosts[index]);
+            nextFollows[actorKey] = rawPost.viewerFollowsAuthor
+              ? unique([...(nextFollows[actorKey] ?? []), authorKey])
+              : (nextFollows[actorKey] ?? []).filter((key) => key !== authorKey);
+            nextFollows[authorKey] = rawPost.authorFollowsViewer
+              ? unique([...(nextFollows[authorKey] ?? []), actorKey])
+              : (nextFollows[authorKey] ?? []).filter((key) => key !== actorKey);
+            if (rawPost.viewerIsFriend) {
+              nextFriends[actorKey] = unique([...(nextFriends[actorKey] ?? []), authorKey]);
+              nextFriends[authorKey] = unique([...(nextFriends[authorKey] ?? []), actorKey]);
+            } else {
+              nextFriends[actorKey] = (nextFriends[actorKey] ?? []).filter((key) => key !== authorKey);
+              nextFriends[authorKey] = (nextFriends[authorKey] ?? []).filter((key) => key !== actorKey);
+            }
+          });
+
+          return {
+            ...current,
+            follows: nextFollows,
+            friends: nextFriends,
+            posts: mergeHydratedFormalSocialPostThread(current.posts, mappedPosts, postId)
+          };
+        });
+
+        return true;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return false;
+        }
+        if (error instanceof ApiClientError && error.status === 404) {
+          if (shouldCommitFormalSocialRequest(
+            formalSessionKey,
+            currentFormalSessionKeyRef.current,
+            activePostThreadIdsRef.current.has(postId)
+          )) {
+            activePostThreadProfilesRef.current.delete(postId);
+            setStateScopeKey(formalSessionKey);
+            setState((current) => ({
+              ...current,
+              posts: removeFormalSocialPostThread(current.posts, postId)
+            }));
+          }
+          return false;
+        }
+        throw error;
+      } finally {
+        if (postThreadRequestsRef.current.get(requestKey) === request) {
+          postThreadRequestsRef.current.delete(requestKey);
+        }
+        if (postThreadAbortControllersRef.current.get(requestKey) === controller) {
+          postThreadAbortControllersRef.current.delete(requestKey);
+        }
+      }
+    })();
+
+    postThreadRequestsRef.current.set(requestKey, request);
+    return request;
+  }, [formalSessionKey, isRestoring, sessionIdentityType, sessionUserId]);
+
+  const releasePostThread = useCallback((postId: string) => {
+    activePostThreadIdsRef.current.delete(postId);
+    activePostThreadProfilesRef.current.delete(postId);
+    const requestKey = `${formalSessionKey}:${postId}`;
+    postThreadAbortControllersRef.current.get(requestKey)?.abort();
+    postThreadAbortControllersRef.current.delete(requestKey);
+    postThreadRequestsRef.current.delete(requestKey);
+  }, [formalSessionKey]);
 
   const loadFormalSocial = useCallback(async () => {
     if (sessionUserId === null || isRestoring) return;
@@ -254,6 +520,12 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: sessionUserId }),
       realtimeApi.listNotifications({ page: 1, pageSize: 100 })
     ]);
+    if (!shouldCommitFormalSocialRequest(
+      formalSessionKey,
+      currentFormalSessionKeyRef.current
+    )) {
+      return;
+    }
     const rawPosts = [...timelinePage.list, ...minePage.list].filter(
       (post, index, posts) => posts.findIndex((candidate) => candidate.id === post.id) === index
     );
@@ -293,17 +565,50 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     const notifications = notificationPage.list.map((notification) =>
       mapFormalNotification(notification, nextProfiles)
     );
-    setProfiles(nextProfiles);
-    setState((current) => ({
-      ...current,
-      posts: nextPosts,
-      follows,
-      friends,
-      notifications,
-      refreshedAt: new Date().toISOString()
-    }));
+    const activeThreadProfiles = [...activePostThreadIdsRef.current].reduce<Record<string, SocialProfile>>(
+      (merged, postId) => ({ ...merged, ...activePostThreadProfilesRef.current.get(postId) }),
+      {}
+    );
+    setProfiles({ ...nextProfiles, ...activeThreadProfiles });
+    setStateScopeKey(formalSessionKey);
+    setState((current) => {
+      const mergedFollows = { ...follows };
+      const mergedFriends = { ...friends };
+      const activeThreadPosts = current.posts.filter((post) =>
+        activePostThreadIdsRef.current.has(post.id) ||
+        (post.replyToPostId !== undefined && activePostThreadIdsRef.current.has(post.replyToPostId))
+      );
+
+      activeThreadPosts.forEach((activePost) => {
+        const authorKey = postAuthorKey(activePost);
+        if ((current.follows[actorKey] ?? []).includes(authorKey)) {
+          mergedFollows[actorKey] = unique([...(mergedFollows[actorKey] ?? []), authorKey]);
+        }
+        if ((current.follows[authorKey] ?? []).includes(actorKey)) {
+          mergedFollows[authorKey] = unique([...(mergedFollows[authorKey] ?? []), actorKey]);
+        }
+        if ((current.friends[actorKey] ?? []).includes(authorKey)) {
+          mergedFriends[actorKey] = unique([...(mergedFriends[actorKey] ?? []), authorKey]);
+          mergedFriends[authorKey] = unique([...(mergedFriends[authorKey] ?? []), actorKey]);
+        }
+      });
+
+      return {
+        ...current,
+        posts: mergeFormalSocialBootstrapPosts(
+          current.posts,
+          nextPosts,
+          activePostThreadIdsRef.current
+        ),
+        follows: mergedFollows,
+        friends: mergedFriends,
+        notifications,
+        refreshedAt: new Date().toISOString()
+      };
+    });
   }, [
     isRestoring,
+    formalSessionKey,
     sessionAvatarUrl,
     sessionIdentityType,
     sessionLoggedInAt,
@@ -311,6 +616,14 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     sessionUsername
   ]);
 
+  useEffect(() => () => {
+    postThreadAbortControllersRef.current.forEach((controller) => controller.abort());
+    postThreadAbortControllersRef.current.clear();
+    postThreadRequestsRef.current.clear();
+    accountProfileRequestsRef.current.clear();
+    activePostThreadIdsRef.current.clear();
+    activePostThreadProfilesRef.current.clear();
+  }, []);
   useEffect(() => { cleanupLegacySocialReplyDrafts(); }, []);
   useEffect(() => { void loadFormalSocial(); }, [loadFormalSocial]);
   useEffect(() => {
@@ -318,12 +631,31 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
     return subscribeRealtimeEvents({
       onEvent: (event) => {
-        if (event.type === "social.post.created" || event.type === "social.post.updated" || event.type === "notification.created" || event.type === "follow.created") {
+        if (event.type === "social.post.created" || event.type === "social.post.updated") {
+          const affectedThreadIds = getActiveFormalSocialThreadIdsForEvent(
+            activePostThreadIdsRef.current,
+            event.payload
+          );
+          void loadFormalSocial();
+          affectedThreadIds.forEach((activePostId) => {
+            void (async () => {
+              const pendingRequest = postThreadRequestsRef.current.get(
+                `${formalSessionKey}:${activePostId}`
+              );
+              if (pendingRequest) {
+                await pendingRequest.catch(() => undefined);
+              }
+              if (activePostThreadIdsRef.current.has(activePostId)) {
+                await ensurePostThread(activePostId).catch(() => false);
+              }
+            })();
+          });
+        } else if (event.type === "notification.created" || event.type === "follow.created") {
           void loadFormalSocial();
         }
       }
     });
-  }, [isRestoring, loadFormalSocial, sessionUserId]);
+  }, [ensurePostThread, formalSessionKey, isRestoring, loadFormalSocial, sessionUserId]);
 
   const saveDraft = useCallback((draftKey: string, draft: SocialComposerDraft) => {
     setState((current) => ({
@@ -345,6 +677,9 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<SocialContextValue>(() => {
+    const isCurrentScope = stateScopeKey === formalSessionKey;
+    const state = isCurrentScope ? storedState : emptyFormalSocialState;
+    const profiles = isCurrentScope ? storedProfiles : {};
     const profileList = Object.values(profiles);
     const ownProfile = session
       ? profileList.find((profile) => Number(profile.id) === session.id)
@@ -390,7 +725,14 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
           visibility: input.visibility === "followers" ? "followers" : "public"
         }),
         (created, mapped) => {
+          if (!shouldCommitFormalSocialRequest(
+            formalSessionKey,
+            currentFormalSessionKeyRef.current
+          )) {
+            return;
+          }
           setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([created]) }));
+          setStateScopeKey(formalSessionKey);
           setState((current) => ({
             ...current,
             posts: mergeCreatedFormalSocialPost(
@@ -426,7 +768,14 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         visibility: input.visibility === "followers" ? "followers" : "public"
       });
       const mapped = mapFormalSocialPost(updated);
+      if (!shouldCommitFormalSocialRequest(
+        formalSessionKey,
+        currentFormalSessionKeyRef.current
+      )) {
+        return mapped;
+      }
       setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([updated]) }));
+      setStateScopeKey(formalSessionKey);
       setState((current) => ({
         ...current,
         posts: sortPostsByNewest(current.posts.map((post) => post.id === mapped.id ? mapped : post))
@@ -497,15 +846,35 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       incrementView: () => undefined,
       markNotificationsRead: () => { void realtimeApi.markAllNotificationsRead().then(() => loadFormalSocial()); },
       refreshFeeds: () => { void loadFormalSocial(); },
-      ensureAccountProfile
+      ensureAccountProfile,
+      ensurePostThread,
+      releasePostThread
     };
-  }, [clearDraft, ensureAccountProfile, loadFormalSocial, profiles, saveDraft, session, state]);
+  }, [
+    clearDraft,
+    ensureAccountProfile,
+    ensurePostThread,
+    formalSessionKey,
+    loadFormalSocial,
+    releasePostThread,
+    saveDraft,
+    session,
+    stateScopeKey,
+    storedProfiles,
+    storedState
+  ]);
 
   return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;
 }
 
 export function SocialProvider({ children }: { children: ReactNode }) {
-  return <FormalSocialProvider>{children}</FormalSocialProvider>;
+  const { session } = useAuth();
+  const formalSessionKey = buildFormalSocialSessionKey(
+    session?.id ?? null,
+    session?.currentIdentity?.id ?? null
+  );
+
+  return <FormalSocialProvider key={formalSessionKey}>{children}</FormalSocialProvider>;
 }
 
 export function useSocial() {

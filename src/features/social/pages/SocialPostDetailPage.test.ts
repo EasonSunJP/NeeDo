@@ -9,6 +9,8 @@ describe("SocialPostDetailPage quick reply integration", () => {
     expect(source).toContain('className="mt-4 space-y-3"');
     expect(source).toContain("composerRef.current?.focus()");
     expect(source).toContain("count={post.replyCount}");
+    expect(source).toContain("ensurePostThread(postId)");
+    expect(source).toContain("releasePostThread(postId)");
     expect(source).toContain("location.state?.focusSocialReply !== true");
     expect(source).toContain("pathname: location.pathname");
     expect(source).toContain("search: location.search");

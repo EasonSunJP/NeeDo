@@ -1126,6 +1126,15 @@ describe("GET /api/v1/openapi.json", () => {
       replyToPostId: { type: "integer", nullable: true, minimum: 1 },
       replyCount: { type: "integer", minimum: 0 }
     });
+    expect((document.paths["/api/v1/social/posts"] as { get: { parameters: unknown[] } }).get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "replyToPostId",
+          in: "query",
+          schema: { type: "integer", minimum: 1 }
+        })
+      ])
+    );
     const socialCreateMedia = (
       document.paths["/api/v1/social/posts"] as {
         post: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } };

@@ -49,6 +49,26 @@ const createInput = () => ({
 });
 
 describe("RealtimeRepository Social post replies", () => {
+  it("filters the paginated formal list by the first-class reply relation", async () => {
+    const client = {
+      socialPost: {
+        findMany: jest.fn(async () => []),
+        count: jest.fn(async () => 0)
+      }
+    };
+    const repository = new RealtimeRepository(client as never);
+
+    await repository.listSocialPosts(71, { page: 2, pageSize: 100, replyToPostId: 700 }, 41);
+
+    const expectedWhere = expect.objectContaining({ deletedAt: null, replyToPostId: 700 });
+    expect(client.socialPost.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expectedWhere,
+      skip: 100,
+      take: 100
+    }));
+    expect(client.socialPost.count).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
   it("validates and persists an active reply target with an authoritative active reply count", async () => {
     const { repository, transaction } = createFixture({ activeReplyCount: 0 });
 

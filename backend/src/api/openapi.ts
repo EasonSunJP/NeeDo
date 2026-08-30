@@ -14193,6 +14193,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "authorUserId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "replyToPostId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],

@@ -170,7 +170,8 @@ export const friendRequestCreateBodySchema = z.object({
 
 export const socialPostListQuerySchema = z.object({
   ...paginationQuerySchema,
-  authorUserId: z.coerce.number().int().positive().optional()
+  authorUserId: z.coerce.number().int().positive().optional(),
+  replyToPostId: z.coerce.number().int().positive().optional()
 });
 
 const socialCreateMediaItemSchema = z
