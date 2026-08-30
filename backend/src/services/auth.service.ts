@@ -32,7 +32,9 @@ import {
 import type { MerchantShopContextRepositoryPort } from "../repositories/merchant-shop-context.repository";
 import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
 import {
+  FORMAL_MERCHANT_IDENTITY_TYPES,
   merchantShopIdentityForbidden,
+  resolveFormalMerchantIdentityKind,
   resolveMerchantShopScope,
   type ResolvedMerchantShopScope
 } from "./merchant-shop-scope";
@@ -1047,9 +1049,13 @@ export class AuthService {
     shopPublicId: string,
     context: AuthRequestContext
   ): Promise<SwitchMerchantShopPayload> {
+    const currentIdentityKind = resolveFormalMerchantIdentityKind({
+      type: auth.currentIdentityType ?? "",
+      scopeType: auth.currentIdentityScopeType ?? null,
+      scopeId: auth.currentIdentityScopeId ?? null
+    });
     if (
-      auth.currentIdentityScopeType !== "merchant_account" ||
-      !auth.currentIdentityScopeId ||
+      currentIdentityKind !== "merchant_account" ||
       !auth.currentIdentityId ||
       !auth.selectedMerchantShopPublicId
     ) {
@@ -1071,13 +1077,10 @@ export class AuthService {
     if (this.userSessionGeneration(user) !== refreshPayload.sessionGeneration) {
       throw this.tokenInvalidError();
     }
-    if (!(await this.sessionStore.hasRefreshToken(refreshUserId, refreshPayload.jti))) {
-      throw this.tokenInvalidError();
-    }
 
     const me = this.buildMePayloadForIdentity(user, auth.currentIdentityId);
     if (
-      me.currentIdentity.scopeType !== "merchant_account" ||
+      resolveFormalMerchantIdentityKind(me.currentIdentity) !== "merchant_account" ||
       me.currentIdentity.scopeId !== auth.currentIdentityScopeId
     ) {
       throw merchantShopIdentityForbidden();
@@ -1093,23 +1096,8 @@ export class AuthService {
 
     const nextAccessToken = this.tokenService.issueAccessToken(subject);
     const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
-    if (!this.sessionStore.rotateRefreshToken) throw this.redisUnavailableError();
-    if (
-      !(await this.sessionStore.rotateRefreshToken({
-        userId: user.id,
-        generation: refreshPayload.sessionGeneration,
-        oldJti: refreshPayload.jti,
-        newJti: nextRefreshToken.jti,
-        ttlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
-      }))
-    ) {
-      throw this.tokenInvalidError();
-    }
+    if (!this.sessionStore.completeMerchantShopSwitch) throw this.redisUnavailableError();
 
-    await this.sessionStore.blacklistAccessToken(
-      auth.accessTokenJti,
-      auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
-    );
     await this.repository.createAuditLog({
       actorId: auth.userId,
       action: "auth.merchant_shop.switch",
@@ -1118,11 +1106,26 @@ export class AuthService {
       ip: context.ip,
       userAgent: context.userAgent,
       metadata: {
+        phase: "authorized_attempt",
         previousShopPublicId: auth.selectedMerchantShopPublicId,
         nextShopPublicId: merchantShopScope.shopPublicId,
         shopId: merchantShopScope.shopId
       }
     });
+
+    if (
+      !(await this.sessionStore.completeMerchantShopSwitch({
+        userId: user.id,
+        generation: refreshPayload.sessionGeneration,
+        oldRefreshJti: refreshPayload.jti,
+        newRefreshJti: nextRefreshToken.jti,
+        refreshTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+        oldAccessJti: auth.accessTokenJti,
+        oldAccessTtlSeconds: auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
+      }))
+    ) {
+      throw this.tokenInvalidError();
+    }
 
     return {
       accessToken: nextAccessToken.token,
@@ -1843,8 +1846,9 @@ export class AuthService {
         publicIdentityById.set(identity.publicId, identity);
       }
     }
-    const sharedPrimaryPublicId = allActiveIdentities.find((identity) => identity.publicId !== null)
-      ?.publicId;
+    const sharedPrimaryPublicId = allActiveIdentities.find(
+      (identity) => identity.publicId !== null
+    )?.publicId;
     const hasCustomerIdentity = allActiveIdentities.some((identity) =>
       ["customer", "user", "u"].includes(identity.type)
     );
@@ -1927,14 +1931,7 @@ export class AuthService {
     const identityTypes: Readonly<Record<AuthIdentityAvailabilityKind, readonly string[]>> = {
       customer: ["customer"],
       technician: ["technician"],
-      merchant: [
-        "merchant",
-        "merchant_organization",
-        "merchant_owner",
-        "merchant_staff",
-        "o",
-        "owner"
-      ],
+      merchant: [...FORMAL_MERCHANT_IDENTITY_TYPES],
       affiliate: ["affiliate", "scout"]
     };
     const customerIdentity = identities.find((identity) =>

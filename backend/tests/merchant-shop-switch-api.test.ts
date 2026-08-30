@@ -4,6 +4,7 @@ import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { AppError } from "../src/utils/app-error";
 
 const SHOP_A = { shopId: 11, shopPublicId: "shop0000000001" };
 const SHOP_B = { shopId: 12, shopPublicId: "shop0000000002" };
@@ -11,6 +12,9 @@ const SHOP_B = { shopId: 12, shopPublicId: "shop0000000002" };
 class SessionStore {
   public readonly refreshTokens = new Set<string>();
   public readonly blacklisted = new Set<string>();
+  public failNextMerchantShopCommitAt: "rotation" | "blacklist" | null = null;
+  public legacyRotateCalls = 0;
+  public legacyBlacklistCalls = 0;
 
   public async getAccountLoginLock() {
     return false;
@@ -23,15 +27,40 @@ class SessionStore {
     return this.refreshTokens.has(`${userId}:${jti}`);
   }
   public async rotateRefreshToken(input: { userId: number; oldJti: string; newJti: string }) {
+    this.legacyRotateCalls += 1;
     const oldKey = `${input.userId}:${input.oldJti}`;
     if (!this.refreshTokens.delete(oldKey)) return false;
     this.refreshTokens.add(`${input.userId}:${input.newJti}`);
+    return true;
+  }
+  public async completeMerchantShopSwitch(input: {
+    userId: number;
+    oldRefreshJti: string;
+    newRefreshJti: string;
+    oldAccessJti: string;
+  }) {
+    if (this.failNextMerchantShopCommitAt) {
+      const failurePoint = this.failNextMerchantShopCommitAt;
+      this.failNextMerchantShopCommitAt = null;
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.redis_unavailable",
+        statusCode: 503,
+        cause: new Error(`simulated atomic ${failurePoint} failure`)
+      });
+    }
+    const oldKey = `${input.userId}:${input.oldRefreshJti}`;
+    if (!this.refreshTokens.has(oldKey)) return false;
+    this.refreshTokens.delete(oldKey);
+    this.refreshTokens.add(`${input.userId}:${input.newRefreshJti}`);
+    this.blacklisted.add(input.oldAccessJti);
     return true;
   }
   public async revokeRefreshToken(userId: number, jti: string) {
     this.refreshTokens.delete(`${userId}:${jti}`);
   }
   public async blacklistAccessToken(jti: string) {
+    this.legacyBlacklistCalls += 1;
     this.blacklisted.add(jti);
   }
   public async isAccessTokenBlacklisted(jti: string) {
@@ -73,7 +102,7 @@ const makeFixture = async (input?: { permission?: boolean }) => {
       {
         id: 51,
         userId: 5,
-        type: "merchant_owner",
+        type: "merchant_organization",
         scopeType: "merchant_account",
         scopeId: 41,
         displayName: "Merchant Owner",
@@ -173,7 +202,7 @@ const makeFixture = async (input?: { permission?: boolean }) => {
     verificationChallengeStore: {}
   } as never);
 
-  return { app, user, memberships, contextRepository, sessions, auditLogs };
+  return { app, user, memberships, contextRepository, sessions, auditLogs, repository };
 };
 
 const login = async (app: ReturnType<typeof createApp>) =>
@@ -247,6 +276,8 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
     expect(tokenService.verifyRefreshToken(switched.body.data.refreshToken)).toMatchObject({
       merchantShopPublicId: SHOP_B.shopPublicId
     });
+    expect(fixture.sessions.legacyRotateCalls).toBe(0);
+    expect(fixture.sessions.legacyBlacklistCalls).toBe(0);
     await request(fixture.app)
       .get("/api/v1/auth/me")
       .set("Authorization", `Bearer ${previous.accessToken}`)
@@ -261,12 +292,112 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
         targetType: "Shop",
         targetId: null,
         metadata: {
+          phase: "authorized_attempt",
           previousShopPublicId: SHOP_A.shopPublicId,
           nextShopPublicId: SHOP_B.shopPublicId,
           shopId: SHOP_B.shopId
         }
       })
     );
+  });
+
+  it("does not mutate credentials when the durable audit attempt cannot be stored", async () => {
+    const fixture = await makeFixture();
+    const loggedIn = await login(fixture.app);
+    const tokenService = new AuthTokenService(env);
+    const oldAccess = tokenService.verifyAccessToken(loggedIn.body.data.accessToken);
+    const oldRefresh = tokenService.verifyRefreshToken(loggedIn.body.data.refreshToken);
+    fixture.repository.createAuditLog.mockRejectedValueOnce(new Error("audit unavailable"));
+
+    await request(fixture.app)
+      .post("/api/v1/auth/merchant-shop/switch")
+      .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+      .send({ refreshToken: loggedIn.body.data.refreshToken, shopPublicId: SHOP_B.shopPublicId })
+      .expect(500);
+
+    expect(fixture.auditLogs).toHaveLength(0);
+    expect(fixture.sessions.refreshTokens).toEqual(
+      new Set([`${fixture.user.id}:${oldRefresh.jti}`])
+    );
+    expect(fixture.sessions.blacklisted.has(oldAccess.jti)).toBe(false);
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+      .expect(200);
+    await request(fixture.app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken: loggedIn.body.data.refreshToken })
+      .expect(200);
+  });
+
+  it.each(["rotation", "blacklist"] as const)(
+    "keeps the old credentials usable when the atomic %s commit is rejected",
+    async (failurePoint) => {
+      const fixture = await makeFixture();
+      const loggedIn = await login(fixture.app);
+      const tokenService = new AuthTokenService(env);
+      const oldAccess = tokenService.verifyAccessToken(loggedIn.body.data.accessToken);
+      const oldRefresh = tokenService.verifyRefreshToken(loggedIn.body.data.refreshToken);
+      fixture.sessions.failNextMerchantShopCommitAt = failurePoint;
+
+      await request(fixture.app)
+        .post("/api/v1/auth/merchant-shop/switch")
+        .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+        .send({ refreshToken: loggedIn.body.data.refreshToken, shopPublicId: SHOP_B.shopPublicId })
+        .expect(503);
+
+      expect(fixture.sessions.refreshTokens).toEqual(
+        new Set([`${fixture.user.id}:${oldRefresh.jti}`])
+      );
+      expect(fixture.sessions.blacklisted.has(oldAccess.jti)).toBe(false);
+      expect(fixture.auditLogs).toContainEqual(
+        expect.objectContaining({
+          action: "auth.merchant_shop.switch",
+          metadata: expect.objectContaining({ phase: "authorized_attempt" })
+        })
+      );
+      await request(fixture.app)
+        .get("/api/v1/auth/me")
+        .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+        .expect(200);
+      await request(fixture.app)
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: loggedIn.body.data.refreshToken })
+        .expect(200);
+    }
+  );
+
+  it("allows at most one concurrent request to commit the same merchant shop switch", async () => {
+    const fixture = await makeFixture();
+    const loggedIn = await login(fixture.app);
+
+    const responses = await Promise.all([
+      request(fixture.app)
+        .post("/api/v1/auth/merchant-shop/switch")
+        .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+        .send({ refreshToken: loggedIn.body.data.refreshToken, shopPublicId: SHOP_B.shopPublicId }),
+      request(fixture.app)
+        .post("/api/v1/auth/merchant-shop/switch")
+        .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+        .send({ refreshToken: loggedIn.body.data.refreshToken, shopPublicId: SHOP_B.shopPublicId })
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 401]);
+    const successful = responses.find((response) => response.status === 200)!;
+    const refreshPayload = new AuthTokenService(env).verifyRefreshToken(
+      successful.body.data.refreshToken
+    );
+    expect(fixture.sessions.refreshTokens).toEqual(
+      new Set([`${fixture.user.id}:${refreshPayload.jti}`])
+    );
+    expect(fixture.auditLogs.length).toBeGreaterThanOrEqual(1);
+    expect(
+      fixture.auditLogs.every(
+        (entry) =>
+          entry.action === "auth.merchant_shop.switch" &&
+          (entry.metadata as { phase?: string }).phase === "authorized_attempt"
+      )
+    ).toBe(true);
   });
 
   it("fails closed with the stable identity error for revoked or cross-account membership", async () => {
@@ -423,5 +554,59 @@ describe("POST /api/v1/auth/merchant-shop/switch", () => {
       .send({ refreshToken: mismatchedRefresh.token, shopPublicId: SHOP_B.shopPublicId })
       .expect(401)
       .expect(({ body }) => expect(body.code).toBe(ERROR_CODES.TOKEN_INVALID));
+  });
+
+  it.each([
+    [51, "customer", "merchant_account"],
+    [51, "merchant_owner", "merchant_account"],
+    [52, "technician", "shop"],
+    [52, "merchant_organization", "shop"]
+  ])(
+    "rejects malformed merchant pairing identity %s type %s with scope %s during password login",
+    async (identityId, type) => {
+      const fixture = await makeFixture();
+      fixture.user.loginIdentityId = identityId;
+      fixture.user.identities.find((identity) => identity.id === identityId)!.type = type;
+
+      await request(fixture.app)
+        .post("/api/v1/auth/login")
+        .send({ loginIdentifier: fixture.user.email, password: "Merchant.2026!" })
+        .expect(403)
+        .expect(({ body }) => {
+          expect(body.code).toBe(ERROR_CODES.IDENTITY_FORBIDDEN);
+          expect(body.message).toBe("error.identity.forbidden");
+        });
+    }
+  );
+
+  it("uses the same merchant type/scope pairing rule on authenticate and refresh", async () => {
+    const fixture = await makeFixture();
+    const loggedIn = await login(fixture.app);
+    fixture.user.identities.find((identity) => identity.id === 51)!.type = "customer";
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe(ERROR_CODES.IDENTITY_FORBIDDEN));
+    await request(fixture.app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken: loggedIn.body.data.refreshToken })
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe(ERROR_CODES.IDENTITY_FORBIDDEN));
+  });
+
+  it("uses the same merchant type/scope pairing rule when switching identity", async () => {
+    const fixture = await makeFixture();
+    fixture.user.loginIdentityId = 50;
+    fixture.user.identities.find((identity) => identity.id === 51)!.type = "customer";
+    const loggedIn = await login(fixture.app);
+
+    await request(fixture.app)
+      .post("/api/v1/auth/switch-identity")
+      .set("Authorization", `Bearer ${loggedIn.body.data.accessToken}`)
+      .send({ refreshToken: loggedIn.body.data.refreshToken, identityId: 51 })
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe(ERROR_CODES.IDENTITY_FORBIDDEN));
   });
 });

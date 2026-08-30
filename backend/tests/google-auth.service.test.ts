@@ -205,9 +205,7 @@ const createFixture = () => {
     listManageableShops: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 1 })),
     resolveShop: jest.fn(async () => null),
     resolveDefaultShop: jest.fn(async ({ merchantAccountId }: { merchantAccountId: number }) =>
-      merchantAccountId === 41
-        ? { shopId: 11, shopPublicId: "shop0000000001" }
-        : null
+      merchantAccountId === 41 ? { shopId: 11, shopPublicId: "shop0000000001" } : null
     )
   };
   const verifier: GoogleCredentialVerifierPort = {
@@ -347,7 +345,7 @@ describe("formal Google sign-in service", () => {
       {
         id: 10,
         userId: 1,
-        type: "merchant_owner",
+        type: "merchant_organization",
         scopeType: "merchant_account",
         scopeId: 41,
         displayName: "Google Merchant",
@@ -385,6 +383,47 @@ describe("formal Google sign-in service", () => {
     expect(fixture.merchantShopContextRepository.resolveDefaultShop).toHaveBeenCalledWith(
       expect.objectContaining({ merchantAccountId: 41 })
     );
+  });
+
+  it("rejects a linked Google identity whose non-merchant type claims merchant-account scope", async () => {
+    const fixture = createFixture();
+    fixture.users[0].identities = [
+      {
+        id: 10,
+        userId: 1,
+        type: "customer",
+        scopeType: "merchant_account",
+        scopeId: 41,
+        displayName: "Malformed Google Merchant",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ];
+    fixture.bindings.set("google-subject-1", {
+      id: 1,
+      userId: 1,
+      provider: "google",
+      providerSubject: "google-subject-1",
+      providerEmail: "existing@example.com",
+      providerEmailVerifiedAt: new Date(),
+      lastUsedAt: null,
+      deletedAt: null,
+      user: fixture.users[0]
+    });
+    const init = await fixture.service.initializeGoogleLogin();
+
+    await expect(
+      fixture.service.submitGoogleCredential(
+        { credential: "provider-credential", nonceChallengeId: init.nonceChallengeId },
+        context
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.identity.forbidden",
+      statusCode: 403
+    });
+    expect(fixture.sessionStore.refresh.size).toBe(0);
   });
 
   it("initializes a public client nonce and authenticates an active linked subject", async () => {

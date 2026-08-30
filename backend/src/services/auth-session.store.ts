@@ -49,6 +49,15 @@ export interface AuthSessionStore {
     newJti: string;
     ttlSeconds: number;
   }) => Promise<boolean>;
+  completeMerchantShopSwitch?: (input: {
+    userId: number;
+    generation: number;
+    oldRefreshJti: string;
+    newRefreshJti: string;
+    refreshTtlSeconds: number;
+    oldAccessJti: string;
+    oldAccessTtlSeconds: number;
+  }) => Promise<boolean>;
   completeGoogleUnlink?: (input: {
     userId: number;
     challengeId: string;
@@ -208,6 +217,35 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     return result === "ok";
   }
 
+  public async completeMerchantShopSwitch(input: {
+    userId: number;
+    generation: number;
+    oldRefreshJti: string;
+    newRefreshJti: string;
+    refreshTtlSeconds: number;
+    oldAccessJti: string;
+    oldAccessTtlSeconds: number;
+  }): Promise<boolean> {
+    const [result] = await this.eval(
+      MERCHANT_SHOP_SWITCH_COMPLETE_LUA,
+      [
+        this.refreshKey(input.userId, input.oldRefreshJti),
+        this.refreshKey(input.userId, input.newRefreshJti),
+        this.refreshUserKey(input.userId),
+        this.sessionGenerationKey(input.userId),
+        this.accessBlacklistKey(input.oldAccessJti)
+      ],
+      [
+        input.oldRefreshJti,
+        input.newRefreshJti,
+        String(input.refreshTtlSeconds),
+        String(input.generation),
+        String(Math.max(0, input.oldAccessTtlSeconds))
+      ]
+    );
+    return result === "ok";
+  }
+
   public async completeGoogleUnlink(input: {
     userId: number;
     challengeId: string;
@@ -262,10 +300,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     );
   }
 
-  public async revokeAllRefreshTokens(
-    userId: number,
-    sessionGeneration?: number
-  ): Promise<void> {
+  public async revokeAllRefreshTokens(userId: number, sessionGeneration?: number): Promise<void> {
     await this.eval(
       REFRESH_REVOKE_ALL_LUA,
       [this.refreshUserKey(userId), this.sessionGenerationKey(userId)],
@@ -421,6 +456,22 @@ redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
 redis.call('SADD', KEYS[3], ARGV[2])
 local indexTtl = redis.call('TTL', KEYS[3])
 if indexTtl < tonumber(ARGV[3]) then redis.call('EXPIRE', KEYS[3], ARGV[3]) end
+return {'ok'}
+`;
+
+const MERCHANT_SHOP_SWITCH_COMPLETE_LUA = `
+-- auth-merchant-shop-switch-complete
+local generation = redis.call('GET', KEYS[4])
+if not generation or generation ~= ARGV[4] then return {'generation_mismatch'} end
+if redis.call('EXISTS', KEYS[1]) == 0 then return {'missing'} end
+if redis.call('EXISTS', KEYS[2]) ~= 0 then return {'new_refresh_exists'} end
+redis.call('DEL', KEYS[1])
+redis.call('SREM', KEYS[3], ARGV[1])
+redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
+redis.call('SADD', KEYS[3], ARGV[2])
+local indexTtl = redis.call('TTL', KEYS[3])
+if indexTtl < tonumber(ARGV[3]) then redis.call('EXPIRE', KEYS[3], ARGV[3]) end
+if tonumber(ARGV[5]) > 0 then redis.call('SET', KEYS[5], '1', 'EX', ARGV[5]) end
 return {'ok'}
 `;
 

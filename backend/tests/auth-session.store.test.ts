@@ -1,4 +1,5 @@
 import { RedisAuthSessionStore } from "../src/services/auth-session.store";
+import { ERROR_CODES } from "../src/constants/error-codes";
 
 class FakeRedis {
   public isOpen = true;
@@ -81,6 +82,31 @@ class FakeRedis {
       }
       return ["ok"];
     }
+    if (script.includes("auth-merchant-shop-switch-complete")) {
+      const [oldRefreshKey, newRefreshKey, userIndexKey, generationKey, blacklistKey] =
+        options.keys;
+      const [oldJti, newJti, refreshTtl, requestedGeneration, accessTtl] = options.arguments;
+      const generation = this.values.get(generationKey);
+      if (generation === undefined || generation !== requestedGeneration) {
+        return ["generation_mismatch"];
+      }
+      if (!this.values.has(oldRefreshKey)) return ["missing"];
+      this.values.delete(oldRefreshKey);
+      this.sets.get(userIndexKey)?.delete(oldJti);
+      this.values.set(newRefreshKey, "1");
+      this.expiries.set(newRefreshKey, Number(refreshTtl));
+      const userIndex = this.sets.get(userIndexKey) ?? new Set<string>();
+      userIndex.add(newJti);
+      this.sets.set(userIndexKey, userIndex);
+      if ((this.expiries.get(userIndexKey) ?? -2) < Number(refreshTtl)) {
+        this.expiries.set(userIndexKey, Number(refreshTtl));
+      }
+      if (Number(accessTtl) > 0) {
+        this.values.set(blacklistKey, "1");
+        this.expiries.set(blacklistKey, Number(accessTtl));
+      }
+      return ["ok"];
+    }
     if (script.includes("auth-account-login-failure")) {
       const [failureKey, lockKey] = options.keys;
       const [limit, windowSeconds, lockSeconds] = options.arguments;
@@ -119,6 +145,124 @@ class FakeRedis {
 }
 
 describe("RedisAuthSessionStore refresh-session index", () => {
+  const completeMerchantShopSwitch = async (
+    store: RedisAuthSessionStore,
+    input: {
+      userId: number;
+      generation: number;
+      oldRefreshJti: string;
+      newRefreshJti: string;
+      refreshTtlSeconds: number;
+      oldAccessJti: string;
+      oldAccessTtlSeconds: number;
+    }
+  ) => {
+    const method = (
+      store as unknown as {
+        completeMerchantShopSwitch?: (value: typeof input) => Promise<boolean>;
+      }
+    ).completeMerchantShopSwitch;
+    expect(method).toEqual(expect.any(Function));
+    return method!.call(store, input);
+  };
+
+  it("atomically rotates the refresh token and blacklists the old access token", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never);
+    await store.storeRefreshToken(7, "refresh-old", 600, 4);
+
+    await expect(
+      completeMerchantShopSwitch(store, {
+        userId: 7,
+        generation: 4,
+        oldRefreshJti: "refresh-old",
+        newRefreshJti: "refresh-new",
+        refreshTtlSeconds: 600,
+        oldAccessJti: "access-old",
+        oldAccessTtlSeconds: 300
+      })
+    ).resolves.toBe(true);
+
+    await expect(store.hasRefreshToken(7, "refresh-old")).resolves.toBe(false);
+    await expect(store.hasRefreshToken(7, "refresh-new")).resolves.toBe(true);
+    await expect(store.isAccessTokenBlacklisted("access-old")).resolves.toBe(true);
+    expect(client.evalCalls.at(-1)).toContain("auth-merchant-shop-switch-complete");
+  });
+
+  it("leaves every credential unchanged when the atomic switch transaction fails", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never);
+    await store.storeRefreshToken(7, "refresh-old", 600, 4);
+    client.failNextEval = true;
+
+    await expect(
+      completeMerchantShopSwitch(store, {
+        userId: 7,
+        generation: 4,
+        oldRefreshJti: "refresh-old",
+        newRefreshJti: "refresh-new",
+        refreshTtlSeconds: 600,
+        oldAccessJti: "access-old",
+        oldAccessTtlSeconds: 300
+      })
+    ).rejects.toMatchObject({ code: ERROR_CODES.DEPENDENCY_UNAVAILABLE });
+
+    await expect(store.hasRefreshToken(7, "refresh-old")).resolves.toBe(true);
+    await expect(store.hasRefreshToken(7, "refresh-new")).resolves.toBe(false);
+    await expect(store.isAccessTokenBlacklisted("access-old")).resolves.toBe(false);
+  });
+
+  it("allows at most one concurrent switch to consume the same refresh token", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never);
+    await store.storeRefreshToken(7, "refresh-old", 600, 4);
+    const common = {
+      userId: 7,
+      generation: 4,
+      oldRefreshJti: "refresh-old",
+      refreshTtlSeconds: 600,
+      oldAccessJti: "access-old",
+      oldAccessTtlSeconds: 300
+    };
+
+    const results = await Promise.all([
+      completeMerchantShopSwitch(store, { ...common, newRefreshJti: "refresh-a" }),
+      completeMerchantShopSwitch(store, { ...common, newRefreshJti: "refresh-b" })
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(
+      [
+        await store.hasRefreshToken(7, "refresh-a"),
+        await store.hasRefreshToken(7, "refresh-b")
+      ].filter(Boolean)
+    ).toHaveLength(1);
+    await expect(store.hasRefreshToken(7, "refresh-old")).resolves.toBe(false);
+    await expect(store.isAccessTokenBlacklisted("access-old")).resolves.toBe(true);
+  });
+
+  it("rejects a stale generation without changing refresh or access state", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never);
+    await store.storeRefreshToken(7, "refresh-old", 600, 4);
+
+    await expect(
+      completeMerchantShopSwitch(store, {
+        userId: 7,
+        generation: 5,
+        oldRefreshJti: "refresh-old",
+        newRefreshJti: "refresh-new",
+        refreshTtlSeconds: 600,
+        oldAccessJti: "access-old",
+        oldAccessTtlSeconds: 300
+      })
+    ).resolves.toBe(false);
+
+    await expect(store.hasRefreshToken(7, "refresh-old")).resolves.toBe(true);
+    await expect(store.hasRefreshToken(7, "refresh-new")).resolves.toBe(false);
+    await expect(store.isAccessTokenBlacklisted("access-old")).resolves.toBe(false);
+  });
+
   it("indexes refresh sessions, removes single revocations, and revokes every session for one user", async () => {
     const client = new FakeRedis();
     const store = new RedisAuthSessionStore(() => client as never);
