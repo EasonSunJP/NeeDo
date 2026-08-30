@@ -15,6 +15,7 @@ import {
   compareMessageReactionCategories,
   getMessageReactionCategory
 } from "../constants/message-reaction.constants";
+import type { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { prisma } from "../prisma/client";
 import type { AuthRequestContext } from "../services/auth.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -446,6 +447,13 @@ export interface CreateSocialPostMediaEnvelope {
   repostPostId?: number;
   postType?: "post" | "reply" | "quote" | "repost" | "announcement" | "technician-daily";
   locationLabel?: string;
+  richText?: {
+    version: 1;
+    parts: Array<
+      | { type: "text"; value: string }
+      | { type: "judgement"; value: (typeof MESSAGE_JUDGEMENT_REACTIONS)[number] }
+    >;
+  };
 }
 
 export interface CreateSocialPostResult {
@@ -2941,6 +2949,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             ...(input.media.locationLabel !== undefined
               ? { locationLabel: input.media.locationLabel }
               : {}),
+            ...(input.media.richText !== undefined ? { richText: input.media.richText } : {}),
             items: requestedMediaItems.map((item) => {
               const mediaAsset = selectedMediaByPublicId.get(item.mediaAssetPublicId);
               if (!mediaAsset) {
@@ -3164,6 +3173,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             ...(input.media.repostPostId !== undefined ? { repostPostId: input.media.repostPostId } : {}),
             ...(input.media.postType !== undefined ? { postType: input.media.postType } : {}),
             ...(input.media.locationLabel !== undefined ? { locationLabel: input.media.locationLabel } : {}),
+            ...(input.media.richText !== undefined ? { richText: input.media.richText } : {}),
             items: requestedMediaItems.map((item) => {
               const mediaAsset = selectedMediaByPublicId.get(item.mediaAssetPublicId);
               if (!mediaAsset) {

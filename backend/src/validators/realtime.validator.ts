@@ -3,6 +3,7 @@ import {
   IM_PRIVACY_TTL_MAX_SECONDS,
   IM_PRIVACY_TTL_MIN_SECONDS
 } from "../constants/im-privacy";
+import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -181,13 +182,26 @@ const socialCreateMediaItemSchema = z
   })
   .strict();
 
+const socialRichTextPartSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), value: z.string().min(1).max(5000) }).strict(),
+  z.object({ type: z.literal("judgement"), value: z.enum(MESSAGE_JUDGEMENT_REACTIONS) }).strict()
+]);
+
+const socialRichTextSchema = z
+  .object({
+    version: z.literal(1),
+    parts: z.array(socialRichTextPartSchema).min(1).max(100)
+  })
+  .strict();
+
 const socialCreateMediaEnvelopeSchema = z.object({
   items: z.array(socialCreateMediaItemSchema).max(9),
   quotePostId: z.coerce.number().int().positive().optional(),
   replyToPostId: z.coerce.number().int().positive().optional(),
   repostPostId: z.coerce.number().int().positive().optional(),
   postType: z.enum(["post", "reply", "quote", "repost", "announcement", "technician-daily"]).optional(),
-  locationLabel: z.string().trim().max(160).optional()
+  locationLabel: z.string().trim().max(160).optional(),
+  richText: socialRichTextSchema.optional()
 }).strict();
 
 export const socialPostCreateBodySchema = z
@@ -207,6 +221,18 @@ export const socialPostCreateBodySchema = z
   .refine((value) => value.content.length > 0 || (value.media?.items.length ?? 0) > 0, {
     message: "error.social.post_empty",
     path: ["content"]
+  })
+  .superRefine((value, context) => {
+    if (
+      value.media?.richText &&
+      value.media.richText.parts.map((part) => part.value).join("") !== value.content
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "error.social.rich_text_mismatch",
+        path: ["media", "richText"]
+      });
+    }
   });
 
 export const socialPostUpdateBodySchema = socialPostCreateBodySchema;

@@ -1123,6 +1123,60 @@ describe("GET /api/v1/openapi.json", () => {
       replyToPostId: { type: "integer", nullable: true, minimum: 1 },
       replyCount: { type: "integer", minimum: 0 }
     });
+    const socialCreateMedia = (
+      document.paths["/api/v1/social/posts"] as {
+        post: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } };
+      }
+    ).post.requestBody.content["application/json"].schema.properties.media as {
+      properties: Record<string, unknown>;
+    };
+    const socialPatchMedia = (
+      document.paths["/api/v1/social/posts/{id}"] as {
+        patch: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } };
+      }
+    ).patch.requestBody.content["application/json"].schema.properties.media as {
+      properties: Record<string, unknown>;
+    };
+    const expectedRichText = {
+      type: "object",
+      additionalProperties: false,
+      required: ["version", "parts"],
+      properties: {
+        version: { type: "integer", enum: [1] },
+        parts: {
+          type: "array",
+          minItems: 1,
+          maxItems: 100,
+          items: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["type", "value"],
+                properties: {
+                  type: { type: "string", enum: ["text"] },
+                  value: { type: "string", minLength: 1, maxLength: 5000 }
+                }
+              },
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["type", "value"],
+                properties: {
+                  type: { type: "string", enum: ["judgement"] },
+                  value: {
+                    type: "string",
+                    enum: ["OK", "NO", "Pending", "+1", "Done", "Cool", "Good", "Thanks"]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    };
+    expect(socialCreateMedia.properties.richText).toEqual(expectedRichText);
+    expect(socialPatchMedia.properties.richText).toEqual(expectedRichText);
     expect(document.components.schemas.SocialActivityStatus.properties.status.enum).toEqual([
       "recent_posts",
       "no_recent_posts"

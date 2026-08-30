@@ -5,6 +5,7 @@ import {
   compareMessageReactionCategories,
   getMessageReactionCategory
 } from "../src/constants/message-reaction.constants";
+import { socialPostCreateBodySchema } from "../src/validators/realtime.validator";
 
 interface StoredValue {
   value: string;
@@ -1417,6 +1418,35 @@ const createFixture = async () => {
 };
 
 describe("Step 13 realtime IM / Social / Notification API", () => {
+  it("accepts matching version-one judgement rich text and rejects invalid fallback values", () => {
+    const richText = {
+      version: 1 as const,
+      parts: [
+        { type: "text" as const, value: "确认" },
+        { type: "judgement" as const, value: "Pending" }
+      ]
+    };
+
+    const parsed = socialPostCreateBodySchema.parse({
+        content: "确认Pending",
+        media: { items: [], postType: "reply", replyToPostId: 700, richText }
+      });
+    expect((parsed.media as { richText?: unknown } | undefined)?.richText).toEqual(richText);
+
+    expect(() => socialPostCreateBodySchema.parse({
+      content: "Later",
+      media: {
+        items: [],
+        richText: { version: 1, parts: [{ type: "judgement", value: "Later" }] }
+      }
+    })).toThrow();
+
+    expect(() => socialPostCreateBodySchema.parse({
+      content: "Pending!",
+      media: { items: [], richText }
+    })).toThrow();
+  });
+
   it("accepts an image-only post while rejecting an empty post", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");

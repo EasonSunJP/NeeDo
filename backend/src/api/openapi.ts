@@ -5,6 +5,7 @@ import {
   IM_PRIVACY_TTL_MAX_SECONDS,
   IM_PRIVACY_TTL_MIN_SECONDS
 } from "../constants/im-privacy";
+import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 
 type OpenApiDocument = Record<string, unknown>;
 
@@ -53,6 +54,42 @@ const authJsonBody = (properties: Record<string, unknown>, required: string[] = 
     }
   }
 });
+
+const socialRichTextOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["version", "parts"],
+  properties: {
+    version: { type: "integer", enum: [1] },
+    parts: {
+      type: "array",
+      minItems: 1,
+      maxItems: 100,
+      items: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "value"],
+            properties: {
+              type: { type: "string", enum: ["text"] },
+              value: { type: "string", minLength: 1, maxLength: 5000 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "value"],
+            properties: {
+              type: { type: "string", enum: ["judgement"] },
+              value: { type: "string", enum: MESSAGE_JUDGEMENT_REACTIONS }
+            }
+          }
+        ]
+      }
+    }
+  }
+};
 
 const socialPostWriteRequestBody = {
   required: true,
@@ -111,7 +148,8 @@ const socialPostWriteRequestBody = {
                 type: "string",
                 enum: ["post", "reply", "quote", "repost", "announcement", "technician-daily"]
               },
-              locationLabel: { type: "string", maxLength: 160 }
+              locationLabel: { type: "string", maxLength: 160 },
+              richText: socialRichTextOpenApiSchema
             }
           },
           mentionUserIds: {
@@ -14236,7 +14274,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                           "technician-daily"
                         ]
                       },
-                      locationLabel: { type: "string", maxLength: 160 }
+                      locationLabel: { type: "string", maxLength: 160 },
+                      richText: socialRichTextOpenApiSchema
                     }
                   },
                   mentionUserIds: {

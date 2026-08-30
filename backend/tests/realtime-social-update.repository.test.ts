@@ -107,7 +107,7 @@ const updateInput = () => ({
   postId: 701,
   authorUserId: 41,
   authorIdentityId: 71,
-  content: "after",
+  content: "afterDone",
   visibility: "followers" as const,
   mentionUserIds: [52, 63],
   context,
@@ -117,7 +117,14 @@ const updateInput = () => ({
       { id: "uploaded", type: "image" as const, mediaAssetPublicId: uploadedChecksum }
     ],
     postType: "post" as const,
-    locationLabel: "东京 银座"
+    locationLabel: "东京 银座",
+    richText: {
+      version: 1 as const,
+      parts: [
+        { type: "text" as const, value: "after" },
+        { type: "judgement" as const, value: "Done" as const }
+      ]
+    }
   }
 });
 
@@ -127,7 +134,7 @@ describe("RealtimeRepository Social post update", () => {
 
     const result = await fixture.repository.updateSocialPost(updateInput());
 
-    expect(result?.post).toMatchObject({ id: 701, content: "after", visibility: "followers" });
+    expect(result?.post).toMatchObject({ id: 701, content: "afterDone", visibility: "followers" });
     expect(result?.post.media).toEqual({
       items: [
         {
@@ -145,6 +152,13 @@ describe("RealtimeRepository Social post update", () => {
       ],
       postType: "post",
       locationLabel: "东京 银座",
+      richText: {
+        version: 1,
+        parts: [
+          { type: "text", value: "after" },
+          { type: "judgement", value: "Done" }
+        ]
+      },
       mentionUserIds: [52, 63],
       counters: { likes: 9, replies: 2, reposts: 1, views: 80, bookmarks: 4 }
     });
