@@ -249,12 +249,12 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
   );
   const hasRemainingWork = todayOrders.some((order) => order.status !== "cancelled" && new Date(order.endsAt).getTime() > nowMs)
     || slots.some((slot) => slot.status !== "blocked" && new Date(slot.endsAt).getTime() > nowMs);
-  const currentStatus = activeOrder ? "服务中" : insideConfirmedOrder || insideAvailableSlot ? "出勤" : hasRemainingWork ? "休息中" : "退勤";
+  const currentStatus = activeOrder ? "服务中" : insideConfirmedOrder || insideAvailableSlot ? "出勤" : hasRemainingWork ? "休息" : "退勤";
   const statusButtons = [
     { label: "出勤", icon: "●", tone: "duty", caption: "已进入正式排班或可预约时段" },
     { label: "移动中", icon: "↗", tone: "travel", caption: "移动状态需要正式位置状态接口" },
     { label: "服务中", icon: "▶", tone: "service", caption: "存在进行中的正式订单" },
-    { label: "休息中", icon: "◕", tone: "rest", caption: "当前没有进行中的正式服务" },
+    { label: "休息", icon: "☾", tone: "rest", caption: "当前没有进行中的正式服务" },
     { label: "退勤", icon: "■", tone: "off", caption: "今天已没有后续正式安排" }
   ] as const;
   const currentStatusCaption = statusButtons.find((item) => item.label === currentStatus)?.caption ?? "按正式排班与订单自动同步";
@@ -384,34 +384,40 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
 
         <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")} data-testid="technician-formal-status-sync">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black text-[color:var(--client-muted)]">正式订单与排班自动推导</p>
-              <h2 className="mt-1 text-xl font-black">状态同步</h2>
-            </div>
+            <TitleWithInfo
+              as="h2"
+              info="把当前出勤状态同步给门店与调度，首页会高亮当前已同步状态。"
+              label="状态同步 简介"
+              title="状态同步"
+              titleClassName="text-lg font-bold text-[color:var(--client-text)]"
+              variant="paper"
+            />
             <Link className="inline-flex h-11 items-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-needo-text)]" to="/technician/schedule">
               <AppIcon className="h-4 w-4" name="calendar" />排班
             </Link>
           </div>
-          <div className="mt-4 grid grid-cols-5 gap-2">
+          <div className="mt-3 grid grid-cols-5 gap-2">
             {statusButtons.map((item) => {
               const active = item.label === currentStatus;
               return (
                 <div
                   aria-current={active ? "true" : undefined}
                   className={cn(
-                    "technician-work-status-button flex min-h-[104px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1 py-3 text-center",
+                    "technician-work-status-button flex min-h-[88px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1.5 py-3 text-center",
                     `technician-work-status--${item.tone}`,
                     active ? "technician-work-status-button--active" : "technician-work-status-button--idle"
                   )}
                   key={item.label}
                 >
-                  <span className="technician-work-status-icon inline-flex h-10 w-10 items-center justify-center rounded-[14px] text-lg font-black">{item.icon}</span>
-                  <strong className="mt-3 text-[12px] font-black leading-4">{item.label}</strong>
+                  <span className="technician-work-status-icon inline-flex h-9 w-9 items-center justify-center rounded-[14px] text-base font-black">{item.icon}</span>
+                  <span className="mt-2 flex min-h-[28px] w-full items-center justify-center overflow-hidden">
+                    <strong className="w-full text-[12px] font-black leading-[14px] tracking-normal">{item.label}</strong>
+                  </span>
                 </div>
               );
             })}
           </div>
-          <div className={cn(surface.panel, "mt-4 rounded-[20px] border px-4 py-3")}>
+          <div className={cn(surface.panel, "mt-3 rounded-[20px] border px-4 py-3")}>
             <p className={cn(surface.muted, "text-[11px] font-bold")}>当前已同步状态</p>
             <p className="mt-1 text-sm font-black">{currentStatus}： <span className={cn(surface.muted, "text-xs")}>{currentStatusCaption}</span></p>
           </div>
