@@ -24,6 +24,8 @@ import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
@@ -571,6 +573,8 @@ function ImComposerRichInput({
   onEnterSubmit?: () => void;
   placeholder: string;
 }) {
+  const { language } = useOptionalI18n();
+  const localizedPlaceholder = translateText(placeholder, language);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const setEditorRef = useCallback((element: HTMLDivElement | null) => {
     editorRef.current = element;
@@ -594,17 +598,21 @@ function ImComposerRichInput({
   return (
     <div className="relative min-h-[24px]">
       {!draft ? (
-        <span className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]">
-          {placeholder}
+        <span
+          className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]"
+          data-no-i18n="true"
+        >
+          {localizedPlaceholder}
         </span>
       ) : null}
       <div
         aria-disabled={disabled}
         aria-multiline="true"
-        aria-placeholder={placeholder}
+        aria-placeholder={localizedPlaceholder}
         className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
+        data-no-i18n="true"
         onInput={(event) => onDraftChange(readImComposerValue(event.currentTarget))}
         onKeyDown={(event) => {
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || !onEnterSubmit) {
