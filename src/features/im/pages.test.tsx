@@ -67,4 +67,18 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).toContain("navigate(config.routes.contacts, { replace: true })");
     expect(infoSource).not.toContain("onClick={() => void store.deleteContact(contact.id)}");
   });
+
+  it("replaces friend-only settings actions with a formal add-friend action after the relationship is removed", () => {
+    const start = source.indexOf("export function ImConversationInfoPage");
+    const end = source.indexOf("export function ImConversationSearchPage", start);
+    const infoSource = source.slice(start, end);
+
+    expect(infoSource).toContain("resolveDirectoryProfileActions(");
+    expect(infoSource).toContain('conversationFriendActions.includes("send_request")');
+    expect(infoSource).toContain('conversationFriendActions.includes("accept")');
+    expect(infoSource).toContain("store.sendFriendRequest");
+    expect(infoSource).toContain("store.acceptFriendRequest");
+    expect(infoSource).toContain('contact?.id, formalActivityTargetUserId');
+    expect(infoSource).toContain('{t("添加好友")}');
+  });
 });

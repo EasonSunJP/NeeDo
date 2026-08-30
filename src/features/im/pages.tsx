@@ -6791,6 +6791,8 @@ export function ImConversationInfoPage() {
   const { scope, store, config } = useImRuntime();
   const social = useSocial();
   const navigate = useNavigate();
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
   const { conversationId } = useParams();
   const conversation = conversationId ? store.conversations.find((item) => item.id === conversationId) : undefined;
   const contact = conversation?.contactUserId ? store.contacts.find((item) => item.targetUserId === conversation.contactUserId) : undefined;
@@ -6804,6 +6806,7 @@ export function ImConversationInfoPage() {
     : undefined;
   const [formalActivityStatus, setFormalActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
   const [conversationDirectoryProfile, setConversationDirectoryProfile] = useState<DirectoryProfile | null>(null);
+  const [conversationFriendMutationPending, setConversationFriendMutationPending] = useState(false);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
   const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
@@ -6932,7 +6935,7 @@ export function ImConversationInfoPage() {
     return () => {
       cancelled = true;
     };
-  }, [formalActivityTargetUserId, store.getDirectoryProfile]);
+  }, [contact?.id, formalActivityTargetUserId, store.getDirectoryProfile]);
 
   useEffect(() => {
     if (!conversation) {
@@ -7190,6 +7193,46 @@ export function ImConversationInfoPage() {
       ? "recent_posts"
       : "no_recent_posts";
   const startChatTarget = getConversationInfoStartChatTarget(config, conversation);
+  const conversationFriendRequest = user
+    ? selectLatestFriendRequestsByCounterpart(
+        store.friendRequests,
+        store.currentUserId ?? "",
+      ).find((request) => request.fromUserId === user.id || request.toUserId === user.id)
+        ?? conversationDirectoryProfile?.friendRequest
+        ?? null
+    : null;
+  const conversationFriendActions = !contact && conversationDirectoryProfile
+    ? resolveDirectoryProfileActions(
+        conversationDirectoryProfile.relationship === "friend"
+          ? { ...conversationDirectoryProfile, relationship: "none", contactId: undefined }
+          : conversationDirectoryProfile,
+        conversationFriendRequest,
+        store.currentUserId ?? "",
+      )
+    : [];
+
+  const addConversationFriend = async () => {
+    if (!user || conversationFriendMutationPending) {
+      return;
+    }
+
+    setConversationFriendMutationPending(true);
+    try {
+      if (conversationFriendActions.includes("accept") && conversationFriendRequest) {
+        await store.acceptFriendRequest(conversationFriendRequest.id);
+      } else if (conversationFriendActions.includes("send_request")) {
+        await store.sendFriendRequest(user.id);
+      } else {
+        return;
+      }
+
+      setConversationDirectoryProfile(await store.getDirectoryProfile(user.id));
+    } catch {
+      showInfoToast(t("发送失败"));
+    } finally {
+      setConversationFriendMutationPending(false);
+    }
+  };
 
   return (
     <ImStandaloneShell>
@@ -7202,6 +7245,7 @@ export function ImConversationInfoPage() {
             detailTo={infoIdentityCardDetailTo}
             identityCard={infoIdentityCard}
             user={user}
+            viewerScope={scope}
           />
         ) : null}
 
@@ -7570,6 +7614,24 @@ export function ImConversationInfoPage() {
               {contact && config.messageActionConfig.detailToggles.includes("deleteContact") ? (
                 <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f]" onClick={() => contactDeletion.requestDeletion(contact)} type="button">
                   删除联系人
+                </button>
+              ) : null}
+              {conversationFriendActions.includes("send_request") || conversationFriendActions.includes("accept") ? (
+                <button
+                  className="block w-full px-5 py-4 text-left text-[15px] font-black text-[color:var(--client-primary)] disabled:cursor-not-allowed disabled:opacity-55"
+                  disabled={conversationFriendMutationPending}
+                  onClick={() => void addConversationFriend()}
+                  type="button"
+                >
+                  {t("添加好友")}
+                </button>
+              ) : conversationFriendActions.includes("waiting") ? (
+                <button
+                  className="block w-full cursor-not-allowed px-5 py-4 text-left text-[15px] font-black text-[color:var(--client-muted)]"
+                  disabled
+                  type="button"
+                >
+                  {t("等待对方验证")}
                 </button>
               ) : null}
             </>
