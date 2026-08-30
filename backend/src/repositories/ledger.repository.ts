@@ -5,7 +5,6 @@ import type {
   FinanceReconciliationListInput,
   FinanceReconciliationPayload,
   FinanceReconciliationStatus,
-  LedgerCurrency,
   LedgerRepositoryPort,
   LedgerTransactionClient,
   LedgerTransactionListInput,
@@ -29,6 +28,10 @@ import type {
   WalletPayload
 } from "../services/ledger.service";
 import type { FeeType } from "../services/fee-calculation.service";
+import {
+  LedgerCurrencyService,
+  type LedgerCurrency
+} from "../services/ledger-currency.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
 
@@ -137,6 +140,15 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return transaction ? this.mapTransaction(transaction) : null;
   }
 
+  public async findUserAccountClassification(
+    userId: number
+  ): Promise<{ isTestAccount: boolean } | null> {
+    return this.client.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { isTestAccount: true }
+    });
+  }
+
   public async getOrCreateWallet(input: {
     ownerType: WalletOwnerType;
     ownerId: number;
@@ -230,6 +242,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     referenceId: number;
     actorUserId: number | null;
     amount: number;
+    currency: LedgerCurrency;
     metadata?: unknown;
   }): Promise<LedgerTransactionPayload> {
     const transaction = await this.client.ledgerTransaction.create({
@@ -241,7 +254,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
         referenceId: input.referenceId,
         actorUserId: input.actorUserId,
         amount: input.amount,
-        currency: "NDP",
+        currency: input.currency,
         metadata: input.metadata as Prisma.InputJsonValue | undefined
       },
       include: this.transactionInclude()
@@ -261,6 +274,20 @@ export class LedgerRepository implements LedgerRepositoryPort {
     frozenBalanceAfter: number;
     reason: string;
   }): Promise<WalletLedgerPayload> {
+    const [transaction, wallet] = await Promise.all([
+      this.client.ledgerTransaction.findFirst({
+        where: { id: input.transactionId, deletedAt: null },
+        select: { currency: true }
+      }),
+      this.client.wallet.findFirst({
+        where: { id: input.walletId, deletedAt: null },
+        select: { currency: true }
+      })
+    ]);
+    const transactionCurrency = LedgerCurrencyService.fromStored(transaction?.currency ?? "");
+    const walletCurrency = LedgerCurrencyService.fromStored(wallet?.currency ?? "");
+    LedgerCurrencyService.assertSameCurrency(transactionCurrency, [walletCurrency]);
+
     const entry = await this.client.walletLedger.create({
       data: {
         transactionId: input.transactionId,
@@ -282,6 +309,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     transactionId: number;
     referenceType: string;
     referenceId: number;
+    currency: Extract<LedgerCurrency, "NDP">;
     expectedAmount: number;
     actualAmount: number;
   }): Promise<void> {
@@ -293,7 +321,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
         expectedAmount: input.expectedAmount,
         actualAmount: input.actualAmount,
         differenceAmount: input.actualAmount - input.expectedAmount,
-        currency: "NDP"
+        currency: input.currency
       }
     });
   }
@@ -469,6 +497,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     bookingOrderId: number;
     feeType: FeeType;
     holdAmountNdp: number;
+    currency: LedgerCurrency;
     status: WalletHoldStatus;
     idempotencyKey: string;
     calculationLogId: number | null;
@@ -481,6 +510,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
         bookingOrderId: input.bookingOrderId,
         feeType: input.feeType,
         holdAmountNdp: input.holdAmountNdp,
+        currency: input.currency,
         status: input.status,
         idempotencyKey: input.idempotencyKey,
         calculationLogId: input.calculationLogId,
@@ -792,6 +822,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     const timeline = this.appendTimeline(existing?.moneyTimelineJson, input.timelineEvent);
     const baseData = {
       orderType: input.orderType,
+      ndpCurrency: input.ndpCurrency,
       customerUserId: input.customerUserId,
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId ?? null,
@@ -1047,6 +1078,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
   ): Prisma.FinanceReconciliationWhereInput {
     return {
       deletedAt: null,
+      currency: "NDP",
       ...(input.status ? { status: this.reconciliationStatusToDb(input.status) } : {}),
       ...(input.referenceType ? { referenceType: input.referenceType } : {}),
       ...(input.referenceId ? { referenceId: input.referenceId } : {}),
@@ -1090,7 +1122,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       id: wallet.id,
       ownerType: this.ownerTypeFromDb(wallet.ownerType),
       ownerId: wallet.ownerId,
-      currency: "NDP",
+      currency: LedgerCurrencyService.fromStored(wallet.currency),
       availableBalance: wallet.availableBalance,
       frozenBalance: wallet.frozenBalance,
       createdAt: wallet.createdAt,
@@ -1109,7 +1141,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       referenceId: transaction.referenceId,
       actorUserId: transaction.actorUserId,
       amount: transaction.amount,
-      currency: transaction.currency as LedgerCurrency,
+      currency: LedgerCurrencyService.fromStored(transaction.currency),
       metadata: transaction.metadata ?? null,
       createdAt: transaction.createdAt,
       updatedAt: transaction.updatedAt,
@@ -1153,7 +1185,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       referenceType: row.referenceType,
       referenceId: row.referenceId,
       status: this.reconciliationStatusFromDb(row.status),
-      currency: "NDP",
+      currency: LedgerCurrencyService.fromStored(row.currency),
       expectedAmount: row.expectedAmount,
       actualAmount: row.actualAmount,
       differenceAmount: row.differenceAmount,
@@ -1173,6 +1205,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       holdAmountNdp: hold.holdAmountNdp,
       capturedAmountNdp: hold.capturedAmountNdp,
       releasedAmountNdp: hold.releasedAmountNdp,
+      currency: LedgerCurrencyService.fromStored(hold.currency),
       status: this.walletHoldStatus(hold.status),
       idempotencyKey: hold.idempotencyKey,
       calculationLogId: hold.calculationLogId,
@@ -1291,6 +1324,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeToDb(type: LedgerTransactionType) {
+    if (type === "test_balance_calibration") {
+      return "TEST_BALANCE_CALIBRATION" as const;
+    }
     if (type === "affiliate_task_budget_freeze") {
       return "AFFILIATE_TASK_BUDGET_FREEZE" as const;
     }
@@ -1329,6 +1365,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeFromDb(type: string): LedgerTransactionType {
+    if (type === "TEST_BALANCE_CALIBRATION") {
+      return "test_balance_calibration";
+    }
     if (type === "AFFILIATE_TASK_BUDGET_FREEZE") {
       return "affiliate_task_budget_freeze";
     }
@@ -1411,10 +1450,16 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private reconciliationStatusToDb(status: FinanceReconciliationStatus) {
+    if (status === "test_only") {
+      return "TEST_ONLY" as const;
+    }
     return status === "exported" ? ("EXPORTED" as const) : ("PENDING" as const);
   }
 
   private reconciliationStatusFromDb(status: string): FinanceReconciliationStatus {
+    if (status === "TEST_ONLY") {
+      return "test_only";
+    }
     return status === "EXPORTED" ? "exported" : "pending";
   }
 

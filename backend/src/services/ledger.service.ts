@@ -13,6 +13,9 @@ import type {
   BookingPlatformFeePolicySnapshot,
   PlatformFeePolicyService
 } from "./platform-fee-policy.service";
+import type { LedgerCurrency } from "./ledger-currency.service";
+
+export type { LedgerCurrency } from "./ledger-currency.service";
 
 export type WalletOwnerType =
   | "user"
@@ -20,7 +23,6 @@ export type WalletOwnerType =
   | "platform"
   | "merchant_account"
   | "alliance";
-export type LedgerCurrency = "NDP";
 export type WalletLedgerDirection =
   | "available_credit"
   | "available_debit"
@@ -40,9 +42,10 @@ export type LedgerTransactionType =
   | "affiliate_task_budget_release"
   | "affiliate_reward_settlement"
   | "affiliate_reward_reversal"
-  | "affiliate_reward_recovery";
+  | "affiliate_reward_recovery"
+  | "test_balance_calibration";
 export type LedgerTransactionStatus = "applied";
-export type FinanceReconciliationStatus = "pending" | "exported";
+export type FinanceReconciliationStatus = "pending" | "exported" | "test_only";
 export type LedgerTransactionClient = unknown;
 export type WalletHoldStatus = "active" | "captured" | "released" | "partially_captured";
 export type OrderFinancialSettlementStatus =
@@ -178,6 +181,7 @@ export interface WalletHoldPayload {
   holdAmountNdp: number;
   capturedAmountNdp: number;
   releasedAmountNdp: number;
+  currency: LedgerCurrency;
   status: WalletHoldStatus;
   idempotencyKey: string;
   calculationLogId: number | null;
@@ -191,6 +195,7 @@ export interface WalletHoldPayload {
 export interface OrderFinancialUpsertInput {
   bookingOrderId: number;
   orderType: FinanceOrderType;
+  ndpCurrency: LedgerCurrency;
   customerUserId: number;
   shopId: number;
   technicianProfileId?: number | null;
@@ -303,6 +308,9 @@ export interface LedgerRepositoryPort {
   findTransactionByIdempotencyKey: (
     idempotencyKey: string
   ) => Promise<LedgerTransactionPayload | null>;
+  findUserAccountClassification: (
+    userId: number
+  ) => Promise<{ isTestAccount: boolean } | null>;
   getOrCreateWallet: (input: {
     ownerType: WalletOwnerType;
     ownerId: number;
@@ -351,6 +359,7 @@ export interface LedgerRepositoryPort {
     referenceId: number;
     actorUserId: number | null;
     amount: number;
+    currency: LedgerCurrency;
     metadata?: unknown;
   }) => Promise<LedgerTransactionPayload>;
   createLedgerEntry: (input: {
@@ -368,6 +377,7 @@ export interface LedgerRepositoryPort {
     transactionId: number;
     referenceType: string;
     referenceId: number;
+    currency: Extract<LedgerCurrency, "NDP">;
     expectedAmount: number;
     actualAmount: number;
   }) => Promise<void>;
@@ -420,6 +430,7 @@ export interface LedgerRepositoryPort {
     bookingOrderId: number;
     feeType: FeeType;
     holdAmountNdp: number;
+    currency: LedgerCurrency;
     status: WalletHoldStatus;
     idempotencyKey: string;
     calculationLogId: number | null;
@@ -594,6 +605,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.taskId,
         actorUserId: input.actorUserId,
         amount: input.amountNdp,
+        currency: CURRENCY,
         metadata: {
           taskId: input.taskId,
           ownerType: input.ownerType,
@@ -672,6 +684,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.taskId,
         actorUserId: input.actorUserId,
         amount: input.amountNdp,
+        currency: CURRENCY,
         metadata: {
           taskId: input.taskId,
           ownerType: input.ownerType,
@@ -765,6 +778,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.rewardId,
         actorUserId: input.actorUserId,
         amount: input.amountNdp,
+        currency: CURRENCY,
         metadata: {
           taskId: input.taskId,
           attributionId: input.attributionId,
@@ -876,6 +890,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           bookingOrderId: input.bookingOrderId,
           feeType,
           holdAmountNdp: holdAmount,
+          currency: CURRENCY,
           status: "active",
           idempotencyKey,
           calculationLogId: fee.calculationLogId,
@@ -909,6 +924,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           referenceId: input.bookingOrderId,
           actorUserId: input.actorUserId,
           amount: holdAmount,
+          currency: CURRENCY,
           metadata: { shopId: input.shopId, holdOwner, fee }
         });
         await repository.createLedgerEntry({
@@ -1056,6 +1072,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       bookingOrderId: input.bookingOrderId,
       feeType: "b_platform_fee",
       holdAmountNdp: holdAmount,
+      currency: CURRENCY,
       status: "active",
       idempotencyKey,
       calculationLogId: fee.calculationLogId,
@@ -1101,6 +1118,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       referenceId: input.bookingOrderId,
       actorUserId: input.actorUserId,
       amount: holdAmount,
+      currency: CURRENCY,
       metadata: { shopId: input.shopId, policy, owner, shortfallNdp, previewVersion }
     });
     await repository.createLedgerEntry({
@@ -1228,6 +1246,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: releaseAmount,
+        currency: CURRENCY,
         metadata: { shopId: input.shopId, holdId: hold.id }
       });
       await repository.createLedgerEntry({
@@ -1403,6 +1422,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: transactionAmount,
+        currency: CURRENCY,
         metadata: {
           shopId: input.shopId,
           customerUserId: input.customerUserId,
@@ -1598,6 +1618,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       referenceId: input.bookingOrderId,
       actorUserId: input.actorUserId,
       amount: transactionAmount,
+      currency: CURRENCY,
       metadata: {
         shopId: input.shopId,
         customerUserId: input.customerUserId,
@@ -1737,6 +1758,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: transactionAmount,
+        currency: CURRENCY,
         metadata: {
           shopId: input.shopId,
           customerUserId: input.customerUserId,
@@ -1870,6 +1892,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: penaltyAmount,
+        currency: CURRENCY,
         metadata: {
           shopId: input.shopId,
           customerUserId: input.customerUserId,
@@ -2203,6 +2226,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     return repository.upsertOrderFinancial!({
       bookingOrderId: input.bookingOrderId,
       orderType: input.orderType,
+      ndpCurrency: CURRENCY,
       customerUserId: input.customerUserId ?? 0,
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId ?? null,
@@ -2367,6 +2391,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: request.id,
         actorUserId: actor.userId,
         amount: request.amountNdp,
+        currency: CURRENCY,
         metadata: {
           ownerType: request.ownerType,
           ownerId: request.ownerId,
@@ -2544,6 +2569,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         referenceId: debt.bookingOrderId,
         actorUserId,
         amount: debt.userRewardEligibleNdp,
+        currency: CURRENCY,
         metadata: {
           delayedUserReward: true,
           orderFinancialId: debt.id,
@@ -2693,6 +2719,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       transactionId: transaction.id,
       referenceType: transaction.referenceType,
       referenceId: transaction.referenceId,
+      currency: "NDP",
       expectedAmount: input.expectedAmount,
       actualAmount: input.actualAmount
     });

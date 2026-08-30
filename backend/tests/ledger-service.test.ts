@@ -2,6 +2,7 @@ import { ERROR_CODES } from "../src/constants/error-codes";
 import {
   LedgerService,
   type OrderFinancialUpsertInput,
+  type LedgerCurrency,
   type LedgerRepositoryPort,
   type LedgerTransactionPayload,
   type WalletHoldPayload,
@@ -94,6 +95,7 @@ const createFeeService = (
 });
 
 class InMemoryLedgerRepository implements LedgerRepositoryPort {
+  public readonly accountClassifications = new Map<number, boolean>();
   public readonly wallets = new Map<string, WalletPayload>();
   public readonly transactions = new Map<string, LedgerTransactionPayload>();
   public readonly holds = new Map<string, WalletHoldPayload>();
@@ -122,18 +124,19 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     ownerId: number;
     availableBalance: number;
     frozenBalance?: number;
+    currency?: LedgerCurrency;
   }): WalletPayload {
     const wallet: WalletPayload = {
       id: this.walletId++,
       ownerType: input.ownerType,
       ownerId: input.ownerId,
-      currency: "NDP",
+      currency: input.currency ?? "NDP",
       availableBalance: input.availableBalance,
       frozenBalance: input.frozenBalance ?? 0,
       createdAt: now,
       updatedAt: now
     };
-    this.wallets.set(this.walletKey(input.ownerType, input.ownerId), wallet);
+    this.wallets.set(this.walletKey(input.ownerType, input.ownerId, wallet.currency), wallet);
 
     return wallet;
   }
@@ -150,12 +153,18 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     return this.transactions.get(idempotencyKey) ?? null;
   }
 
+  public async findUserAccountClassification(
+    userId: number
+  ): Promise<{ isTestAccount: boolean } | null> {
+    return { isTestAccount: this.accountClassifications.get(userId) ?? false };
+  }
+
   public async getOrCreateWallet(input: {
     ownerType: WalletOwnerType;
     ownerId: number;
-    currency: "NDP";
+    currency: LedgerCurrency;
   }): Promise<WalletPayload> {
-    const key = this.walletKey(input.ownerType, input.ownerId);
+    const key = this.walletKey(input.ownerType, input.ownerId, input.currency);
     const existing = this.wallets.get(key);
 
     if (existing) {
@@ -165,7 +174,8 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     return this.seedWallet({
       ownerType: input.ownerType,
       ownerId: input.ownerId,
-      availableBalance: 0
+      availableBalance: 0,
+      currency: input.currency
     });
   }
 
@@ -212,6 +222,7 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     referenceId: number;
     actorUserId: number | null;
     amount: number;
+    currency: LedgerCurrency;
     metadata?: unknown;
   }): Promise<LedgerTransactionPayload> {
     const transaction: LedgerTransactionPayload = {
@@ -224,7 +235,7 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
       referenceId: input.referenceId,
       actorUserId: input.actorUserId,
       amount: input.amount,
-      currency: "NDP",
+      currency: input.currency,
       metadata: input.metadata ?? null,
       createdAt: now,
       updatedAt: now,
@@ -273,6 +284,7 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     transactionId: number;
     referenceType: string;
     referenceId: number;
+    currency: "NDP";
     expectedAmount: number;
     actualAmount: number;
   }): Promise<void> {
@@ -325,6 +337,7 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     bookingOrderId: number;
     feeType: WalletHoldPayload["feeType"];
     holdAmountNdp: number;
+    currency: LedgerCurrency;
     status: WalletHoldPayload["status"];
     idempotencyKey: string;
     calculationLogId: number | null;
@@ -339,6 +352,7 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
       holdAmountNdp: input.holdAmountNdp,
       capturedAmountNdp: 0,
       releasedAmountNdp: 0,
+      currency: input.currency,
       status: input.status,
       idempotencyKey: input.idempotencyKey,
       calculationLogId: input.calculationLogId,
@@ -455,8 +469,12 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     return null;
   }
 
-  private walletKey(ownerType: WalletOwnerType, ownerId: number): string {
-    return `${ownerType}:${ownerId}:NDP`;
+  private walletKey(
+    ownerType: WalletOwnerType,
+    ownerId: number,
+    currency: LedgerCurrency
+  ): string {
+    return `${ownerType}:${ownerId}:${currency}`;
   }
 }
 
@@ -1105,6 +1123,7 @@ describe("LedgerService wallet mutations", () => {
     await repository.upsertOrderFinancial({
       bookingOrderId: 206,
       orderType: "booking",
+      ndpCurrency: "NDP",
       customerUserId: 3,
       shopId: 10,
       serviceAmountJpy: 8800,

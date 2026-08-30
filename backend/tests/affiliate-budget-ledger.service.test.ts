@@ -2,6 +2,7 @@ import { ERROR_CODES } from "../src/constants/error-codes";
 import {
   LedgerService,
   type LedgerRepositoryPort,
+  type LedgerCurrency,
   type LedgerTransactionClient,
   type LedgerTransactionPayload,
   type ReleaseAffiliateTaskBudgetInput,
@@ -14,6 +15,7 @@ import { ledgerTransactionListQuerySchema } from "../src/validators/ledger.valid
 const now = new Date("2026-08-26T00:00:00.000Z");
 
 class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
+  public readonly accountClassifications = new Map<number, boolean>();
   public readonly wallets = new Map<string, WalletPayload>();
   public readonly transactions = new Map<string, LedgerTransactionPayload>();
   public readonly entries: WalletLedgerPayload[] = [];
@@ -38,18 +40,19 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     ownerId: number;
     availableBalance: number;
     frozenBalance?: number;
+    currency?: LedgerCurrency;
   }): WalletPayload {
     const wallet: WalletPayload = {
       id: this.walletId++,
       ownerType: input.ownerType,
       ownerId: input.ownerId,
-      currency: "NDP",
+      currency: input.currency ?? "NDP",
       availableBalance: input.availableBalance,
       frozenBalance: input.frozenBalance ?? 0,
       createdAt: now,
       updatedAt: now
     };
-    this.wallets.set(this.walletKey(input.ownerType, input.ownerId), wallet);
+    this.wallets.set(this.walletKey(input.ownerType, input.ownerId, wallet.currency), wallet);
 
     return wallet;
   }
@@ -71,13 +74,19 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     return this.transactions.get(idempotencyKey) ?? null;
   }
 
+  public async findUserAccountClassification(
+    userId: number
+  ): Promise<{ isTestAccount: boolean } | null> {
+    return { isTestAccount: this.accountClassifications.get(userId) ?? false };
+  }
+
   public async getOrCreateWallet(input: {
     ownerType: WalletOwnerType;
     ownerId: number;
-    currency: "NDP";
+    currency: LedgerCurrency;
   }): Promise<WalletPayload> {
     return (
-      this.wallets.get(this.walletKey(input.ownerType, input.ownerId)) ??
+      this.wallets.get(this.walletKey(input.ownerType, input.ownerId, input.currency)) ??
       this.seedWallet({ ...input, availableBalance: 0 })
     );
   }
@@ -120,6 +129,7 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     referenceId: number;
     actorUserId: number | null;
     amount: number;
+    currency: LedgerCurrency;
     metadata?: unknown;
   }): Promise<LedgerTransactionPayload> {
     const transaction: LedgerTransactionPayload = {
@@ -132,7 +142,7 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
       referenceId: input.referenceId,
       actorUserId: input.actorUserId,
       amount: input.amount,
-      currency: "NDP",
+      currency: input.currency,
       metadata: input.metadata ?? null,
       createdAt: now,
       updatedAt: now,
@@ -169,6 +179,7 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     transactionId: number;
     referenceType: string;
     referenceId: number;
+    currency: "NDP";
     expectedAmount: number;
     actualAmount: number;
   }): Promise<void> {
@@ -187,8 +198,12 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     this.auditRows.push(input);
   }
 
-  private walletKey(ownerType: WalletOwnerType, ownerId: number): string {
-    return `${ownerType}:${ownerId}:NDP`;
+  private walletKey(
+    ownerType: WalletOwnerType,
+    ownerId: number,
+    currency: LedgerCurrency
+  ): string {
+    return `${ownerType}:${ownerId}:${currency}`;
   }
 }
 

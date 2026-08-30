@@ -1,6 +1,5 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { LedgerRepository } from "../src/repositories/ledger.repository";
-import { LedgerService } from "../src/services/ledger.service";
 
 describe("LedgerRepository wallet creation", () => {
   it("resolves a technician profile to its global active user wallet owner", async () => {
@@ -34,6 +33,7 @@ describe("LedgerRepository wallet creation", () => {
     await repository.upsertOrderFinancial({
       bookingOrderId: 71,
       orderType: "booking",
+      ndpCurrency: "TEST_NDP",
       customerUserId: 3,
       shopId: 10,
       technicianProfileId: 9,
@@ -62,6 +62,7 @@ describe("LedgerRepository wallet creation", () => {
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         bookingOrderId: 71,
+        ndpCurrency: "TEST_NDP",
         platformFeeEnabledSnapshot: true,
         platformFeeGlobalVersion: 6,
         platformFeePolicyVersion: 4,
@@ -217,6 +218,7 @@ describe("LedgerRepository wallet creation", () => {
       holdAmountNdp: 500,
       capturedAmountNdp: 0,
       releasedAmountNdp: 0,
+      currency: "NDP",
       status: "ACTIVE",
       idempotencyKey: "booking:71:accept:freeze",
       calculationLogId: 5,
@@ -396,7 +398,7 @@ describe("LedgerRepository wallet creation", () => {
 });
 
 describe("LedgerRepository transaction mapping", () => {
-  it("preserves a stored non-NDP currency so affiliate release validation rejects it", async () => {
+  it("rejects an unknown stored transaction currency at the repository boundary", async () => {
     const now = new Date("2026-08-26T00:00:00.000Z");
     const storedTransaction = {
       id: 901,
@@ -441,23 +443,136 @@ describe("LedgerRepository transaction mapping", () => {
       }
     };
     const repository = new LedgerRepository(client as never);
-    const mapped = await repository.findTransactionByIdempotencyKey("affiliate-task:87:v1:release");
-    const service = new LedgerService(repository);
-
-    expect(mapped).toMatchObject({ currency: "JPY" });
     await expect(
-      service.releaseAffiliateTaskBudget({
-        taskId: 87,
-        walletId: 41,
-        ownerType: "shop",
-        ownerId: 16,
-        amountNdp: 2_000,
-        idempotencyKey: "affiliate-task:87:v1:release",
-        actorUserId: 9
+      repository.findTransactionByIdempotencyKey("affiliate-task:87:v1:release")
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.LEDGER_CURRENCY_MISMATCH,
+      message: "error.ledger.currency_mismatch"
+    });
+  });
+
+  it("persists an explicitly selected Test NDP transaction currency", async () => {
+    const now = new Date("2026-08-30T00:00:00.000Z");
+    const create = jest.fn().mockResolvedValue({
+      id: 902,
+      transactionNo: "TEST-LT-902",
+      idempotencyKey: "test-ndp:902",
+      type: "TEST_BALANCE_CALIBRATION",
+      status: "APPLIED",
+      referenceType: "user",
+      referenceId: 41,
+      actorUserId: null,
+      amount: 100_000,
+      currency: "TEST_NDP",
+      metadata: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      entries: []
+    });
+    const repository = new LedgerRepository({ ledgerTransaction: { create } } as never);
+
+    await expect(
+      repository.createTransaction({
+        idempotencyKey: "test-ndp:902",
+        type: "test_balance_calibration",
+        referenceType: "user",
+        referenceId: 41,
+        actorUserId: null,
+        amount: 100_000,
+        currency: "TEST_NDP"
+      })
+    ).resolves.toMatchObject({ currency: "TEST_NDP" });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ currency: "TEST_NDP" })
+      })
+    );
+  });
+
+  it("persists an explicit formal currency on reconciliation creation", async () => {
+    const create = jest.fn().mockResolvedValue({ id: 1 });
+    const repository = new LedgerRepository({ financeReconciliation: { create } } as never);
+
+    await repository.createFinanceReconciliation({
+      transactionId: 902,
+      referenceType: "user",
+      referenceId: 41,
+      currency: "NDP",
+      expectedAmount: 100_000,
+      actualAmount: 100_000
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ currency: "NDP" })
+    });
+  });
+
+  it("rejects a ledger entry when its wallet and transaction currencies differ", async () => {
+    const create = jest.fn();
+    const repository = new LedgerRepository({
+      ledgerTransaction: {
+        findFirst: jest.fn().mockResolvedValue({ currency: "NDP" })
+      },
+      wallet: {
+        findFirst: jest.fn().mockResolvedValue({ currency: "TEST_NDP" })
+      },
+      walletLedger: { create }
+    } as never);
+
+    await expect(
+      repository.createLedgerEntry({
+        transactionId: 902,
+        walletId: 91,
+        direction: "available_credit",
+        amount: 100_000,
+        availableDelta: 100_000,
+        frozenDelta: 0,
+        availableBalanceAfter: 100_000,
+        frozenBalanceAfter: 0,
+        reason: "test_balance_calibration"
       })
     ).rejects.toMatchObject({
-      code: ERROR_CODES.WALLET_MUTATION_FAILED,
-      message: "error.wallet.mutation_failed"
+      code: ERROR_CODES.LEDGER_CURRENCY_MISMATCH,
+      message: "error.ledger.currency_mismatch"
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("keeps Test NDP out of reconciliation list and export queries", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const repository = new LedgerRepository({
+      financeReconciliation: { findMany, count }
+    } as never);
+
+    await repository.listFinanceReconciliation({ page: 1, pageSize: 20 });
+    await repository.exportFinanceReconciliation({ page: 1, pageSize: 20 });
+
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: expect.objectContaining({ currency: "NDP" }) })
+    );
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ where: expect.objectContaining({ currency: "NDP" }) })
+    );
+    expect(count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ currency: "NDP" })
+    });
+  });
+
+  it("loads account classification without exposing another user field", async () => {
+    const findFirst = jest.fn().mockResolvedValue({ isTestAccount: true });
+    const repository = new LedgerRepository({ user: { findFirst } } as never);
+
+    await expect(repository.findUserAccountClassification(41)).resolves.toEqual({
+      isTestAccount: true
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 41, deletedAt: null },
+      select: { isTestAccount: true }
     });
   });
 });
