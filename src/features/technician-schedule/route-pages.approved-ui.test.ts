@@ -6,6 +6,7 @@ describe("approved formal technician schedule UI", () => {
   it("uses the restored mobile shell and full calendar surfaces", () => {
     expect(routeSource).toContain("MobileFullscreenHeader");
     expect(routeSource).toContain("FormalTechnicianScheduleWorkspace");
+    expect(routeSource).toContain('navItems={technicianNavItems}');
     expect(routeSource).not.toContain("FormalRoutePage");
     expect(workspaceSource).toContain('aria-label="显示范围"');
     expect(workspaceSource).toContain('<option value="day">1日</option>');
@@ -18,6 +19,7 @@ describe("approved formal technician schedule UI", () => {
     expect(workspaceSource).toContain("行程搜索");
     expect(workspaceSource).toContain("FormalTechnicianOrdersPanel");
     expect(workspaceSource).toContain("当日安排");
+    expect(workspaceSource).toContain('aria-label="新建正式排班"');
   });
 
   it("loads only formal slots and orders without legacy store imports", () => {

@@ -4,6 +4,7 @@ import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { technicianNavItems } from "../../components/mobile/navItems";
 import { Button } from "../../components/ui/Button";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
@@ -40,7 +41,7 @@ function TechnicianSchedulePageShell({
   const navigate = useNavigate();
   const { isNight } = useClientTheme();
   return (
-    <MobileShell navItems={[]}>
+    <MobileShell navItems={technicianNavItems}>
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
         <MobileFullscreenHeader
           className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
