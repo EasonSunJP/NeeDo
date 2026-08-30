@@ -60,6 +60,8 @@ type UnifiedCalendarScope = "user" | "technician" | "merchant";
 type UnifiedCalendarDisplayMode = "personal" | "parallel";
 type MerchantCalendarLaneMode = "technician" | "appointmentStatus";
 export type UnifiedCalendarSourceId = "user" | "technician" | "merchant" | "todo" | "birthday" | "holiday";
+export type UnifiedCalendarTechnician = Pick<Technician, "id" | "name" | "storeId" | "avatar"> &
+  Partial<Omit<Technician, "id" | "name" | "storeId" | "avatar">>;
 type CalendarRepeatRule = "none" | "daily" | "weekly" | "monthly" | "yearly";
 
 type CalendarAttachment = {
@@ -180,12 +182,13 @@ type BirthdaySourceFilters = {
 
 export type UnifiedUserCalendarProps = {
   currentCustomer?: Customer;
-  currentTechnician?: Technician;
+  currentTechnician?: UnifiedCalendarTechnician;
   currentStore?: Store;
   displayMode?: UnifiedCalendarDisplayMode;
   formalOnly?: boolean;
   merchantLaneMode?: MerchantCalendarLaneMode;
   searchQuery?: string;
+  showSourceDrawer?: boolean;
   scope?: UnifiedCalendarScope;
 };
 
@@ -624,7 +627,7 @@ function getCustomerDisplayName(customer: Customer) {
   return customer.nickname?.trim() || customer.name;
 }
 
-function getTechnicianDisplayName(technician: Technician) {
+function getTechnicianDisplayName(technician: UnifiedCalendarTechnician) {
   return technician.nickname?.trim() || technician.name;
 }
 
@@ -647,7 +650,7 @@ function getStoreCreator(stores: ReturnType<typeof useEntityStore>["stores"], st
 function getCurrentScopeCreator(
   scope: UnifiedCalendarScope,
   currentCustomer: Customer | undefined,
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   currentStore: Store | undefined
 ): CalendarEventCreator | undefined {
   if (scope === "merchant" && currentStore) {
@@ -1257,7 +1260,7 @@ function getMerchantEventsForStore(
 
 function getParallelCalendarLanes(
   currentStore: Store | undefined,
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   technicians: Technician[],
   merchantLaneMode: MerchantCalendarLaneMode = "technician"
 ): UnifiedCalendarLane[] {
@@ -1546,7 +1549,7 @@ function getUserSyncContactOptions(
 }
 
 function getTechnicianSyncContactOptions(
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   stores: ReturnType<typeof useEntityStore>["stores"],
   technicians: Technician[]
 ) {
@@ -1596,7 +1599,7 @@ function buildBirthdayEventDate(anchorYear: number, birthday: string) {
 function getBirthdayCalendarEvents(
   period: UnifiedCalendarPeriod,
   currentCustomer: Customer | undefined,
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   currentStore: Store | undefined,
   birthdayContacts: BirthdayContactOption[]
 ): UnifiedCalendarEvent[] {
@@ -2191,6 +2194,7 @@ function CalendarSourceDrawer({
   birthdayTagOptions,
   googleConnectionStatus,
   googleSyncEventCount,
+  formalOnly,
   open,
   sourceCounts,
   sourceVisibility,
@@ -2213,6 +2217,7 @@ function CalendarSourceDrawer({
   birthdayTagOptions: CalendarContactTagOption[];
   googleConnectionStatus: GoogleCalendarConnectionStatus | null;
   googleSyncEventCount: number;
+  formalOnly: boolean;
   open: boolean;
   sourceCounts: Record<UnifiedCalendarSourceId, number>;
   sourceVisibility: Record<UnifiedCalendarSourceId, boolean>;
@@ -2301,7 +2306,13 @@ function CalendarSourceDrawer({
               aria-expanded={googleSyncExpanded}
               aria-label="同步 Google 日历"
               className={cn(floatingHeaderControlButtonClassName, "h-11 w-11 p-2")}
-              onClick={() => setGoogleSyncExpanded((current) => !current)}
+              onClick={() => {
+                if (formalOnly) {
+                  void runGoogleAction("connect", onGoogleConnect);
+                  return;
+                }
+                setGoogleSyncExpanded((current) => !current);
+              }}
               type="button"
             >
               <img alt="" className="h-6 w-6 object-contain" src={googleCalendarIconSrc} />
@@ -4840,6 +4851,7 @@ export function UnifiedUserCalendar({
   formalOnly = false,
   merchantLaneMode = "technician",
   searchQuery = "",
+  showSourceDrawer = !formalOnly,
   scope = "user"
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
@@ -5422,7 +5434,7 @@ export function UnifiedUserCalendar({
     <UnifiedCalendarSurface data-unified-user-calendar="true">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          {!formalOnly ? <button
+          {showSourceDrawer ? <button
             aria-label="打开日历来源"
             className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-text)]"
             onClick={() => setSourceDrawerOpen((current) => !current)}
@@ -5596,7 +5608,7 @@ export function UnifiedUserCalendar({
           }}
         />
       ) : null}
-      {!formalOnly ? <CalendarSourceDrawer
+      {showSourceDrawer ? <CalendarSourceDrawer
         birthdayContactOptions={birthdayContactOptions}
         birthdayContactQuery={birthdayContactQuery}
         birthdayExpanded={birthdayExpanded}
@@ -5604,6 +5616,7 @@ export function UnifiedUserCalendar({
         birthdayTagOptions={calendarContactTagOptions}
         googleConnectionStatus={googleConnectionStatus}
         googleSyncEventCount={searchedVisiblePeriodEvents.length}
+        formalOnly={formalOnly}
         onGoogleConnect={connectGoogleCalendar}
         onGoogleExport={exportGoogleCalendarEvents}
         onGoogleImport={importGoogleCalendarEvents}

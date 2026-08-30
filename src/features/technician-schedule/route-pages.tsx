@@ -141,7 +141,9 @@ export function TechnicianScheduleIndexRoutePage() {
     >
       <FormalTechnicianScheduleWorkspace
         profileAvatarUrl={resource.data.profile.avatarUrl}
+        profileId={resource.data.profile.id}
         profileName={resource.data.profile.displayName}
+        shopId={resource.data.shopId}
         shopName={resource.data.profile.shop?.name ?? "--"}
       />
     </TechnicianSchedulePageShell>

@@ -31,11 +31,13 @@ describe("FormalScheduleInventoryPanel", () => {
     expect(source).toContain("当前范围没有正式可预约时段");
   });
 
-  it("keeps merchant inventory and the restored technician workspace on formal schedule loaders", () => {
+  it("keeps merchant inventory and the technician workspace on formal shared-calendar data", () => {
     expect(merchantSource).toContain('scope="merchant-admin"');
     expect(merchantSource).toContain("<FormalScheduleInventoryPanel");
-    expect(technicianSource).toContain('loadManagedScheduleWindow("technician"');
-    expect(technicianSource).toContain("loadEveryTechnicianOrder");
+    expect(technicianSource).toContain("<UnifiedUserCalendar");
+    expect(technicianSource).toContain('displayMode="parallel"');
+    expect(technicianSource).toContain("formalOnly");
+    expect(technicianSource).toContain("showSourceDrawer");
     expect(technicianSource).toContain("<FormalTechnicianOrdersPanel />");
   });
 });

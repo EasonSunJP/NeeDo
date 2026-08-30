@@ -172,4 +172,34 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     });
     await waitFor(() => expect(testState.loadCustomerOrderWindow).toHaveBeenCalledTimes(2));
   });
+
+  it("opens the approved calendar-source menu without enabling local calendar persistence", async () => {
+    testState.loadCustomerOrderWindow.mockResolvedValue([]);
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem");
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <I18nProvider>
+            <UnifiedUserCalendar currentCustomer={customerFixture} formalOnly showSourceDrawer />
+          </I18nProvider>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(container.querySelector('button[aria-label="打开日历来源"]')).not.toBeNull());
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="打开日历来源"]')?.click();
+    });
+
+    const menu = container.querySelector('[role="menu"]');
+    expect(menu?.textContent).toContain("日历来源");
+    expect(menu?.textContent).toContain("NeeDo 同步");
+    expect(menu?.textContent).toContain("我的行程");
+    expect(menu?.textContent).toContain("技师端行程");
+    expect(menu?.textContent).toContain("商户端行程");
+    expect(menu?.textContent).toContain("ToDo");
+    expect(menu?.textContent).toContain("生日");
+    expect(storageWrite.mock.calls.filter(([key]) => key === "needo.user-unified-calendar.v1")).toHaveLength(0);
+  });
 });
