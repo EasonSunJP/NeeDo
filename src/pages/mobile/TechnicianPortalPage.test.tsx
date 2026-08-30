@@ -17,7 +17,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain("<TechnicianPortalContent");
   });
 
-  it("keeps the restored task dashboard and only links to identity-scoped feature routes", () => {
+  it("keeps the approved high-fidelity task dashboard while loading only formal data", () => {
     const tasksStart = source.indexOf("function TasksView");
     const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);
     const tasksSource = source.slice(tasksStart, tasksEnd);
@@ -25,12 +25,24 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).toContain("<SharedHomeHeader");
     expect(tasksSource).toContain('locationCaption="当前服务区域"');
     expect(tasksSource).toContain('locationLabel={profile.serviceAreas[0] ?? profile.city ?? "服务区域未设置"}');
-    expect(tasksSource).toContain('to: "/technician/schedule"');
-    expect(tasksSource).toContain('to: "/technician/contacts"');
-    expect(tasksSource).toContain('to: "/technician/needo"');
+    expect(tasksSource).toContain('to="/technician/schedule"');
     expect(tasksSource).toContain("<FormalTechnicianOrdersPanel />");
+    expect(tasksSource).toContain("loadEveryTechnicianOrder");
+    expect(tasksSource).toContain("loadManagedScheduleWindow");
+    expect(tasksSource).toContain('data-testid="technician-formal-income-dashboard"');
+    expect(tasksSource).toContain('data-testid="technician-formal-status-sync"');
+    expect(tasksSource).toContain("本月收入");
+    expect(tasksSource).toContain("接单率");
+    expect(tasksSource).toContain("服务评价");
+    expect(tasksSource).toContain("本月订单");
+    expect(tasksSource).toContain("状态同步");
+    expect(tasksSource).toContain("今日仅排班展示");
+    expect(tasksSource).toContain("今日订单");
+    expect(tasksSource).toContain("状态记录");
     expect(tasksSource).toContain("technician.reviewSummary.reviewCount");
     expect(tasksSource).toContain("profile.yearsExperience");
+    expect(tasksSource).not.toContain("formalRuntimeFallbacks");
+    expect(tasksSource).not.toContain("technicianScheduleStore");
   });
 
   it("restores the approved information, services, and data-center tabs", () => {

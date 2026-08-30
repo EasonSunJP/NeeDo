@@ -11,6 +11,10 @@ describe("approved formal technician schedule UI", () => {
     expect(workspaceSource).toContain('data-testid="formal-schedule-day-timeline"');
     expect(workspaceSource).toContain('data-testid="formal-schedule-week-grid"');
     expect(workspaceSource).toContain('data-testid="formal-schedule-month-grid"');
+    expect(workspaceSource).toContain('data-testid="formal-schedule-profile-row"');
+    expect(workspaceSource).toContain('data-testid="formal-schedule-hour-row"');
+    expect(workspaceSource).toContain("排班设置");
+    expect(workspaceSource).toContain("行程搜索");
     expect(workspaceSource).toContain("FormalTechnicianOrdersPanel");
     expect(workspaceSource).toContain("当日安排");
   });

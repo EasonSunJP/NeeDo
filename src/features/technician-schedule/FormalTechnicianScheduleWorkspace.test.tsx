@@ -112,7 +112,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     root = createRoot(container);
     await act(async () => root.render(
       <MemoryRouter>
-        <FormalTechnicianScheduleWorkspace profileName="正式技师" shopName="正式店铺" />
+        <FormalTechnicianScheduleWorkspace profileAvatarUrl="/media/technician.jpg" profileName="正式技师" shopName="正式店铺" />
       </MemoryRouter>
     ));
   });
@@ -136,5 +136,19 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-month-grid"]')).not.toBeNull());
     await click("预约订单");
     expect(container.querySelector('[data-testid="formal-order-panel"]')).not.toBeNull();
+  });
+
+  it("keeps the approved mobile schedule hierarchy and a complete 24-hour day grid", async () => {
+    await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-day-timeline"]')).not.toBeNull());
+
+    expect(container.querySelector('[data-testid="formal-schedule-profile-row"]')?.textContent).toContain("正式技师");
+    expect(container.querySelector('img[src="/media/technician.jpg"]')).not.toBeNull();
+    expect(container.textContent).toContain("我的排班");
+    expect(container.textContent).toContain("排班设置");
+    expect(container.textContent).toContain("行程搜索");
+    expect(container.textContent).toContain("1日");
+    expect(container.querySelectorAll('[data-testid="formal-schedule-hour-row"]')).toHaveLength(24);
+    expect(container.textContent).toContain("00:00");
+    expect(container.textContent).toContain("23:00");
   });
 });

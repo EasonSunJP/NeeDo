@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ScheduleViewSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { cn, yen } from "../../lib/utils";
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../scheduling/window-loader";
 import type { BookingOrder, BookingScheduleSlot } from "../booking/api";
@@ -19,7 +19,7 @@ import {
   type TechnicianScheduleView
 } from "./model";
 
-type WorkspaceTab = "calendar" | "orders";
+type WorkspaceTab = "calendar" | "settings";
 
 const schedulePanelClass =
   "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[var(--client-shadow)]";
@@ -81,10 +81,9 @@ function AgendaItem({ item }: { item: TechnicianCalendarItem }) {
 }
 
 function DayTimeline({ items }: { items: TechnicianCalendarItem[] }) {
-  const startHour = Math.min(8, ...items.map((item) => Number(item.startTime.slice(0, 2))));
-  const endHour = Math.max(20, ...items.map((item) => Number(item.endTime.slice(0, 2)) + 1));
-  const hourCount = Math.max(1, endHour - startHour);
-  const rowHeight = 58;
+  const startHour = 0;
+  const hourCount = 24;
+  const rowHeight = 64;
   const minuteOffset = (time: string) => {
     const [hour, minute] = time.split(":").map(Number);
     return ((hour - startHour) * 60 + minute) / 60 * rowHeight;
@@ -95,7 +94,7 @@ function DayTimeline({ items }: { items: TechnicianCalendarItem[] }) {
       <div className="grid grid-cols-[58px_minmax(0,1fr)]">
         <div className="border-r border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)]">
           {Array.from({ length: hourCount }, (_, index) => (
-            <div className="h-[58px] border-b border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] px-2 py-2 text-center text-[10px] font-black text-[color:var(--client-muted)]" key={index}>
+            <div className="h-16 border-b border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] px-2 py-3 text-center text-[10px] font-black text-[color:var(--client-muted)]" data-testid="formal-schedule-hour-row" key={index}>
               {String(startHour + index).padStart(2, "0")}:00
             </div>
           ))}

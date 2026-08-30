@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "reac
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
-import { AppIcon, FeatureSegmentedTabs, IconButton, type IconName } from "../../components/client-ui/AppScaffold";
+import { AppIcon, FeatureSegmentedTabs, IconButton } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
@@ -15,6 +15,7 @@ import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirm
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import type { BookingOrder, BookingScheduleSlot } from "../../features/booking/api";
 import {
   technicianProfileApi,
   type TechnicianProfilePaymentMethod,
@@ -26,6 +27,7 @@ import {
   type ShopPricingMode,
   type TechnicianServicePayload
 } from "../../features/pricing-mode/api";
+import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { cn, yen } from "../../lib/utils";
 
 type TechnicianPortalView = "tasks" | "me";
@@ -182,14 +184,85 @@ function TechnicianPortalDataGate() {
 
 function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
   const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
-  const reviewCount = technician ? String(technician.reviewSummary.reviewCount) : "—";
   const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
-  const quickActions: Array<{ label: string; icon: IconName; to: string }> = [
-    { label: "排班", icon: "calendar", to: "/technician/schedule" },
-    { label: "通讯录", icon: "manager", to: "/technician/contacts" },
-    { label: "需求", icon: "sparkles", to: "/technician/needo" },
-    { label: "工资单", icon: "info", to: "/technician/payroll" }
-  ];
+  const [orders, setOrders] = useState<BookingOrder[]>([]);
+  const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [tasksPanelTab, setTasksPanelTab] = useState<"schedule" | "orders">("schedule");
+
+  useEffect(() => {
+    let active = true;
+    const now = new Date();
+    const todayFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayTo = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const monthFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthTo = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    setLoading(true);
+    setLoadError("");
+    Promise.allSettled([
+      loadEveryTechnicianOrder({ from: monthFrom.toISOString(), to: monthTo.toISOString() }),
+      loadManagedScheduleWindow("technician", { from: todayFrom, to: todayTo })
+    ]).then(([orderResult, slotResult]) => {
+      if (!active) return;
+      if (orderResult.status === "fulfilled") setOrders(orderResult.value);
+      if (slotResult.status === "fulfilled") setSlots(slotResult.value);
+      if (orderResult.status === "rejected" && slotResult.status === "rejected") {
+        const reason = orderResult.reason instanceof Error ? orderResult.reason.message : "error.technician_dashboard.load_failed";
+        setLoadError(reason);
+      }
+      setLoading(false);
+    });
+
+    return () => { active = false; };
+  }, []);
+
+  const todayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const todayOrders = orders
+    .filter((order) => new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(order.startsAt)) === todayKey)
+    .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+  const acceptedOrders = orders.filter((order) => ["confirmed", "inService", "completed"].includes(order.status));
+  const decidedOrders = orders.filter((order) => order.status !== "pending");
+  const completedRevenue = orders
+    .filter((order) => order.status === "completed")
+    .reduce((sum, order) => sum + (Number(order.priceAmount) || 0), 0);
+  const acceptRate = decidedOrders.length > 0 ? Math.round(acceptedOrders.length / decidedOrders.length * 100) : null;
+  const nextOrder = todayOrders.find((order) => order.status === "inService")
+    ?? todayOrders.find((order) => order.status === "confirmed" || order.status === "pending")
+    ?? todayOrders.find((order) => order.status !== "cancelled")
+    ?? null;
+  const nextSlot = slots
+    .filter((slot) => slot.status !== "blocked")
+    .sort((left, right) => left.startsAt.localeCompare(right.startsAt))[0] ?? null;
+  const nowMs = Date.now();
+  const activeOrder = todayOrders.find((order) => order.status === "inService");
+  const insideConfirmedOrder = todayOrders.some((order) =>
+    order.status === "confirmed" && new Date(order.startsAt).getTime() <= nowMs && nowMs < new Date(order.endsAt).getTime()
+  );
+  const insideAvailableSlot = slots.some((slot) =>
+    slot.status === "available" && new Date(slot.startsAt).getTime() <= nowMs && nowMs < new Date(slot.endsAt).getTime()
+  );
+  const hasRemainingWork = todayOrders.some((order) => order.status !== "cancelled" && new Date(order.endsAt).getTime() > nowMs)
+    || slots.some((slot) => slot.status !== "blocked" && new Date(slot.endsAt).getTime() > nowMs);
+  const currentStatus = activeOrder ? "服务中" : insideConfirmedOrder || insideAvailableSlot ? "出勤" : hasRemainingWork ? "休息中" : "退勤";
+  const statusButtons = [
+    { label: "出勤", icon: "●", tone: "duty", caption: "已进入正式排班或可预约时段" },
+    { label: "移动中", icon: "↗", tone: "travel", caption: "移动状态需要正式位置状态接口" },
+    { label: "服务中", icon: "▶", tone: "service", caption: "存在进行中的正式订单" },
+    { label: "休息中", icon: "◕", tone: "rest", caption: "当前没有进行中的正式服务" },
+    { label: "退勤", icon: "■", tone: "off", caption: "今天已没有后续正式安排" }
+  ] as const;
+  const currentStatusCaption = statusButtons.find((item) => item.label === currentStatus)?.caption ?? "按正式排班与订单自动同步";
+  const dateTime = (value: string) => new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(new Date(value));
+  const statusHistory = nextOrder?.statusHistory.slice(-3).reverse() ?? [];
+
   return (
     <>
       <FloatingHomeHeader panelClassName={floatingHeaderGlassPanelClassName}>
@@ -208,26 +281,29 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
         </div>
       </FloatingHomeHeader>
       <div className="space-y-4 px-4 pb-28 pt-2">
-        <section className="client-feature-panel overflow-hidden rounded-[28px] border text-white shadow-[var(--client-shadow)]">
+        <section className="client-feature-panel overflow-hidden rounded-[28px] border text-white shadow-[var(--client-shadow)]" data-testid="technician-formal-income-dashboard">
           <div className="relative p-5">
             <div className="client-feature-aura absolute inset-0" />
             <div className="relative">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-bold text-white/55">{shopName}</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <h1 className="truncate text-[24px] font-black tracking-[-0.04em]">{profile.displayName}</h1>
-                    <KycVerifiedBadge size="label" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-xs font-bold text-white/60">{shopName}</p>
+                    <Badge tone="green">{profile.employmentType === "independent" ? "个人技师" : "店铺所属"}</Badge>
                   </div>
-                  <p className="mt-2 text-xs font-bold text-white/55">ID：{profile.publicId}</p>
+                  <p className="mt-4 text-xs font-bold text-white/50">本月收入</p>
+                  <p className="mt-1 text-[34px] font-black tracking-[-0.05em]">{yen(completedRevenue)}</p>
                 </div>
-                <Badge tone="green">{profile.employmentType === "independent" ? "个人技师" : "店铺所属"}</Badge>
+                <div className="flex items-center gap-2">
+                  <KycVerifiedBadge size="label" />
+                  <span className="max-w-[112px] truncate text-xs font-black text-white/70">{profile.displayName}</span>
+                </div>
               </div>
               <div className="mt-5 grid grid-cols-3 rounded-[20px] border border-white/10 bg-white/[0.08] py-3 backdrop-blur">
                 {[
-                  ["服务评分", rating > 0 ? rating.toFixed(1) : "—"],
-                  ["评价数量", reviewCount],
-                  ["从业年限", `${profile.yearsExperience} 年`]
+                  ["接单率", acceptRate === null ? "—" : `${acceptRate}%`],
+                  ["服务评价", rating > 0 ? rating.toFixed(2) : "—"],
+                  ["本月订单", `${orders.length} 单`]
                 ].map(([label, value], index) => (
                   <div className={cn("min-w-0 px-2 text-center", index > 0 && "border-l border-white/10")} key={label}>
                     <p className="truncate text-[10px] font-bold text-white/50">{label}</p>
@@ -239,23 +315,114 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           </div>
         </section>
 
-        <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
-          <div className="grid grid-cols-4 gap-2">
-            {quickActions.map((item) => (
-              <Link className={cn(surface.metric, "grid min-h-[84px] place-items-center rounded-[20px] border px-2 py-3 text-center")} key={item.label} to={item.to}>
-                <AppIcon className="h-5 w-5" name={item.icon} />
-                <span className="mt-2 text-xs font-black">{item.label}</span>
-              </Link>
-            ))}
+        <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")} data-testid="technician-formal-status-sync">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black text-[color:var(--client-muted)]">正式订单与排班自动推导</p>
+              <h2 className="mt-1 text-xl font-black">状态同步</h2>
+            </div>
+            <Link className="inline-flex h-11 items-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-needo-text)]" to="/technician/schedule">
+              <AppIcon className="h-4 w-4" name="calendar" />排班
+            </Link>
+          </div>
+          <div className="mt-4 grid grid-cols-5 gap-2">
+            {statusButtons.map((item) => {
+              const active = item.label === currentStatus;
+              return (
+                <div
+                  aria-current={active ? "true" : undefined}
+                  className={cn(
+                    "technician-work-status-button flex min-h-[104px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1 py-3 text-center",
+                    `technician-work-status--${item.tone}`,
+                    active ? "technician-work-status-button--active" : "technician-work-status-button--idle"
+                  )}
+                  key={item.label}
+                >
+                  <span className="technician-work-status-icon inline-flex h-10 w-10 items-center justify-center rounded-[14px] text-lg font-black">{item.icon}</span>
+                  <strong className="mt-3 text-[12px] font-black leading-4">{item.label}</strong>
+                </div>
+              );
+            })}
+          </div>
+          <div className={cn(surface.panel, "mt-4 rounded-[20px] border px-4 py-3")}>
+            <p className={cn(surface.muted, "text-[11px] font-bold")}>当前已同步状态</p>
+            <p className="mt-1 text-sm font-black">{currentStatus}： <span className={cn(surface.muted, "text-xs")}>{currentStatusCaption}</span></p>
           </div>
         </section>
 
-        <section className="client-feature-panel rounded-[28px] border p-4 text-white shadow-[var(--client-shadow)]">
-          <div className="mb-4 flex items-end justify-between gap-3">
-            <div><p className="text-[11px] font-black text-white/45">正式服务器数据</p><h2 className="mt-1 text-xl font-black">今日安排与预约</h2></div>
-            <Link className="rounded-full border border-white/15 px-3 py-2 text-xs font-black" to="/technician/schedule">查看排班</Link>
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-black">今日安排</h2>
+            <span className={cn(surface.metric, "rounded-full border px-3 py-1 text-xs font-black")}>{todayOrders.length} 单</span>
           </div>
-          <FormalTechnicianOrdersPanel />
+          <FeatureSegmentedTabs
+            items={[{ label: "今日仅排班展示", value: "schedule" }, { label: "今日订单", value: "orders" }]}
+            onChange={setTasksPanelTab}
+            value={tasksPanelTab}
+          />
+          {tasksPanelTab === "orders" ? (
+            <section className="client-feature-panel rounded-[28px] border p-4 text-white shadow-[var(--client-shadow)]">
+              <FormalTechnicianOrdersPanel />
+            </section>
+          ) : (
+            <>
+              {loading ? <div className={cn(surface.shell, "rounded-[28px] border p-8 text-center text-sm font-black")}>正在同步今日正式安排</div> : null}
+              {loadError ? <div className={cn(surface.shell, "rounded-[28px] border p-5 text-sm font-black text-red-500")}>今日安排读取失败：{loadError}</div> : null}
+              {!loading && !loadError && nextOrder ? (
+                <Link className="client-feature-panel block rounded-[28px] border p-4 text-white shadow-[var(--client-shadow)]" to={`/technician/orders/${nextOrder.id}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap gap-2">
+                        <Badge tone={nextOrder.status === "inService" ? "green" : "yellow"}>{nextOrder.status === "inService" ? "进行中" : "今日预约"}</Badge>
+                        <Badge tone="neutral">{nextOrder.fulfillmentMode === "home" ? "上门服务" : "到店服务"}</Badge>
+                      </div>
+                      <h3 className="mt-3 text-lg font-black">{nextOrder.serviceName}</h3>
+                      <p className="mt-2 text-xs font-bold text-white/55">开始时间：{dateTime(nextOrder.startsAt)}</p>
+                      <p className="mt-1 text-xs font-bold text-white/55">预计结束：{dateTime(nextOrder.endsAt)}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.08] px-4 py-3 text-right">
+                      <p className="text-[10px] font-bold text-white/50">预估收入</p>
+                      <strong className="mt-1 block text-lg font-black text-[color:var(--client-primary)]">{yen(Number(nextOrder.priceAmount) || 0)}</strong>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-3">
+                    <p className="text-[11px] font-bold text-white/50">预约用户</p>
+                    <p className="mt-1 text-sm font-black">NeeDo 用户 #{nextOrder.customerUserId}</p>
+                    <p className="mt-1 text-xs font-bold text-white/50">{nextOrder.shopName} · {nextOrder.orderNo}</p>
+                  </div>
+                </Link>
+              ) : null}
+              {!loading && !loadError && !nextOrder && nextSlot ? (
+                <Link className={cn(surface.shell, "block rounded-[28px] border p-5 shadow-[var(--client-shadow)]")} to={`/technician/schedule/events/${nextSlot.id}`}>
+                  <Badge tone="blue">正式可预约时段</Badge>
+                  <h3 className="mt-3 text-lg font-black">{nextSlot.serviceName}</h3>
+                  <p className={cn(surface.muted, "mt-2 text-xs font-bold")}>{dateTime(nextSlot.startsAt)}–{dateTime(nextSlot.endsAt)}</p>
+                </Link>
+              ) : null}
+              {!loading && !loadError && !nextOrder && !nextSlot ? (
+                <div className={cn(surface.shell, "rounded-[28px] border border-dashed p-8 text-center")}>
+                  <p className="text-sm font-black">当前没有今日正式安排</p>
+                  <p className={cn(surface.muted, "mt-2 text-xs font-bold")}>新订单与排班变更会从服务器同步到这里。</p>
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
+
+        <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
+          <h2 className="text-lg font-black">状态记录</h2>
+          <div className={cn(surface.panel, "mt-3 rounded-[20px] border border-dashed p-5")}>
+            {statusHistory.length > 0 ? (
+              <ol className="space-y-3">
+                {statusHistory.map((history) => (
+                  <li className="flex items-start justify-between gap-3" key={history.id}>
+                    <div><strong className="text-sm">{history.toStatus}</strong>{history.reason ? <p className={cn(surface.muted, "mt-1 text-xs")}>{history.reason}</p> : null}</div>
+                    <span className={cn(surface.muted, "shrink-0 text-[10px] font-bold")}>{dateTime(history.createdAt)}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : <p className={cn(surface.muted, "text-center text-sm font-bold")}>暂无执行 / 例外记录</p>}
+          </div>
         </section>
       </div>
     </>
