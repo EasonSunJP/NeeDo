@@ -4891,7 +4891,7 @@ export function ImConversationRoomPage({
     if (voiceRecording.phase === "idle" && voiceRecordingError) {
       setActionNotice(voiceRecordingError);
     }
-  }, [voiceRecording.phase, voiceRecordingError]);
+  }, [voiceRecording.openAttempt, voiceRecording.phase, voiceRecordingError]);
 
   const rows = useMemo(
     () => buildTimeSeparatedMessages(messages, store.config?.separatorThresholdMs ?? 300_000),

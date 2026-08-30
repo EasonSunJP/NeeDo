@@ -15,6 +15,7 @@ export type ImVoiceRecordingStopReason = "manual" | "limit";
 
 export interface UseImVoiceRecordingResult {
   phase: ImVoiceRecordingPhase;
+  openAttempt: number;
   audioRef: RefObject<HTMLAudioElement | null>;
   blob: Blob | null;
   previewUrl: string | null;
@@ -42,6 +43,7 @@ const clampDuration = (startedAt: number) =>
 
 export function useImVoiceRecording(): UseImVoiceRecordingResult {
   const [phase, setPhase] = useState<ImVoiceRecordingPhase>("idle");
+  const [openAttempt, setOpenAttempt] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
@@ -206,6 +208,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
   const open = useCallback(async () => {
     if (phaseRef.current !== "idle") return;
+    setOpenAttempt((attempt) => attempt + 1);
 
     const mediaDevices = typeof navigator === "undefined" ? undefined : navigator.mediaDevices;
     if (!mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
@@ -511,6 +514,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
   return {
     phase,
+    openAttempt,
     audioRef,
     blob,
     previewUrl,

@@ -39,6 +39,38 @@ describe("translations", () => {
     }
   });
 
+  it("preserves complete voice error guidance in all five languages", () => {
+    const expected = {
+      "请允许麦克风权限后重试": {
+        zh: "请允许麦克风权限后重试",
+        "zh-Hant": "請允許麥克風權限後重試",
+        ja: "マイクの使用を許可してから再試行してください",
+        en: "Allow microphone access, then try again",
+        ko: "마이크 권한을 허용한 후 다시 시도하세요",
+      },
+      "自动播放已暂停，请点击重放": {
+        zh: "自动播放已暂停，请点击重放",
+        "zh-Hant": "自動播放已暫停，請點擊重播",
+        ja: "自動再生が一時停止しました。再生をタップしてください",
+        en: "Autoplay paused. Tap replay",
+        ko: "자동 재생이 일시 중지되었습니다. 다시 재생을 탭하세요",
+      },
+      "当前设备不支持浏览器录音": {
+        zh: "当前设备不支持浏览器录音",
+        "zh-Hant": "目前裝置不支援瀏覽器錄音",
+        ja: "この端末ではブラウザ録音を利用できません",
+        en: "Browser recording is not supported on this device",
+        ko: "현재 기기에서는 브라우저 녹음을 지원하지 않습니다",
+      },
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+    }
+  });
+
   it("localizes the complete friend-verification flow in all five languages", () => {
     const friendVerificationCopy = [
       "取消",

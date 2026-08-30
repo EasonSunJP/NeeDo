@@ -172,6 +172,7 @@ function buildConversationRoomStore() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   RoomMediaRecorder.instances = [];
   roomHarness.store = null;
   window.localStorage.clear();
@@ -317,6 +318,63 @@ describe("ImNewConversationPage directory query handoff", () => {
 });
 
 describe("ImConversationRoomPage voice recording integration", () => {
+  it("shows the unsupported recording notice again after the previous notice expires", async () => {
+    vi.useFakeTimers();
+    roomHarness.store = buildConversationRoomStore();
+    window.localStorage.setItem("needo.language", "zh");
+    window.localStorage.setItem("needo.language.mode", "manual");
+    window.localStorage.setItem("needo.client.theme", "light-green");
+    window.localStorage.setItem("needo.client.theme.mode", "manual");
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/messages/conversation-room"]}>
+          <I18nProvider>
+            <ClientThemeProvider>
+              <ImScopeProvider scope="user">
+                <ImConversationRoomPage conversationId="conversation-room" />
+              </ImScopeProvider>
+            </ClientThemeProvider>
+          </I18nProvider>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const voiceButton = container.querySelector<HTMLButtonElement>("button[aria-label='录制语音']")!;
+    await act(async () => {
+      voiceButton.click();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-testid='im-conversation-action-notice']")?.textContent)
+      .toContain("当前设备不支持浏览器录音");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_600);
+    });
+    expect(container.querySelector("[data-testid='im-conversation-action-notice']")).toBeNull();
+
+    await act(async () => {
+      voiceButton.click();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-testid='im-conversation-action-notice']")?.textContent)
+      .toContain("当前设备不支持浏览器录音");
+
+    await act(async () => root.unmount());
+  });
+
   it("keeps the recorded Blob and draft after a failed send, then closes and restores focus after retry succeeds", async () => {
     const store = buildConversationRoomStore();
     roomHarness.store = store;
