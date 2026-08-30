@@ -738,10 +738,10 @@ export const authTrustGatewayTranslations: TranslationMap = {
 
 export const translations: TranslationMap = {
   "打开完整回复": {
-    "zh-Hant": "開啟完整回覆",
-    ja: "返信作成画面を開く",
-    en: "Open full reply composer",
-    ko: "전체 답글 작성 화면 열기",
+    "zh-Hant": "開啟回覆畫面",
+    ja: "返信画面を開く",
+    en: "Open reply composer",
+    ko: "답글 작성 화면 열기",
   },
   "回复中": {
     "zh-Hant": "回覆中",
