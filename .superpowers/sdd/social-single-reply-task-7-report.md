@@ -103,6 +103,205 @@ The review found no Critical issues. It identified the query/hash preservation g
 - `src/features/social/components/SocialQuickReplyComposer.test.tsx`
 - `src/features/social/pages/SocialPostDetailPage.tsx`
 - `src/features/social/pages/SocialPostDetailPage.test.ts`
+- `src/features/social/pages/SocialPostDetailPage.runtime.test.tsx`
 - `src/i18n/translations.ts`
 - `src/i18n/translations.test.ts`
 - `.superpowers/sdd/social-single-reply-task-7-report.md`
+
+---
+
+## Review remediation — runtime focus lifecycle and nested cards
+
+### Root cause
+
+The initial focus effect scheduled an animation frame and immediately replaced location state. A post that arrived after the first render therefore lost its focus request before a composer could mount. Because the frame was not retained or cancelled, StrictMode replay, route changes, and unmount could leave an obsolete callback alive.
+
+`DetailMiniPostCard` navigated on click but did not stop propagation, so a quoted card inside `ReplyListItem` then activated the enclosing reply card. Neither card exposed keyboard activation.
+
+### RED evidence
+
+The runtime reproductions were written before the production fix. The initial RED command was:
+
+```bash
+npm test -- src/features/social/pages/SocialPostDetailPage.runtime.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/features/social/components/SocialQuickReplyComposer.test.tsx src/features/social/route-pages.test.tsx
+```
+
+Observed result:
+
+```text
+Test Files  1 failed | 3 passed (4)
+Tests       7 failed | 13 passed (20)
+exit code   1
+```
+
+The expected behavioral failures proved that the old page:
+
+- replaced `{ focusSocialReply: true }` before a delayed post/composer mounted;
+- retained a pending frame after route navigation and unmount;
+- navigated a quoted reply card to the outer reply instead of the quoted post; and
+- did not activate reply cards with Enter or Space.
+
+The same first run exposed an author-link selector tied too closely to markup. That test fixture was narrowed to the rendered author label before production code changed; the remaining failures were the intended runtime defects.
+
+### GREEN implementation
+
+- `composerTargetIdentity` is keyed from the current actor and mounted post.
+- The focus effect requires the transient request, the current post, its target identity, and an attached composer ref. It schedules one frame, focuses first, then replace-clears state while preserving pathname/search/hash.
+- The effect dependencies include route key, post, and composer target identity; cleanup cancels the retained frame, covering StrictMode replay, route changes, and unmount.
+- Reply and mini cards are focusable articles with Enter/Space activation. They have no nested `role="link"` or nested button markup; descendant links, buttons, summaries, inputs, and media keep their own native behavior.
+- A card activation stops propagation only after it has claimed the event, so a nested quoted card opens exactly its quoted post.
+
+### GREEN and final verification
+
+Focused runtime/detail/router command:
+
+```bash
+npm test -- src/features/social/components/SocialQuickReplyComposer.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/features/social/pages/SocialPostDetailPage.runtime.test.tsx src/features/social/route-pages.test.tsx src/i18n/translations.test.ts
+```
+
+```text
+Test Files  5 passed (5)
+Tests       69 passed (69)
+```
+
+Full Task 7 regression:
+
+```text
+npm test -- [9 Task 7 route/detail/composer/i18n/App suites]
+PASS — 9 files, 106 tests
+
+npm run i18n:audit
+PASS — command exit 0; repository-wide missing-source report remains informational
+
+npm run i18n:quality
+PASS — no missing target-language rows; existing Japanese simplified-character findings remain reported
+
+npm run lint
+PASS — tsc -b --noEmit
+
+git diff --check
+PASS
+
+npm test
+PASS — 253 files, 1,539 tests
+
+npm run build
+PASS — existing SocialProfilePage import and large-chunk warnings only
+```
+
+During the first broader verification, TypeScript correctly rejected duplicate required fields in the test fixture and the nullable `targetIdentity` JSX value. Those test/type-boundary errors were corrected without changing scope; the focused and final suites above are the authoritative results.
+
+---
+
+## Follow-up review remediation — actor-bound transient focus request
+
+### Root cause
+
+The retained animation-frame cleanup prevented an old frame from firing, but the transient location state itself remained true. If the active actor changed before the frame, the effect could schedule a new frame for the same route under the new actor, incorrectly moving the caret to that actor's composer.
+
+### RED evidence
+
+The actor-switch reproduction was added before the production correction:
+
+```bash
+npm test -- src/features/social/pages/SocialPostDetailPage.runtime.test.tsx
+```
+
+Observed result:
+
+```text
+Test Files  1 failed (1)
+Tests       1 failed | 9 passed (10)
+exit code   1
+```
+
+The failing assertion showed one replacement frame remained queued after switching from `user:1` to `user:5`, proving that the request would have been retargeted.
+
+### GREEN implementation
+
+- The effect binds a pending transient request to `actorKey:postId` in `focusRequestTargetRef`, including while a post is still unavailable.
+- A later actor/post identity mismatch replace-clears the stale request while preserving pathname, search, and hash; it never focuses another actor's composer.
+- The frame callback rechecks that bound identity before focus. Normal requests remain one-shot: the state is replace-cleared only after the target composer is mounted and its `focus()` call has run.
+
+### GREEN verification
+
+```bash
+npm test -- src/features/social/components/SocialQuickReplyComposer.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/features/social/pages/SocialPostDetailPage.runtime.test.tsx src/features/social/route-pages.test.tsx src/i18n/translations.test.ts
+```
+
+```text
+Test Files  5 passed (5)
+Tests       70 passed (70)
+```
+
+```bash
+npm test -- src/features/social/paths.test.ts src/features/social/route-pages.test.tsx src/features/social/pages/SocialComposerPage.test.tsx src/features/social/components/UnifiedSocialUi.test.ts src/features/social/components/SocialQuickReplyComposer.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/features/social/pages/SocialPostDetailPage.runtime.test.tsx src/i18n/translations.test.ts src/App.test.tsx
+```
+
+```text
+Test Files  9 passed (9)
+Tests       107 passed (107)
+```
+
+---
+
+## Final review remediation — commit-phase composer remount race
+
+### Root cause
+
+Even after binding the request to the original actor/post, an obsolete animation-frame callback could run during a later React commit: a keyed quick-composer state remount can attach a new imperative handle before passive-effect cleanup cancels the old frame.
+
+### RED evidence
+
+The runtime harness now keys its mocked quick-composer state exactly as production does and invokes the retained old frame from a sibling layout effect during the actor-switch commit. With the mounted-composer identity check removed, the reproduction command failed:
+
+```bash
+npm test -- src/features/social/pages/SocialPostDetailPage.runtime.test.tsx
+```
+
+```text
+Test Files  1 failed (1)
+Tests       1 failed | 10 passed (11)
+exit code   1
+```
+
+The stale callback invoked the new composer's `focus()` once, proving the commit-before-passive-cleanup race.
+
+### GREEN implementation and verification
+
+- The detail page now records the identity of the currently mounted composer alongside its imperative ref.
+- The retained frame verifies both the original transient-request identity and the mounted-composer identity before calling `focus()`. A remounted actor/post therefore cannot receive the old request even if a cancelled frame fires late.
+
+```bash
+npm test -- src/features/social/components/SocialQuickReplyComposer.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/features/social/pages/SocialPostDetailPage.runtime.test.tsx src/features/social/route-pages.test.tsx src/i18n/translations.test.ts
+```
+
+```text
+Test Files  5 passed (5)
+Tests       71 passed (71)
+```
+
+### Completion verification after final typecheck correction
+
+```text
+npm test -- [9 Task 7 route/detail/composer/i18n/App suites]
+PASS — 9 files, 108 tests
+
+npm test
+PASS — 253 files, 1,541 tests
+
+npm run i18n:audit
+PASS — exit 0; existing repository-wide 4,692 missing-source findings are informational
+
+npm run i18n:quality
+PASS — no missing target-language rows; existing 462 Japanese simplified-character findings remain reported
+
+npm run lint
+PASS — tsc -b --noEmit
+
+git diff --check
+PASS
+
+npm run build
+PASS — existing SocialProfilePage chunking and large-chunk warnings only
+```

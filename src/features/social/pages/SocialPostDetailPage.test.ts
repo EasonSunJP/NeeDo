@@ -20,7 +20,8 @@ describe("SocialPostDetailPage quick reply integration", () => {
     const obsoleteReplyComposeCall = ["socialPaths.compose(scope, { reply", "ToPostId: post.id })"].join("");
 
     expect(source).toContain("<SocialQuickReplyComposer");
-    expect(source).toContain('targetIdentity={`${actorKey}:${post.id}`}');
+    expect(source).toContain("const composerTargetIdentity = post ? `${actorKey}:${post.id}` : \"\"");
+    expect(source).toContain("targetIdentity={composerTargetIdentity}");
     expect(source).not.toContain(["onOpen", "FullComposer"].join(""));
     expect(source).not.toContain(["isThread", "Page"].join(""));
     expect(source).not.toContain(obsoleteReplyComposeCall);

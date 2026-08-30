@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, PrimaryButton } from "../../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../../components/mobile/FloatingHomeHeader";
@@ -28,6 +28,23 @@ import { buildAbsoluteUrl, formatCount, formatRelativeTime, profileKey } from ".
 
 function shouldIgnoreCardNavigation(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("a,button,summary,details,input,textarea,video"));
+}
+
+function activatePostCard(
+  event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+  onActivate: () => void
+) {
+  if (shouldIgnoreCardNavigation(event.target)) {
+    return;
+  }
+
+  if ("key" in event && event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  onActivate();
 }
 
 function formatDetailDate(value: string) {
@@ -263,17 +280,14 @@ function DetailMiniPostCard({
 
   return (
     <article
+      aria-label={`查看动态：${author.displayName}`}
       className={cn(
         "cursor-pointer rounded-[24px] p-3.5 transition hover:bg-white/[0.06]",
         chrome === "plain" ? "bg-white/[0.03]" : "border border-white/12 bg-white/[0.04]"
       )}
-      onClick={(event) => {
-        if (shouldIgnoreCardNavigation(event.target)) {
-          return;
-        }
-
-        navigate(socialPaths.post(scope, post.id));
-      }}
+      onClick={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
+      onKeyDown={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
+      tabIndex={0}
     >
       {caption ? <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#d1ff4d]/84">{caption}</p> : null}
 
@@ -416,14 +430,11 @@ function ReplyListItem({
 
   return (
     <article
+      aria-label={`查看回复：${author.displayName}`}
       className="cursor-pointer rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.06]"
-      onClick={(event) => {
-        if (shouldIgnoreCardNavigation(event.target)) {
-          return;
-        }
-
-        navigate(socialPaths.post(scope, post.id));
-      }}
+      onClick={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
+      onKeyDown={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
+      tabIndex={0}
     >
       <div className="flex items-start gap-3">
         <Link className="shrink-0" to={socialPaths.profile(scope, author)}>
@@ -492,6 +503,14 @@ export function SocialPostDetailPage() {
   const relatedPosts = useMemo(() => (postId ? getRelatedPosts(postId).slice(0, 4) : []), [getRelatedPosts, postId]);
   const viewedRef = useRef<string | null>(null);
   const composerRef = useRef<SocialQuickReplyComposerHandle>(null);
+  const mountedComposerTargetRef = useRef<string | null>(null);
+  const focusRequestTargetRef = useRef<string | null>(null);
+  const routeTargetIdentity = postId ? `${actorKey}:${postId}` : "";
+  const composerTargetIdentity = post ? `${actorKey}:${post.id}` : "";
+  const composerRefCallback = useCallback((handle: SocialQuickReplyComposerHandle | null) => {
+    composerRef.current = handle;
+    mountedComposerTargetRef.current = handle ? composerTargetIdentity : null;
+  }, [composerTargetIdentity]);
   const focusReply = () => composerRef.current?.focus();
 
   useEffect(() => {
@@ -504,14 +523,50 @@ export function SocialPostDetailPage() {
   }, [incrementView, postId]);
 
   useEffect(() => {
-    if (location.state?.focusSocialReply !== true) return;
-    window.requestAnimationFrame(focusReply);
-    navigate({
-      pathname: location.pathname,
-      search: location.search,
-      hash: location.hash
-    }, { replace: true, state: null });
-  }, [location.hash, location.pathname, location.search, location.state, navigate]);
+    if (location.state?.focusSocialReply !== true) {
+      focusRequestTargetRef.current = null;
+      return undefined;
+    }
+
+    if (!routeTargetIdentity) {
+      return undefined;
+    }
+
+    if (focusRequestTargetRef.current === null) {
+      focusRequestTargetRef.current = routeTargetIdentity;
+    } else if (focusRequestTargetRef.current !== routeTargetIdentity) {
+      navigate({
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      }, { replace: true, state: null });
+      return undefined;
+    }
+
+    if (!post || !composerTargetIdentity || composerTargetIdentity !== focusRequestTargetRef.current || !composerRef.current) {
+      return undefined;
+    }
+
+    const requestTargetIdentity = focusRequestTargetRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      if (
+        focusRequestTargetRef.current !== requestTargetIdentity ||
+        mountedComposerTargetRef.current !== requestTargetIdentity ||
+        !composerRef.current
+      ) {
+        return;
+      }
+
+      composerRef.current.focus();
+      navigate({
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      }, { replace: true, state: null });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [composerTargetIdentity, location.hash, location.key, location.pathname, location.search, location.state, navigate, post, routeTargetIdentity]);
 
   if (!post) {
     return (
@@ -669,8 +724,8 @@ export function SocialPostDetailPage() {
           text,
           postType: "reply"
         })}
-        ref={composerRef}
-        targetIdentity={`${actorKey}:${post.id}`}
+        ref={composerRefCallback}
+        targetIdentity={composerTargetIdentity}
       />
     </div>
   );
