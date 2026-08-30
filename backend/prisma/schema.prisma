@@ -2048,17 +2048,21 @@ model SocialPost {
   content          String               @db.Text
   media            Json?
   visibility       SocialPostVisibility @default(PUBLIC)
+  replyToPostId Int? @map("reply_to_post_id")
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
   deletedAt        DateTime?            @map("deleted_at")
 
   author         User         @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
   authorIdentity UserIdentity @relation("SocialPostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+  replyToPost    SocialPost?  @relation("SocialPostReplies", fields: [replyToPostId], references: [id], onDelete: SetNull)
+  replies        SocialPost[] @relation("SocialPostReplies")
 
   @@index([authorUserId])
   @@index([authorIdentityId])
   @@index([authorIdentityId, deletedAt, createdAt])
   @@index([authorUserId, deletedAt, createdAt])
+  @@index([replyToPostId, deletedAt, createdAt], map: "social_posts_reply_parent_active_idx")
   @@index([visibility])
   @@index([createdAt])
   @@index([deletedAt])

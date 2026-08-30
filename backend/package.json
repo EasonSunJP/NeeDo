@@ -13,6 +13,7 @@
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" \"prisma/**/*.ts\" \"scripts/**/*.ts\"",
     "test": "jest --runInBand",
     "check:friendship-conversation-pairs": "tsx scripts/check-friendship-conversation-pairs.ts",
+    "check:social-reply-relations": "ENV_FILE=.env.dev tsx scripts/check-social-reply-relations.ts",
     "check:finance-request-flow": "node --import tsx scripts/check-finance-request-flow.ts",
     "check:master-data-flow": "tsx scripts/check-master-data-flow.ts",
     "check:schedule-flow": "tsx scripts/check-schedule-flow.ts",
