@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import source from "./AdminLayout.tsx?raw";
+import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
   it("does not render the obstructive bottom-left operations notice", () => {
@@ -26,5 +27,18 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain("客户档案");
     expect(source).not.toContain("正式客户");
     expect(source).not.toContain("搜索订单、客户");
+  });
+
+  it("selects the specific fee-rule item instead of the Affiliate task parent", () => {
+    expect(routeMatches(
+      { label: "联盟营销任务", to: "/admin/afirieito", icon: "联" },
+      "/admin/afirieito/fee-rules",
+      ""
+    )).toBe(false);
+    expect(routeMatches(
+      { label: "平台抽成规则", to: "/admin/afirieito/fee-rules", icon: "率" },
+      "/admin/afirieito/fee-rules",
+      ""
+    )).toBe(true);
   });
 });

@@ -105,6 +105,7 @@ const navSections: AdminNavSection[] = [
     badge: "TEST",
     items: [
       { label: "联盟营销任务", to: "/admin/afirieito", icon: "联", permission: "menu:backoffice-affiliate", children: ["任务审核", "预算状态", "范围快照"] },
+      { label: "平台抽成规则", to: "/admin/afirieito/fee-rules", icon: "率", permission: "page:backoffice-affiliate-fee-rule", children: ["全局费率", "店铺覆盖", "版本历史"] },
       { label: "联盟营销公告轮播", to: "/admin/afirieito/announcements/carousel", icon: "告", permission: "page:backoffice-affiliate-notice-carousel", children: ["正式公告", "五语言", "发布与回滚"] }
     ]
   },
@@ -165,7 +166,7 @@ function splitTo(to: string) {
   return { path, search: query ? `?${query}` : "" };
 }
 
-function routeMatches(item: AdminNavItem, pathname: string, search: string) {
+export function routeMatches(item: AdminNavItem, pathname: string, search: string) {
   const { path, search: itemSearch } = splitTo(item.to);
   const hasExactQueryRoute = Boolean(
     search &&
