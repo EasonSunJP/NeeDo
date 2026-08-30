@@ -23,6 +23,10 @@ const judgementIconUrl: Record<JudgementReactionValue, string> = {
   Thanks: thanksIcon
 };
 
+export function getJudgementReactionIconUrl(value: string): string | undefined {
+  return judgementIconUrl[value as JudgementReactionValue];
+}
+
 export function JudgementReactionIcon({
   value,
   className,

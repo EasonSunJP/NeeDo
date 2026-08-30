@@ -116,6 +116,7 @@ import {
   deriveCurrentUserReactionSlots,
   getImReactionCategory,
   getImReactionFailureMessage,
+  materializeImComposerDraft,
   sortImReactionSummaries,
   type ImReactionCategory
 } from "./reaction-policy";
@@ -4588,7 +4589,7 @@ export function ImConversationRoomPage({
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const reactionPendingKeysRef = useRef(new Set<string>());
   const [reactionPendingKeys, setReactionPendingKeys] = useState<Set<string>>(() => new Set());
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const textareaRef = useRef<HTMLDivElement | null>(null);
   const recordingRef = useRef<VoiceRecordingState>(idleVoiceRecordingState);
   const recordingGestureStartYRef = useRef<number | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
@@ -4720,15 +4721,6 @@ export function ImConversationRoomPage({
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mediaPreview]);
-
-  useEffect(() => {
-    if (!textareaRef.current) {
-      return;
-    }
-
-    textareaRef.current.style.height = "0px";
-    textareaRef.current.style.height = `${Math.min(132, textareaRef.current.scrollHeight)}px`;
-  }, [draft]);
 
   const updateListNearBottom = (element: HTMLDivElement) => {
     listWasNearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
@@ -5214,7 +5206,7 @@ export function ImConversationRoomPage({
   };
 
   const sendText = async () => {
-    const messageText = clampMessageText(draft.trim());
+    const messageText = clampMessageText(materializeImComposerDraft(draft).trim());
 
     if (!messageText && !pendingImage) {
       return;
@@ -5873,7 +5865,15 @@ export function ImConversationRoomPage({
         store.setDraft(conversationId, originalContent);
         window.requestAnimationFrame(() => {
           textareaRef.current?.focus();
-          textareaRef.current?.setSelectionRange(originalContent.length, originalContent.length);
+          const selection = window.getSelection();
+          const editor = textareaRef.current;
+          if (selection && editor) {
+            const range = document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
         });
       })
       .catch((error: unknown) => {
