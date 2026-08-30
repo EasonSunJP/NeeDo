@@ -18,7 +18,7 @@ import {
   type RealtimeParticipant,
 } from "../realtime/api";
 import type { ImApi } from "./contract";
-import { buildMessagePreview } from "./model";
+import { buildConversationLastMessageSummary } from "./model";
 import type {
   ContactRelation,
   Conversation,
@@ -423,6 +423,12 @@ function toConversation(
   const lastMessage = conversation.lastMessage
     ? toConversationMessage(conversation.lastMessage)
     : null;
+  const lastMessageSummary = buildConversationLastMessageSummary(
+    lastMessage ?? undefined,
+    String(currentUserId),
+    {},
+    conversation.updatedAt,
+  );
   const title =
     conversation.title?.trim() ||
     (isDirect ? otherParticipant?.username : undefined) ||
@@ -443,14 +449,11 @@ function toConversation(
       isDirect && otherParticipant
         ? String(otherParticipant.userId)
         : undefined,
-    lastMessageId: lastMessage?.id,
-    lastMessagePreview: lastMessage
-      ? buildMessagePreview(lastMessage, String(currentUserId), {})
-      : "",
-    lastMessageTime: lastMessage?.sentAt ?? conversation.updatedAt,
+    ...lastMessageSummary,
     unreadCount: conversation.unreadCount,
     isPinned: conversation.isPinned ?? false,
     isMuted: conversation.isMuted ?? false,
+    autoTranslateMessages: conversation.autoTranslateMessages ?? false,
     isDeleted: conversation.isHidden || undefined,
     privacyModeEnabled: conversation.privacyModeEnabled || undefined,
     hideMemberProfiles: conversation.hideMemberProfiles || undefined,
@@ -905,6 +908,13 @@ export function createFormalImApi({
       const conversation = await realtimeApi.updateConversationPreferences(
         toNumericId(conversationId),
         { isMuted },
+      );
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
+    async setConversationAutoTranslateMessages(conversationId: string, enabled: boolean) {
+      const conversation = await realtimeApi.updateConversationPreferences(
+        toNumericId(conversationId),
+        { autoTranslateMessages: enabled },
       );
       return { conversation: toConversation(conversation, currentUser.id) };
     },

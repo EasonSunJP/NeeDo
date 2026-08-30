@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DirectoryProfile, FriendRequest } from "./model";
 import {
   getFriendRequestLabel,
+  isActiveFriendRequest,
   resolveDirectoryProfileActions,
 } from "./pages";
 import {
@@ -105,6 +106,53 @@ describe("friend request presentation", () => {
         { ...profile, relationship: "self" },
         null,
         "1",
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps an active incoming request actionable over a stale friend relationship", () => {
+    expect(
+      resolveDirectoryProfileActions(
+        { ...profile, relationship: "friend" },
+        pendingRequest,
+        "2",
+        Date.parse("2026-08-31T00:00:00.000Z"),
+      ),
+    ).toEqual(["reject", "accept"]);
+  });
+
+  it("keeps an active outgoing request waiting over a stale friend relationship", () => {
+    expect(
+      resolveDirectoryProfileActions(
+        { ...profile, relationship: "friend" },
+        pendingRequest,
+        "1",
+        Date.parse("2026-08-31T00:00:00.000Z"),
+      ),
+    ).toEqual(["waiting"]);
+  });
+
+  it("keeps the current account actionless even when a pending request is present", () => {
+    expect(
+      resolveDirectoryProfileActions(
+        { ...profile, relationship: "self" },
+        pendingRequest,
+        "2",
+        Date.parse("2026-08-31T00:00:00.000Z"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not let an expired request override a real friend relationship", () => {
+    const nowMs = Date.parse(pendingRequest.expiresAt);
+
+    expect(isActiveFriendRequest(pendingRequest, nowMs)).toBe(false);
+    expect(
+      resolveDirectoryProfileActions(
+        { ...profile, relationship: "friend" },
+        pendingRequest,
+        "2",
+        nowMs,
       ),
     ).toEqual([]);
   });

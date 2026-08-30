@@ -275,4 +275,49 @@ describe("RealtimeRepository formal identity payloads", () => {
     });
     expect(result).toMatchObject({ id: 4056, isBlocked: true });
   });
+
+  it("updates auto translation only on the active identity participant row", async () => {
+    const createdAt = new Date("2026-08-31T00:00:00.000Z");
+    const participants = [
+      { id: 4101, identityId: 410, clearedThroughMessageId: null, createdAt },
+      { id: 4102, identityId: 411, clearedThroughMessageId: null, createdAt }
+    ];
+    const client = {
+      conversationParticipant: {
+        findFirst: jest.fn(async ({ where }: { where: { identityId: number } }) =>
+          participants.find((participant) => participant.identityId === where.identityId) ?? null
+        ),
+        update: jest.fn(async () => ({}))
+      }
+    } as unknown as PrismaClient;
+    const repository = new RealtimeRepository(client) as RealtimeRepository & {
+      getConversationForUser: jest.Mock;
+    };
+    repository.getConversationForUser = jest.fn(async () => null);
+
+    await repository.updateConversationPreferences({
+      conversationId: 91,
+      userId: 41,
+      identityId: 410,
+      autoTranslateMessages: true
+    });
+
+    expect(client.conversationParticipant.findFirst).toHaveBeenCalledWith({
+      where: {
+        conversationId: 91,
+        identityId: 410,
+        deletedAt: null,
+        conversation: { deletedAt: null }
+      },
+      select: { id: true, clearedThroughMessageId: true, createdAt: true }
+    });
+    expect(client.conversationParticipant.update).toHaveBeenCalledWith({
+      where: { id: 4101 },
+      data: { autoTranslateMessages: true, hiddenAt: null }
+    });
+    expect(client.conversationParticipant.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 4102 } })
+    );
+    expect(client.conversationParticipant.update).toHaveBeenCalledTimes(1);
+  });
 });

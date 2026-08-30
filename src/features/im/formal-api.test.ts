@@ -111,7 +111,11 @@ describe("formal IM adapter", () => {
       contactUserId: "201",
       title: "sim-technician-001",
       lastMessagePreview: "明天下午三点可以为您服务。",
+      lastMessageType: "text",
+      lastMessageStatus: "sent",
+      lastMessagePreviewProvenance: "user-text",
       unreadCount: 2,
+      autoTranslateMessages: false,
     });
     expect(bootstrap.contacts[0]).toMatchObject({
       id: "31",
@@ -298,6 +302,24 @@ describe("formal IM adapter", () => {
       "92": "音频",
       "93": "视频",
       "94": "报价单.pdf",
+    });
+    expect(
+      Object.fromEntries(
+        bootstrap.conversations.map((conversation) => [
+          conversation.id,
+          [
+            conversation.lastMessageType,
+            conversation.lastMessageStatus,
+            conversation.lastMessagePreviewProvenance,
+            conversation.lastMessagePreviewDynamicValue,
+          ],
+        ]),
+      ),
+    ).toEqual({
+      "91": ["image", "sent", "ui-label", undefined],
+      "92": ["voice", "sent", "ui-label", undefined],
+      "93": ["video", "sent", "ui-label", undefined],
+      "94": ["file", "sent", "dynamic-value", "报价单.pdf"],
     });
     expect(Object.values(previews).join(" ")).not.toContain("/media/im/");
   });
@@ -869,12 +891,20 @@ describe("formal IM adapter", () => {
       unreadCount: 0,
       isPinned: false,
       isMuted: false,
+      autoTranslateMessages: false,
       isHidden: false,
       createdAt: now,
       updatedAt: now,
     };
     const updateConversationPreferences = vi.fn(
-      async (_conversationId: number, preferences: { isMuted?: boolean; isPinned?: boolean }) => ({
+      async (
+        _conversationId: number,
+        preferences: {
+          autoTranslateMessages?: boolean;
+          isMuted?: boolean;
+          isPinned?: boolean;
+        },
+      ) => ({
         ...conversation,
         ...preferences,
       }),
@@ -909,6 +939,11 @@ describe("formal IM adapter", () => {
     await expect(api.muteConversation("91", true)).resolves.toMatchObject({
       conversation: { id: "91", isMuted: true },
     });
+    await expect(
+      api.setConversationAutoTranslateMessages("91", true),
+    ).resolves.toMatchObject({
+      conversation: { id: "91", autoTranslateMessages: true },
+    });
     await expect(api.markConversationRead("91", true)).resolves.toMatchObject({
       conversation: { id: "91", unreadCount: 1 },
     });
@@ -918,6 +953,9 @@ describe("formal IM adapter", () => {
 
     expect(updateConversationPreferences).toHaveBeenNthCalledWith(1, 91, { isPinned: true });
     expect(updateConversationPreferences).toHaveBeenNthCalledWith(2, 91, { isMuted: true });
+    expect(updateConversationPreferences).toHaveBeenNthCalledWith(3, 91, {
+      autoTranslateMessages: true,
+    });
     expect(markConversationUnread).toHaveBeenCalledWith(91);
     expect(deleteConversation).toHaveBeenCalledWith(91);
   });

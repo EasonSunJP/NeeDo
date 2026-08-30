@@ -72,6 +72,10 @@ export type ImApi = {
   ): Promise<{ conversationId: string; dissolved: true }>;
   pinConversation(conversationId: string, isPinned: boolean): Promise<{ conversation: Conversation }>;
   muteConversation(conversationId: string, isMuted: boolean): Promise<{ conversation: Conversation }>;
+  setConversationAutoTranslateMessages(
+    conversationId: string,
+    enabled: boolean,
+  ): Promise<{ conversation: Conversation }>;
   markConversationRead(conversationId: string, markUnread?: boolean): Promise<{ conversation: Conversation }>;
   deleteConversation(conversationId: string): Promise<{ conversation: Conversation }>;
   clearConversation(conversationId: string): Promise<{ conversation: Conversation }>;

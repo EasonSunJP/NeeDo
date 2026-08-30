@@ -4,7 +4,9 @@ import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider, I18nRuntime } from "../../i18n/I18nProvider";
 import { ImChatComposer, ImReturnToLatestButton } from "./components";
 import type { ImChatComposerPanel } from "./components";
 import { getRecentImReactionSnapshot } from "./reaction-catalog";
@@ -39,7 +41,82 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
   );
 }
 
+function RuntimeComposerHarness({ onSend }: { onSend: (draft: string) => void }) {
+  const [draft, setDraft] = useState("");
+
+  return (
+    <ImChatComposer
+      draft={draft}
+      isNight
+      onDraftChange={setDraft}
+      onPanelChange={vi.fn()}
+      onSend={() => onSend(draft)}
+      panel={null}
+      submitOnEnter
+    />
+  );
+}
+
+async function waitForRuntimeTranslation() {
+  await new Promise<void>((resolveFrame) => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolveFrame()));
+  });
+}
+
 describe("ImChatComposer", () => {
+  it("keeps the authoritative composer draft raw while localizing its placeholder", async () => {
+    window.localStorage.setItem("needo.language", "ja");
+    window.localStorage.setItem("needo.language.mode", "manual");
+    const onSend = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    let actualVisualPlaceholder: string | null | undefined;
+    let actualAriaPlaceholder: string | null | undefined;
+    let actualDraftAfterRuntime: string | null | undefined;
+
+    try {
+      await act(async () => {
+        root.render(
+          <MemoryRouter>
+            <I18nProvider>
+              <I18nRuntime>
+                <RuntimeComposerHarness onSend={onSend} />
+              </I18nRuntime>
+            </I18nProvider>
+          </MemoryRouter>
+        );
+      });
+      await act(waitForRuntimeTranslation);
+
+      const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+      actualVisualPlaceholder = editor.parentElement?.querySelector("span")?.textContent;
+      actualAriaPlaceholder = editor.getAttribute("aria-placeholder");
+
+      await act(async () => {
+        editor.textContent = "测试测试";
+        editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      });
+      await act(waitForRuntimeTranslation);
+      actualDraftAfterRuntime = editor.textContent;
+
+      await act(async () => {
+        editor.append(document.createTextNode("!"));
+        editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      });
+      await act(async () => {
+        editor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }));
+      });
+    } finally {
+      await act(async () => root.unmount());
+    }
+
+    expect.soft(actualDraftAfterRuntime).toBe("测试测试");
+    expect.soft(onSend).toHaveBeenCalledWith("测试测试!");
+    expect.soft(actualVisualPlaceholder).toBe("メッセージを送信");
+    expect.soft(actualAriaPlaceholder).toBe("メッセージを送信");
+  });
+
   it("keeps selected judgement replies as SVG inside the composer while ordinary emoji stay Unicode", async () => {
     const container = document.createElement("div");
     document.body.append(container);

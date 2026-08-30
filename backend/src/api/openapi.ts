@@ -1549,6 +1549,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "participants",
           "lastMessage",
           "unreadCount",
+          "isPinned",
+          "isMuted",
+          "autoTranslateMessages",
           "privacyModeEnabled",
           "hideMemberProfiles",
           "disappearingTtlSeconds",
@@ -1574,6 +1577,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             anyOf: [{ $ref: "#/components/schemas/RealtimeMessage" }, { type: "null" }]
           },
           unreadCount: { type: "integer" },
+          isPinned: { type: "boolean" },
+          isMuted: { type: "boolean" },
+          autoTranslateMessages: { type: "boolean", default: false },
           privacyModeEnabled: { type: "boolean" },
           hideMemberProfiles: { type: "boolean" },
           disappearingTtlSeconds: {
@@ -13786,7 +13792,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/im/conversations/{conversationId}/preferences`]: {
       patch: {
         tags: ["Step 13 Realtime"],
-        summary: "Update the current participant's pin or mute preferences",
+        summary: "Update the current participant's conversation preferences",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -13804,7 +13810,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 properties: {
                   isPinned: { type: "boolean" },
-                  isMuted: { type: "boolean" }
+                  isMuted: { type: "boolean" },
+                  autoTranslateMessages: { type: "boolean", default: false }
                 },
                 minProperties: 1
               }

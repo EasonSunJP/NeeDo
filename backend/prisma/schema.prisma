@@ -1923,6 +1923,7 @@ model ConversationParticipant {
   unreadCount             Int       @default(0) @map("unread_count")
   isPinned                Boolean   @default(false) @map("is_pinned")
   isMuted                 Boolean   @default(false) @map("is_muted")
+  autoTranslateMessages Boolean @default(false) @map("auto_translate_messages")
   hiddenAt                DateTime? @map("hidden_at")
   clearedThroughMessageId Int?      @map("cleared_through_message_id")
   lastReadMessageId       Int?      @map("last_read_message_id")

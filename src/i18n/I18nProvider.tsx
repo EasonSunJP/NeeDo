@@ -369,3 +369,7 @@ export function useOptionalI18n() {
     setLanguage: noopSetLanguage
   };
 }
+
+export function useProvidedI18n() {
+  return useContext(I18nContext);
+}

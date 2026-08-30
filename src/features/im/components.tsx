@@ -24,6 +24,8 @@ import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
@@ -40,10 +42,15 @@ import {
   getImReactionCategory,
   materializeImComposerDraft,
   parseImComposerDraft,
-  resolveImMessageRichText,
   type ImReactionCategory
 } from "./reaction-policy";
+import { getImMessageDisplayParts, type ImMessageTranslationOptions } from "./message-translation";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
+
+const defaultImMessageTranslation: ImMessageTranslationOptions = {
+  enabled: false,
+  language: "zh"
+};
 
 export function ImIcon({
   name,
@@ -569,6 +576,8 @@ function ImComposerRichInput({
   onEnterSubmit?: () => void;
   placeholder: string;
 }) {
+  const i18n = useProvidedI18n();
+  const localizedPlaceholder = i18n ? translateText(placeholder, i18n.language) : placeholder;
   const editorRef = useRef<HTMLDivElement | null>(null);
   const setEditorRef = useCallback((element: HTMLDivElement | null) => {
     editorRef.current = element;
@@ -608,17 +617,21 @@ function ImComposerRichInput({
   return (
     <div className="relative min-h-[24px]">
       {!draft ? (
-        <span className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]">
-          {placeholder}
+        <span
+          className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]"
+          data-no-i18n="true"
+        >
+          {localizedPlaceholder}
         </span>
       ) : null}
       <div
         aria-disabled={disabled}
         aria-multiline="true"
-        aria-placeholder={placeholder}
+        aria-placeholder={localizedPlaceholder}
         className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
+        data-no-i18n="true"
         onInput={(event) => onDraftChange(readImComposerValue(event.currentTarget))}
         onKeyDown={(event) => {
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || !onEnterSubmit) {
@@ -2663,11 +2676,13 @@ export function ToggleRow({
   title,
   caption,
   checked,
+  disabled = false,
   onChange
 }: {
   title: string;
   caption?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
   return (
@@ -2676,7 +2691,7 @@ export function ToggleRow({
         <div className="text-[15px] font-black text-[color:var(--client-text)]">{title}</div>
         {caption ? <p className="mt-1 text-xs text-[color:var(--client-muted)]">{caption}</p> : null}
       </div>
-      <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} size="md" />
+      <ToggleSwitch ariaLabel={title} checked={checked} disabled={disabled} onChange={onChange} size="md" />
     </div>
   );
 }
@@ -2808,14 +2823,16 @@ function ImRichMessageText({
   className,
   content,
   richText,
+  translation = defaultImMessageTranslation,
   selectable = false,
 }: {
   className?: string;
   content: string;
   richText?: MessageExt["richText"];
+  translation?: ImMessageTranslationOptions;
   selectable?: boolean;
 }) {
-  const parts = resolveImMessageRichText(content, richText);
+  const parts = getImMessageDisplayParts(content, richText, translation);
   const hasJudgement = parts.some((part) => part.type === "judgement");
 
   return (
@@ -2823,6 +2840,7 @@ function ImRichMessageText({
       className={className}
       data-im-message-rich-text={hasJudgement ? "true" : undefined}
       data-im-message-selectable-text={selectable ? "true" : undefined}
+      data-no-i18n="true"
     >
       {parts.map((part, index) =>
         part.type === "judgement" ? (
@@ -2843,12 +2861,28 @@ function ImRichMessageText({
 
 export function ImQuotedMessagePreview({
   message,
-  className
+  className,
+  translation = defaultImMessageTranslation
 }: {
   message: ConversationMessage;
   className?: string;
+  translation?: ImMessageTranslationOptions;
 }) {
   const caption = message.ext?.caption?.trim() ?? "";
+  const fileName = message.ext?.fileName ?? "";
+  const hasFileName = Boolean(fileName.trim());
+
+  if (message.type === "system" || message.type === "recalled" || message.status === "recalled") {
+    const label = message.type === "system"
+      ? message.content
+      : previewLabel("recalled");
+
+    return (
+      <p className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}>
+        {label}
+      </p>
+    );
+  }
 
   if (message.type === "image" || message.type === "video") {
     const thumbnailUrl = message.ext?.thumbnailUrl ?? (message.type === "image" ? message.ext?.url ?? message.content : undefined);
@@ -2877,6 +2911,7 @@ export function ImQuotedMessagePreview({
               className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
               content={caption}
               richText={message.ext?.captionRichText}
+              translation={translation}
             />
           </div>
         ) : null}
@@ -2885,17 +2920,31 @@ export function ImQuotedMessagePreview({
   }
 
   if (message.type === "voice" || message.type === "file") {
-    const label = caption || (message.type === "file" ? message.ext?.fileName?.trim() ?? "" : "");
+    const hasLabel = Boolean(caption) || message.type === "file";
 
     return (
       <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-black/10">
           <ImIcon className="h-5 w-5 opacity-80" name={message.type === "voice" ? "mic" : "file"} />
         </span>
-        {label ? (
-          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
-            {label}
-          </p>
+        {hasLabel ? (
+          <div data-im-quoted-media-caption="true">
+            {caption ? (
+              <ImRichMessageText
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                content={caption}
+                richText={message.ext?.captionRichText}
+                translation={translation}
+              />
+            ) : (
+              <p
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                data-no-i18n={hasFileName ? "true" : undefined}
+              >
+                {hasFileName ? fileName : previewLabel("file")}
+              </p>
+            )}
+          </div>
         ) : null}
       </div>
     );
@@ -2906,6 +2955,7 @@ export function ImQuotedMessagePreview({
       className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}
       content={message.content || previewLabel(message.type)}
       richText={message.ext?.richText}
+      translation={translation}
     />
   );
 }
@@ -2926,7 +2976,8 @@ export function MessageBubble({
   onPreviewMedia,
   onOpenContact,
   renderContactCard,
-  renderContactCardAction
+  renderContactCardAction,
+  translation = defaultImMessageTranslation
 }: {
   message: ConversationMessage;
   isMine: boolean;
@@ -2944,6 +2995,7 @@ export function MessageBubble({
   onOpenContact?: (userId: string) => void;
   renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
+  translation?: ImMessageTranslationOptions;
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const disappearing = message.ext?.disappearing;
@@ -2964,6 +3016,7 @@ export function MessageBubble({
           )}
           content={message.content}
           richText={message.ext?.richText}
+          translation={translation}
           selectable
         />
       );
@@ -2985,6 +3038,7 @@ export function MessageBubble({
               className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
               content={message.ext.caption}
               richText={message.ext.captionRichText}
+              translation={translation}
               selectable
             />
           ) : null}
@@ -3011,13 +3065,21 @@ export function MessageBubble({
     }
 
     if (message.type === "file") {
+      const fileName = message.ext?.fileName ?? "";
+      const hasFileName = Boolean(fileName.trim());
+
       return (
         <div className="flex min-w-[220px] items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-black/6">
               <ImIcon name="file" />
-            </span>
+          </span>
           <div className="min-w-0">
-            <p className="truncate text-[14px] font-medium">{message.ext?.fileName ?? "未命名文件"}</p>
+            <p
+              className="truncate text-[14px] font-medium"
+              data-no-i18n={hasFileName ? "true" : undefined}
+            >
+              {hasFileName ? fileName : previewLabel("file")}
+            </p>
             <p className={cn("mt-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{formatSize(message.ext?.fileSize)}</p>
           </div>
         </div>
@@ -3162,7 +3224,7 @@ export function MessageBubble({
         )}
         <div className="min-w-0 flex-1">
           <p className="line-clamp-1 text-[13px] font-black">{quotedAuthor}</p>
-          <ImQuotedMessagePreview message={quotedMessage} />
+          <ImQuotedMessagePreview message={quotedMessage} translation={translation} />
         </div>
       </div>
     </div>
