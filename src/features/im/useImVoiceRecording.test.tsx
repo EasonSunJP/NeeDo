@@ -108,6 +108,7 @@ let audioPlay: ReturnType<typeof vi.spyOn>;
 let audioPause: ReturnType<typeof vi.spyOn>;
 let createObjectURL: ReturnType<typeof vi.fn>;
 let revokeObjectURL: ReturnType<typeof vi.fn>;
+let originalReadyStateDescriptor: PropertyDescriptor | undefined;
 
 const webmChunk = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], {
   type: "audio/webm;codecs=opus",
@@ -159,6 +160,14 @@ describe("useImVoiceRecording", () => {
     revokeObjectURL = vi.fn();
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    originalReadyStateDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLMediaElement.prototype,
+      "readyState",
+    );
+    Object.defineProperty(HTMLMediaElement.prototype, "readyState", {
+      configurable: true,
+      get: () => HTMLMediaElement.HAVE_CURRENT_DATA,
+    });
     audioPlay = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function () {
       expectAudibleOutput(this);
       return Promise.resolve();
@@ -177,6 +186,9 @@ describe("useImVoiceRecording", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    if (originalReadyStateDescriptor) {
+      Object.defineProperty(HTMLMediaElement.prototype, "readyState", originalReadyStateDescriptor);
+    }
   });
 
   it("starts on click and counts down from 59", async () => {
