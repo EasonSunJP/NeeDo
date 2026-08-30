@@ -80,15 +80,17 @@ Create a test that reads the migration, schema, checker, and package scripts:
 
 ```ts
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 
-const migration = readFileSync(
-  new URL("../prisma/migrations/20260831000000_social_reply_relation/migration.sql", import.meta.url),
-  "utf8"
-);
-const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
-const checker = readFileSync(new URL("../scripts/check-social-reply-relations.ts", import.meta.url), "utf8");
-const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const backendRoot = process.cwd();
+const migration = readFileSync(resolve(
+  backendRoot,
+  "prisma/migrations/20260831000000_social_reply_relation/migration.sql"
+), "utf8");
+const schema = readFileSync(resolve(backendRoot, "prisma/schema.prisma"), "utf8");
+const checker = readFileSync(resolve(backendRoot, "scripts/check-social-reply-relations.ts"), "utf8");
+const packageJson = JSON.parse(readFileSync(resolve(backendRoot, "package.json"), "utf8"));
 
 describe("Social reply relation migration", () => {
   it("adds, backfills, indexes, and constrains the reply parent", () => {
@@ -167,7 +169,7 @@ type ReplySnapshot = {
   validLegacyReplies: number;
 };
 
-const snapshotPath = new URL("../.data/social-reply-relation-preflight.json", import.meta.url);
+const snapshotPath = resolve(process.cwd(), ".data/social-reply-relation-preflight.json");
 ```
 
 Use fixed tagged queries for these values:
@@ -983,7 +985,19 @@ expect(onSubmit).toHaveBeenCalledWith({
 });
 ```
 
-Add tests for upload failure retention, native disabled controls, photo input `capture="environment"`, location selection, and draft isolation across actor/post keys.
+In the same test file, assert each required state explicitly:
+
+```ts
+expect(screen.getByLabelText("拍照")).toHaveAttribute("capture", "environment");
+expect(screen.getByRole("textbox")).toBeDisabled();
+expect(screen.getByRole("button", { name: "打开表情" })).toBeDisabled();
+expect(screen.getByRole("button", { name: "打开更多功能" })).toBeDisabled();
+expect(screen.getByText("上传失败")).toBeVisible();
+expect(screen.getByRole("button", { name: "重试图片" })).toBeEnabled();
+expect(screen.getByText("东京 / 新宿区 / 新宿")).toBeVisible();
+```
+
+Rerender first with another `targetIdentity`, then with another `postId`, and assert the prior text, preview URL, upload error, and selected location are absent in both states.
 
 - [ ] **Step 2: Run quick-composer tests and verify RED**
 
@@ -1070,9 +1084,9 @@ onSubmit={(input) => createPost({
 })}
 ```
 
-- [ ] **Step 8: Add i18n entries and run targeted tests**
+- [ ] **Step 8: Complete i18n coverage and run targeted tests**
 
-Add five-language entries for `相册`, `拍照`, `位置`, upload pending/failure, remove image, retry image, selected location, and remove location. Then run:
+Reuse the existing five-language entries for `相册`, `拍照`, and `位置`. Add only the missing five-language keys for upload pending/failure, remove image, retry image, selected location, and remove location; add a translation test that enumerates those keys and asserts non-empty Simplified Chinese, Traditional Chinese, Japanese, English, and Korean values. Then run:
 
 ```bash
 npm test -- src/features/social/composer-location.test.ts src/features/social/components/SocialQuickReplyComposer.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/i18n/translations.test.ts
