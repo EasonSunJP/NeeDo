@@ -63,6 +63,50 @@ describe("RealtimeService fuzzy search", () => {
     expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 410, 167, 1670);
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
+
+  it("loads the authenticated account as a read-only directory profile in the active identity", async () => {
+    const profile = {
+      user: { userId: 41, needoId: "u0000000041", username: "Requester", avatarUrl: null },
+      identityCard: {
+        entityType: "technician" as const,
+        profileId: 741,
+        displayName: "Requester Technician",
+        identityLabel: "INDEPENDENT",
+        verified: true,
+        creditValue: null,
+        creditReviewCount: 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: "东京",
+        serviceArea: "新宿区",
+        yearsExperience: 4,
+        bio: null
+      },
+      relationship: "self" as const,
+      contactId: null,
+      friendRequest: null
+    };
+    const repository = {
+      findCanonicalIdentityIdForUser: jest.fn(),
+      getDirectoryProfile: jest.fn(async () => profile)
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(
+      service.getDirectoryProfile(
+        { userId: 41, currentIdentityId: 410 } as never,
+        41
+      )
+    ).resolves.toBe(profile);
+
+    expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 410, 41, 410);
+    expect(repository.findCanonicalIdentityIdForUser).not.toHaveBeenCalled();
+  });
 });
 
 describe("RealtimeService friend request lifecycle", () => {
