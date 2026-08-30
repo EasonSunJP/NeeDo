@@ -44,26 +44,78 @@ describe("UnifiedChatHomePage spacing", () => {
     expect(componentSource).toContain("compactHeader ? unifiedChatHomeCompactContentClassName : unifiedChatHomeContentClassName");
   });
 
-  it("protects only message-derived preview text from runtime i18n", async () => {
+  it("protects user and dynamic values while leaving UI labels on runtime i18n", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
 
     await act(async () => {
       root.render(createElement(UnifiedConversationPreviewText, {
-        preview: { text: "系统消息 语音通话 changed left", userGenerated: true }
+        preview: {
+          text: "系统消息 语音通话 changed left",
+          translationEligible: true,
+          runtimeI18nProtected: true,
+        }
       }));
     });
 
-    expect(container.querySelector("p")?.getAttribute("data-no-i18n")).toBe("true");
+    expect(container.querySelector("p [data-no-i18n]")?.textContent).toBe("系统消息 语音通话 changed left");
 
     await act(async () => {
       root.render(createElement(UnifiedConversationPreviewText, {
-        preview: { text: "报价单.pdf", userGenerated: false }
+        preview: {
+          text: "报价单.pdf",
+          translationEligible: false,
+          runtimeI18nProtected: true,
+          dynamicValue: "报价单.pdf",
+        }
       }));
     });
 
-    expect(container.querySelector("p")?.hasAttribute("data-no-i18n")).toBe(false);
+    expect(container.querySelector("p [data-no-i18n]")?.textContent).toBe("报价单.pdf");
+
+    await act(async () => {
+      root.render(createElement(UnifiedConversationPreviewText, {
+        preview: {
+          text: "[名片] 系统消息",
+          translationEligible: false,
+          runtimeI18nProtected: true,
+          uiLabel: "[名片]",
+          dynamicValue: "系统消息",
+        }
+      }));
+    });
+
+    expect(container.querySelector("p")?.childNodes[0]?.textContent).toBe("[名片]");
+    expect(container.querySelector("p [data-no-i18n]")?.textContent).toBe("系统消息");
+    expect(container.querySelector("p")?.getAttribute("data-no-i18n")).toBeNull();
+
+    await act(async () => {
+      root.render(createElement(UnifiedConversationPreviewText, {
+        preview: {
+          text: "图片",
+          translationEligible: false,
+          runtimeI18nProtected: false,
+        }
+      }));
+    });
+
+    expect(container.querySelector("p [data-no-i18n]")).toBeNull();
+
+    await act(async () => {
+      root.render(createElement(UnifiedConversationPreviewText, {
+        conversationType: "system",
+        preview: {
+          text: "[名片] 系统联系人",
+          translationEligible: false,
+          runtimeI18nProtected: false,
+          uiLabel: "[名片]",
+          dynamicValue: "系统联系人",
+        }
+      }));
+    });
+
+    expect(container.querySelector("p [data-no-i18n]")).toBeNull();
     await act(async () => root.unmount());
   });
 });

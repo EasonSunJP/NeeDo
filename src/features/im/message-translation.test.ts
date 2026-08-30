@@ -4,7 +4,8 @@ import {
   getImMessageDisplayParts,
   getImMessageDisplayText,
   getImPreviewDisplayText,
-  isImUserGeneratedConversationPreview
+  isImConversationPreviewRuntimeProtected,
+  isImConversationPreviewTranslationEligible,
 } from "./message-translation";
 import type { ConversationMessage, MessageExt } from "./model";
 
@@ -64,43 +65,65 @@ describe("IM message display translation", () => {
     })).toBe("テストテスト");
   });
 
-  it("uses authoritative message type instead of text patterns for preview provenance", () => {
-    expect(isImUserGeneratedConversationPreview({
-      lastMessageType: "text",
+  it("uses authoritative provenance and explicitly excludes system conversations from translation", () => {
+    expect(isImConversationPreviewTranslationEligible({
+      type: "single",
+      lastMessagePreviewProvenance: "user-text",
       lastMessageStatus: "sent",
     })).toBe(true);
-    expect(isImUserGeneratedConversationPreview({
-      lastMessageType: "text",
+    expect(isImConversationPreviewTranslationEligible({
+      type: "system",
+      lastMessagePreviewProvenance: "user-text",
       lastMessageStatus: "sending",
-    })).toBe(true);
-    expect(isImUserGeneratedConversationPreview({
-      lastMessageType: "text",
+    })).toBe(false);
+    expect(isImConversationPreviewTranslationEligible({
+      type: "single",
+      lastMessagePreviewProvenance: "user-text",
       lastMessageStatus: "recalled",
     })).toBe(false);
   });
 
   it.each([
-    "image",
-    "video",
-    "voice",
-    "file",
-    "contact-card",
-    "service-card",
-    "schedule-invite",
-    "system",
-    "recalled",
-  ] as const)("keeps an authoritative %s preview outside user-text translation", (lastMessageType) => {
-    expect(isImUserGeneratedConversationPreview({
-      lastMessageType,
-      lastMessageStatus: lastMessageType === "recalled" ? "recalled" : "sent",
+    "dynamic-value",
+    "ui-label",
+    "ui-label-with-dynamic-value",
+  ] as const)("keeps authoritative %s previews outside automatic translation", (lastMessagePreviewProvenance) => {
+    expect(isImConversationPreviewTranslationEligible({
+      type: "single",
+      lastMessagePreviewProvenance,
+      lastMessageStatus: "sent",
+    })).toBe(false);
+  });
+
+  it("separates runtime i18n protection from automatic translation eligibility", () => {
+    expect(isImConversationPreviewRuntimeProtected({
+      type: "single",
+      lastMessagePreviewProvenance: "dynamic-value",
+      lastMessageStatus: "sent",
+    })).toBe(true);
+    expect(isImConversationPreviewRuntimeProtected({
+      type: "single",
+      lastMessagePreviewProvenance: "ui-label-with-dynamic-value",
+      lastMessageStatus: "sent",
+    })).toBe(true);
+    expect(isImConversationPreviewRuntimeProtected({
+      type: "single",
+      lastMessagePreviewProvenance: "ui-label",
+      lastMessageStatus: "sent",
+    })).toBe(false);
+    expect(isImConversationPreviewRuntimeProtected({
+      type: "system",
+      lastMessagePreviewProvenance: "dynamic-value",
+      lastMessageStatus: "sent",
     })).toBe(false);
   });
 
   it("does not demote genuine user text that contains metadata-looking words", () => {
     const content = "系统消息 语音通话 changed left";
 
-    expect(isImUserGeneratedConversationPreview({
-      lastMessageType: "text",
+    expect(isImConversationPreviewTranslationEligible({
+      type: "single",
+      lastMessagePreviewProvenance: "user-text",
       lastMessageStatus: "sent",
     })).toBe(true);
     expect(getImPreviewDisplayText(content, {

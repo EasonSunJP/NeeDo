@@ -158,9 +158,8 @@ describe("IM automatic translation display wiring", () => {
     expect(roomSource).toContain("enabled: conversation?.autoTranslateMessages ?? false");
     expect(roomSource).toContain("language");
     expect(roomSource).toContain("translation={messageTranslation}");
-    expect(roomSource).toContain("getImMessageDisplayText(");
-    expect(roomSource).toContain('message.status !== "recalled"');
-    expect(roomSource).toContain('data-no-i18n={userGeneratedPreview ? "true" : undefined}');
+    expect(roomSource).toContain("buildMessageDisplayPreview(");
+    expect(roomSource).toContain("ImRuntimeI18nPreviewText");
   });
 
   it("translates only non-draft conversation previews at the page boundary", () => {
@@ -171,7 +170,9 @@ describe("IM automatic translation display wiring", () => {
     expect(source).toContain("getImPreviewDisplayText(");
     expect(source).toContain("conversation.autoTranslateMessages");
     expect(source).toContain("preview.isDraft");
-    expect(source).toContain("isImUserGeneratedConversationPreview(conversation)");
+    expect(source).toContain("isImConversationPreviewTranslationEligible(conversation)");
+    expect(source).toContain("isImConversationPreviewRuntimeProtected(conversation)");
+    expect(source).toContain('conversation.type !== "system"');
     expect(source).not.toContain("isImUserGeneratedPreviewText");
     expect(listSource).toContain("buildConversationDisplayPreview(conversation, language)");
   });
@@ -182,12 +183,21 @@ describe("IM automatic translation display wiring", () => {
     const searchSource = source.slice(start, end);
 
     expect(searchSource).toContain("message.conversationId");
-    expect(searchSource).toContain("autoTranslateMessages");
-    expect(searchSource).toContain('(message.type === "text" || message.type === "emoji")');
-    expect(searchSource).toContain("getImMessageDisplayText(");
-    expect(searchSource).toContain("buildMessagePreview(message");
-    expect(searchSource).toContain('data-no-i18n={userGenerated ? "true" : undefined}');
+    expect(searchSource).toContain("buildMessageDisplayPreview(");
+    expect(searchSource).toContain("ImRuntimeI18nPreviewText");
     expect(searchSource).toContain("store.search(deferredQuery, conversationId)");
+  });
+
+  it("uses the same authoritative structured preview for pinned messages", () => {
+    const start = source.indexOf("export function ImConversationRoomPage");
+    const end = source.indexOf("export function ImConversationInfoPage", start);
+    const roomSource = source.slice(start, end);
+    const pinnedStart = roomSource.indexOf("{pinnedMessages.map((message) => {");
+    const pinnedEnd = roomSource.indexOf("})}", pinnedStart);
+    const pinnedSource = roomSource.slice(pinnedStart, pinnedEnd);
+
+    expect(pinnedSource).toContain("buildMessageDisplayPreview(");
+    expect(pinnedSource).toContain("ImRuntimeI18nPreviewText");
   });
 
   it("copies displayed text while forward and recall continue to use the stored message", () => {

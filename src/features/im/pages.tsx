@@ -100,8 +100,10 @@ import {
   UnifiedChatHomePage,
   UnifiedConversationItem,
   UnifiedConversationList,
+  ImRuntimeI18nPreviewText,
   UnifiedPinnedConversationDivider,
-  UnifiedPinnedConversationToggle
+  UnifiedPinnedConversationToggle,
+  type ImRuntimeI18nPreview,
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
@@ -110,7 +112,8 @@ import {
   getImMessageCopyText,
   getImMessageDisplayText,
   getImPreviewDisplayText,
-  isImUserGeneratedConversationPreview,
+  isImConversationPreviewRuntimeProtected,
+  isImConversationPreviewTranslationEligible,
 } from "./message-translation";
 import {
   FriendDeletionConfirmDialog,
@@ -129,7 +132,7 @@ import {
 import {
   buildContactSections,
   buildConversationRowPreview,
-  buildMessagePreview,
+  buildMessagePreviewDescriptor,
   buildMediaBuckets,
   buildTimeSeparatedMessages,
   formatConversationTime,
@@ -1170,22 +1173,86 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
 function buildConversationDisplayPreview(
   conversation: Conversation,
   language: ReturnType<typeof useI18n>["language"],
-) {
+): ImRuntimeI18nPreview {
   const preview = buildConversationRowPreview(conversation);
-  const userGenerated = !preview.isDraft
-    && !conversation.privacyModeEnabled
-    && Boolean(conversation.lastMessagePreview)
-    && isImUserGeneratedConversationPreview(conversation);
+
+  if (preview.isDraft) {
+    return {
+      ...preview,
+      translationEligible: false,
+      runtimeI18nProtected: true,
+    };
+  }
+
+  const hasVisibleLastMessage = !conversation.privacyModeEnabled
+    && Boolean(conversation.lastMessagePreview);
+  const translationEligible = conversation.type !== "system"
+    && hasVisibleLastMessage
+    && isImConversationPreviewTranslationEligible(conversation);
+  const runtimeI18nProtected = hasVisibleLastMessage
+    && isImConversationPreviewRuntimeProtected(conversation);
+  const uiLabel = conversation.lastMessagePreviewProvenance === "ui-label-with-dynamic-value"
+    ? conversation.lastMessageType === "contact-card"
+      ? "[名片]"
+      : conversation.lastMessageType === "service-card"
+        ? "[服务]"
+        : conversation.lastMessageType === "schedule-invite"
+          ? "[日程邀请]"
+          : undefined
+    : undefined;
 
   return {
     ...preview,
-    text: userGenerated
+    text: translationEligible
       ? getImPreviewDisplayText(preview.text, {
           enabled: conversation.autoTranslateMessages,
           language,
         })
       : preview.text,
-    userGenerated,
+    translationEligible,
+    runtimeI18nProtected,
+    uiLabel,
+    dynamicValue: runtimeI18nProtected
+      ? conversation.lastMessagePreviewDynamicValue
+      : undefined,
+  };
+}
+
+function buildMessageDisplayPreview(
+  message: ConversationMessage,
+  conversation: Conversation | undefined,
+  language: ReturnType<typeof useI18n>["language"],
+  currentUserId: string,
+  usersById: Record<string, ImUser>,
+): ImRuntimeI18nPreview {
+  const descriptor = buildMessagePreviewDescriptor(
+    message,
+    currentUserId,
+    usersById,
+  );
+  const policySource = {
+    type: conversation?.type ?? "single",
+    lastMessageStatus: message.status,
+    lastMessagePreviewProvenance: descriptor.provenance,
+  } satisfies Pick<
+    Conversation,
+    "type" | "lastMessageStatus" | "lastMessagePreviewProvenance"
+  >;
+  const translationEligible = conversation?.type !== "system"
+    && isImConversationPreviewTranslationEligible(policySource);
+  const runtimeI18nProtected = isImConversationPreviewRuntimeProtected(policySource);
+
+  return {
+    text: translationEligible
+      ? getImMessageDisplayText(message.content, message.ext?.richText, {
+          enabled: conversation?.autoTranslateMessages ?? false,
+          language,
+        })
+      : descriptor.text,
+    translationEligible,
+    runtimeI18nProtected,
+    uiLabel: descriptor.uiLabel,
+    dynamicValue: descriptor.dynamicValue,
   };
 }
 
@@ -3974,14 +4041,13 @@ export function ImSearchPage() {
               <SectionTag>聊天记录</SectionTag>
               {result.messages.map((message) => {
                 const owningConversation = store.conversations.find((conversation) => conversation.id === message.conversationId);
-                const userGenerated = (message.type === "text" || message.type === "emoji")
-                  && message.status !== "recalled";
-                const displayText = userGenerated
-                  ? getImMessageDisplayText(message.content, message.ext?.richText, {
-                      enabled: owningConversation?.autoTranslateMessages ?? false,
-                      language,
-                    })
-                  : buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
+                const preview = buildMessageDisplayPreview(
+                  message,
+                  owningConversation,
+                  language,
+                  store.currentUserId ?? "",
+                  store.usersById,
+                );
 
                 return (
                   <Link
@@ -3990,11 +4056,8 @@ export function ImSearchPage() {
                     onClick={() => store.rememberSearchTerm(query)}
                     to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
                   >
-                    <p
-                      className="text-sm font-semibold text-[color:var(--client-text)]"
-                      data-no-i18n={userGenerated ? "true" : undefined}
-                    >
-                      {displayText}
+                    <p className="text-sm font-semibold text-[color:var(--client-text)]">
+                      <ImRuntimeI18nPreviewText preview={preview} />
                     </p>
                     <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
                   </Link>
@@ -6212,11 +6275,13 @@ export function ImConversationRoomPage({
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
                   const senderName = getConversationMemberDisplayName(sender) ?? "消息";
-                  const userGeneratedPreview = (message.type === "text" || message.type === "emoji")
-                    && message.status !== "recalled";
-                  const preview = userGeneratedPreview
-                    ? getImMessageDisplayText(message.content, message.ext?.richText, messageTranslation)
-                    : buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
+                  const preview = buildMessageDisplayPreview(
+                    message,
+                    conversation,
+                    language,
+                    store.currentUserId ?? "",
+                    store.usersById,
+                  );
 
                   return (
                     <div className="im-pinned-message-container flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2" key={message.id}>
@@ -6229,12 +6294,11 @@ export function ImConversationRoomPage({
                           <ImIcon className="h-4 w-4" name="top" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-black text-[color:var(--client-muted)]">信息置顶 · {senderName}</span>
-                          <span
-                            className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]"
-                            data-no-i18n={userGeneratedPreview ? "true" : undefined}
-                          >
-                            {preview}
+                          <span className="block truncate text-[11px] font-black text-[color:var(--client-muted)]">
+                            信息置顶 · <span data-no-i18n="true">{senderName}</span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]">
+                            <ImRuntimeI18nPreviewText preview={preview} />
                           </span>
                         </span>
                       </button>

@@ -4,7 +4,7 @@ import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
   applyConversationDraft,
   buildSearchResults,
-  buildMessagePreview,
+  buildConversationLastMessageSummary,
   canRecallMessage,
   getConversationById,
   getAnonymousGroupConversationTitle,
@@ -415,6 +415,28 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
   }
 
+  function recomputeCurrentLastMessageSummary(message: ConversationMessage) {
+    snapshot = {
+      ...snapshot,
+      conversations: sortConversations(
+        snapshot.conversations.map((conversation) =>
+          conversation.id === message.conversationId &&
+          conversation.lastMessageId === message.id
+            ? {
+                ...conversation,
+                ...buildConversationLastMessageSummary(
+                  message,
+                  snapshot.currentUserId ?? "",
+                  snapshot.usersById,
+                  conversation.updatedAt,
+                ),
+              }
+            : conversation,
+        ),
+      ),
+    };
+  }
+
   function removeDraft(conversationId: string) {
     const nextDrafts = { ...snapshot.ui.drafts };
     delete nextDrafts[conversationId];
@@ -442,6 +464,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     if (event.type === "message.created" || event.type === "message.updated" || event.type === "message.recalled") {
       upsertConversation(event.payload.conversation);
       upsertMessage(event.payload.message);
+      if (event.type === "message.recalled") {
+        recomputeCurrentLastMessageSummary(event.payload.message);
+      }
 
       if (
         snapshot.activeConversationId &&
@@ -552,6 +577,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
               update.type === "message.recalled"
             ) {
               upsertMessage(update.message);
+              if (update.type === "message.recalled") {
+                recomputeCurrentLastMessageSummary(update.message);
+              }
               emit();
 
               if (
@@ -751,10 +779,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         autoTranslateMessages: false,
         updatedAt: optimistic.sentAt
       }),
-      lastMessagePreview: buildMessagePreview(optimistic, snapshot.currentUserId ?? "", snapshot.usersById),
-      lastMessageType: optimistic.type,
-      lastMessageStatus: optimistic.status,
-      lastMessageTime: optimistic.sentAt,
+      ...buildConversationLastMessageSummary(
+        optimistic,
+        snapshot.currentUserId ?? "",
+        snapshot.usersById,
+        optimistic.sentAt,
+      ),
       updatedAt: optimistic.sentAt
     });
     emit();
@@ -831,6 +861,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     await hydrateStore();
     const response = await api.recallMessage(conversationId, messageId, mode);
     upsertMessage(response.message);
+    recomputeCurrentLastMessageSummary(response.message);
     emit();
     return response;
   }
@@ -852,17 +883,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         conversation.id === conversationId
           ? {
               ...conversation,
-              lastMessagePreview: latestMessage
-                ? buildMessagePreview(
-                    latestMessage,
-                    snapshot.currentUserId ?? "",
-                    snapshot.usersById,
-                  )
-                : "",
-              lastMessageId: latestMessage?.id,
-              lastMessageType: latestMessage?.type,
-              lastMessageStatus: latestMessage?.status,
-              lastMessageTime: latestMessage?.sentAt ?? conversation.updatedAt,
+              ...buildConversationLastMessageSummary(
+                latestMessage,
+                snapshot.currentUserId ?? "",
+                snapshot.usersById,
+                conversation.updatedAt,
+              ),
             }
           : conversation,
       ),

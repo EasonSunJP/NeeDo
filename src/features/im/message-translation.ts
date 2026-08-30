@@ -37,12 +37,31 @@ export function getImPreviewDisplayText(
   return options.enabled ? translateText(text, options.language) : text;
 }
 
-export function isImUserGeneratedConversationPreview(
-  conversation: Pick<Conversation, "lastMessageType" | "lastMessageStatus">,
+type ImConversationPreviewPolicySource = Pick<
+  Conversation,
+  "type" | "lastMessagePreviewProvenance" | "lastMessageStatus"
+>;
+
+export function isImConversationPreviewTranslationEligible(
+  conversation: ImConversationPreviewPolicySource,
 ): boolean {
-  return Boolean(conversation.lastMessageStatus)
+  return conversation.type !== "system"
+    && Boolean(conversation.lastMessageStatus)
     && conversation.lastMessageStatus !== "recalled"
-    && (conversation.lastMessageType === "text" || conversation.lastMessageType === "emoji");
+    && conversation.lastMessagePreviewProvenance === "user-text";
+}
+
+export function isImConversationPreviewRuntimeProtected(
+  conversation: ImConversationPreviewPolicySource,
+): boolean {
+  return conversation.type !== "system"
+    && Boolean(conversation.lastMessageStatus)
+    && conversation.lastMessageStatus !== "recalled"
+    && (
+      conversation.lastMessagePreviewProvenance === "user-text"
+      || conversation.lastMessagePreviewProvenance === "dynamic-value"
+      || conversation.lastMessagePreviewProvenance === "ui-label-with-dynamic-value"
+    );
 }
 
 export function getImMessageCopyText(

@@ -3,13 +3,14 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Conversation, ConversationMessage } from "./model";
+import type { Conversation, ConversationMessage, ImStoreUpdate } from "./model";
 import storeSource from "./store.ts?raw";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocked = vi.hoisted(() => ({
   api: null as unknown,
+  subscriptionListener: undefined as ((update: ImStoreUpdate) => void) | undefined,
   session: {
     activePublicId: "u0000000100",
     avatarUrl: null,
@@ -25,7 +26,14 @@ vi.mock("../../auth/AuthProvider", () => ({
 
 vi.mock("./formal-api", () => ({
   createFormalImApi: () => mocked.api,
-  subscribeFormalImUpdates: () => () => undefined,
+  subscribeFormalImUpdates: (listener: (update: ImStoreUpdate) => void) => {
+    mocked.subscriptionListener = listener;
+    return () => {
+      if (mocked.subscriptionListener === listener) {
+        mocked.subscriptionListener = undefined;
+      }
+    };
+  },
 }));
 import {
   buildCachedImSearchResults,
@@ -91,6 +99,7 @@ afterEach(async () => {
     primaryPublicId: "u0000000100",
     username: "测试用户",
   };
+  mocked.subscriptionListener = undefined;
   window.localStorage.clear();
 });
 
@@ -145,6 +154,124 @@ describe("formal IM recall terminal precedence", () => {
       "const response = await api.recallMessage(conversationId, messageId, mode);",
     );
     expect(source).toContain("upsertMessage(response.message);");
+  });
+
+  it("recomputes the current last-message summary immediately after local recall", async () => {
+    mocked.session = {
+      activePublicId: "u0000000106",
+      avatarUrl: null,
+      id: 106,
+      primaryPublicId: "u0000000106",
+      username: "本地撤回测试用户",
+    };
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation({
+          lastMessageId: "700",
+          lastMessagePreview: "原消息",
+          lastMessageType: "text",
+          lastMessageStatus: "sent",
+          lastMessagePreviewProvenance: "user-text",
+        })],
+        members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [message()],
+        nextCursor: null,
+        hasMore: false,
+      }),
+      recallMessage: vi.fn().mockResolvedValue({
+        conversationId: "91",
+        message: recalled,
+        messageId: recalled.id,
+        mode: "standard",
+      }),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+      await store?.recallMessage("91", "700", "standard");
+    });
+
+    expect(store?.conversations[0]).toMatchObject({
+      lastMessageId: "700",
+      lastMessagePreview: "你撤回了一条消息",
+      lastMessageType: "recalled",
+      lastMessageStatus: "recalled",
+      lastMessagePreviewProvenance: "ui-label",
+    });
+    expect(store?.conversations[0].lastMessagePreviewDynamicValue).toBeUndefined();
+  });
+
+  it("recomputes the current last-message summary for message-only SSE recall", async () => {
+    mocked.session = {
+      activePublicId: "u0000000107",
+      avatarUrl: null,
+      id: 107,
+      primaryPublicId: "u0000000107",
+      username: "SSE撤回测试用户",
+    };
+    const bootstrap = vi.fn().mockResolvedValue({
+      currentUserId: "100",
+      config: {
+        allowStrangerMessaging: true,
+        preserveConversationAfterDelete: true,
+        recallWindowMs: 180_000,
+        separatorThresholdMs: 300_000,
+        syncDraftAcrossDevices: false,
+      },
+      users: [],
+      contacts: [],
+      friendRequests: [],
+      conversations: [conversation({
+        lastMessageId: "700",
+        lastMessagePreview: "原消息",
+        lastMessageType: "text",
+        lastMessageStatus: "sent",
+        lastMessagePreviewProvenance: "user-text",
+      })],
+      members: [],
+    });
+    mocked.api = {
+      bootstrap,
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [message()],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+    });
+    expect(mocked.subscriptionListener).toEqual(expect.any(Function));
+
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "message.recalled", message: recalled });
+    });
+
+    expect(store?.conversations[0]).toMatchObject({
+      lastMessageId: "700",
+      lastMessagePreview: "你撤回了一条消息",
+      lastMessageType: "recalled",
+      lastMessageStatus: "recalled",
+      lastMessagePreviewProvenance: "ui-label",
+    });
+    expect(store?.conversations[0].lastMessagePreviewDynamicValue).toBeUndefined();
+    expect(bootstrap).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -252,6 +379,7 @@ describe("formal IM resend payload integrity", () => {
         lastMessagePreview: "测试OK",
         lastMessageType: "text",
         lastMessageStatus: "sent",
+        lastMessagePreviewProvenance: "user-text",
       }),
       message: confirmedMessage,
     });
@@ -306,10 +434,10 @@ describe("formal IM resend payload integrity", () => {
     const deleteEnd = storeSource.indexOf("async function forwardMessage", deleteStart);
     const deleteSource = storeSource.slice(deleteStart, deleteEnd);
 
-    expect(optimisticSource).toContain("lastMessageType: optimistic.type");
-    expect(optimisticSource).toContain("lastMessageStatus: optimistic.status");
-    expect(deleteSource).toContain("lastMessageType: latestMessage?.type");
-    expect(deleteSource).toContain("lastMessageStatus: latestMessage?.status");
+    expect(optimisticSource).toContain("buildConversationLastMessageSummary(");
+    expect(optimisticSource).toContain("optimistic,");
+    expect(deleteSource).toContain("buildConversationLastMessageSummary(");
+    expect(deleteSource).toContain("latestMessage,");
   });
 });
 

@@ -23,6 +23,17 @@ export type ImMessageType =
   | "recalled";
 export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
 export type ImMessageServerState = "active" | "recalled";
+export type ImMessagePreviewProvenance =
+  | "user-text"
+  | "dynamic-value"
+  | "ui-label"
+  | "ui-label-with-dynamic-value";
+export type ImMessagePreviewDescriptor = {
+  text: string;
+  provenance: ImMessagePreviewProvenance;
+  uiLabel?: string;
+  dynamicValue?: string;
+};
 export type ImRecallMode = "standard";
 export type ConversationDisappearingStartMode = "sent" | "read_by_all";
 export type GroupInfoEditPolicy = "owner" | "members";
@@ -180,6 +191,8 @@ export type Conversation = {
   lastMessagePreview: string;
   lastMessageType?: ImMessageType;
   lastMessageStatus?: ImMessageStatus;
+  lastMessagePreviewProvenance?: ImMessagePreviewProvenance;
+  lastMessagePreviewDynamicValue?: string;
   lastMessageTime: string;
   unreadCount: number;
   isPinned: boolean;
@@ -1000,48 +1013,123 @@ export function formatConversationTime(value: string, now = new Date()) {
   return `${target.getFullYear()}/${target.getMonth() + 1}/${target.getDate()}`;
 }
 
-export function buildMessagePreview(message: ConversationMessage, currentUserId: string, users: Record<string, ImUser>) {
+export function buildMessagePreviewDescriptor(
+  message: ConversationMessage,
+  currentUserId: string,
+  _users: Record<string, ImUser>,
+): ImMessagePreviewDescriptor {
   if (message.type === "recalled" || message.status === "recalled") {
-    return getRecallResidueLabel(message.senderId === currentUserId);
+    return {
+      text: getRecallResidueLabel(message.senderId === currentUserId),
+      provenance: "ui-label",
+    };
   }
 
   if (message.type === "text" || message.type === "emoji") {
-    return message.content;
+    return { text: message.content, provenance: "user-text" };
   }
 
   if (message.type === "image") {
-    return "图片";
+    return { text: "图片", provenance: "ui-label" };
   }
 
   if (message.type === "voice") {
-    return "音频";
+    return { text: "音频", provenance: "ui-label" };
   }
 
   if (message.type === "video") {
-    return "视频";
+    return { text: "视频", provenance: "ui-label" };
   }
 
   if (message.type === "file") {
-    return message.ext?.fileName?.trim() || "文件";
+    const dynamicValue = message.ext?.fileName?.trim();
+    return dynamicValue
+      ? { text: dynamicValue, provenance: "dynamic-value", dynamicValue }
+      : { text: "文件", provenance: "ui-label" };
   }
 
   if (message.type === "location") {
-    return "[位置]";
+    return { text: "[位置]", provenance: "ui-label" };
   }
 
   if (message.type === "contact-card") {
-    return message.ext?.contactCard?.displayName ? `[名片] ${message.ext.contactCard.displayName}` : "[名片]";
+    const uiLabel = "[名片]";
+    const dynamicValue = message.ext?.contactCard?.displayName?.trim();
+    return dynamicValue
+      ? {
+          text: `${uiLabel} ${dynamicValue}`,
+          provenance: "ui-label-with-dynamic-value",
+          uiLabel,
+          dynamicValue,
+        }
+      : { text: uiLabel, provenance: "ui-label" };
   }
 
   if (message.type === "service-card") {
-    return message.ext?.serviceCard?.name ? `[服务] ${message.ext.serviceCard.name}` : "[服务]";
+    const uiLabel = "[服务]";
+    const dynamicValue = message.ext?.serviceCard?.name?.trim();
+    return dynamicValue
+      ? {
+          text: `${uiLabel} ${dynamicValue}`,
+          provenance: "ui-label-with-dynamic-value",
+          uiLabel,
+          dynamicValue,
+        }
+      : { text: uiLabel, provenance: "ui-label" };
   }
 
   if (message.type === "schedule-invite") {
-    return message.ext?.scheduleInvite?.title ? `[日程邀请] ${message.ext.scheduleInvite.title}` : "[日程邀请]";
+    const uiLabel = "[日程邀请]";
+    const dynamicValue = message.ext?.scheduleInvite?.title?.trim();
+    return dynamicValue
+      ? {
+          text: `${uiLabel} ${dynamicValue}`,
+          provenance: "ui-label-with-dynamic-value",
+          uiLabel,
+          dynamicValue,
+        }
+      : { text: uiLabel, provenance: "ui-label" };
   }
 
-  return message.content;
+  return { text: message.content, provenance: "ui-label" };
+}
+
+export function buildMessagePreview(
+  message: ConversationMessage,
+  currentUserId: string,
+  users: Record<string, ImUser>,
+) {
+  return buildMessagePreviewDescriptor(message, currentUserId, users).text;
+}
+
+export function buildConversationLastMessageSummary(
+  message: ConversationMessage | undefined,
+  currentUserId: string,
+  users: Record<string, ImUser>,
+  fallbackTime: string,
+): Pick<
+  Conversation,
+  | "lastMessageId"
+  | "lastMessagePreview"
+  | "lastMessageType"
+  | "lastMessageStatus"
+  | "lastMessagePreviewProvenance"
+  | "lastMessagePreviewDynamicValue"
+  | "lastMessageTime"
+> {
+  const descriptor = message
+    ? buildMessagePreviewDescriptor(message, currentUserId, users)
+    : undefined;
+
+  return {
+    lastMessageId: message?.id,
+    lastMessagePreview: descriptor?.text ?? "",
+    lastMessageType: message?.type,
+    lastMessageStatus: message?.status,
+    lastMessagePreviewProvenance: descriptor?.provenance,
+    lastMessagePreviewDynamicValue: descriptor?.dynamicValue,
+    lastMessageTime: message?.sentAt ?? fallbackTime,
+  };
 }
 
 export function buildConversationRowPreview(conversation: Conversation) {
@@ -1330,20 +1418,28 @@ export function recomputeConversationSummary(database: ImDatabase, conversationI
   const lastMessage = messages.at(-1);
 
   if (!lastMessage) {
-    conversation.lastMessageId = undefined;
-    conversation.lastMessagePreview = "";
-    conversation.lastMessageType = undefined;
-    conversation.lastMessageStatus = undefined;
-    conversation.lastMessageTime = conversation.updatedAt;
+    Object.assign(
+      conversation,
+      buildConversationLastMessageSummary(
+        undefined,
+        database.currentUserId,
+        users,
+        conversation.updatedAt,
+      ),
+    );
     return conversation;
   }
 
-  conversation.lastMessageId = lastMessage.id;
-  conversation.lastMessageTime = lastMessage.sentAt;
+  Object.assign(
+    conversation,
+    buildConversationLastMessageSummary(
+      lastMessage,
+      database.currentUserId,
+      users,
+      conversation.updatedAt,
+    ),
+  );
   conversation.updatedAt = lastMessage.sentAt;
-  conversation.lastMessagePreview = buildMessagePreview(lastMessage, database.currentUserId, users);
-  conversation.lastMessageType = lastMessage.type;
-  conversation.lastMessageStatus = lastMessage.status;
 
   return conversation;
 }
