@@ -138,8 +138,8 @@ export const directorySearchQuerySchema = z.object({
   query: z.string().trim().min(1).max(100)
 });
 
-export const contactCreateBodySchema = z.object({
-  targetUserId: z.coerce.number().int().positive()
+export const directoryUserIdParamSchema = z.object({
+  userId: z.coerce.number().int().positive()
 });
 
 export const contactIdParamSchema = z.object({
@@ -148,7 +148,7 @@ export const contactIdParamSchema = z.object({
 
 export const friendRequestListQuerySchema = z.object({
   ...paginationQuerySchema,
-  status: z.enum(["pending", "accepted", "rejected"]).optional(),
+  status: z.enum(["pending", "accepted", "rejected", "expired"]).optional(),
   direction: z.enum(["incoming", "outgoing", "all"]).default("all")
 });
 
@@ -221,7 +221,7 @@ export type MessageReactionBody = z.infer<typeof messageReactionBodySchema>;
 export type MessageRecallBody = z.infer<typeof messageRecallBodySchema>;
 export type ContactListQuery = z.infer<typeof contactListQuerySchema>;
 export type DirectorySearchQuery = z.infer<typeof directorySearchQuerySchema>;
-export type ContactCreateBody = z.infer<typeof contactCreateBodySchema>;
+export type DirectoryUserIdParam = z.infer<typeof directoryUserIdParamSchema>;
 export type FriendRequestCreateBody = z.infer<typeof friendRequestCreateBodySchema>;
 export type FriendRequestListQuery = z.infer<typeof friendRequestListQuerySchema>;
 export type SocialPostCreateBody = z.infer<typeof socialPostCreateBodySchema>;

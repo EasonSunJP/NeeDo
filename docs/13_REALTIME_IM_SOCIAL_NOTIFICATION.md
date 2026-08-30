@@ -177,9 +177,12 @@
 - REST 响应与 SSE 均携带单调递增的 `reactionVersion`，前端拒绝旧版本覆盖新状态。界面不再乐观插入或撤销回应，只在正式 REST 成功后采用完整聚合；409、429 与其他失败会保留最后确认状态并显示明确提示。
 - 消息操作栏折叠时混合显示当前设备最近使用的判断和普通表情，并把“更多”固定在末尾；展开顺序以及输入框右侧表情面板的顺序统一为“常用表情 → 判断表情 → 一般表情”。v2 最近使用存储会迁移旧 v1 最近表情，最多保留 8 个唯一有效值；消息回应只在成功新增后记录，输入框插入则立即记录。
 - 八个判断值使用独立、透明、紧凑的本地 SVG 字标，视觉高度不超过 26px。选中项保持彩色高亮并可再次点击取消；同一已占用类别的其他项使用原生 `disabled`、灰度和禁止指针，不进入 Store 或 API。
+- 消息下方已经发送的判断回复使用独立摘要尺寸：字标固定为 22px 高并保留 SVG 自然宽度，不再被 28px 按钮压窄；普通表情以及操作栏、输入框目录仍保持原有紧凑尺寸。
 - `20260830090000_message_reaction_slots` 数据迁移会先为每条历史重复槽位写入 `audit_logs` 可恢复快照，再按 `updated_at DESC, id DESC` 保留最新一条并软删除旧记录；同目录 `rollback.sql` 是显式运维回滚工件。`npm run check:message-reaction-slots` 只读检查所有有效记录，不满足双槽位约束时以非零状态退出。
 
 ## 6.13 通讯录好友软删除（2026-08-30）
+
+> 历史切片：本节记录的单向软删除已由 6.16 的双向物理解除规则替代，不再是当前正式行为。
 
 - 正式 IM adapter 的 `deleteContact` 不再返回 `error.feature_unavailable`，而是调用受 Bearer 鉴权与 `contact:delete` 权限保护的 `DELETE /api/v1/im/contacts/:contactId`。
 - 后端只允许软删除当前认证账号拥有且仍有效的联系人行；其他账号的联系人、共享会话与消息均不受影响，越权目标统一返回安全的未找到错误。
@@ -208,6 +211,36 @@
 - 接受好友申请后仍由后端事务建立双向 Contact；前端不再调用正式环境不可用的本地 `ensureMutualFollow`，而是在接口成功后刷新正式 Social 数据。
 - 本地正式库只读核对确认：`LifeDance 管理员 2` 与 `LifeDance 管理员` 双向 Contact 均有效，后者的 `123456788888888` 公开动态真实存在，而两者之间没有 Follow；该组合纳入 repository 与前端筛选回归测试。
 - 本节不修改现有数据、不新增 migration、mock、轮询或平行好友状态。
+
+## 6.16 群聊隐私消息消失倒计时修复（2026-08-30）
+
+- 群聊开启隐私模式后，新消息在服务端创建事务内快照当前 `privacyPolicyVersion`，并以服务端 `createdAt + disappearingTtlSeconds` 写入不可变 `expiresAt`；后续修改群设置不会回写旧消息期限。
+- 正式消息 API / OpenAPI 返回 `expiresAt` 与 `privacyPolicyVersionAtSend`。前端只用这两个服务端权威字段生成倒计时，不再信任客户端 metadata 中可伪造的消失时间。
+- 消息历史和会话摘要在清理 worker 提交前也会过滤已到期消息，避免刷新页面短暂恢复；1 秒周期 worker 到期后在串行化事务中清空正文与 metadata、删除回应和本人删除记录、写入无正文的审计及删除同步记录，再硬删除隐私消息。
+- 到期提交后向发送时的群成员发布不含正文的 `message.deleted` SSE，当前会话立即补拉并移除消息；同时修复未读数、已读游标和会话最后消息时间。
+- 本节沿用现有 `messages`、`im_deletion_sync` 与审计结构，不新增 migration、mock、轮询或平行消息实现。
+
+## 6.17 好友验证、双向解除与身份资料卡（2026-08-30）
+
+本节替代 6.13 的“单向软删除”行为，并收紧 6.15 中 Contact 与 Follow 的边界。搜索结果不再直接创建联系人或会话；用户必须先进入账号资料页，再发送正式好友申请。
+
+| 服务端状态 | 发出方“新的朋友” | 接收方“新的朋友” | 资料页操作 |
+|---|---|---|---|
+| `PENDING` 且未满 72 小时 | 等待对方验证 | 待处理 | 发出方只读等待；接收方可拒绝或添加好友 |
+| `ACCEPTED` | 成功添加 | 成功添加 | 已成为好友，不再显示申请按钮 |
+| `REJECTED` | 被拒绝 | 已拒绝 | 双方都可立即重新申请 |
+| `EXPIRED`，或数据库时间已到 `expiresAt` | 已过期 | 已过期 | 可发送一条新的好友申请 |
+
+- 72 小时从数据库 UTC `createdAt` 精确计算。相同方向在同一个未过期窗口内重复申请只返回原记录，不更新时间、不新增通知或红点；拒绝后可立即重新申请，过期后再次申请会创建新记录并重新通知。
+- 只有接收方未处理的有效申请计入通讯录和“新的朋友”红点；申请行点击后进入共享全屏资料页，接收方右上角为关闭，底部为拒绝和添加好友。
+- 接受在一个事务中创建双方 Contact 与双方 Follow，并恢复或创建唯一的好友直接会话参与关系。双方“新的朋友”列表保留终态“成功添加”。
+- 手动关注或取消关注只修改当前方向的 Follow，不创建、删除或降级 Contact。成为好友时的自动互相关注仍由接受事务完成；删除好友时双方 Follow 与双方 Contact 一起物理删除。
+- 任一方删除好友会物理删除双方 Contact、双方 Follow，以及仅删除方在好友直接会话中的 `ConversationParticipant`。共享 Conversation 与 Message 保留给未删除方；删除方的聊天列表及历史入口被真正删除，不使用 `hiddenAt`。
+- 未删除方保留原历史，但此后发送消息会在写入 Message、未读数和 SSE 之前返回 `error.im.not_friends`。双方仍可从资料页或搜索重新申请；重新接受后删除方以新的参与时间作为历史可见边界，旧历史不会恢复。
+- `BUSINESS_CONTEXT` 直接会话与 `GROUP_MEMBERSHIP` 群聊继续使用原授权规则，不套用好友消息门禁。
+- 正式接口为 `GET /api/v1/im/directory/:userId`、`POST /api/v1/im/friend-requests`、`POST /api/v1/im/friend-requests/:id/accept|reject`、`DELETE /api/v1/im/contacts/:contactId`；公开的直接 Contact 创建入口已移除。
+- `GET /api/v1/im/directory/:userId` 同时返回相应身份的只读资料卡。聊天“信息设置”使用该正式资料替代简易联系人块：用户、技师、店铺分别显示其可公开基础信息，信用值来自 `ReviewSummary`；不显示积分、利用次数或个人资料隐私开关。私密用户资料降级为不含私密字段的账号卡，无评价显示“—”而不是伪造 0 分。
+- additive migration 为 `20260830200000_friend_request_verification`；部署前运行只读 `npm run check:friendship-conversation-pairs`，确认现有好友直接会话不存在重复 pair 后再应用 migration。
 
 ---
 

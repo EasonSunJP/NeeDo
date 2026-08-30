@@ -22,6 +22,8 @@ import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import type { MyQrCodePurpose } from "../../components/mobile/MyQrCodeButton";
 import { UnifiedScanSimulator } from "../../components/mobile/UnifiedScanSimulator";
 import { IconButton } from "../../components/client-ui/AppScaffold";
@@ -51,6 +53,8 @@ import {
   type MerchantManualStaffRoleRecord
 } from "../../lib/merchantStaffRoles";
 import { cn } from "../../lib/utils";
+import { useI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { SocialProfileMiniCard } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
@@ -101,6 +105,7 @@ import {
   UnifiedPinnedConversationToggle
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
+import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
 import { recordRecentImReaction } from "./reaction-catalog";
 import {
@@ -133,6 +138,7 @@ import {
   type ConversationDisappearingCountdown,
   type ConversationDisappearingStartMode,
   type ConversationMessage,
+  type DirectoryProfile,
   type FriendRequest,
   type GroupInfoEditPolicy,
   type ImMessageType,
@@ -154,6 +160,8 @@ import {
   getCurrentUser,
   getQuotedMessage,
   getServiceContacts,
+  getIncomingPendingFriendRequestCount,
+  selectLatestFriendRequestsByCounterpart,
   useImStore
 } from "./store";
 import { useSocial } from "../social/context";
@@ -166,6 +174,92 @@ import type { ServiceItem, Store, Technician } from "../../types/domain";
 
 function buildContactCaption(user?: ImUser, _contact?: ContactRelation) {
   return getImContactSignatureCaption(user);
+}
+
+export function getFriendRequestLabel(
+  request: FriendRequest,
+  currentUserId: string,
+  nowMs: number = Date.now(),
+) {
+  const outgoing = request.fromUserId === currentUserId;
+
+  if (request.status === "accepted") {
+    return "成功添加";
+  }
+
+  if (request.status === "rejected") {
+    return outgoing ? "被拒绝" : "已拒绝";
+  }
+
+  if (
+    request.status === "expired" ||
+    Date.parse(request.expiresAt) <= nowMs
+  ) {
+    return "已过期";
+  }
+
+  return outgoing ? "等待对方验证" : "待处理";
+}
+
+export type DirectoryProfileAction =
+  | "cancel"
+  | "send_request"
+  | "reject"
+  | "accept"
+  | "waiting"
+  | "status";
+
+export function resolveDirectoryProfileActions(
+  profile: DirectoryProfile,
+  request: FriendRequest | null,
+  currentUserId: string,
+  nowMs: number = Date.now(),
+): DirectoryProfileAction[] {
+  if (profile.relationship === "friend") {
+    return [];
+  }
+
+  const activePending =
+    request?.status === "pending" &&
+    Date.parse(request.expiresAt) > nowMs;
+
+  if (activePending && request.toUserId === currentUserId) {
+    return ["reject", "accept"];
+  }
+
+  if (activePending) {
+    return ["waiting"];
+  }
+
+  if (request) {
+    return ["status", "send_request"];
+  }
+
+  return ["cancel", "send_request"];
+}
+
+function useFriendRequestExpiryRefresh(
+  requests: FriendRequest[],
+  refresh: () => Promise<void> | undefined,
+) {
+  useEffect(() => {
+    const nowMs = Date.now();
+    const nextExpiryMs = requests
+      .filter((request) => request.status === "pending")
+      .map((request) => Date.parse(request.expiresAt))
+      .filter((expiresAt) => Number.isFinite(expiresAt) && expiresAt > nowMs)
+      .sort((left, right) => left - right)[0];
+
+    if (!nextExpiryMs) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void refresh();
+    }, Math.max(0, nextExpiryMs - nowMs));
+
+    return () => window.clearTimeout(timeout);
+  }, [refresh, requests]);
 }
 
 function escapeSvgText(value: string) {
@@ -2054,6 +2148,13 @@ export function ImContactsListPage() {
     () => getOrganizationContacts(store, scope, entityStore),
     [entityStore, scope, store.contacts, store.organizationContacts, store.usersById]
   );
+  const incomingFriendRequestCount = getIncomingPendingFriendRequestCount(
+    store.friendRequests,
+    store.currentUserId ?? "",
+    Date.now(),
+  );
+
+  useFriendRequestExpiryRefresh(store.friendRequests, store.refresh);
   const editingRemarkContact = visibleContacts.find((contact) => contact.id === editingRemarkContactId);
   const editingRemarkUser = editingRemarkContact ? store.usersById[editingRemarkContact.targetUserId] : undefined;
   const indexLetterClassName = visibleIndexLetters.length > 18
@@ -2305,7 +2406,7 @@ export function ImContactsListPage() {
               </div>
             ) : null}
             <section className="mt-3 divide-y divide-[color:color-mix(in_srgb,var(--client-line)_44%,transparent)] overflow-hidden rounded-2xl bg-transparent">
-              <ImEntryCell badge={store.friendRequests.filter((request) => request.status === "pending").length || undefined} icon={<ImIcon name="friend" />} title="新的朋友" to={config.routes.friendRequests} />
+              <ImEntryCell badge={incomingFriendRequestCount || undefined} badgeDot icon={<ImIcon name="friend" />} title="新的朋友" to={config.routes.friendRequests} />
               {scope !== "user" ? <ImEntryCell caption={`${organizationContacts.length} 人`} icon={<ImIcon name="organization" />} title="组织" to={config.routes.organization} /> : null}
               <ImEntryCell icon={<ImIcon name="group" />} title="群聊" to={appendQuery(config.routes.newConversation, { mode: "group" })} />
               <ImEntryCell icon={<ImIcon name="tag" />} title="标签" to={config.routes.tags} />
@@ -2512,58 +2613,286 @@ export function ImContactsListPage() {
 }
 
 export function ImFriendRequestsPage() {
-  const { scope, store, config } = useImRuntime();
-  const social = useSocial();
+  const { store, config } = useImRuntime();
   const navigate = useNavigate();
-  const pending = store.friendRequests
-    .slice()
-    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
-  const handleAcceptFriendRequest = async (request: FriendRequest) => {
-    await store.acceptFriendRequest(request.id);
-    social.refreshFeeds();
-  };
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  const requests = selectLatestFriendRequestsByCounterpart(
+    store.friendRequests,
+    store.currentUserId ?? "",
+  );
+
+  useFriendRequestExpiryRefresh(requests, store.refresh);
 
   return (
     <ImStandaloneShell>
-      <ImTopBar onBack={() => navigate(config.routes.contacts)} title="新的朋友" />
+      <ImTopBar onBack={() => navigate(config.routes.contacts)} title={t("新的朋友")} />
       <div className="space-y-3 px-4 py-4">
-        {pending.map((request) => {
-          const user = store.usersById[request.fromUserId];
+        {requests.map((request) => {
+          const counterpartId = request.fromUserId === store.currentUserId
+            ? request.toUserId
+            : request.fromUserId;
+          const user = store.usersById[counterpartId];
 
           if (!user) {
             return null;
           }
 
           return (
-            <section className="rounded-[24px] bg-white p-4 shadow-[0_12px_32px_rgba(20,20,20,0.06)]" key={request.id}>
+            <button
+              className="focus-ring block w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-4 text-left shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)] transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))]"
+              key={request.id}
+              onClick={() => navigate(`${config.routes.directoryProfile(counterpartId)}?requestId=${encodeURIComponent(request.id)}&from=requests`)}
+              type="button"
+            >
               <div className="flex items-start gap-3">
-                <InteractiveAvatar alt={user.nickname} className="h-14 w-14" src={user.avatar} to={resolveImProfilePath(scope, user)} />
+                <InteractiveAvatar alt={user.nickname} className="h-14 w-14" src={user.avatar} stopPropagation />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
-                    <strong className="truncate text-base">{user.nickname}</strong>
-                    <span className="text-xs text-ink/35">{formatConversationTime(request.createdAt)}</span>
+                    <strong className="truncate text-base text-[color:var(--client-text)]">{user.nickname}</strong>
+                    <span className="shrink-0 rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1.5 text-xs font-black text-[color:var(--client-primary)]">
+                      {t(getFriendRequestLabel(request, store.currentUserId ?? ""))}
+                    </span>
                   </div>
-                  <p className="mt-1 text-sm text-ink/45">{request.source}</p>
-                  <p className="mt-3 text-sm leading-6 text-ink">{request.requestMessage}</p>
+                  <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">{formatConversationTime(request.createdAt)}</p>
+                  {request.requestMessage ? (
+                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-[color:var(--client-text)]">{request.requestMessage}</p>
+                  ) : null}
                 </div>
               </div>
-              <div className="mt-4 flex items-center justify-end gap-2">
-                {request.status === "pending" ? (
-                  <>
-                    <Button onClick={() => void store.rejectFriendRequest(request.id)} size="sm" variant="secondary">拒绝</Button>
-                    <Button onClick={() => void handleAcceptFriendRequest(request)} size="sm">接受</Button>
-                  </>
-                ) : (
-                  <span className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_64%,transparent)] px-3 py-2 text-xs font-semibold text-[color:var(--client-soft-muted)]">
-                    {request.status === "accepted" ? "已通过" : request.status === "rejected" ? "已拒绝" : "已过期"}
-                  </span>
-                )}
-              </div>
-            </section>
+            </button>
           );
         })}
+        {requests.length === 0 ? (
+          <ImEmptyState caption={t("好友申请")} title={t("暂无资料")} />
+        ) : null}
       </div>
     </ImStandaloneShell>
+  );
+}
+
+function ImFriendProfileActionBar({
+  actions,
+  currentUserId,
+  disabled,
+  onAccept,
+  onCancel,
+  onReject,
+  onSendRequest,
+  request,
+}: {
+  actions: DirectoryProfileAction[];
+  currentUserId: string;
+  disabled: boolean;
+  onAccept: () => Promise<void>;
+  onCancel: () => void;
+  onReject: () => Promise<void>;
+  onSendRequest: () => Promise<void>;
+  request: FriendRequest | null;
+}) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+
+  if (actions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-[480px] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      <div className="pointer-events-auto flex gap-2 rounded-[28px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_95%,transparent)] p-3 shadow-soft backdrop-blur-xl">
+        {actions.includes("cancel") ? (
+          <Button className="flex-1" onClick={onCancel} variant="secondary">{t("取消")}</Button>
+        ) : null}
+        {actions.includes("reject") ? (
+          <Button className="flex-1" disabled={disabled} onClick={() => void onReject()} variant="secondary">{t("拒绝")}</Button>
+        ) : null}
+        {actions.includes("status") ? (
+          <Button className="flex-1" disabled>
+            {t(request ? getFriendRequestLabel(request, currentUserId) : "等待对方验证")}
+          </Button>
+        ) : null}
+        {actions.includes("send_request") ? (
+          <Button className="flex-1" disabled={disabled} onClick={() => void onSendRequest()}>{t("添加好友")}</Button>
+        ) : null}
+        {actions.includes("accept") ? (
+          <Button className="flex-1" disabled={disabled} onClick={() => void onAccept()}>{t("添加好友")}</Button>
+        ) : null}
+        {actions.includes("waiting") ? (
+          <Button className="flex-1" disabled>
+            {t(request ? getFriendRequestLabel(request, currentUserId) : "等待对方验证")}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function ImDirectoryProfilePage() {
+  const { scope, store, config } = useImRuntime();
+  const { userId } = useParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { isNight } = useClientTheme();
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  const fromRequests = searchParams.get("from") === "requests";
+  const requestId = searchParams.get("requestId");
+  const [profile, setProfile] = useState<DirectoryProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [activityStatus, setActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
+  const request = profile?.friendRequest ?? (
+    requestId
+      ? store.friendRequests.find((item) => item.id === requestId)
+      : undefined
+  ) ?? null;
+  const actions = profile
+    ? resolveDirectoryProfileActions(profile, request, store.currentUserId ?? "")
+    : [];
+  const numericUserId = Number(profile?.user.id);
+  const activityTo = profile && profile.user.profileKind !== "service" && Number.isInteger(numericUserId) && numericUserId > 0
+    ? socialPaths.accountProfile(scope as SocialPortalScope, numericUserId)
+    : undefined;
+
+  useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
+
+  const loadProfile = async () => {
+    if (!userId) {
+      setLoadFailed(true);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      setProfile(await store.getDirectoryProfile(userId));
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProfile();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!activityTo || !Number.isInteger(numericUserId) || numericUserId <= 0) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    setActivityStatus("loading");
+    void realtimeApi.getSocialActivityStatus(numericUserId)
+      .then((result) => {
+        if (!cancelled) setActivityStatus(result.status);
+      })
+      .catch(() => {
+        if (!cancelled) setActivityStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activityTo, numericUserId]);
+
+  const runMutation = async (
+    mutation: () => Promise<unknown>,
+    errorMessage: string,
+  ) => {
+    if (!userId || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setMutationError(null);
+    try {
+      await mutation();
+      setProfile(await store.getDirectoryProfile(userId));
+    } catch (error) {
+      setMutationError(
+        error instanceof Error && error.message === "error.im.friend_request_expired"
+          ? "已过期"
+          : errorMessage,
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const acceptRequest = async () => {
+    if (!request) return;
+    await runMutation(
+      () => store.acceptFriendRequest(request.id),
+      "联系人状态已变化，请刷新后重试。",
+    );
+  };
+
+  const rejectRequest = async () => {
+    if (!request) return;
+    await runMutation(
+      () => store.rejectFriendRequest(request.id),
+      "联系人状态已变化，请刷新后重试。",
+    );
+  };
+
+  const sendRequest = async () => {
+    if (!userId) return;
+    await runMutation(
+      () => store.sendFriendRequest(userId),
+      "发送失败",
+    );
+  };
+
+  return (
+    <MobileFullscreenPage innerClassName="bg-[color:var(--client-bg)]">
+      <MobileFullscreenHeader
+        dark={isNight}
+        info={t("查看资料")}
+        onBack={fromRequests ? undefined : () => navigate(-1)}
+        onClose={fromRequests ? () => navigate(config.routes.friendRequests) : undefined}
+        title={t("账号信息")}
+      />
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-32 pt-4">
+        {loading ? (
+          <div className="grid min-h-48 place-items-center text-sm font-semibold text-[color:var(--client-muted)]">{t("加载中")}</div>
+        ) : loadFailed || !profile ? (
+          <div className="grid min-h-48 place-items-center">
+            <Button onClick={() => void loadProfile()} variant="secondary">{t("重新加载")}</Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <ContactSummaryCard showTags={false} user={profile.user} />
+            <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
+              <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
+              <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>
+            </section>
+            {activityTo ? <ImContactActivityEntry status={activityStatus} to={activityTo} /> : null}
+            {mutationError ? (
+              <p className="rounded-[18px] border border-[color:color-mix(in_srgb,#f15a63_48%,var(--client-line))] bg-[color:color-mix(in_srgb,#f15a63_10%,var(--client-surface))] px-4 py-3 text-sm font-bold text-[color:color-mix(in_srgb,#f15a63_82%,var(--client-text))]" role="alert">
+                {t(mutationError)}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </main>
+      {profile ? (
+        <ImFriendProfileActionBar
+          actions={actions}
+          currentUserId={store.currentUserId ?? ""}
+          disabled={submitting}
+          onAccept={acceptRequest}
+          onCancel={() => navigate(-1)}
+          onReject={rejectRequest}
+          onSendRequest={sendRequest}
+          request={request}
+        />
+      ) : null}
+    </MobileFullscreenPage>
   );
 }
 
@@ -5196,12 +5525,12 @@ export function ImConversationRoomPage({
 
     if (card.profileKind === "person") {
       return renderActionButton("添加好友", () =>
-        store.addContact(card.userId, "聊天名片", "通过好友分享的名片添加")
+        store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
       );
     }
 
     return renderActionButton("添加", () =>
-      store.addContact(card.userId, "聊天名片", "通过好友分享的名片添加")
+      store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
     );
   };
 
@@ -6498,7 +6827,6 @@ export function ImConversationRoomPage({
 
 export function ImConversationInfoPage() {
   const { scope, store, config } = useImRuntime();
-  const entityStore = useEntityStore();
   const social = useSocial();
   const navigate = useNavigate();
   const { conversationId } = useParams();
@@ -6513,6 +6841,7 @@ export function ImConversationInfoPage() {
     ? numericContactUserId
     : undefined;
   const [formalActivityStatus, setFormalActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
+  const [conversationDirectoryProfile, setConversationDirectoryProfile] = useState<DirectoryProfile | null>(null);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
   const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
@@ -6613,6 +6942,30 @@ export function ImConversationInfoPage() {
       cancelled = true;
     };
   }, [formalActivityTargetUserId]);
+
+  useEffect(() => {
+    if (!formalActivityTargetUserId) {
+      setConversationDirectoryProfile(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    void store.getDirectoryProfile(String(formalActivityTargetUserId))
+      .then((profile) => {
+        if (!cancelled) {
+          setConversationDirectoryProfile(profile);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setConversationDirectoryProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formalActivityTargetUserId, store.getDirectoryProfile]);
 
   useEffect(() => {
     if (!conversation) {
@@ -6833,26 +7186,19 @@ export function ImConversationInfoPage() {
   const infoCardDetailTo = user
     ? resolveImProfilePath(scope, user) ?? (infoCardProfileRef ? getScopedProfileDetailPath(scope, infoCardProfileRef.entityType, infoCardProfileRef.id) : undefined)
     : undefined;
-  const infoCardClassName = "w-full shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_24%,transparent)]";
-  const infoCardActionLabel = contact ? "好友" : "关注";
-  const infoMiniCard = (() => {
-    if (!user || !infoCardProfileRef) {
-      return undefined;
-    }
-
-    if (infoCardProfileRef.entityType === "shop") {
-      const shop = entityStore.stores.find((item) => item.id === infoCardProfileRef.id);
-      return shop ? <SocialProfileMiniCard actionLabel={infoCardActionLabel} className={infoCardClassName} detailTo={infoCardDetailTo} store={shop} /> : undefined;
-    }
-
-    if (infoCardProfileRef.entityType === "technician") {
-      const technician = entityStore.technicians.find((item) => item.id === infoCardProfileRef.id);
-      return technician ? <SocialProfileMiniCard actionLabel={infoCardActionLabel} className={infoCardClassName} detailTo={infoCardDetailTo} technician={technician} /> : undefined;
-    }
-
-    const customer = entityStore.customers.find((item) => item.id === infoCardProfileRef.id);
-    return customer ? <SocialProfileMiniCard actionLabel={infoCardActionLabel} className={infoCardClassName} customer={customer} detailTo={infoCardDetailTo} /> : undefined;
-  })();
+  const infoIdentityCard = user
+    ? conversationDirectoryProfile?.identityCard ?? {
+        entityType: "account" as const,
+        displayName: user.nickname,
+        identityLabel: user.entityType,
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      }
+    : undefined;
+  const infoIdentityCardDetailTo = infoIdentityCard?.profileId && infoIdentityCard.entityType !== "account"
+    ? getScopedProfileDetailPath(scope, infoIdentityCard.entityType, infoIdentityCard.profileId)
+    : infoCardDetailTo;
   const socialScope = scope as SocialPortalScope;
   const infoSocialProfileKey = infoCardProfileRef ? profileKey(infoCardProfileRef) : undefined;
   const infoSocialProfile = infoSocialProfileKey ? social.profiles[infoSocialProfileKey] : undefined;
@@ -6879,7 +7225,13 @@ export function ImConversationInfoPage() {
         <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
       </div>
       <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
-        {infoMiniCard ?? (user ? <ContactSummaryCard contact={contact} detailTo={infoCardDetailTo} showTags={false} user={user} /> : null)}
+        {conversation.type === "single" && user && infoIdentityCard ? (
+          <ConversationIdentityProfileCard
+            detailTo={infoIdentityCardDetailTo}
+            identityCard={infoIdentityCard}
+            user={user}
+          />
+        ) : null}
 
         <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
           <div className="flex items-center justify-between gap-3">
@@ -7735,12 +8087,6 @@ export function ImNewConversationPage() {
     setPrivacyModeEnabled(enabled);
   };
 
-  const addFriendAndOpen = async (userId: string) => {
-    await store.addContact(userId, "聊天页添加好友", "通过聊天页手动添加为好友");
-    const conversation = await store.ensureDirectConversation(userId);
-    navigate(config.routes.conversation(conversation.id));
-  };
-
   const createCollection = async () => {
     if (!selectedCollectUserId || !canSubmitCollection) {
       return;
@@ -7916,7 +8262,7 @@ export function ImNewConversationPage() {
           />
 
           <section className="rounded-[24px] bg-white p-4 text-sm leading-6 text-ink/55 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-            从可搜索用户中添加联系人。点击某一项后，会直接加入通讯录并进入聊天窗口。
+            点击账号查看资料并发送好友申请
           </section>
 
           <section className="rounded-[24px] bg-white p-3 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
@@ -7928,9 +8274,9 @@ export function ImNewConversationPage() {
               <div className="space-y-2">
                 {filteredFriendCandidates.map((user) => (
                   <ContactRow
-                    caption={user.signature ?? user.region ?? user.bio ?? `${user.userIdLabel} · 添加后可直接开始聊天`}
+                    caption={user.signature ?? user.region ?? user.bio ?? user.userIdLabel}
                     key={user.id}
-                    onClick={() => void addFriendAndOpen(user.id)}
+                    onClick={() => navigate(config.routes.directoryProfile(user.id))}
                     user={user}
                   />
                 ))}

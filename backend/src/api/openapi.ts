@@ -1392,10 +1392,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "content",
           "metadata",
           "reactions",
+          "expiresAt",
           "recallDeadlineAt",
           "recalledAt",
           "recallMode",
           "contentPurgedAt",
+          "privacyPolicyVersionAtSend",
           "lifecycleVersion",
           "reactionVersion",
           "availableRecallModes",
@@ -1412,6 +1414,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: { $ref: "#/components/schemas/RealtimeMessageReaction" }
           },
+          expiresAt: { type: ["string", "null"], format: "date-time" },
           recallDeadlineAt: { type: ["string", "null"], format: "date-time" },
           recalledAt: { type: ["string", "null"], format: "date-time" },
           recallMode: {
@@ -1419,6 +1422,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["standard", "traceless", null]
           },
           contentPurgedAt: { type: ["string", "null"], format: "date-time" },
+          privacyPolicyVersionAtSend: { type: ["integer", "null"], minimum: 0 },
           lifecycleVersion: { type: "integer", minimum: 0 },
           reactionVersion: { type: "integer", minimum: 0 },
           availableRecallModes: {
@@ -1464,6 +1468,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           participants: {
             type: "array",
             items: { $ref: "#/components/schemas/RealtimeParticipant" }
+          },
+          directPeer: {
+            anyOf: [{ $ref: "#/components/schemas/RealtimeParticipant" }, { type: "null" }],
+            description:
+              "Read-only display peer for a direct conversation whose former contact removed their own participant record. This does not grant membership or send permission."
           },
           lastMessage: {
             anyOf: [{ $ref: "#/components/schemas/RealtimeMessage" }, { type: "null" }]
@@ -1517,19 +1526,114 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "id",
           "requesterUserId",
           "targetUserId",
+          "requester",
+          "target",
           "status",
           "message",
           "respondedAt",
+          "expiresAt",
+          "expiredAt",
           "createdAt"
         ],
         properties: {
           id: { type: "integer" },
           requesterUserId: { type: "integer" },
           targetUserId: { type: "integer" },
-          status: { type: "string", enum: ["pending", "accepted", "rejected"] },
-          message: { type: ["string", "null"] },
-          respondedAt: { type: ["string", "null"], format: "date-time" },
+          requester: { $ref: "#/components/schemas/RealtimeParticipant" },
+          target: { $ref: "#/components/schemas/RealtimeParticipant" },
+          status: { type: "string", enum: ["pending", "accepted", "rejected", "expired"] },
+          message: { type: "string", nullable: true },
+          respondedAt: { type: "string", format: "date-time", nullable: true },
+          expiresAt: { type: "string", format: "date-time" },
+          expiredAt: { type: "string", format: "date-time", nullable: true },
           createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      FriendRequestCreateResult: {
+        type: "object",
+        required: ["friendRequest", "created"],
+        properties: {
+          friendRequest: { $ref: "#/components/schemas/FriendRequest" },
+          created: { type: "boolean" }
+        }
+      },
+      RealtimeDirectoryIdentityCard: {
+        type: "object",
+        required: [
+          "entityType",
+          "profileId",
+          "displayName",
+          "identityLabel",
+          "verified",
+          "creditValue",
+          "creditReviewCount",
+          "gender",
+          "age",
+          "heightCm",
+          "languages",
+          "city",
+          "serviceArea",
+          "yearsExperience",
+          "bio"
+        ],
+        properties: {
+          entityType: {
+            type: "string",
+            enum: ["user", "technician", "shop", "account"]
+          },
+          profileId: { type: "integer", nullable: true },
+          displayName: { type: "string" },
+          identityLabel: { type: "string", nullable: true },
+          verified: { type: "boolean" },
+          creditValue: { type: "string", nullable: true },
+          creditReviewCount: { type: "integer", minimum: 0 },
+          gender: { type: "string", nullable: true },
+          age: { type: "integer", nullable: true, minimum: 0 },
+          heightCm: { type: "string", nullable: true },
+          languages: { type: "array", items: { type: "string" } },
+          city: { type: "string", nullable: true },
+          serviceArea: { type: "string", nullable: true },
+          yearsExperience: { type: "integer", nullable: true, minimum: 0 },
+          bio: { type: "string", nullable: true }
+        }
+      },
+      RealtimeDirectoryProfile: {
+        type: "object",
+        required: ["user", "identityCard", "relationship", "contactId", "friendRequest"],
+        properties: {
+          user: { $ref: "#/components/schemas/RealtimeParticipant" },
+          identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" },
+          relationship: {
+            type: "string",
+            enum: ["none", "friend", "incoming_pending", "outgoing_pending"]
+          },
+          contactId: { type: "integer", nullable: true },
+          friendRequest: {
+            anyOf: [{ $ref: "#/components/schemas/FriendRequest" }, { type: "null" }]
+          }
+        }
+      },
+      DeleteFriendshipResult: {
+        type: "object",
+        required: [
+          "actorUserId",
+          "counterpartUserId",
+          "contactIds",
+          "deletedContactCount",
+          "deletedFollowCount",
+          "deletedConversationId",
+          "deletedAt",
+          "deleted"
+        ],
+        properties: {
+          actorUserId: { type: "integer" },
+          counterpartUserId: { type: "integer" },
+          contactIds: { type: "array", items: { type: "integer" } },
+          deletedContactCount: { type: "integer", minimum: 0 },
+          deletedFollowCount: { type: "integer", minimum: 0 },
+          deletedConversationId: { type: "integer", nullable: true },
+          deletedAt: { type: "string", format: "date-time" },
+          deleted: { type: "boolean", enum: [true] }
         }
       },
       SocialPost: {
@@ -12711,7 +12815,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "201": { description: "Created conversation" }
+          "201": { description: "Created conversation" },
+          "403": { description: "error.im.not_friends for unauthorized direct conversations" }
         }
       }
     },
@@ -12919,7 +13024,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "201": { description: "Created message" }
+          "201": { description: "Created message" },
+          "403": { description: "error.im.not_friends or blocked recipient" }
         }
       },
       delete: {
@@ -13227,29 +13333,6 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Paginated contacts" }
         }
-      },
-      post: {
-        tags: ["Step 13 Realtime"],
-        summary: "Add or restore one contact from the searchable directory",
-        security: [{ bearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["targetUserId"],
-                additionalProperties: false,
-                properties: { targetUserId: { type: "integer", minimum: 1 } }
-              }
-            }
-          }
-        },
-        responses: {
-          "201": { description: "Created or restored contact" },
-          "400": { description: "Cannot add the current user" },
-          "404": { description: "Target user not found" }
-        }
       }
     },
     [`${config.API_PREFIX}/im/directory`]: {
@@ -13269,6 +13352,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         responses: {
           "200": { description: "Paginated safe account directory results" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/directory/{userId}`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Get a safe account profile and verified friendship state",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "userId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Safe directory profile",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/RealtimeDirectoryProfile" }
+              }
+            }
+          },
+          "404": { description: "Target user not found" }
         }
       }
     },
@@ -13313,7 +13422,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/im/contacts/{contactId}`]: {
       delete: {
         tags: ["Step 13 Realtime"],
-        summary: "Soft-delete one contact owned by the current user",
+        summary: "Hard-delete the bilateral friendship and the deleter's conversation entry",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -13324,7 +13433,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ],
         responses: {
-          "200": { description: "Soft-deleted contact relation" },
+          "200": {
+            description: "Bilateral friendship hard-deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DeleteFriendshipResult" }
+              }
+            }
+          },
           "403": { description: "Missing contact:delete permission" },
           "404": { description: "Contact not found for current user" }
         }
@@ -13339,7 +13455,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "status",
             in: "query",
-            schema: { type: "string", enum: ["pending", "accepted", "rejected"] }
+            schema: {
+              type: "string",
+              enum: ["pending", "accepted", "rejected", "expired"]
+            }
           },
           {
             name: "direction",
@@ -13371,7 +13490,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "201": { description: "Created friend request" }
+          "200": {
+            description: "Created or unchanged active friend request",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/FriendRequestCreateResult" }
+              }
+            }
+          },
+          "400": { description: "Self request or already friends" },
+          "404": { description: "Target user not found" }
         }
       }
     },
@@ -13384,7 +13512,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
         ],
         responses: {
-          "200": { description: "Accepted friend request" }
+          "200": { description: "Accepted friend request" },
+          "404": { description: "Request not found or not owned by current recipient" },
+          "409": { description: "Friend request expired" }
         }
       }
     },
@@ -13397,7 +13527,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
         ],
         responses: {
-          "200": { description: "Rejected friend request" }
+          "200": { description: "Rejected friend request" },
+          "404": { description: "Request not found or not owned by current recipient" },
+          "409": { description: "Friend request expired" }
         }
       }
     },

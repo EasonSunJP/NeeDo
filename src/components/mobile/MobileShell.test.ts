@@ -29,4 +29,12 @@ describe("MobileShell shared navigation", () => {
     expect(mobileShellSource).not.toContain("needoNavButtonImages[theme]");
     expect(stylesSource).not.toContain(".client-featured-nav-theme-button");
   });
+
+  it("routes friend-request unread count only to the contacts destination", () => {
+    expect(mobileShellSource).toContain("contacts: realtimeCounts.friendRequests");
+    expect(mobileShellSource).toContain("messages: realtimeCounts.conversations");
+    expect(mobileShellSource).toContain("moments: realtimeCounts.notifications");
+    expect(mobileShellSource).not.toContain("messages: realtimeCounts.friendRequests");
+    expect(mobileShellSource).not.toContain("moments: realtimeCounts.friendRequests");
+  });
 });

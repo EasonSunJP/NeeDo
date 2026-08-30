@@ -22,4 +22,19 @@ describe("UnifiedSocialUi technician store booking links", () => {
     expect(composerSource).not.toContain("fixed inset-x-0 top-0 z-30 border-b");
     expect(composerSource).not.toContain("<FloatingBackButton onClick={onBack}");
   });
+
+  it("keeps follow and unfollow independent from IM friendship mutations", () => {
+    const start = source.indexOf("export function SocialFollowButton");
+    const end = source.indexOf("function findImUserForSocialProfile", start);
+    const followButtonSource = source.slice(start, end);
+
+    expect(followButtonSource).toContain("toggleFollow(actorKey, targetKey)");
+    expect(followButtonSource).toContain('following ? "已关注" : "关注"');
+    expect(followButtonSource).not.toContain("sendFriendRequest");
+    expect(followButtonSource).not.toContain("deleteContact");
+    expect(followButtonSource).not.toContain("targetFollowsActor");
+    expect(followButtonSource).not.toContain("isSocialFriend");
+    expect(followButtonSource).not.toContain("autoFriendTargetRef");
+    expect(followButtonSource).not.toContain("friendUnfollowDialog");
+  });
 });

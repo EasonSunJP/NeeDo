@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import type { ConversationMessage } from "./model";
 import {
   buildCachedImSearchResults,
+  getIncomingPendingFriendRequestCount,
   getMessageFailureReason,
   getForwardableMessagePayload,
   mergeConversationMessageHistory,
   preferTerminalMessage,
+  selectLatestFriendRequestsByCounterpart,
   upsertConversationMessage,
 } from "./store";
 
@@ -63,6 +65,42 @@ describe("formal IM recall terminal precedence", () => {
       "const response = await api.recallMessage(conversationId, messageId, mode);",
     );
     expect(source).toContain("upsertMessage(response.message);");
+  });
+});
+
+describe("formal IM friend request derived state", () => {
+  const requests = [
+    {
+      id: "1",
+      fromUserId: "1",
+      toUserId: "2",
+      source: "formal_api",
+      requestMessage: "",
+      status: "pending" as const,
+      createdAt: "2026-08-29T00:00:00.000Z",
+      expiresAt: "2026-09-01T00:00:00.000Z",
+    },
+    {
+      id: "2",
+      fromUserId: "1",
+      toUserId: "2",
+      source: "formal_api",
+      requestMessage: "",
+      status: "rejected" as const,
+      createdAt: "2026-08-28T00:00:00.000Z",
+      expiresAt: "2026-08-31T00:00:00.000Z",
+    },
+  ];
+
+  it("counts only the latest unexpired incoming request for each counterpart", () => {
+    expect(selectLatestFriendRequestsByCounterpart(requests, "2")).toEqual([requests[0]]);
+    expect(
+      getIncomingPendingFriendRequestCount(
+        requests,
+        "2",
+        Date.parse("2026-08-30T00:00:00.000Z"),
+      ),
+    ).toBe(1);
   });
 });
 
@@ -185,6 +223,7 @@ describe("formal IM cached fuzzy search", () => {
 describe("formal IM send failure reason", () => {
   it("keeps the recipient-blocked reason on the optimistic failed message", () => {
     expect(getMessageFailureReason(new Error("error.im.recipient_blocked"))).toBe("recipient_blocked");
+    expect(getMessageFailureReason(new Error("error.im.not_friends"))).toBe("not_friends");
     expect(getMessageFailureReason(new Error("error.network.timeout"))).toBe("send_failed");
   });
 });

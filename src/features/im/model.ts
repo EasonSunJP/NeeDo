@@ -80,7 +80,35 @@ export type FriendRequest = {
   requestMessage: string;
   status: ImFriendRequestStatus;
   createdAt: string;
+  expiresAt: string;
+  expiredAt?: string;
   handledAt?: string;
+};
+
+export type DirectoryProfile = {
+  user: ImUser;
+  identityCard: DirectoryIdentityCard;
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  contactId?: string;
+  friendRequest?: FriendRequest;
+};
+
+export type DirectoryIdentityCard = {
+  entityType: "user" | "technician" | "shop" | "account";
+  profileId?: string;
+  displayName: string;
+  identityLabel?: string;
+  verified: boolean;
+  creditValue?: number;
+  creditReviewCount: number;
+  gender?: string;
+  age?: number;
+  heightCm?: number;
+  languages: string[];
+  city?: string;
+  serviceArea?: string;
+  yearsExperience?: number;
+  bio?: string;
 };
 
 const generatedContactSignaturePatterns = [
@@ -266,10 +294,11 @@ export type ConversationMessage = {
   content: string;
   quotedMessageId?: string;
   status: ImMessageStatus;
-  failureReason?: "recipient_blocked" | "send_failed";
+  failureReason?: "recipient_blocked" | "not_friends" | "send_failed";
   sentAt: string;
   editedAt?: string;
   contentPurgedAt?: string;
+  privacyPolicyVersionAtSend?: number;
   lifecycleVersion?: number;
   reactionVersion?: number;
   recallDeadlineAt?: string;

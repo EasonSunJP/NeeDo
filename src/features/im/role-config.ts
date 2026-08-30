@@ -12,6 +12,7 @@ type ImScopeRoutes = {
   conversationMedia: (conversationId: string) => string;
   contacts: string;
   contactDetail: (contactId: string) => string;
+  directoryProfile: (userId: string) => string;
   friendRequests: string;
   organization: string;
   blacklist: string;
@@ -65,6 +66,7 @@ function buildRoutes(scope: ImRoleType): ImScopeRoutes {
     conversationMedia: (conversationId) => `${prefix}/messages/${conversationId}/media`,
     contacts: `${prefix}/contacts`,
     contactDetail: (contactId) => `${prefix}/contacts/${contactId}`,
+    directoryProfile: (userId) => `${prefix}/contacts/directory/${encodeURIComponent(userId)}`,
     friendRequests: `${prefix}/contacts/requests`,
     organization: `${prefix}/contacts/organization`,
     blacklist: `${prefix}/contacts/blacklist`,
