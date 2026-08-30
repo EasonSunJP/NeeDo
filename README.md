@@ -215,6 +215,21 @@ Submit text, a judgement sticker, an image, and a location through the formal AP
 
 Local acceptance recorded on 2026-08-31 used `needo_dev`: preflight found 51,818 posts and four valid legacy reply relations; postflight kept the same post total, backfilled all four relations, reported zero orphans, and found the required index and foreign key. The final isolated regression run passed 255 frontend files / 1,577 tests and 326 backend suites / 2,166 tests, with 10 suites / 38 environment-conditional backend tests reported as skipped. Authenticated user, merchant, and technician routes were checked at mobile widths; the four formal reply types were submitted to post `64773`, and reload showed the authoritative count and list total both at seven with sticker, image, and location presentation preserved. A final isolated merchant-browser check opened older post `64000` directly; the runtime issued both `GET /api/v1/social/posts/64000` and `GET /api/v1/social/posts?page=1&pageSize=100&replyToPostId=64000`, then rendered the canonical detail instead of the not-found state.
 
+### Formal Social interaction acceptance
+
+Likes, bookmarks, unique views, and friend shares are persisted by migration `20260831150000_social_post_interactions`; the timeline no longer increments these counters in browser-only state. `PUT/DELETE /api/v1/social/posts/:id/like` and `PUT/DELETE /api/v1/social/posts/:id/bookmark` return the authoritative post, `POST /api/v1/social/posts/:id/view` counts one active identity only once, and `POST /api/v1/social/posts/:id/shares` requires an `Idempotency-Key` plus 1–20 unique formal-friend user IDs. Every route requires `social-post:interact`; friend sharing additionally requires `message:create` and creates a real direct-conversation `social-post-card` message instead of a public repost.
+
+`GET /api/v1/social/posts?bookmarked=true&page=1&pageSize=20` is the formal source for the customer-center `/me/favorites` page. Timeline, detail, and favorites consume the same returned `counters` and `viewerInteraction` fields. The SSE event `social.post.interaction.updated` refreshes the relevant formal post, while `message.created` delivers a newly shared card to sender and recipient. Legacy media-envelope counters remain a read-only baseline for existing seeded posts; new interaction rows are added to that baseline without rewriting old media JSON.
+
+Before local data acceptance, confirm the backend and frontend listeners belong to the intended checkout, then apply and inspect the additive migration:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+```
+
+With explicitly approved disposable test data, verify in order: like/unlike count and state after reload; a second detail view from the same active identity does not add another view; bookmark appears under `个人中心 → 我的收藏` and disappears after unbookmark; share selects one or more bilateral friends and creates one private dynamic card per recipient; reusing the same idempotency key creates no duplicate message. Repeat at 440×956 and check failed requests, console errors, overflow, two-account SSE delivery, refresh persistence, and cleanup of the temporary interactions/messages.
+
 ### Formal friend verification
 
 Adding a contact now uses the persisted Step 13 friend-request flow rather than direct Contact creation. Search opens the target's formal identity profile first; a request remains actionable for exactly 72 hours by database UTC time. Repeating the same pending request does not refresh its timestamp or notification, while rejection permits immediate reapplication and expiry permits a newly notified request. Acceptance atomically creates reciprocal Contact and Follow rows.

@@ -30,6 +30,23 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/refresh");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+    [
+      "/api/v1/social/posts/{id}/like",
+      "/api/v1/social/posts/{id}/bookmark",
+      "/api/v1/social/posts/{id}/view",
+      "/api/v1/social/posts/{id}/shares"
+    ].forEach((path) => expect(response.body.paths).toHaveProperty(path));
+    expect(response.body.components.schemas.SocialPost.required).toEqual(
+      expect.arrayContaining(["counters", "viewerInteraction"])
+    );
+    expect(response.body.paths["/api/v1/social/posts"].get.parameters).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "bookmarked", in: "query" })])
+    );
+    expect(response.body.paths["/api/v1/social/posts/{id}/shares"].post.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Idempotency-Key", in: "header", required: true })
+      ])
+    );
 
     const strictAuthBodies = [
       ["/api/v1/auth/register", ["email", "password"]],

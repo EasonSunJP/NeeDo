@@ -339,6 +339,32 @@
 - 随后主工作树出现与本语音切片无关的 Social 并行修改；本任务复核时 `npm run lint` 与 `npm run verify:production-build` 均在 `src/features/social/formal-adapter.test.ts:68:7` 因 `counters` 不属于 `RealtimeSocialPost` 而退出。该并行修改未纳入本次文档提交，也未放宽门禁。
 - 正式运行监听已确认来自当前检出：前端 `5180` 的 cwd 为仓库根目录，后端 `3000` 的 cwd 为 `backend/`。在 `http://127.0.0.1:5180/user.html#/messages/2546` 实测单击打开、录音态 X + 停止、预览态 X + 重放 + 发送、动作区 `top-[57%]`、72×72 CSS 像素按钮、Blob 音频 `muted=false` / `defaultMuted=false` / `playsinline=true` 及播放进度；用户确认实际录音回放有声。`volume=1` 已由 hook 回归测试覆盖并在每次 `play()` 前设置，但本次浏览器检查接口未返回该属性，因此不标记为浏览器直接取值通过。440×956、320×956、持续静音输入提示、失败重试及双账号 SSE/重载播放仍未在本切片重新验收。
 
+## 6.26 动态互动权威计数、用户收藏与好友私信转发（2026-08-31）
+
+### 权威数据与权限边界
+
+- additive migration `20260831150000_social_post_interactions` 新增 `social_post_likes`、`social_post_bookmarks`、`social_post_views` 与 `social_post_shares`。四张表均包含软删除时间与审计时间；点赞、收藏和浏览以 `postId + identityId` 唯一，转发以 `postId + actorIdentityId + targetUserId` 记录投递，并以 `actorIdentityId + idempotencyKey + targetUserId` 阻止重试重复消息。
+- `social-post:interact` 已进入正式 permission catalog，并授予 `admin / merchant_owner / merchant_staff / technician / customer`。所有互动路由要求该权限；好友私信转发同时要求现有 `message:create`。Service 始终从当前 Bearer 会话解析活动身份，Controller 不直接访问 Prisma。
+- 列表、详情和每个互动响应都返回服务端 `counters.likes / reposts / views / bookmarks` 与当前活动身份的 `viewerInteraction.liked / bookmarked / shared`。旧正式种子写在 media envelope 内的计数只作为兼容基线读取；新增关系计数叠加其上，不回写旧 JSON，也不把浏览器状态当作累计来源。
+
+### 正式 REST 与实时事件
+
+- `PUT /api/v1/social/posts/:id/like`、`DELETE /api/v1/social/posts/:id/like`、`PUT /api/v1/social/posts/:id/bookmark` 与 `DELETE /api/v1/social/posts/:id/bookmark` 使用幂等软恢复/软删除并返回权威动态。`POST /api/v1/social/posts/:id/view` 对同一活动身份只累计一次有效浏览。
+- `GET /api/v1/social/posts?bookmarked=true&page=...&pageSize=...` 仍是分页接口，并只返回当前活动身份有效收藏的可见动态；资料隐私、作者屏蔽和 follower-only 可见性继续由 Repository 的统一可见性条件约束。
+- `POST /api/v1/social/posts/:id/shares` 接受 1–20 个去重 `targetUserIds`，要求 `Idempotency-Key`，拒绝本人、非双向正式好友、拉黑关系和无权看到 follower-only 动态的收件人。事务内复用或恢复一对一 friendship conversation，并创建带 `needoMessageType = social-post-card` 的正式 Message；重复相同 key 只返回既有投递，不重复增加转发计数、未读数或 SSE。
+- 点赞、收藏和首次浏览通过 `social.post.interaction.updated` 通知当前账号、作者及现有关注者刷新权威动态；首次好友转发继续使用正式 `message.created` 发送给双方。未新增轮询、浏览器业务存储或平行 IM 数据源。
+
+### 前端统一入口
+
+- 时间线和详情的点赞、收藏及浏览直接调用正式 API，并只提交服务端返回的 post/counter/viewer state。收藏入口改为客户个人中心 `/me/favorites`；页面数据来自正式 bookmarked 分页启动快照，复用同一动态卡片，取消收藏后按确认状态移除。
+- “转发”页不再发布到公共时间线，也不再维护失效的快速转发/引用转发按钮；它加载正式联系人候选，支持搜索和多选，并把动态卡片发给所选好友。聊天消息模型、会话摘要和气泡共同识别 `social-post-card`，可从卡片返回原动态。
+- 互动请求失败不再产生 optimistic 计数；原确认状态保留。所有三端继续复用 Social provider 与同一详情/时间线组件，本切片没有复制三套 UI。
+
+### 自动化与待授权验收边界
+
+- 聚焦前端回归覆盖权威映射、正式 provider、好友转发页、个人中心收藏入口以及 IM 正式消息解析；聚焦后端回归覆盖 Zod、migration/permission 契约、Service SSE/幂等边界、OpenAPI 与完整 HTTP 路由。完整 lint、build、全量测试与生产 bundle 门禁应在交付前重新运行并以最终命令输出为准。
+- 当前未应用此 migration、未修改正式数据库，也未执行会产生点赞、收藏或好友消息的浏览器动作。获得临时数据写入授权后，必须确认端口与工作树归属，验证点赞/取消、同身份唯一浏览、个人中心收藏持久化、双账号好友卡片投递、重复 Idempotency-Key、SSE、刷新、移动端溢出和 console，并清理临时互动与消息；未完成这些步骤前不得标记真实页面/数据验收通过。
+
 ---
 
 ## 7. 给 Codex 的命令
