@@ -1,8 +1,17 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { auditProductionBundle } from "./audit-production-bundle-lib.mjs";
+
+const fixtureDirectories = new Set();
+
+afterEach(async () => {
+  await Promise.all(
+    [...fixtureDirectories].map((directory) => rm(directory, { recursive: true, force: true }))
+  );
+  fixtureDirectories.clear();
+});
 
 async function createBundleFixture({
   staticDemo = false,
@@ -11,6 +20,7 @@ async function createBundleFixture({
   i18nBytes
 } = {}) {
   const distDir = await mkdtemp(path.join(tmpdir(), "needo-bundle-audit-"));
+  fixtureDirectories.add(distDir);
   const assetsDir = path.join(distDir, "assets");
   await mkdir(assetsDir);
   await writeFile(
