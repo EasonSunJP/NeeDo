@@ -489,11 +489,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
   }
 
   public async getDirectoryProfile(auth: AuthenticatedAccessContext, targetUserId: number) {
-    if (auth.userId === targetUserId) {
-      throw this.validationError("error.realtime.contact_self");
-    }
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = await this.requireCanonicalTargetIdentity(targetUserId);
+    const targetIdentityId = auth.userId === targetUserId
+      ? scope.identityId
+      : await this.requireCanonicalTargetIdentity(targetUserId);
     const profile = await this.repository.getDirectoryProfile(
       auth.userId,
       scope.identityId,

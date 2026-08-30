@@ -136,7 +136,7 @@ export type RealtimeFriendRequest = {
 export type RealtimeDirectoryProfile = {
   user: RealtimeParticipant;
   identityCard: RealtimeDirectoryIdentityCard;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: RealtimeFriendRequest | null;
 };

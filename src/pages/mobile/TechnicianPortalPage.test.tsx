@@ -59,6 +59,22 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).not.toContain('<h2 className="text-xl font-black">今日安排</h2>');
   });
 
+  it("matches the deployed formal status-sync heading and compact five-state controls", () => {
+    const tasksStart = source.indexOf("function TasksView");
+    const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);
+    const tasksSource = source.slice(tasksStart, tasksEnd);
+
+    expect(tasksSource).toContain('label="状态同步 简介"');
+    expect(tasksSource).toContain('title="状态同步"');
+    expect(tasksSource).toContain('titleClassName="text-lg font-bold text-[color:var(--client-text)]"');
+    expect(tasksSource).toContain('variant="paper"');
+    expect(tasksSource).toContain('"☾", tone: "rest"');
+    expect(tasksSource).toContain('min-h-[88px]');
+    expect(tasksSource).toContain('h-9 w-9');
+    expect(tasksSource).not.toContain('min-h-[104px]');
+    expect(tasksSource).not.toContain('"休息中", icon: "◕"');
+  });
+
   it("restores the deployed formal status timeline instead of a simple list", () => {
     const tasksStart = source.indexOf("function TasksView");
     const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);

@@ -92,7 +92,7 @@ export type FriendRequest = {
 export type DirectoryProfile = {
   user: ImUser;
   identityCard: DirectoryIdentityCard;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId?: string;
   friendRequest?: FriendRequest;
 };

@@ -183,7 +183,7 @@ export type CreateFriendRequestOutcome =
 export interface DirectoryProfilePayload {
   user: ParticipantPayload;
   identityCard: DirectoryIdentityCardPayload;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: FriendRequestPayload | null;
 }
@@ -752,6 +752,7 @@ type DirectoryProfileUserRecord = {
   username: string;
   avatarUrl: string | null;
   identities: Array<{
+    id: number;
     type: string;
     scopeType: string | null;
     scopeId: number | null;
@@ -2336,6 +2337,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         identities: {
           where: { deletedAt: null, isActive: true },
           select: {
+            id: true,
             type: true,
             scopeType: true,
             scopeId: true,
@@ -2393,7 +2395,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (!user) {
       return null;
     }
-    const identityCard = await this.buildDirectoryIdentityCard(user);
+    const identityCard = await this.buildDirectoryIdentityCard(user, targetIdentityId);
+    if (viewerUserId === targetUserId && viewerIdentityId === targetIdentityId) {
+      return {
+        user: this.mapParticipant(user),
+        identityCard,
+        relationship: "self",
+        contactId: null,
+        friendRequest: null
+      };
+    }
     const contact = await this.client.contact.findFirst({
       where: {
         ownerIdentityId: viewerIdentityId,
@@ -4191,9 +4202,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   private async buildDirectoryIdentityCard(
-    user: DirectoryProfileUserRecord
+    user: DirectoryProfileUserRecord,
+    targetIdentityId: number
   ): Promise<DirectoryIdentityCardPayload> {
     const identity =
+      user.identities.find((item) => item.id === targetIdentityId) ??
       user.identities.find((item) =>
         ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(
           item.type

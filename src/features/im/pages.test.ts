@@ -215,6 +215,28 @@ describe("IM pages", () => {
     expect(componentsSource).toContain("对方不是你的好友，信息发送失败");
   });
 
+  it("routes message and visible group-member avatars by the represented account", () => {
+    const roomStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const roomEnd = pagesSource.indexOf("function ImMessageSelectionHandles", roomStart);
+    const roomSource = pagesSource.slice(roomStart, roomEnd);
+    const infoStart = pagesSource.indexOf("export function ImConversationInfoPage");
+    const infoEnd = pagesSource.indexOf("export function ImConversationSearchPage", infoStart);
+    const infoSource = pagesSource.slice(infoStart, infoEnd);
+
+    expect(roomSource).toContain(
+      "resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive)",
+    );
+    expect(infoSource).toContain(
+      "resolveImContactInformationPath(scope, groupOwner?.user, hiddenMemberProfilesActive)",
+    );
+    expect(infoSource).toContain(
+      "resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive)",
+    );
+    expect(infoSource).not.toContain(
+      "const profilePath = hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user)",
+    );
+  });
+
   it("lets conversation wallpaper sit behind the fixed glass top bar", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");

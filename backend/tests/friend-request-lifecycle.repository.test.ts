@@ -388,6 +388,72 @@ describe("RealtimeRepository friend request lifecycle", () => {
     });
   });
 
+  it("returns a self profile for the active identity without reading relationship rows", async () => {
+    const selfUser = {
+      ...requester,
+      identities: [
+        {
+          id: 411,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 141,
+          displayName: "Requester Customer",
+          isDefault: true
+        },
+        {
+          id: requesterIdentityId,
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 741,
+          displayName: "Requester Technician",
+          isDefault: false
+        }
+      ],
+      customerProfile: null,
+      technicianProfile: {
+        id: 741,
+        displayName: "Requester Technician",
+        bio: "本人技师资料",
+        city: "东京",
+        serviceArea: "新宿区",
+        yearsExperience: 4,
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: dbNow,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const contactFindFirst = jest.fn();
+    const friendRequestFindFirst = jest.fn();
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(selfUser) },
+      contact: { findFirst: contactFindFirst },
+      friendRequest: { findFirst: friendRequestFindFirst }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        requester.id,
+        requesterIdentityId
+      )
+    ).resolves.toMatchObject({
+      relationship: "self",
+      contactId: null,
+      friendRequest: null,
+      identityCard: {
+        entityType: "technician",
+        profileId: 741,
+        displayName: "Requester Technician"
+      }
+    });
+    expect(contactFindFirst).not.toHaveBeenCalled();
+    expect(friendRequestFindFirst).not.toHaveBeenCalled();
+  });
+
   it("keeps an incoming pending request actionable when only the viewer has a one-way contact", async () => {
     const pending = requestRecord({
       requesterUserId: target.id,

@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  calendarProps: vi.fn()
+  calendarProps: vi.fn(),
+  timelineProps: vi.fn()
 }));
 
 vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
@@ -16,6 +17,15 @@ vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
 }));
 vi.mock("../../components/technician/FormalTechnicianOrdersPanel", () => ({
   FormalTechnicianOrdersPanel: () => <div data-testid="formal-order-panel">订单正式面板</div>
+}));
+vi.mock("../../components/mobile/ContactEventTimeline", () => ({
+  ContactEventTimelinePanel: (props: Record<string, unknown>) => {
+    mocks.timelineProps(props);
+    return <div data-testid="formal-status-timeline">状态记录</div>;
+  }
+}));
+vi.mock("../../features/scheduling/window-loader", () => ({
+  loadEveryTechnicianOrder: vi.fn().mockResolvedValue([])
 }));
 
 import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
@@ -50,6 +60,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-01T09:00:00+09:00"));
     mocks.calendarProps.mockClear();
+    mocks.timelineProps.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -103,5 +114,16 @@ describe("FormalTechnicianScheduleWorkspace", () => {
       search?.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({ searchQuery: "预约" }));
+  });
+
+  it("keeps the approved three-column formal status timeline below the shared calendar", async () => {
+    await waitFor(() => expect(container.querySelector('[data-testid="formal-status-timeline"]')).not.toBeNull());
+    expect(mocks.timelineProps).toHaveBeenLastCalledWith(expect.objectContaining({
+      commentAuthorAvatarSrc: "/media/technician.jpg",
+      commentAuthorName: "正式技师",
+      emptyLabel: "暂无执行 / 异常记录",
+      layout: "three-column",
+      title: "状态记录"
+    }));
   });
 });

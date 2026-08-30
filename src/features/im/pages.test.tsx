@@ -69,6 +69,20 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(profileSource).toContain("contactInfoRedirectFailed");
   });
 
+  it("renders the current account as read-only contact information without relationship controls", () => {
+    const start = source.indexOf("export function ImDirectoryProfilePage");
+    const end = source.indexOf("export function ImContactDetailPage", start);
+    const profileSource = source.slice(start, end);
+
+    expect(profileSource).toContain(
+      'const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";',
+    );
+    expect(profileSource).toContain("{!isSelfProfile ? (");
+    expect(profileSource).toContain("profile && !isFriendProfile && !isSelfProfile");
+    expect(profileSource).toContain("<ConversationIdentityProfileCard");
+    expect(profileSource).toContain("<ImContactActivityEntry");
+  });
+
   it("uses contact information naming for contact pages while retaining group settings naming", () => {
     const profileStart = source.indexOf("export function ImDirectoryProfilePage");
     const contactDetailStart = source.indexOf("export function ImContactDetailPage", profileStart);
