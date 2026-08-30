@@ -4,6 +4,11 @@ import type { PaginatedResponse } from "../utils/pagination";
 export type ExchangePostType = "demand" | "intelligence";
 export type ExchangePostStatus = "published" | "withdrawn" | "expired";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
+export type ExchangeMatchMode = "quick" | "selective";
+export type ExchangeBudgetMode = "total" | "per_provider";
+export type ExchangePublisherCapacitySource = "customer_membership" | "shop_merchant";
+export type ExchangeCustomerMembershipLevel = "standard" | "silver" | "gold" | "black";
+export type ExchangeNdpCurrency = "NDP" | "TEST_NDP";
 
 export interface ExchangeActorPayload {
   publicId: string;
@@ -24,8 +29,45 @@ export interface ExchangeViewerState {
 }
 
 export interface ExchangeDemandPayload {
+  targetProviderCount: number;
+  targetProviderLimitSnapshot: number;
+  publisherCapacitySource: ExchangePublisherCapacitySource;
+  membershipLevelSnapshot: ExchangeCustomerMembershipLevel | null;
+  matchMode: ExchangeMatchMode;
+  budgetMode: ExchangeBudgetMode;
   budgetMinJpy: number | null;
   budgetMaxJpy: number;
+  address: ExchangeRequestAddressPayload;
+}
+
+export interface ExchangeRequestAddressPayload {
+  line1: string;
+  line2: string | null;
+  line3: string | null;
+  line2GenerallyVisible: boolean;
+  line3GenerallyVisible: boolean;
+  disclosure: "owner" | "general";
+}
+
+export interface ExchangePublisherCapacity {
+  source: ExchangePublisherCapacitySource;
+  membershipLevel: ExchangeCustomerMembershipLevel | null;
+  targetProviderLimit: number;
+  payerOwnerType: "user" | "shop";
+  payerOwnerId: number;
+  currency: ExchangeNdpCurrency;
+}
+
+export interface ExchangeRequestPublicationContextPayload {
+  canPublish: boolean;
+  capacitySource: ExchangePublisherCapacitySource;
+  membershipLevel: ExchangeCustomerMembershipLevel | null;
+  maxTargetProviderCount: number;
+  publicationFee: {
+    amountNdp: number;
+    currency: ExchangeNdpCurrency;
+    ruleSetVersion: number;
+  };
 }
 
 export interface ExchangeIntelligencePayload {
@@ -48,7 +90,7 @@ export interface ExchangePostPayload {
   serviceEndAt: string;
   expiresAt: string;
   publishedAt: string;
-  publisher: ExchangeActorPayload;
+  publisher: ExchangeActorPayload | null;
   counts: ExchangeInteractionCounts;
   viewer: ExchangeViewerState;
   demand: ExchangeDemandPayload | null;

@@ -1,7 +1,10 @@
 import {
   ContentLocale,
+  ExchangeBudgetMode as DatabaseExchangeBudgetMode,
+  ExchangeMatchMode as DatabaseExchangeMatchMode,
   ExchangePostStatus as DatabaseExchangePostStatus,
   ExchangePostType as DatabaseExchangePostType,
+  ExchangePublisherCapacitySource as DatabaseExchangePublisherCapacitySource,
   ExchangeServiceMode as DatabaseExchangeServiceMode
 } from "@prisma/client";
 import type { Prisma, PrismaClient } from "@prisma/client";
@@ -21,12 +24,16 @@ import type {
 import type {
   ExchangeCommentPage,
   ExchangeCommentPayload,
+  ExchangeBudgetMode,
+  ExchangeCustomerMembershipLevel,
   ExchangeInteractionCounts,
   ExchangeListInput,
+  ExchangeMatchMode,
   ExchangePostPage,
   ExchangePostPayload,
   ExchangePostStatus,
   ExchangePostType,
+  ExchangePublisherCapacitySource,
   ExchangeServiceMode
 } from "../types/exchange.types";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -74,6 +81,63 @@ const serviceModeToDatabase: Record<ExchangeServiceMode, DatabaseExchangeService
   store: DatabaseExchangeServiceMode.STORE,
   onsite: DatabaseExchangeServiceMode.ONSITE,
   flexible: DatabaseExchangeServiceMode.FLEXIBLE
+};
+
+const matchModeFromDatabase: Record<DatabaseExchangeMatchMode, ExchangeMatchMode> = {
+  [DatabaseExchangeMatchMode.QUICK]: "quick",
+  [DatabaseExchangeMatchMode.SELECTIVE]: "selective"
+};
+
+const matchModeToDatabase: Record<ExchangeMatchMode, DatabaseExchangeMatchMode> = {
+  quick: DatabaseExchangeMatchMode.QUICK,
+  selective: DatabaseExchangeMatchMode.SELECTIVE
+};
+
+const budgetModeFromDatabase: Record<DatabaseExchangeBudgetMode, ExchangeBudgetMode> = {
+  [DatabaseExchangeBudgetMode.TOTAL]: "total",
+  [DatabaseExchangeBudgetMode.PER_PROVIDER]: "per_provider"
+};
+
+const budgetModeToDatabase: Record<ExchangeBudgetMode, DatabaseExchangeBudgetMode> = {
+  total: DatabaseExchangeBudgetMode.TOTAL,
+  per_provider: DatabaseExchangeBudgetMode.PER_PROVIDER
+};
+
+const capacitySourceFromDatabase: Record<
+  DatabaseExchangePublisherCapacitySource,
+  ExchangePublisherCapacitySource
+> = {
+  [DatabaseExchangePublisherCapacitySource.CUSTOMER_MEMBERSHIP]: "customer_membership",
+  [DatabaseExchangePublisherCapacitySource.SHOP_MERCHANT]: "shop_merchant"
+};
+
+const capacitySourceToDatabase: Record<
+  ExchangePublisherCapacitySource,
+  DatabaseExchangePublisherCapacitySource
+> = {
+  customer_membership: DatabaseExchangePublisherCapacitySource.CUSTOMER_MEMBERSHIP,
+  shop_merchant: DatabaseExchangePublisherCapacitySource.SHOP_MERCHANT
+};
+
+const PERSONAL_DEMAND_IDENTITIES = new Set([
+  "customer",
+  "user",
+  "u",
+  "scout",
+  "affiliate",
+  "alliance_marketing"
+]);
+
+const SHOP_MERCHANT_IDENTITIES = new Set(["merchant", "merchant_owner", "merchant_staff"]);
+
+const membershipLevelSnapshotFromDatabase = (
+  value: string | null
+): ExchangeCustomerMembershipLevel | null => {
+  if (value === null) return null;
+  if (value === "standard" || value === "silver" || value === "gold" || value === "black") {
+    return value;
+  }
+  throw new Error("error.exchange.invalid_membership_snapshot");
 };
 
 const postInclude = (viewerIdentityId: number) =>
@@ -124,16 +188,56 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         scopeId: true,
         displayName: true,
         publicIdentifier: { select: { publicId: true, status: true, deletedAt: true } },
-        user: { select: { username: true, avatarUrl: true, needoId: true } }
+        user: {
+          select: {
+            username: true,
+            avatarUrl: true,
+            needoId: true,
+            isTestAccount: true,
+            customerProfile: {
+              select: {
+                id: true,
+                membershipLevel: true,
+                membershipGrantMode: true,
+                membershipStartsAt: true,
+                membershipExpiresAt: true,
+                deletedAt: true
+              }
+            }
+          }
+        }
       }
     });
     if (!identity) return null;
+    const customerProfile = identity.user.customerProfile;
+    if (
+      PERSONAL_DEMAND_IDENTITIES.has(identity.type) &&
+      (!customerProfile || customerProfile.deletedAt !== null)
+    ) {
+      return null;
+    }
+    if (
+      ["customer", "user", "u"].includes(identity.type) &&
+      (identity.scopeType !== "customer_profile" || identity.scopeId !== customerProfile?.id)
+    ) {
+      return null;
+    }
+    let shopScope: ExchangeActorRecord["shopScope"] = null;
+    if (SHOP_MERCHANT_IDENTITIES.has(identity.type) && identity.scopeType === "shop") {
+      if (!identity.scopeId) return null;
+      const shop = await this.client.shop.findFirst({
+        where: { id: identity.scopeId, status: "published", deletedAt: null },
+        select: { id: true, status: true }
+      });
+      if (!shop) return null;
+      shopScope = { shopId: shop.id, status: shop.status };
+    }
     const directPublicId =
-      identity.publicIdentifier?.status === "ACTIVE" &&
-      identity.publicIdentifier.deletedAt === null
+      identity.publicIdentifier?.status === "ACTIVE" && identity.publicIdentifier.deletedAt === null
         ? identity.publicIdentifier.publicId
         : null;
-    const effectivePublicId = directPublicId ??
+    const effectivePublicId =
+      directPublicId ??
       (["customer", "user", "u"].includes(identity.type) ? identity.user.needoId : null);
     if (effectivePublicId !== input.publicId) return null;
     return {
@@ -144,7 +248,19 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       scopeId: identity.scopeId,
       publicId: effectivePublicId,
       displayName: identity.displayName ?? identity.user.username,
-      avatarUrl: identity.user.avatarUrl
+      avatarUrl: identity.user.avatarUrl,
+      isTestAccount: identity.user.isTestAccount,
+      customerMembership:
+        customerProfile && customerProfile.deletedAt === null
+          ? {
+              profileId: customerProfile.id,
+              membershipLevel: customerProfile.membershipLevel,
+              membershipGrantMode: customerProfile.membershipGrantMode,
+              membershipStartsAt: customerProfile.membershipStartsAt,
+              membershipExpiresAt: customerProfile.membershipExpiresAt
+            }
+          : null,
+      shopScope
     };
   }
 
@@ -243,7 +359,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
             title: input.input.title,
             detail: input.input.detail,
             contentLocale: localeToDatabase[input.input.contentLocale],
-            areaLabel: input.input.areaLabel,
+            areaLabel:
+              input.input.type === "demand" ? input.input.addressLine1 : input.input.areaLabel,
             serviceStartAt: input.input.serviceStartAt,
             serviceEndAt: input.input.serviceEndAt,
             expiresAt: input.input.expiresAt,
@@ -251,15 +368,31 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
             createdAt: input.now,
             updatedAt: input.now,
             ...(input.input.type === "demand"
-              ? {
-                  demand: {
-                    create: {
-                      budgetMinJpy: input.input.budgetMinJpy,
-                      budgetMaxJpy: input.input.budgetMaxJpy,
-                      addressLine1: input.input.areaLabel
-                    }
+              ? (() => {
+                  if (!input.capacity) {
+                    throw new Error("error.exchange.request_capacity_missing");
                   }
-                }
+                  return {
+                    demand: {
+                      create: {
+                        targetProviderCount: input.input.targetProviderCount,
+                        targetProviderLimitSnapshot: input.capacity.targetProviderLimit,
+                        publisherCapacitySource: capacitySourceToDatabase[input.capacity.source],
+                        membershipLevelSnapshot: input.capacity.membershipLevel,
+                        matchMode: matchModeToDatabase[input.input.matchMode],
+                        budgetMode: budgetModeToDatabase[input.input.budgetMode],
+                        budgetMinJpy: input.input.budgetMinJpy,
+                        budgetMaxJpy: input.input.budgetMaxJpy,
+                        addressLine1: input.input.addressLine1,
+                        addressLine2: input.input.addressLine2,
+                        addressLine3: input.input.addressLine3,
+                        addressLine2Public: input.input.addressLine2Public,
+                        addressLine3Public: input.input.addressLine3Public,
+                        publisherIdentityPublic: input.input.publisherIdentityPublic
+                      }
+                    }
+                  };
+                })()
               : {
                   intelligence: {
                     create: {
@@ -532,6 +665,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       row.status === DatabaseExchangePostStatus.PUBLISHED &&
       row.expiresAt.getTime() <= now.getTime();
     const status = expired ? "expired" : statusFromDatabase[row.status];
+    const ownerView = row.ownerIdentityId === viewerIdentityId;
     const intelligence = row.intelligence
       ? (() => {
           if (!isServiceAreaList(row.intelligence.serviceAreas)) {
@@ -547,6 +681,30 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         })()
       : null;
 
+    const demand = row.demand
+      ? {
+          targetProviderCount: row.demand.targetProviderCount,
+          targetProviderLimitSnapshot: row.demand.targetProviderLimitSnapshot,
+          publisherCapacitySource: capacitySourceFromDatabase[row.demand.publisherCapacitySource],
+          membershipLevelSnapshot: membershipLevelSnapshotFromDatabase(
+            row.demand.membershipLevelSnapshot
+          ),
+          matchMode: matchModeFromDatabase[row.demand.matchMode],
+          budgetMode: budgetModeFromDatabase[row.demand.budgetMode],
+          budgetMinJpy: row.demand.budgetMinJpy,
+          budgetMaxJpy: row.demand.budgetMaxJpy,
+          address: {
+            line1: row.demand.addressLine1,
+            line2: ownerView || row.demand.addressLine2Public ? row.demand.addressLine2 : null,
+            line3: ownerView || row.demand.addressLine3Public ? row.demand.addressLine3 : null,
+            line2GenerallyVisible: row.demand.addressLine2Public,
+            line3GenerallyVisible: row.demand.addressLine3Public,
+            disclosure: ownerView ? ("owner" as const) : ("general" as const)
+          }
+        }
+      : null;
+    const showPublisher = !row.demand || ownerView || row.demand.publisherIdentityPublic;
+
     return {
       id: row.id,
       type: typeFromDatabase[row.type],
@@ -559,12 +717,14 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       serviceEndAt: row.serviceEndAt.toISOString(),
       expiresAt: row.expiresAt.toISOString(),
       publishedAt: row.createdAt.toISOString(),
-      publisher: {
-        publicId: row.publisherPublicId,
-        identityType: row.publisherIdentityType,
-        displayName: row.publisherDisplayName,
-        avatarUrl: row.publisherAvatarUrl
-      },
+      publisher: showPublisher
+        ? {
+            publicId: row.publisherPublicId,
+            identityType: row.publisherIdentityType,
+            displayName: row.publisherDisplayName,
+            avatarUrl: row.publisherAvatarUrl
+          }
+        : null,
       counts: {
         comments: row._count.comments,
         likes: row._count.likes,
@@ -572,14 +732,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       },
       viewer: {
         liked: row.likes.length > 0,
-        canWithdraw: row.ownerIdentityId === viewerIdentityId && status === "published"
+        canWithdraw: ownerView && status === "published"
       },
-      demand: row.demand
-        ? {
-            budgetMinJpy: row.demand.budgetMinJpy,
-            budgetMaxJpy: row.demand.budgetMaxJpy
-          }
-        : null,
+      demand,
       intelligence
     };
   }

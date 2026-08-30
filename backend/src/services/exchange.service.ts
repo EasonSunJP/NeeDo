@@ -5,10 +5,13 @@ import type { PersonalIdentityScopeService } from "./personal-identity-scope.ser
 import type {
   ExchangeCommentPage,
   ExchangeCommentPayload,
+  ExchangeCustomerMembershipLevel,
   ExchangeInteractionCounts,
   ExchangePostPage,
   ExchangePostPayload,
-  ExchangePostType
+  ExchangePostType,
+  ExchangePublisherCapacity,
+  ExchangeRequestPublicationContextPayload
 } from "../types/exchange.types";
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
@@ -17,6 +20,8 @@ import type {
   PublishExchangePostBody
 } from "../validators/exchange.validators";
 import { exchangeIdempotencyKeySchema } from "../validators/exchange.validators";
+import { resolveEffectiveCustomerMembershipLevel } from "./customer-membership.service";
+import type { ExchangeRequestFeeService } from "./exchange-request-fee.service";
 
 export interface ExchangeActorLookup {
   userId: number;
@@ -30,6 +35,15 @@ export interface ExchangeActorLookup {
 export interface ExchangeActorRecord extends ExchangeActorLookup {
   displayName: string;
   avatarUrl: string | null;
+  isTestAccount: boolean;
+  customerMembership: {
+    profileId: number;
+    membershipLevel: string;
+    membershipGrantMode: string;
+    membershipStartsAt: Date | null;
+    membershipExpiresAt: Date | null;
+  } | null;
+  shopScope: { shopId: number; status: string } | null;
   ownerIdentityId?: number;
 }
 
@@ -54,6 +68,7 @@ interface ExchangeMutationBase {
 export interface ExchangePublishRepositoryInput {
   actor: ExchangeActorRecord;
   input: PublishExchangePostBody;
+  capacity?: ExchangePublisherCapacity;
   idempotencyKey: string;
   audit: AuditLogCreateInput;
   now: Date;
@@ -115,6 +130,24 @@ const INTELLIGENCE_PUBLISHER_IDENTITIES = new Set([
   "merchant_staff"
 ]);
 
+const PERSONAL_DEMAND_PUBLISHER_IDENTITIES = new Set([
+  "customer",
+  "user",
+  "u",
+  "scout",
+  "affiliate",
+  "alliance_marketing"
+]);
+
+const SHOP_DEMAND_PUBLISHER_IDENTITIES = new Set(["merchant", "merchant_owner", "merchant_staff"]);
+
+const CUSTOMER_MEMBERSHIP_LIMITS: Record<ExchangeCustomerMembershipLevel, number> = {
+  standard: 1,
+  silver: 2,
+  gold: 3,
+  black: 20
+};
+
 const DEMAND_AUDIENCE_IDENTITIES = new Set([
   "technician",
   "merchant",
@@ -126,8 +159,37 @@ export class ExchangeService {
   public constructor(
     private readonly repository: ExchangeRepositoryPort,
     private readonly now: () => Date = () => new Date(),
-    private readonly personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">
+    private readonly personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">,
+    private readonly exchangeRequestFeeService?: Pick<ExchangeRequestFeeService, "resolveCurrent">
   ) {}
+
+  public async getRequestPublicationContext(
+    access: AuthenticatedAccessContext
+  ): Promise<ExchangeRequestPublicationContextPayload> {
+    const at = this.now();
+    const actor = await this.resolveActor(access);
+    this.assertCanPublish(actor.identityType, "demand");
+    const capacity = this.resolvePublisherCapacity(actor, at);
+    if (!this.exchangeRequestFeeService) {
+      throw new AppError({
+        code: ERROR_CODES.EXCHANGE_REQUEST_FEE_UNAVAILABLE,
+        message: "error.exchange.request_fee_unavailable",
+        statusCode: 503
+      });
+    }
+    const fee = await this.exchangeRequestFeeService.resolveCurrent(at);
+    return {
+      canPublish: true,
+      capacitySource: capacity.source,
+      membershipLevel: capacity.membershipLevel,
+      maxTargetProviderCount: capacity.targetProviderLimit,
+      publicationFee: {
+        amountNdp: fee.amountNdp,
+        currency: capacity.currency,
+        ruleSetVersion: fee.ruleSetVersion
+      }
+    };
+  }
 
   public async listPosts(
     access: AuthenticatedAccessContext,
@@ -167,14 +229,21 @@ export class ExchangeService {
     input: PublishExchangePostBody,
     key: string
   ): Promise<ExchangePostPayload> {
+    const occurredAt = this.now();
     const actor = await this.resolveActor(access);
     this.assertCanPublish(actor.identityType, input.type);
+    const capacity =
+      input.type === "demand" ? this.resolvePublisherCapacity(actor, occurredAt) : undefined;
+    if (capacity && input.type === "demand") {
+      this.assertTargetWithinCapacity(input.targetProviderCount, capacity.targetProviderLimit);
+    }
     const idempotencyKey = exchangeIdempotencyKeySchema.parse(key);
     const result = await this.repository.publishPost({
       actor,
       input,
+      ...(capacity ? { capacity } : {}),
       idempotencyKey,
-      now: this.now(),
+      now: occurredAt,
       audit: this.audit(access, "exchange.post.publish", null, {
         identityId: actor.identityId,
         identityType: actor.identityType,
@@ -327,11 +396,73 @@ export class ExchangeService {
 
   private assertCanPublish(identityType: string, postType: ExchangePostType): void {
     const allowed =
-      (["customer", "user", "u", "scout", "affiliate", "alliance_marketing"].includes(
-        identityType
-      ) && postType === "demand") ||
+      ((PERSONAL_DEMAND_PUBLISHER_IDENTITIES.has(identityType) ||
+        SHOP_DEMAND_PUBLISHER_IDENTITIES.has(identityType)) &&
+        postType === "demand") ||
       (INTELLIGENCE_PUBLISHER_IDENTITIES.has(identityType) && postType === "intelligence");
     if (!allowed) throw this.identityForbidden();
+  }
+
+  private resolvePublisherCapacity(
+    actor: ExchangeActorRecord,
+    at: Date
+  ): ExchangePublisherCapacity {
+    const currency = actor.isTestAccount ? "TEST_NDP" : "NDP";
+    if (PERSONAL_DEMAND_PUBLISHER_IDENTITIES.has(actor.identityType)) {
+      const membership = actor.customerMembership;
+      if (!membership) throw this.identityForbidden();
+      if (
+        ["customer", "user", "u"].includes(actor.identityType) &&
+        (actor.scopeType !== "customer_profile" || actor.scopeId !== membership.profileId)
+      ) {
+        throw this.identityForbidden();
+      }
+      const effectiveMembership = resolveEffectiveCustomerMembershipLevel(membership, at)
+        .trim()
+        .toLowerCase();
+      if (!this.isCustomerMembershipLevel(effectiveMembership)) throw this.identityForbidden();
+      return {
+        source: "customer_membership",
+        membershipLevel: effectiveMembership,
+        targetProviderLimit: CUSTOMER_MEMBERSHIP_LIMITS[effectiveMembership],
+        payerOwnerType: "user",
+        payerOwnerId: actor.userId,
+        currency
+      };
+    }
+    if (SHOP_DEMAND_PUBLISHER_IDENTITIES.has(actor.identityType)) {
+      if (
+        actor.scopeType !== "shop" ||
+        !actor.scopeId ||
+        !actor.shopScope ||
+        actor.shopScope.shopId !== actor.scopeId ||
+        actor.shopScope.status !== "published"
+      ) {
+        throw this.identityForbidden();
+      }
+      return {
+        source: "shop_merchant",
+        membershipLevel: null,
+        targetProviderLimit: 20,
+        payerOwnerType: "shop",
+        payerOwnerId: actor.shopScope.shopId,
+        currency
+      };
+    }
+    throw this.identityForbidden();
+  }
+
+  private assertTargetWithinCapacity(target: number, limit: number): void {
+    if (Number.isSafeInteger(target) && target >= 1 && target <= limit) return;
+    throw new AppError({
+      code: ERROR_CODES.EXCHANGE_REQUEST_TARGET_LIMIT,
+      message: "error.exchange.request_target_limit",
+      statusCode: 409
+    });
+  }
+
+  private isCustomerMembershipLevel(value: string): value is ExchangeCustomerMembershipLevel {
+    return Object.prototype.hasOwnProperty.call(CUSTOMER_MEMBERSHIP_LIMITS, value);
   }
 
   private async assertPostReadable(actor: ExchangeActorRecord, postId: number): Promise<void> {

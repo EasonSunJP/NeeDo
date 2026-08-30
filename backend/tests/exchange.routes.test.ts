@@ -84,7 +84,24 @@ const post: ExchangePostPayload = {
   },
   counts: { comments: 4, likes: 21, shares: 5 },
   viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8_000,
+    budgetMaxJpy: 12_000,
+    address: {
+      line1: "渋谷区",
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "owner"
+    }
+  },
   intelligence: null
 };
 
@@ -267,12 +284,20 @@ describe("formal Exchange routes", () => {
       title: post.title,
       detail: post.detail,
       contentLocale: "ja",
-      areaLabel: post.areaLabel,
       serviceStartAt: "2026-08-31T09:00:00+09:00",
       serviceEndAt: "2026-08-31T10:00:00+09:00",
       expiresAt: "2026-08-31T08:30:00Z",
+      targetProviderCount: 1,
+      matchMode: "quick",
+      budgetMode: "total",
       budgetMinJpy: 8_000,
-      budgetMaxJpy: 12_000
+      budgetMaxJpy: 12_000,
+      addressLine1: post.areaLabel,
+      addressLine2: null,
+      addressLine3: null,
+      addressLine2Public: false,
+      addressLine3Public: false,
+      publisherIdentityPublic: false
     };
 
     await request(app)

@@ -24,7 +24,22 @@ const demandRow = {
   createdAt: new Date("2026-08-30T02:00:00.000Z"),
   updatedAt: new Date("2026-08-30T02:00:00.000Z"),
   deletedAt: null,
-  demand: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "CUSTOMER_MEMBERSHIP",
+    membershipLevelSnapshot: "standard",
+    matchMode: "QUICK",
+    budgetMode: "TOTAL",
+    budgetMinJpy: 8_000,
+    budgetMaxJpy: 12_000,
+    addressLine1: "渋谷区",
+    addressLine2: "道玄坂1-2-3",
+    addressLine3: "Prince Tower 12F",
+    addressLine2Public: false,
+    addressLine3Public: true,
+    publisherIdentityPublic: false
+  },
   intelligence: null,
   likes: [{ id: 91 }],
   _count: { comments: 4, likes: 21, shares: 5 }
@@ -40,7 +55,20 @@ describe("ExchangePostRepository", () => {
       scopeId: 27,
       displayName: "佐藤 美咲",
       publicIdentifier: { publicId: "NC12345678", status: "ACTIVE", deletedAt: null },
-      user: { username: "fallback", avatarUrl: null, needoId: "NC12345678" }
+      user: {
+        username: "fallback",
+        avatarUrl: null,
+        needoId: "NC12345678",
+        isTestAccount: true,
+        customerProfile: {
+          id: 27,
+          membershipLevel: "gold",
+          membershipGrantMode: "SELF_SERVICE",
+          membershipStartsAt: null,
+          membershipExpiresAt: null,
+          deletedAt: null
+        }
+      }
     }));
     const repository = new ExchangePostRepository({
       userIdentity: { findFirst }
@@ -63,7 +91,16 @@ describe("ExchangePostRepository", () => {
       scopeId: 27,
       publicId: "NC12345678",
       displayName: "佐藤 美咲",
-      avatarUrl: null
+      avatarUrl: null,
+      isTestAccount: true,
+      customerMembership: {
+        profileId: 27,
+        membershipLevel: "gold",
+        membershipGrantMode: "SELF_SERVICE",
+        membershipStartsAt: null,
+        membershipExpiresAt: null
+      },
+      shopScope: null
     });
     expect(findFirst).toHaveBeenCalledWith({
       where: {
@@ -74,7 +111,7 @@ describe("ExchangePostRepository", () => {
         scopeId: 27,
         isActive: true,
         deletedAt: null,
-        user: { is: { isActive: true, deletedAt: null } },
+        user: { is: { isActive: true, deletedAt: null } }
       },
       select: {
         id: true,
@@ -84,7 +121,24 @@ describe("ExchangePostRepository", () => {
         scopeId: true,
         displayName: true,
         publicIdentifier: { select: { publicId: true, status: true, deletedAt: true } },
-        user: { select: { username: true, avatarUrl: true, needoId: true } }
+        user: {
+          select: {
+            username: true,
+            avatarUrl: true,
+            needoId: true,
+            isTestAccount: true,
+            customerProfile: {
+              select: {
+                id: true,
+                membershipLevel: true,
+                membershipGrantMode: true,
+                membershipStartsAt: true,
+                membershipExpiresAt: true,
+                deletedAt: true
+              }
+            }
+          }
+        }
       }
     });
   });
@@ -98,7 +152,20 @@ describe("ExchangePostRepository", () => {
       scopeId: 27,
       displayName: "佐藤 美咲",
       publicIdentifier: null,
-      user: { username: "fallback", avatarUrl: null, needoId: "needo0000000041" }
+      user: {
+        username: "fallback",
+        avatarUrl: null,
+        needoId: "needo0000000041",
+        isTestAccount: true,
+        customerProfile: {
+          id: 27,
+          membershipLevel: "standard",
+          membershipGrantMode: "SELF_SERVICE",
+          membershipStartsAt: null,
+          membershipExpiresAt: null,
+          deletedAt: null
+        }
+      }
     }));
     const repository = new ExchangePostRepository({
       userIdentity: { findFirst }
@@ -121,8 +188,132 @@ describe("ExchangePostRepository", () => {
       scopeId: 27,
       publicId: "needo0000000041",
       displayName: "佐藤 美咲",
-      avatarUrl: null
+      avatarUrl: null,
+      isTestAccount: true,
+      customerMembership: {
+        profileId: 27,
+        membershipLevel: "standard",
+        membershipGrantMode: "SELF_SERVICE",
+        membershipStartsAt: null,
+        membershipExpiresAt: null
+      },
+      shopScope: null
     });
+  });
+
+  it("resolves an exact active shop scope for a merchant identity", async () => {
+    const identityFindFirst = jest.fn(async () => ({
+      id: 71,
+      userId: 7,
+      type: "merchant_owner",
+      scopeType: "shop",
+      scopeId: 81,
+      displayName: "NeeDo Salon",
+      publicIdentifier: { publicId: "NS12345678", status: "ACTIVE", deletedAt: null },
+      user: {
+        username: "fallback",
+        avatarUrl: null,
+        needoId: "needo0000000041",
+        isTestAccount: true,
+        customerProfile: null
+      }
+    }));
+    const shopFindFirst = jest.fn(async () => ({ id: 81, status: "published" }));
+    const repository = new ExchangePostRepository({
+      userIdentity: { findFirst: identityFindFirst },
+      shop: { findFirst: shopFindFirst }
+    } as never);
+
+    await expect(
+      repository.resolveActor({
+        userId: 7,
+        identityId: 71,
+        identityType: "merchant_owner",
+        scopeType: "shop",
+        scopeId: 81,
+        publicId: "NS12345678"
+      })
+    ).resolves.toEqual({
+      userId: 7,
+      identityId: 71,
+      identityType: "merchant_owner",
+      scopeType: "shop",
+      scopeId: 81,
+      publicId: "NS12345678",
+      displayName: "NeeDo Salon",
+      avatarUrl: null,
+      isTestAccount: true,
+      customerMembership: null,
+      shopScope: { shopId: 81, status: "published" }
+    });
+    expect(shopFindFirst).toHaveBeenCalledWith({
+      where: { id: 81, status: "published", deletedAt: null },
+      select: { id: true, status: true }
+    });
+  });
+
+  it("rejects deleted customer profiles and inactive shop scopes", async () => {
+    const customerIdentity = {
+      id: 17,
+      userId: 7,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 27,
+      displayName: "佐藤 美咲",
+      publicIdentifier: { publicId: "NC12345678", status: "ACTIVE", deletedAt: null },
+      user: {
+        username: "fallback",
+        avatarUrl: null,
+        needoId: "NC12345678",
+        isTestAccount: true,
+        customerProfile: {
+          id: 27,
+          membershipLevel: "standard",
+          membershipGrantMode: "SELF_SERVICE",
+          membershipStartsAt: null,
+          membershipExpiresAt: null,
+          deletedAt: now
+        }
+      }
+    };
+    const customerRepository = new ExchangePostRepository({
+      userIdentity: { findFirst: jest.fn(async () => customerIdentity) }
+    } as never);
+    await expect(
+      customerRepository.resolveActor({
+        userId: 7,
+        identityId: 17,
+        identityType: "customer",
+        scopeType: "customer_profile",
+        scopeId: 27,
+        publicId: "NC12345678"
+      })
+    ).resolves.toBeNull();
+
+    const shopRepository = new ExchangePostRepository({
+      userIdentity: {
+        findFirst: jest.fn(async () => ({
+          ...customerIdentity,
+          id: 71,
+          type: "merchant_owner",
+          scopeType: "shop",
+          scopeId: 81,
+          publicIdentifier: { publicId: "NS12345678", status: "ACTIVE", deletedAt: null },
+          user: { ...customerIdentity.user, customerProfile: null }
+        }))
+      },
+      shop: { findFirst: jest.fn(async () => null) }
+    } as never);
+    await expect(
+      shopRepository.resolveActor({
+        userId: 7,
+        identityId: 71,
+        identityType: "merchant_owner",
+        scopeType: "shop",
+        scopeId: 81,
+        publicId: "NS12345678"
+      })
+    ).resolves.toBeNull();
   });
 
   it("lists a filtered page with persisted counts and no internal identity ids", async () => {
@@ -162,7 +353,24 @@ describe("ExchangePostRepository", () => {
           },
           counts: { comments: 4, likes: 21, shares: 5 },
           viewer: { liked: true, canWithdraw: true },
-          demand: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 },
+          demand: {
+            targetProviderCount: 1,
+            targetProviderLimitSnapshot: 1,
+            publisherCapacitySource: "customer_membership",
+            membershipLevelSnapshot: "standard",
+            matchMode: "quick",
+            budgetMode: "total",
+            budgetMinJpy: 8_000,
+            budgetMaxJpy: 12_000,
+            address: {
+              line1: "渋谷区",
+              line2: "道玄坂1-2-3",
+              line3: "Prince Tower 12F",
+              line2GenerallyVisible: false,
+              line3GenerallyVisible: true,
+              disclosure: "owner"
+            }
+          },
           intelligence: null
         }
       ],
@@ -219,6 +427,34 @@ describe("ExchangePostRepository", () => {
     });
     expect(JSON.stringify(response)).not.toContain("authorUserId");
     expect(JSON.stringify(response)).not.toContain("authorIdentityId");
+  });
+
+  it("redacts private Request address and publisher identity for a general provider view", async () => {
+    const findFirst = jest.fn(async () => demandRow);
+    const repository = new ExchangePostRepository({
+      exchangePost: { findFirst }
+    } as never);
+
+    const result = await repository.findPostById(41, 99, now);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        publisher: null,
+        viewer: { liked: true, canWithdraw: false },
+        demand: expect.objectContaining({
+          address: {
+            line1: "渋谷区",
+            line2: null,
+            line3: "Prince Tower 12F",
+            line2GenerallyVisible: false,
+            line3GenerallyVisible: true,
+            disclosure: "general"
+          }
+        })
+      })
+    );
+    expect(JSON.stringify(result)).not.toContain("道玄坂1-2-3");
+    expect(JSON.stringify(result)).not.toMatch(/phone|email|phoneNumber/i);
   });
 
   it("derives an expired status at read time and disables withdrawal", async () => {
@@ -371,19 +607,44 @@ describe("ExchangePostRepository", () => {
         scopeId: 27,
         publicId: "NC12345678",
         displayName: "佐藤 美咲",
-        avatarUrl: null
+        avatarUrl: null,
+        isTestAccount: true,
+        customerMembership: {
+          profileId: 27,
+          membershipLevel: "standard",
+          membershipGrantMode: "SELF_SERVICE",
+          membershipStartsAt: null,
+          membershipExpiresAt: null
+        },
+        shopScope: null
+      },
+      capacity: {
+        source: "customer_membership" as const,
+        membershipLevel: "standard" as const,
+        targetProviderLimit: 1,
+        payerOwnerType: "user" as const,
+        payerOwnerId: 7,
+        currency: "TEST_NDP" as const
       },
       input: {
         type: "demand" as const,
         title: demandRow.title,
         detail: demandRow.detail,
         contentLocale: "ja" as const,
-        areaLabel: demandRow.areaLabel,
         serviceStartAt: demandRow.serviceStartAt,
         serviceEndAt: demandRow.serviceEndAt,
         expiresAt: demandRow.expiresAt,
+        targetProviderCount: 1,
+        matchMode: "quick" as const,
+        budgetMode: "total" as const,
         budgetMinJpy: 8_000,
-        budgetMaxJpy: 12_000
+        budgetMaxJpy: 12_000,
+        addressLine1: "渋谷区",
+        addressLine2: "道玄坂1-2-3",
+        addressLine3: "Prince Tower 12F",
+        addressLine2Public: false,
+        addressLine3Public: true,
+        publisherIdentityPublic: false
       },
       idempotencyKey: "publish-demand-0001",
       audit: {
@@ -400,10 +661,13 @@ describe("ExchangePostRepository", () => {
         id: 41,
         demand:
           input.input.type === "demand"
-            ? {
+            ? expect.objectContaining({
+                targetProviderCount: 1,
+                matchMode: "quick",
+                budgetMode: "total",
                 budgetMinJpy: 8_000,
                 budgetMaxJpy: 12_000
-              }
+              })
             : null
       })
     });
@@ -419,9 +683,20 @@ describe("ExchangePostRepository", () => {
           idempotencyKey: "publish-demand-0001",
           demand: {
             create: {
+              targetProviderCount: 1,
+              targetProviderLimitSnapshot: 1,
+              publisherCapacitySource: "CUSTOMER_MEMBERSHIP",
+              membershipLevelSnapshot: "standard",
+              matchMode: "QUICK",
+              budgetMode: "TOTAL",
               budgetMinJpy: 8_000,
               budgetMaxJpy: 12_000,
-              addressLine1: "渋谷区"
+              addressLine1: "渋谷区",
+              addressLine2: "道玄坂1-2-3",
+              addressLine3: "Prince Tower 12F",
+              addressLine2Public: false,
+              addressLine3Public: true,
+              publisherIdentityPublic: false
             }
           }
         }),
@@ -480,7 +755,16 @@ describe("ExchangePostRepository", () => {
           scopeId: 27,
           publicId: "NC12345678",
           displayName: "佐藤 美咲",
-          avatarUrl: null
+          avatarUrl: null,
+          isTestAccount: true,
+          customerMembership: {
+            profileId: 27,
+            membershipLevel: "standard",
+            membershipGrantMode: "SELF_SERVICE",
+            membershipStartsAt: null,
+            membershipExpiresAt: null
+          },
+          shopScope: null
         },
         postId: 41,
         liked: true,

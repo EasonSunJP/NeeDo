@@ -31,7 +31,16 @@ const actor: ExchangeActorRecord = {
   scopeId: 27,
   publicId: "NC12345678",
   displayName: "佐藤 美咲",
-  avatarUrl: null
+  avatarUrl: null,
+  isTestAccount: true,
+  customerMembership: {
+    profileId: 27,
+    membershipLevel: "standard",
+    membershipGrantMode: "SELF_SERVICE",
+    membershipStartsAt: null,
+    membershipExpiresAt: null
+  },
+  shopScope: null
 };
 
 const post: ExchangePostPayload = {
@@ -54,14 +63,31 @@ const post: ExchangePostPayload = {
   },
   counts: { comments: 0, likes: 0, shares: 0 },
   viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8_000,
+    budgetMaxJpy: 12_000,
+    address: {
+      line1: "渋谷区",
+      line2: "道玄坂1-2-3",
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "owner"
+    }
+  },
   intelligence: null
 };
 
 const comment: ExchangeCommentPayload = {
   id: 301,
   postId: 41,
-  author: post.publisher,
+  author: post.publisher!,
   content: "詳細を教えてください。",
   createdAt: now.toISOString()
 };
@@ -73,13 +99,32 @@ const demandInput = {
   title: post.title,
   detail: post.detail,
   contentLocale: "ja" as const,
-  areaLabel: post.areaLabel,
   serviceStartAt: new Date(post.serviceStartAt),
   serviceEndAt: new Date(post.serviceEndAt),
   expiresAt: new Date(post.expiresAt),
+  targetProviderCount: 1,
+  matchMode: "quick" as const,
+  budgetMode: "total" as const,
   budgetMinJpy: 8_000,
-  budgetMaxJpy: 12_000
+  budgetMaxJpy: 12_000,
+  addressLine1: post.areaLabel,
+  addressLine2: "道玄坂1-2-3",
+  addressLine3: null,
+  addressLine2Public: false,
+  addressLine3Public: false,
+  publisherIdentityPublic: false
 };
+
+const createFeeService = () => ({
+  resolveCurrent: jest.fn(async () => ({
+    ruleSetId: 11,
+    ruleSetVersion: 3,
+    ruleId: 13,
+    amountNdp: 1_000,
+    effectiveFrom: null,
+    effectiveTo: null
+  }))
+});
 
 const createRepository = () =>
   ({
@@ -124,6 +169,95 @@ describe("ExchangeService", () => {
       message: "error.identity.forbidden",
       statusCode: 403
     });
+  });
+
+  it.each([
+    ["standard", 1],
+    ["silver", 2],
+    ["gold", 3],
+    ["black", 20]
+  ] as const)("caps %s at %i providers", async (membershipLevel, maximum) => {
+    const repository = createRepository();
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      customerMembership: { ...actor.customerMembership!, membershipLevel }
+    });
+    const feeService = createFeeService();
+    const service = new ExchangeService(repository, () => now, undefined, feeService);
+
+    await expect(service.getRequestPublicationContext(access)).resolves.toEqual({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel,
+      maxTargetProviderCount: maximum,
+      publicationFee: {
+        amountNdp: 1_000,
+        currency: "TEST_NDP",
+        ruleSetVersion: 3
+      }
+    });
+    expect(feeService.resolveCurrent).toHaveBeenCalledWith(now);
+  });
+
+  it("uses the active shop scope for a merchant's 20-provider capacity", async () => {
+    const repository = createRepository();
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "merchant_owner",
+      scopeType: "shop",
+      scopeId: 81,
+      isTestAccount: false,
+      customerMembership: null,
+      shopScope: { shopId: 81, status: "published" }
+    });
+    const feeService = createFeeService();
+    const service = new ExchangeService(repository, () => now, undefined, feeService);
+
+    await expect(
+      service.getRequestPublicationContext({
+        ...access,
+        currentIdentityType: "merchant_owner",
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 81
+      })
+    ).resolves.toEqual({
+      canPublish: true,
+      capacitySource: "shop_merchant",
+      membershipLevel: null,
+      maxTargetProviderCount: 20,
+      publicationFee: { amountNdp: 1_000, currency: "NDP", ruleSetVersion: 3 }
+    });
+  });
+
+  it("fails closed for unknown membership and mismatched merchant scope authority", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now, undefined, createFeeService());
+
+    repository.resolveActor.mockResolvedValueOnce({
+      ...actor,
+      customerMembership: { ...actor.customerMembership!, membershipLevel: "platinum" }
+    });
+    await expect(service.getRequestPublicationContext(access)).rejects.toMatchObject({
+      message: "error.identity.forbidden",
+      statusCode: 403
+    });
+
+    repository.resolveActor.mockResolvedValueOnce({
+      ...actor,
+      identityType: "merchant_owner",
+      scopeType: "shop",
+      scopeId: 81,
+      customerMembership: null,
+      shopScope: { shopId: 82, status: "published" }
+    });
+    await expect(
+      service.getRequestPublicationContext({
+        ...access,
+        currentIdentityType: "merchant_owner",
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 81
+      })
+    ).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
   });
 
   it("lists only the current user's own demand while keeping the supply-side demand feed", async () => {
@@ -225,6 +359,7 @@ describe("ExchangeService", () => {
         {
           ...demandInput,
           type: "intelligence",
+          areaLabel: "渋谷区",
           serviceMode: "store",
           addressLabel: "渋谷区",
           serviceAreas: ["渋谷区"],
@@ -235,6 +370,19 @@ describe("ExchangeService", () => {
       )
     ).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
     expect(repository.publishPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a Request target above the publisher's effective membership limit", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+
+    await expect(
+      service.publish(access, { ...demandInput, targetProviderCount: 2 }, "publish-over-cap-01")
+    ).rejects.toMatchObject({
+      message: "error.exchange.request_target_limit",
+      statusCode: 409
+    });
+    expect(repository.publishPost).not.toHaveBeenCalled();
   });
 
   it("shares demand ownership between customer and affiliate while preserving the publisher identity", async () => {
@@ -270,13 +418,15 @@ describe("ExchangeService", () => {
     await service.publish(affiliateAccess, demandInput, "affiliate-demand-001");
     await service.listPosts(affiliateAccess, { type: "demand", page: 1, pageSize: 20 });
 
-    expect(repository.publishPost).toHaveBeenCalledWith(expect.objectContaining({
-      actor: expect.objectContaining({
-        identityId: 18,
-        identityType: "scout",
-        ownerIdentityId: 17
+    expect(repository.publishPost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: expect.objectContaining({
+          identityId: 18,
+          identityType: "scout",
+          ownerIdentityId: 17
+        })
       })
-    }));
+    );
     expect(repository.listPosts).toHaveBeenCalledWith({
       type: "demand",
       page: 1,
@@ -304,6 +454,7 @@ describe("ExchangeService", () => {
           {
             ...demandInput,
             type: "intelligence",
+            areaLabel: "渋谷区",
             serviceMode: "onsite",
             addressLabel: null,
             serviceAreas: ["渋谷区"],
