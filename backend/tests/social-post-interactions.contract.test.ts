@@ -34,4 +34,18 @@ describe("formal Social interaction contract", () => {
     expect(migration).toContain("social-post:interact");
     expect(migration).toContain("'admin', 'merchant_owner', 'merchant_staff', 'technician', 'customer'");
   });
+
+  it("keeps every explicit interaction database identifier within MySQL's 64-character limit", async () => {
+    const migration = await readFile(
+      join(process.cwd(), "prisma/migrations/20260831150000_social_post_interactions/migration.sql"),
+      "utf8"
+    );
+    const identifiers = Array.from(
+      migration.matchAll(/(?:INDEX|CONSTRAINT)\s+`([^`]+)`/g),
+      (match) => match[1]
+    );
+
+    expect(identifiers.length).toBeGreaterThan(0);
+    expect(identifiers.filter((identifier) => identifier.length > 64)).toEqual([]);
+  });
 });
