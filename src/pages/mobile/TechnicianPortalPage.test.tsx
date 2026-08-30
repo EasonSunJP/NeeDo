@@ -39,8 +39,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).toContain("今日仅排班展示");
     expect(tasksSource).toContain("今日订单");
     expect(tasksSource).toContain("状态记录");
-    expect(tasksSource).toContain("technician.reviewSummary.reviewCount");
-    expect(tasksSource).toContain("profile.yearsExperience");
+    expect(tasksSource).toContain("technician.reviewSummary.ratingAverage");
     expect(tasksSource).not.toContain("formalRuntimeFallbacks");
     expect(tasksSource).not.toContain("technicianScheduleStore");
   });

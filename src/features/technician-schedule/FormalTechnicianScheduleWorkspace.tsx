@@ -195,7 +195,15 @@ function MonthCalendar({ anchorDate, itemsByDate, selectedDate, onSelect }: {
   );
 }
 
-export function FormalTechnicianScheduleWorkspace({ profileName, shopName }: { profileName: string; shopName: string }) {
+export function FormalTechnicianScheduleWorkspace({
+  profileAvatarUrl,
+  profileName,
+  shopName
+}: {
+  profileAvatarUrl?: string | null;
+  profileName: string;
+  shopName: string;
+}) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<WorkspaceTab>("calendar");
   const [view, setView] = useState<TechnicianScheduleView>("day");
@@ -259,7 +267,7 @@ export function FormalTechnicianScheduleWorkspace({ profileName, shopName }: { p
     <div className="space-y-4 text-[color:var(--client-text)]" data-testid="formal-technician-schedule-workspace">
       <section className={cn(schedulePanelClass, "overflow-hidden p-3")}>
         <div className="grid grid-cols-2 gap-2 rounded-full bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1">
-          {([['calendar', '我的排班'], ['orders', '预约订单']] as const).map(([value, label]) => (
+          {([['calendar', '我的排班'], ['settings', '排班设置']] as const).map(([value, label]) => (
             <button
               className={cn("rounded-full px-4 py-2.5 text-sm font-black transition", tab === value ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]" : "text-[color:var(--client-muted)]")}
               key={value}
@@ -268,48 +276,75 @@ export function FormalTechnicianScheduleWorkspace({ profileName, shopName }: { p
             >{label}</button>
           ))}
         </div>
+        <label className="relative mt-3 block">
+          <AppIcon className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-[color:var(--client-muted)]" name="search" />
+          <input aria-label="行程搜索" className="h-11 w-full rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] pl-11 pr-4 text-sm font-bold outline-none" onChange={(event) => setSearchQuery(event.target.value)} placeholder="行程搜索" value={searchQuery} />
+        </label>
       </section>
 
-      {tab === "orders" ? (
-        <section className="client-feature-panel rounded-[28px] border p-4 text-white shadow-[var(--client-shadow)]" data-testid="formal-schedule-orders-surface">
-          <div className="mb-4">
-            <p className="text-[11px] font-black text-white/50">{shopName}</p>
-            <h2 className="mt-1 text-xl font-black">正式预约订单</h2>
-          </div>
-          <FormalTechnicianOrdersPanel />
-        </section>
+      {tab === "settings" ? (
+        <div className="space-y-4" data-testid="formal-schedule-settings-surface">
+          <section className={cn(schedulePanelClass, "p-4")}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black text-[color:var(--client-muted)]">{shopName}</p>
+                <h2 className="mt-1 text-xl font-black">正式排班设置</h2>
+              </div>
+              <Link className="inline-flex h-11 items-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-needo-text)]" to="/technician/schedule/new">
+                <AppIcon className="h-4 w-4" name="plus" />新建正式排班
+              </Link>
+            </div>
+            <p className="mt-3 text-xs font-bold leading-5 text-[color:var(--client-muted)]">新增、编辑和锁定都会写入当前技师身份的正式排班接口；本页不创建浏览器排班记录。</p>
+          </section>
+          <section className="client-feature-panel rounded-[28px] border p-4 text-white shadow-[var(--client-shadow)]" data-testid="formal-schedule-orders-surface">
+            <div className="mb-4">
+              <p className="text-[11px] font-black text-white/50">正式服务器数据</p>
+              <h2 className="mt-1 text-xl font-black">预约订单</h2>
+            </div>
+            <FormalTechnicianOrdersPanel />
+          </section>
+        </div>
       ) : (
         <>
-          <section className={cn(schedulePanelClass, "p-4")}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="flex items-center justify-between gap-3 px-1">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className={cn(scheduleInsetClass, "grid h-11 w-11 shrink-0 place-items-center rounded-full text-lg font-black")}>☰</span>
               <div className="min-w-0">
-                <p className="text-[11px] font-black text-[color:var(--client-muted)]">{profileName} · {shopName}</p>
-                <h2 className="mt-1 truncate text-xl font-black tracking-[-0.04em]">{period.label}</h2>
+                <h2 className="truncate text-xl font-black tracking-[-0.04em]">{formatLongDate(anchorDate)}</h2>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">我的排班</p>
               </div>
-              <ScheduleViewSegmentedTabs onChange={changeView} value={view} />
             </div>
-            <div className="mt-4 grid grid-cols-[44px_minmax(0,1fr)_44px] gap-2">
-              <button aria-label="上一时段" className={scheduleInsetClass} onClick={() => shiftPeriod(-1)} type="button">‹</button>
-              <button className={cn(scheduleInsetClass, "px-3 py-2.5 text-sm font-black")} onClick={() => { const today = getTodayDateKey(); setAnchorDate(today); setSelectedDate(today); }} type="button">回到今天</button>
-              <button aria-label="下一时段" className={scheduleInsetClass} onClick={() => shiftPeriod(1)} type="button">›</button>
-            </div>
-            <label className="relative mt-3 block">
-              <AppIcon className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[color:var(--client-muted)]" name="search" />
-              <input aria-label="搜索正式排班" className="h-10 w-full rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] pl-10 pr-4 text-sm font-bold outline-none" onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索服务、店铺或备注" value={searchQuery} />
-            </label>
+            <button className={cn(scheduleInsetClass, "h-10 rounded-full px-4 text-xs font-black")} onClick={() => { const today = getTodayDateKey(); setAnchorDate(today); setSelectedDate(today); }} type="button">今天</button>
           </section>
 
-          <section className={cn(schedulePanelClass, "p-3")}>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <SummaryCard label="已确认排班" value={formatHours(presentation.summary.confirmedHours)} />
-              <SummaryCard label="预约工时" value={formatHours(presentation.summary.bookedHours)} />
-              <SummaryCard label="可预约" value={formatHours(presentation.summary.freeHours)} />
-              <SummaryCard label="锁定时段" value={formatHours(presentation.summary.tentativeHours)} />
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <SummaryCard label="当日订单" suffix="单" value={String(presentation.brief.orderCount)} />
-              <SummaryCard label="预计收入" suffix="円" value={presentation.brief.estimatedRevenue === null ? "—" : presentation.brief.estimatedRevenue.toLocaleString("ja-JP")} />
-              <SummaryCard label="时间冲突" suffix="" value={presentation.brief.hasConflict ? "有" : "无"} />
+          <section className="grid grid-cols-[46px_minmax(0,1fr)_46px] gap-3">
+            <button aria-label="上一时段" className={cn(scheduleInsetClass, "grid h-12 place-items-center rounded-full text-xl font-black")} onClick={() => shiftPeriod(-1)} type="button">‹</button>
+            <label className={cn(scheduleInsetClass, "flex h-12 items-center gap-3 px-4")}>
+              <span className="text-[11px] font-black text-[color:var(--client-muted)]">显示</span>
+              <select
+                aria-label="显示范围"
+                className="min-w-0 flex-1 appearance-none bg-transparent text-center text-lg font-black outline-none"
+                onChange={(event) => changeView(event.target.value as TechnicianScheduleView)}
+                value={view}
+              >
+                <option value="day">1日</option>
+                <option value="week">1周</option>
+                <option value="month">1月</option>
+              </select>
+              <span className="text-xs text-[color:var(--client-muted)]">⌄</span>
+            </label>
+            <button aria-label="下一时段" className={cn(scheduleInsetClass, "grid h-12 place-items-center rounded-full text-xl font-black")} onClick={() => shiftPeriod(1)} type="button">›</button>
+          </section>
+
+          <section className="flex items-center gap-3 border-b border-[color:var(--client-line)] px-4 py-4" data-testid="formal-schedule-profile-row">
+            {profileAvatarUrl ? (
+              <AvatarImage alt={profileName} className="h-12 w-12 rounded-[15px]" src={profileAvatarUrl} />
+            ) : (
+              <span className="grid h-12 w-12 place-items-center rounded-[15px] bg-[color:var(--client-primary-soft)] text-lg font-black text-[color:var(--client-primary-strong)]">{profileName.slice(0, 1) || "技"}</span>
+            )}
+            <div className="min-w-0">
+              <strong className="block truncate text-sm font-black">{profileName}</strong>
+              <span className="mt-1 block truncate text-xs font-bold text-[color:var(--client-muted)]">{shopName} · 我的排班</span>
             </div>
           </section>
 
@@ -324,6 +359,22 @@ export function FormalTechnicianScheduleWorkspace({ profileName, shopName }: { p
           {!loading && !error && view === "day" ? <DayTimeline items={selectedItems} /> : null}
           {!loading && !error && view === "week" ? <WeekCalendar dates={getWeekDates(anchorDate)} itemsByDate={presentation.itemsByDate} onSelect={selectDate} selectedDate={selectedDate} /> : null}
           {!loading && !error && view === "month" ? <MonthCalendar anchorDate={anchorDate} itemsByDate={presentation.itemsByDate} onSelect={selectDate} selectedDate={selectedDate} /> : null}
+
+          {!loading && !error ? (
+            <section className={cn(schedulePanelClass, "p-3")}>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <SummaryCard label="已确认排班" value={formatHours(presentation.summary.confirmedHours)} />
+                <SummaryCard label="预约工时" value={formatHours(presentation.summary.bookedHours)} />
+                <SummaryCard label="可预约" value={formatHours(presentation.summary.freeHours)} />
+                <SummaryCard label="锁定时段" value={formatHours(presentation.summary.tentativeHours)} />
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <SummaryCard label="当日订单" suffix="单" value={String(presentation.brief.orderCount)} />
+                <SummaryCard label="预计收入" suffix="円" value={presentation.brief.estimatedRevenue === null ? "—" : presentation.brief.estimatedRevenue.toLocaleString("ja-JP")} />
+                <SummaryCard label="时间冲突" suffix="" value={presentation.brief.hasConflict ? "有" : "无"} />
+              </div>
+            </section>
+          ) : null}
 
           {!loading && !error ? (
             <section className={cn(schedulePanelClass, "p-4")}>
@@ -344,7 +395,7 @@ export function FormalTechnicianScheduleWorkspace({ profileName, shopName }: { p
 
           <button
             aria-label="新建正式排班"
-            className="fixed bottom-[calc(env(safe-area-inset-bottom)+24px)] right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+112px)] right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
             onClick={() => navigate("/technician/schedule/new")}
             type="button"
           >

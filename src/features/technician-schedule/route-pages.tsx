@@ -139,6 +139,7 @@ export function TechnicianScheduleIndexRoutePage() {
       title="排班与预约"
     >
       <FormalTechnicianScheduleWorkspace
+        profileAvatarUrl={resource.data.profile.avatarUrl}
         profileName={resource.data.profile.displayName}
         shopName={resource.data.profile.shop?.name ?? "--"}
       />

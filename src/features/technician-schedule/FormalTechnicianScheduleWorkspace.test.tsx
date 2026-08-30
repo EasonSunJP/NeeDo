@@ -101,6 +101,15 @@ async function click(label: string) {
   await act(async () => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
+async function selectView(value: "day" | "week" | "month") {
+  const select = container.querySelector('select[aria-label="显示范围"]') as HTMLSelectElement | null;
+  if (!select) throw new Error("Missing schedule range select");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 describe("FormalTechnicianScheduleWorkspace", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -130,11 +139,11 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     expect(mocks.loadSlots).toHaveBeenCalledWith("technician", expect.objectContaining({ from: expect.any(Date), to: expect.any(Date) }));
     expect(mocks.loadOrders).toHaveBeenCalledWith(expect.objectContaining({ from: expect.any(String), to: expect.any(String) }));
 
-    await click("周");
+    await selectView("week");
     await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-week-grid"]')).not.toBeNull());
-    await click("月");
+    await selectView("month");
     await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-month-grid"]')).not.toBeNull());
-    await click("预约订单");
+    await click("排班设置");
     expect(container.querySelector('[data-testid="formal-order-panel"]')).not.toBeNull();
   });
 
@@ -145,7 +154,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     expect(container.querySelector('img[src="/media/technician.jpg"]')).not.toBeNull();
     expect(container.textContent).toContain("我的排班");
     expect(container.textContent).toContain("排班设置");
-    expect(container.textContent).toContain("行程搜索");
+    expect(container.querySelector('input[aria-label="行程搜索"]')?.getAttribute("placeholder")).toBe("行程搜索");
     expect(container.textContent).toContain("1日");
     expect(container.querySelectorAll('[data-testid="formal-schedule-hour-row"]')).toHaveLength(24);
     expect(container.textContent).toContain("00:00");

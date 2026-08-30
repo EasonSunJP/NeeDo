@@ -7,7 +7,8 @@ describe("approved formal technician schedule UI", () => {
     expect(routeSource).toContain("MobileFullscreenHeader");
     expect(routeSource).toContain("FormalTechnicianScheduleWorkspace");
     expect(routeSource).not.toContain("FormalRoutePage");
-    expect(workspaceSource).toContain("ScheduleViewSegmentedTabs");
+    expect(workspaceSource).toContain('aria-label="显示范围"');
+    expect(workspaceSource).toContain('<option value="day">1日</option>');
     expect(workspaceSource).toContain('data-testid="formal-schedule-day-timeline"');
     expect(workspaceSource).toContain('data-testid="formal-schedule-week-grid"');
     expect(workspaceSource).toContain('data-testid="formal-schedule-month-grid"');

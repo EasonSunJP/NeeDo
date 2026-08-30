@@ -77,8 +77,8 @@ vi.mock("./FormalScheduleRangeEditor", () => ({
   )
 }));
 vi.mock("./FormalTechnicianScheduleWorkspace", () => ({
-  FormalTechnicianScheduleWorkspace: ({ profileName, shopName }: { profileName: string; shopName: string }) => (
-    <section data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
+  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopName }: { profileAvatarUrl?: string | null; profileName: string; shopName: string }) => (
+    <section data-avatar={profileAvatarUrl ?? ""} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
   )
 }));
 
