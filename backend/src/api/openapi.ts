@@ -230,6 +230,38 @@ const orderAcceptancePauseListParameters = [
   { name: "subjectId", in: "query", schema: { type: "integer", minimum: 1 } }
 ];
 
+const shopMembershipErrorResponses = {
+  "400": { description: "error.validation — strict shop membership request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
+  "404": { description: "error.shop_membership.not_found — membership, shop, or eligible customer does not exist in the active scope" },
+  "409": { description: "error.shop_membership.already_active — the customer already has an active membership in this shop" }
+};
+
+const shopMembershipPageParameters = [
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+  { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+];
+
+const shopMembershipPublicIdParameter = {
+  name: "publicId",
+  in: "path",
+  required: true,
+  schema: { type: "string", format: "uuid" }
+};
+
+const shopMembershipPageSchema = (itemSchema: Record<string, unknown>) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["list", "total", "page", "page_size"],
+  properties: {
+    list: { type: "array", items: itemSchema },
+    total: { type: "integer", minimum: 0 },
+    page: { type: "integer", minimum: 1 },
+    page_size: { type: "integer", minimum: 1, maximum: 100 }
+  }
+});
+
 const affiliatePlatformFeeErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
@@ -6613,6 +6645,167 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           taskAction: { $ref: "#/components/schemas/OfficialAnnouncementTaskAction" }
         }
       },
+      ShopMembershipStore: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "shopNo", "name", "city", "address"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopNo: { type: ["string", "null"], pattern: "^s[0-9]{9,10}$" },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          address: { type: "string", minLength: 1, maxLength: 255 }
+        }
+      },
+      ShopMembershipCard: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "issuedAt", "expiresAt", "frozenAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          cardNoMasked: { type: "string" },
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          type: { type: "string", enum: ["stored_value", "count", "benefit"] },
+          status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
+          principalBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+          bonusBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+          remainingUses: { type: ["integer", "null"], minimum: 0 },
+          totalUses: { type: ["integer", "null"], minimum: 0 },
+          issuedAt: { type: "string", format: "date-time" },
+          expiresAt: { type: ["string", "null"], format: "date-time" },
+          frozenAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ShopMembership: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "customerNeedoId", "displayName", "avatarUrl", "city", "status", "source", "startedAt", "endedAt", "cardCount", "activeCardCount", "lastActivityAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          city: { type: ["string", "null"], maxLength: 100 },
+          status: { type: "string", enum: ["active", "ended"] },
+          source: { type: "string", enum: ["merchant_manual"] },
+          startedAt: { type: "string", format: "date-time" },
+          endedAt: { type: ["string", "null"], format: "date-time" },
+          cardCount: { type: "integer", minimum: 0 },
+          activeCardCount: { type: "integer", minimum: 0 },
+          lastActivityAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopMembershipDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/ShopMembership" },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["shop", "cards"],
+            properties: {
+              shop: { $ref: "#/components/schemas/ShopMembershipStore" },
+              cards: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCard" } }
+            }
+          }
+        ]
+      },
+      ShopMembershipActivity: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "action", "membershipPublicId", "customerNeedoId", "customerDisplayName", "actorName", "occurredAt"],
+        properties: {
+          id: { type: "string" },
+          action: { type: "string", enum: ["membership_created"] },
+          membershipPublicId: { type: "string", format: "uuid" },
+          customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          customerDisplayName: { type: "string" },
+          actorName: { type: "string" },
+          occurredAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopMembershipOverview: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shop", "activeMemberCount", "todayNewMemberCount", "activeCardCount", "expiringSoonCardCount", "recentActivities"],
+        properties: {
+          shop: { $ref: "#/components/schemas/ShopMembershipStore" },
+          activeMemberCount: { type: "integer", minimum: 0 },
+          todayNewMemberCount: { type: "integer", minimum: 0 },
+          activeCardCount: { type: "integer", minimum: 0 },
+          expiringSoonCardCount: { type: "integer", minimum: 0 },
+          recentActivities: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipActivity" } }
+        }
+      },
+      ShopMembershipAnalytics: {
+        type: "object",
+        additionalProperties: false,
+        required: ["period", "from", "to", "activeMemberCount", "newMemberCount", "cardStatusCounts", "dailyNewMembers"],
+        properties: {
+          period: { type: "string", enum: ["last7days", "last30days", "last90days"] },
+          from: { type: "string", format: "date-time" },
+          to: { type: "string", format: "date-time" },
+          activeMemberCount: { type: "integer", minimum: 0 },
+          newMemberCount: { type: "integer", minimum: 0 },
+          cardStatusCounts: { type: "object", additionalProperties: false },
+          dailyNewMembers: { type: "array", items: { type: "object", additionalProperties: false } }
+        }
+      },
+      ShopMembershipCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["customerNeedoId"],
+        properties: { customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" } }
+      },
+      ShopMembershipCandidate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["customerNeedoId", "displayName", "avatarUrl", "city", "lastOrderAt"],
+        properties: {
+          customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          city: { type: ["string", "null"], maxLength: 100 },
+          lastOrderAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopMembershipPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembership" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      CustomerShopMembership: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "status", "startedAt", "endedAt", "cardCount", "activeCardCount", "expiringSoonCardCount", "updatedAt", "shop"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["active", "ended"] },
+          startedAt: { type: "string", format: "date-time" },
+          endedAt: { type: ["string", "null"], format: "date-time" },
+          cardCount: { type: "integer", minimum: 0 },
+          activeCardCount: { type: "integer", minimum: 0 },
+          expiringSoonCardCount: { type: "integer", minimum: 0 },
+          updatedAt: { type: "string", format: "date-time" },
+          shop: { $ref: "#/components/schemas/ShopMembershipStore" }
+        }
+      },
+      CustomerShopMembershipDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/CustomerShopMembership" },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["cards"],
+            properties: { cards: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCard" } } }
+          }
+        ]
+      },
       OrderAcceptancePause: {
         type: "object",
         additionalProperties: false,
@@ -6922,6 +7115,140 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/ShopPlatformFeePolicy"
           }),
           ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-memberships/overview`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read the current shop membership overview",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current shop membership overview", { $ref: "#/components/schemas/ShopMembershipOverview" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-memberships`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List memberships in the current shop identity scope",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["active", "ended"] } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated shop memberships", { $ref: "#/components/schemas/ShopMembershipPage" }),
+          ...shopMembershipErrorResponses
+        }
+      },
+      post: {
+        tags: ["Shop Membership"],
+        summary: "Enroll one eligible customer in the current shop",
+        description: "The shop is resolved exclusively from the authenticated shop identity. Card issuing, top-up, redemption, and refund are not part of this operation.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopMembershipCreateRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created shop membership with transactional audit", { $ref: "#/components/schemas/ShopMembershipDetail" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-memberships/{publicId}`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read one membership in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Shop membership detail", { $ref: "#/components/schemas/ShopMembershipDetail" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-candidates`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List customers eligible for shop membership enrollment",
+        description: "Only customers with a persisted booking in the current shop and no active membership are returned.",
+        security: [{ bearerAuth: [] }],
+        parameters: [...shopMembershipPageParameters, { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } }],
+        responses: {
+          "200": jsonDataResponse("Paginated eligible customers", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCandidate" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List read-only membership card projections in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "type", in: "query", schema: { type: "string", enum: ["stored_value", "count", "benefit"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["active", "frozen", "expired", "void"] } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated read-only membership cards", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCard" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-activities`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List membership operation activity in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: shopMembershipPageParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated shop membership activity", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipActivity" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-analytics`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read bounded membership and card-state analytics for the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "period", in: "query", schema: { type: "string", enum: ["last7days", "last30days", "last90days"], default: "last30days" } }],
+        responses: {
+          "200": jsonDataResponse("Current shop membership analytics", { $ref: "#/components/schemas/ShopMembershipAnalytics" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-memberships`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List the authenticated customer's own shop memberships",
+        security: [{ bearerAuth: [] }],
+        parameters: [...shopMembershipPageParameters, { name: "status", in: "query", schema: { type: "string", enum: ["active", "ended"] } }],
+        responses: {
+          "200": jsonDataResponse("Paginated customer shop memberships", shopMembershipPageSchema({ $ref: "#/components/schemas/CustomerShopMembership" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-memberships/{publicId}`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read one authenticated-customer shop membership and its card states",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Customer shop membership detail", { $ref: "#/components/schemas/CustomerShopMembershipDetail" }),
+          ...shopMembershipErrorResponses
         }
       }
     },

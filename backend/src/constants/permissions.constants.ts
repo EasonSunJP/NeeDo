@@ -941,6 +941,34 @@ export const SYSTEM_PERMISSIONS = [
     "分页读取与本店有预约关系的客户"
   ),
   createPermission(
+    "shop.member.view",
+    "店铺会员读取",
+    "api",
+    "shop-membership",
+    "读取当前店铺的会员关系、会员卡和基础总览"
+  ),
+  createPermission(
+    "shop.member.create",
+    "店铺会员开通",
+    "api",
+    "shop-membership",
+    "为与当前店铺存在正式预约关系的客户开通店铺会员"
+  ),
+  createPermission(
+    "shop.member.analytics.view",
+    "店铺会员分析读取",
+    "api",
+    "shop-membership",
+    "读取当前店铺的会员与会员卡状态分析"
+  ),
+  createPermission(
+    "shop.member.operation_log.view",
+    "店铺会员活动读取",
+    "api",
+    "shop-membership",
+    "读取当前店铺的会员操作活动记录"
+  ),
+  createPermission(
     "merchant-admin:services:list",
     "商户服务列表",
     "api",
@@ -1543,6 +1571,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:employee-affiliation:read",
   "merchant-admin:employee-affiliation:write",
   "merchant-admin:customers:list",
+  "shop.member.view",
   "merchant-admin:services:list",
   "merchant-admin:services:write",
   "merchant-admin:shop:read",
@@ -1551,6 +1580,12 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:shop:pricing-mode:update",
   "menu:finance",
   "page:finance"
+] as const satisfies readonly SystemPermissionCode[];
+
+const MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES = [
+  "shop.member.create",
+  "shop.member.analytics.view",
+  "shop.member.operation_log.view"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const AFFILIATE_ENTRY_PERMISSION_CODES = [
@@ -1683,6 +1718,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    ...MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,

@@ -30,7 +30,8 @@ export class ShopMembershipService {
   }
 
   public async listMerchantMemberships(actor: AuthenticatedAccessContext, input: MembershipListInput) {
-    return this.repository.listMemberships(this.requireMerchantShop(actor), input);
+    const page = await this.repository.listMemberships(this.requireMerchantShop(actor), input);
+    return { ...page, list: page.list.map((item) => this.toPublicMerchantDetail(item)) };
   }
 
   public async getMerchantMembershipDetail(actor: AuthenticatedAccessContext, publicId: string) {
@@ -101,7 +102,8 @@ export class ShopMembershipService {
   }
 
   public async listCustomerMemberships(actor: AuthenticatedAccessContext, input: Omit<MembershipListInput, "keyword">) {
-    return this.repository.listCustomerMemberships(this.requireCustomerProfile(actor), input);
+    const page = await this.repository.listCustomerMemberships(this.requireCustomerProfile(actor), input);
+    return { ...page, list: page.list.map((item) => this.toPublicCustomerDetail(item)) };
   }
 
   public async getCustomerMembershipDetail(actor: AuthenticatedAccessContext, publicId: string) {
@@ -132,10 +134,12 @@ export class ShopMembershipService {
     return actor.currentIdentityScopeId;
   }
 
-  private toPublicMerchantDetail<T extends { internalId: number; customerProfileId: number }>(detail: T): Omit<T, "internalId" | "customerProfileId"> {
-    const { internalId: _internalId, customerProfileId: _customerProfileId, ...publicDetail } = detail;
+  private toPublicMerchantDetail<T extends { internalId: number; customerProfileId: number; createdAt: Date; updatedAt: Date }>(detail: T): Omit<T, "internalId" | "customerProfileId" | "createdAt" | "updatedAt"> {
+    const { internalId: _internalId, customerProfileId: _customerProfileId, createdAt: _createdAt, updatedAt: _updatedAt, ...publicDetail } = detail;
     void _internalId;
     void _customerProfileId;
+    void _createdAt;
+    void _updatedAt;
     return publicDetail;
   }
 
