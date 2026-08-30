@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { BackofficeDashboardPayload } from "../../api/backofficeRealData";
 import { useAuth } from "../../auth/AuthProvider";
-import type { FeaturePermission } from "../../auth/featurePermissions";
 import {
   clearMerchantAdminPreview,
   getMerchantAdminPreview,
@@ -27,7 +26,7 @@ type MerchantAdminNavItem = {
   icon: string;
   children?: string[];
   badge?: string;
-  permission?: FeaturePermission;
+  permission?: string;
 };
 
 type MerchantAdminNavSection = {
@@ -95,6 +94,19 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     items: [
       { label: "用户列表", to: "/merchant-admin/people?module=users", icon: "用", children: ["正式用户", "预约次数", "公开状态"] },
       { label: "评价中心", to: "/merchant-admin/people?module=reviews", icon: "评", children: ["能力门禁", "Review 表", "回复审计"] }
+    ]
+  },
+  {
+    key: "affiliate",
+    title: "联盟营销",
+    items: [
+      {
+        label: "我的联盟营销",
+        to: "/merchant-admin/affiliate/tasks",
+        icon: "联",
+        children: ["任务", "多店范围", "预算"],
+        permission: "page:merchant-affiliate-task"
+      }
     ]
   },
   {

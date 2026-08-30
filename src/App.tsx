@@ -71,6 +71,7 @@ import { MerchantAdminDocsPage } from "./pages/merchant-admin/MerchantAdminDocsP
 import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrdersPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
+import { MerchantAffiliateTasksPage } from "./pages/merchant-admin/MerchantAffiliateTasksPage";
 import {
   MerchantAdminFinancePage,
   MerchantAdminInventoryPage,
@@ -1275,6 +1276,10 @@ export default function App() {
               <Route path="/merchant-admin/analytics" element={protect("merchant", <MerchantAdminAnalyticsPage />)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
+              <Route
+                path="/merchant-admin/affiliate/tasks"
+                element={protectPermission("merchant", "page:merchant-affiliate-task", <MerchantAffiliateTasksPage />)}
+              />
               <Route path="/merchant-admin/dine" element={protectFeature("merchant", "store.dine-in.order.view", <Navigate replace to="/merchant-admin/dine/orders" />, "/merchant-admin")} />
               <Route path="/merchant-admin/dine/orders" element={protectFeature("merchant", "store.dine-in.order.view", <MerchantAdminDineOrderRoutePage view="orders" />, "/merchant-admin")} />
               <Route path="/merchant-admin/dine/kds" element={protectFeature("merchant", "store.dine-in.order.manage", <MerchantAdminDineOrderRoutePage view="kds" />, "/merchant-admin")} />
