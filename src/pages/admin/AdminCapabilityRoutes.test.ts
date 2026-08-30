@@ -6,6 +6,7 @@ const exchangeSource = readFileSync(new URL("./NeedoExchangeAdminPage.tsx", impo
 const carouselSource = readFileSync(new URL("./CarouselPage.tsx", import.meta.url), "utf8");
 const affiliateCarouselSource = readFileSync(new URL("./AffiliateNoticeCarouselPage.tsx", import.meta.url), "utf8");
 const affiliateFeeRulesSource = readFileSync(new URL("./AffiliateFeeRulesPage.tsx", import.meta.url), "utf8");
+const membershipRewardFeeSource = readFileSync(new URL("./MembershipRewardFeePage.tsx", import.meta.url), "utf8");
 const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.url), "utf8");
 const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
 const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
@@ -227,6 +228,22 @@ describe("affiliate platform fee operations", () => {
     expect(affiliateFeeRulesSource).toContain("affiliatePlatformFeeApi.getGlobalSummary()");
     expect(affiliateFeeRulesSource).toContain("affiliatePlatformFeeApi.createRule");
     expect(affiliateFeeRulesSource).not.toMatch(/localStorage|data\/mock|backofficeRealDataApi\.shops/);
+  });
+});
+
+describe("membership reward fee operations", () => {
+  it("registers the exact read-permission route and finance navigation item", () => {
+    expect(appSource).toContain('import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage"');
+    expect(appSource).toContain('path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)}');
+    expect(adminLayoutSource).toContain('label: "会员返点平台费"');
+    expect(adminLayoutSource).toContain('to: "/admin/finance/membership-reward-fee"');
+    expect(adminLayoutSource).toContain('permission: "page:backoffice-membership-reward-fee"');
+    expect(adminLayoutSource).toContain('children: ["TEST", "费率快照", "版本历史"]');
+  });
+
+  it("keeps the page on the dedicated formal fee API", () => {
+    expect(membershipRewardFeeSource).toContain("membershipRewardFeeApi.getOverview");
+    expect(membershipRewardFeeSource).not.toMatch(/affiliatePlatformFeeApi|backofficeRealDataApi|localStorage/);
   });
 });
 
