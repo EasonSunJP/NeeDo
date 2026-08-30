@@ -2705,6 +2705,8 @@ export function ImDirectoryProfilePage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [contactInfoRedirectFailed, setContactInfoRedirectFailed] = useState(false);
+  const [contactInfoRedirectAttempt, setContactInfoRedirectAttempt] = useState(0);
   const [activityStatus, setActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
   const request = profile?.friendRequest ?? (
     requestId
@@ -2718,6 +2720,7 @@ export function ImDirectoryProfilePage() {
   const activityTo = profile && profile.user.profileKind !== "service" && Number.isInteger(numericUserId) && numericUserId > 0
     ? socialPaths.accountProfile(scope as SocialPortalScope, numericUserId)
     : undefined;
+  const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend";
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
 
@@ -2742,6 +2745,39 @@ export function ImDirectoryProfilePage() {
   useEffect(() => {
     void loadProfile();
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId || profile?.user.id !== userId || profile?.relationship !== "friend") {
+      setContactInfoRedirectFailed(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setContactInfoRedirectFailed(false);
+    void store.ensureDirectConversation(userId)
+      .then((conversation) => {
+        if (!cancelled) {
+          navigate(config.routes.conversationInfo(conversation.id), { replace: true });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setContactInfoRedirectFailed(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    config.routes,
+    contactInfoRedirectAttempt,
+    navigate,
+    profile?.relationship,
+    profile?.user.id,
+    store.ensureDirectConversation,
+    userId,
+  ]);
 
   useEffect(() => {
     if (!activityTo || !Number.isInteger(numericUserId) || numericUserId <= 0) {
@@ -2818,10 +2854,30 @@ export function ImDirectoryProfilePage() {
         info={t("查看资料")}
         onBack={fromRequests ? undefined : () => navigate(-1)}
         onClose={fromRequests ? () => navigate(config.routes.friendRequests) : undefined}
-        title={t("账号信息")}
+        title={t("联系人信息")}
       />
       <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-32 pt-4">
-        {loading ? (
+        {isFriendProfile ? (
+          <div className="grid min-h-48 place-items-center px-4 text-center">
+            {contactInfoRedirectFailed ? (
+              <div className="space-y-4">
+                <p className="text-sm font-semibold text-[color:var(--client-muted)]">
+                  {t("暂时无法打开联系人信息，请稍后再试。")}
+                </p>
+                <Button
+                  onClick={() => setContactInfoRedirectAttempt((attempt) => attempt + 1)}
+                  variant="secondary"
+                >
+                  {t("重新加载")}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm font-semibold text-[color:var(--client-muted)]">
+                {t("正在进入联系人信息...")}
+              </p>
+            )}
+          </div>
+        ) : loading ? (
           <div className="grid min-h-48 place-items-center text-sm font-semibold text-[color:var(--client-muted)]">{t("加载中")}</div>
         ) : loadFailed || !profile ? (
           <div className="grid min-h-48 place-items-center">
@@ -2847,7 +2903,7 @@ export function ImDirectoryProfilePage() {
           </div>
         )}
       </main>
-      {profile ? (
+      {profile && !isFriendProfile ? (
         <ImFriendProfileActionBar
           actions={actions}
           currentUserId={store.currentUserId ?? ""}
@@ -2866,6 +2922,8 @@ export function ImDirectoryProfilePage() {
 export function ImContactDetailPage() {
   const { store, config } = useImRuntime();
   const navigate = useNavigate();
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
   const { contactId } = useParams();
   const [redirectFailed, setRedirectFailed] = useState(false);
   const contact = store.contacts.find((item) => item.id === contactId);
@@ -2900,7 +2958,7 @@ export function ImContactDetailPage() {
   if (!contact || !user) {
     return (
       <ImStandaloneShell>
-        <ImTopBar onBack={() => navigate(config.routes.contacts)} title="信息设置" />
+        <ImTopBar onBack={() => navigate(config.routes.contacts)} title={t("联系人信息")} />
         <ImEmptyState caption="这个联系人可能已经被删除或还没同步到本地。" title="找不到联系人" />
       </ImStandaloneShell>
     );
@@ -2908,10 +2966,10 @@ export function ImContactDetailPage() {
 
   return (
     <ImStandaloneShell>
-      <ImTopBar onBack={() => navigate(config.routes.contacts)} title="信息设置" />
+      <ImTopBar onBack={() => navigate(config.routes.contacts)} title={t("联系人信息")} />
       <ImEmptyState
         action={redirectFailed ? <Button onClick={() => navigate(config.routes.contacts)} size="md" variant="secondary">返回通讯录</Button> : undefined}
-        caption={redirectFailed ? "暂时无法打开这个联系人的信息设置，请稍后再试。" : "正在进入信息设置..."}
+        caption={redirectFailed ? t("暂时无法打开联系人信息，请稍后再试。") : t("正在进入联系人信息...")}
         title={redirectFailed ? "打开失败" : "正在打开"}
       />
     </ImStandaloneShell>
@@ -7150,7 +7208,7 @@ export function ImConversationInfoPage() {
   if (!conversation || !conversationId) {
     return (
       <ImStandaloneShell>
-        <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
+        <ImTopBar onBack={() => navigate(-1)} title={t("信息设置")} />
         <ImEmptyState caption="会话信息还没同步完成。" title="暂无聊天信息" />
       </ImStandaloneShell>
     );
@@ -7248,7 +7306,7 @@ export function ImConversationInfoPage() {
   return (
     <ImStandaloneShell>
       <div className="contents">
-        <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
+        <ImTopBar onBack={() => navigate(-1)} title={t(conversation.type === "single" ? "联系人信息" : "信息设置")} />
       </div>
       <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
         {conversation.type === "single" && user && infoIdentityCard ? (

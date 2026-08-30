@@ -434,6 +434,14 @@ describe("translations", () => {
     expect(translateText("音频", "ja")).toBe("オーディオ");
     expect(translateText("音频", "en")).toBe("Audio");
     expect(translateText("音频", "ko")).toBe("오디오");
+    expect(translateText("联系人信息", "zh-Hant")).toBe("聯絡人資訊");
+    expect(translateText("联系人信息", "ja")).toBe("連絡先情報");
+    expect(translateText("联系人信息", "en")).toBe("Contact information");
+    expect(translateText("联系人信息", "ko")).toBe("연락처 정보");
+    expect(translateText("正在进入联系人信息...", "ja")).toBe("連絡先情報を開いています…");
+    expect(translateText("暂时无法打开联系人信息，请稍后再试。", "en")).toBe(
+      "Can't open contact information right now. Try again later.",
+    );
     expect(translateText("正在搜索账号…", "zh-Hant")).toBe("正在搜尋帳號…");
     expect(translateText("搜索失败，请稍后重试", "ja")).toContain("検索に失敗");
     expect(translateText("请输入昵称或 NeeDoID 搜索", "en")).toBe("Search by nickname or NeeDoID");

@@ -56,6 +56,36 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(actionBarSource).not.toContain("backdrop-blur-xl");
   });
 
+  it("promotes an accepted directory profile to the complete contact information page", () => {
+    const start = source.indexOf("export function ImDirectoryProfilePage");
+    const end = source.indexOf("export function ImContactDetailPage", start);
+    const profileSource = source.slice(start, end);
+
+    expect(profileSource).toContain('profile?.relationship !== "friend"');
+    expect(profileSource).toContain("store.ensureDirectConversation(userId)");
+    expect(profileSource).toContain("config.routes.conversationInfo(conversation.id)");
+    expect(profileSource).toContain("navigate(config.routes.conversationInfo(conversation.id), { replace: true })");
+    expect(profileSource).toContain("contactInfoRedirectAttempt");
+    expect(profileSource).toContain("contactInfoRedirectFailed");
+  });
+
+  it("uses contact information naming for contact pages while retaining group settings naming", () => {
+    const profileStart = source.indexOf("export function ImDirectoryProfilePage");
+    const contactDetailStart = source.indexOf("export function ImContactDetailPage", profileStart);
+    const conversationInfoStart = source.indexOf("export function ImConversationInfoPage", contactDetailStart);
+    const conversationInfoEnd = source.indexOf("export function ImConversationSearchPage", conversationInfoStart);
+    const profileSource = source.slice(profileStart, contactDetailStart);
+    const contactDetailSource = source.slice(contactDetailStart, conversationInfoStart);
+    const conversationInfoSource = source.slice(conversationInfoStart, conversationInfoEnd);
+
+    expect(profileSource).toContain('title={t("联系人信息")}');
+    expect(profileSource).not.toContain('title={t("账号信息")}');
+    expect(contactDetailSource.match(/title=\{t\("联系人信息"\)\}/g)).toHaveLength(2);
+    expect(conversationInfoSource).toContain(
+      'title={t(conversation.type === "single" ? "联系人信息" : "信息设置")}',
+    );
+  });
+
   it("uses the formal identity profile card in one-to-one conversation settings", () => {
     const start = source.indexOf("export function ImConversationInfoPage");
     const end = source.indexOf("export function ImConversationSearchPage", start);
