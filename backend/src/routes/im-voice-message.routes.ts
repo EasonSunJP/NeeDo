@@ -6,6 +6,7 @@ import { ImVoiceMessageController } from "../controllers/im-voice-message.contro
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
+import { WorkerIsolatedImVoiceDurationProbe } from "../services/im-voice-duration-probe";
 import { ImVoiceMessageService } from "../services/im-voice-message.service";
 import { ImVoiceFileStorage } from "../services/im-voice.storage";
 import { AppError } from "../utils/app-error";
@@ -67,6 +68,7 @@ export const createImVoiceMessageRoutes = (
       new ImVoiceMessageService(
         dependencies.realtimeService!,
         dependencies.imVoiceStorage ?? new ImVoiceFileStorage(config.IM_MEDIA_STORAGE_DIR),
+        dependencies.imVoiceDurationProbe ?? new WorkerIsolatedImVoiceDurationProbe(),
         publicBaseUrl
       )
   );

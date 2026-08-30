@@ -158,6 +158,7 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import type { ImVoiceDurationProbePort } from "./services/im-voice-duration-probe";
 import type { ImVoiceStoragePort } from "./services/im-voice.storage";
 import type { ImVoiceMessageService } from "./services/im-voice-message.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
@@ -251,6 +252,7 @@ export interface AppDependencies {
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  imVoiceDurationProbe?: ImVoiceDurationProbePort;
   imVoiceStorage?: ImVoiceStoragePort;
   imVoiceMessageService?: ImVoiceMessageService;
   exchangeService?: ExchangeService;

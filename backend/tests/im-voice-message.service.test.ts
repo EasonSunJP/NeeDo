@@ -1,5 +1,9 @@
 import { describe, expect, it, jest } from "@jest/globals";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import type {
+  ImVoiceDurationMetadata,
+  ImVoiceDurationProbePort
+} from "../src/services/im-voice-duration-probe";
 import {
   ImVoiceMessageService,
   type SendImVoiceMessageInput
@@ -23,6 +27,22 @@ const storedWebm = {
   size: 128
 };
 
+const createProbe = (
+  result: ImVoiceDurationMetadata = {
+    durationSeconds: validInput.durationSeconds,
+    hasAudio: true,
+    hasVideo: false
+  }
+) => ({ probe: jest.fn(async () => result) });
+
+const constructServiceWithProbe = (
+  realtime: unknown,
+  storage: unknown,
+  probe: ImVoiceDurationProbePort,
+  publicBaseUrl = "/media/im"
+): ImVoiceMessageService =>
+  new ImVoiceMessageService(realtime as never, storage as never, probe, publicBaseUrl);
+
 const collectObjectKeys = (value: unknown): string[] => {
   if (!value || typeof value !== "object") return [];
   if (Array.isArray(value)) return value.flatMap(collectObjectKeys);
@@ -30,6 +50,176 @@ const collectObjectKeys = (value: unknown): string[] => {
 };
 
 describe("ImVoiceMessageService", () => {
+  it("orders eligibility, real-duration probe, storage, and transaction-time creation", async () => {
+    const calls: string[] = [];
+    const realtime = {
+      assertMessageSendAllowed: jest.fn(async () => {
+        calls.push("preflight");
+      }),
+      createMessage: jest.fn(async () => {
+        calls.push("create");
+        return { id: 501 };
+      })
+    };
+    const probe = {
+      probe: jest.fn(async () => {
+        calls.push("probe");
+        return { durationSeconds: 5.1, hasAudio: true, hasVideo: false };
+      })
+    };
+    const storage = {
+      save: jest.fn(async () => {
+        calls.push("storage");
+        return storedWebm;
+      }),
+      remove: jest.fn()
+    };
+    const service = constructServiceWithProbe(realtime, storage, probe);
+
+    await expect(service.send(auth, { ...validInput, durationSeconds: 6 })).resolves.toEqual({
+      id: 501
+    });
+
+    expect(calls).toEqual(["preflight", "probe", "storage", "create"]);
+    expect(realtime.createMessage).toHaveBeenCalledWith(
+      auth,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          needoMessageExt: expect.objectContaining({ duration: 6 })
+        })
+      })
+    );
+  });
+
+  it("accepts an exact 59.5-second recording and clamps authoritative metadata to 59", async () => {
+    const realtime = {
+      assertMessageSendAllowed: jest.fn(async () => undefined),
+      createMessage: jest.fn(async () => ({ id: 501 }))
+    };
+    const storage = { save: jest.fn(async () => storedWebm), remove: jest.fn() };
+    const probe = createProbe({ durationSeconds: 59.5, hasAudio: true, hasVideo: false });
+    const service = constructServiceWithProbe(realtime, storage, probe);
+
+    await expect(service.send(auth, { ...validInput, durationSeconds: 59 })).resolves.toEqual({
+      id: 501
+    });
+    expect(probe.probe).toHaveBeenCalledTimes(1);
+    expect(realtime.createMessage).toHaveBeenCalledWith(
+      auth,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          needoMessageExt: expect.objectContaining({ duration: 59 })
+        })
+      })
+    );
+  });
+
+  it("accepts a compatibility hint that differs from authoritative duration by exactly one", async () => {
+    const realtime = {
+      assertMessageSendAllowed: jest.fn(async () => undefined),
+      createMessage: jest.fn(async () => ({ id: 501 }))
+    };
+    const storage = { save: jest.fn(async () => storedWebm), remove: jest.fn() };
+    const probe = createProbe({ durationSeconds: 5.1, hasAudio: true, hasVideo: false });
+    const service = constructServiceWithProbe(realtime, storage, probe);
+
+    await expect(service.send(auth, { ...validInput, durationSeconds: 5 })).resolves.toEqual({
+      id: 501
+    });
+    expect(realtime.createMessage).toHaveBeenCalledWith(
+      auth,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          needoMessageExt: expect.objectContaining({ duration: 6 })
+        })
+      })
+    );
+  });
+
+  it.each([
+    {
+      label: "just over the real-duration limit",
+      hint: 59,
+      result: { durationSeconds: 59.500001, hasAudio: true, hasVideo: false }
+    },
+    {
+      label: "a hint difference greater than one",
+      hint: 4,
+      result: { durationSeconds: 5.1, hasAudio: true, hasVideo: false }
+    },
+    {
+      label: "missing audio",
+      hint: 6,
+      result: { durationSeconds: 6, hasAudio: false, hasVideo: false }
+    },
+    {
+      label: "a video track",
+      hint: 6,
+      result: { durationSeconds: 6, hasAudio: true, hasVideo: true }
+    },
+    {
+      label: "a non-finite duration from an injected probe",
+      hint: 6,
+      result: { durationSeconds: Number.NaN, hasAudio: true, hasVideo: false }
+    },
+    {
+      label: "a non-positive duration from an injected probe",
+      hint: 1,
+      result: { durationSeconds: 0, hasAudio: true, hasVideo: false }
+    },
+    {
+      label: "a malformed audio flag from an injected probe",
+      hint: 6,
+      result: { durationSeconds: 6, hasAudio: "yes", hasVideo: false }
+    }
+  ])("rejects $label before storage and message publication", async ({ hint, result }) => {
+    const repository = {
+      checkMessageSendEligibility: jest.fn(async () => "allowed" as const),
+      createMessage: jest.fn(async () => ({ status: "created" as const, message: { id: 501 } })),
+      listConversationRecipients: jest.fn(async () => [])
+    };
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const realtime = new RealtimeService(repository as never, gateway as never);
+    const storage = { save: jest.fn(async () => storedWebm), remove: jest.fn() };
+    const probe = { probe: jest.fn(async () => result) } as unknown as ImVoiceDurationProbePort;
+    const service = constructServiceWithProbe(realtime, storage, probe);
+
+    await expect(
+      service.send(auth, { ...validInput, durationSeconds: hint })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.VALIDATION,
+      message: "error.im.voice_duration_invalid",
+      statusCode: 400
+    });
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(repository.createMessage).not.toHaveBeenCalled();
+    expect(gateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("maps an injected probe failure to the stable validation error without side effects", async () => {
+    const realtime = {
+      assertMessageSendAllowed: jest.fn(async () => undefined),
+      createMessage: jest.fn(async () => ({ id: 501 }))
+    };
+    const storage = { save: jest.fn(async () => storedWebm), remove: jest.fn() };
+    const probe = {
+      probe: jest.fn(async () => {
+        throw new Error("parser exploded");
+      })
+    };
+    const service = constructServiceWithProbe(realtime, storage, probe);
+
+    await expect(service.send(auth, validInput)).rejects.toMatchObject({
+      code: ERROR_CODES.VALIDATION,
+      message: "error.im.voice_duration_invalid",
+      statusCode: 400
+    });
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(realtime.createMessage).not.toHaveBeenCalled();
+  });
+
   it("preflights, stores once, and creates one formal voice message", async () => {
     const realtime = {
       assertMessageSendAllowed: jest.fn(async () => ({ identityId: 71 })),
@@ -42,6 +232,7 @@ describe("ImVoiceMessageService", () => {
     const service = new ImVoiceMessageService(
       realtime as never,
       storage as never,
+      createProbe(),
       "https://media.needo.test/media/im/"
     );
 
@@ -97,7 +288,12 @@ describe("ImVoiceMessageService", () => {
       save: jest.fn(async () => storedWebm),
       remove: jest.fn()
     };
-    const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+    const service = new ImVoiceMessageService(
+      realtime as never,
+      storage as never,
+      createProbe({ durationSeconds, hasAudio: true, hasVideo: false }),
+      "/media/im"
+    );
 
     await expect(service.send(auth, { ...validInput, durationSeconds })).resolves.toEqual({
       id: 501
@@ -114,7 +310,13 @@ describe("ImVoiceMessageService", () => {
         createMessage: jest.fn()
       };
       const storage = { save: jest.fn(), remove: jest.fn() };
-      const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+      const probe = createProbe();
+      const service = new ImVoiceMessageService(
+        realtime as never,
+        storage as never,
+        probe,
+        "/media/im"
+      );
 
       await expect(service.send(auth, { ...validInput, durationSeconds })).rejects.toMatchObject({
         code: ERROR_CODES.VALIDATION,
@@ -122,6 +324,7 @@ describe("ImVoiceMessageService", () => {
         statusCode: 400
       });
       expect(realtime.assertMessageSendAllowed).not.toHaveBeenCalled();
+      expect(probe.probe).not.toHaveBeenCalled();
       expect(storage.save).not.toHaveBeenCalled();
       expect(realtime.createMessage).not.toHaveBeenCalled();
     }
@@ -135,9 +338,16 @@ describe("ImVoiceMessageService", () => {
       createMessage: jest.fn()
     };
     const storage = { save: jest.fn(), remove: jest.fn() };
-    const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+    const probe = createProbe();
+    const service = new ImVoiceMessageService(
+      realtime as never,
+      storage as never,
+      probe,
+      "/media/im"
+    );
 
     await expect(service.send(auth, validInput)).rejects.toThrow("error.im.not_friends");
+    expect(probe.probe).not.toHaveBeenCalled();
     expect(storage.save).not.toHaveBeenCalled();
     expect(realtime.createMessage).not.toHaveBeenCalled();
   });
@@ -157,7 +367,12 @@ describe("ImVoiceMessageService", () => {
       })),
       remove: jest.fn(async () => undefined)
     };
-    const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+    const service = new ImVoiceMessageService(
+      realtime as never,
+      storage as never,
+      createProbe(),
+      "/media/im"
+    );
 
     await expect(service.send(auth, validInput)).rejects.toThrow("error.im.not_friends");
     expect(storage.remove).toHaveBeenCalledTimes(1);
@@ -175,7 +390,12 @@ describe("ImVoiceMessageService", () => {
       save: jest.fn(async () => storedWebm),
       remove: jest.fn(async () => undefined)
     };
-    const service = new ImVoiceMessageService(realtime, storage as never, "/media/im");
+    const service = new ImVoiceMessageService(
+      realtime,
+      storage as never,
+      createProbe(),
+      "/media/im"
+    );
 
     await expect(service.send(auth, validInput)).rejects.toMatchObject({
       code: ERROR_CODES.FORBIDDEN,
@@ -208,7 +428,12 @@ describe("ImVoiceMessageService", () => {
       save: jest.fn(async () => storedWebm),
       remove
     };
-    const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+    const service = new ImVoiceMessageService(
+      realtime as never,
+      storage as never,
+      createProbe(),
+      "/media/im"
+    );
 
     await expect(service.send(auth, validInput)).rejects.toBe(originalError);
     expect(remove).toHaveBeenCalledTimes(2);
@@ -242,7 +467,12 @@ describe("ImVoiceMessageService", () => {
       save: jest.fn(async () => storedWebm),
       remove
     };
-    const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+    const service = new ImVoiceMessageService(
+      realtime as never,
+      storage as never,
+      createProbe(),
+      "/media/im"
+    );
 
     let caught: unknown;
     try {
