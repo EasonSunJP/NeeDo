@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
-import { ImChatComposer } from "./components";
+import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
+import { ImChatComposer, ImEntryCell } from "./components";
 import {
   ImContactActivityEntry,
   ImConversationUnavailableState,
@@ -19,6 +20,42 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("renders the shared Test badge after the service-account title", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(ImEntryCell, {
+          icon: createElement("span", null, "icon"),
+          title: "服务号",
+          to: "/contacts/service-accounts",
+          trailing: createElement(TestFeatureBadge, {
+            className: "min-h-4 px-1.5 py-0 text-[8px]",
+          }),
+        }),
+      ),
+    );
+
+    expect(markup).toContain('href="/contacts/service-accounts"');
+    expect(markup).toContain("服务号");
+    expect(markup).toContain('aria-label="Test 功能"');
+    expect(markup.indexOf("服务号")).toBeLessThan(markup.indexOf("Test"));
+  });
+
+  it("always exposes the Test service-account entry in every scoped contact directory", () => {
+    const contactsStart = pagesSource.indexOf("export function ImContactsListPage");
+    const contactsEnd = pagesSource.indexOf("export function ImFriendRequestsPage", contactsStart);
+    const contactsSource = pagesSource.slice(contactsStart, contactsEnd);
+
+    expect(contactsSource).not.toContain("serviceContacts.length > 0");
+    expect(contactsSource).toContain('title="服务号"');
+    expect(contactsSource).toContain("to={config.routes.serviceAccounts}");
+    expect(contactsSource).toContain("trailing={<TestFeatureBadge");
+    expect(getImRoleConfig("user").routes.serviceAccounts).toBe("/contacts/service-accounts");
+    expect(getImRoleConfig("merchant").routes.serviceAccounts).toBe("/merchant/contacts/service-accounts");
+    expect(getImRoleConfig("technician").routes.serviceAccounts).toBe("/technician/contacts/service-accounts");
+  });
+
   it("keeps the unavailable chat composer visible while natively disabling every control", () => {
     const markup = renderToStaticMarkup(
       createElement(ImChatComposer, {

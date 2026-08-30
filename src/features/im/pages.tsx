@@ -18,6 +18,7 @@ import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
+import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
@@ -2199,10 +2200,6 @@ export function ImContactsListPage() {
   const activeDragLetterRef = useRef<ContactIndexLetter | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const [activeIndexLetter, setActiveIndexLetter] = useState<ContactIndexLetter | null>(null);
-  const serviceContacts = getServiceContacts({
-    ...store,
-    contacts: visibleContacts
-  });
   const organizationContacts = useMemo(
     () => getOrganizationContacts(store, scope, entityStore),
     [entityStore, scope, store.contacts, store.organizationContacts, store.usersById]
@@ -2469,7 +2466,12 @@ export function ImContactsListPage() {
               {scope !== "user" ? <ImEntryCell caption={`${organizationContacts.length} 人`} icon={<ImIcon name="organization" />} title="组织" to={config.routes.organization} /> : null}
               <ImEntryCell icon={<ImIcon name="group" />} title="群聊" to={appendQuery(config.routes.newConversation, { mode: "group" })} />
               <ImEntryCell icon={<ImIcon name="tag" />} title="标签" to={config.routes.tags} />
-              {serviceContacts.length > 0 ? <ImEntryCell icon={<ImIcon name="service" />} title="服务号" to={config.routes.serviceAccounts} /> : null}
+              <ImEntryCell
+                icon={<ImIcon name="service" />}
+                title="服务号"
+                to={config.routes.serviceAccounts}
+                trailing={<TestFeatureBadge className="min-h-4 px-1.5 py-0 text-[8px]" />}
+              />
             </section>
 
             <div className="px-1 pt-3">

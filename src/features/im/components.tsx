@@ -1259,6 +1259,7 @@ export function ImEntryCell({
   caption,
   badge,
   badgeDot = false,
+  trailing,
   to,
   onClick
 }: {
@@ -1267,6 +1268,7 @@ export function ImEntryCell({
   caption?: string;
   badge?: string | number;
   badgeDot?: boolean;
+  trailing?: ReactNode;
   to?: string;
   onClick?: () => void;
 }) {
@@ -1284,7 +1286,10 @@ export function ImEntryCell({
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <strong className="truncate text-[15px] font-black text-[color:var(--client-text)]">{title}</strong>
+          <div className="flex min-w-0 items-center gap-2">
+            <strong className="truncate text-[15px] font-black text-[color:var(--client-text)]">{title}</strong>
+            {trailing ? <span className="shrink-0">{trailing}</span> : null}
+          </div>
           {caption ? <span className="shrink-0 text-xs font-bold text-[color:var(--client-muted)]">{caption}</span> : null}
         </div>
       </div>
