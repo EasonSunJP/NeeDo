@@ -5,17 +5,22 @@ import { materializeImComposerDraft } from "../../im/reaction-policy";
 import { getSocialComposerErrorMessage } from "../composer-media";
 import type { SocialPost, SocialProfile } from "../types";
 
-export function SocialQuickReplyComposer({
-  actor,
-  canComment,
-  onOpenFullComposer,
-  onSubmit
-}: {
+type SocialQuickReplyComposerProps = {
   actor?: Pick<SocialProfile, "avatar" | "displayName">;
   canComment: boolean;
   onOpenFullComposer: () => void;
   onSubmit: (text: string) => SocialPost | Promise<SocialPost>;
-}) {
+  targetIdentity: string;
+};
+
+type SocialQuickReplyComposerStateProps = Omit<SocialQuickReplyComposerProps, "targetIdentity">;
+
+function SocialQuickReplyComposerState({
+  actor,
+  canComment,
+  onOpenFullComposer,
+  onSubmit
+}: SocialQuickReplyComposerStateProps) {
   const [draft, setDraft] = useState("");
   const [panel, setPanel] = useState<ImChatComposerPanel>(null);
   const [sending, setSending] = useState(false);
@@ -66,6 +71,7 @@ export function SocialQuickReplyComposer({
         sendLabel="回复"
         sending={sending}
         sendingLabel="回复中"
+        submitOnEnter
       />
       {submissionError ? (
         <p className="px-4 pb-2 text-sm text-[#ff8b86]" role="alert">
@@ -74,4 +80,8 @@ export function SocialQuickReplyComposer({
       ) : null}
     </div>
   );
+}
+
+export function SocialQuickReplyComposer({ targetIdentity, ...props }: SocialQuickReplyComposerProps) {
+  return <SocialQuickReplyComposerState key={targetIdentity} {...props} />;
 }

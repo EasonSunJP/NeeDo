@@ -319,6 +319,86 @@ describe("ImChatComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("submits on plain Enter only when the optional keyboard-submit seam is enabled", async () => {
+    const onSend = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="回复内容"
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={onSend}
+          panel={null}
+          submitOnEnter
+        />
+      );
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    const enter = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" });
+    await act(async () => {
+      editor.dispatchEvent(enter);
+    });
+    expect(enter.defaultPrevented).toBe(true);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    const shiftEnter = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", shiftKey: true });
+    await act(async () => {
+      editor.dispatchEvent(shiftEnter);
+    });
+    expect(shiftEnter.defaultPrevented).toBe(false);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    const composingEnter = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      isComposing: true,
+      key: "Enter"
+    });
+    await act(async () => {
+      editor.dispatchEvent(composingEnter);
+    });
+    expect(composingEnter.defaultPrevented).toBe(false);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it("preserves the default chat Enter behavior when keyboard submission is omitted", async () => {
+    const onSend = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="聊天内容"
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={onSend}
+          panel={null}
+        />
+      );
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    const enter = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" });
+    await act(async () => {
+      editor.dispatchEvent(enter);
+    });
+
+    expect(enter.defaultPrevented).toBe(false);
+    expect(onSend).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
   it("defines bottom-navigation glass, upward panel growth, touch targets, and reduced motion", () => {
     expect(stylesSource).toContain(".client-shell .im-composer-glass");
     expect(stylesSource).toContain(".im-chat-composer-stack");

@@ -3,6 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SocialPost } from "../types";
 import { SocialQuickReplyComposer } from "./SocialQuickReplyComposer";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,6 +28,7 @@ describe("SocialQuickReplyComposer", () => {
           canComment
           onOpenFullComposer={onOpenFullComposer}
           onSubmit={vi.fn()}
+          targetIdentity="actor-mia:post-1"
         />
       );
     });
@@ -58,6 +60,7 @@ describe("SocialQuickReplyComposer", () => {
           canComment
           onOpenFullComposer={vi.fn()}
           onSubmit={onSubmit}
+          targetIdentity="actor-mia:post-1"
         />
       );
     });
@@ -68,8 +71,9 @@ describe("SocialQuickReplyComposer", () => {
     await act(async () => {
       container.querySelector<HTMLButtonElement>('[data-im-reaction-value="Thanks"]')?.click();
     });
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
     await act(async () => {
-      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.click();
+      editor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }));
     });
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -91,6 +95,7 @@ describe("SocialQuickReplyComposer", () => {
           canComment
           onOpenFullComposer={vi.fn()}
           onSubmit={onSubmit}
+          targetIdentity="actor-mia:post-1"
         />
       );
     });
@@ -111,6 +116,71 @@ describe("SocialQuickReplyComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("isolates draft and sending state when the actor-post target changes during a delayed reply", async () => {
+    let resolveFirstReply!: (value: SocialPost) => void;
+    const firstReply = new Promise<SocialPost>((resolve) => {
+      resolveFirstReply = resolve;
+    });
+    const firstSubmit = vi.fn(() => firstReply);
+    const secondSubmit = vi.fn().mockResolvedValue({ id: "reply-2" });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/mia.jpg", displayName: "Mia" }}
+          canComment
+          onOpenFullComposer={vi.fn()}
+          onSubmit={firstSubmit}
+          targetIdentity="actor-mia:post-1"
+        />
+      );
+    });
+
+    let editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    await act(async () => {
+      editor.textContent = "第一条回复";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.click();
+    });
+    expect(firstSubmit).toHaveBeenCalledWith("第一条回复");
+
+    await act(async () => {
+      root.render(
+        <SocialQuickReplyComposer
+          actor={{ avatar: "/ren.jpg", displayName: "Ren" }}
+          canComment
+          onOpenFullComposer={vi.fn()}
+          onSubmit={secondSubmit}
+          targetIdentity="actor-ren:post-2"
+        />
+      );
+    });
+
+    editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    expect(editor.textContent).toBe("");
+    expect(container.querySelector<HTMLButtonElement>("[aria-label='打开完整回复']")?.disabled).toBe(false);
+
+    await act(async () => {
+      editor.textContent = "第二条草稿";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(editor.textContent).toBe("第二条草稿");
+
+    await act(async () => {
+      resolveFirstReply({ id: "reply-1" } as SocialPost);
+      await firstReply;
+    });
+
+    expect(container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')?.textContent).toBe("第二条草稿");
+    expect([...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "回复")?.disabled).toBe(false);
+    await act(async () => root.unmount());
+  });
+
   it("keeps restricted comments visible and natively disabled", async () => {
     const container = document.createElement("div");
     document.body.append(container);
@@ -123,6 +193,7 @@ describe("SocialQuickReplyComposer", () => {
           canComment={false}
           onOpenFullComposer={vi.fn()}
           onSubmit={vi.fn()}
+          targetIdentity="actor-mia:post-1"
         />
       );
     });

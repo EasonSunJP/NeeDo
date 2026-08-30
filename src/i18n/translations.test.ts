@@ -113,6 +113,21 @@ describe("translations", () => {
     expect(translateText("时间上限最大为99小时59分钟", "ko")).toBe("최대 시간은 99시간 59분입니다");
   });
 
+  it("localizes the Social quick-reply action and sending state", () => {
+    expect(translations["打开完整回复"]).toEqual({
+      "zh-Hant": "開啟完整回覆",
+      ja: "返信作成画面を開く",
+      en: "Open full reply composer",
+      ko: "전체 답글 작성 화면 열기",
+    });
+    expect(translations["回复中"]).toEqual({
+      "zh-Hant": "回覆中",
+      ja: "返信中",
+      en: "Replying",
+      ko: "답글 작성 중",
+    });
+  });
+
   it("keeps truly unknown source text untouched", () => {
     const unknownText = "__test_unknown_translation_key__";
     expect(translateText(unknownText, "ko")).toBe(unknownText);

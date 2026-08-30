@@ -555,12 +555,14 @@ function ImComposerRichInput({
   draft,
   inputRef,
   onDraftChange,
+  onEnterSubmit,
   placeholder
 }: {
   disabled: boolean;
   draft: string;
   inputRef?: Ref<HTMLDivElement>;
   onDraftChange: (value: string) => void;
+  onEnterSubmit?: () => void;
   placeholder: string;
 }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -598,6 +600,14 @@ function ImComposerRichInput({
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
         onInput={(event) => onDraftChange(readImComposerValue(event.currentTarget))}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || !onEnterSubmit) {
+            return;
+          }
+
+          event.preventDefault();
+          onEnterSubmit();
+        }}
         onPaste={handlePaste}
         ref={setEditorRef}
         role="textbox"
@@ -668,6 +678,7 @@ export function ImChatComposer({
   sendLabel = "发送",
   sendingLabel = "发送中",
   sending = false,
+  submitOnEnter = false,
   textareaRef,
   voiceMode = false
 }: {
@@ -695,6 +706,7 @@ export function ImChatComposer({
   sendLabel?: string;
   sendingLabel?: string;
   sending?: boolean;
+  submitOnEnter?: boolean;
   textareaRef?: Ref<HTMLDivElement>;
   voiceMode?: boolean;
 }) {
@@ -849,6 +861,7 @@ export function ImChatComposer({
                 draft={draft}
                 inputRef={textareaRef}
                 onDraftChange={onDraftChange}
+                onEnterSubmit={submitOnEnter ? onSend : undefined}
                 placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
               />
             )}

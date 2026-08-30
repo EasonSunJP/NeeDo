@@ -659,6 +659,7 @@ export function SocialPostDetailPage() {
           text,
           postType: "reply"
         })}
+        targetIdentity={`${actorKey}:${post.id}`}
       />
     </div>
   );
