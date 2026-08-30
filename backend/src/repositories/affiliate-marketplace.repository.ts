@@ -325,7 +325,7 @@ export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepos
       Prisma.sql`reservation.deleted_at IS NULL`,
       Prisma.sql`reservation.status = 'active'`,
       Prisma.sql`(
-        reservation.total_frozen_ndp
+        reservation.commission_frozen_ndp
         - reservation.allocated_ndp
         - reservation.captured_ndp
         - reservation.released_ndp
@@ -462,6 +462,11 @@ export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepos
       allocatedBudgetNdp: task.allocatedBudgetNdp,
       settledBudgetNdp: task.settledBudgetNdp,
       releasedBudgetNdp: task.releasedBudgetNdp,
+      platformFeeRuleId: task.platformFeeRuleId,
+      platformFeeBps: task.platformFeeBps,
+      platformFeeReserveNdp: task.platformFeeReserveNdp,
+      settledPlatformFeeNdp: task.settledPlatformFeeNdp,
+      releasedPlatformFeeNdp: task.releasedPlatformFeeNdp,
       customerDiscountType: task.customerDiscountType.toLowerCase() as AffiliateDiscountType,
       fixedDiscountJpy: task.fixedDiscountJpy,
       discountRateBps: task.discountRateBps,
@@ -528,9 +533,13 @@ export class AffiliateMarketplaceRepository implements AffiliateMarketplaceRepos
       taskId: reservation.taskId,
       walletId: reservation.walletId,
       totalFrozenNdp: reservation.totalFrozenNdp,
+      commissionFrozenNdp: reservation.commissionFrozenNdp,
+      platformFeeFrozenNdp: reservation.platformFeeFrozenNdp,
       allocatedNdp: reservation.allocatedNdp,
       capturedNdp: reservation.capturedNdp,
+      platformFeeCapturedNdp: reservation.platformFeeCapturedNdp,
       releasedNdp: reservation.releasedNdp,
+      platformFeeReleasedNdp: reservation.platformFeeReleasedNdp,
       status: reservation.status.toLowerCase() as AffiliateBudgetReservationRecord["status"],
       idempotencyKey: reservation.idempotencyKey,
       frozenAt: reservation.frozenAt,

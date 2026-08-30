@@ -40,6 +40,10 @@ import type { CustomerProfileRepositoryPort } from "./repositories/customer-prof
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
+import type {
+  AffiliatePlatformFeeRepositoryPort,
+  AffiliatePlatformFeeService
+} from "./services/affiliate-platform-fee.service";
 import type { LedgerRepositoryPort } from "./services/ledger.service";
 import type { IdentityApplicationRepositoryPort } from "./services/identity-application.service";
 import type { IdentityApplicationService } from "./services/identity-application.service";
@@ -111,6 +115,7 @@ import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
+import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
 import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
@@ -177,6 +182,8 @@ export interface AppDependencies {
   feeRuleRepository?: FeeRuleRepositoryPort;
   platformFeePolicyRepository?: PlatformFeePolicyRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
+  affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
+  affiliatePlatformFeeService?: AffiliatePlatformFeeService;
   merchantFinanceRulesRepository?: MerchantFinanceRulesRepositoryPort;
   merchantSaasBillingRepository?: MerchantSaasBillingRepositoryPort;
   paymentProvider?: PaymentProvider;
@@ -294,6 +301,7 @@ export const createApp = (
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderAcceptancePauseRoutes(config, resolvedDependencies));
+  apiRouter.use(createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderFinanceRoutes(config, resolvedDependencies));
   apiRouter.use(createPayrollRoutes(config, resolvedDependencies));

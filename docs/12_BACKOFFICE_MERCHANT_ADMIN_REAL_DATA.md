@@ -188,3 +188,18 @@ Migration 为 `20260829150000_employee_schedule_privacy`，为 `availabilities` 
 卡片可查看并编辑计薪模式、基础月薪、时薪、日薪、单次报酬、分成、保障最低额和 NDP 分摊，并显示最新工资单的订单数、工时、服务收入、工资构成、净应付、已付及未付。失败保存保留用户草稿，员工切换或关闭抽屉会使旧请求失效。预估只计算展示，不生成工资单、不登记支付；实际支付仍由财务人员手工处理，系统不发起自动转账。
 
 本微步骤没有新增 schema 或 migration，没有新增 mock，也没有修改旧财务工作区仍在使用的内部 ID 兼容路由。
+
+## 14. 2026-08-30 联盟营销平台抽成规则运营页面
+
+运营后台新增 `/pf-admin.html#/admin/afirieito/fee-rules`，用于读取正式数据库中的当前全局抽成、下一排期费率和不可变版本历史，并在具备写权限时创建新的全局或店铺版本。页面不编辑或删除历史版本，也不会重算已经冻结预算的联盟营销任务；任务继续使用提交时保存的费率快照。
+
+正式接口：
+
+- `GET /api/v1/backoffice/affiliate/fee-rules`：分页读取全局或店铺版本历史。
+- `GET /api/v1/backoffice/affiliate/fee-rules/summary?scopeType=global`：由服务端按同一评价时间返回当前规则、下一排期规则和最新版本号。
+- `GET /api/v1/backoffice/affiliate/fee-rule-shops`：为抽成页面分页搜索已发布且未删除的店铺，只返回 `id`、`name`、`city`。
+- `POST /api/v1/backoffice/affiliate/fee-rules`：使用 `expectedVersion` 创建下一不可变版本，必须填写费率、生效时间和变更原因。
+
+读取要求 `page:backoffice-affiliate-fee-rule`，创建要求 `button:backoffice-affiliate-fee-rule-create`。接口继续要求运营全局或平台身份，创建事务同时写入不可变审计。店铺搜索不扩大财务角色的一般店铺管理权限；历史列表通过同一查询投影店铺名称与城市，避免 N+1 和已下架店铺标签丢失。
+
+本微步骤复用现有 `affiliate_platform_fee_rules` 及其版本、审计和任务快照模型，没有新增 schema 或 migration。浏览器验收只检查读取、筛选、店铺选择、校验和确认页，不提交新的真实费率版本；写入行为由隔离的 API、Service 与 Repository 测试验证。

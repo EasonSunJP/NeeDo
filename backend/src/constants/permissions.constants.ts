@@ -1114,6 +1114,20 @@ export const SYSTEM_PERMISSIONS = [
     "访问全平台联盟营销数据"
   ),
   createPermission(
+    "page:backoffice-affiliate-fee-rule",
+    "联盟营销抽成规则",
+    "page",
+    "backoffice-affiliate",
+    "分页查看联盟营销平台抽成规则及历史版本"
+  ),
+  createPermission(
+    "button:backoffice-affiliate-fee-rule-create",
+    "新建联盟营销抽成版本",
+    "button",
+    "backoffice-affiliate",
+    "创建全局或店铺范围的联盟营销平台抽成规则版本"
+  ),
+  createPermission(
     "button:backoffice-affiliate-review",
     "审核联盟任务",
     "button",
@@ -1543,6 +1557,15 @@ const BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES = [
   "page:backoffice-affiliate"
 ] as const satisfies readonly SystemPermissionCode[];
 
+const BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES = [
+  "page:backoffice-affiliate-fee-rule"
+] as const satisfies readonly SystemPermissionCode[];
+
+const BACKOFFICE_AFFILIATE_FEE_RULE_WRITE_PERMISSION_CODES = [
+  ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
+  "button:backoffice-affiliate-fee-rule-create"
+] as const satisfies readonly SystemPermissionCode[];
+
 const BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES = [
   ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES,
   "button:backoffice-affiliate-review",
@@ -1583,6 +1606,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES,
+    ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
     ...CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES,
     ...OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES,
     "finance:fee-rule:list",
@@ -1603,6 +1627,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...FINANCE_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FINANCE_PERMISSION_CODES,
+    ...BACKOFFICE_AFFILIATE_FEE_RULE_WRITE_PERMISSION_CODES,
     "backoffice:finance:list",
     "backoffice:finance:export",
     "backoffice:finance-order:read",
@@ -1679,6 +1704,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES,
+    ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
     ...CONTENT_PUBLICATION_READ_PERMISSION_CODES
   ]
 });
