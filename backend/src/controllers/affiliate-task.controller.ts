@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { AffiliateTaskService } from "../services/affiliate-task.service";
 import type { AuthenticatedAccessContext } from "../services/auth.service";
+import type { MerchantAffiliateTaskContextService } from "../services/merchant-affiliate-task-context.service";
 import { successResponse } from "../utils/api-response";
 import {
   affiliateTaskIdParamSchema,
@@ -14,14 +15,19 @@ import {
 } from "../validators/affiliate-task.validator";
 
 export class AffiliateTaskController {
-  public constructor(private readonly service: AffiliateTaskService) {}
+  public constructor(
+    private readonly service: AffiliateTaskService,
+    private readonly presenter: MerchantAffiliateTaskContextService
+  ) {}
 
   public listPublisherTasks = this.handle(async (request, response) => {
     response.status(200).json(
       successResponse(
-        await this.service.listPublisherTasks(
-          this.actor(response),
-          affiliateTaskListQuerySchema.parse(request.query)
+        await this.presenter.presentTaskPage(
+          await this.service.listPublisherTasks(
+            this.actor(response),
+            affiliateTaskListQuerySchema.parse(request.query)
+          )
         )
       )
     );
@@ -30,9 +36,11 @@ export class AffiliateTaskController {
   public createDraft = this.handle(async (request, response) => {
     response.status(201).json(
       successResponse(
-        await this.service.createDraft(
-          this.actor(response),
-          createAffiliateTaskBodySchema.parse(request.body)
+        await this.presenter.presentTask(
+          await this.service.createDraft(
+            this.actor(response),
+            createAffiliateTaskBodySchema.parse(request.body)
+          )
         )
       )
     );
@@ -41,9 +49,11 @@ export class AffiliateTaskController {
   public getPublisherTask = this.handle(async (request, response) => {
     response.status(200).json(
       successResponse(
-        await this.service.getPublisherTask(
-          this.actor(response),
-          affiliateTaskIdParamSchema.parse(request.params).taskId
+        await this.presenter.presentTask(
+          await this.service.getPublisherTask(
+            this.actor(response),
+            affiliateTaskIdParamSchema.parse(request.params).taskId
+          )
         )
       )
     );
@@ -52,10 +62,12 @@ export class AffiliateTaskController {
   public updateDraft = this.handle(async (request, response) => {
     response.status(200).json(
       successResponse(
-        await this.service.updateDraft(
-          this.actor(response),
-          affiliateTaskIdParamSchema.parse(request.params).taskId,
-          updateAffiliateTaskBodySchema.parse(request.body)
+        await this.presenter.presentTask(
+          await this.service.updateDraft(
+            this.actor(response),
+            affiliateTaskIdParamSchema.parse(request.params).taskId,
+            updateAffiliateTaskBodySchema.parse(request.body)
+          )
         )
       )
     );
@@ -65,11 +77,13 @@ export class AffiliateTaskController {
     const params = affiliateTaskLocaleParamSchema.parse(request.params);
     response.status(200).json(
       successResponse(
-        await this.service.updateDraftLocale(
-          this.actor(response),
-          params.taskId,
-          params.locale,
-          updateAffiliateTaskTranslationBodySchema.parse(request.body)
+        await this.presenter.presentTask(
+          await this.service.updateDraftLocale(
+            this.actor(response),
+            params.taskId,
+            params.locale,
+            updateAffiliateTaskTranslationBodySchema.parse(request.body)
+          )
         )
       )
     );
@@ -78,9 +92,11 @@ export class AffiliateTaskController {
   public submit = this.handle(async (request, response) => {
     response.status(200).json(
       successResponse(
-        await this.service.submit(
-          this.actor(response),
-          affiliateTaskIdParamSchema.parse(request.params).taskId
+        await this.presenter.presentTask(
+          await this.service.submit(
+            this.actor(response),
+            affiliateTaskIdParamSchema.parse(request.params).taskId
+          )
         )
       )
     );

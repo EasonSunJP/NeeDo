@@ -24,6 +24,10 @@ import type {
   AffiliateTaskService
 } from "./services/affiliate-task.service";
 import type {
+  MerchantAffiliateTaskContextRepositoryPort,
+  MerchantAffiliateTaskContextService
+} from "./services/merchant-affiliate-task-context.service";
+import type {
   AffiliateMarketplaceRepositoryPort,
   AffiliateMarketplaceService
 } from "./services/affiliate-marketplace.service";
@@ -106,6 +110,7 @@ import type { UserRepositoryPort } from "./repositories/user.repository";
 import type { TestAccountRepositoryPort } from "./repositories/test-account.repository";
 import { createAuthRoutes } from "./routes/auth.routes";
 import { createAffiliateTaskRoutes } from "./routes/affiliate-task.routes";
+import { createMerchantAffiliateTaskContextRoutes } from "./routes/merchant-affiliate-task-context.routes";
 import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace.routes";
 import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
 import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
@@ -239,6 +244,8 @@ export interface AppDependencies {
   backofficeRepository?: BackofficeRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
+  merchantAffiliateTaskContextRepository?: MerchantAffiliateTaskContextRepositoryPort;
+  merchantAffiliateTaskContextService?: MerchantAffiliateTaskContextService;
   affiliateMarketplaceRepository?: AffiliateMarketplaceRepositoryPort;
   affiliateMarketplaceService?: AffiliateMarketplaceService;
   affiliateCheckoutService?: AffiliateCheckoutService;
@@ -332,6 +339,7 @@ export const createApp = (
   apiRouter.use(createAffiliateAllianceRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
+  apiRouter.use(createMerchantAffiliateTaskContextRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateMarketplaceRoutes(config, resolvedDependencies));
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));
