@@ -388,6 +388,52 @@ describe("RealtimeRepository friend request lifecycle", () => {
     });
   });
 
+  it("keeps an incoming pending request actionable when only the viewer has a one-way contact", async () => {
+    const pending = requestRecord({
+      requesterUserId: target.id,
+      requesterIdentityId: targetIdentityId,
+      targetUserId: requester.id,
+      targetIdentityId: requesterIdentityId
+    });
+    const publicTarget = {
+      ...target,
+      identities: [],
+      customerProfile: null,
+      technicianProfile: null
+    };
+    const findContact = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 91 })
+      .mockResolvedValueOnce(null);
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(publicTarget) },
+      contact: { findFirst: findContact },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(pending) }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
+    ).resolves.toMatchObject({
+      relationship: "incoming_pending",
+      contactId: null,
+      friendRequest: { id: pending.id, status: "pending" }
+    });
+    expect(findContact).toHaveBeenNthCalledWith(2, {
+      where: {
+        ownerIdentityId: targetIdentityId,
+        contactIdentityId: requesterIdentityId,
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+  });
+
   it("does not expose private customer profile fields in a directory identity card", async () => {
     const privateTarget = {
       ...target,

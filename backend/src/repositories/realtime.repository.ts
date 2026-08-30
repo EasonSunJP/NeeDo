@@ -2389,7 +2389,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       },
       select: { id: true }
     });
-    if (contact) {
+    const reciprocalContact = contact
+      ? await this.client.contact.findFirst({
+          where: {
+            ownerIdentityId: targetIdentityId,
+            contactIdentityId: viewerIdentityId,
+            deletedAt: null
+          },
+          select: { id: true }
+        })
+      : null;
+    if (contact && reciprocalContact) {
       return {
         user: this.mapParticipant(user),
         identityCard,
