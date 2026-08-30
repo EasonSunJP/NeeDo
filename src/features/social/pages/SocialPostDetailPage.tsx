@@ -425,6 +425,7 @@ function ReplyListItem({
   const { getPostById } = useSocial();
   const author = profiles[profileKey({ entityType: post.authorType, id: post.authorId })];
   const quotedPost = post.quotePostId ? getPostById(post.quotePostId) : undefined;
+  const replyMedia = post.media[0];
   const detailLinkLabel = translateText("查看动态详情", language);
 
   if (!author) {
@@ -451,6 +452,32 @@ function ReplyListItem({
           </div>
 
           {post.text ? <UnifiedPostText allowExpand={false} className="mt-2 text-[15px] leading-7 text-white" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}
+
+          {replyMedia ? (
+            <div className="relative mt-3 h-40 overflow-hidden rounded-[18px] border border-white/10 bg-black" data-testid="social-reply-media">
+              {replyMedia.type === "video" ? (
+                <video
+                  className="absolute inset-0 h-full w-full object-cover"
+                  muted
+                  playsInline
+                  poster={replyMedia.thumbnailUrl ? getGeneratedImageThumbnailUrl(replyMedia.thumbnailUrl) : undefined}
+                  src={replyMedia.url}
+                />
+              ) : (
+                <img alt={replyMedia.alt ?? ""} className="absolute inset-0 h-full w-full object-cover" src={getSocialMediaPreviewUrl(replyMedia)} />
+              )}
+            </div>
+          ) : null}
+
+          {post.locationLabel ? (
+            <p className="mt-3 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-[#d1ff4d]/86" data-testid="social-reply-location">
+              <svg aria-hidden="true" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+                <path d="M12 21s6-5.5 6-11a6 6 0 1 0-12 0c0 5.5 6 11 6 11Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+                <circle cx="12" cy="10" r="2" stroke="currentColor" strokeWidth="1.8" />
+              </svg>
+              <span className="min-w-0 truncate">{post.locationLabel}</span>
+            </p>
+          ) : null}
 
           {quotedPost ? (
             <div className="mt-3">

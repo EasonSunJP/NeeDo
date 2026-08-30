@@ -32,4 +32,11 @@ describe("SocialPostDetailPage quick reply integration", () => {
     expect(source.match(/richText=\{post\.richText\}/g)).toHaveLength(3);
     expect(source).toContain('<DetailMiniPostCard caption="引用动态" post={quotedPost}');
   });
+
+  it("renders quick-reply image and location attachments inside each reply card", () => {
+    expect(source).toContain('data-testid="social-reply-media"');
+    expect(source).toContain('data-testid="social-reply-location"');
+    expect(source).toContain("getSocialMediaPreviewUrl(replyMedia)");
+    expect(source).toContain("post.locationLabel");
+  });
 });
