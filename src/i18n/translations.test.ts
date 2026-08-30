@@ -134,6 +134,15 @@ describe("translations", () => {
     });
   });
 
+  it("localizes the semantic Social post-detail link label", () => {
+    expect(translations["查看动态详情"]).toEqual({
+      "zh-Hant": "查看動態詳情",
+      ja: "投稿の詳細を見る",
+      en: "View post details",
+      ko: "게시물 상세 보기"
+    });
+  });
+
   it("keeps truly unknown source text untouched", () => {
     const unknownText = "__test_unknown_translation_key__";
     expect(translateText(unknownText, "ko")).toBe(unknownText);

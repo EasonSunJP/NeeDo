@@ -94,7 +94,7 @@ The review found no Critical issues. It identified the query/hash preservation g
 - Reply controls no longer navigate from the canonical detail page; all external reply entry points continue to supply the existing transient state for this page to consume.
 - Reply cards preserve existing structured rich-text/sticker rendering by keeping `UnifiedPostText` and `post.richText` unchanged.
 - `post.replyCount` remains server-authoritative for display; reply rows determine only whether to render the list or empty state.
-- The previous Task 6 report was already modified in the worktree and is intentionally left unstaged and untouched by this task.
+- At the initial `dd0bd315` Task 7 commit, the previous Task 6 report was already modified in the worktree and was intentionally left unstaged and untouched. `65843bb6` is the later, separately approved report-only commit in the final range.
 - Browser acceptance at 320px and 440px was not run in this task; the final-card and safe-area source behavior is preserved and ready for that separate QA gate.
 
 ## Task 7 changed-file inventory
@@ -107,6 +107,45 @@ The review found no Critical issues. It identified the query/hash preservation g
 - `src/i18n/translations.ts`
 - `src/i18n/translations.test.ts`
 - `.superpowers/sdd/social-single-reply-task-7-report.md`
+
+---
+
+## Accessibility re-review remediation — semantic detail links
+
+### RED evidence
+
+The semantic-link and i18n contracts were written before changing production code:
+
+```bash
+npm test -- src/features/social/pages/SocialPostDetailPage.runtime.test.tsx src/i18n/translations.test.ts
+```
+
+Observed result:
+
+```text
+Test Files  2 failed (2)
+Tests       3 failed | 58 passed (61)
+exit code   1
+```
+
+The failures proved the page lacked both card-owned post-detail links and the explicit five-language `查看动态详情` translation entry.
+
+### GREEN implementation
+
+- Reply and mini-post cards are now ordinary, non-focusable `<article>` containers with a real internal post-detail `<Link>`; the link is visually revealed on keyboard focus and keeps its native Enter behavior.
+- Whole-card pointer activation remains a convenience only. The existing interactive-target guard leaves profile/detail links and buttons to their own native behavior, while an inner quoted-card shell still stops propagation before the outer reply card can navigate.
+- The one explicit `查看动态详情` key covers Simplified Chinese source plus Traditional Chinese, Japanese, English, and Korean translations; no dynamic accessible-name concatenation remains.
+
+### GREEN verification
+
+```bash
+npm test -- src/features/social/pages/SocialPostDetailPage.runtime.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/i18n/translations.test.ts
+```
+
+```text
+Test Files  3 passed (3)
+Tests       64 passed (64)
+```
 
 ---
 
@@ -295,6 +334,36 @@ PASS — exit 0; existing repository-wide 4,692 missing-source findings are info
 
 npm run i18n:quality
 PASS — no missing target-language rows; existing 462 Japanese simplified-character findings remain reported
+
+npm run lint
+PASS — tsc -b --noEmit
+
+git diff --check
+PASS
+
+npm run build
+PASS — existing SocialProfilePage chunking and large-chunk warnings only
+```
+
+---
+
+## Accessibility re-review final verification
+
+```text
+npm test -- [focused detail/runtime/i18n suites]
+PASS — 3 files, 64 tests
+
+npm test -- [9 Task 7 route/detail/composer/i18n/App suites]
+PASS — 9 files, 109 tests
+
+npm test
+PASS — 253 files, 1,542 tests
+
+npm run i18n:audit
+PASS — exit 0; existing repository-wide 4,691 missing-source findings remain informational
+
+npm run i18n:quality
+PASS — 14,402 entries and no missing target-language rows; existing 462 Japanese simplified-character findings remain reported
 
 npm run lint
 PASS — tsc -b --noEmit

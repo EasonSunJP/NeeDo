@@ -18,6 +18,10 @@ vi.mock("../../../theme/ClientThemeProvider", () => ({
   useClientTheme: () => ({ theme: "dark-green" })
 }));
 
+vi.mock("../../../i18n/I18nProvider", () => ({
+  useOptionalI18n: () => ({ language: "zh" })
+}));
+
 vi.mock("../components/SocialQuickReplyComposer", async () => {
   const React = await vi.importActual<typeof import("react")>("react");
 
@@ -290,16 +294,40 @@ describe("SocialPostDetailPage runtime reply behavior", () => {
     await act(async () => rendered.root.unmount());
   });
 
-  it.each([
-    ["click", () => new MouseEvent("click", { bubbles: true })],
-    ["Enter", () => new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" })],
-    ["Space", () => new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " " })]
-  ])("opens the reply from its %s card activation", async (_label, createEvent) => {
+  it("exposes real post-detail links for reply and quoted cards without pseudo-link article semantics", async () => {
+    socialMock.value = makeSocialValue([rootPost, replyPost, quotePost], () => true);
+    const rendered = await renderDetail({ pathname: "/moments/posts/1" });
+    const replyCard = [...rendered.container.querySelectorAll("article")].find((article) => article.textContent?.includes("回复正文"));
+    const quoteCard = [...rendered.container.querySelectorAll("article")].find((article) => article.textContent?.includes("引用正文") && !article.textContent?.includes("回复正文"));
+    const findDetailLink = (card: Element | undefined) => [...(card?.querySelectorAll<HTMLAnchorElement>("a") ?? [])].find((link) => link.textContent === "查看动态详情" && link.closest("article") === card);
+
+    expect(findDetailLink(replyCard)?.getAttribute("href")).toBe("/moments/posts/2");
+    expect(findDetailLink(quoteCard)?.getAttribute("href")).toBe("/moments/posts/3");
+    expect(replyCard?.getAttribute("tabindex")).toBeNull();
+    expect(replyCard?.getAttribute("aria-label")).toBeNull();
+    expect(quoteCard?.getAttribute("tabindex")).toBeNull();
+    expect(quoteCard?.getAttribute("aria-label")).toBeNull();
+
+    await act(async () => rendered.root.unmount());
+  });
+
+  it("opens the reply from its whole-card pointer convenience click", async () => {
     socialMock.value = makeSocialValue([rootPost, replyPost, quotePost], () => true);
     const rendered = await renderDetail({ pathname: "/moments/posts/1" });
     const replyCard = [...rendered.container.querySelectorAll("article")].find((article) => article.textContent?.includes("回复正文"));
 
-    await act(async () => replyCard?.dispatchEvent(createEvent()));
+    await act(async () => replyCard?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(rendered.container.querySelector("output")?.getAttribute("data-url")).toBe("/moments/posts/2");
+    await act(async () => rendered.root.unmount());
+  });
+
+  it("uses the real reply detail link for native link activation", async () => {
+    socialMock.value = makeSocialValue([rootPost, replyPost, quotePost], () => true);
+    const rendered = await renderDetail({ pathname: "/moments/posts/1" });
+    const replyCard = [...rendered.container.querySelectorAll("article")].find((article) => article.textContent?.includes("回复正文"));
+    const detailLink = [...(replyCard?.querySelectorAll<HTMLAnchorElement>("a") ?? [])].find((link) => link.textContent === "查看动态详情" && link.closest("article") === replyCard);
+
+    await act(async () => detailLink?.click());
     expect(rendered.container.querySelector("output")?.getAttribute("data-url")).toBe("/moments/posts/2");
     await act(async () => rendered.root.unmount());
   });

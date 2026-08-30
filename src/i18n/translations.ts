@@ -749,6 +749,12 @@ export const translations: TranslationMap = {
     en: "Reply to Post",
     ko: "게시물에 답글"
   },
+  "查看动态详情": {
+    "zh-Hant": "查看動態詳情",
+    ja: "投稿の詳細を見る",
+    en: "View post details",
+    ko: "게시물 상세 보기"
+  },
   "时间上限最大为99小时59分钟": {
     "zh-Hant": "時間上限最大為99小時59分鐘",
     ja: "時間の上限は99時間59分です",

@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, PrimaryButton } from "../../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../../components/mobile/FloatingHomeHeader";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { ShareNetworkIconPath } from "../../../components/ui/ShareNetworkIcon";
 import { getGeneratedImageThumbnailUrl } from "../../../lib/imageThumbnails";
+import { useOptionalI18n } from "../../../i18n/I18nProvider";
+import { translateText } from "../../../i18n/translations";
 import { shareContent } from "../../../lib/share";
 import { cn } from "../../../lib/utils";
 import { getClientThemeClassName, useClientTheme } from "../../../theme/ClientThemeProvider";
@@ -31,14 +33,10 @@ function shouldIgnoreCardNavigation(target: EventTarget | null) {
 }
 
 function activatePostCard(
-  event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+  event: ReactMouseEvent<HTMLElement>,
   onActivate: () => void
 ) {
   if (shouldIgnoreCardNavigation(event.target)) {
-    return;
-  }
-
-  if ("key" in event && event.key !== "Enter" && event.key !== " ") {
     return;
   }
 
@@ -271,8 +269,10 @@ function DetailMiniPostCard({
   chrome?: "framed" | "plain";
 }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const author = profiles[profileKey({ entityType: post.authorType, id: post.authorId })];
   const leadMedia = post.media[0];
+  const detailLinkLabel = translateText("查看动态详情", language);
 
   if (!author) {
     return null;
@@ -280,14 +280,11 @@ function DetailMiniPostCard({
 
   return (
     <article
-      aria-label={`查看动态：${author.displayName}`}
       className={cn(
         "cursor-pointer rounded-[24px] p-3.5 transition hover:bg-white/[0.06]",
         chrome === "plain" ? "bg-white/[0.03]" : "border border-white/12 bg-white/[0.04]"
       )}
       onClick={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
-      onKeyDown={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
-      tabIndex={0}
     >
       {caption ? <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#d1ff4d]/84">{caption}</p> : null}
 
@@ -313,6 +310,10 @@ function DetailMiniPostCard({
           )}
         </div>
       ) : null}
+
+      <Link className="sr-only focus:not-sr-only focus:mt-3 focus:inline-flex focus:rounded-full focus:outline-none focus:ring-2 focus:ring-[#d1ff4d] focus:ring-offset-2 focus:ring-offset-black" to={socialPaths.post(scope, post.id)}>
+        {detailLinkLabel}
+      </Link>
     </article>
   );
 }
@@ -420,9 +421,11 @@ function ReplyListItem({
   profiles: Record<string, SocialProfile>;
 }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const { getPostById } = useSocial();
   const author = profiles[profileKey({ entityType: post.authorType, id: post.authorId })];
   const quotedPost = post.quotePostId ? getPostById(post.quotePostId) : undefined;
+  const detailLinkLabel = translateText("查看动态详情", language);
 
   if (!author) {
     return null;
@@ -430,11 +433,8 @@ function ReplyListItem({
 
   return (
     <article
-      aria-label={`查看回复：${author.displayName}`}
       className="cursor-pointer rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.06]"
       onClick={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
-      onKeyDown={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
-      tabIndex={0}
     >
       <div className="flex items-start gap-3">
         <Link className="shrink-0" to={socialPaths.profile(scope, author)}>
@@ -464,6 +464,10 @@ function ReplyListItem({
             <span>{formatCount(post.likeCount)} 喜欢</span>
             <span>{formatCount(post.viewCount)} 浏览</span>
           </div>
+
+          <Link className="sr-only focus:not-sr-only focus:mt-3 focus:inline-flex focus:rounded-full focus:outline-none focus:ring-2 focus:ring-[#d1ff4d] focus:ring-offset-2 focus:ring-offset-black" to={socialPaths.post(scope, post.id)}>
+            {detailLinkLabel}
+          </Link>
         </div>
       </div>
     </article>
