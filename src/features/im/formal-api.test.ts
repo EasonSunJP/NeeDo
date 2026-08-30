@@ -113,7 +113,6 @@ describe("formal IM adapter", () => {
       lastMessagePreview: "明天下午三点可以为您服务。",
       lastMessageType: "text",
       lastMessageStatus: "sent",
-      lastMessagePreviewProvenance: "user-text",
       unreadCount: 2,
       autoTranslateMessages: false,
     });
@@ -310,16 +309,14 @@ describe("formal IM adapter", () => {
           [
             conversation.lastMessageType,
             conversation.lastMessageStatus,
-            conversation.lastMessagePreviewProvenance,
-            conversation.lastMessagePreviewDynamicValue,
           ],
         ]),
       ),
     ).toEqual({
-      "91": ["image", "sent", "ui-label", undefined],
-      "92": ["voice", "sent", "ui-label", undefined],
-      "93": ["video", "sent", "ui-label", undefined],
-      "94": ["file", "sent", "dynamic-value", "报价单.pdf"],
+      "91": ["image", "sent"],
+      "92": ["voice", "sent"],
+      "93": ["video", "sent"],
+      "94": ["file", "sent"],
     });
     expect(Object.values(previews).join(" ")).not.toContain("/media/im/");
   });

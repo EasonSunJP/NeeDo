@@ -705,7 +705,7 @@ describe("MessageBubble translation display boundary", () => {
     clientSeq: 1
   };
 
-  it("renders disabled and enabled body text explicitly", async () => {
+  it("translates only the other party's body text", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -724,6 +724,11 @@ describe("MessageBubble translation display boundary", () => {
 
     await act(async () => {
       root.render(createElement(MessageBubble, { message, isMine: true, translation: japaneseTranslation }));
+    });
+    expect(container.textContent).toContain("测试测试");
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation }));
     });
     expect(container.textContent).toContain("テストテスト");
     expect(container.querySelector('[data-no-i18n][data-im-message-selectable-text="true"]')).not.toBeNull();
@@ -754,7 +759,7 @@ describe("MessageBubble translation display boundary", () => {
     };
 
     await act(async () => {
-      root.render(createElement(MessageBubble, { message, isMine: true, translation: japaneseTranslation }));
+      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation }));
     });
 
     const richText = container.querySelector<HTMLElement>('[data-im-message-rich-text="true"]');
@@ -764,7 +769,7 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => root.unmount());
   });
 
-  it("applies the same boundary to media and quoted captions", async () => {
+  it("translates an incoming media caption but keeps quoted previews raw", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -795,20 +800,20 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => {
       root.render(createElement("div", null,
         createElement("section", { "data-test-main-media-caption": "true" },
-          createElement(MessageBubble, { message: mediaMessage, isMine: true, translation: japaneseTranslation })
+          createElement(MessageBubble, { message: mediaMessage, isMine: false, translation: japaneseTranslation })
         ),
         createElement("section", { "data-test-quoted-text": "true" },
-          createElement(ImQuotedMessagePreview, { message: quotedText, translation: japaneseTranslation })
+          createElement(ImQuotedMessagePreview, { message: quotedText })
         ),
         createElement("section", { "data-test-quoted-media-caption": "true" },
-          createElement(ImQuotedMessagePreview, { message: quotedMedia, translation: japaneseTranslation })
+          createElement(ImQuotedMessagePreview, { message: quotedMedia })
         )
       ));
     });
 
     expect(container.querySelector('[data-test-main-media-caption] [data-no-i18n]')?.textContent).toBe("テストテスト");
-    expect(container.querySelector('[data-test-quoted-text] [data-no-i18n]')?.textContent).toBe("テストテスト");
-    expect(container.querySelector('[data-test-quoted-media-caption] [data-im-quoted-media-caption="true"] [data-no-i18n]')?.textContent).toBe("テストテスト");
+    expect(container.querySelector('[data-test-quoted-text] [data-no-i18n]')?.textContent).toBe("测试测试");
+    expect(container.querySelector('[data-test-quoted-media-caption] [data-im-quoted-media-caption="true"] [data-no-i18n]')?.textContent).toBe("测试测试");
 
     await act(async () => root.unmount());
   });
@@ -832,7 +837,7 @@ describe("MessageBubble translation display boundary", () => {
           createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
         ),
         createElement("section", { "data-test-quoted-file-name-enabled": "true" },
-          createElement(ImQuotedMessagePreview, { message: fileMessage, translation: japaneseTranslation })
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
         ),
         createElement("section", { "data-test-quoted-file-name-disabled": "true" },
           createElement(ImQuotedMessagePreview, { message: fileMessage })
@@ -854,7 +859,7 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => root.unmount());
   });
 
-  it("translates quoted file captions according to the explicit option", async () => {
+  it("keeps quoted file captions raw even when bubble translation is enabled", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -870,7 +875,7 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => {
       root.render(createElement("div", null,
         createElement("section", { "data-test-quoted-file-caption-enabled": "true" },
-          createElement(ImQuotedMessagePreview, { message: fileMessage, translation: japaneseTranslation })
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
         ),
         createElement("section", { "data-test-quoted-file-caption-disabled": "true" },
           createElement(ImQuotedMessagePreview, { message: fileMessage })
@@ -878,7 +883,7 @@ describe("MessageBubble translation display boundary", () => {
       ));
     });
 
-    expect(container.querySelector("[data-test-quoted-file-caption-enabled]")?.textContent).toBe("テストテスト");
+    expect(container.querySelector("[data-test-quoted-file-caption-enabled]")?.textContent).toBe("测试测试");
     expect(container.querySelector("[data-test-quoted-file-caption-disabled]")?.textContent).toBe("测试测试");
 
     await act(async () => root.unmount());
@@ -902,7 +907,7 @@ describe("MessageBubble translation display boundary", () => {
           createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
         ),
         createElement("section", { "data-test-quoted-file-fallback": "true" },
-          createElement(ImQuotedMessagePreview, { message: fileMessage, translation: japaneseTranslation })
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
         )
       ));
     });
@@ -940,10 +945,10 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => {
       root.render(createElement("div", null,
         createElement("section", { "data-test-quoted-system": "true" },
-          createElement(ImQuotedMessagePreview, { message: systemMessage, translation: japaneseTranslation })
+          createElement(ImQuotedMessagePreview, { message: systemMessage })
         ),
         createElement("section", { "data-test-quoted-recalled": "true" },
-          createElement(ImQuotedMessagePreview, { message: recalledMessage, translation: japaneseTranslation })
+          createElement(ImQuotedMessagePreview, { message: recalledMessage })
         )
       ));
     });

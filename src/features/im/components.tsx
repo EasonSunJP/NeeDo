@@ -2834,12 +2834,10 @@ function ImRichMessageText({
 
 export function ImQuotedMessagePreview({
   message,
-  className,
-  translation = defaultImMessageTranslation
+  className
 }: {
   message: ConversationMessage;
   className?: string;
-  translation?: ImMessageTranslationOptions;
 }) {
   const caption = message.ext?.caption?.trim() ?? "";
   const fileName = message.ext?.fileName ?? "";
@@ -2884,7 +2882,6 @@ export function ImQuotedMessagePreview({
               className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
               content={caption}
               richText={message.ext?.captionRichText}
-              translation={translation}
             />
           </div>
         ) : null}
@@ -2907,7 +2904,6 @@ export function ImQuotedMessagePreview({
                 className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
                 content={caption}
                 richText={message.ext?.captionRichText}
-                translation={translation}
               />
             ) : (
               <p
@@ -2928,7 +2924,6 @@ export function ImQuotedMessagePreview({
       className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}
       content={message.content || previewLabel(message.type)}
       richText={message.ext?.richText}
-      translation={translation}
     />
   );
 }
@@ -2971,6 +2966,7 @@ export function MessageBubble({
   translation?: ImMessageTranslationOptions;
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
+  const bodyTranslation = isMine ? defaultImMessageTranslation : translation;
   const disappearing = message.ext?.disappearing;
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
@@ -2989,7 +2985,7 @@ export function MessageBubble({
           )}
           content={message.content}
           richText={message.ext?.richText}
-          translation={translation}
+          translation={bodyTranslation}
           selectable
         />
       );
@@ -3011,7 +3007,7 @@ export function MessageBubble({
               className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
               content={message.ext.caption}
               richText={message.ext.captionRichText}
-              translation={translation}
+              translation={bodyTranslation}
               selectable
             />
           ) : null}
@@ -3197,7 +3193,7 @@ export function MessageBubble({
         )}
         <div className="min-w-0 flex-1">
           <p className="line-clamp-1 text-[13px] font-black">{quotedAuthor}</p>
-          <ImQuotedMessagePreview message={quotedMessage} translation={translation} />
+          <ImQuotedMessagePreview message={quotedMessage} />
         </div>
       </div>
     </div>

@@ -23,17 +23,6 @@ export type ImMessageType =
   | "recalled";
 export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
 export type ImMessageServerState = "active" | "recalled";
-export type ImMessagePreviewProvenance =
-  | "user-text"
-  | "dynamic-value"
-  | "ui-label"
-  | "ui-label-with-dynamic-value";
-export type ImMessagePreviewDescriptor = {
-  text: string;
-  provenance: ImMessagePreviewProvenance;
-  uiLabel?: string;
-  dynamicValue?: string;
-};
 export type ImRecallMode = "standard";
 export type ConversationDisappearingStartMode = "sent" | "read_by_all";
 export type GroupInfoEditPolicy = "owner" | "members";
@@ -191,8 +180,6 @@ export type Conversation = {
   lastMessagePreview: string;
   lastMessageType?: ImMessageType;
   lastMessageStatus?: ImMessageStatus;
-  lastMessagePreviewProvenance?: ImMessagePreviewProvenance;
-  lastMessagePreviewDynamicValue?: string;
   lastMessageTime: string;
   unreadCount: number;
   isPinned: boolean;
@@ -1013,93 +1000,58 @@ export function formatConversationTime(value: string, now = new Date()) {
   return `${target.getFullYear()}/${target.getMonth() + 1}/${target.getDate()}`;
 }
 
-export function buildMessagePreviewDescriptor(
-  message: ConversationMessage,
-  currentUserId: string,
-  _users: Record<string, ImUser>,
-): ImMessagePreviewDescriptor {
-  if (message.type === "recalled" || message.status === "recalled") {
-    return {
-      text: getRecallResidueLabel(message.senderId === currentUserId),
-      provenance: "ui-label",
-    };
-  }
-
-  if (message.type === "text" || message.type === "emoji") {
-    return { text: message.content, provenance: "user-text" };
-  }
-
-  if (message.type === "image") {
-    return { text: "图片", provenance: "ui-label" };
-  }
-
-  if (message.type === "voice") {
-    return { text: "音频", provenance: "ui-label" };
-  }
-
-  if (message.type === "video") {
-    return { text: "视频", provenance: "ui-label" };
-  }
-
-  if (message.type === "file") {
-    const dynamicValue = message.ext?.fileName?.trim();
-    return dynamicValue
-      ? { text: dynamicValue, provenance: "dynamic-value", dynamicValue }
-      : { text: "文件", provenance: "ui-label" };
-  }
-
-  if (message.type === "location") {
-    return { text: "[位置]", provenance: "ui-label" };
-  }
-
-  if (message.type === "contact-card") {
-    const uiLabel = "[名片]";
-    const dynamicValue = message.ext?.contactCard?.displayName?.trim();
-    return dynamicValue
-      ? {
-          text: `${uiLabel} ${dynamicValue}`,
-          provenance: "ui-label-with-dynamic-value",
-          uiLabel,
-          dynamicValue,
-        }
-      : { text: uiLabel, provenance: "ui-label" };
-  }
-
-  if (message.type === "service-card") {
-    const uiLabel = "[服务]";
-    const dynamicValue = message.ext?.serviceCard?.name?.trim();
-    return dynamicValue
-      ? {
-          text: `${uiLabel} ${dynamicValue}`,
-          provenance: "ui-label-with-dynamic-value",
-          uiLabel,
-          dynamicValue,
-        }
-      : { text: uiLabel, provenance: "ui-label" };
-  }
-
-  if (message.type === "schedule-invite") {
-    const uiLabel = "[日程邀请]";
-    const dynamicValue = message.ext?.scheduleInvite?.title?.trim();
-    return dynamicValue
-      ? {
-          text: `${uiLabel} ${dynamicValue}`,
-          provenance: "ui-label-with-dynamic-value",
-          uiLabel,
-          dynamicValue,
-        }
-      : { text: uiLabel, provenance: "ui-label" };
-  }
-
-  return { text: message.content, provenance: "ui-label" };
-}
-
 export function buildMessagePreview(
   message: ConversationMessage,
   currentUserId: string,
-  users: Record<string, ImUser>,
+  _users: Record<string, ImUser>,
 ) {
-  return buildMessagePreviewDescriptor(message, currentUserId, users).text;
+  if (message.type === "recalled" || message.status === "recalled") {
+    return getRecallResidueLabel(message.senderId === currentUserId);
+  }
+
+  if (message.type === "text" || message.type === "emoji") {
+    return message.content;
+  }
+
+  if (message.type === "image") {
+    return "图片";
+  }
+
+  if (message.type === "voice") {
+    return "音频";
+  }
+
+  if (message.type === "video") {
+    return "视频";
+  }
+
+  if (message.type === "file") {
+    return message.ext?.fileName?.trim() || "文件";
+  }
+
+  if (message.type === "location") {
+    return "[位置]";
+  }
+
+  if (message.type === "contact-card") {
+    return message.ext?.contactCard?.displayName
+      ? `[名片] ${message.ext.contactCard.displayName}`
+      : "[名片]";
+  }
+
+  if (message.type === "service-card") {
+    return message.ext?.serviceCard?.name
+      ? `[服务] ${message.ext.serviceCard.name}`
+      : "[服务]";
+  }
+
+  if (message.type === "schedule-invite") {
+    return message.ext?.scheduleInvite?.title
+      ? `[日程邀请] ${message.ext.scheduleInvite.title}`
+      : "[日程邀请]";
+  }
+
+  return message.content;
 }
 
 export function buildConversationLastMessageSummary(
@@ -1113,21 +1065,15 @@ export function buildConversationLastMessageSummary(
   | "lastMessagePreview"
   | "lastMessageType"
   | "lastMessageStatus"
-  | "lastMessagePreviewProvenance"
-  | "lastMessagePreviewDynamicValue"
   | "lastMessageTime"
 > {
-  const descriptor = message
-    ? buildMessagePreviewDescriptor(message, currentUserId, users)
-    : undefined;
-
   return {
     lastMessageId: message?.id,
-    lastMessagePreview: descriptor?.text ?? "",
+    lastMessagePreview: message
+      ? buildMessagePreview(message, currentUserId, users)
+      : "",
     lastMessageType: message?.type,
     lastMessageStatus: message?.status,
-    lastMessagePreviewProvenance: descriptor?.provenance,
-    lastMessagePreviewDynamicValue: descriptor?.dynamicValue,
     lastMessageTime: message?.sentAt ?? fallbackTime,
   };
 }

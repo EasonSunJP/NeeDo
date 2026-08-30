@@ -3,9 +3,6 @@ import {
   getImMessageCopyText,
   getImMessageDisplayParts,
   getImMessageDisplayText,
-  getImPreviewDisplayText,
-  isImConversationPreviewRuntimeProtected,
-  isImConversationPreviewTranslationEligible,
 } from "./message-translation";
 import type { ConversationMessage, MessageExt } from "./model";
 
@@ -54,85 +51,7 @@ describe("IM message display translation", () => {
     expect(richText.parts).toEqual(originalParts);
   });
 
-  it("translates a confirmed conversation preview only when enabled", () => {
-    expect(getImPreviewDisplayText("测试测试", {
-      enabled: false,
-      language: "ja"
-    })).toBe("测试测试");
-    expect(getImPreviewDisplayText("测试测试", {
-      enabled: true,
-      language: "ja"
-    })).toBe("テストテスト");
-  });
-
-  it("uses authoritative provenance and explicitly excludes system conversations from translation", () => {
-    expect(isImConversationPreviewTranslationEligible({
-      type: "single",
-      lastMessagePreviewProvenance: "user-text",
-      lastMessageStatus: "sent",
-    })).toBe(true);
-    expect(isImConversationPreviewTranslationEligible({
-      type: "system",
-      lastMessagePreviewProvenance: "user-text",
-      lastMessageStatus: "sending",
-    })).toBe(false);
-    expect(isImConversationPreviewTranslationEligible({
-      type: "single",
-      lastMessagePreviewProvenance: "user-text",
-      lastMessageStatus: "recalled",
-    })).toBe(false);
-  });
-
-  it.each([
-    "dynamic-value",
-    "ui-label",
-    "ui-label-with-dynamic-value",
-  ] as const)("keeps authoritative %s previews outside automatic translation", (lastMessagePreviewProvenance) => {
-    expect(isImConversationPreviewTranslationEligible({
-      type: "single",
-      lastMessagePreviewProvenance,
-      lastMessageStatus: "sent",
-    })).toBe(false);
-  });
-
-  it("separates runtime i18n protection from automatic translation eligibility", () => {
-    expect(isImConversationPreviewRuntimeProtected({
-      type: "single",
-      lastMessagePreviewProvenance: "dynamic-value",
-      lastMessageStatus: "sent",
-    })).toBe(true);
-    expect(isImConversationPreviewRuntimeProtected({
-      type: "single",
-      lastMessagePreviewProvenance: "ui-label-with-dynamic-value",
-      lastMessageStatus: "sent",
-    })).toBe(true);
-    expect(isImConversationPreviewRuntimeProtected({
-      type: "single",
-      lastMessagePreviewProvenance: "ui-label",
-      lastMessageStatus: "sent",
-    })).toBe(false);
-    expect(isImConversationPreviewRuntimeProtected({
-      type: "system",
-      lastMessagePreviewProvenance: "dynamic-value",
-      lastMessageStatus: "sent",
-    })).toBe(false);
-  });
-
-  it("does not demote genuine user text that contains metadata-looking words", () => {
-    const content = "系统消息 语音通话 changed left";
-
-    expect(isImConversationPreviewTranslationEligible({
-      type: "single",
-      lastMessagePreviewProvenance: "user-text",
-      lastMessageStatus: "sent",
-    })).toBe(true);
-    expect(getImPreviewDisplayText(content, {
-      enabled: true,
-      language: "ja",
-    })).toBe("システムメッセージ 音声通話 changed left");
-  });
-
-  it("copies visible text without mutating the stored message", () => {
+  it("always copies the stored original text without mutating the message", () => {
     const message: ConversationMessage = {
       id: "message-copy-1",
       localId: "message-copy-1",
@@ -146,18 +65,11 @@ describe("IM message display translation", () => {
     };
     const original = structuredClone(message);
 
-    expect(getImMessageCopyText(message, "", {
-      enabled: false,
-      language: "ja"
-    })).toBe("测试测试");
-    expect(getImMessageCopyText(message, "", {
-      enabled: true,
-      language: "ja"
-    })).toBe("テストテスト");
+    expect(getImMessageCopyText(message)).toBe("测试测试");
     expect(message).toEqual(original);
   });
 
-  it("keeps selected visible text ahead of automatic translation", () => {
+  it("does not copy a translated DOM selection instead of the stored original", () => {
     const message: ConversationMessage = {
       id: "message-copy-selection-1",
       localId: "message-copy-selection-1",
@@ -170,13 +82,10 @@ describe("IM message display translation", () => {
       clientSeq: 2
     };
 
-    expect(getImMessageCopyText(message, "選択した表示文字", {
-      enabled: true,
-      language: "ja"
-    })).toBe("選択した表示文字");
+    expect(getImMessageCopyText(message)).toBe("测试测试");
   });
 
-  it("copies translated media captions while preserving non-text fallbacks", () => {
+  it("copies raw media captions while preserving non-text fallbacks", () => {
     const captionedImage: ConversationMessage = {
       id: "message-copy-caption-1",
       localId: "message-copy-caption-1",
@@ -198,14 +107,8 @@ describe("IM message display translation", () => {
       ext: { previewText: "文件" }
     };
 
-    expect(getImMessageCopyText(captionedImage, "", {
-      enabled: true,
-      language: "ja"
-    })).toBe("テストテスト");
-    expect(getImMessageCopyText(fileMessage, "", {
-      enabled: true,
-      language: "ja"
-    })).toBe("文件");
+    expect(getImMessageCopyText(captionedImage)).toBe("测试测试");
+    expect(getImMessageCopyText(fileMessage)).toBe("文件");
   });
 
   it("preserves visible caption whitespace while treating whitespace-only captions as absent", () => {
@@ -230,13 +133,7 @@ describe("IM message display translation", () => {
       ext: { caption: "   ", previewText: "文件" }
     };
 
-    expect(getImMessageCopyText(captionedImage, "", {
-      enabled: true,
-      language: "ja"
-    })).toBe("  テストテスト  ");
-    expect(getImMessageCopyText(blankCaptionFile, "", {
-      enabled: true,
-      language: "ja"
-    })).toBe("文件");
+    expect(getImMessageCopyText(captionedImage)).toBe("  测试测试  ");
+    expect(getImMessageCopyText(blankCaptionFile)).toBe("文件");
   });
 });

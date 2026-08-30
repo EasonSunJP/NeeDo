@@ -346,7 +346,7 @@ describe("ImNewConversationPage directory query handoff", () => {
 });
 
 describe("IM automatic translation display wiring", () => {
-  it("passes the confirmed room preference to message bubbles and pinned text previews", () => {
+  it("passes the confirmed room preference only to message bubbles", () => {
     const start = source.indexOf("export function ImConversationRoomPage");
     const end = source.indexOf("export function ImConversationInfoPage", start);
     const roomSource = source.slice(start, end);
@@ -355,37 +355,31 @@ describe("IM automatic translation display wiring", () => {
     expect(roomSource).toContain("enabled: conversation?.autoTranslateMessages ?? false");
     expect(roomSource).toContain("language");
     expect(roomSource).toContain("translation={messageTranslation}");
-    expect(roomSource).toContain("buildMessageDisplayPreview(");
-    expect(roomSource).toContain("ImRuntimeI18nPreviewText");
+    expect(roomSource).not.toContain("buildMessageDisplayPreview(");
   });
 
-  it("translates only non-draft conversation previews at the page boundary", () => {
+  it("keeps conversation previews outside the automatic translation boundary", () => {
     const start = source.indexOf("export function ImConversationListPage");
     const end = source.indexOf("export function ImContactsListPage", start);
     const listSource = source.slice(start, end);
 
-    expect(source).toContain("getImPreviewDisplayText(");
-    expect(source).toContain("conversation.autoTranslateMessages");
-    expect(source).toContain("preview.isDraft");
-    expect(source).toContain("isImConversationPreviewTranslationEligible(conversation)");
-    expect(source).toContain("isImConversationPreviewRuntimeProtected(conversation)");
-    expect(source).toContain('conversation.type !== "system"');
-    expect(source).not.toContain("isImUserGeneratedPreviewText");
-    expect(listSource).toContain("buildConversationDisplayPreview(conversation, language)");
+    expect(source).not.toContain("getImPreviewDisplayText(");
+    expect(listSource).toContain("buildConversationRawPreview(conversation)");
+    expect(listSource).not.toContain("conversation.autoTranslateMessages");
   });
 
-  it("displays search results with the owning conversation preference without changing matching", () => {
+  it("keeps search results raw without consulting the conversation preference", () => {
     const start = source.indexOf("export function ImSearchPage");
     const end = source.indexOf("export function ImOrganizationContactsPage", start);
     const searchSource = source.slice(start, end);
 
     expect(searchSource).toContain("message.conversationId");
-    expect(searchSource).toContain("buildMessageDisplayPreview(");
-    expect(searchSource).toContain("ImRuntimeI18nPreviewText");
+    expect(searchSource).not.toContain("buildMessageDisplayPreview(");
+    expect(searchSource).not.toContain("autoTranslateMessages");
     expect(searchSource).toContain("store.search(deferredQuery, conversationId)");
   });
 
-  it("uses the same authoritative structured preview for pinned messages", () => {
+  it("keeps pinned previews raw", () => {
     const start = source.indexOf("export function ImConversationRoomPage");
     const end = source.indexOf("export function ImConversationInfoPage", start);
     const roomSource = source.slice(start, end);
@@ -393,16 +387,17 @@ describe("IM automatic translation display wiring", () => {
     const pinnedEnd = roomSource.indexOf("})}", pinnedStart);
     const pinnedSource = roomSource.slice(pinnedStart, pinnedEnd);
 
-    expect(pinnedSource).toContain("buildMessageDisplayPreview(");
-    expect(pinnedSource).toContain("ImRuntimeI18nPreviewText");
+    expect(pinnedSource).toContain("buildMessageRawPreview(");
+    expect(pinnedSource).not.toContain("messageTranslation");
   });
 
-  it("copies displayed text while forward and recall continue to use the stored message", () => {
+  it("copies stored text while forward and recall continue to use the stored message", () => {
     const start = source.indexOf("export function ImConversationRoomPage");
     const end = source.indexOf("export function ImConversationInfoPage", start);
     const roomSource = source.slice(start, end);
 
-    expect(roomSource).toContain("getImMessageCopyText(message, selectedContent, messageTranslation)");
+    expect(roomSource).toContain("getImMessageCopyText(message)");
+    expect(roomSource).not.toContain("selectedContent");
     expect(source).toContain("store.forwardMessage(forwardMessageId, conversation.id)");
     expect(roomSource).toContain("restoreImComposerDraft(message.content, message.ext?.richText)");
   });
