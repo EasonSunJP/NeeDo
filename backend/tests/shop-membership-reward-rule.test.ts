@@ -6,12 +6,12 @@ import {
 } from "../src/domain/shop-membership-reward-rule";
 
 const serviceId = "00000000-0000-4000-8000-000000000101";
-const categoryId = "00000000-0000-4000-8000-000000000201";
+const categoryCode = "body-care";
 
 const baseFacts: MembershipRewardPreviewFacts = {
   eligibleAmountJpy: 10_000,
   servicePublicId: serviceId,
-  categoryPublicId: categoryId,
+  categoryCode,
   occurredAt: "2026-08-31T03:00:00.000Z",
   completedCountBefore: 0,
   lifetimeEligibleSpendJpyBefore: 0,
@@ -27,9 +27,9 @@ const baseFacts: MembershipRewardPreviewFacts = {
 
 const allScope = {
   servicePublicIds: [],
-  categoryPublicIds: [],
+  categoryCodes: [],
   excludedServicePublicIds: [],
-  excludedCategoryPublicIds: [],
+  excludedCategoryCodes: [],
   activeFrom: null,
   activeTo: null
 };
@@ -129,7 +129,7 @@ describe("membership NDP reward rules", () => {
         scope: {
           ...allScope,
           servicePublicIds: [serviceId],
-          excludedCategoryPublicIds: [categoryId]
+          excludedCategoryCodes: [categoryCode]
         }
       }],
       caps: {},

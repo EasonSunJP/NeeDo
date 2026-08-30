@@ -4,12 +4,13 @@ const safeNonNegativeInt = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const safePositiveInt = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const bpsSchema = z.number().int().min(0).max(10_000);
 const uuidListSchema = z.array(z.string().uuid()).max(100).transform((values) => [...new Set(values)]);
+const categoryCodeListSchema = z.array(z.string().trim().min(1).max(100)).max(100).transform((values) => [...new Set(values)]);
 
 const emptyScope = {
   servicePublicIds: [],
-  categoryPublicIds: [],
+  categoryCodes: [],
   excludedServicePublicIds: [],
-  excludedCategoryPublicIds: [],
+  excludedCategoryCodes: [],
   activeFrom: null,
   activeTo: null
 };
@@ -17,9 +18,9 @@ const emptyScope = {
 export const membershipRewardScopeSchema = z
   .object({
     servicePublicIds: uuidListSchema.default([]),
-    categoryPublicIds: uuidListSchema.default([]),
+    categoryCodes: categoryCodeListSchema.default([]),
     excludedServicePublicIds: uuidListSchema.default([]),
-    excludedCategoryPublicIds: uuidListSchema.default([]),
+    excludedCategoryCodes: categoryCodeListSchema.default([]),
     activeFrom: z.string().datetime().nullable().default(null),
     activeTo: z.string().datetime().nullable().default(null)
   })
@@ -163,7 +164,7 @@ export type MembershipRewardCaps = z.infer<typeof membershipRewardCapsSchema>;
 export interface MembershipRewardPreviewFacts {
   eligibleAmountJpy: number;
   servicePublicId: string;
-  categoryPublicId: string;
+  categoryCode: string;
   occurredAt: string;
   completedCountBefore: number;
   lifetimeEligibleSpendJpyBefore: number;
@@ -197,7 +198,7 @@ export interface MembershipRewardPreviewResult {
 const factsSchema = z.object({
   eligibleAmountJpy: safeNonNegativeInt,
   servicePublicId: z.string().uuid(),
-  categoryPublicId: z.string().uuid(),
+  categoryCode: z.string().trim().min(1).max(100),
   occurredAt: z.string().datetime(),
   completedCountBefore: safeNonNegativeInt,
   lifetimeEligibleSpendJpyBefore: safeNonNegativeInt,
@@ -230,12 +231,12 @@ function multiplyCeil(left: number, right: number, divisor: number): number {
 function scopeMatches(rule: MembershipRewardRuleInput, facts: MembershipRewardPreviewFacts): boolean {
   const { scope } = rule;
   if (scope.excludedServicePublicIds.includes(facts.servicePublicId)) return false;
-  if (scope.excludedCategoryPublicIds.includes(facts.categoryPublicId)) return false;
-  const hasInclusions = scope.servicePublicIds.length > 0 || scope.categoryPublicIds.length > 0;
+  if (scope.excludedCategoryCodes.includes(facts.categoryCode)) return false;
+  const hasInclusions = scope.servicePublicIds.length > 0 || scope.categoryCodes.length > 0;
   if (
     hasInclusions &&
     !scope.servicePublicIds.includes(facts.servicePublicId) &&
-    !scope.categoryPublicIds.includes(facts.categoryPublicId)
+    !scope.categoryCodes.includes(facts.categoryCode)
   ) return false;
   const occurredAt = new Date(facts.occurredAt).getTime();
   if (scope.activeFrom && occurredAt < new Date(scope.activeFrom).getTime()) return false;
