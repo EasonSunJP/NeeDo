@@ -22,6 +22,7 @@ import {
   getSocialImageValidationError,
   isSocialComposerPublishReady
 } from "../composer-media";
+import { buildSocialLocationOptions } from "../composer-location";
 import { SocialPostItem } from "../components/SocialUi";
 import { useSocial } from "../context";
 import { loadFormalSocialMentionCandidates } from "../formal-contacts";
@@ -311,26 +312,7 @@ export function SocialComposerPage() {
   }, [allMentionCandidates, mentionQuery]);
 
   const locationOptions = useMemo(() => {
-    const normalized = locationQuery.trim().toLowerCase();
-    const baseOptions = unique(
-      [
-        author?.location,
-        "东京 银座",
-        "东京 新宿",
-        "东京 涩谷",
-        "东京 六本木",
-        "东京 品川",
-        "横滨 关内",
-        "大阪 梅田"
-      ].filter((item): item is string => Boolean(item))
-    );
-    const filtered = baseOptions.filter((item) => !normalized || item.toLowerCase().includes(normalized));
-
-    if (locationQuery.trim() && !filtered.includes(locationQuery.trim())) {
-      filtered.unshift(locationQuery.trim());
-    }
-
-    return filtered.slice(0, 8);
+    return buildSocialLocationOptions(author?.location, locationQuery);
   }, [author?.location, locationQuery]);
 
   const uploadMediaFile = useCallback(async (mediaId: string, file: File) => {

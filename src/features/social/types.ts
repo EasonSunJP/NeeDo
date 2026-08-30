@@ -205,6 +205,13 @@ export interface SocialCreatePostInput {
   postType?: SocialPostType;
 }
 
+export interface SocialQuickReplySubmitInput {
+  text: string;
+  richText?: SocialRichText;
+  media: SocialMediaItem[];
+  locationLabel?: string;
+}
+
 export interface SocialUpdatePostInput {
   postId: string;
   actorKey: string;

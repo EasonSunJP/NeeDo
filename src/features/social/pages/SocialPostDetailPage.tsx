@@ -722,10 +722,13 @@ export function SocialPostDetailPage() {
       <SocialQuickReplyComposer
         actor={actor}
         canComment={canComment}
-        onSubmit={(text) => createPost({
+        onSubmit={(input) => createPost({
           authorKey: actorKey,
           replyToPostId: post.id,
-          text,
+          text: input.text,
+          richText: input.richText,
+          media: input.media,
+          locationLabel: input.locationLabel,
           postType: "reply"
         })}
         ref={composerRefCallback}

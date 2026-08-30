@@ -125,6 +125,28 @@ describe("translations", () => {
     });
   });
 
+  it("localizes every Social quick-reply attachment state and action in all five languages", () => {
+    const keys = [
+      "图片上传中",
+      "上传失败",
+      "移除图片",
+      "重试图片",
+      "已选位置",
+      "移除位置"
+    ] as const;
+
+    keys.forEach((key) => {
+      expect(key.trim().length, `${key}:zh`).toBeGreaterThan(0);
+      expect(translations[key], key).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+      expect(Object.values(translations[key]).every((value) => value?.trim())).toBe(true);
+    });
+  });
+
   it("localizes the canonical Social post-detail reply header", () => {
     expect(translations["回复动态"]).toEqual({
       "zh-Hant": "回覆動態",
