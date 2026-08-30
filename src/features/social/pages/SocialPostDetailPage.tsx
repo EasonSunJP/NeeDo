@@ -580,7 +580,7 @@ export function SocialPostDetailPage() {
     }
 
     viewedRef.current = postId;
-    incrementView(postId);
+    void incrementView(postId).catch(() => undefined);
   }, [incrementView, postId]);
 
   useEffect(() => {
@@ -724,8 +724,8 @@ export function SocialPostDetailPage() {
                 <div className="grid grid-cols-5 items-center gap-1">
                   <DetailActionButton count={post.replyCount} disabled={!canComment} icon="reply" label="回复" onClick={focusReply} />
                   <DetailActionButton active={interaction.reposted} count={post.repostCount} icon="repost" label="转发" to={socialPaths.repost(scope, post.id)} tone="primary" />
-                  <DetailActionButton active={interaction.liked} count={post.likeCount} icon="like" label="喜欢" onClick={() => toggleLike(post.id, actorKey)} tone="danger" />
-                  <DetailActionButton active={interaction.bookmarked} count={post.bookmarkCount} icon="bookmark" label="收藏" onClick={() => toggleBookmark(post.id, actorKey)} tone="primary" />
+                  <DetailActionButton active={interaction.liked} count={post.likeCount} icon="like" label="喜欢" onClick={() => { void toggleLike(post.id, actorKey).catch(() => undefined); }} tone="danger" />
+                  <DetailActionButton active={interaction.bookmarked} count={post.bookmarkCount} icon="bookmark" label="收藏" onClick={() => { void toggleBookmark(post.id, actorKey).catch(() => undefined); }} tone="primary" />
                   <DetailActionButton
                     active={interaction.shared}
                     icon="share"

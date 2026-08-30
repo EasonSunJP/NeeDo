@@ -5,6 +5,7 @@ import { getSocialScopeFromPathname, socialPaths, socialReplyFocusState } from "
 const FullSocialTimelinePage = lazy(() => import("./pages/SocialTimelinePage").then((module) => ({ default: module.SocialTimelinePage })));
 const FullSocialComposerPage = lazy(() => import("./pages/SocialComposerPage").then((module) => ({ default: module.SocialComposerPage })));
 const FullSocialDraftsPage = lazy(() => import("./pages/SocialDraftsPage").then((module) => ({ default: module.SocialDraftsPage })));
+const FullSocialFavoritesPage = lazy(() => import("./pages/SocialFavoritesPage").then((module) => ({ default: module.SocialFavoritesPage })));
 const FullSocialMediaViewerPage = lazy(() => import("./pages/SocialMediaViewerPage").then((module) => ({ default: module.SocialMediaViewerPage })));
 const FullSocialNotificationsPage = lazy(() => import("./pages/SocialNotificationsPage").then((module) => ({ default: module.SocialNotificationsPage })));
 const FullSocialPostDetailPage = lazy(() => import("./pages/SocialPostDetailPage").then((module) => ({ default: module.SocialPostDetailPage })));
@@ -41,6 +42,7 @@ export function SocialLegacyReplyRedirectPage() {
     : <Navigate replace to={socialPaths.timeline(scope)} />;
 }
 export function SocialDraftsPage() { return <FullSocialRoute page={FullSocialDraftsPage} />; }
+export function SocialFavoritesPage() { return <FullSocialRoute page={FullSocialFavoritesPage} />; }
 export function SocialMediaViewerPage() { return <FullSocialRoute page={FullSocialMediaViewerPage} />; }
 export function SocialNotificationsPage() { return <FullSocialRoute page={FullSocialNotificationsPage} />; }
 export function SocialPostDetailPage() { return <FullSocialRoute page={FullSocialPostDetailPage} />; }

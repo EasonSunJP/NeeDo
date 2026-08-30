@@ -632,7 +632,7 @@ function CompleteUserCenterPage({
     { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" }
   ];
   const serviceTools: Array<{ label: string; info: string; value: number | string; to: string; test?: boolean }> = [
-    { label: "我的收藏", info: "店铺、技师、服务", value: "—", to: "/categories?type=store" },
+    { label: "我的收藏", info: "已收藏的动态", value: "查看", to: "/me/favorites" },
     { label: "我的地址", info: "家庭、公司、常用地址", value: "—", to: "/checkout/svc-clean-1" },
     { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
     { label: "周期预约", info: "保洁、护理、家电维护", value: "—", to: "/categories?type=service" },

@@ -66,6 +66,7 @@ const richMessageTypes = new Set<ImMessageType>([
   "location",
   "contact-card",
   "service-card",
+  "social-post-card",
   "schedule-invite",
   "system",
   "recalled",

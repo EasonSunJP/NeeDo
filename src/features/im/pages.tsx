@@ -1181,6 +1181,7 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
 function getPreviewLabelForMessageType(messageType: ConversationMessage["type"] | undefined) {
   if (messageType === "contact-card") return "[名片]";
   if (messageType === "service-card") return "[服务]";
+  if (messageType === "social-post-card") return "[动态]";
   if (messageType === "schedule-invite") return "[日程邀请]";
   return undefined;
 }
@@ -1249,6 +1250,8 @@ function buildMessageRawPreview(
     ? message.ext?.contactCard?.displayName?.trim()
     : message.type === "service-card"
       ? message.ext?.serviceCard?.name?.trim()
+      : message.type === "social-post-card"
+        ? message.ext?.socialPostCard?.authorName?.trim()
       : message.type === "schedule-invite"
         ? message.ext?.scheduleInvite?.title?.trim()
         : undefined;
@@ -6199,6 +6202,9 @@ export function ImConversationRoomPage({
                         if (targetContact) {
                           navigate(config.routes.contactDetail(targetContact.id));
                         }
+                      }}
+                      onOpenSocialPost={(socialPostId) => {
+                        navigate(socialPaths.post(scope, socialPostId));
                       }}
                       onPreviewMedia={openMediaPreview}
                       quotedMessage={quoted}

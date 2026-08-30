@@ -2692,6 +2692,7 @@ function previewLabel(type: ImMessageType) {
     location: "位置",
     "contact-card": "名片",
     "service-card": "服务",
+    "social-post-card": "动态",
     "schedule-invite": "日程邀请",
     system: "系统消息",
     recalled: "撤回消息"
@@ -2943,6 +2944,7 @@ export function MessageBubble({
   disappearingNow,
   onPreviewMedia,
   onOpenContact,
+  onOpenSocialPost,
   renderContactCard,
   renderContactCardAction,
   translation = defaultImMessageTranslation
@@ -2961,6 +2963,7 @@ export function MessageBubble({
   disappearingNow?: number;
   onPreviewMedia?: (message: ConversationMessage) => void;
   onOpenContact?: (userId: string) => void;
+  onOpenSocialPost?: (postId: string) => void;
   renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   translation?: ImMessageTranslationOptions;
@@ -3128,6 +3131,27 @@ export function MessageBubble({
       return card.href ? <Link to={card.href}>{cardBody}</Link> : cardBody;
     }
 
+    if (message.type === "social-post-card" && message.ext?.socialPostCard) {
+      const card = message.ext.socialPostCard;
+      return (
+        <button
+          className="block w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
+          onClick={() => onOpenSocialPost?.(card.postId)}
+          type="button"
+        >
+          {card.mediaUrl ? <img alt="" className="h-36 w-full object-cover" src={card.mediaUrl} /> : null}
+          <div className="p-3">
+            <div className="flex items-center gap-2">
+              <AvatarImage alt={card.authorName} className="h-8 w-8" src={card.authorAvatar} />
+              <p className="min-w-0 flex-1 truncate text-[13px] font-black">{card.authorName}</p>
+            </div>
+            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-5 text-[color:var(--client-muted)]">{card.text || "查看这条动态"}</p>
+            <p className="mt-3 border-t border-[color:var(--client-line)] pt-2 text-[11px] font-black text-[color:var(--client-primary)]">打开原动态</p>
+          </div>
+        </button>
+      );
+    }
+
     if (message.type === "schedule-invite" && message.ext?.scheduleInvite) {
       const invite = message.ext.scheduleInvite;
       const cardBody = (
@@ -3234,7 +3258,7 @@ export function MessageBubble({
       })}
     </div>
   ) : null;
-  const bubbleShellClass = message.type === "contact-card" && !quotedMessage ? "rounded-[24px]" : cn("rounded-[20px] px-3 py-2", bubbleClass);
+  const bubbleShellClass = (message.type === "contact-card" || message.type === "social-post-card") && !quotedMessage ? "rounded-[24px]" : cn("rounded-[20px] px-3 py-2", bubbleClass);
   const contentNode = quoteNode || reactionNode ? (
     <div className="min-w-0 max-w-full overflow-hidden">
       {quoteNode}

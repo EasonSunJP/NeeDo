@@ -307,6 +307,7 @@ export interface SocialPostShareDelivery {
   recipientUserId: number;
   recipientIdentityId: number;
   message: MessagePayload;
+  created: boolean;
 }
 
 export interface ShareSocialPostResult extends SocialPostInteractionMutationResult {
@@ -3584,6 +3585,525 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
   }
 
+  public async setSocialPostLike(
+    input: SocialPostInteractionMutationInput
+  ): Promise<SocialPostInteractionMutationResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+
+      const existing = await transaction.socialPostLike.findUnique({
+        where: {
+          postId_actorIdentityId: { postId: socialPost.id, actorIdentityId }
+        }
+      });
+      const changed = input.active ? existing?.deletedAt !== null : Boolean(existing && !existing.deletedAt);
+      if (input.active && !existing) {
+        await transaction.socialPostLike.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId
+          }
+        });
+      } else if (input.active && existing?.deletedAt) {
+        await transaction.socialPostLike.update({
+          where: { id: existing.id },
+          data: { actorUserId: input.actorUserId, deletedAt: null }
+        });
+      } else if (!input.active && existing && !existing.deletedAt) {
+        await transaction.socialPostLike.update({
+          where: { id: existing.id },
+          data: { deletedAt: new Date() }
+        });
+      }
+
+      if (changed) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: input.active ? "social.post.liked" : "social.post.unliked",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { actorIdentityId }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return { actorIdentityId, changed, socialPost: updated };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      )
+    };
+  }
+
+  public async setSocialPostBookmark(
+    input: SocialPostInteractionMutationInput
+  ): Promise<SocialPostInteractionMutationResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+
+      const existing = await transaction.socialPostBookmark.findUnique({
+        where: {
+          postId_actorIdentityId: { postId: socialPost.id, actorIdentityId }
+        }
+      });
+      const changed = input.active ? existing?.deletedAt !== null : Boolean(existing && !existing.deletedAt);
+      if (input.active && !existing) {
+        await transaction.socialPostBookmark.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId
+          }
+        });
+      } else if (input.active && existing?.deletedAt) {
+        await transaction.socialPostBookmark.update({
+          where: { id: existing.id },
+          data: { actorUserId: input.actorUserId, deletedAt: null }
+        });
+      } else if (!input.active && existing && !existing.deletedAt) {
+        await transaction.socialPostBookmark.update({
+          where: { id: existing.id },
+          data: { deletedAt: new Date() }
+        });
+      }
+
+      if (changed) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: input.active ? "social.post.bookmarked" : "social.post.unbookmarked",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { actorIdentityId }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return { actorIdentityId, changed, socialPost: updated };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      )
+    };
+  }
+
+  public async recordSocialPostView(
+    input: RecordSocialPostViewInput
+  ): Promise<SocialPostInteractionMutationResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+      const existing = await transaction.socialPostView.findUnique({
+        where: {
+          postId_actorIdentityId: { postId: socialPost.id, actorIdentityId }
+        }
+      });
+      const changed = !existing || Boolean(existing.deletedAt);
+      if (!existing) {
+        await transaction.socialPostView.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId
+          }
+        });
+      } else if (existing.deletedAt) {
+        await transaction.socialPostView.update({
+          where: { id: existing.id },
+          data: { actorUserId: input.actorUserId, deletedAt: null }
+        });
+      }
+      if (changed) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "social.post.viewed",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { actorIdentityId }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return { actorIdentityId, changed, socialPost: updated };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      )
+    };
+  }
+
+  public async shareSocialPost(
+    input: ShareSocialPostInput
+  ): Promise<ShareSocialPostResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+
+      const targetUserIds = [...new Set(input.targetUserIds)];
+      if (
+        targetUserIds.length !== input.targetUserIds.length ||
+        targetUserIds.length === 0 ||
+        targetUserIds.length > 20 ||
+        targetUserIds.includes(input.actorUserId)
+      ) {
+        throw this.socialPostConflict("error.social.invalid_share_target");
+      }
+      const outgoingContacts = await transaction.contact.findMany({
+        where: {
+          ownerIdentityId: actorIdentityId,
+          contactUserId: { in: targetUserIds },
+          blockedAt: null,
+          deletedAt: null,
+          contactUser: { isActive: true, deletedAt: null }
+        },
+        select: { contactUserId: true, contactIdentityId: true },
+        orderBy: { contactIdentityId: "asc" }
+      });
+      const targetIdentityByUser = new Map(
+        outgoingContacts.map((contact) => [contact.contactUserId, contact.contactIdentityId])
+      );
+      if (targetUserIds.some((userId) => !targetIdentityByUser.has(userId))) {
+        throw this.socialPostConflict("error.social.share_target_not_friend");
+      }
+      const targetIdentityIds = targetUserIds.map((userId) => targetIdentityByUser.get(userId)!);
+      const reciprocalContacts = await transaction.contact.findMany({
+        where: {
+          ownerIdentityId: { in: targetIdentityIds },
+          contactIdentityId: actorIdentityId,
+          blockedAt: null,
+          deletedAt: null
+        },
+        select: { ownerIdentityId: true }
+      });
+      const reciprocalIdentityIds = new Set(
+        reciprocalContacts.map((contact) => contact.ownerIdentityId)
+      );
+      if (targetIdentityIds.some((identityId) => !reciprocalIdentityIds.has(identityId))) {
+        throw this.socialPostConflict("error.social.share_target_not_friend");
+      }
+      if (socialPost.visibility === SocialPostVisibility.FOLLOWERS) {
+        const visibleTargetFollows = await transaction.follow.findMany({
+          where: {
+            followerIdentityId: { in: targetIdentityIds },
+            followingIdentityId: socialPost.authorIdentityId,
+            deletedAt: null
+          },
+          select: { followerIdentityId: true }
+        });
+        const visibleIdentityIds = new Set(
+          visibleTargetFollows.map((follow) => follow.followerIdentityId)
+        );
+        if (targetIdentityIds.some((identityId) => !visibleIdentityIds.has(identityId))) {
+          throw this.socialPostConflict("error.social.share_target_cannot_view");
+        }
+      }
+
+      const idempotentShares = await transaction.socialPostShare.findMany({
+        where: { actorIdentityId, idempotencyKey: input.idempotencyKey },
+        include: { message: { include: messageInclude } },
+        orderBy: { id: "asc" }
+      });
+      if (idempotentShares.some((share) => share.postId !== socialPost.id)) {
+        throw this.socialPostConflict("error.social.idempotency_conflict");
+      }
+      const existingShareByRecipient = new Map(
+        idempotentShares.map((share) => [share.recipientIdentityId, share])
+      );
+      const policy = await transaction.imPolicy.findFirst({
+        where: { activeKey: "active", deletedAt: null },
+        select: { textRetentionSeconds: true, recallWindowSeconds: true, version: true }
+      });
+      const mediaEnvelope = this.jsonRecord(socialPost.media);
+      const mediaItems = Array.isArray(mediaEnvelope?.items) ? mediaEnvelope.items : [];
+      const firstMedia = this.jsonRecord(mediaItems[0]);
+      const author = this.mapSocialAuthor(socialPost.author, socialPost.authorIdentity);
+      const deliveries: Array<{
+        recipientUserId: number;
+        recipientIdentityId: number;
+        message: MessageRecord;
+        created: boolean;
+      }> = [];
+
+      for (const recipientUserId of targetUserIds) {
+        const recipientIdentityId = targetIdentityByUser.get(recipientUserId)!;
+        const existingShare = existingShareByRecipient.get(recipientIdentityId);
+        if (existingShare) {
+          deliveries.push({
+            recipientUserId,
+            recipientIdentityId,
+            message: existingShare.message,
+            created: false
+          });
+          continue;
+        }
+
+        const friendshipPairKey = toFriendshipPairKey(actorIdentityId, recipientIdentityId);
+        const conversation = await transaction.conversation.upsert({
+          where: { friendshipPairKey },
+          create: {
+            type: ConversationType.DIRECT,
+            accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+            friendshipPairKey,
+            createdByUserId: input.actorUserId,
+            createdByIdentityId: actorIdentityId,
+            participants: {
+              create: [
+                { userId: input.actorUserId, identityId: actorIdentityId, role: "owner" },
+                { userId: recipientUserId, identityId: recipientIdentityId, role: "member" }
+              ]
+            }
+          },
+          update: { deletedAt: null },
+          select: { id: true }
+        });
+        const createdAt = new Date();
+        for (const participant of [
+          { userId: input.actorUserId, identityId: actorIdentityId },
+          { userId: recipientUserId, identityId: recipientIdentityId }
+        ]) {
+          await transaction.conversationParticipant.upsert({
+            where: {
+              conversationId_identityId: {
+                conversationId: conversation.id,
+                identityId: participant.identityId
+              }
+            },
+            create: {
+              conversationId: conversation.id,
+              userId: participant.userId,
+              identityId: participant.identityId,
+              role: participant.identityId === actorIdentityId ? "owner" : "member"
+            },
+            update: { deletedAt: null, hiddenAt: null }
+          });
+        }
+        const globalExpiresAt =
+          policy?.textRetentionSeconds === null || policy?.textRetentionSeconds === undefined
+            ? null
+            : new Date(createdAt.getTime() + policy.textRetentionSeconds * 1_000);
+        const message = await transaction.message.create({
+          data: {
+            conversationId: conversation.id,
+            senderUserId: input.actorUserId,
+            senderIdentityId: actorIdentityId,
+            type: MessageType.TEXT,
+            content: "转发了一条动态",
+            metadata: {
+              needoMessageType: "social-post-card",
+              needoMessageExt: {
+                socialPostCard: {
+                  postId: String(socialPost.id),
+                  authorName: author.displayName,
+                  authorAvatar: author.avatarUrl ?? "",
+                  text: socialPost.content,
+                  ...(typeof firstMedia?.url === "string" ? { mediaUrl: firstMedia.url } : {})
+                }
+              }
+            },
+            createdAt,
+            expiresAt: globalExpiresAt,
+            recallDeadlineAt: new Date(
+              createdAt.getTime() + (policy?.recallWindowSeconds ?? 180) * 1_000
+            ),
+            lifecycleVersion: policy?.version ?? 1
+          },
+          include: messageInclude
+        });
+        await transaction.conversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: createdAt }
+        });
+        await transaction.conversationParticipant.updateMany({
+          where: { conversationId: conversation.id, identityId: actorIdentityId, deletedAt: null },
+          data: {
+            unreadCount: 0,
+            hiddenAt: null,
+            lastReadMessageId: message.id,
+            lastReadAt: message.createdAt
+          }
+        });
+        await transaction.conversationParticipant.updateMany({
+          where: {
+            conversationId: conversation.id,
+            identityId: recipientIdentityId,
+            deletedAt: null
+          },
+          data: { unreadCount: { increment: 1 }, hiddenAt: null }
+        });
+        await transaction.socialPostShare.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId,
+            recipientUserId,
+            recipientIdentityId,
+            conversationId: conversation.id,
+            messageId: message.id,
+            idempotencyKey: input.idempotencyKey
+          }
+        });
+        deliveries.push({ recipientUserId, recipientIdentityId, message, created: true });
+      }
+
+      const createdRecipientUserIds = deliveries
+        .filter((delivery) => delivery.created)
+        .map((delivery) => delivery.recipientUserId);
+      if (createdRecipientUserIds.length > 0) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "social.post.shared_to_friends",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: {
+              actorIdentityId,
+              recipientUserIds: createdRecipientUserIds,
+              idempotencyKey: input.idempotencyKey
+            }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return {
+        actorIdentityId,
+        changed: createdRecipientUserIds.length > 0,
+        deliveries,
+        socialPost: updated
+      };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      ),
+      deliveries: mutation.deliveries.map((delivery) => ({
+        recipientUserId: delivery.recipientUserId,
+        recipientIdentityId: delivery.recipientIdentityId,
+        message: this.mapMessage(delivery.message, mutation.actorIdentityId),
+        created: delivery.created
+      }))
+    };
+  }
+
   public async getSocialActivityStatus(
     input: SocialActivityStatusInput
   ): Promise<SocialActivityStatusPayload | null> {
@@ -4655,6 +5175,27 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
 
     return { follows, friendIdentityIds };
+  }
+
+  private socialPostVisibleWhere(
+    viewerIdentityId: number,
+    postId?: number
+  ): Prisma.SocialPostWhereInput {
+    return {
+      ...(postId !== undefined ? { id: postId } : {}),
+      deletedAt: null,
+      OR: [
+        { visibility: SocialPostVisibility.PUBLIC },
+        { authorIdentityId: viewerIdentityId },
+        {
+          authorIdentity: {
+            followers: {
+              some: { followerIdentityId: viewerIdentityId, deletedAt: null }
+            }
+          }
+        }
+      ]
+    };
   }
 
   private async loadSocialInteractionMap(

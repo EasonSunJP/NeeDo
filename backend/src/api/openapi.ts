@@ -1766,7 +1766,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "author",
           "viewerFollowsAuthor",
           "authorFollowsViewer",
-          "viewerIsFriend"
+          "viewerIsFriend",
+          "counters",
+          "viewerInteraction"
         ],
         properties: {
           id: { type: "integer" },
@@ -1785,6 +1787,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "boolean",
             description:
               "True when the viewer and author have active, unblocked Contact rows in both directions."
+          },
+          counters: {
+            type: "object",
+            additionalProperties: false,
+            required: ["likes", "reposts", "views", "bookmarks"],
+            properties: {
+              likes: { type: "integer", minimum: 0 },
+              reposts: { type: "integer", minimum: 0 },
+              views: { type: "integer", minimum: 0 },
+              bookmarks: { type: "integer", minimum: 0 }
+            }
+          },
+          viewerInteraction: {
+            type: "object",
+            additionalProperties: false,
+            required: ["liked", "bookmarked", "shared"],
+            properties: {
+              liked: { type: "boolean" },
+              bookmarked: { type: "boolean" },
+              shared: { type: "boolean" }
+            }
           },
           author: { $ref: "#/components/schemas/SocialProfileSummary" }
         }
@@ -14582,6 +14605,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "authorUserId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "replyToPostId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "bookmarked", in: "query", schema: { type: "boolean" } },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
@@ -14723,6 +14747,107 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description:
               "error.social.invalid_mention_contact or error.social.media_not_owned — contact or media ownership changed"
           }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/like`]: {
+      put: {
+        tags: ["Step 13 Realtime"],
+        summary: "Like one visible social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Remove the current identity's like",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/bookmark`]: {
+      put: {
+        tags: ["Step 13 Realtime"],
+        summary: "Bookmark one visible social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Remove one bookmark for the current identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/view`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Record one unique authenticated viewer",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Idempotent authoritative view count" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/shares`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Forward a visible social post to active bilateral friends",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 8, maxLength: 191 } }
+        ],
+        requestBody: authJsonBody(
+          {
+            targetUserIds: {
+              type: "array",
+              minItems: 1,
+              maxItems: 20,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            }
+          },
+          ["targetUserIds"]
+        ),
+        responses: {
+          "200": { description: "Delivered friend user ids and authoritative post counters" },
+          "400": { description: "Invalid targets or Idempotency-Key" },
+          "403": { description: "Missing social-post:interact or message:create permission" },
+          "404": { description: "Post is missing or not visible" },
+          "409": { description: "Target is no longer a friend or cannot view the post" }
         }
       }
     },

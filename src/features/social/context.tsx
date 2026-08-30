@@ -79,14 +79,15 @@ type SocialContextValue = {
   createPost: (input: SocialCreatePostInput) => SocialPost | Promise<SocialPost>;
   updatePost: (input: SocialUpdatePostInput) => SocialPost | undefined | Promise<SocialPost | undefined>;
   deletePost: (postId: string, actorKey: string) => void;
-  toggleLike: (postId: string, actorKey: string) => void;
-  toggleBookmark: (postId: string, actorKey: string) => void;
+  toggleLike: (postId: string, actorKey: string) => Promise<void>;
+  toggleBookmark: (postId: string, actorKey: string) => Promise<void>;
   toggleRepost: (postId: string, actorKey: string) => SocialPost | undefined;
   markShared: (postId: string, actorKey: string) => void;
   toggleFollow: (actorKey: string, targetKey: string) => void;
   togglePinPost: (postId: string, actorKey: string) => void;
   updateProfileOverride: (profileKeyValue: string, overrides: SocialProfileOverrides) => void;
-  incrementView: (postId: string) => void;
+  incrementView: (postId: string) => Promise<void>;
+  shareSocialPostToFriends: (postId: string, actorKey: string, targetUserIds: number[]) => Promise<number[]>;
   markNotificationsRead: (recipientKey: string) => void;
   refreshFeeds: () => void;
   ensureAccountProfile: (userId: number) => Promise<SocialProfile | undefined>;
@@ -296,6 +297,16 @@ function mapFormalNotification(
   };
 }
 
+function mapFormalInteraction(post: RealtimeSocialPost) {
+  return {
+    postId: String(post.id),
+    liked: Boolean(post.viewerInteraction?.liked),
+    reposted: Boolean(post.viewerInteraction?.shared),
+    bookmarked: Boolean(post.viewerInteraction?.bookmarked),
+    shared: Boolean(post.viewerInteraction?.shared)
+  };
+}
+
 function FormalSocialProvider({ children }: { children: ReactNode }) {
   const { isRestoring, session } = useAuth();
   const [storedState, setState] = useState<SocialState>(emptyFormalSocialState);
@@ -375,6 +386,15 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
             ...current,
             follows: nextFollows,
             friends: nextFriends,
+            interactions: {
+              ...current.interactions,
+              [actorKey]: {
+                ...(current.interactions[actorKey] ?? {}),
+                ...Object.fromEntries(
+                  postPage.list.map((post) => [String(post.id), mapFormalInteraction(post)])
+                )
+              }
+            },
             posts: sortPostsByNewest([
               ...mappedPosts,
               ...current.posts.filter((post) => !mappedPostIds.has(post.id))
@@ -465,6 +485,15 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
             ...current,
             follows: nextFollows,
             friends: nextFriends,
+            interactions: {
+              ...current.interactions,
+              [actorKey]: {
+                ...(current.interactions[actorKey] ?? {}),
+                ...Object.fromEntries(
+                  rawPosts.map((post) => [String(post.id), mapFormalInteraction(post)])
+                )
+              }
+            },
             posts: mergeHydratedFormalSocialPostThread(current.posts, mappedPosts, postId)
           };
         });
@@ -515,9 +544,10 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
   const loadFormalSocial = useCallback(async () => {
     if (sessionUserId === null || isRestoring) return;
-    const [timelinePage, minePage, notificationPage] = await Promise.all([
+    const [timelinePage, minePage, bookmarkedPage, notificationPage] = await Promise.all([
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100 }),
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: sessionUserId }),
+      realtimeApi.listSocialPosts({ page: 1, pageSize: 100, bookmarked: true }),
       realtimeApi.listNotifications({ page: 1, pageSize: 100 })
     ]);
     if (!shouldCommitFormalSocialRequest(
@@ -526,7 +556,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     )) {
       return;
     }
-    const rawPosts = [...timelinePage.list, ...minePage.list].filter(
+    const rawPosts = [...timelinePage.list, ...minePage.list, ...bookmarkedPage.list].filter(
       (post, index, posts) => posts.findIndex((candidate) => candidate.id === post.id) === index
     );
     const nextPosts = sortPostsByNewest(rawPosts.map(mapFormalSocialPost));
@@ -602,6 +632,12 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         ),
         follows: mergedFollows,
         friends: mergedFriends,
+        interactions: {
+          ...current.interactions,
+          [actorKey]: Object.fromEntries(
+            rawPosts.map((post) => [String(post.id), mapFormalInteraction(post)])
+          )
+        },
         notifications,
         refreshedAt: new Date().toISOString()
       };
@@ -631,7 +667,11 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
     return subscribeRealtimeEvents({
       onEvent: (event) => {
-        if (event.type === "social.post.created" || event.type === "social.post.updated") {
+        if (
+          event.type === "social.post.created" ||
+          event.type === "social.post.updated" ||
+          event.type === "social.post.interaction.updated"
+        ) {
           const affectedThreadIds = getActiveFormalSocialThreadIdsForEvent(
             activePostThreadIdsRef.current,
             event.payload
@@ -782,6 +822,66 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       }));
       return mapped;
     };
+    const commitInteractionPost = (updated: RealtimeSocialPost) => {
+      const mapped = mapFormalSocialPost(updated);
+      if (!shouldCommitFormalSocialRequest(
+        formalSessionKey,
+        currentFormalSessionKeyRef.current
+      )) {
+        return;
+      }
+      setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([updated]) }));
+      setStateScopeKey(formalSessionKey);
+      setState((current) => ({
+        ...current,
+        interactions: {
+          ...current.interactions,
+          [actorKey]: {
+            ...(current.interactions[actorKey] ?? {}),
+            [mapped.id]: mapFormalInteraction(updated)
+          }
+        },
+        posts: sortPostsByNewest([
+          mapped,
+          ...current.posts.filter((post) => post.id !== mapped.id)
+        ])
+      }));
+    };
+    const toggleLike = async (postId: string, key: string) => {
+      if (!session || key !== actorKey) throw new Error("error.auth.forbidden");
+      const interaction = state.interactions[key]?.[postId];
+      const updated = interaction?.liked
+        ? await realtimeApi.unlikeSocialPost(Number(postId))
+        : await realtimeApi.likeSocialPost(Number(postId));
+      commitInteractionPost(updated);
+    };
+    const toggleBookmark = async (postId: string, key: string) => {
+      if (!session || key !== actorKey) throw new Error("error.auth.forbidden");
+      const interaction = state.interactions[key]?.[postId];
+      const updated = interaction?.bookmarked
+        ? await realtimeApi.unbookmarkSocialPost(Number(postId))
+        : await realtimeApi.bookmarkSocialPost(Number(postId));
+      commitInteractionPost(updated);
+    };
+    const incrementView = async (postId: string) => {
+      if (!session) return;
+      const updated = await realtimeApi.recordSocialPostView(Number(postId));
+      commitInteractionPost(updated);
+    };
+    const shareSocialPostToFriends = async (
+      postId: string,
+      key: string,
+      targetUserIds: number[]
+    ) => {
+      if (!session || key !== actorKey) throw new Error("error.auth.forbidden");
+      const result = await realtimeApi.shareSocialPostToFriends(
+        Number(postId),
+        targetUserIds,
+        crypto.randomUUID()
+      );
+      commitInteractionPost(result.post);
+      return result.deliveredUserIds;
+    };
     const search = (query: string): SocialSearchResult => {
       const normalized = query.trim().toLowerCase();
       return {
@@ -808,12 +908,13 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       getProfilePosts: (key, tab) => state.posts.filter((post) => postAuthorKey(post) === key && (tab !== "media" || post.media.length > 0)),
       getInteractionState: (postId, key) => {
         const post = getPostById(postId);
+        const interaction = state.interactions[key]?.[postId];
         return {
           postId,
-          liked: false,
-          reposted: false,
-          bookmarked: false,
-          shared: false,
+          liked: Boolean(interaction?.liked),
+          reposted: Boolean(interaction?.reposted),
+          bookmarked: Boolean(interaction?.bookmarked),
+          shared: Boolean(interaction?.shared),
           followingAuthor: post
             ? (state.follows[key] ?? []).includes(postAuthorKey(post))
             : false
@@ -831,8 +932,8 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       createPost,
       updatePost,
       deletePost: formalSocialMutationUnavailable,
-      toggleLike: formalSocialMutationUnavailable,
-      toggleBookmark: formalSocialMutationUnavailable,
+      toggleLike,
+      toggleBookmark,
       toggleRepost: formalSocialMutationUnavailable,
       markShared: () => undefined,
       toggleFollow: (_sourceKey, targetKey) => {
@@ -843,7 +944,8 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       },
       togglePinPost: formalSocialMutationUnavailable,
       updateProfileOverride: formalSocialMutationUnavailable,
-      incrementView: () => undefined,
+      incrementView,
+      shareSocialPostToFriends,
       markNotificationsRead: () => { void realtimeApi.markAllNotificationsRead().then(() => loadFormalSocial()); },
       refreshFeeds: () => { void loadFormalSocial(); },
       ensureAccountProfile,

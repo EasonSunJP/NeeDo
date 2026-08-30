@@ -90,7 +90,7 @@ describe("RealtimeService formal social interactions", () => {
       shareSocialPost: jest.fn(async () => ({
         changed: true,
         post: { ...post, viewerInteraction: { ...post.viewerInteraction, shared: true } },
-        deliveries: [{ recipientUserId: 8, recipientIdentityId: 80, message }]
+        deliveries: [{ recipientUserId: 8, recipientIdentityId: 80, message, created: true }]
       })),
       listFollowerRecipients: jest.fn(async () => [])
     };

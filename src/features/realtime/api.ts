@@ -186,6 +186,22 @@ export type RealtimeSocialPost = {
   viewerFollowsAuthor?: boolean;
   viewerIsFriend?: boolean;
   visibility: "public" | "followers";
+  counters?: {
+    likes: number;
+    reposts: number;
+    views: number;
+    bookmarks: number;
+  };
+  viewerInteraction?: {
+    liked: boolean;
+    bookmarked: boolean;
+    shared: boolean;
+  };
+};
+
+export type RealtimeSocialShareResult = {
+  post: RealtimeSocialPost;
+  deliveredUserIds: number[];
 };
 
 export type RealtimeSocialProfileSummary = NonNullable<RealtimeSocialPost["author"]>;
@@ -414,7 +430,7 @@ export const realtimeApi = {
     return httpClient.request<RealtimeFriendRequest>(`/im/friend-requests/${id}/reject`, { method: "POST" });
   },
   listSocialPosts(
-    query: PageQuery & { authorUserId?: number; replyToPostId?: number } = {},
+    query: PageQuery & { authorUserId?: number; replyToPostId?: number; bookmarked?: boolean } = {},
     options: { signal?: AbortSignal } = {}
   ) {
     return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", {
@@ -433,6 +449,28 @@ export const realtimeApi = {
   },
   updateSocialPost(id: number, input: RealtimeSocialUpdatePostInput) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { body: input, method: "PATCH" });
+  },
+  likeSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/like`, { method: "PUT" });
+  },
+  unlikeSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/like`, { method: "DELETE" });
+  },
+  bookmarkSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/bookmark`, { method: "PUT" });
+  },
+  unbookmarkSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/bookmark`, { method: "DELETE" });
+  },
+  recordSocialPostView(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/view`, { method: "POST" });
+  },
+  shareSocialPostToFriends(id: number, targetUserIds: number[], idempotencyKey: string) {
+    return httpClient.request<RealtimeSocialShareResult>(`/social/posts/${id}/shares`, {
+      body: { targetUserIds },
+      headers: { "Idempotency-Key": idempotencyKey },
+      method: "POST"
+    });
   },
   follow(targetUserId: number) {
     return httpClient.request<{ id: number }>("/social/follows", { body: { targetUserId }, method: "POST" });
