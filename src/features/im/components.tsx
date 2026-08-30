@@ -24,7 +24,7 @@ import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
-import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
@@ -573,8 +573,8 @@ function ImComposerRichInput({
   onEnterSubmit?: () => void;
   placeholder: string;
 }) {
-  const { language } = useOptionalI18n();
-  const localizedPlaceholder = translateText(placeholder, language);
+  const i18n = useProvidedI18n();
+  const localizedPlaceholder = i18n ? translateText(placeholder, i18n.language) : placeholder;
   const editorRef = useRef<HTMLDivElement | null>(null);
   const setEditorRef = useCallback((element: HTMLDivElement | null) => {
     editorRef.current = element;
