@@ -173,7 +173,7 @@ describe("CategoryPage formal category state", () => {
     resetQueryStates({ shop: { data: null, error: "error.network", loading: false } });
     const html = renderCategoryPage("/categories");
 
-    expect(html).toContain("店铺搜索读取失败");
+    expect(html).toContain("店铺 · 搜索失败，请稍后重试");
     expect(html).toContain("重试");
     expect(html).toContain("橘 ひかり");
   });

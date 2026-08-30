@@ -960,17 +960,17 @@ export function CategoryPage() {
                     info={
                       <div className="space-y-2.5">
                         <p className="text-[13px] leading-6 text-[color:var(--client-text)]">
-                          {t("店铺、技师和服务分别从正式搜索接口读取；任意关键词或分类命中即可显示。")}
+                          {t("搜索店铺、技师、服务")}
                         </p>
                         <div className="rounded-[14px] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))] px-3 py-2.5">
                           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">当前聚焦</p>
                           <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-text)]">
-                            {activeCategory?.name} · {t("没有服务套餐的店铺或技师也可作为资料结果显示。")}
+                            {activeCategory?.name} · {t("搜索结果")}
                           </p>
                         </div>
                       </div>
                     }
-                    label={t("搜索结果说明")}
+                    label={t("搜索结果")}
                     infoPanelClassName="border-transparent"
                     title={t("搜索结果")}
                     titleClassName="text-[20px] font-black tracking-[-0.02em] text-[color:var(--client-text)]"
@@ -982,12 +982,12 @@ export function CategoryPage() {
                 <div className="space-y-3">
                   <h3 className="text-[16px] font-black text-[color:var(--client-text)]">{t("服务")}</h3>
                   {serviceSearchQuery.loading ? (
-                    <CoreReadScopedState description={t("正在读取匹配的正式服务资料。")} title={t("服务搜索载入中")} />
+                    <CoreReadScopedState description={t("正在载入真实数据")} title={t("正在载入服务")} />
                   ) : serviceSearchQuery.error ? (
                     <CoreReadScopedState
                       description={serviceSearchQuery.error}
                       onRetry={() => setServiceRetryKey((current) => current + 1)}
-                      title={t("服务搜索读取失败")}
+                      title={`${t("服务")} · ${t("搜索失败，请稍后重试")}`}
                     />
                   ) : relatedServices.length > 0 ? (
                     <div className="grid gap-3 lg:grid-cols-2">
@@ -996,7 +996,7 @@ export function CategoryPage() {
                       ))}
                     </div>
                   ) : (
-                    <CoreReadScopedState description={t("可继续查看其他类型的匹配资料。")} title={t("没有匹配服务")} />
+                    <CoreReadScopedState description={t("没有找到匹配结果")} title={t("服务")} />
                   )}
                 </div>
               ) : null}
@@ -1005,12 +1005,12 @@ export function CategoryPage() {
                 <div className="space-y-3">
                   <h3 className="text-[16px] font-black text-[color:var(--client-text)]">{t("店铺")}</h3>
                   {shopSearchQuery.loading ? (
-                    <CoreReadScopedState description={t("正在读取匹配的正式店铺资料。")} title={t("店铺搜索载入中")} />
+                    <CoreReadScopedState description={t("正在载入真实数据")} title={t("正在载入店铺")} />
                   ) : shopSearchQuery.error ? (
                     <CoreReadScopedState
                       description={shopSearchQuery.error}
                       onRetry={() => setShopRetryKey((current) => current + 1)}
-                      title={t("店铺搜索读取失败")}
+                      title={`${t("店铺")} · ${t("搜索失败，请稍后重试")}`}
                     />
                   ) : bookableStoreProfiles.length > 0 ? (
                     bookableStoreProfiles.map((item) => (
@@ -1025,7 +1025,7 @@ export function CategoryPage() {
                       />
                     ))
                   ) : (
-                    <CoreReadScopedState description={t("该类型暂无命中资料。")} title={t("没有匹配店铺")} />
+                    <CoreReadScopedState description={t("没有找到匹配结果")} title={t("店铺")} />
                   )}
                 </div>
               ) : null}
@@ -1034,12 +1034,12 @@ export function CategoryPage() {
                 <div className="space-y-3">
                   <h3 className="text-[16px] font-black text-[color:var(--client-text)]">{t("技师")}</h3>
                   {technicianSearchQuery.loading ? (
-                    <CoreReadScopedState description={t("正在读取匹配的正式技师资料。")} title={t("技师搜索载入中")} />
+                    <CoreReadScopedState description={t("正在载入真实数据")} title={t("正在载入技师")} />
                   ) : technicianSearchQuery.error ? (
                     <CoreReadScopedState
                       description={technicianSearchQuery.error}
                       onRetry={() => setTechnicianRetryKey((current) => current + 1)}
-                      title={t("技师搜索读取失败")}
+                      title={`${t("技师")} · ${t("搜索失败，请稍后重试")}`}
                     />
                   ) : bookableTechnicianProfiles.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
@@ -1069,7 +1069,7 @@ export function CategoryPage() {
                       })}
                     </div>
                   ) : (
-                    <CoreReadScopedState description={t("该类型暂无命中资料。")} title={t("没有匹配技师")} />
+                    <CoreReadScopedState description={t("没有找到匹配结果")} title={t("技师")} />
                   )}
                 </div>
               ) : null}

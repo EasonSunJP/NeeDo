@@ -42,9 +42,9 @@ describe("CategoryPage technician showcase card", () => {
   });
 
   it("routes new scoped search states through the existing i18n helper", () => {
-    expect(categoryPageSource).toContain('title={t("店铺搜索读取失败")}');
-    expect(categoryPageSource).toContain('title={t("技师搜索读取失败")}');
-    expect(categoryPageSource).toContain('title={t("服务搜索读取失败")}');
+    expect(categoryPageSource).toContain('title={`${t("店铺")} · ${t("搜索失败，请稍后重试")}`}');
+    expect(categoryPageSource).toContain('title={`${t("技师")} · ${t("搜索失败，请稍后重试")}`}');
+    expect(categoryPageSource).toContain('title={`${t("服务")} · ${t("搜索失败，请稍后重试")}`}');
   });
 
   it("shows up to 20 technician cards and routes cards through the technician dynamic path", () => {
