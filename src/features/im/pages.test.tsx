@@ -35,6 +35,27 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(profileSource).not.toContain("gradient");
   });
 
+  it("uses the formal identity information card on the directory profile", () => {
+    const start = source.indexOf("export function ImDirectoryProfilePage");
+    const end = source.indexOf("export function ImContactDetailPage", start);
+    const profileSource = source.slice(start, end);
+
+    expect(profileSource).toContain("<ConversationIdentityProfileCard");
+    expect(profileSource).toContain("identityCard={profile.identityCard}");
+    expect(profileSource).toContain("viewerScope={scope}");
+    expect(profileSource).not.toContain("<ContactSummaryCard");
+  });
+
+  it("renders friend-request actions as independent buttons without a shared visual capsule", () => {
+    const start = source.indexOf("function ImFriendProfileActionBar");
+    const end = source.indexOf("export function ImDirectoryProfilePage", start);
+    const actionBarSource = source.slice(start, end);
+
+    expect(actionBarSource).toContain('className="pointer-events-auto flex gap-3"');
+    expect(actionBarSource).not.toContain("rounded-[28px] border");
+    expect(actionBarSource).not.toContain("backdrop-blur-xl");
+  });
+
   it("uses the formal identity profile card in one-to-one conversation settings", () => {
     const start = source.indexOf("export function ImConversationInfoPage");
     const end = source.indexOf("export function ImConversationSearchPage", start);

@@ -71,7 +71,6 @@ import {
   timeToMinutes
 } from "../technician-schedule/model";
 import {
-  ContactSummaryCard,
   ContactRow,
   ConversationRow,
   ImBottomSheet,
@@ -2662,7 +2661,7 @@ function ImFriendProfileActionBar({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-[480px] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-      <div className="pointer-events-auto flex gap-2 rounded-[28px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_95%,transparent)] p-3 shadow-soft backdrop-blur-xl">
+      <div className="pointer-events-auto flex gap-3">
         {actions.includes("cancel") ? (
           <Button className="flex-1" onClick={onCancel} variant="secondary">{t("取消")}</Button>
         ) : null}
@@ -2829,7 +2828,11 @@ export function ImDirectoryProfilePage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <ContactSummaryCard showTags={false} user={profile.user} />
+            <ConversationIdentityProfileCard
+              identityCard={profile.identityCard}
+              user={profile.user}
+              viewerScope={scope}
+            />
             <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
               <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
               <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>

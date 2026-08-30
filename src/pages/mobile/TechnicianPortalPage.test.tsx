@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import source from "./TechnicianPortalPage.tsx?raw";
 
 describe("TechnicianPortalPage formal approved UI", () => {
-  it("gates the complete portal on the authenticated technician and formal self profile", () => {
+  it("keeps the authenticated self portal available for private technicians without a shop", () => {
     expect(source).toContain("function TechnicianPortalDataGate");
     expect(source).toContain("getFormalTechnicianProfileId(session)");
     expect(source).toContain("coreReadApi.getTechnicianDetail(formalTechnicianProfileId)");
     expect(source).toContain("technicianProfileApi.getMine()");
-    expect(source).toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
+    expect(source).toContain("formalTechnicianSelfProfileQuery.data?.shopId");
+    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile)");
+    expect(source).not.toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
+    expect(source).toContain("technician: CoreTechnicianDetail | null");
+    expect(source).toContain("关联店铺后即可管理正式服务");
     expect(source).toContain("技师资料加载失败");
     expect(source).toContain("正在加载技师资料");
     expect(source).toContain("<TechnicianPortalContent");

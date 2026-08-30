@@ -159,28 +159,31 @@ function TechnicianPortalDataGate() {
   const { session } = useAuth();
   const [revision, setRevision] = useState(0);
   const formalTechnicianProfileId = getFormalTechnicianProfileId(session);
-  const formalTechnicianProfileQuery = useCoreReadQuery(
-    () => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null,
-    [formalTechnicianProfileId, revision]
-  );
   const formalTechnicianSelfProfileQuery = useCoreReadQuery(
     () => formalTechnicianProfileId ? technicianProfileApi.getMine() : null,
     [formalTechnicianProfileId, revision]
   );
+  const formalTechnicianProfileQuery = useCoreReadQuery(
+    () => formalTechnicianProfileId && formalTechnicianSelfProfileQuery.data?.shopId
+      ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId)
+      : null,
+    [formalTechnicianProfileId, formalTechnicianSelfProfileQuery.data?.shopId, revision]
+  );
   const technician = formalTechnicianProfileQuery.data;
   const selfProfile = formalTechnicianSelfProfileQuery.data;
-  const error = formalTechnicianProfileQuery.error ?? formalTechnicianSelfProfileQuery.error;
+  const error = formalTechnicianSelfProfileQuery.error;
 
-  if (!formalTechnicianProfileId || !technician?.shop || !selfProfile) {
+  if (!formalTechnicianProfileId || !selfProfile) {
     return <ResourceState error={error} retry={() => setRevision((current) => current + 1)} />;
   }
 
   return <TechnicianPortalContent initialSelfProfile={selfProfile} technician={technician} />;
 }
 
-function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail }) {
-  const rating = Number(technician.reviewSummary.ratingAverage || 0);
-  const shopName = technician.shop?.name ?? "";
+function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
+  const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
+  const reviewCount = technician ? String(technician.reviewSummary.reviewCount) : "—";
+  const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
   const quickActions: Array<{ label: string; icon: IconName; to: string }> = [
     { label: "排班", icon: "calendar", to: "/technician/schedule" },
     { label: "通讯录", icon: "manager", to: "/technician/contacts" },
@@ -223,7 +226,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
               <div className="mt-5 grid grid-cols-3 rounded-[20px] border border-white/10 bg-white/[0.08] py-3 backdrop-blur">
                 {[
                   ["服务评分", rating > 0 ? rating.toFixed(1) : "—"],
-                  ["评价数量", String(technician.reviewSummary.reviewCount)],
+                  ["评价数量", reviewCount],
                   ["从业年限", `${profile.yearsExperience} 年`]
                 ].map(([label, value], index) => (
                   <div className={cn("min-w-0 px-2 text-center", index > 0 && "border-l border-white/10")} key={label}>
@@ -534,14 +537,24 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
   );
 }
 
-function DataCenter({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail }) {
-  const rating = Number(technician.reviewSummary.ratingAverage || 0);
+function TechnicianShopRequiredPanel() {
+  return (
+    <section className={cn(surface.shell, "rounded-[28px] border p-6 text-center shadow-[var(--client-shadow)]")}>
+      <h2 className="text-lg font-black">暂未关联店铺</h2>
+      <p className={cn(surface.muted, "mt-2 text-sm font-bold leading-6")}>关联店铺后即可管理正式服务；当前不会创建演示服务或临时数据。</p>
+    </section>
+  );
+}
+
+function DataCenter({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
+  const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
+  const reviewCount = technician ? String(technician.reviewSummary.reviewCount) : "—";
   return (
     <div className="space-y-4">
       <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
         <p className={cn(surface.muted, "text-xs font-black")}>服务数据</p>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          {[["服务评分", rating > 0 ? rating.toFixed(1) : "—"], ["评价数量", String(technician.reviewSummary.reviewCount)], ["从业年限", `${profile.yearsExperience} 年`], ["资料更新时间", new Date(profile.updatedAt).toLocaleDateString("zh-CN")]].map(([label, value]) => <div className={cn(surface.metric, "rounded-[18px] border p-3")} key={label}><p className={cn(surface.muted, "text-xs font-bold")}>{label}</p><strong className="mt-1 block text-xl">{value}</strong></div>)}
+          {[["服务评分", rating > 0 ? rating.toFixed(1) : "—"], ["评价数量", reviewCount], ["从业年限", `${profile.yearsExperience} 年`], ["资料更新时间", new Date(profile.updatedAt).toLocaleDateString("zh-CN")]].map(([label, value]) => <div className={cn(surface.metric, "rounded-[18px] border p-3")} key={label}><p className={cn(surface.muted, "text-xs font-bold")}>{label}</p><strong className="mt-1 block text-xl">{value}</strong></div>)}
         </div>
       </section>
       <section className={cn(surface.panel, "rounded-[24px] border p-4 text-sm font-bold leading-6 text-[color:var(--client-muted)]")}>收入、工时与履约趋势仅在正式统计接口返回真实聚合数据后展示；当前页面不会生成演示统计。</section>
@@ -551,21 +564,21 @@ function DataCenter({ profile, technician }: { profile: TechnicianSelfProfile; t
 
 function TechnicianPortalContent({ initialSelfProfile, technician }: {
   initialSelfProfile: TechnicianSelfProfile;
-  technician: CoreTechnicianDetail;
+  technician: CoreTechnicianDetail | null;
 }) {
   const { view } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selfProfile, setSelfProfile] = useState(initialSelfProfile);
   const activeView = getPortalView(view);
   const meTab = getMeTab(searchParams.get("meTab"));
-  const shop = technician.shop!;
+  const shopId = technician?.shop?.id ?? selfProfile.shopId;
   const technicianPortalConfig = roleBasedTabConfig.technician;
   const updateMeTab = (tab: TechnicianMeTab) => {
     const next = new URLSearchParams(searchParams);
     next.set("meTab", tab);
     setSearchParams(next, { replace: true });
   };
-  const defaultCategoryId = technician.services[0]?.category.id ?? null;
+  const defaultCategoryId = technician?.services[0]?.category.id ?? null;
 
   return (
     <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"}>
@@ -584,7 +597,9 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
           </FloatingHomeHeader>
           <div className="space-y-4 px-4 pb-32 pt-1">
             {meTab === "info" ? <TechnicianInfoCard onSaved={setSelfProfile} profile={selfProfile} /> : null}
-            {meTab === "services" ? <FormalTechnicianServicesPanel defaultCategoryId={defaultCategoryId} shopId={shop.id} /> : null}
+            {meTab === "services" ? shopId
+              ? <FormalTechnicianServicesPanel defaultCategoryId={defaultCategoryId} shopId={shopId} />
+              : <TechnicianShopRequiredPanel /> : null}
             {meTab === "data" ? <DataCenter profile={selfProfile} technician={technician} /> : null}
           </div>
         </>
