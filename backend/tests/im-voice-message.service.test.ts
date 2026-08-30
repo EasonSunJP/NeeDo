@@ -4,6 +4,7 @@ import {
   ImVoiceMessageService,
   type SendImVoiceMessageInput
 } from "../src/services/im-voice-message.service";
+import { RealtimeService } from "../src/services/realtime.service";
 import { AppError } from "../src/utils/app-error";
 
 const validInput: SendImVoiceMessageInput = {
@@ -161,6 +162,29 @@ describe("ImVoiceMessageService", () => {
     await expect(service.send(auth, validInput)).rejects.toThrow("error.im.not_friends");
     expect(storage.remove).toHaveBeenCalledTimes(1);
     expect(storage.remove).toHaveBeenCalledWith(`${"b".repeat(64)}.ogg`);
+  });
+
+  it("removes the stored file when a recipient block appears after the allowed preflight", async () => {
+    const repository = {
+      checkMessageSendEligibility: jest.fn(async () => "allowed" as const),
+      createMessage: jest.fn(async () => ({ status: "recipient_blocked" as const }))
+    };
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const realtime = new RealtimeService(repository as never, gateway as never);
+    const storage = {
+      save: jest.fn(async () => storedWebm),
+      remove: jest.fn(async () => undefined)
+    };
+    const service = new ImVoiceMessageService(realtime, storage as never, "/media/im");
+
+    await expect(service.send(auth, validInput)).rejects.toMatchObject({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.im.recipient_blocked",
+      statusCode: 403
+    });
+    expect(storage.remove).toHaveBeenCalledTimes(1);
+    expect(storage.remove).toHaveBeenCalledWith(storedWebm.fileKey);
+    expect(gateway.publish).not.toHaveBeenCalled();
   });
 
   it("retries cleanup once and preserves the original create error when cleanup then succeeds", async () => {

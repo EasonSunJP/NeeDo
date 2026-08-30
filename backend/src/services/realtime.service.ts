@@ -1,4 +1,5 @@
 import type { Response } from "express";
+import { logger } from "../config/logger";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   ConversationPayload,
@@ -271,6 +272,13 @@ export class RealtimeService implements OrderStatusNotificationPort {
     if (outcome.status === "not_found") {
       throw this.notFoundError("error.realtime.conversation_not_found");
     }
+    if (outcome.status === "recipient_blocked") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.recipient_blocked",
+        statusCode: 403
+      });
+    }
     if (outcome.status === "not_friends") {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
@@ -280,13 +288,25 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
     const { message } = outcome;
 
-    await this.publishToConversation(
-      input.conversationId,
-      "message.created",
-      message,
-      auth.userId,
-      scope.identityId
-    );
+    try {
+      await this.publishToConversation(
+        input.conversationId,
+        "message.created",
+        message,
+        auth.userId,
+        scope.identityId
+      );
+    } catch (error) {
+      logger.error(
+        {
+          conversationId: input.conversationId,
+          error,
+          eventType: "message.created",
+          messageId: message.id
+        },
+        "Realtime message publication failed after message commit"
+      );
+    }
 
     return message;
   }

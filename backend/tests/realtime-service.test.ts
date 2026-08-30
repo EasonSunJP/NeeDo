@@ -1,4 +1,5 @@
 import { ConversationAccessPolicy } from "@prisma/client";
+import { logger } from "../src/config/logger";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 import { RealtimeService } from "../src/services/realtime.service";
 
@@ -733,6 +734,202 @@ describe("RealtimeService message-send preflight", () => {
       statusCode: 403
     });
     expect(gateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps the transaction-time recipient block as the final race-safe gate", async () => {
+    const repository = {
+      checkMessageSendEligibility: jest.fn().mockResolvedValue("allowed"),
+      createMessage: jest.fn().mockResolvedValue({ status: "recipient_blocked" })
+    };
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, gateway);
+
+    await expect(
+      service.createMessage(
+        { userId: 41 } as never,
+        { conversationId: 91, type: "text", content: "hello" }
+      )
+    ).rejects.toMatchObject({
+      message: "error.im.recipient_blocked",
+      statusCode: 403
+    });
+    expect(gateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("returns the committed message when recipient discovery fails after commit", async () => {
+    const message = { id: 501, conversationId: 91 };
+    const repository = {
+      checkMessageSendEligibility: jest.fn().mockResolvedValue("allowed"),
+      createMessage: jest.fn().mockResolvedValue({ status: "created", message }),
+      listConversationRecipients: jest.fn(async () => {
+        throw new Error("recipient query failed after commit");
+      })
+    };
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, gateway);
+    const logError = jest.spyOn(logger, "error").mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        service.createMessage(
+          { userId: 41 } as never,
+          { conversationId: 91, type: "text", content: "hello" }
+        )
+      ).resolves.toBe(message);
+      expect(gateway.publish).not.toHaveBeenCalled();
+    } finally {
+      logError.mockRestore();
+    }
+  });
+
+  it("returns the committed message when synchronous publication fails after commit", async () => {
+    const message = { id: 501, conversationId: 91 };
+    const repository = {
+      checkMessageSendEligibility: jest.fn().mockResolvedValue("allowed"),
+      createMessage: jest.fn().mockResolvedValue({ status: "created", message }),
+      listConversationRecipients: jest
+        .fn()
+        .mockResolvedValue([{ userId: 167, identityId: 1670 }])
+    };
+    const gateway = {
+      publish: jest.fn(() => {
+        throw new Error("synchronous publication failure");
+      }),
+      subscribe: jest.fn()
+    };
+    const service = new RealtimeService(repository as never, gateway);
+    const logError = jest.spyOn(logger, "error").mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        service.createMessage(
+          { userId: 41 } as never,
+          { conversationId: 91, type: "text", content: "hello" }
+        )
+      ).resolves.toBe(message);
+      expect(gateway.publish).toHaveBeenCalledTimes(1);
+    } finally {
+      logError.mockRestore();
+    }
+  });
+});
+
+describe("RealtimeRepository transaction-time recipient block", () => {
+  it("checks block state on the transaction client before creating a message", async () => {
+    const createdAt = new Date("2026-08-31T00:00:00.000Z");
+    const participantFindFirst = jest
+      .fn()
+      .mockResolvedValue({
+        id: 77,
+        createdAt,
+        conversation: {
+          type: "DIRECT",
+          privacyModeEnabled: false,
+          disappearingTtlSeconds: null,
+          privacyPolicyVersion: 1,
+          accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+          participants: [
+            {
+              userId: 41,
+              identityId: 410,
+              identity: { ownedContacts: [] }
+            },
+            {
+              userId: 167,
+              identityId: 1670,
+              identity: { ownedContacts: [{ id: 900 }] }
+            }
+          ]
+        }
+      });
+    const messageCreate = jest.fn(async () => ({
+      id: 501,
+      conversationId: 91,
+      senderUserId: 41,
+      senderIdentityId: 410,
+      type: "TEXT",
+      content: "hello",
+      metadata: null,
+      expiresAt: null,
+      expiredAt: null,
+      recallDeadlineAt: new Date("2026-08-31T00:03:00.000Z"),
+      recalledAt: null,
+      recallMode: null,
+      contentPurgedAt: null,
+      privacyPolicyVersionAtSend: null,
+      lifecycleVersion: 1,
+      reactionVersion: 0,
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt: null,
+      reactions: []
+    }));
+    const transaction = {
+      conversationParticipant: {
+        findFirst: participantFindFirst,
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn().mockResolvedValue(2) },
+      imPolicy: { findFirst: jest.fn().mockResolvedValue(null) },
+      message: { create: messageCreate },
+      conversation: { update: jest.fn() }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: typeof transaction) => unknown) =>
+        operation(transaction)
+      )
+    };
+
+    await expect(
+      new RealtimeRepository(client as never).createMessage({
+        conversationId: 91,
+        senderUserId: 41,
+        senderIdentityId: 410,
+        type: "text",
+        content: "hello"
+      })
+    ).resolves.toEqual({ status: "recipient_blocked" });
+
+    expect(participantFindFirst).toHaveBeenCalledTimes(1);
+    expect(participantFindFirst).toHaveBeenCalledWith({
+      where: {
+        conversationId: 91,
+        identityId: 410,
+        deletedAt: null,
+        conversation: { deletedAt: null }
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        conversation: {
+          select: expect.objectContaining({
+            participants: {
+              where: { deletedAt: null },
+              select: {
+                userId: true,
+                identityId: true,
+                identity: {
+                  select: {
+                    ownedContacts: {
+                      where: {
+                        contactIdentityId: 410,
+                        blockedAt: { not: null },
+                        deletedAt: null
+                      },
+                      select: { id: true }
+                    }
+                  }
+                }
+              }
+            }
+          })
+        }
+      }
+    });
+    expect(transaction.contact.count).not.toHaveBeenCalled();
+    expect(messageCreate).not.toHaveBeenCalled();
+    expect(transaction.conversation.update).not.toHaveBeenCalled();
+    expect(transaction.conversationParticipant.updateMany).not.toHaveBeenCalled();
   });
 });
 

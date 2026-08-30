@@ -351,6 +351,7 @@ export interface CreateMessageInput {
 export type CreateMessageOutcome =
   | { status: "created"; message: MessagePayload }
   | { status: "not_found" }
+  | { status: "recipient_blocked" }
   | { status: "not_friends" };
 
 export type MessageSendEligibility =
@@ -1359,7 +1360,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
               accessPolicy: true,
               participants: {
                 where: { deletedAt: null },
-                select: { identityId: true }
+                select: {
+                  userId: true,
+                  identityId: true,
+                  identity: {
+                    select: {
+                      ownedContacts: {
+                        where: {
+                          contactIdentityId: input.senderIdentityId ?? input.senderUserId,
+                          blockedAt: { not: null },
+                          deletedAt: null
+                        },
+                        select: { id: true }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -1368,6 +1384,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
       if (!participant) {
         return { status: "not_found" };
+      }
+      if (
+        participant.conversation.type === ConversationType.DIRECT &&
+        participant.conversation.participants.some(
+          (conversationParticipant) =>
+            conversationParticipant.userId !== input.senderUserId &&
+            conversationParticipant.identity?.ownedContacts?.length > 0
+        )
+      ) {
+        return { status: "recipient_blocked" };
       }
       if (
         participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED
