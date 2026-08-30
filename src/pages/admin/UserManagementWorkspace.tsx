@@ -61,6 +61,9 @@ type Copy = {
   allAccountTypes: string;
   markAsTest: string;
   markAsFormal: string;
+  previousPage: string;
+  nextPage: string;
+  pageSummary: (page: number, totalPages: number) => string;
 };
 
 const copyByLanguage: Record<Language, Copy> = {
@@ -105,7 +108,10 @@ const copyByLanguage: Record<Language, Copy> = {
     accountTypeFilter: "账号类型",
     allAccountTypes: "全部账号",
     markAsTest: "标记为测试账号",
-    markAsFormal: "标记为正式账号"
+    markAsFormal: "标记为正式账号",
+    previousPage: "上一页",
+    nextPage: "下一页",
+    pageSummary: (page, totalPages) => `第 ${page} / ${totalPages} 页`
   },
   "zh-Hant": {
     usersTitle: "帳號管理",
@@ -148,7 +154,10 @@ const copyByLanguage: Record<Language, Copy> = {
     accountTypeFilter: "帳號類型",
     allAccountTypes: "全部帳號",
     markAsTest: "標記為測試帳號",
-    markAsFormal: "標記為正式帳號"
+    markAsFormal: "標記為正式帳號",
+    previousPage: "上一頁",
+    nextPage: "下一頁",
+    pageSummary: (page, totalPages) => `第 ${page} / ${totalPages} 頁`
   },
   ja: {
     usersTitle: "アカウント管理",
@@ -191,7 +200,10 @@ const copyByLanguage: Record<Language, Copy> = {
     accountTypeFilter: "アカウント種別",
     allAccountTypes: "すべてのアカウント",
     markAsTest: "テストアカウントに変更",
-    markAsFormal: "正式アカウントに変更"
+    markAsFormal: "正式アカウントに変更",
+    previousPage: "前へ",
+    nextPage: "次へ",
+    pageSummary: (page, totalPages) => `${page} / ${totalPages} ページ`
   },
   en: {
     usersTitle: "Account Management",
@@ -234,7 +246,10 @@ const copyByLanguage: Record<Language, Copy> = {
     accountTypeFilter: "Account type",
     allAccountTypes: "All accounts",
     markAsTest: "Mark as test account",
-    markAsFormal: "Mark as formal account"
+    markAsFormal: "Mark as formal account",
+    previousPage: "Previous",
+    nextPage: "Next",
+    pageSummary: (page, totalPages) => `Page ${page} of ${totalPages}`
   },
   ko: {
     usersTitle: "계정 관리",
@@ -277,7 +292,10 @@ const copyByLanguage: Record<Language, Copy> = {
     accountTypeFilter: "계정 유형",
     allAccountTypes: "모든 계정",
     markAsTest: "테스트 계정으로 변경",
-    markAsFormal: "정식 계정으로 변경"
+    markAsFormal: "정식 계정으로 변경",
+    previousPage: "이전",
+    nextPage: "다음",
+    pageSummary: (page, totalPages) => `${page} / ${totalPages} 페이지`
   }
 };
 
@@ -463,6 +481,7 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
   const [permissionTree, setPermissionTree] = useState<PermissionTreePayload | null>(null);
   const [keyword, setKeyword] = useState("");
   const [accountTypeFilter, setAccountTypeFilter] = useState<"" | "true" | "false">("");
+  const [page, setPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -504,7 +523,7 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
           mode === "users"
             ? userManagementApi.listUsers({
                 keyword,
-                page: 1,
+                page,
                 pageSize: 20,
                 ...(accountTypeFilter
                   ? { isTestAccount: accountTypeFilter === "true" }
@@ -538,7 +557,7 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
     return () => {
       alive = false;
     };
-  }, [accountTypeFilter, keyword, mode, refreshKey]);
+  }, [accountTypeFilter, keyword, mode, page, refreshKey]);
 
   const roleById = useMemo(() => new Map(roles.list.map((role) => [role.id, role])), [roles.list]);
 
@@ -590,7 +609,10 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-white p-2 shadow-panel">
             <input
               className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm font-bold outline-none"
-              onChange={(event) => setKeyword(event.target.value)}
+              onChange={(event) => {
+                setKeyword(event.target.value);
+                setPage(1);
+              }}
               placeholder={copy.keyword}
               value={keyword}
             />
@@ -598,7 +620,10 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
               <select
                 aria-label={copy.accountTypeFilter}
                 className="h-9 max-w-full rounded-lg border border-line bg-paper px-2 text-xs font-bold text-ink/70 outline-none focus:border-moss"
-                onChange={(event) => setAccountTypeFilter(event.target.value as "" | "true" | "false")}
+                onChange={(event) => {
+                  setAccountTypeFilter(event.target.value as "" | "true" | "false");
+                  setPage(1);
+                }}
                 value={accountTypeFilter}
               >
                 <option value="">{copy.allAccountTypes}</option>
@@ -697,6 +722,29 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
                 </article>
               ))}
             </section>
+            {users.total > users.page_size ? (
+              <nav aria-label={copy.usersTitle} className="flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  disabled={users.page <= 1 || loading}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {copy.previousPage}
+                </Button>
+                <span className="text-sm font-bold text-ink/55">
+                  {copy.pageSummary(users.page, Math.max(1, Math.ceil(users.total / users.page_size)))}
+                </span>
+                <Button
+                  disabled={users.page >= Math.ceil(users.total / users.page_size) || loading}
+                  onClick={() => setPage((current) => current + 1)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {copy.nextPage}
+                </Button>
+              </nav>
+            ) : null}
           </>
         ) : null}
 

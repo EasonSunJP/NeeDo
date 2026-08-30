@@ -165,4 +165,29 @@ describe("UserManagementWorkspace Test NDP account controls", () => {
 
     expect(container.textContent).not.toContain("标记为正式账号");
   });
+
+  it("keeps the server-paginated account list navigable", async () => {
+    testState.listUsers.mockImplementation(async (query: { page: number }) => ({
+      list: [{ ...testUser, id: query.page, email: `page-${query.page}@example.com` }],
+      total: 41,
+      page: query.page,
+      page_size: 20
+    }));
+    await renderWorkspace();
+
+    const next = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "下一页"
+    );
+    expect(next).toBeDefined();
+    await act(async () => {
+      next?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await waitFor(() =>
+      expect(testState.listUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2, pageSize: 20 })
+      )
+    );
+    expect(container.textContent).toContain("第 2 / 3 页");
+  });
 });
