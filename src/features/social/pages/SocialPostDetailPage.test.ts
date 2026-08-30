@@ -8,4 +8,9 @@ describe("SocialPostDetailPage quick reply integration", () => {
     expect(source).toContain("onOpenFullComposer={() => navigate(socialPaths.compose(scope, { replyToPostId: post.id }))}");
     expect(source).not.toContain("function QuickReplyComposer(");
   });
+
+  it("forwards structured rich text to the detail, reply, and quoted-preview renderer surfaces", () => {
+    expect(source.match(/richText=\{post\.richText\}/g)).toHaveLength(3);
+    expect(source).toContain('<DetailMiniPostCard caption="引用动态" post={quotedPost}');
+  });
 });

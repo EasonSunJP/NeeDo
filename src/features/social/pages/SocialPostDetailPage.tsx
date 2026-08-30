@@ -288,7 +288,7 @@ function DetailMiniPostCard({
         </div>
       </div>
 
-      {post.text ? <UnifiedPostText allowExpand={false} className="mt-2.5 text-[14px] leading-6 text-white" expanded profiles={profiles} scope={scope} text={post.text} /> : null}
+      {post.text ? <UnifiedPostText allowExpand={false} className="mt-2.5 text-[14px] leading-6 text-white" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}
 
       {leadMedia ? (
         <div className={cn("relative mt-3 h-40 overflow-hidden bg-black", chrome === "plain" ? "" : "border border-white/8")}>
@@ -439,7 +439,7 @@ function ReplyListItem({
             <span className="text-[13px] text-white/46">{formatRelativeTime(post.createdAt)}</span>
           </div>
 
-          {post.text ? <UnifiedPostText allowExpand={false} className="mt-2 text-[15px] leading-7 text-white" expanded profiles={profiles} scope={scope} text={post.text} /> : null}
+          {post.text ? <UnifiedPostText allowExpand={false} className="mt-2 text-[15px] leading-7 text-white" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}
 
           {quotedPost ? (
             <div className="mt-3">
@@ -561,7 +561,7 @@ export function SocialPostDetailPage() {
                 <DetailPostMenu actorKey={actorKey} post={post} scope={scope} />
               </div>
 
-              {post.text ? <UnifiedPostText allowExpand={false} className="mt-3 text-[19px] leading-8 text-white sm:text-[21px]" expanded profiles={profiles} scope={scope} text={post.text} /> : null}
+              {post.text ? <UnifiedPostText allowExpand={false} className="mt-3 text-[19px] leading-8 text-white sm:text-[21px]" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}
 
               {quotedPost ? (
                 <div className="mt-4">
