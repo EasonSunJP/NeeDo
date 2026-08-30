@@ -969,6 +969,41 @@ export const SYSTEM_PERMISSIONS = [
     "读取当前店铺的会员操作活动记录"
   ),
   createPermission(
+    "shop.member.card_plan.view",
+    "会员卡方案读取",
+    "api",
+    "shop-membership",
+    "读取当前店铺的会员卡方案、版本和 NDP 返点规则"
+  ),
+  createPermission(
+    "shop.member.card_plan.manage",
+    "会员卡方案维护",
+    "api",
+    "shop-membership",
+    "创建和编辑当前店铺的会员卡方案草稿并进行成本试算"
+  ),
+  createPermission(
+    "shop.member.card_plan.publish",
+    "会员卡方案发布",
+    "api",
+    "shop-membership",
+    "发布或停用当前店铺的不可变会员卡方案版本"
+  ),
+  createPermission(
+    "page:backoffice-membership-reward-fee",
+    "会员返点平台费读取",
+    "page",
+    "finance",
+    "读取会员 NDP 返点平台费当前版本和历史"
+  ),
+  createPermission(
+    "button:backoffice-membership-reward-fee-create",
+    "会员返点平台费版本创建",
+    "button",
+    "finance",
+    "创建会员 NDP 返点平台费的不可变版本"
+  ),
+  createPermission(
     "merchant-admin:services:list",
     "商户服务列表",
     "api",
@@ -1494,6 +1529,8 @@ const FINANCE_PERMISSION_CODES = [
   "finance:fee-rule:preview",
   "finance:calculation-log:list",
   "backoffice:platform-fee-policy:read",
+  "page:backoffice-membership-reward-fee",
+  "button:backoffice-membership-reward-fee-create",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -1572,6 +1609,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:employee-affiliation:write",
   "merchant-admin:customers:list",
   "shop.member.view",
+  "shop.member.card_plan.view",
   "merchant-admin:services:list",
   "merchant-admin:services:write",
   "merchant-admin:shop:read",
@@ -1585,7 +1623,9 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
 const MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES = [
   "shop.member.create",
   "shop.member.analytics.view",
-  "shop.member.operation_log.view"
+  "shop.member.operation_log.view",
+  "shop.member.card_plan.manage",
+  "shop.member.card_plan.publish"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const AFFILIATE_ENTRY_PERMISSION_CODES = [
@@ -1672,6 +1712,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
     ...CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES,
     ...OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES,
+    "page:backoffice-membership-reward-fee",
     "finance:fee-rule:list",
     "finance:fee-rule:preview",
     "finance:calculation-log:list",
