@@ -2,17 +2,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { httpClient } from "../../api/httpClient";
 import { realtimeApi } from "../realtime/api";
+import realtimeApiSource from "../realtime/api.ts?raw";
 import {
   createFormalImApi,
   shouldForwardFormalImEvent,
   toFormalImStoreUpdate,
 } from "./formal-api";
+import imModelSource from "./model.ts?raw";
 
 const now = "2026-08-25T10:00:00.000Z";
 
 describe("formal IM adapter", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("declares self in both formal directory profile contracts", () => {
+    const relationshipContract =
+      'relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";';
+
+    expect(realtimeApiSource).toContain(relationshipContract);
+    expect(imModelSource).toContain(relationshipContract);
   });
 
   it("maps real conversations and reciprocal contacts into the original IM model", async () => {
@@ -1029,6 +1039,53 @@ describe("formal IM adapter", () => {
     });
     expect(getDirectoryProfile).toHaveBeenCalledWith(201);
     expect(createFriendRequest).toHaveBeenCalledWith({ targetUserId: 201 });
+  });
+
+  it("maps the authenticated account directory profile as self", async () => {
+    vi.spyOn(realtimeApi, "getDirectoryProfile").mockResolvedValue({
+      user: {
+        userId: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      relationship: "self",
+      contactId: null,
+      friendRequest: null,
+      identityCard: {
+        entityType: "user",
+        profileId: 70,
+        displayName: "测试用户",
+        identityLabel: "free",
+        verified: false,
+        creditValue: null,
+        creditReviewCount: 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: null,
+        serviceArea: null,
+        yearsExperience: null,
+        bio: null,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.getDirectoryProfile("100")).resolves.toMatchObject({
+      user: { id: "100" },
+      relationship: "self",
+      contactId: undefined,
+      friendRequest: undefined,
+    });
   });
 
   it("uploads a selected image instead of invoking the unavailable placeholder", async () => {
