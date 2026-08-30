@@ -9,6 +9,9 @@ import type { Language } from "../../i18n/translations";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { Button } from "../../components/ui/Button";
+import { Drawer } from "../../components/ui/Drawer";
+import { useAuth } from "../../auth/AuthProvider";
+import { MerchantAffiliateTaskEditor } from "../../features/merchant-affiliate-task/MerchantAffiliateTaskEditor";
 import { MerchantAffiliateTaskTable } from "../../features/merchant-affiliate-task/MerchantAffiliateTaskTable";
 import { useI18n } from "../../i18n/I18nProvider";
 import {
@@ -26,10 +29,12 @@ export const describeMerchantAffiliateTaskListError = (
 ): string => describeMerchantAffiliateTaskError(error, language);
 
 export function MerchantAffiliateTasksContent({
+  canWrite = true,
   initialPage = 1,
   onCreateTask,
   onSelectTask
 }: {
+  canWrite?: boolean;
   initialPage?: number;
   onCreateTask?: () => void;
   onSelectTask?: (taskId: number) => void;
@@ -46,6 +51,8 @@ export function MerchantAffiliateTasksContent({
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,13 +100,35 @@ export function MerchantAffiliateTasksContent({
     setPublisherType(value);
     setPage(1);
   };
+  const createTask = () => {
+    if (onCreateTask) {
+      onCreateTask();
+      return;
+    }
+    setSelectedTaskId(null);
+    setEditorOpen(true);
+  };
+  const selectTask = (taskId: number) => {
+    if (onSelectTask) {
+      onSelectTask(taskId);
+      return;
+    }
+    setSelectedTaskId(taskId);
+    setEditorOpen(true);
+  };
+  const closeEditor = () => setEditorOpen(false);
+  const persisted = (task: MerchantAffiliateTask) => {
+    setSelectedTaskId(task.id);
+    setRevision((current) => current + 1);
+  };
 
   return (
-    <ModuleShell
-      actions={<Button onClick={onCreateTask}>{copy.createTask}</Button>}
-      description={copy.description}
-      title={copy.title}
-    >
+    <>
+      <ModuleShell
+        actions={<Button disabled={!canWrite} onClick={createTask}>{copy.createTask}</Button>}
+        description={copy.description}
+        title={copy.title}
+      >
       <section className="rounded-xl border border-line bg-white p-4 shadow-panel">
         <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_220px_220px]">
           <label className="text-xs font-black text-ink/55">
@@ -177,7 +206,7 @@ export function MerchantAffiliateTasksContent({
       {loadStatus === "success" && rows.length > 0 ? (
         <MerchantAffiliateTaskTable
           copy={copy}
-          onSelect={(taskId) => onSelectTask?.(taskId)}
+          onSelect={selectTask}
           rows={rows}
         />
       ) : null}
@@ -204,14 +233,35 @@ export function MerchantAffiliateTasksContent({
           </Button>
         </nav>
       ) : null}
-    </ModuleShell>
+      </ModuleShell>
+      {editorOpen ? (
+        <Drawer
+          defaultWidth={900}
+          maxWidth={1180}
+          minWidth={420}
+          onClose={closeEditor}
+          open={editorOpen}
+          title={selectedTaskId ? copy.editTask : copy.createTask}
+          widthStorageKey="needo.merchant-affiliate-task.drawer.width"
+        >
+          <MerchantAffiliateTaskEditor
+            canWrite={canWrite}
+            onPersisted={persisted}
+            taskId={selectedTaskId}
+          />
+        </Drawer>
+      ) : null}
+    </>
   );
 }
 
 export function MerchantAffiliateTasksPage() {
+  const { hasPermission } = useAuth();
   return (
     <MerchantAdminLayout>
-      <MerchantAffiliateTasksContent />
+      <MerchantAffiliateTasksContent
+        canWrite={hasPermission("button:merchant-affiliate-task-create")}
+      />
     </MerchantAdminLayout>
   );
 }

@@ -12,6 +12,7 @@ export interface MerchantAffiliateTaskCopy {
   title: string;
   description: string;
   createTask: string;
+  editTask: string;
   taskCode: string;
   taskName: string;
   contentLanguage: string;
@@ -46,6 +47,7 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     title: "我的联盟营销",
     description: "创建、提交并跟踪正式联盟营销任务。店铺仅显示公开 ID，费用以服务端快照为准。",
     createTask: "创建任务",
+    editTask: "编辑任务",
     taskCode: "任务 ID",
     taskName: "任务名称",
     contentLanguage: "内容语言",
@@ -88,6 +90,7 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     title: "我的聯盟行銷",
     description: "建立、提交並追蹤正式聯盟行銷任務。店舖僅顯示公開 ID，費用以伺服器快照為準。",
     createTask: "建立任務",
+    editTask: "編輯任務",
     taskCode: "任務 ID",
     taskName: "任務名稱",
     contentLanguage: "內容語言",
@@ -130,6 +133,7 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     title: "アフィリエイト管理",
     description: "正式なアフィリエイトタスクを作成・申請・追跡します。店舗には公開 ID のみを表示し、手数料はサーバーのスナップショットを使用します。",
     createTask: "タスクを作成",
+    editTask: "タスクを編集",
     taskCode: "タスク ID",
     taskName: "タスク名",
     contentLanguage: "コンテンツ言語",
@@ -172,6 +176,7 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     title: "My Affiliate Marketing",
     description: "Create, submit, and track formal Affiliate tasks. Shops show public IDs only; fees use the server snapshot.",
     createTask: "Create task",
+    editTask: "Edit task",
     taskCode: "Task ID",
     taskName: "Task name",
     contentLanguage: "Content language",
@@ -214,6 +219,7 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     title: "내 제휴 마케팅",
     description: "정식 제휴 마케팅 작업을 생성, 제출 및 추적합니다. 매장은 공개 ID만 표시하며 수수료는 서버 스냅샷을 사용합니다.",
     createTask: "작업 만들기",
+    editTask: "작업 편집",
     taskCode: "작업 ID",
     taskName: "작업 이름",
     contentLanguage: "콘텐츠 언어",

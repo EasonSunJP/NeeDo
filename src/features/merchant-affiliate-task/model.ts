@@ -41,6 +41,54 @@ export interface MerchantAffiliateTaskForm {
   feePreview: MerchantAffiliateFeePreview | null;
 }
 
+export const isoToDateTimeLocal = (value: string): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMilliseconds = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMilliseconds).toISOString().slice(0, 16);
+};
+
+export const dateTimeLocalToIso = (value: string): string => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+};
+
+export const taskToForm = (task: MerchantAffiliateTask): MerchantAffiliateTaskForm => {
+  const authoredTranslation = Object.entries(task.translations).find(
+    ([, translation]) => translation && !translation.isInitialCopy
+  )?.[1];
+  return {
+    taskId: task.id,
+    taskCode: task.taskCode,
+    lockVersion: task.lockVersion,
+    publisherType: task.publisherType,
+    merchantAccountId: task.publisherMerchantAccountId,
+    shopIds: task.shops.map((shop) => shop.shopId),
+    selectedServiceIds: task.services.map((service) => service.serviceId),
+    sourceLocale: authoredTranslation?.sourceLocale ?? "ja",
+    name: task.name,
+    description: task.description ?? "",
+    coverMediaAssetId: task.coverMediaAssetId,
+    rewardNdpPerCompletedOrder: task.rewardNdpPerCompletedOrder,
+    totalBudgetNdp: task.totalBudgetNdp,
+    customerDiscountType: task.customerDiscountType,
+    fixedDiscountJpy: task.fixedDiscountJpy,
+    discountRateBps: task.discountRateBps,
+    discountCapJpy: task.discountCapJpy,
+    minimumOrderAmountJpy: task.minimumOrderAmountJpy,
+    claimStartsAt: task.claimStartsAt,
+    claimEndsAt: task.claimEndsAt,
+    taskStartsAt: task.taskStartsAt,
+    taskEndsAt: task.taskEndsAt,
+    attributionWindowDays: task.attributionWindowDays,
+    maxCompletedOrdersPerClaim: task.maxCompletedOrdersPerClaim,
+    maxCompletedOrdersPerCustomer: task.maxCompletedOrdersPerCustomer,
+    serviceScopeMode: task.serviceScopeMode,
+    translations: task.translations,
+    feePreview: null
+  };
+};
+
 export const changePublisher = (
   form: MerchantAffiliateTaskForm,
   publisher: MerchantAffiliatePublisherOption
