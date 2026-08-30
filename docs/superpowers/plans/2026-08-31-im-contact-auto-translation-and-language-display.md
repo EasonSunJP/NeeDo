@@ -337,7 +337,7 @@ npm test -- src/features/im/formal-api.test.ts src/features/im/store.test.ts
 npm run build
 ```
 
-Expected: tests PASS and TypeScript reports no missing `Conversation` fields. If the repository's formal build gate refuses `npm run build`, record that exact refusal and defer the production build to Task 7's approved command rather than bypassing it.
+Expected: tests PASS and TypeScript reports no missing `Conversation` fields. If the repository's formal build gate refuses `npm run build`, record that exact refusal and defer the production build to Task 9's approved command rather than bypassing it.
 
 - [ ] **Step 6: Commit only the frontend plumbing slice**
 
@@ -709,13 +709,142 @@ git commit -m "feat(im): add contact translation controls"
 
 ---
 
-### Task 7: Document, verify, and prepare controlled browser acceptance
+### Task 7: Correct formal friendship classification and language completeness
+
+**Files:**
+
+- Modify: `backend/src/repositories/realtime.repository.ts`
+- Modify: `backend/tests/friend-request-lifecycle.repository.test.ts`
+
+**Interfaces:**
+
+No API shape changes. `DirectoryProfilePayload.relationship` keeps its existing union and `identityCard.languages` remains `string[]`.
+
+- [ ] **Step 1: Write failing relationship-source tests**
+
+Add focused repository tests proving:
+
+- reciprocal active contacts with non-friend sources such as `lifedance_admin2_seed`, `lifedance_customer_service_seed`, `manual`, or `technician_application` do not produce `relationship: "friend"`;
+- an active incoming request remains `incoming_pending` with its `friendRequest` when such reciprocal business contacts exist;
+- `createFriendRequest` does not return `already_friends` for reciprocal non-friend contacts;
+- reciprocal contacts whose source is `friend_request` still produce `relationship: "friend"` and still block a duplicate friend request.
+
+Assert both direction lookups include `source: "friend_request"`; do not delete or rewrite legacy business contacts.
+
+- [ ] **Step 2: Write failing formal-language-source tests**
+
+Extend the published-technician profile fixture with `languages: ["日本語"]` and require that exact value in `identityCard.languages`.
+
+Add a public customer fixture with `languages: null` and a published, non-deleted technician profile with `languages: ["日本語"]`; require the customer identity card to use that formal fallback. Add private-customer and unpublished/deleted-technician cases proving no language is exposed from an ineligible profile.
+
+- [ ] **Step 3: Run the repository tests to verify RED**
+
+Run:
+
+```bash
+npm --prefix backend test -- friend-request-lifecycle.repository.test.ts
+```
+
+Expected: FAIL because relationship checks ignore Contact source and technician languages are neither selected nor mapped.
+
+- [ ] **Step 4: Restrict friendship checks to accepted friend-request contacts**
+
+In `getDirectoryProfile`, require `source: "friend_request"` on both active reciprocal Contact queries. In `createFriendRequest`, make `already_friends` count only the same source in both directions. Keep owner/contact identity scoping, soft-delete filtering, and active-request database-time rules unchanged.
+
+- [ ] **Step 5: Complete the formal language mapping**
+
+Select `technicianProfile.languages`, add it to `DirectoryProfileUserRecord`, and map it for technician identity cards.
+
+For a public customer card, use customer languages when nonempty. Only when that normalized formal list is empty, allow fallback to a non-deleted, published technician profile's formal language list. Do not fall back for a private/non-public customer card and do not invent a default language.
+
+- [ ] **Step 6: Run focused tests to verify GREEN**
+
+Run:
+
+```bash
+npm --prefix backend test -- friend-request-lifecycle.repository.test.ts realtime-service.test.ts realtime-api.test.ts
+```
+
+Expected: PASS with request lifecycle, friend deletion, and identity profile contracts unchanged outside the corrected source boundary.
+
+- [ ] **Step 7: Commit only the backend correction**
+
+```bash
+git add backend/src/repositories/realtime.repository.ts backend/tests/friend-request-lifecycle.repository.test.ts
+git commit -m "fix(im): correct friendship and profile languages"
+```
+
+---
+
+### Task 8: Keep pending friend actions authoritative in contact information
+
+**Files:**
+
+- Modify: `src/features/im/pages.tsx`
+- Modify: `src/features/im/friend-request-presentation.test.ts`
+- Modify: `src/features/im/pages.test.tsx`
+
+**Interfaces:**
+
+Keep the existing `resolveDirectoryProfileActions(...)` API. Active request means `status === "pending"` and `expiresAt` is later than the current clock.
+
+- [ ] **Step 1: Write failing action-priority tests**
+
+Extend `friend-request-presentation.test.ts` to prove:
+
+- an active incoming request returns `["reject", "accept"]` even if a stale profile payload says `relationship: "friend"`;
+- an active outgoing request returns `["waiting"]` under the same stale relationship;
+- `relationship: "self"` remains actionless;
+- an expired request never overrides a real friend relationship.
+
+- [ ] **Step 2: Write failing page-navigation regressions**
+
+In `pages.test.tsx`, cover the “新的朋友” deep link contract: when an active request is resolved from `profile.friendRequest` or the `requestId` query fallback, `ImDirectoryProfilePage` must render the independent friend action bar and must not call `ensureDirectConversation` or replace the page with the conversation-info route. Once accepted and no active pending request remains, the existing friend redirect continues to work.
+
+Prefer a behavioral route test. If the current page harness cannot mount this store/router combination, use a narrow source assertion around one exported active-request helper plus the redirect predicate.
+
+- [ ] **Step 3: Run the focused frontend tests to verify RED**
+
+Run:
+
+```bash
+npm test -- src/features/im/friend-request-presentation.test.ts src/features/im/pages.test.tsx
+```
+
+Expected: FAIL because the friend short-circuit and redirect currently run before pending-request authority.
+
+- [ ] **Step 4: Make active pending state authoritative**
+
+Keep `self` actionless. Evaluate active pending requests before the `friend` short-circuit in `resolveDirectoryProfileActions`.
+
+In `ImDirectoryProfilePage`, derive the active pending state from the resolved request and current clock. A stale `relationship: "friend"` plus an active pending request is not `isFriendProfile`, must not start the friend redirect effect, and must continue rendering `ImFriendProfileActionBar`. Do not create a conversation, mutate relationship data, or replace the reject/accept buttons with “开始聊天”.
+
+- [ ] **Step 5: Run focused tests to verify GREEN**
+
+Run:
+
+```bash
+npm test -- src/features/im/friend-request-presentation.test.ts src/features/im/pages.test.tsx
+```
+
+Expected: PASS, including accepted-friend redirect and self-profile behavior.
+
+- [ ] **Step 6: Commit only the frontend pending-state correction**
+
+```bash
+git add src/features/im/pages.tsx src/features/im/friend-request-presentation.test.ts src/features/im/pages.test.tsx
+git commit -m "fix(im): preserve pending friend actions"
+```
+
+---
+
+### Task 9: Document, verify, and prepare controlled browser acceptance
 
 **Files:**
 
 - Modify: `README.md`
 - Modify: `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`
-- Verify only: all files changed in Tasks 1–6
+- Verify only: all files changed in Tasks 1–8
 
 - [ ] **Step 1: Update formal behavior documentation**
 
@@ -736,8 +865,8 @@ Add a concise README note to the formal IM section and link to the Step 13 docum
 Run:
 
 ```bash
-npm --prefix backend test -- conversation-auto-translate-schema.test.ts realtime-api.test.ts realtime-service.test.ts realtime-repository-identity.test.ts openapi.test.ts
-npm test -- src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/message-translation.test.ts src/features/im/components.action-menu.test.tsx src/features/im/chat-home.test.tsx src/features/im/language-display.test.ts src/features/im/ConversationIdentityProfileCard.test.tsx src/features/im/pages.test.tsx src/i18n/I18nProvider.test.ts src/i18n/translations.test.ts
+npm --prefix backend test -- conversation-auto-translate-schema.test.ts realtime-api.test.ts realtime-service.test.ts realtime-repository-identity.test.ts friend-request-lifecycle.repository.test.ts openapi.test.ts
+npm test -- src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/message-translation.test.ts src/features/im/components.action-menu.test.tsx src/features/im/chat-home.test.tsx src/features/im/language-display.test.ts src/features/im/ConversationIdentityProfileCard.test.tsx src/features/im/friend-request-presentation.test.ts src/features/im/pages.test.tsx src/i18n/I18nProvider.test.ts src/i18n/translations.test.ts
 ```
 
 Expected: PASS. If a listed test file was not created because equivalent coverage lives in an existing file, use the actual path and record the substitution in the Step 13 verification note.
@@ -787,6 +916,8 @@ Manually confirm the diff covers all of the following:
 - judgement SVGs and raw forward/resend/recall/search payloads remain intact;
 - single chat only, request locked, error-safe;
 - full language labels, alias dedupe, unknown retention, narrow-screen wrap;
+- only accepted `friend_request` contacts define friendship, while pending actions remain authoritative;
+- technician languages and eligible public-profile fallback come only from formal stored profile values;
 - five-language UI copy.
 
 - [ ] **Step 6: Commit documentation and verification record**
