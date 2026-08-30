@@ -67,6 +67,14 @@
 
 旧 UI 的数据计算被抽成纯 `formal-schedule-presentation` 映射，输入仅为正式 `BookingScheduleSlot`、`BookingOrder` 和当前技师资料。未启用的正式班次转让不能显示可成功提交的 mock 流程；保留无假写入的明确不可用状态，直到正式状态机实现。
 
+## 6.1 身份头像首次继承与后续隔离
+
+- `User.avatarBootstrapUrl / avatarBootstrappedAt` 保存账号第一次从用户、技师或店铺任一身份上传的头像，作为不可随身份后续编辑而变化的初始基线。
+- 第一次上传同时写入当前身份头像；若来源不是用户身份，同时初始化 `User.avatarUrl`，让账号其他身份可以立即继承。
+- 技师优先读取自己的 `TechnicianProfile` avatar media，店铺优先读取自己的 Shop avatar media；当前身份尚未独立修改时才回退到 `avatarBootstrapUrl`。
+- 用户身份后续修改只更新 `User.avatarUrl` 与 Customer avatar media；技师后续修改只更新 Technician avatar media；店铺后续修改只更新 Shop avatar media，均不得反向覆盖其他身份。
+- migration 仅新增基线字段，并从既有 `User.avatarUrl`、Customer/Technician/Shop avatar media 回填，不覆盖已有身份专属头像。
+
 ## 7. 删除策略
 
 从正式生产依赖图中删除：
@@ -92,4 +100,3 @@
 - 前后端 lint、全部测试、正式构建通过。
 - 本地正式服务 health/ready 通过。
 - 使用正式测试账号在桌面及 390px、440px 验收资料、通讯录、动态、聊天、日程、需求和订单详情；检查刷新持久化、身份切换、网络请求、控制台和水平溢出。
-
