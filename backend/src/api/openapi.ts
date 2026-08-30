@@ -13663,6 +13663,55 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/voice`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Send one validated raw-audio IM voice message",
+        description:
+          "Requires Bearer authentication and message:create. Accepts at most 8 MiB and returns the existing RealtimeMessage contract.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "fileName",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          },
+          {
+            name: "durationSeconds",
+            in: "query",
+            required: true,
+            schema: { type: "integer", minimum: 1, maximum: 59 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          description: "Raw audio body, maximum 8 MiB",
+          content: {
+            "audio/webm": { schema: { type: "string", format: "binary" } },
+            "audio/mp4": { schema: { type: "string", format: "binary" } },
+            "audio/ogg": { schema: { type: "string", format: "binary" } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created voice message", {
+            $ref: "#/components/schemas/RealtimeMessage"
+          }),
+          "400": { description: "Invalid path, query, duration, or audio bytes" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:create permission or send access" },
+          "404": { description: "Conversation not found for current participant" },
+          "413": { description: "Audio exceeds 8 MiB" },
+          "415": { description: "Unsupported audio media type" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}/recall`]: {
       post: {
         tags: ["Step 13 Realtime"],
