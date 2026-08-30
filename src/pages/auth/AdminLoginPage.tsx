@@ -66,7 +66,7 @@ type BackendLoginCopy = {
   copyright: string;
 };
 
-const adminLoginCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
+const adminLoginCopyrightText = "Copyright © 2026 LifeDance Co., Ltd. All rights reserved.";
 
 const adminLoginCopy = {
   zh: {

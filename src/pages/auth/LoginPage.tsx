@@ -53,7 +53,7 @@ type GeneratedNeedoIdState = {
 };
 
 const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
-const loginCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
+const loginCopyrightText = "Copyright © 2026 LifeDance Co., Ltd. All rights reserved.";
 
 const portalEntryRoute: Record<PortalScope, string> = {
   admin: "/admin",

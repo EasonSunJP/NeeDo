@@ -602,7 +602,7 @@ const splashImages: Record<SplashPortal, string> = {
 };
 
 const splashVersionLabel = "0.001";
-const splashCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
+const splashCopyrightText = "Copyright © 2026 LifeDance Co., Ltd. All rights reserved.";
 
 const splashAdminThemeConfig = {
   admin: {
