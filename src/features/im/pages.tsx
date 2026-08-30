@@ -107,6 +107,10 @@ import {
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
+import {
+  FriendDeletionConfirmDialog,
+  useFriendDeletionConfirmation,
+} from "./FriendDeletionConfirmDialog";
 import { recordRecentImReaction } from "./reaction-catalog";
 import {
   deriveCurrentUserReactionSlots,
@@ -2023,6 +2027,9 @@ export function ImContactsListPage() {
   const [contactQuery, setContactQuery] = useState(contactQueryFromParams);
   const deferredContactQuery = useDeferredValue(contactQuery);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const contactDeletion = useFriendDeletionConfirmation<ContactRelation>({
+    deleteContact: store.deleteContact,
+  });
   const isAddStaffMode = scope === "merchant" && searchParams.get("intent") === "add-staff";
   const addStaffType = getAddStaffMode(searchParams.get("staffType"));
   const addStaffLabel = getAddStaffLabel(addStaffType);
@@ -2406,7 +2413,7 @@ export function ImContactsListPage() {
                         label: "删除",
                         tone: "danger",
                         width: 76,
-                        onClick: () => void store.deleteContact(contact.id)
+                        onClick: () => contactDeletion.requestDeletion(contact)
                       },
                       {
                         key: "block",
@@ -2513,6 +2520,14 @@ export function ImContactsListPage() {
         ) : null}
       </div>
       </UnifiedChatHomePage>
+
+      <FriendDeletionConfirmDialog
+        deleting={contactDeletion.deleting}
+        errorMessage={contactDeletion.errorMessage}
+        onCancel={contactDeletion.cancelDeletion}
+        onConfirm={contactDeletion.confirmDeletion}
+        open={contactDeletion.open}
+      />
 
       <ImTagFilterSheet
         availableTags={availableTags}
@@ -6802,6 +6817,10 @@ export function ImConversationInfoPage() {
   const [transferOwnerPickerOpen, setTransferOwnerPickerOpen] = useState(false);
   const [dissolveConfirmOpen, setDissolveConfirmOpen] = useState(false);
   const [dissolvingGroup, setDissolvingGroup] = useState(false);
+  const contactDeletion = useFriendDeletionConfirmation<ContactRelation>({
+    deleteContact: store.deleteContact,
+    onDeleted: () => navigate(config.routes.contacts, { replace: true }),
+  });
   const infoRoleTagSet = useMemo(() => new Set(scope === "merchant" ? getMerchantOrganizationRoleTagNames() : []), [scope]);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
@@ -7549,7 +7568,7 @@ export function ImConversationInfoPage() {
                 </button>
               ) : null}
               {contact && config.messageActionConfig.detailToggles.includes("deleteContact") ? (
-                <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f]" onClick={() => void store.deleteContact(contact.id)} type="button">
+                <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f]" onClick={() => contactDeletion.requestDeletion(contact)} type="button">
                   删除联系人
                 </button>
               ) : null}
@@ -7597,6 +7616,13 @@ export function ImConversationInfoPage() {
           })}
         </div>
       </ImBottomSheet>
+      <FriendDeletionConfirmDialog
+        deleting={contactDeletion.deleting}
+        errorMessage={contactDeletion.errorMessage}
+        onCancel={contactDeletion.cancelDeletion}
+        onConfirm={contactDeletion.confirmDeletion}
+        open={contactDeletion.open}
+      />
       <ClientActionDialog
         actions={(
           <div className="grid grid-cols-2 gap-3">
