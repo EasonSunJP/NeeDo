@@ -147,3 +147,52 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).toContain('{t("添加好友")}');
   });
 });
+
+describe("IM automatic translation display wiring", () => {
+  it("passes the confirmed room preference to message bubbles and pinned text previews", () => {
+    const start = source.indexOf("export function ImConversationRoomPage");
+    const end = source.indexOf("export function ImConversationInfoPage", start);
+    const roomSource = source.slice(start, end);
+
+    expect(roomSource).toContain("const messageTranslation = {");
+    expect(roomSource).toContain("enabled: conversation?.autoTranslateMessages ?? false");
+    expect(roomSource).toContain("language");
+    expect(roomSource).toContain("translation={messageTranslation}");
+    expect(roomSource).toContain("getImMessageDisplayText(");
+    expect(roomSource).toContain('message.status !== "recalled"');
+    expect(roomSource).toContain('data-no-i18n={userGeneratedPreview ? "true" : undefined}');
+  });
+
+  it("translates only non-draft conversation previews at the page boundary", () => {
+    const start = source.indexOf("export function ImConversationListPage");
+    const end = source.indexOf("export function ImContactsListPage", start);
+    const listSource = source.slice(start, end);
+
+    expect(source).toContain("getImPreviewDisplayText(");
+    expect(source).toContain("conversation.autoTranslateMessages");
+    expect(source).toContain("preview.isDraft");
+    expect(listSource).toContain("buildConversationDisplayPreview(conversation, language)");
+  });
+
+  it("displays search results with the owning conversation preference without changing matching", () => {
+    const start = source.indexOf("export function ImSearchPage");
+    const end = source.indexOf("export function ImOrganizationContactsPage", start);
+    const searchSource = source.slice(start, end);
+
+    expect(searchSource).toContain("message.conversationId");
+    expect(searchSource).toContain("autoTranslateMessages");
+    expect(searchSource).toContain("getImMessageDisplayText(");
+    expect(searchSource).toContain('data-no-i18n={userGenerated ? "true" : undefined}');
+    expect(searchSource).toContain("store.search(deferredQuery, conversationId)");
+  });
+
+  it("copies displayed text while forward and recall continue to use the stored message", () => {
+    const start = source.indexOf("export function ImConversationRoomPage");
+    const end = source.indexOf("export function ImConversationInfoPage", start);
+    const roomSource = source.slice(start, end);
+
+    expect(roomSource).toContain("getImMessageCopyText(message, selectedContent, messageTranslation)");
+    expect(source).toContain("store.forwardMessage(forwardMessageId, conversation.id)");
+    expect(roomSource).toContain("restoreImComposerDraft(message.content, message.ext?.richText)");
+  });
+});

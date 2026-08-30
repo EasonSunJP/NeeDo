@@ -1,5 +1,16 @@
-import { describe, expect, it } from "vitest";
+/** @vitest-environment jsdom */
+
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it } from "vitest";
+import { UnifiedConversationPreviewText } from "./chat-home";
 import source from "./chat-home.tsx?raw";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
 
 describe("UnifiedChatHomePage spacing", () => {
   it("lets chat and contact list content scroll behind the fixed glass header", () => {
@@ -31,5 +42,28 @@ describe("UnifiedChatHomePage spacing", () => {
     expect(componentSource).toContain('compactHeader ? "flex items-center gap-3" : "space-y-3"');
     expect(componentSource).toContain('className="min-w-0 flex-1"');
     expect(componentSource).toContain("compactHeader ? unifiedChatHomeCompactContentClassName : unifiedChatHomeContentClassName");
+  });
+
+  it("protects only message-derived preview text from runtime i18n", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(UnifiedConversationPreviewText, {
+        preview: { text: "テストテスト", userGenerated: true }
+      }));
+    });
+
+    expect(container.querySelector("p")?.getAttribute("data-no-i18n")).toBe("true");
+
+    await act(async () => {
+      root.render(createElement(UnifiedConversationPreviewText, {
+        preview: { text: "私密群消息已隐藏", userGenerated: false }
+      }));
+    });
+
+    expect(container.querySelector("p")?.hasAttribute("data-no-i18n")).toBe(false);
+    await act(async () => root.unmount());
   });
 });

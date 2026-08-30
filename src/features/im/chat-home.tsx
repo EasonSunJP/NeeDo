@@ -15,6 +15,7 @@ import { cn } from "../../lib/utils";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Conversation, ImRoleType } from "./model";
 import { ImIcon, PrivateConversationTitle, SwipeActionRow } from "./components";
+import { isImUserGeneratedPreviewText } from "./message-translation";
 
 const unifiedChatHomeShellClassName = "client-glass-page-surface relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-transparent";
 const unifiedChatHomeContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+143px)] [-webkit-overflow-scrolling:touch]";
@@ -23,6 +24,7 @@ const unifiedChatHomeCompactContentClassName = "scrollbar-none relative z-10 min
 type UnifiedConversationPreview = {
   text: string;
   isDraft?: boolean;
+  userGenerated?: boolean;
 };
 
 type UnifiedSwipeAction = {
@@ -334,7 +336,7 @@ export function UnifiedConversationPreviewText({
 }) {
   const text = preview.text || "暂无消息";
   const isLink = /^https?:\/\//i.test(text);
-  const isMetaText = conversationType === "system" || /(撤回了一条消息|changed|left\b|语音通话|视频通话|系统消息)/i.test(text);
+  const isMetaText = !isImUserGeneratedPreviewText(text, conversationType);
 
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-[14px] leading-5">
@@ -355,6 +357,7 @@ export function UnifiedConversationPreviewText({
                 ? "text-[color:var(--client-soft-muted)]"
                 : "text-[color:var(--client-muted)]"
         )}
+        data-no-i18n={preview.userGenerated && !isMetaText ? "true" : undefined}
       >
         {text}
       </p>

@@ -107,6 +107,12 @@ import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contac
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
 import {
+  getImMessageCopyText,
+  getImMessageDisplayText,
+  getImPreviewDisplayText,
+  isImUserGeneratedPreviewText,
+} from "./message-translation";
+import {
   FriendDeletionConfirmDialog,
   useFriendDeletionConfirmation,
 } from "./FriendDeletionConfirmDialog";
@@ -1161,6 +1167,28 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
   return resolveImProfilePath(scope, getConversationPartner(store, conversation));
 }
 
+function buildConversationDisplayPreview(
+  conversation: Conversation,
+  language: ReturnType<typeof useI18n>["language"],
+) {
+  const preview = buildConversationRowPreview(conversation);
+  const userGenerated = !preview.isDraft
+    && !conversation.privacyModeEnabled
+    && Boolean(conversation.lastMessagePreview)
+    && isImUserGeneratedPreviewText(preview.text, conversation.type);
+
+  return {
+    ...preview,
+    text: userGenerated
+      ? getImPreviewDisplayText(preview.text, {
+          enabled: conversation.autoTranslateMessages,
+          language,
+        })
+      : preview.text,
+    userGenerated,
+  };
+}
+
 function appendQuery(path: string, entries: Record<string, string | string[] | undefined>) {
   const searchParams = new URLSearchParams();
 
@@ -1499,6 +1527,7 @@ export function ImMessagesEntryPage() {
 
 export function ImConversationListPage() {
   const { store, config, scope } = useImRuntime();
+  const { language } = useI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryFromParams = searchParams.get("q") ?? "";
@@ -1785,7 +1814,7 @@ export function ImConversationListPage() {
   }, [pinnedCollapsed, pinnedCollapsedStorageKey]);
 
   const renderConversationItem = (conversation: Conversation, showDivider: boolean) => {
-    const preview = buildConversationRowPreview(conversation);
+    const preview = buildConversationDisplayPreview(conversation, language);
     const title = getConversationDisplayName(store, conversation);
     const pinActionLabel = conversation.isPinned ? "取消置顶" : "置顶";
     const avatarTarget = getConversationProfileTarget(scope, store, conversation);
@@ -3815,6 +3844,7 @@ function ImTagCampaignSheet({
 
 export function ImSearchPage() {
   const { scope, store, config } = useImRuntime();
+  const { language } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const conversationId = searchParams.get("conversationId") ?? undefined;
@@ -3929,7 +3959,7 @@ export function ImSearchPage() {
                   group={conversation.type === "group"}
                   key={conversation.id}
                   privacyMode={conversation.privacyModeEnabled}
-                  preview={buildConversationRowPreview(conversation)}
+                  preview={buildConversationDisplayPreview(conversation, language)}
                   time={formatConversationTime(conversation.lastMessageTime)}
                   title={getConversationDisplayName(store, conversation)}
                   to={config.routes.conversation(conversation.id)}
@@ -3942,17 +3972,35 @@ export function ImSearchPage() {
           {result.messages.length > 0 ? (
             <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>聊天记录</SectionTag>
-              {result.messages.map((message) => (
-                <Link
-                  className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 last:border-b-0"
-                  key={message.id}
-                  onClick={() => store.rememberSearchTerm(query)}
-                  to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
-                >
-                  <p className="text-sm font-semibold text-[color:var(--client-text)]">{message.content || "已撤回消息"}</p>
-                  <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
-                </Link>
-              ))}
+              {result.messages.map((message) => {
+                const owningConversation = store.conversations.find((conversation) => conversation.id === message.conversationId);
+                const userGenerated = message.type !== "system"
+                  && message.type !== "recalled"
+                  && message.status !== "recalled";
+                const displayText = userGenerated
+                  ? getImMessageDisplayText(message.content, message.ext?.richText, {
+                      enabled: owningConversation?.autoTranslateMessages ?? false,
+                      language,
+                    })
+                  : message.content || "已撤回消息";
+
+                return (
+                  <Link
+                    className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 last:border-b-0"
+                    key={message.id}
+                    onClick={() => store.rememberSearchTerm(query)}
+                    to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
+                  >
+                    <p
+                      className="text-sm font-semibold text-[color:var(--client-text)]"
+                      data-no-i18n={userGenerated ? "true" : undefined}
+                    >
+                      {displayText}
+                    </p>
+                    <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
+                  </Link>
+                );
+              })}
             </section>
           ) : null}
 
@@ -4609,6 +4657,7 @@ export function ImConversationRoomPage({
   conversationId: string;
 }) {
   const { scope, store, config, api } = useImRuntime();
+  const { language } = useI18n();
   const { isNight } = useClientTheme();
   const social = useSocial();
   const entityStore = useEntityStore();
@@ -4616,6 +4665,10 @@ export function ImConversationRoomPage({
   const [searchParams] = useSearchParams();
   const back = useRoomBackTarget();
   const { conversation, messages, members } = useConversationData(store, conversationId);
+  const messageTranslation = {
+    enabled: conversation?.autoTranslateMessages ?? false,
+    language,
+  };
   const [draft, setDraft] = useState("");
   const [quotedMessageId, setQuotedMessageId] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<"emoji" | "more" | null>(null);
@@ -5867,7 +5920,7 @@ export function ImConversationRoomPage({
     const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
       ? selection.toString().trim()
       : "";
-    const content = selectedContent || message.content || message.ext?.previewText || "媒体消息";
+    const content = getImMessageCopyText(message, selectedContent, messageTranslation);
     closeMessageMenu();
 
     try {
@@ -6160,7 +6213,11 @@ export function ImConversationRoomPage({
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
                   const senderName = getConversationMemberDisplayName(sender) ?? "消息";
-                  const preview = buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
+                  const userGeneratedPreview = (message.type === "text" || message.type === "emoji")
+                    && message.status !== "recalled";
+                  const preview = userGeneratedPreview
+                    ? getImMessageDisplayText(message.content, message.ext?.richText, messageTranslation)
+                    : buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
 
                   return (
                     <div className="im-pinned-message-container flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2" key={message.id}>
@@ -6174,7 +6231,12 @@ export function ImConversationRoomPage({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[11px] font-black text-[color:var(--client-muted)]">信息置顶 · {senderName}</span>
-                          <span className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]">{preview}</span>
+                          <span
+                            className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]"
+                            data-no-i18n={userGeneratedPreview ? "true" : undefined}
+                          >
+                            {preview}
+                          </span>
                         </span>
                       </button>
                       <button
@@ -6283,6 +6345,7 @@ export function ImConversationRoomPage({
                       renderContactCardAction={renderContactCardAction}
                       senderName={senderName}
                       showSender={showSender}
+                      translation={messageTranslation}
                     />
                   </MessagePressable>
                 </div>
@@ -6371,7 +6434,7 @@ export function ImConversationRoomPage({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">回复消息</p>
-                      <ImQuotedMessagePreview message={quotedMessage} />
+                      <ImQuotedMessagePreview message={quotedMessage} translation={messageTranslation} />
                     </div>
                     <button className="text-ink/32" onClick={() => setQuotedMessageId(undefined)} type="button">
                       取消
