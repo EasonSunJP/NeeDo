@@ -2921,6 +2921,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" }
         }
       },
+      ServiceCardPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ServiceCard" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ShopCardPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopCard" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      TechnicianCardPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/TechnicianCard" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       ServiceDetail: {
         allOf: [
           { $ref: "#/components/schemas/ServiceCard" },
@@ -9413,9 +9446,98 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/search`]: {
       get: {
         tags: ["Core Read"],
-        summary: "Public service search",
+        summary: "Typed public shop, technician, or service search",
+        description:
+          "Repeated keywords and categoryIds use OR semantics. Shop and technician names use substring matching. Omitting entityType preserves the legacy service result page.",
+        parameters: [
+          {
+            name: "entityType",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["service", "shop", "technician"],
+              default: "service"
+            }
+          },
+          {
+            name: "keyword",
+            in: "query",
+            description: "Legacy singular keyword, folded into service search terms.",
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
+          {
+            name: "keywords",
+            in: "query",
+            description: "Repeated fuzzy terms; matching any term is sufficient.",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              uniqueItems: true,
+              items: { type: "string", minLength: 1, maxLength: 100 }
+            }
+          },
+          {
+            name: "categoryIds",
+            in: "query",
+            description: "Repeated formal category IDs; matching any category is sufficient.",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            }
+          },
+          { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "technicianId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "serviceMode", in: "query", schema: { type: "string", maxLength: 50 } },
+          { name: "minPrice", in: "query", schema: { type: "number", minimum: 0 } },
+          { name: "maxPrice", in: "query", schema: { type: "number", minimum: 0 } },
+          {
+            name: "sort",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["recommended", "rating_desc", "price_asc", "price_desc", "newest"]
+            }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
         responses: {
-          "200": { description: "Paginated service search results" }
+          "200": {
+            description: "Typed paginated search results",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: {
+                      oneOf: [
+                        { $ref: "#/components/schemas/ServiceCardPage" },
+                        { $ref: "#/components/schemas/ShopCardPage" },
+                        { $ref: "#/components/schemas/TechnicianCardPage" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "error.validation" }
         }
       }
     },

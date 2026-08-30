@@ -2029,4 +2029,31 @@ describe("GET /api/v1/openapi.json", () => {
       ])
     );
   });
+
+  it("documents typed multi-entity core search parameters and pages", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const search = response.body.paths["/api/v1/search"].get;
+
+    expect(search.parameters).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "entityType",
+        schema: expect.objectContaining({ enum: ["service", "shop", "technician"] })
+      }),
+      expect.objectContaining({
+        name: "keywords",
+        style: "form",
+        explode: true,
+        schema: expect.objectContaining({ type: "array", maxItems: 20 })
+      }),
+      expect.objectContaining({
+        name: "categoryIds",
+        style: "form",
+        explode: true,
+        schema: expect.objectContaining({ type: "array", maxItems: 20 })
+      })
+    ]));
+    expect(
+      search.responses["200"].content?.["application/json"].schema.properties.data.oneOf
+    ).toHaveLength(3);
+  });
 });

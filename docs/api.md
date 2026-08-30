@@ -130,7 +130,7 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `GET` | `/api/v1/services` | Paginated public service cards | Public |
 | `GET` | `/api/v1/services/:id` | Public service detail | Public |
 | `GET` | `/api/v1/home/recommendations` | Home recommendation rows | Public |
-| `GET` | `/api/v1/search` | Service search with filters | Public |
+| `GET` | `/api/v1/search` | Typed shop, technician, or service search | Public |
 | `GET` | `/api/v1/shops/:id` | Public shop detail | Public |
 | `GET` | `/api/v1/technicians/:id` | Public technician detail | Public |
 | `GET` | `/api/v1/profiles/customers/:id` | Public customer profile without account credentials | Public |
@@ -145,7 +145,7 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `pageSize` | integer | Defaults to `20`, max `100`. |
 | `parentId` | integer | Optional category parent filter. |
 
-`GET /services` and `GET /search`
+`GET /services`
 
 | Name | Type | Notes |
 |---|---|---|
@@ -158,6 +158,31 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `minPrice` / `maxPrice` | number | Validated so min cannot exceed max. |
 | `sort` | enum | `recommended`, `rating_desc`, `price_asc`, `price_desc`, `newest`. |
 | `page` / `pageSize` | integer | Same pagination contract as above. |
+
+`GET /search`
+
+| Name | Type | Notes |
+|---|---|---|
+| `entityType` | enum | `shop`, `technician`, or `service`; defaults to `service` for legacy callers. |
+| `keywords` | repeated string | Up to 20 unique, trimmed values. Matching any keyword is sufficient. |
+| `categoryIds` | repeated integer | Up to 20 unique positive category IDs. Matching any category is sufficient. |
+| `keyword` | string | Legacy singular keyword; retained for backward-compatible service search. |
+| `city` | string | Optional direct city filter where supported by the selected entity type. |
+| `categoryId` / `shopId` / `technicianId` | integer | Existing strict service filters retained for legacy service callers. |
+| `serviceMode` | string | Existing service-mode filter. |
+| `minPrice` / `maxPrice` | number | Existing service-price filters; min cannot exceed max. |
+| `sort` | enum | `recommended`, `rating_desc`, `price_asc`, `price_desc`, `newest`. |
+| `page` / `pageSize` | integer | Defaults to page `1`, page size `20`; maximum page size is `100`. |
+
+Repeat array values as query keys instead of comma-joining them:
+
+```text
+GET /api/v1/search?entityType=shop&keywords=LifeDance&keywords=家政&categoryIds=3&categoryIds=9&page=1&pageSize=20
+```
+
+Keywords, category IDs, and their two groups use OR semantics: a published record matching any supplied keyword or any selected category may appear. Shop and technician names use trimmed substring containment, so `LifeDance` and `Wellness 渋谷` can each match `LifeDance Wellness 渋谷`; a multi-word value stays one phrase. Shop `shop##########` and technician `s##########` public IDs use exact matching.
+
+The response keeps the shared success envelope and returns exactly one typed paginated page selected by `entityType`: `ShopCard`, `TechnicianCard`, or `ServiceCard`. Published status, active formal public identifiers, and `deletedAt IS NULL` remain mandatory. A shop or technician may be searchable without a published service; search visibility does not imply that the entity is currently bookable, and the client must not fabricate price, service, or availability data.
 
 `GET /home/recommendations`
 
