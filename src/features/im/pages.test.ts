@@ -42,6 +42,34 @@ describe("IM pages", () => {
     expect(markup.indexOf("服务号")).toBeLessThan(markup.indexOf("Test"));
   });
 
+  it("keeps numeric badges, title trailing content, and captions compatible in one entry cell", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(ImEntryCell, {
+          badge: 2,
+          caption: "13 人",
+          icon: createElement("span", { "data-im-entry-icon": "service" }, "icon"),
+          title: "服务号",
+          to: "/contacts/service-accounts",
+          trailing: createElement(TestFeatureBadge, {
+            className: "min-h-4 px-1.5 py-0 text-[8px]",
+          }),
+        }),
+      ),
+    );
+
+    expect(markup).toContain('href="/contacts/service-accounts"');
+    expect(markup).toContain('data-im-entry-icon="service"');
+    expect(markup).toMatch(/>2<\/span>/);
+    expect(markup).toContain("服务号");
+    expect(markup).toContain('aria-label="Test 功能"');
+    expect(markup).toContain("13 人");
+    expect(markup.indexOf("服务号")).toBeLessThan(markup.indexOf("Test"));
+    expect(markup.indexOf("Test")).toBeLessThan(markup.indexOf("13 人"));
+  });
+
   it("always exposes the Test service-account entry in every scoped contact directory", () => {
     const contactsStart = pagesSource.indexOf("export function ImContactsListPage");
     const contactsEnd = pagesSource.indexOf("export function ImFriendRequestsPage", contactsStart);
