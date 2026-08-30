@@ -2646,11 +2646,13 @@ export function ToggleRow({
   title,
   caption,
   checked,
+  disabled = false,
   onChange
 }: {
   title: string;
   caption?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
   return (
@@ -2659,7 +2661,7 @@ export function ToggleRow({
         <div className="text-[15px] font-black text-[color:var(--client-text)]">{title}</div>
         {caption ? <p className="mt-1 text-xs text-[color:var(--client-muted)]">{caption}</p> : null}
       </div>
-      <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} size="md" />
+      <ToggleSwitch ariaLabel={title} checked={checked} disabled={disabled} onChange={onChange} size="md" />
     </div>
   );
 }

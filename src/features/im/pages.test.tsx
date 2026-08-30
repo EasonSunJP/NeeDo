@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import source from "./pages.tsx?raw";
+import componentsSource from "./components.tsx?raw";
 
 describe("ImNewConversationPage directory query handoff", () => {
   it("initializes the editable formal directory query from the URL", () => {
@@ -208,5 +209,50 @@ describe("IM automatic translation display wiring", () => {
     expect(roomSource).toContain("getImMessageCopyText(message, selectedContent, messageTranslation)");
     expect(source).toContain("store.forwardMessage(forwardMessageId, conversation.id)");
     expect(roomSource).toContain("restoreImComposerDraft(message.content, message.ext?.richText)");
+  });
+});
+
+describe("IM contact information automatic translation control", () => {
+  const start = source.indexOf("export function ImConversationInfoPage");
+  const end = source.indexOf("export function ImConversationSearchPage", start);
+  const infoSource = source.slice(start, end);
+
+  it("renders a single-chat-only control before mute and pin using the confirmed conversation value", () => {
+    const translationIndex = infoSource.indexOf("聊天内容自动翻译");
+    const muteIndex = infoSource.indexOf("消息免打扰");
+    const pinIndex = infoSource.indexOf("置顶聊天");
+
+    expect(infoSource).toContain('conversation.type === "single" ? (');
+    expect(infoSource).toContain('title={t("聊天内容自动翻译")}');
+    expect(infoSource).toContain('caption={t("打开后按当前 App 语言显示；关闭后显示原文")}');
+    expect(infoSource).toContain("checked={conversation.autoTranslateMessages}");
+    expect(translationIndex).toBeGreaterThan(-1);
+    expect(translationIndex).toBeLessThan(muteIndex);
+    expect(muteIndex).toBeLessThan(pinIndex);
+  });
+
+  it("disables repeated requests while pending and keeps the checked value server-confirmed", () => {
+    expect(infoSource).toContain("const [autoTranslatePending, setAutoTranslatePending] = useState(false);");
+    expect(infoSource).toContain("if (!conversation || conversation.type !== \"single\" || autoTranslatePending)");
+    expect(infoSource).toContain("setAutoTranslatePending(true)");
+    expect(infoSource).toContain("await store.setConversationAutoTranslateMessages(conversation.id, next)");
+    expect(infoSource).toContain("setAutoTranslatePending(false)");
+    expect(infoSource).toContain("disabled={autoTranslatePending}");
+    expect(infoSource).not.toContain("setAutoTranslateMessages(");
+  });
+
+  it("shows a localized failure without introducing optimistic checked state", () => {
+    expect(infoSource).toContain('showInfoToast(t("聊天内容自动翻译设置失败，请稍后重试"))');
+    expect(infoSource).toContain("finally {");
+    expect(infoSource).not.toContain("setAutoTranslateChecked");
+  });
+
+  it("forwards the pending state through ToggleRow to the native switch", () => {
+    const toggleStart = componentsSource.indexOf("export function ToggleRow");
+    const toggleEnd = componentsSource.indexOf("function formatSize", toggleStart);
+    const toggleSource = componentsSource.slice(toggleStart, toggleEnd);
+
+    expect(toggleSource).toContain("disabled?: boolean;");
+    expect(toggleSource).toContain("disabled={disabled}");
   });
 });

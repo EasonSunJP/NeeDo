@@ -5,6 +5,38 @@ import { affiliateMarketplaceTranslations } from "../features/affiliate-marketpl
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes automatic chat translation controls in all five App languages", () => {
+    const expected = {
+      "聊天内容自动翻译": {
+        zh: "聊天内容自动翻译",
+        "zh-Hant": "聊天內容自動翻譯",
+        ja: "チャット内容を自動翻訳",
+        en: "Automatically translate chat",
+        ko: "채팅 내용 자동 번역",
+      },
+      "打开后按当前 App 语言显示；关闭后显示原文": {
+        zh: "打开后按当前 App 语言显示；关闭后显示原文",
+        "zh-Hant": "開啟後依目前 App 語言顯示；關閉後顯示原文",
+        ja: "オンにすると現在のアプリ言語で表示し、オフにすると原文を表示します",
+        en: "On: display in the current app language; Off: display the original text",
+        ko: "켜면 현재 앱 언어로 표시하고, 끄면 원문을 표시합니다",
+      },
+      "聊天内容自动翻译设置失败，请稍后重试": {
+        zh: "聊天内容自动翻译设置失败，请稍后重试",
+        "zh-Hant": "聊天內容自動翻譯設定失敗，請稍後再試",
+        ja: "チャット内容の自動翻訳設定に失敗しました。しばらくしてからもう一度お試しください",
+        en: "Couldn't update automatic chat translation. Try again later.",
+        ko: "채팅 내용 자동 번역 설정에 실패했습니다. 잠시 후 다시 시도해 주세요",
+      },
+    } as const;
+
+    Object.entries(expected).forEach(([source, translationsByLanguage]) => {
+      Object.entries(translationsByLanguage).forEach(([language, translated]) => {
+        expect(translateText(source, language as keyof typeof translationsByLanguage)).toBe(translated);
+      });
+    });
+  });
+
   it("localizes the complete friend-verification flow in all five languages", () => {
     const friendVerificationCopy = [
       "取消",

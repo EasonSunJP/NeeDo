@@ -7005,6 +7005,7 @@ export function ImConversationInfoPage() {
   const [formalActivityStatus, setFormalActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
   const [conversationDirectoryProfile, setConversationDirectoryProfile] = useState<DirectoryProfile | null>(null);
   const [conversationFriendMutationPending, setConversationFriendMutationPending] = useState(false);
+  const [autoTranslatePending, setAutoTranslatePending] = useState(false);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
   const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
@@ -7071,6 +7072,21 @@ export function ImConversationInfoPage() {
   const showInfoToast = (message: string) => {
     toastIdRef.current += 1;
     setInfoToast({ id: toastIdRef.current, message });
+  };
+
+  const setConversationAutoTranslateMessages = async (next: boolean) => {
+    if (!conversation || conversation.type !== "single" || autoTranslatePending) {
+      return;
+    }
+
+    setAutoTranslatePending(true);
+    try {
+      await store.setConversationAutoTranslateMessages(conversation.id, next);
+    } catch {
+      showInfoToast(t("聊天内容自动翻译设置失败，请稍后重试"));
+    } finally {
+      setAutoTranslatePending(false);
+    }
   };
 
   useEffect(() => {
@@ -7770,6 +7786,15 @@ export function ImConversationInfoPage() {
           </section>
         ) : null}
 
+        {conversation.type === "single" ? (
+          <ToggleRow
+            caption={t("打开后按当前 App 语言显示；关闭后显示原文")}
+            checked={conversation.autoTranslateMessages}
+            disabled={autoTranslatePending}
+            onChange={(next) => void setConversationAutoTranslateMessages(next)}
+            title={t("聊天内容自动翻译")}
+          />
+        ) : null}
         <ToggleRow checked={conversation.isMuted} onChange={(next) => void store.muteConversation(conversation.id, next)} title="消息免打扰" />
         <ToggleRow checked={conversation.isPinned} onChange={(next) => void store.pinConversation(conversation.id, next)} title="置顶聊天" />
 
