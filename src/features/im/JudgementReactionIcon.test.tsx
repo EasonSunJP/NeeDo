@@ -19,13 +19,16 @@ afterEach(() => {
 });
 
 describe("JudgementReactionIcon", () => {
-  it("uses pictograms instead of rendering judgement values as visible words", () => {
+  it("keeps every judgement value as a word sticker SVG", () => {
     expect(Object.keys(judgementSvgSources)).toHaveLength(IM_JUDGEMENT_REPLIES.length);
 
-    Object.values(judgementSvgSources).forEach((svg) => {
-      expect(svg).toContain("data-im-judgement-pictogram");
-      expect(svg).not.toContain("<text");
+    const stickerWords = Object.values(judgementSvgSources).map((svg) => {
+      expect(svg).toContain("data-im-judgement-word-sticker");
+      expect(svg).toContain("<text");
+      return svg.match(/<text[^>]*>([^<]+)<\/text>/)?.[1];
     });
+
+    expect(new Set(stickerWords)).toEqual(new Set(IM_JUDGEMENT_REPLIES));
   });
 
   it.each(IM_JUDGEMENT_REPLIES)("renders the dedicated %s SVG", async (value) => {
