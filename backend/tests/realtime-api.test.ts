@@ -300,7 +300,12 @@ const createFixture = async () => {
     unreadByUserId: Map<number, number>;
     preferencesByUserId: Map<
       number,
-      { isHidden: boolean; isMuted: boolean; isPinned: boolean }
+      {
+        autoTranslateMessages: boolean;
+        isHidden: boolean;
+        isMuted: boolean;
+        isPinned: boolean;
+      }
     >;
     createdAt: Date;
     updatedAt: Date;
@@ -444,6 +449,7 @@ const createFixture = async () => {
       lastMessage: lastMessage ? mapMessage(lastMessage, userId) : null,
       unreadCount: conversation.unreadByUserId.get(userId) ?? 0,
       ...(conversation.preferencesByUserId.get(userId) ?? {
+        autoTranslateMessages: false,
         isHidden: false,
         isMuted: false,
         isPinned: false
@@ -513,7 +519,12 @@ const createFixture = async () => {
           preferencesByUserId: new Map(
             participantUserIds.map((userId) => [
               userId,
-              { isHidden: false, isMuted: false, isPinned: false }
+              {
+                autoTranslateMessages: false,
+                isHidden: false,
+                isMuted: false,
+                isPinned: false
+              }
             ])
           ),
           createdAt: now,
@@ -890,18 +901,23 @@ const createFixture = async () => {
       async (input: {
         conversationId: number;
         userId: number;
+        autoTranslateMessages?: boolean;
         isMuted?: boolean;
         isPinned?: boolean;
       }) => {
         const conversation = conversations.find((item) => item.id === input.conversationId);
         if (!conversation?.participantUserIds.includes(input.userId)) return null;
         const current = conversation.preferencesByUserId.get(input.userId) ?? {
+          autoTranslateMessages: false,
           isHidden: false,
           isMuted: false,
           isPinned: false
         };
         conversation.preferencesByUserId.set(input.userId, {
           ...current,
+          ...(input.autoTranslateMessages === undefined
+            ? {}
+            : { autoTranslateMessages: input.autoTranslateMessages }),
           ...(input.isMuted === undefined ? {} : { isMuted: input.isMuted }),
           ...(input.isPinned === undefined ? {} : { isPinned: input.isPinned })
         });
@@ -912,6 +928,7 @@ const createFixture = async () => {
       const conversation = conversations.find((item) => item.id === input.conversationId);
       if (!conversation?.participantUserIds.includes(input.userId)) return null;
       const current = conversation.preferencesByUserId.get(input.userId) ?? {
+        autoTranslateMessages: false,
         isHidden: false,
         isMuted: false,
         isPinned: false
@@ -2051,7 +2068,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(403);
   });
 
-  it("keeps pin, mute, unread, and deletion state private to each conversation participant", async () => {
+  it("keeps pin, mute, auto translation, unread, and deletion state private to each conversation participant", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");
     const mikaToken = await fixture.login("mika@example.com");
@@ -2065,10 +2082,26 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
     await request(fixture.app)
       .patch("/api/v1/im/conversations/1/preferences")
       .set("Authorization", `Bearer ${mikaToken}`)
-      .send({ isPinned: true, isMuted: true })
+      .send({})
+      .expect(400);
+
+    await request(fixture.app)
+      .patch("/api/v1/im/conversations/1/preferences")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ autoTranslateMessages: "yes" })
+      .expect(400);
+
+    await request(fixture.app)
+      .patch("/api/v1/im/conversations/1/preferences")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ isPinned: true, isMuted: true, autoTranslateMessages: true })
       .expect(200)
       .expect((response) => {
-        expect(response.body.data).toMatchObject({ isMuted: true, isPinned: true });
+        expect(response.body.data).toMatchObject({
+          autoTranslateMessages: true,
+          isMuted: true,
+          isPinned: true
+        });
       });
 
     await request(fixture.app)
@@ -2086,6 +2119,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect((response) => {
         expect(response.body.data.list[0]).toMatchObject({
           isHidden: false,
+          autoTranslateMessages: false,
           isMuted: false,
           isPinned: false,
           unreadCount: 0

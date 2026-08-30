@@ -1,6 +1,40 @@
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import type { ConversationMessage } from "./model";
+// @vitest-environment jsdom
+
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Conversation, ConversationMessage, ImStoreUpdate } from "./model";
+import storeSource from "./store.ts?raw";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const mocked = vi.hoisted(() => ({
+  api: null as unknown,
+  subscriptionListener: undefined as ((update: ImStoreUpdate) => void) | undefined,
+  session: {
+    activePublicId: "u0000000100",
+    avatarUrl: null,
+    id: 100,
+    primaryPublicId: "u0000000100",
+    username: "测试用户",
+  },
+}));
+
+vi.mock("../../auth/AuthProvider", () => ({
+  useAuth: () => ({ session: mocked.session }),
+}));
+
+vi.mock("./formal-api", () => ({
+  createFormalImApi: () => mocked.api,
+  subscribeFormalImUpdates: (listener: (update: ImStoreUpdate) => void) => {
+    mocked.subscriptionListener = listener;
+    return () => {
+      if (mocked.subscriptionListener === listener) {
+        mocked.subscriptionListener = undefined;
+      }
+    };
+  },
+}));
 import {
   buildCachedImSearchResults,
   getIncomingPendingFriendRequestCount,
@@ -10,9 +44,64 @@ import {
   preferTerminalMessage,
   selectLatestFriendRequestsByCounterpart,
   upsertConversationMessage,
+  useImStore,
 } from "./store";
 
 const sentAt = "2026-08-25T10:00:00.000Z";
+
+let container: HTMLDivElement | null = null;
+let root: Root | null = null;
+let store: ReturnType<typeof useImStore> | null = null;
+
+function conversation(overrides: Partial<Conversation> = {}): Conversation {
+  return {
+    id: "91",
+    type: "single",
+    title: "已确认标题",
+    avatar: "",
+    memberIds: ["100", "201"],
+    lastMessagePreview: "",
+    lastMessageTime: sentAt,
+    unreadCount: 0,
+    isPinned: false,
+    isMuted: false,
+    autoTranslateMessages: false,
+    updatedAt: sentAt,
+    ...overrides,
+  };
+}
+
+function StoreProbe() {
+  store = useImStore();
+  return null;
+}
+
+async function renderStore() {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(createElement(StoreProbe));
+  });
+  await act(async () => Promise.resolve());
+}
+
+afterEach(async () => {
+  await act(async () => root?.unmount());
+  container?.remove();
+  container = null;
+  root = null;
+  store = null;
+  mocked.session = {
+    activePublicId: "u0000000100",
+    avatarUrl: null,
+    id: 100,
+    primaryPublicId: "u0000000100",
+    username: "测试用户",
+  };
+  mocked.subscriptionListener = undefined;
+  window.localStorage.clear();
+});
 
 function message(overrides: Partial<ConversationMessage> = {}): ConversationMessage {
   return {
@@ -57,7 +146,7 @@ describe("formal IM recall terminal precedence", () => {
   });
 
   it("awaits the conversation-scoped standard recall before upserting the result", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = storeSource;
     expect(source).toContain(
       'async function recallMessage(conversationId: string, messageId: string, mode: "standard")',
     );
@@ -65,6 +154,290 @@ describe("formal IM recall terminal precedence", () => {
       "const response = await api.recallMessage(conversationId, messageId, mode);",
     );
     expect(source).toContain("upsertMessage(response.message);");
+  });
+
+  it("recomputes the current last-message summary immediately after local recall", async () => {
+    mocked.session = {
+      activePublicId: "u0000000106",
+      avatarUrl: null,
+      id: 106,
+      primaryPublicId: "u0000000106",
+      username: "本地撤回测试用户",
+    };
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation({
+          lastMessageId: "700",
+          lastMessagePreview: "原消息",
+          lastMessageType: "text",
+          lastMessageStatus: "sent",
+          lastMessagePreviewProvenance: "user-text",
+        })],
+        members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [message()],
+        nextCursor: null,
+        hasMore: false,
+      }),
+      recallMessage: vi.fn().mockResolvedValue({
+        conversationId: "91",
+        message: recalled,
+        messageId: recalled.id,
+        mode: "standard",
+      }),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+      await store?.recallMessage("91", "700", "standard");
+    });
+
+    expect(store?.conversations[0]).toMatchObject({
+      lastMessageId: "700",
+      lastMessagePreview: "你撤回了一条消息",
+      lastMessageType: "recalled",
+      lastMessageStatus: "recalled",
+      lastMessagePreviewProvenance: "ui-label",
+    });
+    expect(store?.conversations[0].lastMessagePreviewDynamicValue).toBeUndefined();
+  });
+
+  it("recomputes the current last-message summary for message-only SSE recall", async () => {
+    mocked.session = {
+      activePublicId: "u0000000107",
+      avatarUrl: null,
+      id: 107,
+      primaryPublicId: "u0000000107",
+      username: "SSE撤回测试用户",
+    };
+    const bootstrap = vi.fn().mockResolvedValue({
+      currentUserId: "100",
+      config: {
+        allowStrangerMessaging: true,
+        preserveConversationAfterDelete: true,
+        recallWindowMs: 180_000,
+        separatorThresholdMs: 300_000,
+        syncDraftAcrossDevices: false,
+      },
+      users: [],
+      contacts: [],
+      friendRequests: [],
+      conversations: [conversation({
+        lastMessageId: "700",
+        lastMessagePreview: "原消息",
+        lastMessageType: "text",
+        lastMessageStatus: "sent",
+        lastMessagePreviewProvenance: "user-text",
+      })],
+      members: [],
+    });
+    mocked.api = {
+      bootstrap,
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [message()],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+    });
+    expect(mocked.subscriptionListener).toEqual(expect.any(Function));
+
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "message.recalled", message: recalled });
+    });
+
+    expect(store?.conversations[0]).toMatchObject({
+      lastMessageId: "700",
+      lastMessagePreview: "你撤回了一条消息",
+      lastMessageType: "recalled",
+      lastMessageStatus: "recalled",
+      lastMessagePreviewProvenance: "ui-label",
+    });
+    expect(store?.conversations[0].lastMessagePreviewDynamicValue).toBeUndefined();
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("formal IM auto translation preference", () => {
+  it("waits for the confirmed response and preserves the confirmed value after rejection", async () => {
+    let resolvePreference: ((value: { conversation: Conversation }) => void) | undefined;
+    const setConversationAutoTranslateMessages = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ conversation: Conversation }>((resolve) => {
+            resolvePreference = resolve;
+          }),
+      )
+      .mockRejectedValueOnce(new Error("error.network.timeout"));
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: [],
+      }),
+      setConversationAutoTranslateMessages,
+    };
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    await renderStore();
+    expect(store?.conversations).toMatchObject([
+      { id: "91", autoTranslateMessages: false },
+    ]);
+    setItem.mockClear();
+
+    const pending = store?.setConversationAutoTranslateMessages("91", true);
+    expect(store?.conversations).toMatchObject([
+      { id: "91", autoTranslateMessages: false },
+    ]);
+    await Promise.resolve();
+    expect(resolvePreference).toEqual(expect.any(Function));
+
+    await act(async () => {
+      resolvePreference?.({
+        conversation: conversation({
+          autoTranslateMessages: true,
+          title: "服务器确认标题",
+        }),
+      });
+      await pending;
+    });
+    expect(store?.conversations).toMatchObject([
+      {
+        id: "91",
+        autoTranslateMessages: true,
+        title: "服务器确认标题",
+      },
+    ]);
+
+    await expect(
+      store?.setConversationAutoTranslateMessages("91", false),
+    ).rejects.toThrow("error.network.timeout");
+    expect(store?.conversations).toMatchObject([
+      { id: "91", autoTranslateMessages: true },
+    ]);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("formal IM resend payload integrity", () => {
+  it("resends by authoritative message id without mutating the stored raw content or rich text", async () => {
+    mocked.session = {
+      activePublicId: "u0000000105",
+      avatarUrl: null,
+      id: 105,
+      primaryPublicId: "u0000000105",
+      username: "重发测试用户",
+    };
+    const richText = {
+      version: 1 as const,
+      parts: [
+        { type: "text" as const, value: "测试" },
+        { type: "judgement" as const, value: "OK" },
+      ],
+    };
+    const failedMessage = message({
+      content: "测试OK",
+      status: "failed",
+      ext: { richText },
+    });
+    const originalFailedMessage = structuredClone(failedMessage);
+    const confirmedMessage = message({
+      content: "测试OK",
+      status: "sent",
+      ext: { richText: structuredClone(richText) },
+    });
+    const resendMessage = vi.fn().mockResolvedValue({
+      conversation: conversation({
+        lastMessagePreview: "测试OK",
+        lastMessageType: "text",
+        lastMessageStatus: "sent",
+        lastMessagePreviewProvenance: "user-text",
+      }),
+      message: confirmedMessage,
+    });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [failedMessage],
+        nextCursor: null,
+        hasMore: false,
+      }),
+      resendMessage,
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+    });
+    await act(async () => {
+      await store?.resendMessage(failedMessage.id);
+    });
+
+    expect(resendMessage).toHaveBeenCalledWith(failedMessage.id);
+    expect(failedMessage).toEqual(originalFailedMessage);
+    expect(store?.messagesByConversation["91"]).toMatchObject([
+      {
+        content: "测试OK",
+        status: "sent",
+        ext: { richText },
+      },
+    ]);
+  });
+
+  it("tracks authoritative preview type and status in optimistic and delete summary updates", () => {
+    const optimisticStart = storeSource.indexOf("async function sendMessage");
+    const optimisticEnd = storeSource.indexOf("async function estimateTagMessageCampaign", optimisticStart);
+    const optimisticSource = storeSource.slice(optimisticStart, optimisticEnd);
+    const deleteStart = storeSource.indexOf("async function deleteMessage");
+    const deleteEnd = storeSource.indexOf("async function forwardMessage", deleteStart);
+    const deleteSource = storeSource.slice(deleteStart, deleteEnd);
+
+    expect(optimisticSource).toContain("buildConversationLastMessageSummary(");
+    expect(optimisticSource).toContain("optimistic,");
+    expect(deleteSource).toContain("buildConversationLastMessageSummary(");
+    expect(deleteSource).toContain("latestMessage,");
   });
 });
 
@@ -146,7 +519,7 @@ describe("formal IM forwarding", () => {
   });
 
   it("uses the normal formal send path instead of the unavailable forward stub", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = storeSource;
     const start = source.indexOf("async function forwardMessage");
     const end = source.indexOf("async function pinConversation", start);
     const forwardSource = source.slice(start, end);
@@ -197,6 +570,7 @@ describe("formal IM cached fuzzy search", () => {
       unreadCount: 0,
       isPinned: false,
       isMuted: false,
+      autoTranslateMessages: false,
       isDeleted: false,
       createdAt: sentAt,
       updatedAt: sentAt,
@@ -252,7 +626,7 @@ describe("formal IM quick reactions", () => {
   });
 
   it("upserts the authoritative reaction response into the shared message store", () => {
-    const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    const source = storeSource;
     const start = source.indexOf("async function setMessageReaction");
     const end = source.indexOf("async function recallMessage", start);
     const reactionSource = source.slice(start, end);

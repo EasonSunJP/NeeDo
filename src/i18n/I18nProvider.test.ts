@@ -1,11 +1,18 @@
-import { createElement } from "react";
-import { describe, expect, it } from "vitest";
+/** @vitest-environment jsdom */
+
+import { act, createElement, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
 import {
   resolveInitialLanguageState,
   resolveRuntimeTranslationSource,
   resolveSupportedLanguage,
   resolveSystemLanguage,
+  I18nProvider,
+  I18nRuntime,
+  useI18n,
   useOptionalI18n
 } from "./I18nProvider";
 import { translateText } from "./translations";
@@ -15,6 +22,21 @@ function OptionalLanguageProbe() {
 
   return createElement("span", null, language);
 }
+
+function SetJapaneseLanguage() {
+  const { setLanguage } = useI18n();
+
+  useEffect(() => {
+    setLanguage("ja");
+  }, [setLanguage]);
+
+  return createElement("p", { "data-no-i18n": "true" }, "测试测试");
+}
+
+afterEach(() => {
+  document.body.replaceChildren();
+  localStorage.clear();
+});
 
 describe("i18n language detection", () => {
   it("maps supported locale prefixes to app languages", () => {
@@ -103,6 +125,33 @@ describe("i18n language detection", () => {
   });
 
   it("allows global decorative components to read a fallback language before the provider is available", () => {
+    vi.stubGlobal("window", undefined);
     expect(renderToString(createElement(OptionalLanguageProbe))).toContain(">zh<");
+    vi.unstubAllGlobals();
+  });
+
+  it("does not runtime-translate message text marked data-no-i18n", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(
+        MemoryRouter,
+        null,
+        createElement(
+          I18nProvider,
+          null,
+          createElement(I18nRuntime, null, createElement(SetJapaneseLanguage))
+        )
+      ));
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    });
+    expect(container.querySelector("[data-no-i18n]")?.textContent).toBe("测试测试");
+
+    await act(async () => root.unmount());
   });
 });

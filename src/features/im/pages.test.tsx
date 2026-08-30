@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import source from "./pages.tsx?raw";
+import componentsSource from "./components.tsx?raw";
 
 describe("ImNewConversationPage directory query handoff", () => {
   it("initializes the editable formal directory query from the URL", () => {
@@ -61,12 +62,25 @@ describe("ImNewConversationPage directory query handoff", () => {
     const end = source.indexOf("export function ImContactDetailPage", start);
     const profileSource = source.slice(start, end);
 
-    expect(profileSource).toContain('profile?.relationship !== "friend"');
+    expect(profileSource).toContain("profile?.user.id !== userId || !isFriendProfile");
     expect(profileSource).toContain("store.ensureDirectConversation(userId)");
     expect(profileSource).toContain("config.routes.conversationInfo(conversation.id)");
     expect(profileSource).toContain("navigate(config.routes.conversationInfo(conversation.id), { replace: true })");
     expect(profileSource).toContain("contactInfoRedirectAttempt");
     expect(profileSource).toContain("contactInfoRedirectFailed");
+  });
+
+  it("keeps an active request from either directory source on the independent friend action page", () => {
+    const start = source.indexOf("export function ImDirectoryProfilePage");
+    const end = source.indexOf("export function ImContactDetailPage", start);
+    const profileSource = source.slice(start, end);
+
+    expect(profileSource).toContain("profile?.friendRequest ?? (");
+    expect(profileSource).toContain("store.friendRequests.find((item) => item.id === requestId)");
+    expect(profileSource).toContain("const activePendingRequest = isActiveFriendRequest(request);");
+    expect(profileSource).toContain('profile?.relationship === "friend" && !activePendingRequest');
+    expect(profileSource).toContain("profile?.user.id !== userId || !isFriendProfile");
+    expect(profileSource).toContain("<ImFriendProfileActionBar");
   });
 
   it("renders the current account as read-only contact information without relationship controls", () => {
@@ -145,5 +159,113 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).toContain("store.acceptFriendRequest");
     expect(infoSource).toContain('contact?.id, formalActivityTargetUserId');
     expect(infoSource).toContain('{t("添加好友")}');
+  });
+});
+
+describe("IM automatic translation display wiring", () => {
+  it("passes the confirmed room preference to message bubbles and pinned text previews", () => {
+    const start = source.indexOf("export function ImConversationRoomPage");
+    const end = source.indexOf("export function ImConversationInfoPage", start);
+    const roomSource = source.slice(start, end);
+
+    expect(roomSource).toContain("const messageTranslation = {");
+    expect(roomSource).toContain("enabled: conversation?.autoTranslateMessages ?? false");
+    expect(roomSource).toContain("language");
+    expect(roomSource).toContain("translation={messageTranslation}");
+    expect(roomSource).toContain("buildMessageDisplayPreview(");
+    expect(roomSource).toContain("ImRuntimeI18nPreviewText");
+  });
+
+  it("translates only non-draft conversation previews at the page boundary", () => {
+    const start = source.indexOf("export function ImConversationListPage");
+    const end = source.indexOf("export function ImContactsListPage", start);
+    const listSource = source.slice(start, end);
+
+    expect(source).toContain("getImPreviewDisplayText(");
+    expect(source).toContain("conversation.autoTranslateMessages");
+    expect(source).toContain("preview.isDraft");
+    expect(source).toContain("isImConversationPreviewTranslationEligible(conversation)");
+    expect(source).toContain("isImConversationPreviewRuntimeProtected(conversation)");
+    expect(source).toContain('conversation.type !== "system"');
+    expect(source).not.toContain("isImUserGeneratedPreviewText");
+    expect(listSource).toContain("buildConversationDisplayPreview(conversation, language)");
+  });
+
+  it("displays search results with the owning conversation preference without changing matching", () => {
+    const start = source.indexOf("export function ImSearchPage");
+    const end = source.indexOf("export function ImOrganizationContactsPage", start);
+    const searchSource = source.slice(start, end);
+
+    expect(searchSource).toContain("message.conversationId");
+    expect(searchSource).toContain("buildMessageDisplayPreview(");
+    expect(searchSource).toContain("ImRuntimeI18nPreviewText");
+    expect(searchSource).toContain("store.search(deferredQuery, conversationId)");
+  });
+
+  it("uses the same authoritative structured preview for pinned messages", () => {
+    const start = source.indexOf("export function ImConversationRoomPage");
+    const end = source.indexOf("export function ImConversationInfoPage", start);
+    const roomSource = source.slice(start, end);
+    const pinnedStart = roomSource.indexOf("{pinnedMessages.map((message) => {");
+    const pinnedEnd = roomSource.indexOf("})}", pinnedStart);
+    const pinnedSource = roomSource.slice(pinnedStart, pinnedEnd);
+
+    expect(pinnedSource).toContain("buildMessageDisplayPreview(");
+    expect(pinnedSource).toContain("ImRuntimeI18nPreviewText");
+  });
+
+  it("copies displayed text while forward and recall continue to use the stored message", () => {
+    const start = source.indexOf("export function ImConversationRoomPage");
+    const end = source.indexOf("export function ImConversationInfoPage", start);
+    const roomSource = source.slice(start, end);
+
+    expect(roomSource).toContain("getImMessageCopyText(message, selectedContent, messageTranslation)");
+    expect(source).toContain("store.forwardMessage(forwardMessageId, conversation.id)");
+    expect(roomSource).toContain("restoreImComposerDraft(message.content, message.ext?.richText)");
+  });
+});
+
+describe("IM contact information automatic translation control", () => {
+  const start = source.indexOf("export function ImConversationInfoPage");
+  const end = source.indexOf("export function ImConversationSearchPage", start);
+  const infoSource = source.slice(start, end);
+
+  it("renders a single-chat-only control before mute and pin using the confirmed conversation value", () => {
+    const translationIndex = infoSource.indexOf("聊天内容自动翻译");
+    const muteIndex = infoSource.indexOf("消息免打扰");
+    const pinIndex = infoSource.indexOf("置顶聊天");
+
+    expect(infoSource).toContain('conversation.type === "single" ? (');
+    expect(infoSource).toContain('title={t("聊天内容自动翻译")}');
+    expect(infoSource).toContain('caption={t("打开后按当前 App 语言显示；关闭后显示原文")}');
+    expect(infoSource).toContain("checked={conversation.autoTranslateMessages}");
+    expect(translationIndex).toBeGreaterThan(-1);
+    expect(translationIndex).toBeLessThan(muteIndex);
+    expect(muteIndex).toBeLessThan(pinIndex);
+  });
+
+  it("disables repeated requests while pending and keeps the checked value server-confirmed", () => {
+    expect(infoSource).toContain("const [autoTranslatePending, setAutoTranslatePending] = useState(false);");
+    expect(infoSource).toContain("if (!conversation || conversation.type !== \"single\" || autoTranslatePending)");
+    expect(infoSource).toContain("setAutoTranslatePending(true)");
+    expect(infoSource).toContain("await store.setConversationAutoTranslateMessages(conversation.id, next)");
+    expect(infoSource).toContain("setAutoTranslatePending(false)");
+    expect(infoSource).toContain("disabled={autoTranslatePending}");
+    expect(infoSource).not.toContain("setAutoTranslateMessages(");
+  });
+
+  it("shows a localized failure without introducing optimistic checked state", () => {
+    expect(infoSource).toContain('showInfoToast(t("聊天内容自动翻译设置失败，请稍后重试"))');
+    expect(infoSource).toContain("finally {");
+    expect(infoSource).not.toContain("setAutoTranslateChecked");
+  });
+
+  it("forwards the pending state through ToggleRow to the native switch", () => {
+    const toggleStart = componentsSource.indexOf("export function ToggleRow");
+    const toggleEnd = componentsSource.indexOf("function formatSize", toggleStart);
+    const toggleSource = componentsSource.slice(toggleStart, toggleEnd);
+
+    expect(toggleSource).toContain("disabled?: boolean;");
+    expect(toggleSource).toContain("disabled={disabled}");
   });
 });

@@ -100,12 +100,21 @@ import {
   UnifiedChatHomePage,
   UnifiedConversationItem,
   UnifiedConversationList,
+  ImRuntimeI18nPreviewText,
   UnifiedPinnedConversationDivider,
-  UnifiedPinnedConversationToggle
+  UnifiedPinnedConversationToggle,
+  type ImRuntimeI18nPreview,
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
+import {
+  getImMessageCopyText,
+  getImMessageDisplayText,
+  getImPreviewDisplayText,
+  isImConversationPreviewRuntimeProtected,
+  isImConversationPreviewTranslationEligible,
+} from "./message-translation";
 import {
   FriendDeletionConfirmDialog,
   useFriendDeletionConfirmation,
@@ -123,7 +132,7 @@ import {
 import {
   buildContactSections,
   buildConversationRowPreview,
-  buildMessagePreview,
+  buildMessagePreviewDescriptor,
   buildMediaBuckets,
   buildTimeSeparatedMessages,
   formatConversationTime,
@@ -227,26 +236,38 @@ export type DirectoryProfileAction =
   | "waiting"
   | "status";
 
+export function isActiveFriendRequest(
+  request: FriendRequest | null | undefined,
+  nowMs: number = Date.now(),
+) {
+  return Boolean(
+    request?.status === "pending" &&
+    Date.parse(request.expiresAt) > nowMs,
+  );
+}
+
 export function resolveDirectoryProfileActions(
   profile: DirectoryProfile,
   request: FriendRequest | null,
   currentUserId: string,
   nowMs: number = Date.now(),
 ): DirectoryProfileAction[] {
-  if (profile.relationship === "friend" || profile.relationship === "self") {
+  if (profile.relationship === "self") {
     return [];
   }
 
-  const activePending =
-    request?.status === "pending" &&
-    Date.parse(request.expiresAt) > nowMs;
+  const activePending = isActiveFriendRequest(request, nowMs);
 
-  if (activePending && request.toUserId === currentUserId) {
+  if (activePending && request?.toUserId === currentUserId) {
     return ["reject", "accept"];
   }
 
   if (activePending) {
     return ["waiting"];
+  }
+
+  if (profile.relationship === "friend") {
+    return [];
   }
 
   if (request) {
@@ -1161,6 +1182,92 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
   return resolveImProfilePath(scope, getConversationPartner(store, conversation));
 }
 
+function buildConversationDisplayPreview(
+  conversation: Conversation,
+  language: ReturnType<typeof useI18n>["language"],
+): ImRuntimeI18nPreview {
+  const preview = buildConversationRowPreview(conversation);
+
+  if (preview.isDraft) {
+    return {
+      ...preview,
+      translationEligible: false,
+      runtimeI18nProtected: true,
+    };
+  }
+
+  const hasVisibleLastMessage = !conversation.privacyModeEnabled
+    && Boolean(conversation.lastMessagePreview);
+  const translationEligible = conversation.type !== "system"
+    && hasVisibleLastMessage
+    && isImConversationPreviewTranslationEligible(conversation);
+  const runtimeI18nProtected = hasVisibleLastMessage
+    && isImConversationPreviewRuntimeProtected(conversation);
+  const uiLabel = conversation.lastMessagePreviewProvenance === "ui-label-with-dynamic-value"
+    ? conversation.lastMessageType === "contact-card"
+      ? "[名片]"
+      : conversation.lastMessageType === "service-card"
+        ? "[服务]"
+        : conversation.lastMessageType === "schedule-invite"
+          ? "[日程邀请]"
+          : undefined
+    : undefined;
+
+  return {
+    ...preview,
+    text: translationEligible
+      ? getImPreviewDisplayText(preview.text, {
+          enabled: conversation.autoTranslateMessages,
+          language,
+        })
+      : preview.text,
+    translationEligible,
+    runtimeI18nProtected,
+    uiLabel,
+    dynamicValue: runtimeI18nProtected
+      ? conversation.lastMessagePreviewDynamicValue
+      : undefined,
+  };
+}
+
+function buildMessageDisplayPreview(
+  message: ConversationMessage,
+  conversation: Conversation | undefined,
+  language: ReturnType<typeof useI18n>["language"],
+  currentUserId: string,
+  usersById: Record<string, ImUser>,
+): ImRuntimeI18nPreview {
+  const descriptor = buildMessagePreviewDescriptor(
+    message,
+    currentUserId,
+    usersById,
+  );
+  const policySource = {
+    type: conversation?.type ?? "single",
+    lastMessageStatus: message.status,
+    lastMessagePreviewProvenance: descriptor.provenance,
+  } satisfies Pick<
+    Conversation,
+    "type" | "lastMessageStatus" | "lastMessagePreviewProvenance"
+  >;
+  const translationEligible = conversation?.type !== "system"
+    && isImConversationPreviewTranslationEligible(policySource);
+  const runtimeI18nProtected = isImConversationPreviewRuntimeProtected(policySource);
+
+  return {
+    text: translationEligible
+      ? getImMessageDisplayText(message.content, message.ext?.richText, {
+          enabled: conversation?.autoTranslateMessages ?? false,
+          language,
+        })
+      : descriptor.text,
+    translationEligible,
+    runtimeI18nProtected,
+    uiLabel: descriptor.uiLabel,
+    dynamicValue: descriptor.dynamicValue,
+  };
+}
+
 function appendQuery(path: string, entries: Record<string, string | string[] | undefined>) {
   const searchParams = new URLSearchParams();
 
@@ -1499,6 +1606,7 @@ export function ImMessagesEntryPage() {
 
 export function ImConversationListPage() {
   const { store, config, scope } = useImRuntime();
+  const { language } = useI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryFromParams = searchParams.get("q") ?? "";
@@ -1785,7 +1893,7 @@ export function ImConversationListPage() {
   }, [pinnedCollapsed, pinnedCollapsedStorageKey]);
 
   const renderConversationItem = (conversation: Conversation, showDivider: boolean) => {
-    const preview = buildConversationRowPreview(conversation);
+    const preview = buildConversationDisplayPreview(conversation, language);
     const title = getConversationDisplayName(store, conversation);
     const pinActionLabel = conversation.isPinned ? "取消置顶" : "置顶";
     const avatarTarget = getConversationProfileTarget(scope, store, conversation);
@@ -2713,6 +2821,7 @@ export function ImDirectoryProfilePage() {
       ? store.friendRequests.find((item) => item.id === requestId)
       : undefined
   ) ?? null;
+  const activePendingRequest = isActiveFriendRequest(request);
   const actions = profile
     ? resolveDirectoryProfileActions(profile, request, store.currentUserId ?? "")
     : [];
@@ -2720,7 +2829,7 @@ export function ImDirectoryProfilePage() {
   const activityTo = profile && profile.user.profileKind !== "service" && Number.isInteger(numericUserId) && numericUserId > 0
     ? socialPaths.accountProfile(scope as SocialPortalScope, numericUserId)
     : undefined;
-  const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend";
+  const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend" && !activePendingRequest;
   const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
@@ -2748,7 +2857,7 @@ export function ImDirectoryProfilePage() {
   }, [userId]);
 
   useEffect(() => {
-    if (!userId || profile?.user.id !== userId || profile?.relationship !== "friend") {
+    if (!userId || profile?.user.id !== userId || !isFriendProfile) {
       setContactInfoRedirectFailed(false);
       return undefined;
     }
@@ -2773,8 +2882,8 @@ export function ImDirectoryProfilePage() {
   }, [
     config.routes,
     contactInfoRedirectAttempt,
+    isFriendProfile,
     navigate,
-    profile?.relationship,
     profile?.user.id,
     store.ensureDirectConversation,
     userId,
@@ -3815,6 +3924,7 @@ function ImTagCampaignSheet({
 
 export function ImSearchPage() {
   const { scope, store, config } = useImRuntime();
+  const { language } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const conversationId = searchParams.get("conversationId") ?? undefined;
@@ -3929,7 +4039,7 @@ export function ImSearchPage() {
                   group={conversation.type === "group"}
                   key={conversation.id}
                   privacyMode={conversation.privacyModeEnabled}
-                  preview={buildConversationRowPreview(conversation)}
+                  preview={buildConversationDisplayPreview(conversation, language)}
                   time={formatConversationTime(conversation.lastMessageTime)}
                   title={getConversationDisplayName(store, conversation)}
                   to={config.routes.conversation(conversation.id)}
@@ -3942,17 +4052,30 @@ export function ImSearchPage() {
           {result.messages.length > 0 ? (
             <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>聊天记录</SectionTag>
-              {result.messages.map((message) => (
-                <Link
-                  className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 last:border-b-0"
-                  key={message.id}
-                  onClick={() => store.rememberSearchTerm(query)}
-                  to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
-                >
-                  <p className="text-sm font-semibold text-[color:var(--client-text)]">{message.content || "已撤回消息"}</p>
-                  <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
-                </Link>
-              ))}
+              {result.messages.map((message) => {
+                const owningConversation = store.conversations.find((conversation) => conversation.id === message.conversationId);
+                const preview = buildMessageDisplayPreview(
+                  message,
+                  owningConversation,
+                  language,
+                  store.currentUserId ?? "",
+                  store.usersById,
+                );
+
+                return (
+                  <Link
+                    className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 last:border-b-0"
+                    key={message.id}
+                    onClick={() => store.rememberSearchTerm(query)}
+                    to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
+                  >
+                    <p className="text-sm font-semibold text-[color:var(--client-text)]">
+                      <ImRuntimeI18nPreviewText preview={preview} />
+                    </p>
+                    <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
+                  </Link>
+                );
+              })}
             </section>
           ) : null}
 
@@ -4609,6 +4732,7 @@ export function ImConversationRoomPage({
   conversationId: string;
 }) {
   const { scope, store, config, api } = useImRuntime();
+  const { language } = useI18n();
   const { isNight } = useClientTheme();
   const social = useSocial();
   const entityStore = useEntityStore();
@@ -4616,6 +4740,10 @@ export function ImConversationRoomPage({
   const [searchParams] = useSearchParams();
   const back = useRoomBackTarget();
   const { conversation, messages, members } = useConversationData(store, conversationId);
+  const messageTranslation = {
+    enabled: conversation?.autoTranslateMessages ?? false,
+    language,
+  };
   const [draft, setDraft] = useState("");
   const [quotedMessageId, setQuotedMessageId] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<"emoji" | "more" | null>(null);
@@ -5867,7 +5995,7 @@ export function ImConversationRoomPage({
     const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
       ? selection.toString().trim()
       : "";
-    const content = selectedContent || message.content || message.ext?.previewText || "媒体消息";
+    const content = getImMessageCopyText(message, selectedContent, messageTranslation);
     closeMessageMenu();
 
     try {
@@ -6160,7 +6288,13 @@ export function ImConversationRoomPage({
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
                   const senderName = getConversationMemberDisplayName(sender) ?? "消息";
-                  const preview = buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
+                  const preview = buildMessageDisplayPreview(
+                    message,
+                    conversation,
+                    language,
+                    store.currentUserId ?? "",
+                    store.usersById,
+                  );
 
                   return (
                     <div className="im-pinned-message-container flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2" key={message.id}>
@@ -6173,8 +6307,12 @@ export function ImConversationRoomPage({
                           <ImIcon className="h-4 w-4" name="top" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-black text-[color:var(--client-muted)]">信息置顶 · {senderName}</span>
-                          <span className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]">{preview}</span>
+                          <span className="block truncate text-[11px] font-black text-[color:var(--client-muted)]">
+                            信息置顶 · <span data-no-i18n="true">{senderName}</span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]">
+                            <ImRuntimeI18nPreviewText preview={preview} />
+                          </span>
                         </span>
                       </button>
                       <button
@@ -6283,6 +6421,7 @@ export function ImConversationRoomPage({
                       renderContactCardAction={renderContactCardAction}
                       senderName={senderName}
                       showSender={showSender}
+                      translation={messageTranslation}
                     />
                   </MessagePressable>
                 </div>
@@ -6371,7 +6510,7 @@ export function ImConversationRoomPage({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">回复消息</p>
-                      <ImQuotedMessagePreview message={quotedMessage} />
+                      <ImQuotedMessagePreview message={quotedMessage} translation={messageTranslation} />
                     </div>
                     <button className="text-ink/32" onClick={() => setQuotedMessageId(undefined)} type="button">
                       取消
@@ -6879,6 +7018,7 @@ export function ImConversationInfoPage() {
   const [formalActivityStatus, setFormalActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
   const [conversationDirectoryProfile, setConversationDirectoryProfile] = useState<DirectoryProfile | null>(null);
   const [conversationFriendMutationPending, setConversationFriendMutationPending] = useState(false);
+  const [autoTranslatePending, setAutoTranslatePending] = useState(false);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
   const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
@@ -6945,6 +7085,21 @@ export function ImConversationInfoPage() {
   const showInfoToast = (message: string) => {
     toastIdRef.current += 1;
     setInfoToast({ id: toastIdRef.current, message });
+  };
+
+  const setConversationAutoTranslateMessages = async (next: boolean) => {
+    if (!conversation || conversation.type !== "single" || autoTranslatePending) {
+      return;
+    }
+
+    setAutoTranslatePending(true);
+    try {
+      await store.setConversationAutoTranslateMessages(conversation.id, next);
+    } catch {
+      showInfoToast(t("聊天内容自动翻译设置失败，请稍后重试"));
+    } finally {
+      setAutoTranslatePending(false);
+    }
   };
 
   useEffect(() => {
@@ -7644,6 +7799,15 @@ export function ImConversationInfoPage() {
           </section>
         ) : null}
 
+        {conversation.type === "single" ? (
+          <ToggleRow
+            caption={t("打开后按当前 App 语言显示；关闭后显示原文")}
+            checked={conversation.autoTranslateMessages}
+            disabled={autoTranslatePending}
+            onChange={(next) => void setConversationAutoTranslateMessages(next)}
+            title={t("聊天内容自动翻译")}
+          />
+        ) : null}
         <ToggleRow checked={conversation.isMuted} onChange={(next) => void store.muteConversation(conversation.id, next)} title="消息免打扰" />
         <ToggleRow checked={conversation.isPinned} onChange={(next) => void store.pinConversation(conversation.id, next)} title="置顶聊天" />
 

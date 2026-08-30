@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
+import { normalizeImLanguageLabels } from "./language-display";
 import type { DirectoryIdentityCard, ImRoleType, ImUser } from "./model";
 
 function identityLabel(card: DirectoryIdentityCard) {
@@ -81,6 +82,7 @@ export function ConversationIdentityProfileCard({
     (field): field is { label: string; value: string } =>
       typeof field.value === "string" && field.value.trim().length > 0,
   );
+  const languageLabels = normalizeImLanguageLabels(identityCard.languages);
   const creditValue = identityCard.creditValue;
   const creditText = creditValue === undefined
     ? "—"
@@ -183,13 +185,13 @@ export function ConversationIdentityProfileCard({
           </p>
         )}
 
-        {identityCard.languages.length > 0 ? (
-          <div className="mt-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] p-3">
+        {languageLabels.length > 0 ? (
+          <div className="mt-4" data-im-language-section="true">
             <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("语言能力")}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {identityCard.languages.map((item) => (
+            <div className="mt-2 flex flex-wrap gap-2" data-im-language-pills="true" data-no-i18n="true">
+              {languageLabels.map((item) => (
                 <span
-                  className="rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_44%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1 text-xs font-black text-[color:var(--client-primary)]"
+                  className="inline-flex w-fit max-w-full break-words rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_44%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1 text-xs font-black text-[color:var(--client-primary)]"
                   key={item}
                 >
                   {item}

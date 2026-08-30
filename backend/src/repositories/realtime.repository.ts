@@ -55,6 +55,7 @@ export interface ConversationPayload {
   unreadCount: number;
   isPinned: boolean;
   isMuted: boolean;
+  autoTranslateMessages: boolean;
   isHidden: boolean;
   privacyModeEnabled: boolean;
   hideMemberProfiles: boolean;
@@ -401,6 +402,7 @@ export interface UpdateConversationPreferencesInput {
   identityId?: number;
   isPinned?: boolean;
   isMuted?: boolean;
+  autoTranslateMessages?: boolean;
 }
 
 export interface FriendRequestListInput extends PaginationInput {
@@ -782,6 +784,8 @@ type DirectoryProfileUserRecord = {
     city: string;
     serviceArea: string | null;
     yearsExperience: number;
+    languages: unknown;
+    visibility: string;
     employmentType: string;
     status: string;
     verifiedAt: Date | null;
@@ -1899,6 +1903,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       data: {
         ...(input.isPinned === undefined ? {} : { isPinned: input.isPinned }),
         ...(input.isMuted === undefined ? {} : { isMuted: input.isMuted }),
+        ...(input.autoTranslateMessages === undefined
+          ? {}
+          : { autoTranslateMessages: input.autoTranslateMessages }),
         hiddenAt: null
       }
     });
@@ -2378,6 +2385,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             city: true,
             serviceArea: true,
             yearsExperience: true,
+            languages: true,
+            visibility: true,
             employmentType: true,
             status: true,
             verifiedAt: true,
@@ -2410,6 +2419,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       where: {
         ownerIdentityId: viewerIdentityId,
         contactIdentityId: targetIdentityId,
+        source: "friend_request",
         deletedAt: null
       },
       select: { id: true }
@@ -2419,6 +2429,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           where: {
             ownerIdentityId: targetIdentityId,
             contactIdentityId: viewerIdentityId,
+            source: "friend_request",
             deletedAt: null
           },
           select: { id: true }
@@ -2514,6 +2525,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }
       const reciprocalContactCount = await tx.contact.count({
         where: {
+          source: "friend_request",
           deletedAt: null,
           OR: [
             { ownerIdentityId: requesterIdentityId, contactIdentityId: targetIdentityId },
@@ -4018,6 +4030,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       unreadCount: viewer?.unreadCount ?? 0,
       isPinned: viewer?.isPinned ?? false,
       isMuted: viewer?.isMuted ?? false,
+      autoTranslateMessages: viewer?.autoTranslateMessages ?? false,
       isHidden: viewer?.hiddenAt !== null && viewer?.hiddenAt !== undefined,
       privacyModeEnabled: conversation.privacyModeEnabled,
       hideMemberProfiles: conversation.hideMemberProfiles,
@@ -4245,6 +4258,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const review = profile.reviewSummary?.deletedAt === null
         ? profile.reviewSummary
         : null;
+      const customerLanguages = toDirectoryLanguages(profile.languages);
+      const technicianLanguages =
+        customerLanguages.length === 0 &&
+        user.technicianProfile?.deletedAt === null &&
+        user.technicianProfile.status === "published" &&
+        user.technicianProfile.visibility === "public"
+          ? toDirectoryLanguages(user.technicianProfile.languages)
+          : [];
       return {
         entityType: "user",
         profileId: profile.id,
@@ -4256,7 +4277,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         gender: profile.gender === "private" ? null : profile.gender,
         age: profile.age,
         heightCm: profile.heightCm?.toString() ?? null,
-        languages: toDirectoryLanguages(profile.languages),
+        languages: customerLanguages.length > 0 ? customerLanguages : technicianLanguages,
         city: profile.city,
         serviceArea: null,
         yearsExperience: null,
@@ -4283,7 +4304,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         gender: null,
         age: null,
         heightCm: null,
-        languages: [],
+        languages:
+          profile.visibility === "public" ? toDirectoryLanguages(profile.languages) : [],
         city: profile.city,
         serviceArea: profile.serviceArea,
         yearsExperience: profile.yearsExperience,
