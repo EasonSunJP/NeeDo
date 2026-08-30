@@ -5,6 +5,7 @@ import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import {
   assertLocalEmptyAdminProvisioningTarget,
+  getProvisionedSessionGenerationTargets,
   provisionLifeDanceEmptyAdmins,
   resolveSharedTestAccountPassword
 } from "../src/simulation/lifedance-empty-admin-provisioning";
@@ -21,6 +22,10 @@ const main = async (): Promise<void> => {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required.");
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl), log: ["error"] });
+  const [{ RedisAuthSessionStore }, { disconnectRedis }] = await Promise.all([
+    import("../src/services/auth-session.store"),
+    import("../src/config/redis")
+  ]);
 
   try {
     const actor = await prisma.user.findFirst({
@@ -32,6 +37,11 @@ const main = async (): Promise<void> => {
       (tx) => provisionLifeDanceEmptyAdmins(tx, { passwordHash, actorUserId: actor.id }),
       { maxWait: 20_000, timeout: 60_000 }
     );
+    const sessions = new RedisAuthSessionStore();
+    for (const target of getProvisionedSessionGenerationTargets(result)) {
+      await sessions.revokeAllRefreshTokens(target.userId, target.sessionGeneration);
+      await sessions.clearFailedLoginForAccount(target.userId);
+    }
     console.log(
       JSON.stringify({
         status: "ok",
@@ -40,7 +50,7 @@ const main = async (): Promise<void> => {
       })
     );
   } finally {
-    await prisma.$disconnect();
+    await Promise.all([prisma.$disconnect(), disconnectRedis()]);
   }
 };
 

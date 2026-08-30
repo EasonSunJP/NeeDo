@@ -3,6 +3,7 @@ import {
   LIFEDANCE_EMPTY_ADMIN_TEST_NDP,
   OPERATOR_U_IDENTIFIER_REPAIR,
   assertLocalEmptyAdminProvisioningTarget,
+  getProvisionedSessionGenerationTargets,
   getEmptyAdminWalletTopUpAmount,
   resolveSharedTestAccountPassword,
   selectEmptyAdminAccountCandidate
@@ -118,6 +119,40 @@ describe("LifeDance empty admin test-account provisioning", () => {
     expect(
       TEST_USER_ACCOUNTS.find((account) => account.email === "admin@lifedance.com")
     ).toMatchObject({ primaryIdentifierKind: "NEEDO" });
+  });
+
+  it("returns every changed account as an explicit Redis session-generation sync target", () => {
+    expect(
+      getProvisionedSessionGenerationTargets({
+        accounts: [
+          {
+            userId: 973,
+            email: "adminb@lifedance.com",
+            needoId: "needo0000000003",
+            availableBalance: 100_000,
+            sessionGeneration: 2
+          },
+          {
+            userId: 974,
+            email: "adminc@lifedance.com",
+            needoId: "needo0000000004",
+            availableBalance: 100_000,
+            sessionGeneration: 3
+          }
+        ],
+        operator: {
+          userId: 33,
+          previousPublicId: "needo7073340315",
+          publicId: "u7073340315",
+          repaired: true,
+          sessionGeneration: 4
+        }
+      })
+    ).toEqual([
+      { userId: 973, sessionGeneration: 2 },
+      { userId: 974, sessionGeneration: 3 },
+      { userId: 33, sessionGeneration: 4 }
+    ]);
   });
 
   it("allows mutations only against explicit local needo_dev MySQL", () => {
