@@ -10,12 +10,21 @@ const main = async (): Promise<void> => {
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
 
-  const [{ prisma, disconnectPrisma }, { disconnectRedis }, provisioning, authSessions] =
+  const [
+    { prisma, disconnectPrisma },
+    { disconnectRedis },
+    provisioning,
+    authSessions,
+    { TestNdpProvisioningRepository },
+    { TestNdpProvisioningService }
+  ] =
     await Promise.all([
       import("../src/prisma/client"),
       import("../src/config/redis"),
       import("../src/simulation/lifedance-admin2-provisioning"),
-      import("../src/services/auth-session.store")
+      import("../src/services/auth-session.store"),
+      import("../src/repositories/test-ndp-provisioning.repository"),
+      import("../src/services/test-ndp-provisioning.service")
     ]);
   provisioning.assertLocalAdmin2ProvisioningTarget(process.env);
   const password = provisioning.resolveLifeDanceAdmin2Password(process.env);
@@ -25,6 +34,10 @@ const main = async (): Promise<void> => {
     const result = await prisma.$transaction(
       (tx) => provisioning.provisionLifeDanceAdmin2(tx, passwordHash),
       { maxWait: 20_000, timeout: 60_000 }
+    );
+    await provisioning.calibrateLifeDanceAdmin2TestNdp(
+      result.userId,
+      new TestNdpProvisioningService(new TestNdpProvisioningRepository(prisma))
     );
     const sessions = new authSessions.RedisAuthSessionStore();
     await sessions.revokeAllRefreshTokens(result.userId, result.sessionGeneration);

@@ -12,6 +12,7 @@ import {
   CUSTOMER_REQUEST_WALLET_SEED_NDP,
   DEFAULT_REQUEST_DISPATCH_FEE_NDP,
   buildSeedUserUpdateData,
+  calibrateTestNdpUserIds,
   getRequestDispatchWalletTopUpAmount,
   getRequestDispatchWalletSeedAmount,
   getAdminSeedConfig,
@@ -223,9 +224,19 @@ describe("user management seed contract", () => {
     ).toMatchObject({
       passwordHash: "next-password-hash",
       username: "Merchant",
+      isTestAccount: true,
       isActive: true,
       deletedAt: null
     });
+  });
+
+  it("calibrates each unique test account once after its seed transaction commits", async () => {
+    const service = { calibrateUser: jest.fn(async () => ({ status: "applied" })) };
+
+    await calibrateTestNdpUserIds([7, 9, 7], service as never);
+
+    expect(service.calibrateUser).toHaveBeenCalledTimes(2);
+    expect(service.calibrateUser.mock.calls).toEqual([[7], [9]]);
   });
 
   it("seeds the portal menu permissions expected by frontend guards", () => {

@@ -48,7 +48,7 @@ import {
   simulationIdentityActiveKey
 } from "../src/simulation/simulation-identity-matrix";
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
-import { upsertSeedUser } from "../prisma/seed";
+import { calibrateTestNdpUserIds, upsertSeedUser } from "../prisma/seed";
 import {
   resetLifeDancePayrollPeriods,
   runLifeDancePayrollWorkflow,
@@ -111,7 +111,15 @@ const main = async (): Promise<void> => {
   loadDotenv({ path: envFile });
 
   const seedConfig = getSimulationSeedConfig(process.env);
-  const [{ prisma, disconnectPrisma }] = await Promise.all([import("../src/prisma/client")]);
+  const [
+    { prisma, disconnectPrisma },
+    { TestNdpProvisioningRepository },
+    { TestNdpProvisioningService }
+  ] = await Promise.all([
+    import("../src/prisma/client"),
+    import("../src/repositories/test-ndp-provisioning.repository"),
+    import("../src/services/test-ndp-provisioning.service")
+  ]);
   const plan = buildThreeMonthSimulationPlan();
   const socialPlan = buildSocialSimulationPlan();
   const credentialAccounts = socialPlan.accounts.filter(
@@ -588,13 +596,13 @@ const main = async (): Promise<void> => {
               ownerType_ownerId_currency: {
                 ownerType: WalletOwnerType.USER,
                 ownerId: userId,
-                currency: "NDP"
+                currency: "TEST_NDP"
               }
             },
             create: {
               ownerType: WalletOwnerType.USER,
               ownerId: userId,
-              currency: "NDP",
+              currency: "TEST_NDP",
               createdAt: new Date("2026-05-25T00:00:00.000Z")
             },
             update: { deletedAt: null }
@@ -611,7 +619,7 @@ const main = async (): Promise<void> => {
               referenceId: userId,
               actorUserId: userId,
               amount: 5_000,
-              currency: "NDP",
+              currency: "TEST_NDP",
               metadata: { namespace: SIMULATION_NAMESPACE, customerKey: customer.key },
               createdAt: new Date("2026-05-25T00:00:00.000Z")
             },
@@ -623,7 +631,7 @@ const main = async (): Promise<void> => {
               referenceId: userId,
               actorUserId: userId,
               amount: 5_000,
-              currency: "NDP",
+              currency: "TEST_NDP",
               metadata: { namespace: SIMULATION_NAMESPACE, customerKey: customer.key },
               deletedAt: null
             }
@@ -657,7 +665,8 @@ const main = async (): Promise<void> => {
               transactionId: transaction.id,
               referenceType: "simulation_dataset",
               referenceId: userId,
-              currency: "NDP",
+              currency: "TEST_NDP",
+              status: "TEST_ONLY",
               expectedAmount: 5_000,
               actualAmount: 5_000,
               differenceAmount: 0,
@@ -666,7 +675,8 @@ const main = async (): Promise<void> => {
             update: {
               referenceType: "simulation_dataset",
               referenceId: userId,
-              currency: "NDP",
+              currency: "TEST_NDP",
+              status: "TEST_ONLY",
               expectedAmount: 5_000,
               actualAmount: 5_000,
               differenceAmount: 0,
@@ -733,13 +743,13 @@ const main = async (): Promise<void> => {
                   ownerType_ownerId_currency: {
                     ownerType: WalletOwnerType.USER,
                     ownerId: previewCustomer.id,
-                    currency: "NDP"
+                    currency: "TEST_NDP"
                   }
                 },
                 create: {
                   ownerType: WalletOwnerType.USER,
                   ownerId: previewCustomer.id,
-                  currency: "NDP",
+                  currency: "TEST_NDP",
                   createdAt: new Date("2026-05-25T00:00:00.000Z")
                 },
                 update: { deletedAt: null }
@@ -1560,6 +1570,7 @@ const main = async (): Promise<void> => {
             return {
               bookingOrderId: getRequiredId(orderIds, booking.orderNo, "booking order"),
               orderType: "booking",
+              ndpCurrency: "TEST_NDP",
               customerUserId: getRequiredId(customerUserIds, booking.customerKey, "customer user"),
               shopId: getRequiredId(shopIds, booking.shopKey, "shop"),
               technicianProfileId: getRequiredId(
@@ -1636,6 +1647,20 @@ const main = async (): Promise<void> => {
         };
       },
       { maxWait: 20_000, timeout: 180_000 }
+    );
+
+    const simulationTestUsers = await prisma.user.findMany({
+      where: {
+        email: { in: [LIFEDANCE_ADMIN_EMAIL, ...accountEmails] },
+        isTestAccount: true,
+        deletedAt: null
+      },
+      select: { id: true },
+      orderBy: { id: "asc" }
+    });
+    await calibrateTestNdpUserIds(
+      simulationTestUsers.map((user) => user.id),
+      new TestNdpProvisioningService(new TestNdpProvisioningRepository(prisma))
     );
 
     const [payrollAdmin, payrollShop, payrollTechnicians] = await Promise.all([

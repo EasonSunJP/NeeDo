@@ -49,6 +49,8 @@
     "backfill:unified-identifiers": "tsx scripts/backfill-unified-identifiers.ts",
     "check:unified-identifier-cutover": "tsx scripts/check-unified-identifier-cutover.ts",
     "backfill:technician-shop-affiliations": "tsx scripts/backfill-technician-shop-affiliations.ts",
+    "backfill:test-ndp": "ENV_FILE=.env.dev tsx scripts/backfill-test-ndp.ts",
+    "check:test-ndp-foundation": "ENV_FILE=.env.dev tsx scripts/check-test-ndp-foundation.ts",
     "check:technician-shop-affiliation-cutover": "tsx scripts/check-technician-shop-affiliation-cutover.ts",
     "check:payroll-schedule-policy": "tsx scripts/check-payroll-schedule-policy.ts",
     "export:simulation-accounts-xlsx": "python3 -m venv .data/simulation-xlsx-venv && .data/simulation-xlsx-venv/bin/python -m pip install --disable-pip-version-check -r requirements-simulation.txt && .data/simulation-xlsx-venv/bin/python scripts/export-simulation-accounts-xlsx.py ../outputs/NeeDo_正式测试账号_2026-08-25.csv ../outputs/NeeDo_正式测试账号_2026-08-25.xlsx",

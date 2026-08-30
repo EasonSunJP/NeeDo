@@ -440,6 +440,7 @@ const main = async (): Promise<void> => {
           },
           financial: {
             select: {
+              ndpCurrency: true,
               serviceAmountJpy: true,
               offlineReportedServiceAmountJpy: true,
               paymentChannel: true,
@@ -457,7 +458,7 @@ const main = async (): Promise<void> => {
         where: {
           ownerType: "USER",
           ownerId: { in: customerUsers.map((user) => user.id) },
-          currency: "NDP",
+          currency: "TEST_NDP",
           deletedAt: null
         },
         select: { id: true, availableBalance: true }
@@ -497,8 +498,8 @@ const main = async (): Promise<void> => {
       `expected 100 customer wallets, found ${customerWallets.length}`
     );
     assert(
-      customerWallets.every((wallet) => wallet.availableBalance >= 5_000),
-      "every simulation customer wallet must retain at least its 5000 NDP seed credit"
+      customerWallets.every((wallet) => wallet.availableBalance === 100_000),
+      "every simulation customer wallet must have exactly 100000 Test NDP available"
     );
     assert(
       seedLedgerTransactions === 100,
@@ -577,7 +578,8 @@ const main = async (): Promise<void> => {
           `${booking.orderNo} payment is not confirmed or reconciled`
         );
         assert(
-          financial.serviceAmountJpy === Number(booking.priceAmount) &&
+          financial.ndpCurrency === "TEST_NDP" &&
+            financial.serviceAmountJpy === Number(booking.priceAmount) &&
             financial.offlineReportedServiceAmountJpy === Number(booking.priceAmount) &&
             financial.serviceIncomeStatus === "confirmed" &&
             ["offline_card", "onsite_cash"].includes(financial.paymentChannel) &&

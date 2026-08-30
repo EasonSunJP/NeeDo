@@ -20,6 +20,7 @@ import {
 import { PublicIdentifierRepository } from "../src/repositories/public-identifier.repository";
 import { IdentifierAllocator } from "../src/services/public-identifier.service";
 import { UserBootstrapKeyAllocator } from "../src/services/user-bootstrap-key.service";
+import type { TestNdpProvisioningService } from "../src/services/test-ndp-provisioning.service";
 
 import {
   SYSTEM_PERMISSIONS,
@@ -118,6 +119,7 @@ export const migrateAdminAccount = async (
           emailVerifiedAt: verifiedAt,
           passwordHash: options.adminPasswordHash,
           username: options.adminConfig.username,
+          isTestAccount: true,
           isActive: true,
           sessionGeneration: { increment: 1 },
           deletedAt: null
@@ -131,6 +133,7 @@ export const migrateAdminAccount = async (
             emailVerifiedAt: verifiedAt,
             passwordHash: options.adminPasswordHash,
             username: options.adminConfig.username,
+            isTestAccount: true,
             isActive: true
           }
         })
@@ -1211,6 +1214,7 @@ export const buildSeedUserUpdateData = (input: SeedUserInput, passwordHash: stri
   passwordHash,
   username: input.username,
   ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
+  isTestAccount: true,
   isActive: true,
   deletedAt: null
 });
@@ -1306,6 +1310,7 @@ export const upsertSeedUser = async (
             passwordHash,
             username: input.username,
             avatarUrl: input.avatarUrl ?? null,
+            isTestAccount: true,
             isActive: true,
             ...(input.createdAt ? { createdAt: input.createdAt } : {})
           }
@@ -1500,6 +1505,7 @@ const upsertSeedCompanyUser = async (
             passwordHash,
             username: input.username,
             avatarUrl: input.avatarUrl ?? null,
+            isTestAccount: true,
             isActive: true,
             ...(input.createdAt ? { createdAt: input.createdAt } : {})
           }
@@ -2912,6 +2918,7 @@ const seedFormalFinancePayrollDemoData = async (
     create: {
       bookingOrderId: order.id,
       orderType: "booking",
+      ndpCurrency: "TEST_NDP",
       customerUserId: input.customerUserId,
       shopId: input.shopId,
       technicianProfileId,
@@ -2939,6 +2946,7 @@ const seedFormalFinancePayrollDemoData = async (
       settlementStatus: "ready_for_payroll"
     },
     update: {
+      ndpCurrency: "TEST_NDP",
       customerUserId: input.customerUserId,
       shopId: input.shopId,
       technicianProfileId,
@@ -3360,13 +3368,13 @@ const upsertSeedWallet = (
       ownerType_ownerId_currency: {
         ownerType: input.ownerType,
         ownerId: input.ownerId,
-        currency: "NDP"
+        currency: "TEST_NDP"
       }
     },
     create: {
       ownerType: input.ownerType,
       ownerId: input.ownerId,
-      currency: "NDP"
+      currency: "TEST_NDP"
     },
     update: {
       deletedAt: null
@@ -3487,6 +3495,15 @@ const upsertDefaultFinanceRules = async (
   });
 };
 
+export const calibrateTestNdpUserIds = async (
+  userIds: readonly number[],
+  service: Pick<TestNdpProvisioningService, "calibrateUser">
+): Promise<void> => {
+  for (const userId of new Set(userIds)) {
+    await service.calibrateUser(userId);
+  }
+};
+
 const upsertSeedWalletFunding = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -3540,7 +3557,7 @@ const createSeedWalletFundingTransaction = async (
       referenceId: wallet.id,
       actorUserId: input.actorUserId,
       amount: input.amount,
-      currency: "NDP",
+      currency: "TEST_NDP",
       metadata: {
         ownerType: input.ownerType,
         ownerId: input.ownerId
@@ -3575,7 +3592,8 @@ const createSeedWalletFundingTransaction = async (
       expectedAmount: input.amount,
       actualAmount: input.amount,
       differenceAmount: 0,
-      currency: "NDP"
+      currency: "TEST_NDP",
+      status: "TEST_ONLY"
     }
   });
   await tx.auditLog.create({
@@ -3587,7 +3605,7 @@ const createSeedWalletFundingTransaction = async (
       metadata: {
         walletId: wallet.id,
         amount: input.amount,
-        currency: "NDP"
+        currency: "TEST_NDP"
       }
     }
   });
@@ -4015,6 +4033,20 @@ export const seedUserManagement = async (
       });
     }
   });
+
+  const testUsers = await prisma.user.findMany({
+    where: { isTestAccount: true, deletedAt: null },
+    select: { id: true },
+    orderBy: { id: "asc" }
+  });
+  const [{ TestNdpProvisioningRepository }, { TestNdpProvisioningService }] = await Promise.all([
+    import("../src/repositories/test-ndp-provisioning.repository"),
+    import("../src/services/test-ndp-provisioning.service")
+  ]);
+  await calibrateTestNdpUserIds(
+    testUsers.map((user) => user.id),
+    new TestNdpProvisioningService(new TestNdpProvisioningRepository(prisma))
+  );
 
   if (adminUserId === null || adminSessionGeneration === null) {
     throw new Error("ADMIN_SEED_ACCOUNT_MIGRATION_MISSING");

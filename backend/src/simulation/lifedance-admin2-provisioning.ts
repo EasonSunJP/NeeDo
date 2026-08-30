@@ -140,6 +140,31 @@ export const resolveLifeDanceAdmin2Password = (env: {
   return password;
 };
 
+export const buildLifeDanceAdmin2UserData = (
+  passwordHash: string,
+  sessionGeneration: number
+) => ({
+  email: LIFEDANCE_ADMIN2_PLAN.email,
+  needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
+  accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart,
+  primaryIdentityType: PrimaryIdentityType.NEEDO,
+  passwordHash,
+  username: LIFEDANCE_ADMIN2_PLAN.displayName,
+  avatarUrl: LIFEDANCE_ADMIN2_PLAN.avatarUrl,
+  emailVerifiedAt: new Date("2026-08-29T00:00:00.000Z"),
+  isTestAccount: true,
+  isActive: true,
+  sessionGeneration,
+  deletedAt: null
+});
+
+export const calibrateLifeDanceAdmin2TestNdp = async (
+  userId: number,
+  service: { calibrateUser(userId: number): Promise<unknown> }
+): Promise<void> => {
+  await service.calibrateUser(userId);
+};
+
 const ensureIdentity = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -320,35 +345,14 @@ export const provisionLifeDanceAdmin2 = async (
   assert(!conflictingUser, "The requested LifeDance admin2 NeeDo ID is already assigned.");
 
   const sessionGeneration = existingUser ? existingUser.sessionGeneration + 1 : 0;
+  const userData = buildLifeDanceAdmin2UserData(passwordHash, sessionGeneration);
   const user = existingUser
     ? await tx.user.update({
         where: { id: existingUser.id },
-        data: {
-          email: LIFEDANCE_ADMIN2_PLAN.email,
-          needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
-          accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart,
-          primaryIdentityType: PrimaryIdentityType.NEEDO,
-          passwordHash,
-          username: LIFEDANCE_ADMIN2_PLAN.displayName,
-          avatarUrl: LIFEDANCE_ADMIN2_PLAN.avatarUrl,
-          emailVerifiedAt: new Date("2026-08-29T00:00:00.000Z"),
-          isActive: true,
-          sessionGeneration,
-          deletedAt: null
-        }
+        data: userData
       })
     : await tx.user.create({
-        data: {
-          needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
-          accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart,
-          primaryIdentityType: PrimaryIdentityType.NEEDO,
-          email: LIFEDANCE_ADMIN2_PLAN.email,
-          emailVerifiedAt: new Date("2026-08-29T00:00:00.000Z"),
-          passwordHash,
-          username: LIFEDANCE_ADMIN2_PLAN.displayName,
-          avatarUrl: LIFEDANCE_ADMIN2_PLAN.avatarUrl,
-          isActive: true
-        }
+        data: userData
       });
 
   const existingShop = await tx.shop.findFirst({

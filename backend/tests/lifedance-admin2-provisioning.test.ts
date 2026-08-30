@@ -1,6 +1,8 @@
 import {
   LIFEDANCE_ADMIN2_PLAN,
   assertLocalAdmin2ProvisioningTarget,
+  buildLifeDanceAdmin2UserData,
+  calibrateLifeDanceAdmin2TestNdp,
   resolveLifeDanceAdmin2Password,
   selectAdmin2AccountCandidate,
   selectAdmin2FriendTargets
@@ -25,6 +27,20 @@ describe("LifeDance admin2 provisioning plan", () => {
       ],
       roleCodes: ["admin", "customer", "technician", "merchant_owner", "scout"]
     });
+  });
+
+  it("marks the local account as test and calibrates it once after provisioning", async () => {
+    expect(buildLifeDanceAdmin2UserData("password-hash", 4)).toMatchObject({
+      isTestAccount: true,
+      passwordHash: "password-hash",
+      sessionGeneration: 4
+    });
+    const service = { calibrateUser: jest.fn(async () => ({ status: "applied" })) };
+
+    await calibrateLifeDanceAdmin2TestNdp(787, service as never);
+
+    expect(service.calibrateUser).toHaveBeenCalledTimes(1);
+    expect(service.calibrateUser).toHaveBeenCalledWith(787);
   });
 
   it("selects the legacy email account for an in-place canonical rename", () => {
