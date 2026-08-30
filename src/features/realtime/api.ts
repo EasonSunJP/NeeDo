@@ -1,4 +1,5 @@
 import { buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
+import type { ImMessageRichText } from "../im/reaction-policy";
 
 export type PaginatedRealtimeData<TItem> = {
   list: TItem[];
@@ -178,6 +179,8 @@ export type RealtimeSocialPost = {
   createdAt: string;
   id: number;
   media: unknown;
+  replyCount: number;
+  replyToPostId: number | null;
   updatedAt?: string;
   viewerFollowsAuthor?: boolean;
   viewerIsFriend?: boolean;
@@ -239,6 +242,7 @@ export type RealtimeSocialCreateMediaEnvelope = {
   repostPostId?: number;
   postType?: "post" | "reply" | "quote" | "repost" | "announcement" | "technician-daily";
   locationLabel?: string;
+  richText?: ImMessageRichText;
 };
 
 export type RealtimeSocialCreatePostInput = {

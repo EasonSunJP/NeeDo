@@ -55,4 +55,19 @@ describe("formal social provider gate", () => {
     expect(source).toContain("realtimeApi.updateSocialPost");
     expect(source).not.toContain("updatePost: formalSocialMutationUnavailable");
   });
+
+  it("increments an already-mounted reply parent exactly once after the formal create succeeds", () => {
+    const createSource = source.slice(
+      source.indexOf("const createPost = async"),
+      source.indexOf("const updatePost = async")
+    );
+
+    expect(createSource).toContain("const created = await realtimeApi.createSocialPost");
+    expect(createSource).toContain("post.id === mapped.replyToPostId");
+    expect(createSource).toContain("replyCount: post.replyCount + 1");
+    expect(createSource.indexOf("setState")).toBeGreaterThan(
+      createSource.indexOf("const created = await realtimeApi.createSocialPost")
+    );
+    expect(createSource.match(/replyCount: post\.replyCount \+ 1/g)).toHaveLength(1);
+  });
 });

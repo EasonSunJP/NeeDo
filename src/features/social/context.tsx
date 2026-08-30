@@ -335,14 +335,25 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
           quotePostId: input.quotePostId,
           replyToPostId: input.replyToPostId,
           postType: input.postType,
-          locationLabel: input.locationLabel
+          locationLabel: input.locationLabel,
+          richText: input.richText
         }),
         mentionUserIds: input.mentionUserIds ?? [],
         visibility: input.visibility === "followers" ? "followers" : "public"
       });
       const mapped = mapFormalSocialPost(created);
       setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([created]) }));
-      setState((current) => ({ ...current, posts: sortPostsByNewest([mapped, ...current.posts.filter((post) => post.id !== mapped.id)]) }));
+      setState((current) => ({
+        ...current,
+        posts: sortPostsByNewest([
+          mapped,
+          ...current.posts
+            .filter((post) => post.id !== mapped.id)
+            .map((post) => post.id === mapped.replyToPostId
+              ? { ...post, replyCount: post.replyCount + 1 }
+              : post)
+        ])
+      }));
       return mapped;
     };
     const updatePost = async (input: SocialUpdatePostInput) => {
@@ -362,7 +373,8 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
           replyToPostId: currentPost.replyToPostId,
           repostPostId: currentPost.repostPostId,
           postType: input.postType,
-          locationLabel: input.locationLabel
+          locationLabel: input.locationLabel,
+          richText: currentPost.richText
         }),
         mentionUserIds: input.mentionUserIds ?? [],
         visibility: input.visibility === "followers" ? "followers" : "public"

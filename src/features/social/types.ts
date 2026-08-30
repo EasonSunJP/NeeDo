@@ -1,4 +1,8 @@
+import type { ImMessageRichText } from "../im/reaction-policy";
+
 export type SocialEntityType = "user" | "technician" | "shop";
+
+export type SocialRichText = ImMessageRichText;
 
 export type SocialPortalScope = "user" | "merchant" | "technician";
 
@@ -87,6 +91,7 @@ export interface SocialPost {
   quotePostId?: string;
   repostPostId?: string;
   replyToPostId?: string;
+  richText?: SocialRichText;
   createdAt: string;
   updatedAt?: string;
   likeCount: number;
@@ -189,6 +194,7 @@ export interface SocialCreatePostInput {
   media?: SocialMediaItem[];
   quotePostId?: string;
   replyToPostId?: string;
+  richText?: SocialRichText;
   visibility?: SocialVisibility;
   visibilityTagIds?: string[];
   visibilityProfileKeys?: string[];
