@@ -29,6 +29,7 @@
     "check:affiliate-task-expiry-flow": "tsx scripts/check-affiliate-task-expiry-flow.ts",
     "check:affiliate-platform-fee-flow": "tsx scripts/check-affiliate-platform-fee-flow.ts",
     "check:booking-platform-fee-debt-flow": "tsx scripts/check-booking-platform-fee-debt-flow.ts",
+    "check:shop-membership-card-plan-flow": "tsx scripts/check-shop-membership-card-plan-flow.ts",
     "check:order-acceptance-control-flow": "tsx scripts/check-order-acceptance-control-flow.ts && tsx scripts/check-affiliate-checkout-attribution-flow.ts",
     "check:order-acceptance-control-migration": "tsx scripts/check-order-acceptance-control-migration.ts",
     "check:message-reaction-slots": "ENV_FILE=.env.dev tsx scripts/check-message-reaction-slots.ts",

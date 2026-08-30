@@ -25,7 +25,7 @@ describe("database config", () => {
     });
   });
 
-  it("passes MySQL 8 RSA public-key retrieval through to the MariaDB adapter", () => {
+  it("passes MySQL 8 RSA public-key retrieval through and pins MariaDB sessions to UTC", () => {
     expect(
       createMariaDbPoolConfig({
         DATABASE_URL: "mysql://needo:secret@localhost:3306/needo_test",
@@ -39,7 +39,8 @@ describe("database config", () => {
       allowPublicKeyRetrieval: true,
       charset: "utf8mb4",
       collation: "utf8mb4_unicode_ci",
-      connectionLimit: 12
+      connectionLimit: 12,
+      timezone: "Z"
     });
   });
 });

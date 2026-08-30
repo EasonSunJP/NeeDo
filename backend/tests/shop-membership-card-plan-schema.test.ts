@@ -10,6 +10,10 @@ const migrationPath = join(
   process.cwd(),
   "prisma/migrations/20260831150000_shop_membership_card_rule_configuration/migration.sql"
 );
+const utcCorrectionMigrationPath = join(
+  process.cwd(),
+  "prisma/migrations/20260831151000_membership_reward_fee_policy_utc_bootstrap/migration.sql"
+);
 
 const planPermissions = [
   "shop.member.card_plan.view",
@@ -81,6 +85,14 @@ describe("shop membership card plan schema contract", () => {
     expect(migration).toContain("'membership_reward'");
     expect(migration).toContain("1000");
     expect(migration).not.toMatch(/UPDATE\s+`?(wallets|ledger_entries|shop_membership_cards)`?/i);
+  });
+
+  it("normalizes the initial fee policy against UTC without rewriting migration history", () => {
+    const correction = readFileSync(utcCorrectionMigrationPath, "utf8");
+    expect(correction).toContain("UTC_TIMESTAMP(3)");
+    expect(correction).toContain("`version` = 1");
+    expect(correction).toContain("Initial membership reward platform fee");
+    expect(correction).not.toMatch(/UPDATE\s+`?(wallets|wallet_ledger|ledger_transactions|shop_membership_cards)`?/i);
   });
 
   it("grants read-only plans to staff, full plan control to owners, and fee writes to finance", () => {

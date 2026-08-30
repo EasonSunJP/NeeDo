@@ -203,3 +203,29 @@ Migration 为 `20260829150000_employee_schedule_privacy`，为 `availabilities` 
 读取要求 `page:backoffice-affiliate-fee-rule`，创建要求 `button:backoffice-affiliate-fee-rule-create`。接口继续要求运营全局或平台身份，创建事务同时写入不可变审计。店铺搜索不扩大财务角色的一般店铺管理权限；历史列表通过同一查询投影店铺名称与城市，避免 N+1 和已下架店铺标签丢失。
 
 本微步骤复用现有 `affiliate_platform_fee_rules` 及其版本、审计和任务快照模型，没有新增 schema 或 migration。浏览器验收只检查读取、筛选、店铺选择、校验和确认页，不提交新的真实费率版本；写入行为由隔离的 API、Service 与 Repository 测试验证。
+
+## 15. 2026-08-31 会员卡方案与 NDP 返点规则
+
+商户会员中心保留现有“已发会员卡”页面，并新增“卡方案”工作区。会员入口及相关页面均显示 `TEST` 角标，提醒当前能力仍处于本地测试阶段。方案工作区沿用既有暗色视觉系统，按“卡种与有效期 → 初始发卡范围 → 基础返点 → 叠加奖励 → 范围与上限 → 试算发布”组织，支持储值卡、次卡、权益卡，不新增平行 mock 数据。
+
+店铺可以设定发卡时允许的初始金额或次数范围；实际给客人发卡、后续调额/调次及客户同意流程留给后续独立微步骤。本页不提供折扣、礼物、赠送服务或赠送次数选项，所有权益统一为 NDP 返点。
+
+正式商户接口：
+
+- `GET/POST /api/v1/merchant-admin/shop-membership-card-plans`
+- `GET /api/v1/merchant-admin/shop-membership-card-plans/:publicId`
+- `PATCH /api/v1/merchant-admin/shop-membership-card-plans/:publicId/draft`
+- `POST /api/v1/merchant-admin/shop-membership-card-plans/:publicId/preview`
+- `POST /api/v1/merchant-admin/shop-membership-card-plans/:publicId/publish`
+- `POST /api/v1/merchant-admin/shop-membership-card-plans/:publicId/retire`
+
+读取、维护、发布分别要求 `shop.member.card_plan.view`、`shop.member.card_plan.manage`、`shop.member.card_plan.publish`。店铺范围只取当前 JWT 的 `shop` 身份；草稿使用乐观锁，发布版本不可变，跨店公开 ID 返回不存在。创建、编辑、发布和停用写入审计。
+
+运营后台新增 `/pf-admin.html#/admin/finance/membership-reward-fee`，展示当前费率、下一生效版本和分页历史，并在具备写权限时创建不可变费率版本：
+
+- `GET /api/v1/backoffice/membership-reward-fee-policy`
+- `POST /api/v1/backoffice/membership-reward-fee-policy/versions`
+
+读取要求 `page:backoffice-membership-reward-fee`，创建要求 `button:backoffice-membership-reward-fee-create`。页面明确展示“客户返点 + 平台费 = 店铺总扣除”；默认平台费为 10%，发布方案时保存费率快照，之后运营变更费率不会回写旧方案。
+
+新增表为 `membership_reward_fee_policy_versions`、`shop_membership_card_plans`、`shop_membership_card_plan_versions`、`shop_membership_reward_rules`；migration 为 `20260831150000_shop_membership_card_rule_configuration` 和 UTC 时间纠正 `20260831151000_membership_reward_fee_policy_utc_bootstrap`。本地真实数据库回滚验收已验证十类规则、RBAC 店铺边界、1000/100/1100 试算、费率快照和审计，且未改变现有会员卡、钱包或账本数据。

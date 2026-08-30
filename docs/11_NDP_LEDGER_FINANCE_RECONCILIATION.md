@@ -63,6 +63,24 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:simu
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:future-operations
 ```
 
+### 4.2 会员卡 NDP 返点方案地基（2026-08-31）
+
+- 会员权益不提供折扣、实物礼物、赠送服务或赠送次数；所有奖励统一表达为 NDP 返点。
+- 店铺可配置三类基础返点：每次完成固定 NDP、按符合条件金额比例返点、每满指定消费金额返固定 NDP；可叠加首次用卡、指定服务范围、完成次数里程碑、消费金额里程碑、生日月、指定时段和连续活跃月奖励。
+- 每条规则可限制服务/分类范围、排除项与生效区间；方案还支持单笔、单日、单月和生命周期 NDP 上限。服务范围引用必须属于当前 JWT 店铺。
+- 方案发布时保存平台费率不可变快照。默认平台费率为 10%（1000 bps）；客户应得 1000 NDP 时，平台费向上取整为 100 NDP，未来结算节点从店铺钱包合计扣 1100 NDP。
+- 保存或发布规则不会冻结钱包。真正完成服务并命中返点规则时，后续结算微步骤才按已发布版本快照扣除；余额不足应登记待结算负债并在未来充值节点处理，不允许绕过账本直接改余额。
+- 本微步骤只建立方案、规则、费率版本、RBAC、审计和服务端试算，没有接入开卡、充值、核销、退款或实际 NDP 账本写入。上述行为必须分别作为后续独立微步骤实现并复用这里的已发布版本。
+- 已应用迁移：`20260831150000_shop_membership_card_rule_configuration` 与 `20260831151000_membership_reward_fee_policy_utc_bootstrap`。后者只纠正非 UTC MySQL 会话下初始费率时间，不修改已应用 migration 历史。
+- `check:shop-membership-card-plan-flow` 在本地 `needo_dev` 的真实事务中验证十类规则、跨店隔离、发布快照、费率新版本与审计；试算为客户 1000、平台 100、店铺合计 1100 NDP。事务故意回滚后，费率、方案、版本、规则、会员卡、钱包、账本交易、账本明细和审计计数均为 0 变化。
+
+本地迁移与验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-plan-flow
+```
+
 ---
 
 ## 5. 交付物
