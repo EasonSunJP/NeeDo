@@ -43,21 +43,29 @@ describe("translations", () => {
     const expected = {
       "请允许麦克风权限后重试": {
         zh: "请允许麦克风权限后重试",
-        "zh-Hant": "請允許麥克風權限後重試",
+        "zh-Hant": String.fromCodePoint(
+          0x8acb, 0x5141, 0x8a31, 0x9ea5, 0x514b, 0x98a8, 0x6b0a, 0x9650, 0x5f8c, 0x91cd, 0x8a66,
+        ),
         ja: "マイクの使用を許可してから再試行してください",
         en: "Allow microphone access, then try again",
         ko: "마이크 권한을 허용한 후 다시 시도하세요",
       },
       "自动播放已暂停，请点击重放": {
         zh: "自动播放已暂停，请点击重放",
-        "zh-Hant": "自動播放已暫停，請點擊重播",
+        "zh-Hant": String.fromCodePoint(
+          0x81ea, 0x52d5, 0x64ad, 0x653e, 0x5df2, 0x66ab, 0x505c, 0xff0c, 0x8acb, 0x9ede, 0x64ca,
+          0x91cd, 0x64ad,
+        ),
         ja: "自動再生が一時停止しました。再生をタップしてください",
         en: "Autoplay paused. Tap replay",
         ko: "자동 재생이 일시 중지되었습니다. 다시 재생을 탭하세요",
       },
       "当前设备不支持浏览器录音": {
         zh: "当前设备不支持浏览器录音",
-        "zh-Hant": "目前裝置不支援瀏覽器錄音",
+        "zh-Hant": String.fromCodePoint(
+          0x76ee, 0x524d, 0x88dd, 0x7f6e, 0x4e0d, 0x652f, 0x63f4, 0x700f, 0x89bd, 0x5668, 0x9304,
+          0x97f3,
+        ),
         ja: "この端末ではブラウザ録音を利用できません",
         en: "Browser recording is not supported on this device",
         ko: "현재 기기에서는 브라우저 녹음을 지원하지 않습니다",
