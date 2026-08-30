@@ -57,6 +57,18 @@ class FakeMediaRecorder {
   }
 }
 
+class FakeAudioTrack extends EventTarget {
+  readonly kind = "audio";
+  readonly readyState = "live";
+  muted = false;
+  readonly stop = vi.fn();
+
+  setMuted(value: boolean) {
+    this.muted = value;
+    this.dispatchEvent(new Event(value ? "mute" : "unmute"));
+  }
+}
+
 function HookProbe() {
   const voice = useImVoiceRecording();
   latest = voice;
@@ -89,6 +101,7 @@ let latest: UseImVoiceRecordingResult;
 let container: HTMLDivElement;
 let root: Root;
 let trackStop: ReturnType<typeof vi.fn>;
+let track: FakeAudioTrack;
 let stream: MediaStream;
 let getUserMedia: ReturnType<typeof vi.fn>;
 let audioPlay: ReturnType<typeof vi.spyOn>;
@@ -99,6 +112,13 @@ let revokeObjectURL: ReturnType<typeof vi.fn>;
 const webmChunk = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], {
   type: "audio/webm;codecs=opus",
 });
+
+function expectAudibleOutput(audio: HTMLMediaElement) {
+  expect(audio.defaultMuted).toBe(false);
+  expect(audio.muted).toBe(false);
+  expect(audio.volume).toBe(1);
+  expect(audio.hasAttribute("playsinline")).toBe(true);
+}
 
 async function renderHook() {
   await act(async () => root.render(<HookProbe />));
@@ -125,8 +145,8 @@ describe("useImVoiceRecording", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     FakeMediaRecorder.instances = [];
-    trackStop = vi.fn();
-    const track = { stop: trackStop } as unknown as MediaStreamTrack;
+    track = new FakeAudioTrack();
+    trackStop = track.stop;
     stream = { getTracks: () => [track] } as unknown as MediaStream;
     getUserMedia = vi.fn().mockResolvedValue(stream);
     Object.defineProperty(navigator, "mediaDevices", {
@@ -139,7 +159,10 @@ describe("useImVoiceRecording", () => {
     revokeObjectURL = vi.fn();
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
-    audioPlay = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    audioPlay = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function () {
+      expectAudibleOutput(this);
+      return Promise.resolve();
+    });
     audioPause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
 
     container = document.createElement("div");
@@ -159,7 +182,14 @@ describe("useImVoiceRecording", () => {
   it("starts on click and counts down from 59", async () => {
     await openRecording();
 
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        channelCount: { ideal: 1 },
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+      },
+    });
     expect(latest.phase).toBe("recording");
     expect(latest.remainingSeconds).toBe(MAX_VOICE_RECORDING_SECONDS);
     expect(latest.progress).toBe(0);
@@ -242,6 +272,7 @@ describe("useImVoiceRecording", () => {
   it("commits the preview URL to the audio element before autoplay", async () => {
     let srcAtPlay: string | null = null;
     audioPlay.mockImplementation(function (this: HTMLMediaElement) {
+      expectAudibleOutput(this);
       srcAtPlay = this.getAttribute("src");
       return Promise.resolve();
     });
@@ -256,7 +287,10 @@ describe("useImVoiceRecording", () => {
 
   it("does not let a pending autoplay rejection escape the sending phase", async () => {
     const playback = deferred<void>();
-    audioPlay.mockReturnValue(playback.promise);
+    audioPlay.mockImplementation(function (this: HTMLMediaElement) {
+      expectAudibleOutput(this);
+      return playback.promise;
+    });
     const recorder = await openRecording();
     await finishRecorder(recorder);
 
@@ -341,6 +375,69 @@ describe("useImVoiceRecording", () => {
     expect(latest.blob).toBeNull();
   });
 
+  it("rejects a track that stays muted without creating a preview", async () => {
+    track.muted = true;
+    const recorder = await openRecording();
+
+    await finishRecorder(recorder);
+
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(audioPlay).not.toHaveBeenCalled();
+    expect(latest.phase).toBe("idle");
+    expect(latest.error).toBe("error.im.voice_input_muted");
+    expect(latest.blob).toBeNull();
+    expect(latest.previewUrl).toBeNull();
+
+    await act(async () => {
+      await latest.replay();
+      latest.beginSending();
+    });
+    expect(latest.phase).toBe("idle");
+  });
+
+  it("keeps a preview when a muted track unmutes before recording stops", async () => {
+    track.muted = true;
+    const recorder = await openRecording();
+
+    await act(async () => track.setMuted(false));
+    await finishRecorder(recorder);
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(audioPlay).toHaveBeenCalledTimes(1);
+    expect(latest.phase).toBe("preview_playing");
+    expect(latest.error).toBeNull();
+  });
+
+  it("waits for preview readiness and invalidates a cancelled pending autoplay", async () => {
+    const audio = container.querySelector<HTMLAudioElement>('[data-testid="preview-audio"]')!;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_NOTHING,
+    });
+    const recorder = await openRecording();
+    await finishRecorder(recorder);
+
+    expect(audioPlay).not.toHaveBeenCalled();
+    await act(async () => {
+      audio.dispatchEvent(new Event("canplay"));
+      await Promise.resolve();
+    });
+    expect(audioPlay).toHaveBeenCalledTimes(1);
+
+    await act(async () => latest.cancel());
+    audioPlay.mockClear();
+    const nextRecorder = await openRecording();
+    await finishRecorder(nextRecorder);
+    expect(audioPlay).not.toHaveBeenCalled();
+
+    await act(async () => {
+      latest.cancel();
+      audio.dispatchEvent(new Event("canplay"));
+      await Promise.resolve();
+    });
+    expect(audioPlay).not.toHaveBeenCalled();
+  });
+
   it("tracks preview playback, replays from zero, and finishes at the total duration", async () => {
     const recorder = await openRecording();
     await finishRecorder(recorder);
@@ -387,7 +484,10 @@ describe("useImVoiceRecording", () => {
   });
 
   it("retains the preview when autoplay is rejected", async () => {
-    audioPlay.mockRejectedValueOnce(new DOMException("Autoplay blocked", "NotAllowedError"));
+    audioPlay.mockImplementationOnce(function (this: HTMLMediaElement) {
+      expectAudibleOutput(this);
+      return Promise.reject(new DOMException("Autoplay blocked", "NotAllowedError"));
+    });
     const recorder = await openRecording();
     await finishRecorder(recorder);
 
