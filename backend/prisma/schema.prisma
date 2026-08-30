@@ -517,6 +517,36 @@ enum CustomerMembershipDurationUnit {
   @@map("customer_membership_duration_unit")
 }
 
+enum ShopCustomerMembershipStatus {
+  ACTIVE @map("active")
+  ENDED  @map("ended")
+
+  @@map("shop_customer_membership_status")
+}
+
+enum ShopCustomerMembershipSource {
+  MERCHANT_MANUAL @map("merchant_manual")
+
+  @@map("shop_customer_membership_source")
+}
+
+enum ShopMembershipCardType {
+  STORED_VALUE @map("stored_value")
+  COUNT        @map("count")
+  BENEFIT      @map("benefit")
+
+  @@map("shop_membership_card_type")
+}
+
+enum ShopMembershipCardStatus {
+  ACTIVE  @map("active")
+  FROZEN  @map("frozen")
+  EXPIRED @map("expired")
+  VOID    @map("void")
+
+  @@map("shop_membership_card_status")
+}
+
 enum VanityNumberRuleKind {
   REPEATED_DIGIT      @map("repeated_digit")
   ASCENDING_SEQUENCE  @map("ascending_sequence")
@@ -619,6 +649,8 @@ model User {
   loginLogs                             LoginLog[]                          @relation("LoginLogUser")
   auditLogs                             AuditLog[]                          @relation("AuditLogActor")
   grantedCustomerMemberships            CustomerProfile[]                   @relation("CustomerMembershipGrantedBy")
+  createdShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipCreatedBy")
+  updatedShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipUpdatedBy")
   ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
   requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
@@ -824,6 +856,7 @@ model Shop {
   customerSupportAccount     CustomerSupportAccount?
   platformFeePolicy          ShopPlatformFeePolicy?
   orderAcceptancePauses      OrderAcceptancePause[]
+  customerMemberships        ShopCustomerMembership[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -1107,12 +1140,13 @@ model CustomerProfile {
   updatedAt               DateTime                        @updatedAt @map("updated_at")
   deletedAt               DateTime?                       @map("deleted_at")
 
-  user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
-  membershipGrantedBy   User?                  @relation("CustomerMembershipGrantedBy", fields: [membershipGrantedById], references: [id], onDelete: SetNull)
+  user                  User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  membershipGrantedBy   User?                    @relation("CustomerMembershipGrantedBy", fields: [membershipGrantedById], references: [id], onDelete: SetNull)
   mediaAssets           MediaAsset[]
   reviewSummary         ReviewSummary?
-  receivedOrderReviews  OrderReview[]          @relation("OrderReviewCustomer")
-  backofficeProfileTags BackofficeProfileTag[] @relation("BackofficeProfileTagCustomer")
+  receivedOrderReviews  OrderReview[]            @relation("OrderReviewCustomer")
+  backofficeProfileTags BackofficeProfileTag[]   @relation("BackofficeProfileTagCustomer")
+  shopMemberships       ShopCustomerMembership[]
 
   @@index([city])
   @@index([isPublic])
@@ -1121,6 +1155,63 @@ model CustomerProfile {
   @@index([membershipGrantedById], map: "customer_profiles_membership_granted_by_idx")
   @@index([deletedAt])
   @@map("customer_profiles")
+}
+
+model ShopCustomerMembership {
+  id                Int                          @id @default(autoincrement())
+  publicId          String                       @unique @default(uuid()) @map("public_id") @db.Char(36)
+  shopId            Int                          @map("shop_id")
+  customerProfileId Int                          @map("customer_profile_id")
+  status            ShopCustomerMembershipStatus @default(ACTIVE)
+  source            ShopCustomerMembershipSource @default(MERCHANT_MANUAL)
+  activeKey         String?                      @unique(map: "shop_customer_memberships_active_key_key") @map("active_key") @db.VarChar(191)
+  startedAt         DateTime                     @default(now()) @map("started_at")
+  endedAt           DateTime?                    @map("ended_at")
+  createdById       Int?                         @map("created_by_id")
+  updatedById       Int?                         @map("updated_by_id")
+  createdAt         DateTime                     @default(now()) @map("created_at")
+  updatedAt         DateTime                     @updatedAt @map("updated_at")
+  deletedAt         DateTime?                    @map("deleted_at")
+
+  shop            Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  customerProfile CustomerProfile      @relation(fields: [customerProfileId], references: [id], onDelete: Restrict)
+  createdBy       User?                @relation("ShopMembershipCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?                @relation("ShopMembershipUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cards           ShopMembershipCard[]
+
+  @@index([shopId, status, startedAt, deletedAt], map: "shop_customer_memberships_shop_status_idx")
+  @@index([customerProfileId, status, startedAt, deletedAt], map: "shop_customer_memberships_customer_status_idx")
+  @@index([createdById], map: "shop_customer_memberships_created_by_idx")
+  @@index([updatedById], map: "shop_customer_memberships_updated_by_idx")
+  @@index([deletedAt], map: "shop_customer_memberships_deleted_idx")
+  @@map("shop_customer_memberships")
+}
+
+model ShopMembershipCard {
+  id                  Int                      @id @default(autoincrement())
+  publicId            String                   @unique @default(uuid()) @map("public_id") @db.Char(36)
+  membershipId        Int                      @map("membership_id")
+  cardNo              String                   @unique @map("card_no") @db.VarChar(40)
+  name                String                   @db.VarChar(120)
+  type                ShopMembershipCardType
+  status              ShopMembershipCardStatus @default(ACTIVE)
+  principalBalanceJpy Int?                     @map("principal_balance_jpy")
+  bonusBalanceJpy     Int?                     @map("bonus_balance_jpy")
+  remainingUses       Int?                     @map("remaining_uses")
+  totalUses           Int?                     @map("total_uses")
+  issuedAt            DateTime                 @map("issued_at")
+  expiresAt           DateTime?                @map("expires_at")
+  frozenAt            DateTime?                @map("frozen_at")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  deletedAt           DateTime?                @map("deleted_at")
+
+  membership ShopCustomerMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@index([membershipId, status, deletedAt], map: "shop_membership_cards_membership_status_idx")
+  @@index([status, expiresAt, deletedAt], map: "shop_membership_cards_status_expiry_idx")
+  @@index([deletedAt], map: "shop_membership_cards_deleted_idx")
+  @@map("shop_membership_cards")
 }
 
 model Service {
@@ -2048,7 +2139,7 @@ model SocialPost {
   content          String               @db.Text
   media            Json?
   visibility       SocialPostVisibility @default(PUBLIC)
-  replyToPostId Int? @map("reply_to_post_id")
+  replyToPostId    Int?                 @map("reply_to_post_id")
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
   deletedAt        DateTime?            @map("deleted_at")
