@@ -262,6 +262,63 @@ describe("ImChatComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("replaces the voice control with a custom leading accessory and runs a direct plus action", async () => {
+    const onOpenMore = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft=""
+          isNight
+          leadingAccessory={<img alt="当前账号" src="/avatar.jpg" />}
+          moreAction={{ ariaLabel: "打开完整回复", run: onOpenMore }}
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          sendLabel="回复"
+          sendingLabel="回复中"
+        />
+      );
+    });
+
+    expect(container.querySelector("[data-im-composer-leading-accessory='true'] img")?.getAttribute("alt")).toBe("当前账号");
+    expect(container.querySelector("[data-im-composer-control='voice-input']")).toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开完整回复']")?.click();
+    });
+
+    expect(onOpenMore).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+  });
+
+  it("uses custom send copy without changing the default chat copy", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="回复内容"
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          sendLabel="回复"
+        />
+      );
+    });
+
+    expect([...container.querySelectorAll("button")].some((button) => button.textContent === "回复")).toBe(true);
+    await act(async () => root.unmount());
+  });
+
   it("defines bottom-navigation glass, upward panel growth, touch targets, and reduced motion", () => {
     expect(stylesSource).toContain(".client-shell .im-composer-glass");
     expect(stylesSource).toContain(".im-chat-composer-stack");
