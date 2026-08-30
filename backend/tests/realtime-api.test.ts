@@ -692,6 +692,7 @@ const createFixture = async () => {
         };
       }
     ),
+    checkMessageSendEligibility: jest.fn(async () => "allowed" as const),
     isMessageSenderBlocked: jest.fn(async () => false),
     recallMessage: jest.fn(
       async (input: {

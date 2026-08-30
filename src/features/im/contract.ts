@@ -87,6 +87,11 @@ export type ImApi = {
     type: ImMessageType,
     payload: { conversationId: string; content: string; quotedMessageId?: string; ext?: MessageExt },
   ): Promise<{ conversation?: Conversation; message: ConversationMessage }>;
+  sendVoiceMessage(
+    conversationId: string,
+    voice: Blob,
+    metadata: { durationSeconds: number; fileName: string },
+  ): Promise<{ message: ConversationMessage }>;
   setMessageReaction(
     conversationId: string,
     messageId: string,

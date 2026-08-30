@@ -1,6 +1,189 @@
-import { describe, expect, it } from "vitest";
+/** @vitest-environment jsdom */
+
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n/I18nProvider";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { ImScopeProvider } from "./scope";
 import source from "./pages.tsx?raw";
 import componentsSource from "./components.tsx?raw";
+
+const roomHarness = vi.hoisted(() => ({
+  entityStore: { customers: [], stores: [], technicians: [] } as Record<string, unknown>,
+  social: {
+    getActorForScope: () => "user:current-user",
+    getFollowing: () => [],
+    profiles: {},
+    toggleFollow: vi.fn(),
+  } as Record<string, unknown>,
+  store: null as Record<string, unknown> | null,
+}));
+
+vi.mock("./store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./store")>();
+
+  return {
+    ...actual,
+    useImStore: () => roomHarness.store,
+  };
+});
+
+vi.mock("../social/context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../social/context")>();
+
+  return {
+    ...actual,
+    useSocial: () => roomHarness.social,
+  };
+});
+
+vi.mock("../../state/entityStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../state/entityStore")>();
+
+  return {
+    ...actual,
+    useEntityStore: () => roomHarness.entityStore,
+  };
+});
+
+import { ImConversationRoomPage } from "./pages";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+class RoomMediaRecorder {
+  static instances: RoomMediaRecorder[] = [];
+
+  mimeType = "audio/webm";
+  ondataavailable: ((event: BlobEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onstop: (() => void) | null = null;
+  state: RecordingState = "inactive";
+
+  constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {
+    RoomMediaRecorder.instances.push(this);
+  }
+
+  start() {
+    this.state = "recording";
+  }
+
+  stop() {
+    this.state = "inactive";
+  }
+
+  emitData(blob: Blob) {
+    this.ondataavailable?.({ data: blob } as BlobEvent);
+  }
+
+  finishStop() {
+    this.onstop?.();
+  }
+}
+
+function buildConversationRoomStore() {
+  const currentUser = {
+    accountId: "current-account",
+    avatar: "/current-avatar.png",
+    id: "current-user",
+    nickname: "我",
+    profileKind: "user",
+    searchableFields: ["我"],
+    sortKey: "W",
+    status: "online",
+    tags: [],
+    userIdLabel: "NeeDo ID: current-user",
+  };
+  const partner = {
+    accountId: "partner-account",
+    avatar: "/partner-avatar.png",
+    id: "partner-user",
+    nickname: "测试好友",
+    profileKind: "user",
+    searchableFields: ["测试好友"],
+    signature: "正式会话测试",
+    sortKey: "C",
+    status: "online",
+    tags: [],
+    userIdLabel: "NeeDo ID: partner-user",
+  };
+  const conversation = {
+    avatar: partner.avatar,
+    contactUserId: partner.id,
+    draftText: "不要清空这段草稿",
+    id: "conversation-room",
+    isMuted: false,
+    isPinned: false,
+    lastMessagePreview: "",
+    lastMessageTime: "2026-08-31T00:00:00.000Z",
+    memberIds: [currentUser.id, partner.id],
+    title: partner.nickname,
+    type: "single",
+    unreadCount: 0,
+    updatedAt: "2026-08-31T00:00:00.000Z",
+  };
+  const sendVoiceMessage = vi.fn()
+    .mockRejectedValueOnce(new Error("network unavailable"))
+    .mockResolvedValueOnce(undefined);
+
+  return {
+    activeConversationId: undefined,
+    api: { uploadImage: vi.fn() },
+    config: {
+      allowStrangerMessaging: false,
+      preserveConversationAfterDelete: true,
+      recallWindowMs: 120_000,
+      separatorThresholdMs: 300_000,
+      syncDraftAcrossDevices: true,
+    },
+    contacts: [{
+      createdAt: "2026-08-31T00:00:00.000Z",
+      id: "contact-partner",
+      isBlocked: false,
+      isStarred: false,
+      ownerUserId: currentUser.id,
+      relationStatus: "active",
+      source: "friend",
+      tags: [],
+      targetUserId: partner.id,
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    }],
+    conversations: [conversation],
+    currentUserId: currentUser.id,
+    deleteMessage: vi.fn(),
+    friendRequests: [],
+    loadConversation: vi.fn().mockResolvedValue(conversation),
+    loadMessages: vi.fn().mockResolvedValue([]),
+    markConversationRead: vi.fn().mockResolvedValue(undefined),
+    members: [{ conversationId: conversation.id, joinedAt: conversation.updatedAt, userId: currentUser.id }, { conversationId: conversation.id, joinedAt: conversation.updatedAt, userId: partner.id }],
+    messagesByConversation: { [conversation.id]: [] },
+    paginationByConversation: { [conversation.id]: { hasMore: false, loaded: true, loading: false, nextCursor: null } },
+    recallMessage: vi.fn(),
+    sendFriendRequest: vi.fn(),
+    sendMessage: vi.fn(),
+    sendVoiceMessage,
+    setActiveConversation: vi.fn(),
+    setDraft: vi.fn(),
+    status: "ready",
+    ui: { drafts: {}, searchHistory: [] },
+    users: [currentUser, partner],
+    usersById: { [currentUser.id]: currentUser, [partner.id]: partner },
+  };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  RoomMediaRecorder.instances = [];
+  roomHarness.store = null;
+  window.localStorage.clear();
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  delete (navigator as Navigator & { mediaDevices?: MediaDevices }).mediaDevices;
+  delete (URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL;
+  delete (URL as typeof URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL;
+});
 
 describe("ImNewConversationPage directory query handoff", () => {
   it("initializes the editable formal directory query from the URL", () => {
@@ -267,5 +450,211 @@ describe("IM contact information automatic translation control", () => {
 
     expect(toggleSource).toContain("disabled?: boolean;");
     expect(toggleSource).toContain("disabled={disabled}");
+  });
+});
+
+describe("ImConversationRoomPage voice recording integration", () => {
+  it("shows the unsupported recording notice again after the previous notice expires", async () => {
+    vi.useFakeTimers();
+    roomHarness.store = buildConversationRoomStore();
+    window.localStorage.setItem("needo.language", "zh");
+    window.localStorage.setItem("needo.language.mode", "manual");
+    window.localStorage.setItem("needo.client.theme", "light-green");
+    window.localStorage.setItem("needo.client.theme.mode", "manual");
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/messages/conversation-room"]}>
+          <I18nProvider>
+            <ClientThemeProvider>
+              <ImScopeProvider scope="user">
+                <ImConversationRoomPage conversationId="conversation-room" />
+              </ImScopeProvider>
+            </ClientThemeProvider>
+          </I18nProvider>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const voiceButton = container.querySelector<HTMLButtonElement>("button[aria-label='录制语音']")!;
+    await act(async () => {
+      voiceButton.click();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-testid='im-conversation-action-notice']")?.textContent)
+      .toContain("当前设备不支持浏览器录音");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_600);
+    });
+    expect(container.querySelector("[data-testid='im-conversation-action-notice']")).toBeNull();
+
+    await act(async () => {
+      voiceButton.click();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-testid='im-conversation-action-notice']")?.textContent)
+      .toContain("当前设备不支持浏览器录音");
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps the recorded Blob and draft after a failed send, then closes and restores focus after retry succeeds", async () => {
+    const store = buildConversationRoomStore();
+    roomHarness.store = store;
+    window.localStorage.setItem("needo.language", "zh");
+    window.localStorage.setItem("needo.language.mode", "manual");
+    window.localStorage.setItem("needo.client.theme", "light-green");
+    window.localStorage.setItem("needo.client.theme.mode", "manual");
+
+    const trackStop = vi.fn();
+    const getUserMedia = vi.fn().mockResolvedValue({
+      getTracks: () => [{ stop: trackStop }],
+    } as unknown as MediaStream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:conversation-room-voice"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.stubGlobal("MediaRecorder", RoomMediaRecorder);
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+      queueMicrotask(() => callback(0));
+      return 1;
+    }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/messages/conversation-room"]}>
+          <I18nProvider>
+            <ClientThemeProvider>
+              <ImScopeProvider scope="user">
+                <ImConversationRoomPage conversationId="conversation-room" />
+              </ImScopeProvider>
+            </ClientThemeProvider>
+          </I18nProvider>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const editor = container.querySelector<HTMLElement>("[data-im-composer-rich-input='true']")!;
+    expect(editor.textContent).toBe("不要清空这段草稿");
+
+    const voiceButton = container.querySelector<HTMLButtonElement>("button[aria-label='录制语音']")!;
+    expect(voiceButton).not.toBeNull();
+    await act(async () => {
+      voiceButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const underlay = container.querySelector<HTMLElement>("[data-im-conversation-voice-underlay='true']")!;
+    expect(container.querySelector("[data-im-voice-recording-overlay='true'][role='dialog']")).not.toBeNull();
+    expect(underlay.hasAttribute("inert")).toBe(true);
+    expect(underlay.getAttribute("aria-hidden")).toBe("true");
+    expect(RoomMediaRecorder.instances).toHaveLength(1);
+
+    const recorder = RoomMediaRecorder.instances[0]!;
+    const recordedChunk = new Blob(["recorded voice"], { type: "audio/webm" });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button[aria-label='停止录音']")!.click();
+      recorder.emitData(recordedChunk);
+      recorder.finishStop();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const previewAudio = container.querySelector<HTMLAudioElement>("audio[src='blob:conversation-room-voice']");
+    expect(previewAudio).not.toBeNull();
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("button[aria-label='删除录音']")).not.toBeNull();
+    expect(container.querySelector("button[aria-label='重放录音']")).not.toBeNull();
+    expect(container.querySelector("button[aria-label='发送录音']")).not.toBeNull();
+    expect(container.querySelector("[data-im-voice-playback-time='true']")?.textContent).toBe("0:00 / 0:01");
+
+    previewAudio!.currentTime = 1;
+    await act(async () => previewAudio!.dispatchEvent(new Event("timeupdate", { bubbles: true })));
+    expect(container.querySelector("[data-im-voice-playback-time='true']")?.textContent).toBe("0:01 / 0:01");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button[aria-label='发送录音']")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(store.sendVoiceMessage).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("[data-im-voice-recording-overlay='true'][role='dialog']")).not.toBeNull();
+    expect(container.querySelector<HTMLAudioElement>("audio[src='blob:conversation-room-voice']")).toBe(previewAudio);
+    expect(container.querySelector("button[aria-label='删除录音']")).not.toBeNull();
+    expect(container.querySelector("button[aria-label='重放录音']")).not.toBeNull();
+    expect(container.querySelector("button[aria-label='发送录音']")).not.toBeNull();
+    expect(container.querySelector<HTMLElement>("[data-im-composer-rich-input='true']")?.textContent).toBe("不要清空这段草稿");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button[aria-label='重放录音']")!.click();
+      await Promise.resolve();
+    });
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(previewAudio!.currentTime).toBe(0);
+    expect(container.querySelector("[data-im-voice-playback-time='true']")?.textContent).toBe("0:00 / 0:01");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button[aria-label='发送录音']")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(store.sendVoiceMessage).toHaveBeenCalledTimes(2);
+    const firstSend = store.sendVoiceMessage.mock.calls[0]!;
+    const secondSend = store.sendVoiceMessage.mock.calls[1]!;
+    expect(firstSend[0]).toBe("conversation-room");
+    expect(secondSend[0]).toBe("conversation-room");
+    expect(firstSend[1]).toBeInstanceOf(Blob);
+    expect(secondSend[1]).toBe(firstSend[1]);
+    expect(firstSend[2]).toEqual({
+      durationSeconds: 1,
+      fileName: expect.stringMatching(/^voice-\d+\.webm$/),
+    });
+    expect(secondSend[2]).toEqual({
+      durationSeconds: 1,
+      fileName: expect.stringMatching(/^voice-\d+\.webm$/),
+    });
+    expect(container.querySelector("[data-im-voice-recording-overlay='true']")).toBeNull();
+    expect(underlay.hasAttribute("inert")).toBe(false);
+    expect(underlay.hasAttribute("aria-hidden")).toBe(false);
+    expect(container.querySelector<HTMLElement>("[data-im-composer-rich-input='true']")?.textContent).toBe("不要清空这段草稿");
+    expect(voiceButton).toBe(document.activeElement);
+    expect(trackStop).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
   });
 });

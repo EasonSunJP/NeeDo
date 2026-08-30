@@ -126,6 +126,7 @@ import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
 import { createImMediaRoutes } from "./routes/im-media.routes";
+import { createImVoiceMessageRoutes } from "./routes/im-voice-message.routes";
 import { createContentMediaRoutes } from "./routes/content-media.routes";
 import { createSocialMediaRoutes } from "./routes/social-media.routes";
 import { createOfficialAnnouncementRoutes } from "./routes/official-announcement.routes";
@@ -159,6 +160,9 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import type { ImVoiceDurationProbePort } from "./services/im-voice-duration-probe";
+import type { ImVoiceStoragePort } from "./services/im-voice.storage";
+import type { ImVoiceMessageService } from "./services/im-voice-message.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import {
   ObservabilityMetricsService,
@@ -251,6 +255,9 @@ export interface AppDependencies {
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  imVoiceDurationProbe?: ImVoiceDurationProbePort;
+  imVoiceStorage?: ImVoiceStoragePort;
+  imVoiceMessageService?: ImVoiceMessageService;
   exchangeService?: ExchangeService;
 }
 
@@ -342,6 +349,7 @@ export const createApp = (
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
   apiRouter.use(createImMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createImVoiceMessageRoutes(config, resolvedDependencies));
   apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
@@ -414,7 +422,7 @@ const createCustomerAvatarStaticMiddleware = (directory: string) => {
   };
 };
 
-const imMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+const imMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp|webm|mp4|ogg)$/;
 
 const createImMediaStaticMiddleware = (directory: string) => {
   const staticMiddleware = express.static(directory, {

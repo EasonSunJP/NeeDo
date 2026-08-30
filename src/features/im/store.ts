@@ -814,6 +814,36 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     }
   }
 
+  async function sendVoiceMessage(
+    conversationId: string,
+    voice: Blob,
+    metadata: { durationSeconds: number; fileName: string },
+  ) {
+    await hydrateStore();
+    const response = await api.sendVoiceMessage(conversationId, voice, metadata);
+    upsertMessage(response.message);
+    const conversation = getConversationById(
+      { conversations: snapshot.conversations },
+      conversationId,
+    );
+
+    if (conversation) {
+      upsertConversation({
+        ...conversation,
+        ...buildConversationLastMessageSummary(
+          response.message,
+          snapshot.currentUserId ?? "",
+          snapshot.usersById,
+          response.message.sentAt,
+        ),
+        updatedAt: response.message.sentAt,
+      });
+    }
+
+    emit();
+    return response.message;
+  }
+
   async function estimateTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignEstimate> {
     await hydrateStore();
     return api.estimateTagMessageCampaign(input);
@@ -1288,6 +1318,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       setActiveConversation,
       setDraft,
       sendMessage,
+      sendVoiceMessage,
       estimateTagMessageCampaign,
       sendTagMessageCampaign,
       resendMessage,

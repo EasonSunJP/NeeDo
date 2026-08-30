@@ -355,7 +355,20 @@ export interface CreateMessageInput {
 export type CreateMessageOutcome =
   | { status: "created"; message: MessagePayload }
   | { status: "not_found" }
+  | { status: "recipient_blocked" }
   | { status: "not_friends" };
+
+export type MessageSendEligibility =
+  | "allowed"
+  | "not_found"
+  | "recipient_blocked"
+  | "not_friends";
+
+export interface CheckMessageSendEligibilityInput {
+  conversationId: number;
+  senderUserId: number;
+  senderIdentityId?: number;
+}
 
 export interface RecallMessageInput {
   conversationId: number;
@@ -533,6 +546,9 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ConversationPayload>>;
+  checkMessageSendEligibility: (
+    input: CheckMessageSendEligibilityInput
+  ) => Promise<MessageSendEligibility>;
   createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
@@ -1276,6 +1292,72 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
   }
 
+  public async checkMessageSendEligibility(
+    input: CheckMessageSendEligibilityInput
+  ): Promise<MessageSendEligibility> {
+    const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
+    const participant = await this.client.conversationParticipant.findFirst({
+      where: {
+        conversationId: input.conversationId,
+        identityId: senderIdentityId,
+        deletedAt: null,
+        conversation: { deletedAt: null }
+      },
+      select: {
+        conversation: {
+          select: {
+            accessPolicy: true,
+            participants: {
+              where: { deletedAt: null },
+              select: { identityId: true }
+            }
+          }
+        }
+      }
+    });
+    if (!participant) {
+      return "not_found";
+    }
+    if (
+      await this.isMessageSenderBlocked(
+        input.conversationId,
+        input.senderUserId,
+        senderIdentityId
+      )
+    ) {
+      return "recipient_blocked";
+    }
+    if (
+      participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED
+    ) {
+      const identityIds = participant.conversation.participants.map(
+        ({ identityId }) => identityId
+      );
+      if (identityIds.length !== 2) {
+        return "not_friends";
+      }
+      const reciprocalCount = await this.client.contact.count({
+        where: {
+          deletedAt: null,
+          OR: [
+            {
+              ownerIdentityId: identityIds[0],
+              contactIdentityId: identityIds[1]
+            },
+            {
+              ownerIdentityId: identityIds[1],
+              contactIdentityId: identityIds[0]
+            }
+          ]
+        }
+      });
+      if (reciprocalCount !== 2) {
+        return "not_friends";
+      }
+    }
+    return "allowed";
+  }
+
   public async createMessage(input: CreateMessageInput): Promise<CreateMessageOutcome> {
     return this.client.$transaction(async (tx) => {
       const participant = await tx.conversationParticipant.findFirst({
@@ -1297,7 +1379,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
               accessPolicy: true,
               participants: {
                 where: { deletedAt: null },
-                select: { identityId: true }
+                select: {
+                  userId: true,
+                  identityId: true,
+                  identity: {
+                    select: {
+                      ownedContacts: {
+                        where: {
+                          contactIdentityId: input.senderIdentityId ?? input.senderUserId,
+                          blockedAt: { not: null },
+                          deletedAt: null
+                        },
+                        select: { id: true }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -1306,6 +1403,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
       if (!participant) {
         return { status: "not_found" };
+      }
+      if (
+        participant.conversation.type === ConversationType.DIRECT &&
+        participant.conversation.participants.some(
+          (conversationParticipant) =>
+            conversationParticipant.userId !== input.senderUserId &&
+            conversationParticipant.identity?.ownedContacts?.length > 0
+        )
+      ) {
+        return { status: "recipient_blocked" };
       }
       if (
         participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED

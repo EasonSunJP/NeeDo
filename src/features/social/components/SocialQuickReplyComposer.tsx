@@ -369,6 +369,7 @@ function SocialQuickReplyComposerState({
         sendingLabel={uploadPending ? "图片上传中" : "回复中"}
         submitOnEnter
         textareaRef={richInputRef}
+        voiceInputAriaLabel="录制语音"
       />
       {imageError ? (
         <p className="px-4 pb-2 text-sm text-[#ff8b86]" role="alert">

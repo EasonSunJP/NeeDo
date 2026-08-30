@@ -366,6 +366,38 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody
         .content
     ).toHaveProperty("image/png");
+    const voicePath =
+      response.body.paths["/api/v1/im/conversations/{conversationId}/voice"].post;
+    expect(voicePath.security).toEqual([{ bearerAuth: [] }]);
+    expect(voicePath.description).toContain("server-probed duration is authoritative");
+    expect(voicePath.description).toContain("pure audio");
+    expect(voicePath.description).toContain("59.5 seconds");
+    expect(voicePath.requestBody.content).toEqual(
+      expect.objectContaining({
+        "audio/webm": expect.any(Object),
+        "audio/mp4": expect.any(Object),
+        "audio/ogg": expect.any(Object)
+      })
+    );
+    expect(voicePath.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "durationSeconds",
+          description: expect.stringContaining("client hint"),
+          schema: expect.objectContaining({ minimum: 1, maximum: 59 })
+        })
+      ])
+    );
+    expect(voicePath.responses).toEqual(
+      expect.objectContaining({
+        "201": expect.any(Object),
+        "400": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object),
+        "413": expect.any(Object),
+        "415": expect.any(Object)
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/shops/{id}");
     expect(response.body.paths["/api/v1/shops/{id}"].get.parameters[0].schema.oneOf).toEqual(
       expect.arrayContaining([
