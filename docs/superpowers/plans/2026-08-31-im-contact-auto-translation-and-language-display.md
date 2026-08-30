@@ -985,6 +985,45 @@ git commit -m "test(build): calibrate i18n bundle budget"
 
 ---
 
+### Task 11: Protect the authoritative composer draft from runtime translation
+
+**Files:**
+
+- Modify: `src/features/im/components.composer.test.tsx`
+- Modify: `src/features/im/components.tsx`
+
+- [ ] **Step 1: Add a failing runtime/composer integration regression**
+
+Mount `I18nProvider` + `I18nRuntime` + `ImChatComposer`, select Japanese App language, enter the recognized source `测试测试`, wait through the MutationObserver / animation-frame translation cycle, then type or paste again.
+
+Prove before implementation that runtime translation can rewrite the contenteditable DOM and then enter the controlled draft/send serialization. Also assert the visual placeholder and `aria-placeholder` remain localized for the current App language after the fix.
+
+- [ ] **Step 2: Exclude only authoritative composer content and localize its UI affordances explicitly**
+
+Mark the rich input's user-content boundary so `I18nRuntime` cannot mutate its text nodes. Because the same exclusion also protects attributes, derive the visual placeholder and `aria-placeholder` explicitly from the current optional i18n context and mark the already-localized visual node against a second runtime pass.
+
+Do not change draft serialization, send behavior, judgement-token rendering, paste semantics, or the conversation auto-translation preference.
+
+- [ ] **Step 3: Verify the focused boundary and affected frontend gates**
+
+```bash
+npm test -- src/features/im/components.composer.test.tsx src/i18n/I18nProvider.test.ts src/features/im/reaction-policy.test.ts
+npm run lint
+npm run verify:production-build
+git diff --check
+```
+
+Expected: all commands exit `0`, raw draft/send assertions stay original, and the production bundle audit remains GREEN.
+
+- [ ] **Step 4: Commit only the composer boundary correction**
+
+```bash
+git add src/features/im/components.composer.test.tsx src/features/im/components.tsx
+git commit -m "fix(im): protect composer draft from translation"
+```
+
+---
+
 ## Final Self-Review Gate
 
 Before reporting completion, answer each with evidence:
