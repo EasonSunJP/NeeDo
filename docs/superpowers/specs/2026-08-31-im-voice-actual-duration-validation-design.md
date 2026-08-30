@@ -21,7 +21,7 @@ Use `music-metadata` as a pure-JavaScript parser inside a short-lived Node worke
 1. Keep the existing integer client hint validation at `1..59` for request compatibility and cheap rejection.
 2. Run the existing read-only authoritative send-eligibility preflight.
 3. Probe the uploaded bytes in the worker.
-4. Require a finite positive duration, at least one audio track, and no video track.
+4. Require a finite positive duration, `format.hasAudio === true`, and `format.hasVideo === false`.
 5. Accept actual duration up to `59.5` seconds. The 500 ms margin covers MediaRecorder/container finalization jitter; it is not exposed as user-visible recording time.
 6. Derive the authoritative message duration as `clamp(ceil(actualDuration), 1, 59)`.
 7. Reject when the client hint differs from that authoritative integer by more than one second.
@@ -43,7 +43,23 @@ probe(bytes, mimeType): Promise<{
 
 The production adapter uses a dedicated worker. The service depends on the port so message tests can use deterministic probes without starting threads. The worker result is treated as untrusted and validated again by the parent.
 
-The default probe permits at most two active workers. Additional requests enter a bounded FIFO queue; when the queue is full, the probe fails closed with the same stable validation error. Each worker has a two-second timeout and conservative V8 resource limits.
+Track policy uses the documented `IFormat.hasAudio` and `IFormat.hasVideo` booleans, not experimental `trackInfo` and not codec/name guesses. The library's WebM/Matroska and MP4 parsers derive these flags from container tracks; its Ogg stream parsers set them for Opus/Vorbis/Theora streams. If either flag is absent, non-boolean, or contradictory, the parent fails closed. Tests contain pure-audio and audio-plus-video samples for every accepted MIME so a library upgrade cannot silently weaken this contract.
+
+The worker entry is an inline CommonJS script created with `eval: true`. It calls `require("music-metadata")`, which is supported by the repository's Node 22 runtime, and therefore does not depend on a `.ts` worker path under tsx/Jest or a different `.js` path under `dist`.
+
+The default probe permits exactly two active workers and eight queued requests. A ninth queued request fails closed immediately. The queue is FIFO. Every task settles exactly once; message, error, invalid result, and timeout paths terminate the worker and release its slot exactly once before starting the next queued task. Any worker exit before a successful message fails immediately regardless of exit code; an exit emitted after settlement is ignored.
+
+Each worker has a two-second timeout and these V8 limits:
+
+```ts
+{
+  maxOldGenerationSizeMb: 32,
+  maxYoungGenerationSizeMb: 8,
+  stackSizeMb: 2
+}
+```
+
+The adapter accepts an internal worker-factory seam used only by unit tests. Controlled workers exercise FIFO order, queue overflow, message/error/exit/timeout races, exactly-once settlement, termination, and slot release without relying on parser timing.
 
 ## Media samples and tests
 
@@ -52,11 +68,12 @@ Committed fixtures are short, synthetic silence only. They contain no user speec
 Coverage includes:
 
 - valid short WebM/Opus, MP4/AAC, and Ogg/Opus parsing;
+- audio-plus-video WebM, MP4, and Ogg/Theora rejection through strict `hasVideo` flags;
 - malformed signature-only files that the current storage layer accepts but a real parser must reject;
-- audio-plus-video rejection;
-- over-59.5-second rejection and 59-second metadata clamp;
-- client/server duration mismatch rejection;
-- timeout, malformed worker result, queue bound, and worker cleanup;
+- exact 59.5-second acceptance, just-over-59.5-second rejection, and 59-second metadata clamp;
+- client/server duration difference of exactly one second acceptance and greater-than-one rejection;
+- timeout, malformed worker result, FIFO queue bound, and exactly-once worker cleanup;
+- source-mode probe tests plus a post-build smoke test that loads the compiled CommonJS probe and runs its real inline worker;
 - ordering proof that eligibility precedes probing, probing precedes storage, and transaction-time message creation remains last;
 - API success and rejection without filesystem or message side effects.
 
@@ -69,4 +86,3 @@ POST /api/v1/im/conversations/:conversationId/voice?fileName=<name>&durationSeco
 ```
 
 OpenAPI and Step 13 documentation will state that `durationSeconds` is a client hint and the server-parsed duration is authoritative. Existing clients remain wire-compatible.
-

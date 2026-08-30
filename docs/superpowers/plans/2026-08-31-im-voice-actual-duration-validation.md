@@ -22,8 +22,9 @@
 - Add `backend/tests/fixtures/im-voice/*`
 - Add `backend/tests/im-voice-duration-probe.test.ts`
 
-- Generate small synthetic silent WebM, MP4, and Ogg fixtures plus an over-limit fixture; commit the outputs, not the generation dependency.
-- Write tests for valid duration/track metadata, malformed data, video-bearing media, timeout, concurrency/queue bounds, and cleanup.
+- Generate small synthetic silent WebM, MP4, and Ogg fixtures, audio-plus-video fixtures for each accepted MIME, and an over-limit fixture; commit the outputs, not the generation dependency.
+- Assert only stable `format.hasAudio` / `format.hasVideo`; never infer policy from experimental `trackInfo` or codec strings. Missing/non-boolean flags fail closed.
+- Write tests for valid duration/track metadata, malformed data, all three video-bearing containers, timeout, two-active/eight-queued FIFO behavior, ninth-queued rejection, and exactly-once cleanup.
 - Run the focused test and confirm RED because the probe does not exist.
 
 ## Task 2: Implement the worker-isolated duration probe
@@ -34,8 +35,9 @@
 - Modify `backend/package-lock.json`
 
 - Add a pinned compatible `music-metadata` dependency through npm.
-- Implement the probe port, worker result validation, two-second timeout, two-worker concurrency, bounded FIFO queue, resource limits, and stable error mapping.
-- Run probe tests, backend build, lint, and dependency audit appropriate to this package.
+- Implement an inline `eval: true` CommonJS worker using Node 22 `require("music-metadata")`; do not use a source/dist-dependent worker filename.
+- Implement the probe port, strict boolean result validation, two-second timeout, two-worker/eight-queued FIFO bounds, `32/8/2 MiB` old/young/stack resource limits, injectable worker factory, exactly-once slot release/termination, and stable error mapping.
+- Run source-mode probe tests, backend build, a compiled-dist real-worker smoke test, lint, and dependency audit appropriate to this package.
 
 ## Task 3: Make the server-derived duration authoritative
 
@@ -46,7 +48,7 @@
 - Modify `backend/tests/im-voice-message.service.test.ts`
 - Modify `backend/tests/im-voice-message-api.test.ts`
 
-- First write RED tests for ordering, actual limit, track rejection, hint mismatch, metadata derivation, and zero-side-effect failure.
+- First write RED tests for ordering, exact `59.5` acceptance, just-over rejection, track/flag rejection, hint difference `=1` acceptance and `>1` rejection, metadata derivation, and zero-side-effect failure.
 - Inject the probe into the service and default route wiring.
 - Keep preflight first, probe second, storage third, transaction-time create fourth.
 - Persist only the clamped server-derived duration.
@@ -63,4 +65,3 @@
 - Run focused probe/service/API/OpenAPI tests.
 - Run backend lint/build/full tests and the repository production-build verification.
 - Inspect `git diff`, confirm no fixture contains user audio, and arrange an independent final code review.
-
