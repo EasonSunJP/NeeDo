@@ -4,7 +4,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { auditProductionBundle } from "./audit-production-bundle-lib.mjs";
 
-async function createBundleFixture({ staticDemo = false, missingAsset = false, exchangeResidue = false } = {}) {
+async function createBundleFixture({
+  staticDemo = false,
+  missingAsset = false,
+  exchangeResidue = false,
+  i18nBytes
+} = {}) {
   const distDir = await mkdtemp(path.join(tmpdir(), "needo-bundle-audit-"));
   const assetsDir = path.join(distDir, "assets");
   await mkdir(assetsDir);
@@ -12,7 +17,10 @@ async function createBundleFixture({ staticDemo = false, missingAsset = false, e
     path.join(assetsDir, "main-hash.js"),
     exchangeResidue ? "console.log('needoExchangeBridge');" : "console.log('formal');"
   );
-  await writeFile(path.join(assetsDir, "i18n-hash.js"), "export default {};");
+  await writeFile(
+    path.join(assetsDir, "i18n-hash.js"),
+    i18nBytes === undefined ? "export default {};" : "x".repeat(i18nBytes)
+  );
   if (staticDemo) {
     await writeFile(path.join(assetsDir, "staticDemo-hash.js"), "needoStaticDemo");
   }
@@ -27,6 +35,22 @@ describe("production bundle audit", () => {
   it("accepts a formal artifact within the size budgets", async () => {
     const report = await auditProductionBundle(await createBundleFixture());
     expect(report.failures).toEqual([]);
+  });
+
+  it("accepts the measured i18n artifact within the default budget", async () => {
+    const report = await auditProductionBundle(
+      await createBundleFixture({ i18nBytes: 3_703_026 })
+    );
+    expect(report.failures).toEqual([]);
+  });
+
+  it("rejects an i18n artifact one byte above the calibrated default budget", async () => {
+    const report = await auditProductionBundle(
+      await createBundleFixture({ i18nBytes: 3_704_097 })
+    );
+    expect(report.failures).toEqual([
+      "i18n-hash.js is 3704097 bytes; budget is 3704096"
+    ]);
   });
 
   it("rejects static demo runtime assets and broken references", async () => {

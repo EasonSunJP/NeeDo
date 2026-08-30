@@ -293,13 +293,13 @@
 - 聚焦后端命令 `npm --prefix backend test -- conversation-auto-translate-schema.test.ts realtime-api.test.ts realtime-service.test.ts realtime-repository-identity.test.ts friend-request-lifecycle.repository.test.ts openapi.test.ts`：沙箱内首次因 Supertest 临时监听 `0.0.0.0` 返回 `listen EPERM`；在受控权限下原命令重跑通过，`8` 个 suites、`100` 个 tests、`0` failures。Jest 的 `openapi.test.ts` 正则同时匹配仓库已有的 `backoffice-profile-detail-openapi.test.ts` 与 `exchange.openapi.test.ts`，所以实际为 8 个 suites。
 - 聚焦前端命令 `npm test -- src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/message-translation.test.ts src/features/im/components.action-menu.test.tsx src/features/im/chat-home.test.tsx src/features/im/language-display.test.ts src/features/im/ConversationIdentityProfileCard.test.tsx src/features/im/friend-request-presentation.test.ts src/features/im/pages.test.tsx src/i18n/I18nProvider.test.ts src/i18n/translations.test.ts`：`11` 个 test files、`178` 个 tests 全部通过。
 - `npm --prefix backend run prisma:generate`、`npm --prefix backend run lint`、`npm --prefix backend run build` 与根目录 `npm run lint` 均退出 `0`。计划命令 `npm --prefix backend exec -- prisma validate` 从仓库根目录解析 schema，因找不到 `./prisma/schema.prisma` 退出 `1`；在 `backend/` 目录执行等价的 `npm exec -- prisma validate` 后正式 schema 校验通过。
-- `npm run verify:production-build` 当前为 **RED，尚未通过发布门禁**：Vite 已成功转换 `496` 个模块并完成产物，但 `audit:production-bundle` 报告 `i18n-C9-qJbNK.js` 为 `3,703,026` bytes，超过 `3,702,048` bytes 预算 `978` bytes，因此总命令退出 `1`。同次构建还保留仓库既有的 `SocialProfilePage.tsx` 静态/动态混合导入警告和大 chunk 警告。在修复并重新验证前，不得把本切片描述为完成发布验证。
+- `npm run verify:production-build` 当前为 **GREEN**：Vite 成功转换 `496` 个模块，生成的 `i18n-C9-qJbNK.js` 为 `3,703,026` bytes；生产审计的 i18n 默认预算按本切片实测值精确增加 `2,048` bytes 至 `3,704,096` bytes，保留 `1,070` bytes 余量，`audit:production-bundle` 通过 `8` 个 HTML entries 与 `23` 个 assets，总命令退出 `0`。边界测试同时证明实测产物可通过，而 `3,704,097` bytes（预算上方 `1` byte）仍被拒绝；`4,000,000` bytes main 预算、禁止运行时标记和资源引用检查均未改变。同次构建仍显示仓库既有的 `SocialProfilePage.tsx` 静态/动态混合导入警告和大 chunk 警告，但不影响既有门禁判定。
 - `git diff --check` 与从基线 `cbf05a86` 到当前实现 HEAD 的 `git diff --check cbf05a86..HEAD` 均通过。禁止模式扫描只命中仓库既有的 IM 草稿/滚动/筛选/最近表情等 UI 状态持久化，以及一个新增测试的 `window.localStorage.clear()` 清理；实现差异没有新增浏览器业务偏好、`TODO`、`FIXME`、`not implemented`、`sessionStorage` 或外部翻译提供商引用。人工差异核对确认派生翻译只进入 render/copy helpers，没有赋回 `ConversationMessage`、Store 或发送/转发/重发/撤回输入。
 
 ### 仍待授权的正式验收
 
 - 本轮没有应用 `20260831120000_conversation_auto_translate_messages` migration，没有修改正式数据库，没有启动或接管浏览器端口，没有发送测试消息，也没有执行部署或线上验收。
-- 生产 bundle 预算门禁必须先恢复为 GREEN。之后仍需用户明确授权，才可在受控本地正式环境核对端口/工作树归属、应用 migration、用双方真实测试身份验证默认关闭与身份/对端隔离、验证 `测试测试` 的历史/新消息开关与刷新持久化、检查贴纸/引用/说明/复制/置顶/列表/搜索/转发原始 payload、核对真实资料语言与移动端换行、检查 console/请求/安全区，并清理临时消息与偏好。
+- 生产 bundle 预算门禁已恢复为 GREEN；仍需用户明确授权，才可在受控本地正式环境核对端口/工作树归属、应用 migration、用双方真实测试身份验证默认关闭与身份/对端隔离、验证 `测试测试` 的历史/新消息开关与刷新持久化、检查贴纸/引用/说明/复制/置顶/列表/搜索/转发原始 payload、核对真实资料语言与移动端换行、检查 console/请求/安全区，并清理临时消息与偏好。
 
 ---
 
