@@ -110,11 +110,16 @@ export const conversationPrivacyBodySchema = z
 export const conversationPreferencesBodySchema = z
   .object({
     isPinned: z.boolean().optional(),
-    isMuted: z.boolean().optional()
+    isMuted: z.boolean().optional(),
+    autoTranslateMessages: z.boolean().optional()
   })
-  .refine((value) => value.isPinned !== undefined || value.isMuted !== undefined, {
-    message: "At least one conversation preference is required"
-  });
+  .refine(
+    (value) =>
+      value.isPinned !== undefined ||
+      value.isMuted !== undefined ||
+      value.autoTranslateMessages !== undefined,
+    { message: "At least one conversation preference is required" }
+  );
 
 export const conversationLeaveBodySchema = z.object({
   transferOwnerUserId: z.coerce.number().int().positive().optional()

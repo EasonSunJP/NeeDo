@@ -790,4 +790,28 @@ describe("RealtimeService group privacy and membership", () => {
       userId: 1
     });
   });
+
+  it("forwards auto translation preference through the active identity without publishing an event", async () => {
+    const conversation = { id: 91, autoTranslateMessages: true };
+    const repository = {
+      updateConversationPreferences: jest.fn(async () => conversation)
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.updateConversationPreferences(
+        { userId: 41, currentIdentityId: 410 } as never,
+        { conversationId: 91, autoTranslateMessages: true }
+      )
+    ).resolves.toBe(conversation);
+
+    expect(repository.updateConversationPreferences).toHaveBeenCalledWith({
+      conversationId: 91,
+      userId: 41,
+      identityId: 410,
+      autoTranslateMessages: true
+    });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
 });

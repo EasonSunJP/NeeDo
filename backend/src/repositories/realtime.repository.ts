@@ -54,6 +54,7 @@ export interface ConversationPayload {
   unreadCount: number;
   isPinned: boolean;
   isMuted: boolean;
+  autoTranslateMessages: boolean;
   isHidden: boolean;
   privacyModeEnabled: boolean;
   hideMemberProfiles: boolean;
@@ -398,6 +399,7 @@ export interface UpdateConversationPreferencesInput {
   identityId?: number;
   isPinned?: boolean;
   isMuted?: boolean;
+  autoTranslateMessages?: boolean;
 }
 
 export interface FriendRequestListInput extends PaginationInput {
@@ -1885,6 +1887,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       data: {
         ...(input.isPinned === undefined ? {} : { isPinned: input.isPinned }),
         ...(input.isMuted === undefined ? {} : { isMuted: input.isMuted }),
+        ...(input.autoTranslateMessages === undefined
+          ? {}
+          : { autoTranslateMessages: input.autoTranslateMessages }),
         hiddenAt: null
       }
     });
@@ -3982,6 +3987,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       unreadCount: viewer?.unreadCount ?? 0,
       isPinned: viewer?.isPinned ?? false,
       isMuted: viewer?.isMuted ?? false,
+      autoTranslateMessages: viewer?.autoTranslateMessages ?? false,
       isHidden: viewer?.hiddenAt !== null && viewer?.hiddenAt !== undefined,
       privacyModeEnabled: conversation.privacyModeEnabled,
       hideMemberProfiles: conversation.hideMemberProfiles,

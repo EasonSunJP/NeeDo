@@ -874,6 +874,10 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("PayrollCsvExport");
     expect(response.body.components.schemas).toHaveProperty("PayrollAdjustmentRequest");
     expect(response.body.components.schemas).toHaveProperty("RealtimeConversation");
+    expect(response.body.components.schemas.RealtimeConversation).toMatchObject({
+      required: expect.arrayContaining(["autoTranslateMessages"]),
+      properties: { autoTranslateMessages: { type: "boolean", default: false } }
+    });
     expect(
       response.body.components.schemas.RealtimeConversation.properties.disappearingTtlSeconds.maximum
     ).toBe(359_940);
@@ -885,6 +889,13 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.paths["/api/v1/im/conversations/{conversationId}/privacy"].patch.requestBody
         .content["application/json"].schema.properties.disappearingTtlSeconds.maximum
     ).toBe(359_940);
+    expect(
+      response.body.paths["/api/v1/im/conversations/{conversationId}/preferences"].patch
+        .requestBody.content["application/json"].schema
+    ).toMatchObject({
+      minProperties: 1,
+      properties: { autoTranslateMessages: { type: "boolean", default: false } }
+    });
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessage");
     expect(response.body.components.schemas.RealtimeMessage.required).toContain("reactions");
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessageReaction");
