@@ -62,12 +62,25 @@ describe("ImNewConversationPage directory query handoff", () => {
     const end = source.indexOf("export function ImContactDetailPage", start);
     const profileSource = source.slice(start, end);
 
-    expect(profileSource).toContain('profile?.relationship !== "friend"');
+    expect(profileSource).toContain("profile?.user.id !== userId || !isFriendProfile");
     expect(profileSource).toContain("store.ensureDirectConversation(userId)");
     expect(profileSource).toContain("config.routes.conversationInfo(conversation.id)");
     expect(profileSource).toContain("navigate(config.routes.conversationInfo(conversation.id), { replace: true })");
     expect(profileSource).toContain("contactInfoRedirectAttempt");
     expect(profileSource).toContain("contactInfoRedirectFailed");
+  });
+
+  it("keeps an active request from either directory source on the independent friend action page", () => {
+    const start = source.indexOf("export function ImDirectoryProfilePage");
+    const end = source.indexOf("export function ImContactDetailPage", start);
+    const profileSource = source.slice(start, end);
+
+    expect(profileSource).toContain("profile?.friendRequest ?? (");
+    expect(profileSource).toContain("store.friendRequests.find((item) => item.id === requestId)");
+    expect(profileSource).toContain("const activePendingRequest = isActiveFriendRequest(request);");
+    expect(profileSource).toContain('profile?.relationship === "friend" && !activePendingRequest');
+    expect(profileSource).toContain("profile?.user.id !== userId || !isFriendProfile");
+    expect(profileSource).toContain("<ImFriendProfileActionBar");
   });
 
   it("renders the current account as read-only contact information without relationship controls", () => {

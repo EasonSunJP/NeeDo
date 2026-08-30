@@ -236,26 +236,38 @@ export type DirectoryProfileAction =
   | "waiting"
   | "status";
 
+export function isActiveFriendRequest(
+  request: FriendRequest | null | undefined,
+  nowMs: number = Date.now(),
+) {
+  return Boolean(
+    request?.status === "pending" &&
+    Date.parse(request.expiresAt) > nowMs,
+  );
+}
+
 export function resolveDirectoryProfileActions(
   profile: DirectoryProfile,
   request: FriendRequest | null,
   currentUserId: string,
   nowMs: number = Date.now(),
 ): DirectoryProfileAction[] {
-  if (profile.relationship === "friend" || profile.relationship === "self") {
+  if (profile.relationship === "self") {
     return [];
   }
 
-  const activePending =
-    request?.status === "pending" &&
-    Date.parse(request.expiresAt) > nowMs;
+  const activePending = isActiveFriendRequest(request, nowMs);
 
-  if (activePending && request.toUserId === currentUserId) {
+  if (activePending && request?.toUserId === currentUserId) {
     return ["reject", "accept"];
   }
 
   if (activePending) {
     return ["waiting"];
+  }
+
+  if (profile.relationship === "friend") {
+    return [];
   }
 
   if (request) {
@@ -2809,6 +2821,7 @@ export function ImDirectoryProfilePage() {
       ? store.friendRequests.find((item) => item.id === requestId)
       : undefined
   ) ?? null;
+  const activePendingRequest = isActiveFriendRequest(request);
   const actions = profile
     ? resolveDirectoryProfileActions(profile, request, store.currentUserId ?? "")
     : [];
@@ -2816,7 +2829,7 @@ export function ImDirectoryProfilePage() {
   const activityTo = profile && profile.user.profileKind !== "service" && Number.isInteger(numericUserId) && numericUserId > 0
     ? socialPaths.accountProfile(scope as SocialPortalScope, numericUserId)
     : undefined;
-  const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend";
+  const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend" && !activePendingRequest;
   const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
@@ -2844,7 +2857,7 @@ export function ImDirectoryProfilePage() {
   }, [userId]);
 
   useEffect(() => {
-    if (!userId || profile?.user.id !== userId || profile?.relationship !== "friend") {
+    if (!userId || profile?.user.id !== userId || !isFriendProfile) {
       setContactInfoRedirectFailed(false);
       return undefined;
     }
@@ -2869,8 +2882,8 @@ export function ImDirectoryProfilePage() {
   }, [
     config.routes,
     contactInfoRedirectAttempt,
+    isFriendProfile,
     navigate,
-    profile?.relationship,
     profile?.user.id,
     store.ensureDirectConversation,
     userId,
