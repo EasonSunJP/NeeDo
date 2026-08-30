@@ -32,16 +32,19 @@ describe("CategoryPage technician showcase card", () => {
     expect(categoryPageSource).toContain('className="mt-4 grid grid-cols-3 gap-2"');
   });
 
-  it("does not apply the default category to a custom keyword search", () => {
-    expect(categoryPageSource).toContain(
-      'const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0;'
-    );
-    expect(categoryPageSource).toContain(
-      'const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");'
-    );
-    expect(categoryPageSource).toContain(
-      "const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;"
-    );
+  it("uses direct typed entity searches instead of deriving profiles from services", () => {
+    expect(categoryPageSource).toContain("coreReadApi.searchShops");
+    expect(categoryPageSource).toContain("coreReadApi.searchTechnicians");
+    expect(categoryPageSource).toContain("coreReadApi.searchServices");
+    expect(categoryPageSource).not.toContain('buildDisplayLabels(appliedTagIds, appliedCustomLabels).join(" ")');
+    expect(categoryPageSource).not.toContain("searchQuery.data.list.flatMap");
+    expect(categoryPageSource).not.toContain("matchesAllSearchKeywords");
+  });
+
+  it("routes new scoped search states through the existing i18n helper", () => {
+    expect(categoryPageSource).toContain('title={t("店铺搜索读取失败")}');
+    expect(categoryPageSource).toContain('title={t("技师搜索读取失败")}');
+    expect(categoryPageSource).toContain('title={t("服务搜索读取失败")}');
   });
 
   it("shows up to 20 technician cards and routes cards through the technician dynamic path", () => {
@@ -51,7 +54,9 @@ describe("CategoryPage technician showcase card", () => {
   });
 
   it("disables legacy category content", () => {
-    expect(categoryPageSource).toContain("searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? []");
+    expect(categoryPageSource).toContain("serviceSearchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? []");
+    expect(categoryPageSource).toContain("shopSearchQuery.data?.list.map(mapCoreShopToStore) ?? []");
+    expect(categoryPageSource).toContain("technicianSearchQuery.data?.list.map(mapCoreTechnicianToTechnician) ?? []");
     expect(categoryPageSource).not.toContain("legacyServices");
     expect(categoryPageSource).not.toContain("legacyStores");
     expect(categoryPageSource).not.toContain("legacyTechnicians");

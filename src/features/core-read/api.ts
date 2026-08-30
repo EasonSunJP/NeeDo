@@ -161,13 +161,30 @@ const fallbackTechnicianAvatar = "/images/generated/profiles/ai-profile-01.jpg";
 const fallbackCustomerAvatar = "/images/generated/profiles/ai-profile-30.jpg";
 
 const categoryCodeToHomeCategoryId: Partial<Record<string, ServiceCategory["id"]>> = {
+  appliance: "appliance",
   beauty: "beauty",
   business: "business",
   care: "care",
   cleaning: "cleaning",
+  deep: "deep",
   dining: "dining",
+  guide: "guide",
+  homecare: "homecare",
+  install: "install",
+  laundry: "laundry",
+  legal: "legal",
+  massage: "massage",
+  moving: "moving",
+  nanny: "nanny",
+  other: "other",
   pet: "pet",
+  property: "property",
+  recycle: "recycle",
+  renovation: "renovation",
   repair: "repair",
+  sports: "sports",
+  storage: "storage",
+  tutor: "tutor",
   wellness: "massage"
 };
 

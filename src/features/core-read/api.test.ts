@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   coreReadApi,
+  mapCoreCategoryToServiceCategory,
   mapCoreCustomerToCustomer,
   mapCoreServiceToServiceItem,
   mapCoreShopToStore,
@@ -166,6 +167,16 @@ describe("core read API adapter", () => {
       durationMinutes: 60,
       price: 8800
     });
+  });
+
+  it("preserves supported formal category codes for selected-tag search", () => {
+    expect(mapCoreCategoryToServiceCategory({
+      ...coreService.category,
+      id: 19,
+      code: "moving",
+      name: "Moving",
+      nameJa: "引っ越し"
+    })).toMatchObject({ id: "moving" });
   });
 
   it("maps shop, technician, and customer DTOs for read-only profile pages", () => {
