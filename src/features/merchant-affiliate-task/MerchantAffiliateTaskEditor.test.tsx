@@ -10,6 +10,7 @@ import type {
   MerchantAffiliateTask
 } from "../../api/merchantAffiliateTasks";
 import { merchantAffiliateTasksApi } from "../../api/merchantAffiliateTasks";
+import { ApiClientError } from "../../api/httpClient";
 import { MerchantAffiliateTaskEditor } from "./MerchantAffiliateTaskEditor";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -24,6 +25,7 @@ vi.mock("../../api/merchantAffiliateTasks", async (importOriginal) => {
       getTask: vi.fn(),
       createDraft: vi.fn(),
       updateDraft: vi.fn(),
+      updateLocale: vi.fn(),
       listPublishers: vi.fn(),
       listShops: vi.fn(),
       listServices: vi.fn()
@@ -186,6 +188,15 @@ const setInput = async (element: HTMLInputElement | null, value: string) => {
   });
 };
 
+const setTextarea = async (element: HTMLTextAreaElement | null, value: string) => {
+  await act(async () => {
+    if (!element) return;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    setter?.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+
 describe("MerchantAffiliateTaskEditor", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -193,6 +204,7 @@ describe("MerchantAffiliateTaskEditor", () => {
     getTask: vi.mocked(merchantAffiliateTasksApi.getTask),
     createDraft: vi.mocked(merchantAffiliateTasksApi.createDraft),
     updateDraft: vi.mocked(merchantAffiliateTasksApi.updateDraft),
+    updateLocale: vi.mocked(merchantAffiliateTasksApi.updateLocale),
     listPublishers: vi.mocked(merchantAffiliateTasksApi.listPublishers),
     listShops: vi.mocked(merchantAffiliateTasksApi.listShops),
     listServices: vi.mocked(merchantAffiliateTasksApi.listServices)
@@ -206,6 +218,7 @@ describe("MerchantAffiliateTaskEditor", () => {
     api.getTask.mockResolvedValue(task);
     api.createDraft.mockResolvedValue(task);
     api.updateDraft.mockResolvedValue(task);
+    api.updateLocale.mockResolvedValue(task);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -328,5 +341,87 @@ describe("MerchantAffiliateTaskEditor", () => {
       expect.objectContaining({ lockVersion: 2, coverMediaAssetId: 41 })
     );
     expect(container.querySelector('[data-field="coverMediaAssetId"]')).toBeNull();
+  });
+
+  it("saves one language independently and requires explicit confirmation before syncing all", async () => {
+    const currentTask = { ...task, lockVersion: 4 };
+    const englishTask: MerchantAffiliateTask = {
+      ...task,
+      lockVersion: 5,
+      translations: {
+        ...task.translations,
+        en: {
+          name: "English campaign",
+          description: "English instructions",
+          sourceLocale: "ja",
+          isInitialCopy: false
+        }
+      }
+    };
+    api.getTask.mockResolvedValue(currentTask);
+    api.updateLocale.mockResolvedValue(englishTask);
+
+    await act(async () => root.render(<MerchantAffiliateTaskEditor canWrite onPersisted={vi.fn()} taskId={81} />));
+    await flush();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-step="locales"]')?.click());
+
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-locale-code]")].map(
+        (element) => element.dataset.localeCode
+      )
+    ).toEqual(["ja", "en", "ko", "zh-TW", "zh-CN"]);
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-locale-code="en"]')?.click());
+    await setInput(container.querySelector<HTMLInputElement>('[data-locale-name="en"]'), "English campaign");
+    await setTextarea(
+      container.querySelector<HTMLTextAreaElement>('[data-locale-description="en"]'),
+      "English instructions"
+    );
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="save-affiliate-locale"]')?.click());
+    await flush();
+
+    expect(api.updateLocale).toHaveBeenCalledWith(81, "en", {
+      lockVersion: 4,
+      name: "English campaign",
+      description: "English instructions",
+      syncToAll: false
+    });
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="sync-affiliate-locales"]')?.click());
+    expect(api.updateLocale).toHaveBeenCalledTimes(1);
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="confirm-sync-affiliate-locales"]')?.click());
+    await flush();
+    expect(api.updateLocale).toHaveBeenLastCalledWith(81, "en", {
+      lockVersion: 5,
+      name: "English campaign",
+      description: "English instructions",
+      syncToAll: true
+    });
+  });
+
+  it("preserves local locale text on conflict and reloads only after explicit action", async () => {
+    api.getTask.mockResolvedValue({ ...task, lockVersion: 4 });
+    api.updateLocale.mockRejectedValue(
+      new ApiClientError("error.affiliate.task_conflict", 40918, 409)
+    );
+
+    await act(async () => root.render(<MerchantAffiliateTaskEditor canWrite onPersisted={vi.fn()} taskId={81} />));
+    await flush();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-step="locales"]')?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-locale-code="en"]')?.click());
+    await setInput(container.querySelector<HTMLInputElement>('[data-locale-name="en"]'), "Unsaved English");
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="save-affiliate-locale"]')?.click());
+    await flush();
+    expect(api.getTask).toHaveBeenCalledTimes(1);
+    expect(container.querySelector<HTMLInputElement>('[data-locale-name="en"]')?.value).toBe(
+      "Unsaved English"
+    );
+    expect(container.querySelector('[data-conflict-panel]')?.textContent).toContain("冲突");
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-action="reload-affiliate-task"]')?.click());
+    await flush();
+    expect(api.getTask).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[data-conflict-local]')?.textContent).toContain("Unsaved English");
   });
 });

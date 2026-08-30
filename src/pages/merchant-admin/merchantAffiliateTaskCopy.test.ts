@@ -16,6 +16,8 @@ describe("merchant Affiliate task copy", () => {
       expect(copy.shopPublicId.trim()).not.toBe("");
       expect(copy.createTask.trim()).not.toBe("");
       expect(copy.retry.trim()).not.toBe("");
+      expect(copy.conflictTitle.trim()).not.toBe("");
+      expect(copy.reloadCurrent.trim()).not.toBe("");
       expect(merchantAffiliateTaskStatusLabel("pending_review", language).trim()).not.toBe("");
     }
   });

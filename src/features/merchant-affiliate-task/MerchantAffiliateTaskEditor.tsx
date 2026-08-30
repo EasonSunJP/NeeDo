@@ -9,6 +9,7 @@ import {
   type MerchantAffiliateTaskStatus
 } from "../../api/merchantAffiliateTasks";
 import { Button } from "../../components/ui/Button";
+import { ApiClientError } from "../../api/httpClient";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -17,9 +18,13 @@ import {
   buildUpdatePayload,
   changePublisher,
   dateTimeLocalToIso,
+  emptyLocaleEditorState,
+  affiliateLocaleOrder,
   isoToDateTimeLocal,
   removeShop,
   taskToForm,
+  taskToLocaleEditorState,
+  type MerchantAffiliateLocaleEditorState,
   type MerchantAffiliateTaskForm
 } from "./model";
 import {
@@ -29,6 +34,13 @@ import {
 
 export const editorSteps = ["basic", "scope", "reward", "timing", "locales", "finance"] as const;
 type EditorStep = (typeof editorSteps)[number];
+
+type EditorConflict = {
+  localForm: MerchantAffiliateTaskForm;
+  localeState: MerchantAffiliateLocaleEditorState;
+  message: string;
+  reloaded: boolean;
+};
 
 type EditorText = {
   steps: Record<EditorStep, string>;
@@ -89,6 +101,94 @@ const editorCopies: Record<Language, EditorText> = {
   ko: {
     steps: { basic: "기본", scope: "범위", reward: "보상", timing: "기간", locales: "다국어", finance: "수수료 확인" },
     sourceLocale: "원문 언어", name: "작업 이름", description: "작업 설명", publisher: "게시 주체", shops: "대상 매장", services: "대상 서비스", allServices: "현재 모든 서비스", selectedServices: "선택한 서비스만", rewardPerOrder: "완료 주문당 보상", totalBudget: "커미션 총예산", discountType: "사용자 할인", noDiscount: "할인 없음", fixedDiscount: "고정 금액", percentDiscount: "비율 할인", fixedDiscountAmount: "고정 할인 JPY", discountRate: "할인율 bps", discountCap: "할인 상한 JPY", minimumOrder: "최소 주문 금액 JPY", claimStarts: "수령 시작", claimEnds: "수령 종료", taskStarts: "작업 시작", taskEnds: "작업 종료", attributionDays: "기여 기간 일수", maxPerClaim: "수령당 최대 완료 수", maxPerCustomer: "사용자당 최대 완료 수", saveDraft: "초안 저장", saving: "저장 중", loading: "정식 작업을 불러오는 중", publisherEmpty: "사용 가능한 게시 주체가 없습니다", shopEmpty: "사용 가능한 정식 매장이 없습니다", serviceEmpty: "선택한 매장에 사용 가능한 서비스가 없습니다", localeSummary: (sourceLocale, count) => `원문: ${sourceLocale}, 저장된 언어: ${count}개.`, financeSummary: (budget) => `커미션 예산: ${budget.toLocaleString()} NDP. 플랫폼 수수료와 동결 총액은 제출 전에 서버에서 계산됩니다.`, readOnly: "현재 작업은 읽기 전용입니다", required: "필수 항목을 입력해 주세요"
+  }
+};
+
+type LocaleWorkflowText = {
+  localeName: string;
+  localeDescription: string;
+  saveLocale: string;
+  savingLocale: string;
+  syncAll: string;
+  confirmSyncTitle: string;
+  confirmSyncBody: string;
+  confirmSync: string;
+  cancel: string;
+  saveDraftFirst: string;
+  localValues: string;
+  reloaded: string;
+};
+
+const localeWorkflowCopies: Record<Language, LocaleWorkflowText> = {
+  zh: {
+    localeName: "语言版本名称",
+    localeDescription: "语言版本说明",
+    saveLocale: "保存当前语言",
+    savingLocale: "正在保存语言",
+    syncAll: "同步到全部语言",
+    confirmSyncTitle: "确认覆盖全部语言",
+    confirmSyncBody: "服务端会以当前语言内容覆盖其他四个语言版本。此操作仅在确认后执行。",
+    confirmSync: "确认同步全部",
+    cancel: "取消",
+    saveDraftFirst: "请先保存任务草稿，再分别维护五种语言内容。",
+    localValues: "冲突时保留的本地内容",
+    reloaded: "已重新加载服务端最新版本；下方仍保留冲突前的本地内容供对比。"
+  },
+  "zh-Hant": {
+    localeName: "語言版本名稱",
+    localeDescription: "語言版本說明",
+    saveLocale: "儲存目前語言",
+    savingLocale: "正在儲存語言",
+    syncAll: "同步至全部語言",
+    confirmSyncTitle: "確認覆蓋全部語言",
+    confirmSyncBody: "伺服器會以目前語言內容覆蓋其他四個語言版本。此操作僅在確認後執行。",
+    confirmSync: "確認同步全部",
+    cancel: "取消",
+    saveDraftFirst: "請先儲存任務草稿，再分別維護五種語言內容。",
+    localValues: "衝突時保留的本機內容",
+    reloaded: "已重新載入伺服器最新版本；下方仍保留衝突前的本機內容以供比對。"
+  },
+  ja: {
+    localeName: "言語別タスク名",
+    localeDescription: "言語別説明",
+    saveLocale: "この言語を保存",
+    savingLocale: "言語を保存中",
+    syncAll: "すべての言語へ同期",
+    confirmSyncTitle: "全言語の上書きを確認",
+    confirmSyncBody: "現在の内容で他の4言語を上書きします。確認するまでサーバーへ送信しません。",
+    confirmSync: "全言語へ同期する",
+    cancel: "キャンセル",
+    saveDraftFirst: "先にタスクの下書きを保存してから、5言語を個別に編集してください。",
+    localValues: "競合時に保持したローカル内容",
+    reloaded: "サーバーの最新版を再読み込みしました。競合前のローカル内容は比較用に下へ保持しています。"
+  },
+  en: {
+    localeName: "Localized task name",
+    localeDescription: "Localized description",
+    saveLocale: "Save this language",
+    savingLocale: "Saving language",
+    syncAll: "Sync to all languages",
+    confirmSyncTitle: "Confirm all-language overwrite",
+    confirmSyncBody: "The server will overwrite the other four languages with this content. Nothing is sent until you confirm.",
+    confirmSync: "Confirm sync all",
+    cancel: "Cancel",
+    saveDraftFirst: "Save the task draft first, then maintain each of the five languages independently.",
+    localValues: "Local content preserved at conflict",
+    reloaded: "The latest server version is loaded. The pre-conflict local content remains below for comparison."
+  },
+  ko: {
+    localeName: "언어별 작업 이름",
+    localeDescription: "언어별 설명",
+    saveLocale: "현재 언어 저장",
+    savingLocale: "언어 저장 중",
+    syncAll: "모든 언어에 동기화",
+    confirmSyncTitle: "모든 언어 덮어쓰기 확인",
+    confirmSyncBody: "현재 내용으로 다른 네 언어를 덮어씁니다. 확인 전에는 서버로 전송하지 않습니다.",
+    confirmSync: "전체 언어 동기화 확인",
+    cancel: "취소",
+    saveDraftFirst: "먼저 작업 초안을 저장한 다음 다섯 언어를 각각 관리해 주세요.",
+    localValues: "충돌 시 보존된 로컬 내용",
+    reloaded: "서버 최신 버전을 다시 불러왔습니다. 충돌 전 로컬 내용은 비교를 위해 아래에 유지됩니다."
   }
 };
 
@@ -162,8 +262,13 @@ export function MerchantAffiliateTaskEditor({
   const { language } = useI18n();
   const copy = getMerchantAffiliateTaskCopy(language);
   const text = editorCopies[language];
+  const localeText = localeWorkflowCopies[language];
   const [activeStep, setActiveStep] = useState<EditorStep>("basic");
+  const [activeLocale, setActiveLocale] = useState<AffiliateContentLocale>("ja");
   const [form, setForm] = useState<MerchantAffiliateTaskForm>(createInitialForm);
+  const [localeState, setLocaleState] = useState<MerchantAffiliateLocaleEditorState>(
+    emptyLocaleEditorState
+  );
   const [taskStatus, setTaskStatus] = useState<MerchantAffiliateTaskStatus>("draft");
   const [publishers, setPublishers] = useState<MerchantAffiliatePublisherOption[]>([]);
   const [shops, setShops] = useState<MerchantAffiliateShopOption[]>([]);
@@ -173,7 +278,11 @@ export function MerchantAffiliateTaskEditor({
   );
   const [resourceError, setResourceError] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving">("idle");
+  const [localeSaveStatus, setLocaleSaveStatus] = useState<"idle" | "saving">("idle");
   const [saveError, setSaveError] = useState("");
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
+  const [conflict, setConflict] = useState<EditorConflict | null>(null);
+  const [reloadStatus, setReloadStatus] = useState<"idle" | "loading">("idle");
   const readOnly = !canWrite || taskStatus !== "draft";
 
   useEffect(() => {
@@ -209,6 +318,7 @@ export function MerchantAffiliateTaskEditor({
       .then((task) => {
         if (cancelled) return;
         setForm(taskToForm(task));
+        setLocaleState(taskToLocaleEditorState(task));
         setTaskStatus(task.status);
         setLoadStatus("ready");
       })
@@ -366,12 +476,98 @@ export function MerchantAffiliateTaskEditor({
           ? await merchantAffiliateTasksApi.createDraft(buildCreatePayload(form))
           : await merchantAffiliateTasksApi.updateDraft(form.taskId, buildUpdatePayload(form));
       setForm(taskToForm(persisted));
+      setLocaleState(taskToLocaleEditorState(persisted));
       setTaskStatus(persisted.status);
       onPersisted(persisted);
     } catch (error: unknown) {
+      if (error instanceof ApiClientError && error.code === 40918) {
+        setConflict({
+          localForm: form,
+          localeState,
+          message: copy.conflictMessage,
+          reloaded: false
+        });
+      }
       setSaveError(describeMerchantAffiliateTaskError(error, language));
     } finally {
       setSaveStatus("idle");
+    }
+  };
+
+  const updateLocaleValue = (
+    key: "name" | "description",
+    value: string
+  ) => {
+    setLocaleState((current) => ({
+      ...current,
+      [activeLocale]: {
+        ...current[activeLocale],
+        [key]: value,
+        dirty: true
+      }
+    }));
+  };
+
+  const persistLocale = async (syncToAll: boolean) => {
+    if (
+      readOnly ||
+      form.taskId === null ||
+      form.lockVersion === null ||
+      localeSaveStatus === "saving"
+    ) return;
+    const currentLocale = localeState[activeLocale];
+    if (!currentLocale.name.trim()) {
+      setSaveError(text.required);
+      return;
+    }
+    setLocaleSaveStatus("saving");
+    setSaveError("");
+    try {
+      const persisted = await merchantAffiliateTasksApi.updateLocale(
+        form.taskId,
+        activeLocale,
+        {
+          lockVersion: form.lockVersion,
+          name: currentLocale.name.trim(),
+          description: currentLocale.description.trim() || null,
+          syncToAll
+        }
+      );
+      setForm(taskToForm(persisted));
+      setLocaleState(taskToLocaleEditorState(persisted));
+      setTaskStatus(persisted.status);
+      setSyncConfirmOpen(false);
+      onPersisted(persisted);
+    } catch (error: unknown) {
+      if (error instanceof ApiClientError && error.code === 40918) {
+        setConflict({
+          localForm: form,
+          localeState,
+          message: copy.conflictMessage,
+          reloaded: false
+        });
+      }
+      setSaveError(describeMerchantAffiliateTaskError(error, language));
+    } finally {
+      setLocaleSaveStatus("idle");
+    }
+  };
+
+  const reloadLatest = async () => {
+    if (form.taskId === null || reloadStatus === "loading") return;
+    setReloadStatus("loading");
+    setSaveError("");
+    try {
+      const latest = await merchantAffiliateTasksApi.getTask(form.taskId);
+      setForm(taskToForm(latest));
+      setLocaleState(taskToLocaleEditorState(latest));
+      setTaskStatus(latest.status);
+      setConflict((current) => current ? { ...current, reloaded: true } : current);
+      onPersisted(latest);
+    } catch (error: unknown) {
+      setSaveError(describeMerchantAffiliateTaskError(error, language));
+    } finally {
+      setReloadStatus("idle");
     }
   };
 
@@ -404,6 +600,47 @@ export function MerchantAffiliateTaskEditor({
 
       {resourceError ? <p className="rounded-lg border border-coral/25 bg-coral/5 px-3 py-2 text-sm font-bold text-coral">{resourceError}</p> : null}
       {readOnly ? <p className="rounded-lg border border-sky/30 bg-sky/10 px-3 py-2 text-sm font-black text-[#245a80]">{text.readOnly}</p> : null}
+      {conflict ? (
+        <section
+          className="rounded-xl border border-amber-400/45 bg-amber-50 px-4 py-4"
+          data-conflict-panel
+          role="alert"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-black text-amber-950">{copy.conflictTitle}</h3>
+              <p className="mt-1 text-sm font-bold text-amber-900/70">{conflict.message}</p>
+              {conflict.reloaded ? (
+                <p className="mt-2 text-xs font-black text-amber-900/70">{localeText.reloaded}</p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                data-action="reload-affiliate-task"
+                disabled={reloadStatus === "loading"}
+                onClick={() => void reloadLatest()}
+                variant="secondary"
+              >
+                {copy.reloadCurrent}
+              </Button>
+              <Button onClick={() => setConflict(null)} variant="secondary">
+                {copy.closeConflict}
+              </Button>
+            </div>
+          </div>
+          <div className="mt-3 rounded-lg border border-amber-300/50 bg-white/70 px-3 py-3" data-conflict-local>
+            <p className="text-xs font-black text-amber-950/60">{localeText.localValues}</p>
+            <p className="mt-1 text-sm font-black text-amber-950">{conflict.localForm.name}</p>
+            {affiliateLocaleOrder
+              .filter((locale) => conflict.localeState[locale].dirty)
+              .map((locale) => (
+                <p className="mt-1 text-sm font-bold text-amber-950/80" key={locale}>
+                  {locale}: {conflict.localeState[locale].name}
+                </p>
+              ))}
+          </div>
+        </section>
+      ) : null}
 
       {activeStep === "basic" ? (
         <section className="grid gap-4">
@@ -498,15 +735,109 @@ export function MerchantAffiliateTaskEditor({
         </section>
       ) : null}
 
-      {activeStep === "locales" ? <p className="rounded-lg border border-line bg-paper px-4 py-6 text-sm font-black text-ink/55">{text.localeSummary(form.sourceLocale, Object.keys(form.translations).length)}</p> : null}
+      {activeStep === "locales" ? (
+        <section className="space-y-4" data-locale-editor>
+          <p className="rounded-lg border border-line bg-paper px-3 py-3 text-sm font-black text-ink/55">
+            {text.localeSummary(form.sourceLocale, Object.keys(form.translations).length)}
+          </p>
+          {form.taskId === null ? (
+            <p className="rounded-lg border border-sky/30 bg-sky/10 px-3 py-3 text-sm font-black text-[#245a80]">
+              {localeText.saveDraftFirst}
+            </p>
+          ) : (
+            <>
+              <nav className="flex flex-wrap gap-2" aria-label={text.steps.locales}>
+                {affiliateLocaleOrder.map((locale) => (
+                  <button
+                    className={cn(
+                      "focus-ring rounded-lg border px-3 py-2 text-xs font-black",
+                      activeLocale === locale
+                        ? "border-moss bg-mint/15 text-[#2f6846]"
+                        : "border-line bg-white text-ink/55"
+                    )}
+                    data-locale-code={locale}
+                    key={locale}
+                    onClick={() => {
+                      setActiveLocale(locale);
+                      setSyncConfirmOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {locale}
+                  </button>
+                ))}
+              </nav>
+              <div className="grid gap-4">
+                <Field label={localeText.localeName}>
+                  <input
+                    className={inputClassName}
+                    data-locale-name={activeLocale}
+                    disabled={readOnly}
+                    maxLength={160}
+                    onChange={(event) => updateLocaleValue("name", event.target.value)}
+                    value={localeState[activeLocale].name}
+                  />
+                </Field>
+                <Field label={localeText.localeDescription}>
+                  <textarea
+                    className="focus-ring mt-2 min-h-32 w-full rounded-lg border border-line bg-white px-3 py-3 text-sm font-bold text-ink outline-none disabled:bg-paper"
+                    data-locale-description={activeLocale}
+                    disabled={readOnly}
+                    maxLength={5000}
+                    onChange={(event) => updateLocaleValue("description", event.target.value)}
+                    value={localeState[activeLocale].description}
+                  />
+                </Field>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  data-action="save-affiliate-locale"
+                  disabled={readOnly || localeSaveStatus === "saving"}
+                  onClick={() => void persistLocale(false)}
+                  variant="secondary"
+                >
+                  {localeSaveStatus === "saving" ? localeText.savingLocale : localeText.saveLocale}
+                </Button>
+                <Button
+                  data-action="sync-affiliate-locales"
+                  disabled={readOnly || localeSaveStatus === "saving"}
+                  onClick={() => setSyncConfirmOpen(true)}
+                >
+                  {localeText.syncAll}
+                </Button>
+              </div>
+              {syncConfirmOpen ? (
+                <section className="rounded-xl border border-coral/25 bg-coral/5 px-4 py-4">
+                  <h3 className="font-black text-ink">{localeText.confirmSyncTitle}</h3>
+                  <p className="mt-1 text-sm font-bold text-ink/55">{localeText.confirmSyncBody}</p>
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    <Button onClick={() => setSyncConfirmOpen(false)} variant="secondary">
+                      {localeText.cancel}
+                    </Button>
+                    <Button
+                      data-action="confirm-sync-affiliate-locales"
+                      disabled={localeSaveStatus === "saving"}
+                      onClick={() => void persistLocale(true)}
+                    >
+                      {localeText.confirmSync}
+                    </Button>
+                  </div>
+                </section>
+              ) : null}
+            </>
+          )}
+        </section>
+      ) : null}
       {activeStep === "finance" ? <p className="rounded-lg border border-line bg-paper px-4 py-6 text-sm font-black text-ink/55">{text.financeSummary(form.totalBudgetNdp)}</p> : null}
 
       {saveError ? <p className="rounded-lg border border-coral/25 bg-coral/5 px-3 py-2 text-sm font-bold text-coral" role="alert">{saveError}</p> : null}
-      <div className="sticky bottom-0 flex justify-end border-t border-line bg-white/95 pt-4 backdrop-blur">
-        <Button data-action="save-affiliate-draft" disabled={readOnly || saveStatus === "saving"} onClick={() => void save()}>
-          {saveStatus === "saving" ? text.saving : text.saveDraft}
-        </Button>
-      </div>
+      {activeStep !== "locales" ? (
+        <div className="sticky bottom-0 flex justify-end border-t border-line bg-white/95 pt-4 backdrop-blur">
+          <Button data-action="save-affiliate-draft" disabled={readOnly || saveStatus === "saving"} onClick={() => void save()}>
+            {saveStatus === "saving" ? text.saving : text.saveDraft}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

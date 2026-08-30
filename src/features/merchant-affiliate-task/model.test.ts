@@ -10,6 +10,8 @@ import {
   buildUpdatePayload,
   changePublisher,
   removeShop,
+  affiliateLocaleOrder,
+  taskToLocaleEditorState,
   taskDisplayRows,
   type MerchantAffiliateTaskForm
 } from "./model";
@@ -172,5 +174,19 @@ describe("merchant Affiliate task editor model", () => {
     );
     expect(taskDisplayRows(task).join(" ")).not.toContain(" 31 ");
     expect(taskDisplayRows(task).join(" ")).not.toContain(" 101 ");
+  });
+
+  it("builds locale editor state in the fixed API-locale order", () => {
+    const localizedTask = {
+      translations: {
+        ja: { name: "日本語", description: null, sourceLocale: "ja", isInitialCopy: false },
+        en: { name: "English", description: "Copy", sourceLocale: "ja", isInitialCopy: false }
+      }
+    } as MerchantAffiliateTask;
+    const state = taskToLocaleEditorState(localizedTask);
+
+    expect(affiliateLocaleOrder).toEqual(["ja", "en", "ko", "zh-TW", "zh-CN"]);
+    expect(state.en).toEqual({ name: "English", description: "Copy", dirty: false });
+    expect(state.ko).toEqual({ name: "", description: "", dirty: false });
   });
 });

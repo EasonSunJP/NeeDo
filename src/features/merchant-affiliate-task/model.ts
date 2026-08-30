@@ -41,6 +41,45 @@ export interface MerchantAffiliateTaskForm {
   feePreview: MerchantAffiliateFeePreview | null;
 }
 
+export const affiliateLocaleOrder: AffiliateContentLocale[] = [
+  "ja",
+  "en",
+  "ko",
+  "zh-TW",
+  "zh-CN"
+];
+
+export type MerchantAffiliateLocaleEditorValue = {
+  name: string;
+  description: string;
+  dirty: boolean;
+};
+
+export type MerchantAffiliateLocaleEditorState = Record<
+  AffiliateContentLocale,
+  MerchantAffiliateLocaleEditorValue
+>;
+
+export const taskToLocaleEditorState = (
+  task: Pick<MerchantAffiliateTask, "translations">
+): MerchantAffiliateLocaleEditorState =>
+  Object.fromEntries(
+    affiliateLocaleOrder.map((locale) => {
+      const translation = task.translations[locale];
+      return [
+        locale,
+        {
+          name: translation?.name ?? "",
+          description: translation?.description ?? "",
+          dirty: false
+        }
+      ];
+    })
+  ) as MerchantAffiliateLocaleEditorState;
+
+export const emptyLocaleEditorState = (): MerchantAffiliateLocaleEditorState =>
+  taskToLocaleEditorState({ translations: {} });
+
 export const isoToDateTimeLocal = (value: string): string => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";

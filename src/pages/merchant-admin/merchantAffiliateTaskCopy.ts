@@ -34,6 +34,10 @@ export interface MerchantAffiliateTaskCopy {
   empty: string;
   loadFailed: string;
   retry: string;
+  conflictTitle: string;
+  conflictMessage: string;
+  reloadCurrent: string;
+  closeConflict: string;
   previousPage: string;
   nextPage: string;
   viewTask: string;
@@ -69,6 +73,10 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     empty: "暂无联盟营销任务",
     loadFailed: "联盟营销任务加载失败",
     retry: "重新加载",
+    conflictTitle: "检测到编辑冲突",
+    conflictMessage: "服务端任务已经更新。本地输入已保留，请确认后再重新加载最新版本。",
+    reloadCurrent: "重新加载最新版本",
+    closeConflict: "关闭对比",
     previousPage: "上一页",
     nextPage: "下一页",
     viewTask: "查看任务",
@@ -112,6 +120,10 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     empty: "暫無聯盟行銷任務",
     loadFailed: "聯盟行銷任務載入失敗",
     retry: "重新載入",
+    conflictTitle: "偵測到編輯衝突",
+    conflictMessage: "伺服器任務已更新。本地輸入已保留，請確認後再重新載入最新版本。",
+    reloadCurrent: "重新載入最新版本",
+    closeConflict: "關閉比對",
     previousPage: "上一頁",
     nextPage: "下一頁",
     viewTask: "查看任務",
@@ -155,6 +167,10 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     empty: "アフィリエイトタスクはありません",
     loadFailed: "アフィリエイトタスクを読み込めませんでした",
     retry: "再読み込み",
+    conflictTitle: "編集の競合を検出しました",
+    conflictMessage: "サーバー上のタスクが更新されています。ローカル入力は保持されています。確認後に最新版を再読み込みしてください。",
+    reloadCurrent: "最新版を再読み込み",
+    closeConflict: "比較を閉じる",
     previousPage: "前へ",
     nextPage: "次へ",
     viewTask: "タスクを表示",
@@ -198,6 +214,10 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     empty: "No Affiliate tasks yet",
     loadFailed: "Affiliate tasks could not be loaded",
     retry: "Retry",
+    conflictTitle: "Editing conflict detected",
+    conflictMessage: "The server task changed. Your local input is preserved; review it before reloading the latest version.",
+    reloadCurrent: "Reload latest version",
+    closeConflict: "Close comparison",
     previousPage: "Previous",
     nextPage: "Next",
     viewTask: "View task",
@@ -241,6 +261,10 @@ const copies: Record<(typeof merchantAffiliateTaskLanguages)[number], MerchantAf
     empty: "제휴 마케팅 작업이 없습니다",
     loadFailed: "제휴 마케팅 작업을 불러오지 못했습니다",
     retry: "다시 시도",
+    conflictTitle: "편집 충돌이 감지되었습니다",
+    conflictMessage: "서버 작업이 업데이트되었습니다. 로컬 입력은 보존되며, 확인 후 최신 버전을 다시 불러오세요.",
+    reloadCurrent: "최신 버전 다시 불러오기",
+    closeConflict: "비교 닫기",
     previousPage: "이전",
     nextPage: "다음",
     viewTask: "작업 보기",
