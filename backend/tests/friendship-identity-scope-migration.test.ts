@@ -12,8 +12,13 @@ describe("friendship identity-scope reconciliation", () => {
       "utf8"
     );
 
-    expect(migration).toContain("MIN(`identity_id`)");
-    expect(migration).toContain("MAX(`identity_id`)");
+    expect(migration).toContain("MIN(`participant`.`identity_id`)");
+    expect(migration).toContain("MAX(`participant`.`identity_id`)");
+    expect(migration).toContain("ROW_NUMBER() OVER");
+    expect(migration).toMatch(
+      /PARTITION BY\s+`low_identity_id`,\s+`high_identity_id`/
+    );
+    expect(migration).toContain("`pair_rank` = 1");
     expect(migration).toContain("friendship_pair_key");
     expect(migration).toContain("requester_identity_id");
     expect(migration).toContain("target_identity_id");
