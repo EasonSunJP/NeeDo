@@ -685,6 +685,10 @@ model User {
   sentMessages                          Message[]                           @relation("MessageSender")
   messageReactions                      MessageReaction[]
   messageUserDeletions                  MessageUserDeletion[]
+  createdImChatRecordBundles            ImChatRecordBundle[]            @relation("ImChatRecordBundleCreator")
+  sentImChatRecordItems                 ImChatRecordItem[]              @relation("ImChatRecordItemSender")
+  imChatRecordFavorites                 ImChatRecordFavorite[]          @relation("ImChatRecordFavoriteOwner")
+  imBatchDeleteCommands                 ImMessageBatchDeleteCommand[]   @relation("ImMessageBatchDeleteOwner")
   imPoliciesUpdated                     ImPolicy[]                          @relation("ImPolicyUpdater")
   conversationPrivacyUpdates            Conversation[]                      @relation("ConversationPrivacyUpdater")
   ownedContacts                         Contact[]                           @relation("ContactOwner")
@@ -1903,6 +1907,9 @@ model Conversation {
   messages             Message[]
   deletionSync         ImDeletionSync[]
   messageUserDeletions MessageUserDeletion[]
+  sourceImChatRecordBundles ImChatRecordBundle[]          @relation("ImChatRecordSourceConversation")
+  imChatRecordDeliveries    ImChatRecordDelivery[]
+  imBatchDeleteCommands     ImMessageBatchDeleteCommand[] @relation("ImMessageBatchDeleteConversation")
 
   @@index([type])
   @@index([createdByUserId])
@@ -1975,6 +1982,9 @@ model Message {
   readMarkers    ConversationParticipant[] @relation("ParticipantLastReadMessage")
   reactions      MessageReaction[]
   userDeletions  MessageUserDeletion[]
+  sourceImChatRecordItems ImChatRecordItem[]      @relation("ImChatRecordSourceMessage")
+  imChatRecordDelivery    ImChatRecordDelivery?
+  translations            ImMessageTranslation[]
 
   @@index([conversationId, id])
   @@index([senderUserId])
@@ -2009,6 +2019,150 @@ model MessageUserDeletion {
   @@index([userId, deletedAt], map: "message_user_deletion_user_idx")
   @@index([identityId, deletedAt], map: "message_user_deletion_identity_idx")
   @@map("message_user_deletions")
+}
+
+model ImChatRecordBundle {
+  id                   Int       @id @default(autoincrement())
+  publicId             String    @unique @map("public_id") @db.Char(36)
+  commandType          String    @map("command_type") @db.VarChar(24)
+  idempotencyKey       String    @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint   String    @map("request_fingerprint") @db.Char(64)
+  createdByUserId      Int       @map("created_by_user_id")
+  createdByIdentityId  Int       @map("created_by_identity_id")
+  sourceConversationId Int       @map("source_conversation_id")
+  senderCount          Int       @map("sender_count")
+  itemCount            Int       @map("item_count")
+  senderNamesSnapshot  Json      @map("sender_names_snapshot")
+  titleSnapshot        String    @map("title_snapshot") @db.VarChar(255)
+  previewSnapshot      String    @map("preview_snapshot") @db.VarChar(500)
+  contentVersion       Int       @default(1) @map("content_version")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  createdByUser      User         @relation("ImChatRecordBundleCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByIdentity  UserIdentity @relation("ImChatRecordBundleIdentity", fields: [createdByIdentityId], references: [id], onDelete: Restrict)
+  sourceConversation Conversation @relation("ImChatRecordSourceConversation", fields: [sourceConversationId], references: [id], onDelete: Restrict)
+  items              ImChatRecordItem[]
+  deliveries         ImChatRecordDelivery[]
+  favorites          ImChatRecordFavorite[]
+
+  @@unique([createdByIdentityId, commandType, idempotencyKey])
+  @@index([sourceConversationId, deletedAt])
+  @@index([createdByUserId, deletedAt])
+  @@index([createdByIdentityId, deletedAt])
+  @@map("im_chat_record_bundles")
+}
+
+model ImChatRecordItem {
+  id                        Int       @id @default(autoincrement())
+  bundleId                  Int       @map("bundle_id")
+  position                  Int
+  sourceMessageId           Int?      @map("source_message_id")
+  senderUserId              Int?      @map("sender_user_id")
+  senderIdentityId          Int?      @map("sender_identity_id")
+  senderDisplayNameSnapshot String    @map("sender_display_name_snapshot") @db.VarChar(160)
+  senderAvatarSnapshot      String?   @map("sender_avatar_snapshot") @db.VarChar(500)
+  messageType               String    @map("message_type") @db.VarChar(40)
+  contentSnapshot           String?   @map("content_snapshot") @db.Text
+  metadataSnapshot          Json?     @map("metadata_snapshot")
+  sentAtSnapshot            DateTime  @map("sent_at_snapshot")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  deletedAt                 DateTime? @map("deleted_at")
+
+  bundle         ImChatRecordBundle @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  sourceMessage  Message?           @relation("ImChatRecordSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  senderUser     User?              @relation("ImChatRecordItemSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  senderIdentity UserIdentity?      @relation("ImChatRecordItemSenderIdentity", fields: [senderIdentityId], references: [id], onDelete: SetNull)
+
+  @@unique([bundleId, position])
+  @@index([sourceMessageId])
+  @@index([senderUserId])
+  @@index([senderIdentityId])
+  @@index([bundleId, deletedAt])
+  @@map("im_chat_record_items")
+}
+
+model ImChatRecordDelivery {
+  id             Int       @id @default(autoincrement())
+  bundleId       Int       @map("bundle_id")
+  messageId      Int       @unique @map("message_id")
+  conversationId Int       @map("conversation_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  bundle       ImChatRecordBundle @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  message      Message            @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  conversation Conversation       @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@index([bundleId, deletedAt])
+  @@index([conversationId, deletedAt])
+  @@map("im_chat_record_deliveries")
+}
+
+model ImChatRecordFavorite {
+  id              Int       @id @default(autoincrement())
+  bundleId        Int       @map("bundle_id")
+  ownerUserId     Int       @map("owner_user_id")
+  ownerIdentityId Int       @map("owner_identity_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  bundle        ImChatRecordBundle @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  ownerUser     User               @relation("ImChatRecordFavoriteOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  ownerIdentity UserIdentity       @relation("ImChatRecordFavoriteIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
+
+  @@index([ownerUserId, deletedAt])
+  @@index([ownerIdentityId, createdAt, deletedAt])
+  @@index([bundleId, deletedAt])
+  @@map("im_chat_record_favorites")
+}
+
+model ImMessageTranslation {
+  id                Int       @id @default(autoincrement())
+  messageId         Int       @map("message_id")
+  sourceContentHash String    @map("source_content_hash") @db.Char(64)
+  sourceLanguage    String?   @map("source_language") @db.VarChar(16)
+  targetLanguage    String    @map("target_language") @db.VarChar(16)
+  translatedContent String    @map("translated_content") @db.Text
+  providerKey       String    @map("provider_key") @db.VarChar(40)
+  providerRequestId String?   @map("provider_request_id") @db.VarChar(191)
+  translatedAt      DateTime  @map("translated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, sourceContentHash, targetLanguage, providerKey])
+  @@index([messageId, targetLanguage, deletedAt])
+  @@index([translatedAt, deletedAt])
+  @@map("im_message_translations")
+}
+
+model ImMessageBatchDeleteCommand {
+  id                 Int       @id @default(autoincrement())
+  conversationId     Int       @map("conversation_id")
+  ownerUserId        Int       @map("owner_user_id")
+  ownerIdentityId    Int       @map("owner_identity_id")
+  idempotencyKey     String    @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint String    @map("request_fingerprint") @db.Char(64)
+  resultJson         Json      @map("result_json")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  conversation  Conversation @relation("ImMessageBatchDeleteConversation", fields: [conversationId], references: [id], onDelete: Restrict)
+  ownerUser     User         @relation("ImMessageBatchDeleteOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  ownerIdentity UserIdentity @relation("ImMessageBatchDeleteIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
+
+  @@unique([ownerIdentityId, idempotencyKey])
+  @@index([conversationId, ownerIdentityId, deletedAt])
+  @@index([ownerUserId, deletedAt])
+  @@map("im_message_batch_delete_commands")
 }
 
 model ImPolicy {
@@ -2242,6 +2396,10 @@ model UserIdentity {
   sentMessages             Message[]                 @relation("MessageSenderIdentity")
   messageUserDeletions     MessageUserDeletion[]     @relation("MessageUserDeletionIdentity")
   messageReactions         MessageReaction[]         @relation("MessageReactionIdentity")
+  createdImChatRecordBundles ImChatRecordBundle[]          @relation("ImChatRecordBundleIdentity")
+  sentImChatRecordItems      ImChatRecordItem[]            @relation("ImChatRecordItemSenderIdentity")
+  imChatRecordFavorites      ImChatRecordFavorite[]        @relation("ImChatRecordFavoriteIdentity")
+  imBatchDeleteCommands      ImMessageBatchDeleteCommand[] @relation("ImMessageBatchDeleteIdentity")
   ownedContacts            Contact[]                 @relation("ContactOwnerIdentity")
   contactTargets           Contact[]                 @relation("ContactTargetIdentity")
   requestedFriendRequests  FriendRequest[]           @relation("FriendRequestRequesterIdentity")
