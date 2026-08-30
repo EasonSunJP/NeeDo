@@ -40,6 +40,39 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
 }
 
 describe("ImChatComposer", () => {
+  it("opens voice recording directly and closes the active panel without entering a gesture mode", async () => {
+    const onOpenVoiceRecording = vi.fn();
+    const onPanelChange = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft=""
+          isNight={false}
+          onDraftChange={vi.fn()}
+          onOpenVoiceRecording={onOpenVoiceRecording}
+          onPanelChange={onPanelChange}
+          onSend={vi.fn()}
+          panel="emoji"
+        />,
+      );
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.click();
+    });
+
+    expect(onPanelChange).toHaveBeenCalledWith(null);
+    expect(onOpenVoiceRecording).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain("按住说话");
+    expect(container.querySelector("[data-im-composer-rich-input='true']")).not.toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
   it("keeps selected judgement replies as SVG inside the composer while ordinary emoji stay Unicode", async () => {
     const container = document.createElement("div");
     document.body.append(container);

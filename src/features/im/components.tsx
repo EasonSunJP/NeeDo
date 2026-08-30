@@ -456,11 +456,6 @@ export type ImChatComposerAction = {
   label: string;
   run: () => void;
 };
-export type ImChatComposerRecordingState = {
-  active: boolean;
-  cancel: boolean;
-  durationSeconds: number;
-};
 export type ImChatComposerPendingImage = {
   fileName: string;
   previewUrl: string;
@@ -660,20 +655,14 @@ export function ImChatComposer({
   disabled = false,
   draft,
   isNight,
-  maxVoiceRecordingSeconds = 60,
-  onCancelRecording,
   onDraftChange,
-  onEndRecording,
-  onMoveRecording,
+  onOpenVoiceRecording,
   onPanelChange,
   onRemovePendingImage,
   onSend,
-  onStartRecording,
-  onToggleVoice,
   panel,
   pendingImage,
   placeholder = "发送消息",
-  recording = { active: false, cancel: false, durationSeconds: 0 },
   leadingAccessory,
   moreAction,
   sendLabel = "发送",
@@ -681,35 +670,29 @@ export function ImChatComposer({
   sending = false,
   submitOnEnter = false,
   textareaRef,
-  voiceMode = false
+  voiceButtonRef
 }: {
   actions?: ImChatComposerAction[];
   blocked?: boolean;
   disabled?: boolean;
   draft: string;
   isNight: boolean;
-  maxVoiceRecordingSeconds?: number;
-  onCancelRecording?: () => void;
   onDraftChange: (value: string) => void;
-  onEndRecording?: () => void;
-  onMoveRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onOpenVoiceRecording?: () => void;
   onPanelChange: (panel: ImChatComposerPanel | ((value: ImChatComposerPanel) => ImChatComposerPanel)) => void;
   onRemovePendingImage?: () => void;
   onSend: () => void;
-  onStartRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onToggleVoice?: () => void;
   panel: ImChatComposerPanel;
   pendingImage?: ImChatComposerPendingImage;
   placeholder?: string;
   leadingAccessory?: ReactNode;
   moreAction?: { ariaLabel: string; run: () => void };
-  recording?: ImChatComposerRecordingState;
   sendLabel?: string;
   sendingLabel?: string;
   sending?: boolean;
   submitOnEnter?: boolean;
   textareaRef?: Ref<HTMLDivElement>;
-  voiceMode?: boolean;
+  voiceButtonRef?: Ref<HTMLButtonElement>;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   const recentReactions = useSyncExternalStore(
@@ -760,7 +743,7 @@ export function ImChatComposer({
       }
       conversationLayout.style.removeProperty("--im-composer-overlay-height");
     };
-  }, [draft, panel, pendingImage, voiceMode]);
+  }, [draft, panel, pendingImage]);
 
   const selectReactionValue = (value: string) => {
     const nextValue = getImReactionCategory(value) === "judgement"
@@ -807,21 +790,22 @@ export function ImChatComposer({
             </div>
           ) : (
             <button
-              aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
+              aria-label="录制语音"
               className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
               data-im-composer-control="voice-input"
-              disabled={disabled}
+              disabled={disabled || blocked}
               onClick={() => {
-                onToggleVoice?.();
                 onPanelChange(null);
+                onOpenVoiceRecording?.();
               }}
+              ref={voiceButtonRef}
               type="button"
             >
               <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
             </button>
           )}
           <div className={composerInputShellClass}>
-            {pendingImage && !voiceMode ? (
+            {pendingImage ? (
               <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
                 <div className="relative w-fit max-w-full">
                   <img alt={pendingImage.fileName} className="h-16 w-16 rounded-[14px] object-cover" src={pendingImage.previewUrl} />
@@ -837,35 +821,14 @@ export function ImChatComposer({
                 </div>
               </div>
             ) : null}
-            {voiceMode ? (
-              <button
-                className={cn(
-                  "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
-                  recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
-                )}
-                disabled={disabled || blocked}
-                onPointerCancel={onCancelRecording}
-                onPointerDown={onStartRecording}
-                onPointerMove={onMoveRecording}
-                onPointerUp={onEndRecording}
-                type="button"
-              >
-                {recording.active
-                  ? recording.cancel
-                    ? `松开取消发送 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                    : `松开发送，上滑取消 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                  : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
-              </button>
-            ) : (
-              <ImComposerRichInput
-                disabled={disabled}
-                draft={draft}
-                inputRef={textareaRef}
-                onDraftChange={onDraftChange}
-                onEnterSubmit={submitOnEnter ? onSend : undefined}
-                placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
-              />
-            )}
+            <ImComposerRichInput
+              disabled={disabled}
+              draft={draft}
+              inputRef={textareaRef}
+              onDraftChange={onDraftChange}
+              onEnterSubmit={submitOnEnter ? onSend : undefined}
+              placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
+            />
           </div>
           <button
             aria-label={panel === "emoji" ? "关闭表情面板" : "打开表情面板"}
@@ -877,7 +840,7 @@ export function ImChatComposer({
           >
             <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
           </button>
-          {(draft.trim() || pendingImage) && !voiceMode ? (
+          {draft.trim() || pendingImage ? (
             <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={disabled || blocked || sending} onClick={onSend}>
               {sending ? sendingLabel : sendLabel}
             </Button>
