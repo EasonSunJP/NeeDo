@@ -28,6 +28,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/password/setup");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/password/setup/verify");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/refresh");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/merchant-shop/switch");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
 
@@ -44,7 +45,8 @@ describe("GET /api/v1/openapi.json", () => {
       ["/api/v1/auth/google/unlink", []],
       ["/api/v1/auth/google/unlink/verify", ["challengeId", "otp"]],
       ["/api/v1/auth/password/setup", ["password"]],
-      ["/api/v1/auth/password/setup/verify", ["challengeId", "otp"]]
+      ["/api/v1/auth/password/setup/verify", ["challengeId", "otp"]],
+      ["/api/v1/auth/merchant-shop/switch", ["refreshToken", "shopPublicId"]]
     ] as const;
     for (const [path, required] of strictAuthBodies) {
       const schema = response.body.paths[path].post.requestBody.content["application/json"].schema;
@@ -52,6 +54,15 @@ describe("GET /api/v1/openapi.json", () => {
       expect(schema.required ?? []).toEqual(required);
       expect(schema.properties).not.toHaveProperty("userId");
     }
+
+    expect(response.body.paths["/api/v1/auth/merchant-shop/switch"].post).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      responses: {
+        "400": { description: expect.stringContaining("error.validation") },
+        "401": { description: expect.stringContaining("error.auth") },
+        "403": { description: expect.stringContaining("error.identity.forbidden") }
+      }
+    });
 
     const protectedAuthPaths = [
       "/api/v1/auth/google/link",

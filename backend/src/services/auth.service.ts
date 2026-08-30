@@ -29,6 +29,13 @@ import {
   type AuthTokenPayload,
   type AuthTokenSubject
 } from "./auth-token.service";
+import type { MerchantShopContextRepositoryPort } from "../repositories/merchant-shop-context.repository";
+import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import {
+  merchantShopIdentityForbidden,
+  resolveMerchantShopScope,
+  type ResolvedMerchantShopScope
+} from "./merchant-shop-scope";
 
 export interface AuthRequestContext {
   ip: string;
@@ -50,6 +57,10 @@ export interface SwitchIdentityPayload extends TokenPairPayload {
   me: AuthMePayload;
 }
 
+export interface SwitchMerchantShopPayload extends SwitchIdentityPayload {
+  shopPublicId: string;
+}
+
 export interface OtpSendPayload {
   expiresIn: number;
   cooldownSeconds: number;
@@ -66,6 +77,8 @@ export interface AuthenticatedAccessContext {
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
+  selectedMerchantShopId?: number;
+  selectedMerchantShopPublicId?: string;
   roles: string[];
   permissions: string[];
   isReadOnlyMerchantPreview?: boolean;
@@ -192,7 +205,8 @@ export class AuthService {
     private readonly googleCredentialVerifier: GoogleCredentialVerifierPort = new GoogleCredentialVerifierService(
       undefined,
       config
-    )
+    ),
+    private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository()
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -912,12 +926,12 @@ export class AuthService {
       });
     }
 
-    const accessToken = this.tokenService.issueAccessToken({
-      id: user.id,
-      email: user.email,
-      currentIdentityId: payload.currentIdentityId,
-      sessionGeneration: payload.sessionGeneration
-    });
+    const { subject } = await this.buildAuthTokenContext(
+      user,
+      payload.currentIdentityId,
+      payload.merchantShopPublicId
+    );
+    const accessToken = this.tokenService.issueAccessToken(subject);
 
     return {
       accessToken: accessToken.token,
@@ -986,12 +1000,7 @@ export class AuthService {
       throw this.tokenInvalidError();
     }
     const me = this.buildMePayloadForIdentity(user, identityId);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration: refreshPayload.sessionGeneration
-    };
+    const { subject } = await this.buildAuthTokenContextFromMe(user, me);
     const nextAccessToken = this.tokenService.issueAccessToken(subject);
     const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
 
@@ -1029,6 +1038,98 @@ export class AuthService {
       refreshToken: nextRefreshToken.token,
       expiresIn: nextAccessToken.expiresIn,
       me
+    };
+  }
+
+  public async switchMerchantShop(
+    auth: AuthenticatedAccessContext,
+    refreshToken: string,
+    shopPublicId: string,
+    context: AuthRequestContext
+  ): Promise<SwitchMerchantShopPayload> {
+    if (
+      auth.currentIdentityScopeType !== "merchant_account" ||
+      !auth.currentIdentityScopeId ||
+      !auth.currentIdentityId ||
+      !auth.selectedMerchantShopPublicId
+    ) {
+      throw merchantShopIdentityForbidden();
+    }
+
+    const refreshPayload = this.tokenService.verifyRefreshToken(refreshToken);
+    const refreshUserId = this.getUserIdFromToken(refreshPayload);
+    if (
+      refreshUserId !== auth.userId ||
+      refreshPayload.currentIdentityId !== auth.currentIdentityId ||
+      refreshPayload.merchantShopPublicId !== auth.selectedMerchantShopPublicId
+    ) {
+      throw this.tokenInvalidError();
+    }
+
+    const user = await this.repository.findUserById(refreshUserId);
+    this.assertActiveUser(user);
+    if (this.userSessionGeneration(user) !== refreshPayload.sessionGeneration) {
+      throw this.tokenInvalidError();
+    }
+    if (!(await this.sessionStore.hasRefreshToken(refreshUserId, refreshPayload.jti))) {
+      throw this.tokenInvalidError();
+    }
+
+    const me = this.buildMePayloadForIdentity(user, auth.currentIdentityId);
+    if (
+      me.currentIdentity.scopeType !== "merchant_account" ||
+      me.currentIdentity.scopeId !== auth.currentIdentityScopeId
+    ) {
+      throw merchantShopIdentityForbidden();
+    }
+    const { subject, merchantShopScope } = await this.buildAuthTokenContextFromMe(
+      user,
+      me,
+      shopPublicId
+    );
+    if (!merchantShopScope?.tokenMerchantShopPublicId) {
+      throw merchantShopIdentityForbidden();
+    }
+
+    const nextAccessToken = this.tokenService.issueAccessToken(subject);
+    const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
+    if (!this.sessionStore.rotateRefreshToken) throw this.redisUnavailableError();
+    if (
+      !(await this.sessionStore.rotateRefreshToken({
+        userId: user.id,
+        generation: refreshPayload.sessionGeneration,
+        oldJti: refreshPayload.jti,
+        newJti: nextRefreshToken.jti,
+        ttlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+      }))
+    ) {
+      throw this.tokenInvalidError();
+    }
+
+    await this.sessionStore.blacklistAccessToken(
+      auth.accessTokenJti,
+      auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
+    );
+    await this.repository.createAuditLog({
+      actorId: auth.userId,
+      action: "auth.merchant_shop.switch",
+      targetType: "Shop",
+      targetId: null,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      metadata: {
+        previousShopPublicId: auth.selectedMerchantShopPublicId,
+        nextShopPublicId: merchantShopScope.shopPublicId,
+        shopId: merchantShopScope.shopId
+      }
+    });
+
+    return {
+      accessToken: nextAccessToken.token,
+      refreshToken: nextRefreshToken.token,
+      expiresIn: nextAccessToken.expiresIn,
+      me,
+      shopPublicId: merchantShopScope.shopPublicId
     };
   }
 
@@ -1091,7 +1192,11 @@ export class AuthService {
     this.assertActiveUser(user);
     if (this.userSessionGeneration(user) !== payload.sessionGeneration)
       throw this.tokenInvalidError();
-    const me = this.buildMePayload(user, payload.currentIdentityId);
+    const { me, merchantShopScope } = await this.buildAuthTokenContext(
+      user,
+      payload.currentIdentityId,
+      payload.merchantShopPublicId
+    );
 
     if (requiredPermission && !me.permissions.includes(requiredPermission)) {
       throw new AppError({
@@ -1103,7 +1208,7 @@ export class AuthService {
 
     return {
       userId,
-      email: payload.email,
+      email: user.email,
       accessTokenJti: payload.jti,
       accessTokenExpiresAt: payload.exp,
       sessionGeneration: payload.sessionGeneration,
@@ -1112,6 +1217,12 @@ export class AuthService {
       currentIdentityType: me.currentIdentity.type,
       currentIdentityScopeType: me.currentIdentity.scopeType,
       currentIdentityScopeId: me.currentIdentity.scopeId,
+      ...(merchantShopScope
+        ? {
+            selectedMerchantShopId: merchantShopScope.shopId,
+            selectedMerchantShopPublicId: merchantShopScope.shopPublicId
+          }
+        : {}),
       roles: me.roles,
       permissions: me.permissions
     };
@@ -1429,14 +1540,8 @@ export class AuthService {
     currentIdentityId?: number
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const loggedInAt = new Date();
-    const me = this.buildMePayload(user, currentIdentityId);
     const sessionGeneration = this.userSessionGeneration(user);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration
-    };
+    const { subject } = await this.buildAuthTokenContext(user, currentIdentityId);
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
 
@@ -1490,14 +1595,8 @@ export class AuthService {
     providerSubject: string,
     context: AuthRequestContext
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
-    const me = this.buildMePayload(user);
     const sessionGeneration = this.userSessionGeneration(user);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration
-    };
+    const { me, subject } = await this.buildAuthTokenContext(user);
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
     let refreshStored = false;
@@ -1647,6 +1746,48 @@ export class AuthService {
       message: "error.auth.invalid_credentials",
       statusCode: 401
     });
+  }
+
+  private async buildAuthTokenContext(
+    user: AuthUserRecord,
+    currentIdentityId?: number,
+    merchantShopPublicId?: string
+  ): Promise<{
+    me: AuthMePayload;
+    subject: AuthTokenSubject;
+    merchantShopScope: ResolvedMerchantShopScope | null;
+  }> {
+    return this.buildAuthTokenContextFromMe(
+      user,
+      this.buildMePayload(user, currentIdentityId),
+      merchantShopPublicId
+    );
+  }
+
+  private async buildAuthTokenContextFromMe(
+    user: AuthUserRecord,
+    me: AuthMePayload,
+    merchantShopPublicId?: string
+  ): Promise<{
+    me: AuthMePayload;
+    subject: AuthTokenSubject;
+    merchantShopScope: ResolvedMerchantShopScope | null;
+  }> {
+    const merchantShopScope = await resolveMerchantShopScope({
+      repository: this.merchantShopContextRepository,
+      identity: me.currentIdentity,
+      merchantShopPublicId
+    });
+    const subject: AuthTokenSubject = {
+      id: user.id,
+      email: user.email,
+      currentIdentityId: me.currentIdentity.id,
+      sessionGeneration: this.userSessionGeneration(user),
+      ...(merchantShopScope?.tokenMerchantShopPublicId
+        ? { merchantShopPublicId: merchantShopScope.tokenMerchantShopPublicId }
+        : {})
+    };
+    return { me, subject, merchantShopScope };
   }
 
   private buildMePayloadForIdentity(user: AuthUserRecord, identityId: number): AuthMePayload {

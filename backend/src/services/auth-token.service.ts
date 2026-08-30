@@ -11,6 +11,7 @@ export interface AuthTokenSubject {
   email: string;
   currentIdentityId?: number;
   sessionGeneration?: number;
+  merchantShopPublicId?: string;
 }
 
 export interface AuthTokenPayload {
@@ -22,6 +23,7 @@ export interface AuthTokenPayload {
   exp: number;
   currentIdentityId?: number;
   sessionGeneration: number;
+  merchantShopPublicId?: string;
 }
 
 export interface IssuedAuthToken {
@@ -49,7 +51,8 @@ const jwtPayloadSchema = z.object({
   iat: z.number().int().positive(),
   exp: z.number().int().positive(),
   currentIdentityId: z.number().int().positive().optional(),
-  sessionGeneration: z.number().int().nonnegative().optional()
+  sessionGeneration: z.number().int().nonnegative().optional(),
+  merchantShopPublicId: z.string().regex(/^shop\d{10}$/).optional()
 });
 
 const toBase64Url = (input: string | Buffer): string => Buffer.from(input).toString("base64url");
@@ -110,7 +113,10 @@ export class AuthTokenService {
       iat: issuedAt,
       exp: expiresAt,
       ...(subject.currentIdentityId ? { currentIdentityId: subject.currentIdentityId } : {}),
-      sessionGeneration: subject.sessionGeneration ?? 0
+      sessionGeneration: subject.sessionGeneration ?? 0,
+      ...(subject.merchantShopPublicId
+        ? { merchantShopPublicId: subject.merchantShopPublicId }
+        : {})
     };
     const token = this.sign(payload, type);
 

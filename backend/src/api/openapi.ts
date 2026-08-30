@@ -2905,6 +2905,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           me: { $ref: "#/components/schemas/AuthMe" }
         }
       },
+      SwitchMerchantShopResponse: {
+        type: "object",
+        additionalProperties: false,
+        required: ["accessToken", "refreshToken", "expiresIn", "me", "shopPublicId"],
+        properties: {
+          accessToken: { type: "string" },
+          refreshToken: { type: "string" },
+          expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] },
+          me: { $ref: "#/components/schemas/AuthMe" },
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+        }
+      },
       RefreshTokenResponse: {
         type: "object",
         required: ["accessToken", "expiresIn"],
@@ -8967,6 +8979,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Access or refresh token invalid, expired, or blacklisted" },
           "403": { description: "Missing auth me permission" },
           "404": { description: "Requested identity does not belong to the current user" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/merchant-shop/switch`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Switch the active shop for a merchant-account identity and rotate the token pair",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          {
+            refreshToken: { type: "string", minLength: 1, maxLength: 8192 },
+            shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+          },
+          ["refreshToken", "shopPublicId"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Rotated token pair scoped to the requested active shop", {
+            $ref: "#/components/schemas/SwitchMerchantShopResponse"
+          }),
+          "400": { description: "error.validation — strict request validation failed" },
+          "401": {
+            description: "error.auth.token_invalid — access or refresh session validation failed"
+          },
+          "403": {
+            description:
+              "error.forbidden or error.identity.forbidden — permission, identity, membership, account, or shop denial"
+          }
         }
       }
     },

@@ -18,6 +18,7 @@ import { createTracingMiddleware } from "./middlewares/tracing.middleware";
 import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
 import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
 import { AuthRepository, type AuthRepositoryPort } from "./repositories/auth.repository";
+import type { MerchantShopContextRepositoryPort } from "./repositories/merchant-shop-context.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
 import type {
   AffiliateTaskRepositoryPort,
@@ -168,6 +169,7 @@ export interface AppDependencies {
   databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
   metricsService?: ObservabilityMetricsPort;
   authRepository?: AuthRepositoryPort;
+  merchantShopContextRepository?: MerchantShopContextRepositoryPort;
   testOnlyAllowLegacyAuthAdapters?: boolean;
   authSessionStore?: AuthSessionStore;
   otpDeliveryClient?: OtpDeliveryClient;
