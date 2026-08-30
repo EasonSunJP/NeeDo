@@ -784,15 +784,64 @@ describe("MessageBubble translation display boundary", () => {
 
     await act(async () => {
       root.render(createElement("div", null,
-        createElement(MessageBubble, { message: mediaMessage, isMine: true, translation: japaneseTranslation }),
-        createElement(ImQuotedMessagePreview, { message: quotedText, translation: japaneseTranslation }),
-        createElement(ImQuotedMessagePreview, { message: quotedMedia, translation: japaneseTranslation })
+        createElement("section", { "data-test-main-media-caption": "true" },
+          createElement(MessageBubble, { message: mediaMessage, isMine: true, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-text": "true" },
+          createElement(ImQuotedMessagePreview, { message: quotedText, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-media-caption": "true" },
+          createElement(ImQuotedMessagePreview, { message: quotedMedia, translation: japaneseTranslation })
+        )
       ));
     });
 
-    expect(container.textContent).toContain("テストテスト");
-    expect(container.querySelectorAll("[data-no-i18n]").length).toBe(3);
-    expect(container.querySelector('[data-im-quoted-media-caption="true"] [data-no-i18n]')?.textContent).toBe("テストテスト");
+    expect(container.querySelector('[data-test-main-media-caption] [data-no-i18n]')?.textContent).toBe("テストテスト");
+    expect(container.querySelector('[data-test-quoted-text] [data-no-i18n]')?.textContent).toBe("テストテスト");
+    expect(container.querySelector('[data-test-quoted-media-caption] [data-im-quoted-media-caption="true"] [data-no-i18n]')?.textContent).toBe("テストテスト");
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps quoted system and recalled labels outside the user text translation boundary", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const systemMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-system-1",
+      localId: "translation-quoted-system-1",
+      type: "system",
+      content: "测试测试"
+    };
+    const recalledMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-recalled-1",
+      localId: "translation-quoted-recalled-1",
+      type: "recalled",
+      content: "",
+      status: "recalled"
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-quoted-system": "true" },
+          createElement(ImQuotedMessagePreview, { message: systemMessage, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-recalled": "true" },
+          createElement(ImQuotedMessagePreview, { message: recalledMessage, translation: japaneseTranslation })
+        )
+      ));
+    });
+
+    const systemRoot = container.querySelector<HTMLElement>("[data-test-quoted-system]");
+    const recalledRoot = container.querySelector<HTMLElement>("[data-test-quoted-recalled]");
+    expect(systemRoot?.textContent).toBe("测试测试");
+    expect(recalledRoot?.textContent).toBe("对方撤回了一条消息");
+    expect(systemRoot?.querySelector("[data-no-i18n]")).toBeNull();
+    expect(recalledRoot?.querySelector("[data-no-i18n]")).toBeNull();
+    expect(systemRoot?.querySelector("[data-im-message-rich-text]")).toBeNull();
+    expect(recalledRoot?.querySelector("[data-im-message-rich-text]")).toBeNull();
 
     await act(async () => root.unmount());
   });
