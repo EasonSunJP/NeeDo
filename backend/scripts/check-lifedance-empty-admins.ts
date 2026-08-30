@@ -27,6 +27,11 @@ const main = async (): Promise<void> => {
   const databaseUrl = process.env.DATABASE_URL;
   assert(databaseUrl, "DATABASE_URL is required.");
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl), log: ["error"] });
+  const [{ RedisAuthSessionStore }, { disconnectRedis }] = await Promise.all([
+    import("../src/services/auth-session.store"),
+    import("../src/config/redis")
+  ]);
+  const sessions = new RedisAuthSessionStore();
 
   try {
     const accounts = [] as Array<{
@@ -102,6 +107,10 @@ const main = async (): Promise<void> => {
         where: { walletId: wallet.id, reason: "lifedance_empty_admin_test_ndp", deletedAt: null }
       });
       assert(ledgerCount >= 1, `${plan.email} TestNDP ledger entry is missing.`);
+      assert(
+        (await sessions.getSessionGeneration(user.id)) === user.sessionGeneration,
+        `${plan.email} Redis session generation mismatch.`
+      );
       accounts.push({
         email: user.email,
         needoId: user.needoId,
@@ -117,7 +126,8 @@ const main = async (): Promise<void> => {
         identities: {
           where: { isActive: true, deletedAt: null },
           include: { publicIdentifier: true }
-        }
+        },
+        userRoles: { where: { deletedAt: null }, include: { role: true } }
       }
     });
     assert(operator?.isActive && !operator.deletedAt, "operator@example.com is missing or inactive.");
@@ -125,6 +135,7 @@ const main = async (): Promise<void> => {
       ["customer", "user", "u"].includes(identity.type)
     );
     const platformIdentity = operator.identities.find((identity) => identity.type === "platform");
+    const operatorRoleCodes = operator.userRoles.map((item) => item.role.code);
     assert(
       operator.needoId === OPERATOR_U_IDENTIFIER_REPAIR.publicId &&
         operator.accountNo === OPERATOR_U_IDENTIFIER_REPAIR.numberPart &&
@@ -134,10 +145,16 @@ const main = async (): Promise<void> => {
         customerIdentity.publicIdentifier.kind === "U" &&
         platformIdentity &&
         !platformIdentity.isDefault &&
-        !platformIdentity.publicIdentifier,
+        !platformIdentity.publicIdentifier &&
+        operatorRoleCodes.includes("operator") &&
+        operatorRoleCodes.includes("customer"),
       "operator@example.com U identifier repair mismatch."
     );
     assert(operator.passwordHash && (await compare(password, operator.passwordHash)), "operator password mismatch.");
+    assert(
+      (await sessions.getSessionGeneration(operator.id)) === operator.sessionGeneration,
+      "operator Redis session generation mismatch."
+    );
     console.log(
       JSON.stringify({
         status: "ok",
@@ -150,7 +167,7 @@ const main = async (): Promise<void> => {
       })
     );
   } finally {
-    await prisma.$disconnect();
+    await Promise.all([prisma.$disconnect(), disconnectRedis()]);
   }
 };
 

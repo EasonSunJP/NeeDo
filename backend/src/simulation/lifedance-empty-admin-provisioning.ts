@@ -46,14 +46,29 @@ export interface EmptyAdminProvisioningResult {
     email: string;
     needoId: string;
     availableBalance: number;
+    sessionGeneration: number;
   }>;
   operator: {
     userId: number;
     previousPublicId: string;
     publicId: string;
     repaired: boolean;
+    sessionGeneration: number;
   };
 }
+
+export const getProvisionedSessionGenerationTargets = (
+  result: EmptyAdminProvisioningResult
+): Array<{ userId: number; sessionGeneration: number }> => [
+  ...result.accounts.map((account) => ({
+    userId: account.userId,
+    sessionGeneration: account.sessionGeneration
+  })),
+  {
+    userId: result.operator.userId,
+    sessionGeneration: result.operator.sessionGeneration
+  }
+];
 
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
@@ -136,25 +151,36 @@ export const selectEmptyAdminAccountCandidate = (
   return candidate;
 };
 
-const ensureAdminRole = async (
+const ensureRole = async (
   tx: Prisma.TransactionClient,
-  userId: number
-): Promise<void> => {
+  input: { userId: number; roleCode: string; scopeType: string; scopeId: number | null }
+): Promise<boolean> => {
   const role = await tx.role.findFirst({
-    where: { code: "admin", deletedAt: null },
+    where: { code: input.roleCode, deletedAt: null },
     select: { id: true }
   });
-  assert(role, "LifeDance empty-admin provisioning requires the active admin role.");
+  assert(role, `LifeDance provisioning requires the active ${input.roleCode} role.`);
   const existing = await tx.userRole.findFirst({
-    where: { userId, roleId: role.id, scopeType: "global", scopeId: null }
+    where: {
+      userId: input.userId,
+      roleId: role.id,
+      scopeType: input.scopeType,
+      scopeId: input.scopeId
+    }
   });
   if (existing) {
     await tx.userRole.update({ where: { id: existing.id }, data: { deletedAt: null } });
-    return;
+    return false;
   }
   await tx.userRole.create({
-    data: { userId, roleId: role.id, scopeType: "global", scopeId: null }
+    data: {
+      userId: input.userId,
+      roleId: role.id,
+      scopeType: input.scopeType,
+      scopeId: input.scopeId
+    }
   });
+  return true;
 };
 
 const ensurePlatformIdentity = async (
@@ -381,7 +407,12 @@ const provisionEmptyAdmin = async (
       primaryIdentityType: "NEEDO"
     }
   });
-  await ensureAdminRole(tx, user.id);
+  await ensureRole(tx, {
+    userId: user.id,
+    roleCode: "admin",
+    scopeType: "global",
+    scopeId: null
+  });
   const availableBalance = await ensureTestNdp(tx, {
     userId: user.id,
     actorUserId: input.actorUserId
@@ -400,7 +431,13 @@ const provisionEmptyAdmin = async (
       }
     }
   });
-  return { userId: user.id, email: user.email, needoId: user.needoId, availableBalance };
+  return {
+    userId: user.id,
+    email: user.email,
+    needoId: user.needoId,
+    availableBalance,
+    sessionGeneration: user.sessionGeneration
+  };
 };
 
 const repairOperatorIdentifier = async (
@@ -427,6 +464,31 @@ const repairOperatorIdentifier = async (
   );
   assert(platformIdentity, "operator@example.com platform identity is missing.");
   assert(customerIdentity, "operator@example.com customer identity is missing.");
+  assert(
+    customerIdentity.scopeType && customerIdentity.scopeId !== null,
+    "operator@example.com customer identity scope is incomplete."
+  );
+  const customerRoleCreated = await ensureRole(tx, {
+    userId: user.id,
+    roleCode: "customer",
+    scopeType: customerIdentity.scopeType,
+    scopeId: customerIdentity.scopeId
+  });
+  if (customerRoleCreated) {
+    await tx.auditLog.create({
+      data: {
+        actorId: actorUserId,
+        action: "user.primary_identifier.customer_role.ensure",
+        targetType: "user",
+        targetId: user.id,
+        metadata: {
+          email: user.email,
+          scopeType: customerIdentity.scopeType,
+          scopeId: customerIdentity.scopeId
+        }
+      }
+    });
+  }
   const currentU = customerIdentity.publicIdentifier;
   if (
     user.needoId === OPERATOR_U_IDENTIFIER_REPAIR.publicId &&
@@ -438,7 +500,8 @@ const repairOperatorIdentifier = async (
       userId: user.id,
       previousPublicId: OPERATOR_U_IDENTIFIER_REPAIR.previousPublicId,
       publicId: OPERATOR_U_IDENTIFIER_REPAIR.publicId,
-      repaired: false
+      repaired: false,
+      sessionGeneration: user.sessionGeneration
     };
   }
 
@@ -480,7 +543,7 @@ const repairOperatorIdentifier = async (
     where: { id: customerIdentity.id },
     data: { isDefault: true }
   });
-  await tx.user.update({
+  const updatedUser = await tx.user.update({
     where: { id: user.id },
     data: {
       needoId: OPERATOR_U_IDENTIFIER_REPAIR.publicId,
@@ -506,7 +569,8 @@ const repairOperatorIdentifier = async (
     userId: user.id,
     previousPublicId: OPERATOR_U_IDENTIFIER_REPAIR.previousPublicId,
     publicId: OPERATOR_U_IDENTIFIER_REPAIR.publicId,
-    repaired: true
+    repaired: true,
+    sessionGeneration: updatedUser.sessionGeneration
   };
 };
 
