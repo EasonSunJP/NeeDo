@@ -13,6 +13,7 @@ describe("RealtimeRepository Social friends", () => {
             authorIdentityId: 101,
             content: "123456788888888",
             media: null,
+            replyToPostId: null,
             visibility: "PUBLIC",
             createdAt,
             updatedAt: createdAt,
@@ -24,7 +25,8 @@ describe("RealtimeRepository Social friends", () => {
               createdAt,
               identities: []
             },
-            authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" }
+            authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" },
+            _count: { replies: 0 }
           }
         ]),
         count: jest.fn(async () => 1)
@@ -74,6 +76,7 @@ describe("RealtimeRepository Social friends", () => {
             authorIdentityId: 101,
             content: "123456788888888",
             media: null,
+            replyToPostId: null,
             visibility: "PUBLIC",
             createdAt,
             updatedAt: createdAt,
@@ -85,7 +88,8 @@ describe("RealtimeRepository Social friends", () => {
               createdAt,
               identities: []
             },
-            authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" }
+            authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" },
+            _count: { replies: 0 }
           }
         ]),
         count: jest.fn(async () => 1)

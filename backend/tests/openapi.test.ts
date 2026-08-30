@@ -1116,6 +1116,13 @@ describe("GET /api/v1/openapi.json", () => {
     expect(document.components.schemas.SocialPost.properties.author).toEqual({
       $ref: "#/components/schemas/SocialProfileSummary"
     });
+    expect(document.components.schemas.SocialPost.required).toEqual(
+      expect.arrayContaining(["replyToPostId", "replyCount"])
+    );
+    expect(document.components.schemas.SocialPost.properties).toMatchObject({
+      replyToPostId: { type: "integer", nullable: true, minimum: 1 },
+      replyCount: { type: "integer", minimum: 0 }
+    });
     expect(document.components.schemas.SocialActivityStatus.properties.status.enum).toEqual([
       "recent_posts",
       "no_recent_posts"

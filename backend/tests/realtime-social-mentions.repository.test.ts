@@ -57,10 +57,12 @@ const createFixture = (overrides: {
         authorIdentityId: data.authorIdentityId,
         content: data.content,
         media: data.media,
+        replyToPostId: data.replyToPostId,
         visibility: SocialPostVisibility.PUBLIC,
         createdAt: now,
         author,
-        authorIdentity: { id: 71, type: "customer", displayName: "Aya" }
+        authorIdentity: { id: 71, type: "customer", displayName: "Aya" },
+        _count: { replies: 0 }
       }))
     },
     notification: {

@@ -360,6 +360,8 @@ const createFixture = async () => {
     authorUserId: number;
     content: string;
     media: unknown;
+    replyToPostId: number | null;
+    replyCount: number;
     visibility: string;
     createdAt: Date;
   }> = [];
@@ -1196,15 +1198,29 @@ const createFixture = async () => {
         mentionUserIds: number[];
         visibility: string;
       }) => {
+        const mediaEnvelope =
+          input.media && typeof input.media === "object"
+            ? input.media as { replyToPostId?: unknown }
+            : null;
+        const replyToPostId =
+          typeof mediaEnvelope?.replyToPostId === "number" ? mediaEnvelope.replyToPostId : null;
         const socialPost = {
           id: socialPostId++,
           authorUserId: input.authorUserId,
           content: input.content,
           media: input.media ?? null,
+          replyToPostId,
+          replyCount: 0,
           visibility: input.visibility,
           createdAt: now
         };
         socialPosts.push(socialPost);
+        if (replyToPostId !== null) {
+          const replyTarget = socialPosts.find((post) => post.id === replyToPostId);
+          if (replyTarget) {
+            replyTarget.replyCount += 1;
+          }
+        }
 
         return { post: socialPost, notifications: [] };
       }
@@ -1433,6 +1449,39 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .set("Authorization", `Bearer ${ayaToken}`)
       .send({ content: "", media: { items: [] }, visibility: "public" })
       .expect(400);
+  });
+
+  it("returns the reply relation on creation and the authoritative active count on its parent", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    const parent = await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "Parent", visibility: "public" })
+      .expect(201);
+
+    const reply = await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({
+        content: "Reply",
+        visibility: "public",
+        media: { items: [], postType: "reply", replyToPostId: parent.body.data.id }
+      })
+      .expect(201);
+
+    expect(reply.body.data).toMatchObject({
+      replyToPostId: parent.body.data.id,
+      replyCount: 0
+    });
+
+    const parentDetail = await request(fixture.app)
+      .get(`/api/v1/social/posts/${parent.body.data.id}`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200);
+
+    expect(parentDetail.body.data).toMatchObject({ replyCount: 1 });
   });
 
   it("accepts only request-owned image references and unique contact reminder IDs", async () => {

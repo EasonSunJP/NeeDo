@@ -20,6 +20,7 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
     authorUserId: options.postAuthorUserId ?? 41,
     authorIdentityId: options.postAuthorUserId === 99 ? 199 : 71,
     content: "before",
+    replyToPostId: null,
     media: {
       items: [
         {
@@ -36,7 +37,8 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
     createdAt: now,
     updatedAt: now,
     author,
-    authorIdentity: { id: 71, type: "customer", displayName: "Aya" }
+    authorIdentity: { id: 71, type: "customer", displayName: "Aya" },
+    _count: { replies: 0 }
   };
   const transaction = {
     socialPost: {
@@ -181,5 +183,19 @@ describe("RealtimeRepository Social post update", () => {
     });
     expect(fixture.transaction.socialPost.update).not.toHaveBeenCalled();
     expect(fixture.transaction.notification.create).not.toHaveBeenCalled();
+  });
+
+  it("does not allow an edit to create or move the reply relation", async () => {
+    const fixture = createFixture();
+    const input = {
+      ...updateInput(),
+      media: { ...updateInput().media, replyToPostId: 700 }
+    };
+
+    await expect(fixture.repository.updateSocialPost(input)).rejects.toMatchObject({
+      message: "error.social.reply_relation_immutable",
+      statusCode: 409
+    });
+    expect(fixture.transaction.socialPost.update).not.toHaveBeenCalled();
   });
 });

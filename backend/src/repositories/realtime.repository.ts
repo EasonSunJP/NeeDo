@@ -239,6 +239,8 @@ export interface SocialPostPayload {
   authorIdentityId: number;
   content: string;
   media: unknown;
+  replyToPostId: number | null;
+  replyCount: number;
   visibility: SocialPostVisibilityPayload;
   createdAt: Date;
   updatedAt: Date;
@@ -664,6 +666,9 @@ const socialPostInclude = {
   },
   authorIdentity: {
     select: { id: true, type: true, displayName: true }
+  },
+  _count: {
+    select: { replies: { where: { deletedAt: null } } }
   }
 } satisfies Prisma.SocialPostInclude;
 
@@ -2864,6 +2869,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         }
       }
 
+      const replyToPostId = input.media?.replyToPostId;
+      if (replyToPostId !== undefined) {
+        const replyTarget = await transaction.socialPost.findFirst({
+          where: { id: replyToPostId, deletedAt: null },
+          select: { id: true }
+        });
+        if (!replyTarget) {
+          throw this.socialPostConflict("error.social.reply_target_not_found");
+        }
+      }
+
       const requestedMediaItems = input.media?.items ?? [];
       const mediaPublicIds = requestedMediaItems.map((item) => item.mediaAssetPublicId);
       if (new Set(mediaPublicIds).size !== mediaPublicIds.length) {
@@ -2949,6 +2965,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           authorIdentityId,
           content: input.content,
           media: this.toJsonValue(media),
+          replyToPostId: replyToPostId ?? null,
           visibility: this.socialPostVisibilityToDb(input.visibility)
         },
         include: socialPostInclude
@@ -3037,6 +3054,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
       if (!existingPost) {
         return null;
+      }
+
+      if (
+        input.media?.replyToPostId !== undefined &&
+        input.media.replyToPostId !== existingPost.replyToPostId
+      ) {
+        throw this.socialPostConflict("error.social.reply_relation_immutable");
       }
 
       const mentionUserIds = Array.from(new Set(input.mentionUserIds));
@@ -4433,6 +4457,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       authorIdentityId: socialPost.authorIdentityId,
       content: socialPost.content,
       media: socialPost.media,
+      replyToPostId: socialPost.replyToPostId,
+      replyCount: socialPost._count.replies,
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
       createdAt: socialPost.createdAt,
       updatedAt: socialPost.updatedAt,
