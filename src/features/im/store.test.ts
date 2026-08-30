@@ -84,6 +84,13 @@ afterEach(async () => {
   container = null;
   root = null;
   store = null;
+  mocked.session = {
+    activePublicId: "u0000000100",
+    avatarUrl: null,
+    id: 100,
+    primaryPublicId: "u0000000100",
+    username: "测试用户",
+  };
   window.localStorage.clear();
 });
 
@@ -210,6 +217,99 @@ describe("formal IM auto translation preference", () => {
       { id: "91", autoTranslateMessages: true },
     ]);
     expect(setItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("formal IM resend payload integrity", () => {
+  it("resends by authoritative message id without mutating the stored raw content or rich text", async () => {
+    mocked.session = {
+      activePublicId: "u0000000105",
+      avatarUrl: null,
+      id: 105,
+      primaryPublicId: "u0000000105",
+      username: "重发测试用户",
+    };
+    const richText = {
+      version: 1 as const,
+      parts: [
+        { type: "text" as const, value: "测试" },
+        { type: "judgement" as const, value: "OK" },
+      ],
+    };
+    const failedMessage = message({
+      content: "测试OK",
+      status: "failed",
+      ext: { richText },
+    });
+    const originalFailedMessage = structuredClone(failedMessage);
+    const confirmedMessage = message({
+      content: "测试OK",
+      status: "sent",
+      ext: { richText: structuredClone(richText) },
+    });
+    const resendMessage = vi.fn().mockResolvedValue({
+      conversation: conversation({
+        lastMessagePreview: "测试OK",
+        lastMessageType: "text",
+        lastMessageStatus: "sent",
+      }),
+      message: confirmedMessage,
+    });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [failedMessage],
+        nextCursor: null,
+        hasMore: false,
+      }),
+      resendMessage,
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+    });
+    await act(async () => {
+      await store?.resendMessage(failedMessage.id);
+    });
+
+    expect(resendMessage).toHaveBeenCalledWith(failedMessage.id);
+    expect(failedMessage).toEqual(originalFailedMessage);
+    expect(store?.messagesByConversation["91"]).toMatchObject([
+      {
+        content: "测试OK",
+        status: "sent",
+        ext: { richText },
+      },
+    ]);
+  });
+
+  it("tracks authoritative preview type and status in optimistic and delete summary updates", () => {
+    const optimisticStart = storeSource.indexOf("async function sendMessage");
+    const optimisticEnd = storeSource.indexOf("async function estimateTagMessageCampaign", optimisticStart);
+    const optimisticSource = storeSource.slice(optimisticStart, optimisticEnd);
+    const deleteStart = storeSource.indexOf("async function deleteMessage");
+    const deleteEnd = storeSource.indexOf("async function forwardMessage", deleteStart);
+    const deleteSource = storeSource.slice(deleteStart, deleteEnd);
+
+    expect(optimisticSource).toContain("lastMessageType: optimistic.type");
+    expect(optimisticSource).toContain("lastMessageStatus: optimistic.status");
+    expect(deleteSource).toContain("lastMessageType: latestMessage?.type");
+    expect(deleteSource).toContain("lastMessageStatus: latestMessage?.status");
   });
 });
 

@@ -111,6 +111,8 @@ describe("formal IM adapter", () => {
       contactUserId: "201",
       title: "sim-technician-001",
       lastMessagePreview: "明天下午三点可以为您服务。",
+      lastMessageType: "text",
+      lastMessageStatus: "sent",
       unreadCount: 2,
       autoTranslateMessages: false,
     });
@@ -299,6 +301,19 @@ describe("formal IM adapter", () => {
       "92": "音频",
       "93": "视频",
       "94": "报价单.pdf",
+    });
+    expect(
+      Object.fromEntries(
+        bootstrap.conversations.map((conversation) => [
+          conversation.id,
+          [conversation.lastMessageType, conversation.lastMessageStatus],
+        ]),
+      ),
+    ).toEqual({
+      "91": ["image", "sent"],
+      "92": ["voice", "sent"],
+      "93": ["video", "sent"],
+      "94": ["file", "sent"],
     });
     expect(Object.values(previews).join(" ")).not.toContain("/media/im/");
   });

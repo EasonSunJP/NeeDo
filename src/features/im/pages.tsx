@@ -110,7 +110,7 @@ import {
   getImMessageCopyText,
   getImMessageDisplayText,
   getImPreviewDisplayText,
-  isImUserGeneratedPreviewText,
+  isImUserGeneratedConversationPreview,
 } from "./message-translation";
 import {
   FriendDeletionConfirmDialog,
@@ -1175,7 +1175,7 @@ function buildConversationDisplayPreview(
   const userGenerated = !preview.isDraft
     && !conversation.privacyModeEnabled
     && Boolean(conversation.lastMessagePreview)
-    && isImUserGeneratedPreviewText(preview.text, conversation.type);
+    && isImUserGeneratedConversationPreview(conversation);
 
   return {
     ...preview,
@@ -3974,15 +3974,14 @@ export function ImSearchPage() {
               <SectionTag>聊天记录</SectionTag>
               {result.messages.map((message) => {
                 const owningConversation = store.conversations.find((conversation) => conversation.id === message.conversationId);
-                const userGenerated = message.type !== "system"
-                  && message.type !== "recalled"
+                const userGenerated = (message.type === "text" || message.type === "emoji")
                   && message.status !== "recalled";
                 const displayText = userGenerated
                   ? getImMessageDisplayText(message.content, message.ext?.richText, {
                       enabled: owningConversation?.autoTranslateMessages ?? false,
                       language,
                     })
-                  : message.content || "已撤回消息";
+                  : buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
 
                 return (
                   <Link

@@ -171,6 +171,8 @@ describe("IM automatic translation display wiring", () => {
     expect(source).toContain("getImPreviewDisplayText(");
     expect(source).toContain("conversation.autoTranslateMessages");
     expect(source).toContain("preview.isDraft");
+    expect(source).toContain("isImUserGeneratedConversationPreview(conversation)");
+    expect(source).not.toContain("isImUserGeneratedPreviewText");
     expect(listSource).toContain("buildConversationDisplayPreview(conversation, language)");
   });
 
@@ -181,7 +183,9 @@ describe("IM automatic translation display wiring", () => {
 
     expect(searchSource).toContain("message.conversationId");
     expect(searchSource).toContain("autoTranslateMessages");
+    expect(searchSource).toContain('(message.type === "text" || message.type === "emoji")');
     expect(searchSource).toContain("getImMessageDisplayText(");
+    expect(searchSource).toContain("buildMessagePreview(message");
     expect(searchSource).toContain('data-no-i18n={userGenerated ? "true" : undefined}');
     expect(searchSource).toContain("store.search(deferredQuery, conversationId)");
   });

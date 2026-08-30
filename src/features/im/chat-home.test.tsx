@@ -51,7 +51,7 @@ describe("UnifiedChatHomePage spacing", () => {
 
     await act(async () => {
       root.render(createElement(UnifiedConversationPreviewText, {
-        preview: { text: "テストテスト", userGenerated: true }
+        preview: { text: "系统消息 语音通话 changed left", userGenerated: true }
       }));
     });
 
@@ -59,7 +59,7 @@ describe("UnifiedChatHomePage spacing", () => {
 
     await act(async () => {
       root.render(createElement(UnifiedConversationPreviewText, {
-        preview: { text: "私密群消息已隐藏", userGenerated: false }
+        preview: { text: "报价单.pdf", userGenerated: false }
       }));
     });
 

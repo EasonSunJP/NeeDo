@@ -447,6 +447,8 @@ function toConversation(
     lastMessagePreview: lastMessage
       ? buildMessagePreview(lastMessage, String(currentUserId), {})
       : "",
+    lastMessageType: lastMessage?.type,
+    lastMessageStatus: lastMessage?.status,
     lastMessageTime: lastMessage?.sentAt ?? conversation.updatedAt,
     unreadCount: conversation.unreadCount,
     isPinned: conversation.isPinned ?? false,

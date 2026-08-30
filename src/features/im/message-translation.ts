@@ -1,6 +1,6 @@
 import { translateText, type Language } from "../../i18n/translations";
 import { resolveImMessageRichText, type ImMessageRichTextPart } from "./reaction-policy";
-import type { ConversationMessage, ImConversationType, MessageExt } from "./model";
+import type { Conversation, ConversationMessage, MessageExt } from "./model";
 
 export type ImMessageTranslationOptions = {
   enabled: boolean;
@@ -37,12 +37,12 @@ export function getImPreviewDisplayText(
   return options.enabled ? translateText(text, options.language) : text;
 }
 
-export function isImUserGeneratedPreviewText(
-  text: string,
-  conversationType?: ImConversationType,
+export function isImUserGeneratedConversationPreview(
+  conversation: Pick<Conversation, "lastMessageType" | "lastMessageStatus">,
 ): boolean {
-  return conversationType !== "system"
-    && !/(撤回了一条消息|changed|left\b|语音通话|视频通话|系统消息)/i.test(text);
+  return Boolean(conversation.lastMessageStatus)
+    && conversation.lastMessageStatus !== "recalled"
+    && (conversation.lastMessageType === "text" || conversation.lastMessageType === "emoji");
 }
 
 export function getImMessageCopyText(
@@ -54,8 +54,8 @@ export function getImMessageCopyText(
     return selectedContent;
   }
 
-  const caption = message.ext?.caption?.trim() ?? "";
-  if (caption) {
+  const caption = message.ext?.caption ?? "";
+  if (caption.trim()) {
     return getImMessageDisplayText(caption, message.ext?.captionRichText, options);
   }
 

@@ -178,6 +178,8 @@ export type Conversation = {
   contactUserId?: string;
   lastMessageId?: string;
   lastMessagePreview: string;
+  lastMessageType?: ImMessageType;
+  lastMessageStatus?: ImMessageStatus;
   lastMessageTime: string;
   unreadCount: number;
   isPinned: boolean;
@@ -1330,6 +1332,8 @@ export function recomputeConversationSummary(database: ImDatabase, conversationI
   if (!lastMessage) {
     conversation.lastMessageId = undefined;
     conversation.lastMessagePreview = "";
+    conversation.lastMessageType = undefined;
+    conversation.lastMessageStatus = undefined;
     conversation.lastMessageTime = conversation.updatedAt;
     return conversation;
   }
@@ -1338,6 +1342,8 @@ export function recomputeConversationSummary(database: ImDatabase, conversationI
   conversation.lastMessageTime = lastMessage.sentAt;
   conversation.updatedAt = lastMessage.sentAt;
   conversation.lastMessagePreview = buildMessagePreview(lastMessage, database.currentUserId, users);
+  conversation.lastMessageType = lastMessage.type;
+  conversation.lastMessageStatus = lastMessage.status;
 
   return conversation;
 }

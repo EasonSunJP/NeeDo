@@ -4,7 +4,7 @@ import {
   getImMessageDisplayParts,
   getImMessageDisplayText,
   getImPreviewDisplayText,
-  isImUserGeneratedPreviewText
+  isImUserGeneratedConversationPreview
 } from "./message-translation";
 import type { ConversationMessage, MessageExt } from "./model";
 
@@ -64,11 +64,49 @@ describe("IM message display translation", () => {
     })).toBe("テストテスト");
   });
 
-  it("keeps system and metadata previews on the UI localization path", () => {
-    expect(isImUserGeneratedPreviewText("测试测试", "single")).toBe(true);
-    expect(isImUserGeneratedPreviewText("你撤回了一条消息", "single")).toBe(false);
-    expect(isImUserGeneratedPreviewText("语音通话", "single")).toBe(false);
-    expect(isImUserGeneratedPreviewText("测试测试", "system")).toBe(false);
+  it("uses authoritative message type instead of text patterns for preview provenance", () => {
+    expect(isImUserGeneratedConversationPreview({
+      lastMessageType: "text",
+      lastMessageStatus: "sent",
+    })).toBe(true);
+    expect(isImUserGeneratedConversationPreview({
+      lastMessageType: "text",
+      lastMessageStatus: "sending",
+    })).toBe(true);
+    expect(isImUserGeneratedConversationPreview({
+      lastMessageType: "text",
+      lastMessageStatus: "recalled",
+    })).toBe(false);
+  });
+
+  it.each([
+    "image",
+    "video",
+    "voice",
+    "file",
+    "contact-card",
+    "service-card",
+    "schedule-invite",
+    "system",
+    "recalled",
+  ] as const)("keeps an authoritative %s preview outside user-text translation", (lastMessageType) => {
+    expect(isImUserGeneratedConversationPreview({
+      lastMessageType,
+      lastMessageStatus: lastMessageType === "recalled" ? "recalled" : "sent",
+    })).toBe(false);
+  });
+
+  it("does not demote genuine user text that contains metadata-looking words", () => {
+    const content = "系统消息 语音通话 changed left";
+
+    expect(isImUserGeneratedConversationPreview({
+      lastMessageType: "text",
+      lastMessageStatus: "sent",
+    })).toBe(true);
+    expect(getImPreviewDisplayText(content, {
+      enabled: true,
+      language: "ja",
+    })).toBe("システムメッセージ 音声通話 changed left");
   });
 
   it("copies visible text without mutating the stored message", () => {
@@ -142,6 +180,38 @@ describe("IM message display translation", () => {
       language: "ja"
     })).toBe("テストテスト");
     expect(getImMessageCopyText(fileMessage, "", {
+      enabled: true,
+      language: "ja"
+    })).toBe("文件");
+  });
+
+  it("preserves visible caption whitespace while treating whitespace-only captions as absent", () => {
+    const captionedImage: ConversationMessage = {
+      id: "message-copy-caption-whitespace-1",
+      localId: "message-copy-caption-whitespace-1",
+      conversationId: "conversation-copy-1",
+      senderId: "user-1",
+      type: "image",
+      content: "/media/image.jpg",
+      status: "sent",
+      sentAt: "2026-08-31T00:00:00.000Z",
+      clientSeq: 4,
+      ext: { caption: "  测试测试  ", previewText: "图片" }
+    };
+    const blankCaptionFile: ConversationMessage = {
+      ...captionedImage,
+      id: "message-copy-caption-whitespace-2",
+      localId: "message-copy-caption-whitespace-2",
+      type: "file",
+      content: "",
+      ext: { caption: "   ", previewText: "文件" }
+    };
+
+    expect(getImMessageCopyText(captionedImage, "", {
+      enabled: true,
+      language: "ja"
+    })).toBe("  テストテスト  ");
+    expect(getImMessageCopyText(blankCaptionFile, "", {
       enabled: true,
       language: "ja"
     })).toBe("文件");

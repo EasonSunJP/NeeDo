@@ -752,6 +752,8 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         updatedAt: optimistic.sentAt
       }),
       lastMessagePreview: buildMessagePreview(optimistic, snapshot.currentUserId ?? "", snapshot.usersById),
+      lastMessageType: optimistic.type,
+      lastMessageStatus: optimistic.status,
       lastMessageTime: optimistic.sentAt,
       updatedAt: optimistic.sentAt
     });
@@ -858,6 +860,8 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
                   )
                 : "",
               lastMessageId: latestMessage?.id,
+              lastMessageType: latestMessage?.type,
+              lastMessageStatus: latestMessage?.status,
               lastMessageTime: latestMessage?.sentAt ?? conversation.updatedAt,
             }
           : conversation,

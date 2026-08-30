@@ -535,7 +535,9 @@ describe("IM pages", () => {
     const composerStart = componentSource.indexOf("<ImChatComposer", quotedBarStart);
     const quotedBarSource = componentSource.slice(quotedBarStart, composerStart);
 
-    expect(quotedBarSource).toContain("<ImQuotedMessagePreview message={quotedMessage} />");
+    expect(quotedBarSource).toContain(
+      "<ImQuotedMessagePreview message={quotedMessage} translation={messageTranslation} />",
+    );
     expect(quotedBarSource).not.toContain('quotedMessage.content || "媒体消息"');
   });
 
