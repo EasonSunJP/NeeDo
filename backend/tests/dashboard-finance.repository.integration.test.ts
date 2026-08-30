@@ -206,6 +206,8 @@ describeIntegration("Dashboard finance repositories against guarded local MySQL"
           rewardStatus?: "PAID" | "PENDING";
           incomeStatus?: string;
           profit?: number | string | undefined;
+          serviceAmountJpy?: number;
+          technicianAmountJpy?: number;
         }) => tx.orderFinancial.create({
           data: {
             bookingOrderId: input.bookingOrderId,
@@ -218,9 +220,11 @@ describeIntegration("Dashboard finance repositories against guarded local MySQL"
             userRewardStatus: input.rewardStatus ?? "PENDING",
             userRewardGrantedAt: input.rewardAt,
             serviceIncomeStatus: input.incomeStatus ?? "reported",
+            serviceAmountJpy: input.serviceAmountJpy ?? 0,
             moneyTimelineJson: [
               {
                 type: "technician_income_estimated",
+                amountJpy: input.technicianAmountJpy ?? 0,
                 metadata: input.profit === undefined
                   ? { source: marker }
                   : { shopEstimatedGrossProfitJpy: input.profit }
@@ -263,7 +267,9 @@ describeIntegration("Dashboard finance repositories against guarded local MySQL"
           reward: 100,
           rewardAt: after,
           rewardStatus: "PAID",
-          profit: "900"
+          profit: "900",
+          serviceAmountJpy: 12_000,
+          technicianAmountJpy: 8_000
         });
         const testCurrency = await createOrder({ shopId: shopA.id, scheduleSlotId: slotA.id });
         await createFinancial({
@@ -277,7 +283,12 @@ describeIntegration("Dashboard finance repositories against guarded local MySQL"
           rewardStatus: "PAID"
         });
         const missingProfit = await createOrder({ shopId: shopA.id, scheduleSlotId: slotA.id });
-        await createFinancial({ bookingOrderId: missingProfit.id, shopId: shopA.id });
+        await createFinancial({
+          bookingOrderId: missingProfit.id,
+          shopId: shopA.id,
+          serviceAmountJpy: 9_000,
+          technicianAmountJpy: 6_000
+        });
         const refundedProfit = await createOrder({
           shopId: shopA.id,
           scheduleSlotId: slotA.id,
