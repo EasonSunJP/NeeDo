@@ -190,6 +190,48 @@ describe("ImVoiceRecordingOverlay", () => {
     await act(async () => root.unmount());
   });
 
+  it("keeps preview controls available while surfacing localized preview playback errors", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const errors = [
+      "自动播放已暂停，请点击重放",
+      "录音无法播放，请重新录制后重试",
+    ];
+
+    for (const error of errors) {
+      await act(async () => {
+        root.render(
+          <ImVoiceRecordingOverlay
+            audioRef={createRef<HTMLAudioElement>()}
+            copy={copy}
+            durationSeconds={8}
+            error={error}
+            onCancel={vi.fn()}
+            onDelete={vi.fn()}
+            onPreviewEnded={vi.fn()}
+            onReplay={vi.fn()}
+            onSend={vi.fn()}
+            onStop={vi.fn()}
+            onTimeUpdate={vi.fn()}
+            phase="preview_paused"
+            playbackSeconds={3}
+            previewUrl="blob:voice-preview"
+            remainingSeconds={51}
+          />,
+        );
+      });
+
+      expect(container.querySelector("[data-im-voice-bubble='true']")?.textContent).toContain(error);
+      expect(container.querySelectorAll("[data-im-voice-recording-actions='true'] button")).toHaveLength(3);
+      expect(container.querySelector("button[aria-label='删除录音']")).not.toBeNull();
+      expect(container.querySelector("button[aria-label='重放录音']")).not.toBeNull();
+      expect(container.querySelector("button[aria-label='发送录音']")).not.toBeNull();
+    }
+
+    await act(async () => root.unmount());
+  });
+
   it("traps dialog focus and makes a sending overlay busy but not destructively escapable", async () => {
     const onDelete = vi.fn();
     const container = document.createElement("div");

@@ -75,7 +75,7 @@ export function ImVoiceRecordingOverlay({
       ? copy.remainingRecording(remainingSeconds)
       : phase === "preview_playing"
         ? copy.previewPlaying
-        : phase === "send_error" && error
+        : (phase === "preview_paused" || phase === "send_error") && error
           ? error
           : copy.previewPaused;
 
