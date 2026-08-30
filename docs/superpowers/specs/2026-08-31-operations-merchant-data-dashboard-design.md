@@ -110,7 +110,7 @@
 ### 5.3 三张图表
 
 1. 订单总量与服务 GMV：双曲线、双纵轴，严格限制在当前店铺。
-2. 利润：单曲线，聚合正式 `shopEstimatedGrossProfitJpy`。公式为服务 GMV减技师毛收入减店铺承担 NDP，只统计已完成、未退款且收入已上报或确认的订单。
+2. 利润：单曲线，聚合正式 `shopEstimatedGrossProfitJpy`。公式为服务 GMV 减技师毛收入再减店铺承担 NDP，只统计已完成、未退款且收入已上报或确认的订单。
 3. 排班状态：三色分组柱状图，按分桶展示总排班时长、空闲可预约时长和已预约时长，单位为小时。总时长等于有效 `AVAILABLE` 和 `BOOKED` 时段时长之和，不重复叠加三组数值。
 
 技师毛收入沿用现有薪酬引擎：
@@ -147,13 +147,20 @@ city=<exact persisted city>
 - `finance`：正式 NDP 与 Test NDP 分离的汇总。
 - `shop`：商户当前店铺资料、计费与实时钱包快照。
 - `membership`：会员可用状态、会员数和期间去重利用者数。
-- `switchableShops` 或独立受保护店铺列表资源。
+- `scope`：当前商户后台所选店铺的服务端签名范围。
 
-可在迁移期间保留现有字段供同一提交内的调用方升级，但交付时前端只读取新的具名字段，不继续依赖标签文本解析数值。
+本次在一个提交范围内升级所有现有 Dashboard 调用方。交付 DTO 不再返回松散 `metrics` 标签数组，也不继续返回只为旧总览表格服务的 `orders`、`technicians` 和 `shops` 预览数组；侧边栏需要的待处理订单数、GMV 和店铺摘要进入具名 `summary`/`shop` 字段。
 
 ## 7. 多店商户切换
 
-新增受保护的可管理店铺列表和切换能力：
+新增两个固定接口：
+
+```text
+GET  /api/v1/merchant-admin/manageable-shops
+POST /api/v1/auth/merchant-shop/switch
+```
+
+店铺列表只返回当前账号可管理店铺的公开 ID、名称、城市、状态与当前选中状态；不返回 MerchantAccount、Membership 或内部用户 ID。切换遵守以下规则：
 
 1. shop-scoped 身份只能看到当前店铺。
 2. merchant-account-scoped 身份只能看到与当前 MerchantAccount 存在有效、未删除 `MerchantShopMembership` 的店铺。
