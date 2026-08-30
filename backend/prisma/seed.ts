@@ -1669,10 +1669,21 @@ const seedRequiredTestAccounts = async (
       username: account.username,
       avatarUrl: account.avatarUrl
     };
-    const user = account.identityType === "platform"
+    const user = account.primaryIdentifierKind === "NEEDO"
       ? await upsertSeedCompanyUser(tx, seedUserInput, input.passwordHash, input.roleByCode)
       : await upsertSeedUser(tx, seedUserInput, input.passwordHash);
     if (account.identityType === "platform") {
+      if (account.primaryIdentifierKind === "U") {
+        await upsertSeedIdentity(tx, {
+          userId: user.id,
+          type: "platform",
+          scopeType: "global",
+          scopeId: null,
+          displayName: account.username,
+          isDefault: false,
+          activeKey: `test-account-identity:${user.id}:platform:global`
+        });
+      }
       await assignSeedRole(tx, {
         userId: user.id,
         roleId: getRequiredRole(input.roleByCode, account.roleCode).id,

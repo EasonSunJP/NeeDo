@@ -3,8 +3,10 @@ import type { AffiliatePlatformFeeService } from "../services/affiliate-platform
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
+  affiliatePlatformFeeShopOptionQuerySchema,
   affiliatePlatformFeeRuleCreateBodySchema,
-  affiliatePlatformFeeRuleListQuerySchema
+  affiliatePlatformFeeRuleListQuerySchema,
+  affiliatePlatformFeeRuleSummaryQuerySchema
 } from "../validators/affiliate-platform-fee.validator";
 
 export class AffiliatePlatformFeeController {
@@ -32,6 +34,30 @@ export class AffiliatePlatformFeeController {
             getAuthenticatedAccess(response),
             getRequestContext(request),
             affiliatePlatformFeeRuleCreateBodySchema.parse(request.body)
+          )
+        )
+      );
+  });
+
+  public getGlobalSummary = this.handle(async (request, response) => {
+    affiliatePlatformFeeRuleSummaryQuerySchema.parse(request.query);
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getGlobalSummary(getAuthenticatedAccess(response))
+        )
+      );
+  });
+
+  public listEligibleShops = this.handle(async (request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listEligibleShops(
+            getAuthenticatedAccess(response),
+            affiliatePlatformFeeShopOptionQuerySchema.parse(request.query)
           )
         )
       );

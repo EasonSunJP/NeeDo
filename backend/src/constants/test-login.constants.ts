@@ -8,6 +8,7 @@ export interface TestUserAccountDefinition {
   avatarUrl: string;
   roleCode: SystemRoleCode;
   identityType: "platform" | "merchant" | "technician" | "customer" | "broker";
+  primaryIdentifierKind: "U" | "NEEDO";
   expectedPortal: TestUserPortal;
   purpose: string;
 }
@@ -19,6 +20,7 @@ export const TEST_USER_ACCOUNTS = [
     avatarUrl: "/images/generated/profiles/cartoon-profile-02.png",
     roleCode: "admin",
     identityType: "platform",
+    primaryIdentifierKind: "NEEDO",
     expectedPortal: "admin",
     purpose: "运营后台、User Management、权限管理"
   },
@@ -28,6 +30,7 @@ export const TEST_USER_ACCOUNTS = [
     avatarUrl: "/images/generated/profiles/ai-profile-11.jpg",
     roleCode: "operator",
     identityType: "platform",
+    primaryIdentifierKind: "U",
     expectedPortal: "admin",
     purpose: "运营后台基础运营功能"
   },
@@ -37,6 +40,7 @@ export const TEST_USER_ACCOUNTS = [
     avatarUrl: "/images/generated/stores/store-calm-body-room.jpg",
     roleCode: "merchant_owner",
     identityType: "merchant",
+    primaryIdentifierKind: "U",
     expectedPortal: "merchant",
     purpose: "商户端、店铺后台、订单中心、排班、财务"
   },
@@ -46,6 +50,7 @@ export const TEST_USER_ACCOUNTS = [
     avatarUrl: "/images/generated/profiles/cartoon-profile-05.png",
     roleCode: "broker",
     identityType: "broker",
+    primaryIdentifierKind: "U",
     expectedPortal: "business",
     purpose: "Afirieito、NDA管理后台、推广计划、素材、归因收益"
   },
@@ -55,6 +60,7 @@ export const TEST_USER_ACCOUNTS = [
     avatarUrl: "/images/generated/profiles/ai-profile-29.jpg",
     roleCode: "technician",
     identityType: "technician",
+    primaryIdentifierKind: "U",
     expectedPortal: "technician",
     purpose: "技师端、日程、接单、资料、钱包"
   },
@@ -64,6 +70,7 @@ export const TEST_USER_ACCOUNTS = [
     avatarUrl: "/images/generated/profiles/ai-profile-24.jpg",
     roleCode: "customer",
     identityType: "customer",
+    primaryIdentifierKind: "U",
     expectedPortal: "customer",
     purpose: "用户端、搜索、预约、订单、IM、Social"
   }

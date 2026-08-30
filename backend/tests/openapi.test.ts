@@ -1907,6 +1907,8 @@ describe("GET /api/v1/openapi.json", () => {
       components: { schemas: Record<string, Schema> };
     };
     const feeRules = document.paths["/api/v1/backoffice/affiliate/fee-rules"];
+    const feeSummary = document.paths["/api/v1/backoffice/affiliate/fee-rules/summary"];
+    const feeRuleShops = document.paths["/api/v1/backoffice/affiliate/fee-rule-shops"];
 
     for (const operation of [feeRules.get, feeRules.post]) {
       expect(operation.security).toEqual([{ bearerAuth: [] }]);
@@ -1937,6 +1939,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(feeRules.post.requestBody?.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/AffiliatePlatformFeeRuleCreate"
     });
+    expect(feeSummary.get.security).toEqual([{ bearerAuth: [] }]);
+    expect(feeSummary.get.parameters).toEqual([
+      expect.objectContaining({ name: "scopeType", in: "query" })
+    ]);
+    expect(feeRuleShops.get.security).toEqual([{ bearerAuth: [] }]);
+    expect(feeRuleShops.get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "keyword", in: "query" }),
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "pageSize", in: "query" })
+      ])
+    );
 
     const rule = document.components.schemas.AffiliatePlatformFeeRule;
     expect(rule.additionalProperties).toBe(false);
@@ -1946,6 +1960,8 @@ describe("GET /api/v1/openapi.json", () => {
         "feeBps",
         "version",
         "effectiveFrom",
+        "shopName",
+        "shopCity",
         "createdByNeedoId",
         "updatedByNeedoId"
       ])
@@ -1958,6 +1974,23 @@ describe("GET /api/v1/openapi.json", () => {
       false
     );
     expect(document.components.schemas.AffiliatePlatformFeeRulePage.required).toEqual([
+      "list",
+      "total",
+      "page",
+      "page_size"
+    ]);
+    expect(document.components.schemas.AffiliatePlatformFeeRuleSummary.required).toEqual([
+      "evaluatedAt",
+      "current",
+      "nextScheduled",
+      "latestVersion"
+    ]);
+    expect(document.components.schemas.AffiliatePlatformFeeShopOption.required).toEqual([
+      "id",
+      "name",
+      "city"
+    ]);
+    expect(document.components.schemas.AffiliatePlatformFeeShopOptionPage.required).toEqual([
       "list",
       "total",
       "page",

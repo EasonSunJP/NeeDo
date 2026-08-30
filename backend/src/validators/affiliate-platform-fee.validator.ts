@@ -48,9 +48,27 @@ export const affiliatePlatformFeeRuleListQuerySchema = z
     }
   });
 
+export const affiliatePlatformFeeRuleSummaryQuerySchema = z
+  .object({ scopeType: z.literal("global") })
+  .strict();
+
+export const affiliatePlatformFeeShopOptionQuerySchema = z
+  .object({
+    keyword: z.string().trim().max(100).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional()
+  })
+  .strict();
+
 export type AffiliatePlatformFeeRuleCreateBody = z.infer<
   typeof affiliatePlatformFeeRuleCreateBodySchema
 >;
 export type AffiliatePlatformFeeRuleListQuery = z.infer<
   typeof affiliatePlatformFeeRuleListQuerySchema
+>;
+export type AffiliatePlatformFeeRuleSummaryQuery = z.infer<
+  typeof affiliatePlatformFeeRuleSummaryQuerySchema
+>;
+export type AffiliatePlatformFeeShopOptionQuery = z.infer<
+  typeof affiliatePlatformFeeShopOptionQuerySchema
 >;

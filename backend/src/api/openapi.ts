@@ -206,7 +206,6 @@ const affiliatePlatformFeeErrorResponses = {
       "error.affiliate.platform_fee_version_conflict, error.affiliate.platform_fee_policy_conflict, or error.affiliate.platform_fee_rate_mismatch"
   }
 };
-
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -5010,6 +5009,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "scopeType",
           "scopeKey",
           "shopId",
+          "shopName",
+          "shopCity",
           "feeBps",
           "version",
           "effectiveFrom",
@@ -5026,6 +5027,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           scopeType: { type: "string", enum: ["global", "shop"] },
           scopeKey: { type: "string", pattern: "^(?:global|shop:[1-9][0-9]*)$" },
           shopId: { type: ["integer", "null"], minimum: 1 },
+          shopName: { type: ["string", "null"] },
+          shopCity: { type: ["string", "null"] },
           feeBps: { type: "integer", minimum: 0, maximum: 10000 },
           version: { type: "integer", minimum: 1 },
           effectiveFrom: { type: "string", format: "date-time" },
@@ -5072,6 +5075,51 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         description:
           "Global scope requires shopId=null; shop scope requires a positive shopId. expectedVersion provides optimistic concurrency."
+      },
+      AffiliatePlatformFeeRuleSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["evaluatedAt", "current", "nextScheduled", "latestVersion"],
+        properties: {
+          evaluatedAt: { type: "string", format: "date-time" },
+          current: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
+              { type: "null" }
+            ]
+          },
+          nextScheduled: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
+              { type: "null" }
+            ]
+          },
+          latestVersion: { type: "integer", minimum: 0 }
+        }
+      },
+      AffiliatePlatformFeeShopOption: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "name", "city"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 1 },
+          city: { type: "string" }
+        }
+      },
+      AffiliatePlatformFeeShopOptionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliatePlatformFeeShopOption" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
       },
       AffiliateMarketplaceMediaAsset: {
         type: "object",
@@ -6539,6 +6587,53 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   paths: {
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
+    [`${config.API_PREFIX}/backoffice/affiliate/fee-rules/summary`]: {
+      get: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "Read the server-evaluated global Affiliate platform fee summary",
+        description:
+          "Requires page:backoffice-affiliate-fee-rule and a global or platform operations identity.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "scopeType",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["global"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Current, next scheduled, and latest global fee versions", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeRuleSummary"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/fee-rule-shops`]: {
+      get: {
+        tags: ["Affiliate Platform Fee"],
+        summary: "Search published shops for an Affiliate fee-rule scope",
+        description:
+          "Requires page:backoffice-affiliate-fee-rule. Returns only minimal published shop options.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated minimal published shop options", {
+            $ref: "#/components/schemas/AffiliatePlatformFeeShopOptionPage"
+          }),
+          ...affiliatePlatformFeeErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/affiliate/fee-rules`]: {
       get: {
         tags: ["Affiliate Platform Fee"],
