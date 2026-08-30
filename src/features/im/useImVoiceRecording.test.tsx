@@ -168,7 +168,7 @@ describe("useImVoiceRecording", () => {
       configurable: true,
       get: () => HTMLMediaElement.HAVE_CURRENT_DATA,
     });
-    audioPlay = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function () {
+    audioPlay = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
       expectAudibleOutput(this);
       return Promise.resolve();
     });
