@@ -26,4 +26,3 @@
 - 将 `README.md` 和 `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md` 的旧扩大范围说明修正为当前范围。
 - 运行聚焦测试、前端全量测试、`npm run lint`、`npm run verify:production-build`、`git diff --check`。
 - 汇报尚需用户单独授权的 migration 与真实浏览器验收，不把它们标记为已完成。
-
