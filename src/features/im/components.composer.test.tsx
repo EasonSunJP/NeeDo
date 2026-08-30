@@ -39,6 +39,38 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
 }
 
 describe("ImChatComposer", () => {
+  it("keeps selected judgement replies as SVG inside the composer while ordinary emoji stay Unicode", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-im-reaction-value="Thanks"]')?.click();
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
+    expect(editor).not.toBeNull();
+    expect(editor!.querySelector('img[alt="Thanks"]')).not.toBeNull();
+    expect(editor!.textContent).not.toContain("Thanks");
+
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>("[data-im-reaction-value]")]
+        .find((button) => button.dataset.imReactionValue === "😂")
+        ?.click();
+    });
+    expect(editor!.querySelector('img[alt="Thanks"]')).not.toBeNull();
+    expect(editor!.textContent).toContain("😂");
+
+    await act(async () => root.unmount());
+  });
+
   it("uses the shared three-section catalog and inserts judgement text or Unicode", async () => {
     const container = document.createElement("div");
     document.body.append(container);
