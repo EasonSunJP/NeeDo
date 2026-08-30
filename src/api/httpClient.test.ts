@@ -3,6 +3,7 @@ import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import type { Agent, GetResult } from "@fingerprintjs/fingerprintjs";
 import {
   apiRequestTimeoutMs,
+  buildApiUrl,
   clearAuthTokens,
   getAccessToken,
   getStoredRefreshToken,
@@ -20,6 +21,31 @@ vi.mock("@fingerprintjs/fingerprintjs", () => ({
     load: vi.fn()
   }
 }));
+
+describe("httpClient query serialization", () => {
+  it("serializes repeated scalar values as repeated query keys", () => {
+    expect(buildApiUrl("/search", {
+      entityType: "shop",
+      keywords: ["LifeDance", "家政"],
+      categoryIds: [3, 9],
+      page: 1
+    })).toBe(
+      "/api/v1/search?entityType=shop&keywords=LifeDance&keywords=%E5%AE%B6%E6%94%BF&categoryIds=3&categoryIds=9&page=1"
+    );
+  });
+
+  it("keeps existing scalar and omitted query behavior unchanged", () => {
+    expect(buildApiUrl("/search", {
+      keyword: "Wellness 渋谷",
+      page: 2,
+      enabled: false,
+      empty: "",
+      missing: undefined
+    })).toBe(
+      "/api/v1/search?keyword=Wellness+%E6%B8%8B%E8%B0%B7&page=2&enabled=false"
+    );
+  });
+});
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
