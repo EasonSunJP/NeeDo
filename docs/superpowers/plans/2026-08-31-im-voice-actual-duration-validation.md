@@ -23,7 +23,7 @@
 - Add `backend/tests/im-voice-duration-probe.test.ts`
 
 - Generate small synthetic silent WebM, MP4, and Ogg fixtures, audio-plus-video fixtures for each accepted MIME, and an over-limit fixture; commit the outputs, not the generation dependency.
-- Assert only stable `format.hasAudio` / `format.hasVideo`; never infer policy from experimental `trackInfo` or codec strings. Missing/non-boolean flags fail closed.
+- Assert only stable `format.hasAudio` / `format.hasVideo`; never infer policy from experimental `trackInfo` or codec strings. Parser errors and missing/non-boolean flags fail closed. A valid video-bearing fixture may reject during parsing or report `hasVideo=true`, but it must never be accepted as audio-only.
 - Write tests for valid duration/track metadata, malformed data, all three video-bearing containers, timeout, two-active/eight-queued FIFO behavior, ninth-queued rejection, and exactly-once cleanup.
 - Run the focused test and confirm RED because the probe does not exist.
 

@@ -43,7 +43,7 @@ probe(bytes, mimeType): Promise<{
 
 The production adapter uses a dedicated worker. The service depends on the port so message tests can use deterministic probes without starting threads. The worker result is treated as untrusted and validated again by the parent.
 
-Track policy uses the documented `IFormat.hasAudio` and `IFormat.hasVideo` booleans, not experimental `trackInfo` and not codec/name guesses. The library's WebM/Matroska and MP4 parsers derive these flags from container tracks; its Ogg stream parsers set them for Opus/Vorbis/Theora streams. If either flag is absent, non-boolean, or contradictory, the parent fails closed. Tests contain pure-audio and audio-plus-video samples for every accepted MIME so a library upgrade cannot silently weaken this contract.
+Track policy uses the documented `IFormat.hasAudio` and `IFormat.hasVideo` booleans, not experimental `trackInfo` and not codec/name guesses. The library's WebM/Matroska and MP4 parsers derive these flags from container tracks; its supported Ogg stream parsers set them for audio/video streams. If parsing fails, either flag is absent/non-boolean, or the flags do not prove audio-only media, the parent fails closed. Tests contain pure-audio and valid audio-plus-video samples for every accepted MIME so a library upgrade cannot silently weaken this contract. A video-bearing container may be rejected either by a successful parse with `hasVideo === true` or by a safe parser failure; it must never produce an accepted audio-only result.
 
 The worker entry is an inline CommonJS script created with `eval: true`. It calls `require("music-metadata")`, which is supported by the repository's Node 22 runtime, and therefore does not depend on a `.ts` worker path under tsx/Jest or a different `.js` path under `dist`.
 
@@ -68,7 +68,7 @@ Committed fixtures are short, synthetic silence only. They contain no user speec
 Coverage includes:
 
 - valid short WebM/Opus, MP4/AAC, and Ogg/Opus parsing;
-- audio-plus-video WebM, MP4, and Ogg/Theora rejection through strict `hasVideo` flags;
+- valid audio-plus-video WebM, MP4, and Ogg rejection through strict flags or fail-closed parser errors;
 - malformed signature-only files that the current storage layer accepts but a real parser must reject;
 - exact 59.5-second acceptance, just-over-59.5-second rejection, and 59-second metadata clamp;
 - client/server duration difference of exactly one second acceptance and greater-than-one rejection;
