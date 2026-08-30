@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, PrimaryButton } from "../../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../../components/mobile/FloatingHomeHeader";
@@ -19,6 +19,7 @@ import {
   socialMediaGridClassName,
   socialMediaTileClassName
 } from "../components/SocialUi";
+import { SocialQuickReplyComposer } from "../components/SocialQuickReplyComposer";
 import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { isFriend, isMutualFollow } from "../timeline";
@@ -458,68 +459,6 @@ function ReplyListItem({
   );
 }
 
-function QuickReplyComposer({
-  actor,
-  actorKey,
-  postId,
-  canComment
-}: {
-  actor?: SocialProfile;
-  actorKey: string;
-  postId: string;
-  canComment: boolean;
-}) {
-  const { createPost } = useSocial();
-  const [text, setText] = useState("");
-  const canSubmit = canComment && text.trim().length > 0;
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!canSubmit) {
-      return;
-    }
-
-    createPost({
-      authorKey: actorKey,
-      replyToPostId: postId,
-      text: text.trim(),
-      postType: "reply"
-    });
-    setText("");
-  };
-
-  return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[linear-gradient(180deg,rgba(0,0,0,0.75)_0%,rgba(0,0,0,0.96)_100%)] backdrop-blur-xl">
-      <div className="safe-panel-bottom mx-auto max-w-[720px] px-4 pt-3">
-        <form className="flex items-center gap-3" onSubmit={handleSubmit}>
-          <AvatarImage alt={actor?.displayName ?? "当前账号"} className="h-10 w-10 shrink-0" src={actor?.avatar ?? ""} />
-          <label className="min-w-0 flex-1">
-            <span className="sr-only">发布回复</span>
-              <input
-              className="h-11 w-full rounded-full border border-white/10 bg-white/[0.06] px-4 text-[14px] text-white outline-none placeholder:text-white/30 disabled:cursor-not-allowed disabled:text-white/30 focus:border-white/22 focus:bg-white/[0.08]"
-              disabled={!canComment}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={canComment ? "发布你的回复" : "仅好友可以评论"}
-              value={text}
-            />
-          </label>
-          <button
-            className={cn(
-              "inline-flex h-11 shrink-0 items-center justify-center rounded-full px-4 text-sm font-black transition",
-              canSubmit ? "bg-[#d1ff4d] text-black" : "bg-white/[0.12] text-white/34"
-            )}
-            disabled={!canSubmit}
-            type="submit"
-          >
-            回复
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 export function SocialPostDetailPage() {
   const { postId } = useParams();
   const location = useLocation();
@@ -537,7 +476,8 @@ export function SocialPostDetailPage() {
     incrementView,
     markShared,
     toggleBookmark,
-    toggleLike
+    toggleLike,
+    createPost
   } = useSocial();
   const actorKey = getActorForScope(scope);
   const actor = profiles[actorKey];
@@ -709,7 +649,18 @@ export function SocialPostDetailPage() {
         ) : null}
       </main>
 
-      <QuickReplyComposer actor={actor} actorKey={actorKey} canComment={canComment} postId={post.id} />
+      <SocialQuickReplyComposer
+        actor={actor}
+        canComment={canComment}
+        onOpenFullComposer={() => navigate(socialPaths.compose(scope, { replyToPostId: post.id }))}
+        onSubmit={(text) => createPost({
+          authorKey: actorKey,
+          replyToPostId: post.id,
+          text,
+          postType: "reply"
+        })}
+        targetIdentity={`${actorKey}:${post.id}`}
+      />
     </div>
   );
 }

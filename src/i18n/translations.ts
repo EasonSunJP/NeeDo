@@ -737,6 +737,18 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "打开完整回复": {
+    "zh-Hant": "開啟完整回覆",
+    ja: "返信作成画面を開く",
+    en: "Open full reply composer",
+    ko: "전체 답글 작성 화면 열기",
+  },
+  "回复中": {
+    "zh-Hant": "回覆中",
+    ja: "返信中",
+    en: "Replying",
+    ko: "답글 작성 중",
+  },
   "时间上限最大为99小时59分钟": {
     "zh-Hant": "時間上限最大為99小時59分鐘",
     ja: "時間の上限は99時間59分です",

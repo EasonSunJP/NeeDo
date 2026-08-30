@@ -556,12 +556,14 @@ function ImComposerRichInput({
   draft,
   inputRef,
   onDraftChange,
+  onEnterSubmit,
   placeholder
 }: {
   disabled: boolean;
   draft: string;
   inputRef?: Ref<HTMLDivElement>;
   onDraftChange: (value: string) => void;
+  onEnterSubmit?: () => void;
   placeholder: string;
 }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -599,6 +601,14 @@ function ImComposerRichInput({
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
         onInput={(event) => onDraftChange(readImComposerValue(event.currentTarget))}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || !onEnterSubmit) {
+            return;
+          }
+
+          event.preventDefault();
+          onEnterSubmit();
+        }}
         onPaste={handlePaste}
         ref={setEditorRef}
         role="textbox"
@@ -664,7 +674,12 @@ export function ImChatComposer({
   pendingImage,
   placeholder = "发送消息",
   recording = { active: false, cancel: false, durationSeconds: 0 },
+  leadingAccessory,
+  moreAction,
+  sendLabel = "发送",
+  sendingLabel = "发送中",
   sending = false,
+  submitOnEnter = false,
   textareaRef,
   voiceMode = false
 }: {
@@ -686,8 +701,13 @@ export function ImChatComposer({
   panel: ImChatComposerPanel;
   pendingImage?: ImChatComposerPendingImage;
   placeholder?: string;
+  leadingAccessory?: ReactNode;
+  moreAction?: { ariaLabel: string; run: () => void };
   recording?: ImChatComposerRecordingState;
+  sendLabel?: string;
+  sendingLabel?: string;
   sending?: boolean;
+  submitOnEnter?: boolean;
   textareaRef?: Ref<HTMLDivElement>;
   voiceMode?: boolean;
 }) {
@@ -778,19 +798,28 @@ export function ImChatComposer({
           data-im-composer-input-shell="true"
           data-im-composer-tone={isNight ? "night" : "day"}
         >
-          <button
-            aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
-            className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-            data-im-composer-control="voice-input"
-            disabled={disabled}
-            onClick={() => {
-              onToggleVoice?.();
-              onPanelChange(null);
-            }}
-            type="button"
-          >
-            <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
-          </button>
+          {leadingAccessory ? (
+            <div
+              className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full"
+              data-im-composer-leading-accessory="true"
+            >
+              {leadingAccessory}
+            </div>
+          ) : (
+            <button
+              aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
+              className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
+              data-im-composer-control="voice-input"
+              disabled={disabled}
+              onClick={() => {
+                onToggleVoice?.();
+                onPanelChange(null);
+              }}
+              type="button"
+            >
+              <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
+            </button>
+          )}
           <div className={composerInputShellClass}>
             {pendingImage && !voiceMode ? (
               <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
@@ -833,6 +862,7 @@ export function ImChatComposer({
                 draft={draft}
                 inputRef={textareaRef}
                 onDraftChange={onDraftChange}
+                onEnterSubmit={submitOnEnter ? onSend : undefined}
                 placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
               />
             )}
@@ -849,14 +879,21 @@ export function ImChatComposer({
           </button>
           {(draft.trim() || pendingImage) && !voiceMode ? (
             <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={disabled || blocked || sending} onClick={onSend}>
-              {sending ? "发送中" : "发送"}
+              {sending ? sendingLabel : sendLabel}
             </Button>
           ) : (
             <button
-              aria-label={panel === "more" ? "关闭更多功能" : "打开更多功能"}
+              aria-label={moreAction?.ariaLabel ?? (panel === "more" ? "关闭更多功能" : "打开更多功能")}
               className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
               disabled={disabled}
-              onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
+              onClick={() => {
+                if (moreAction) {
+                  moreAction.run();
+                  onPanelChange(null);
+                  return;
+                }
+                onPanelChange((value) => (value === "more" ? null : "more"));
+              }}
               type="button"
             >
               <ImIcon name="plus" />
