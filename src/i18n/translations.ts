@@ -737,12 +737,6 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
-  "打开完整回复": {
-    "zh-Hant": "開啟回覆畫面",
-    ja: "返信画面を開く",
-    en: "Open reply composer",
-    ko: "답글 작성 화면 열기",
-  },
   "回复中": {
     "zh-Hant": "回覆中",
     ja: "返信中",
@@ -5992,7 +5986,6 @@ export const translations: TranslationMap = {
   "回访率高": { "zh-Hant": "回訪率高", ja: "高いリピート率", en: "High return visit rate", ko: "높은 재방문율" },
   "回复": { "zh-Hant": "回覆", ja: "返信", en: "Reply", ko: "답글" },
   "回复 4": { "zh-Hant": "回覆 4", ja: "返信4", en: "Reply 4", ko: "답글 4" },
-  "回复草稿": { "zh-Hant": "回覆草稿", ja: "返信下書き", en: "Reply Draft", ko: "답글 초안" },
   "回复了你的动态": { "zh-Hant": "回覆了你的動態", ja: "あなたの投稿に返信", en: "Replied to Your Post", ko: "내 게시물에 답글" },
   "回复列表": { "zh-Hant": "回覆列表", ja: "返信一覧", en: "Reply List", ko: "답글 목록" },
   "回复率": { "zh-Hant": "回覆率", ja: "応答率", en: "Response rate", ko: "응답률" },
@@ -8251,7 +8244,6 @@ export const translations: TranslationMap = {
   "你还没有发布媒体动态": { "zh-Hant": "你還沒有發布媒體動態", ja: "まだメディアの更新情報を投稿していません。", en: "You haven't posted any media updates yet.", ko: "아직 미디어 업데이트를 게시하지 않으셨습니다." },
   "你还没有回复内容": { "zh-Hant": "你還沒有回覆內容", ja: "まだ返信がありません。", en: "You have not replied yet.", ko: "아직 답장을 하지 않으셨습니다." },
   "你好，想加你为联系人。": { "zh-Hant": "你好，想加你為聯絡人。", ja: "こんにちは。あなたを連絡先に追加させていただきたいのですが。", en: "Hello, I'd like to add you as a contact.", ko: "안녕하세요, 연락처에 추가하고 싶습니다." },
-  "你可以从底部输入框直接回复，也可以进入完整发帖页继续补充文字、图片和引用内容。": { "zh-Hant": "你可以從底部輸入框直接回複，也可以進入完整發文頁繼續補充文字、圖片和引用內容。", ja: "下部の入力ボックスから直接返信することも可能し、投稿ページに移動してテキスト、画像、引用などを追加することも可能。", en: "You can reply directly from the input box at the bottom, or you can go to the full post page to add more text, images, and quotes.", ko: "하단의 입력란에 직접 답글을 달거나, 전체 게시글 페이지로 이동하여 텍스트, 이미지, 인용구를 추가할 수 있습니다." },
   "你可以设置需要转让给几个人，也可以勾选超过定员的人数作为候选，系统会按最快确认接受的顺序占位。": { "zh-Hant": "你可以設定需要轉讓給幾個人，也可以勾選超過定員的人數作為候選，系統會以最快確認接受的順序佔位。", ja: "送金先の人数を設定したり、上限を超える人数を候補者として選択したり可能システムは、承認確認の速さに応じて順番に枠を確保…", en: "You can set how many people the transfer needs to be made to, or select more people than the limit as candidates The system will reserve the slots in the order of the fastest co…", ko: "송금 대상 인원수를 설정하거나, 설정된 인원수보다 더 많은 사람을 후보로 선택할 수 있습니다 시스템은 수락 확인이 가장 빠른 순…" },
   "你可以先重试；如果仍然异常，再清除 NeeDo 本地缓存后重新载入。错误编号和摘要保留在下方，方便继续定位。": { "zh-Hant": "你可以先重試；如果仍然異常，再清除 NeeDo 本機快取後重新載入。錯誤編號和摘要保留在下方，方便繼續定位。", ja: "まずはもう一度お試しそれでもエラーが解消されない場合は、NeeDoのローカルキャッシュをクリアして再読み込みするエラー番号と概要は、今後のトラブルシューティングのた…", en: "You can try again first; if the error persists, clear the NeeDo local cache and reload. The error number and summary are retained below for further troubleshooting.", ko: "먼저 다시 시도해 보세요. 오류가 계속 발생하면 NeeDo 로컬 캐시를 지우고 다시 로드하세요. 오류 번호와 요약 정보는 추후 문제 해결을 위해 아래에 저장됩니다." },
   "你取消了安装，可以稍后再试。": { "zh-Hant": "你取消了安裝，可以稍後再試。", ja: "インストールをキャンセルしました。あとで再試行できます。", en: "You canceled installation. You can try again later.", ko: "설치를 취소했습니다. 나중에 다시 시도할 수 있습니다." },

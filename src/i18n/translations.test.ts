@@ -113,13 +113,10 @@ describe("translations", () => {
     expect(translateText("时间上限最大为99小时59分钟", "ko")).toBe("최대 시간은 99시간 59분입니다");
   });
 
-  it("localizes the Social quick-reply action and sending state", () => {
-    expect(translations["打开完整回复"]).toEqual({
-      "zh-Hant": "開啟回覆畫面",
-      ja: "返信画面を開く",
-      en: "Open reply composer",
-      ko: "답글 작성 화면 열기",
-    });
+  it("localizes the Social quick-reply sending state without obsolete full-composer copy", () => {
+    expect(translations).not.toHaveProperty("打开完整回复");
+    expect(translations).not.toHaveProperty("回复草稿");
+    expect(translations).not.toHaveProperty("你可以从底部输入框直接回复，也可以进入完整发帖页继续补充文字、图片和引用内容。");
     expect(translations["回复中"]).toEqual({
       "zh-Hant": "回覆中",
       ja: "返信中",

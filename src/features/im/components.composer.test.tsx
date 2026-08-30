@@ -274,7 +274,7 @@ describe("ImChatComposer", () => {
           draft=""
           isNight
           leadingAccessory={<img alt="当前账号" src="/avatar.jpg" />}
-          moreAction={{ ariaLabel: "打开完整回复", run: onOpenMore }}
+          moreAction={{ ariaLabel: "执行自定义操作", run: onOpenMore }}
           onDraftChange={vi.fn()}
           onPanelChange={vi.fn()}
           onSend={vi.fn()}
@@ -289,7 +289,7 @@ describe("ImChatComposer", () => {
     expect(container.querySelector("[data-im-composer-control='voice-input']")).toBeNull();
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>("[aria-label='打开完整回复']")?.click();
+      container.querySelector<HTMLButtonElement>("[aria-label='执行自定义操作']")?.click();
     });
 
     expect(onOpenMore).toHaveBeenCalledTimes(1);

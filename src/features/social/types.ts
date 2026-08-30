@@ -134,7 +134,6 @@ export interface SocialComposerDraft {
   text: string;
   media: SocialMediaItem[];
   quotePostId?: string;
-  replyToPostId?: string;
   editPostId?: string;
   postType?: SocialPostType;
   visibility?: SocialVisibility;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import translationsSource from "../../../i18n/translations.ts?raw";
+import draftsSource from "./SocialDraftsPage.tsx?raw";
 import source from "./SocialComposerPage.tsx?raw";
+import typesSource from "../types.ts?raw";
 import {
   getSocialComposerErrorMessage,
   getSocialImageValidationError,
@@ -20,6 +22,17 @@ describe("SocialComposerPage formal contacts and image uploads", () => {
     expect(source).not.toContain('searchParams.get("replyToPostId")');
     expect(source).not.toContain(["reply", "Post"].join(""));
     expect(source).not.toContain("replyToPostId,");
+  });
+
+  it("removes reply drafts from the draft type and keeps the drafts page generic", () => {
+    const draftTypeSource = typesSource.slice(
+      typesSource.indexOf("export interface SocialComposerDraft"),
+      typesSource.indexOf("export interface SocialNotification")
+    );
+
+    expect(draftTypeSource).not.toContain("replyToPostId");
+    expect(draftsSource).not.toContain("draft.replyToPostId");
+    expect(draftsSource).toContain(".filter(([key]) => key.startsWith(`composer:${scope}:`))");
   });
 
   it("loads reminder candidates from the formal contact API instead of Social profiles", () => {

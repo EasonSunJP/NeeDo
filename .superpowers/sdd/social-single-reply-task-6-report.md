@@ -141,3 +141,119 @@ Build output retains existing non-fatal warnings about `SocialProfilePage.tsx` b
 - `src/features/social/components/SocialQuickReplyComposer.tsx`
 - `src/features/social/components/SocialQuickReplyComposer.test.tsx`
 - `.superpowers/sdd/social-single-reply-task-6-report.md`
+
+---
+
+## Review follow-up — reply-draft and obsolete-copy deletion
+
+Task 6 review identified two remaining deletion gaps. Both were addressed without changing formal `SocialPost.replyToPostId`, `SocialCreatePostInput.replyToPostId`, or the real inline create-reply mutation.
+
+### Follow-up RED
+
+Tests were changed before the cleanup implementation. Command:
+
+```bash
+npm test -- src/features/social/formal-provider.test.ts src/features/social/pages/SocialComposerPage.test.tsx src/i18n/translations.test.ts src/features/im/components.composer.test.tsx
+```
+
+Observed output:
+
+```text
+Test Files  3 failed | 1 passed (4)
+Tests       3 failed | 77 passed (80)
+exit code   1
+```
+
+The three expected assertion failures proved that:
+
+- no persisted-draft hydration/cleanup function existed;
+- `SocialComposerDraft` still contained `replyToPostId` and `SocialDraftsPage` still knew how to filter it;
+- the three obsolete translation keys were still present.
+
+The neutral generic IM composer label change passed immediately because it deliberately changes no IM behavior.
+
+### Follow-up implementation
+
+- Removed `replyToPostId` from `SocialComposerDraft`.
+- Removed reply-specific compatibility filtering from `SocialDraftsPage`; it now lists all valid scoped composer drafts generically.
+- Added a draft-only persistence boundary in `draft-storage.ts` using `needo.social.composer-drafts.v1`.
+- On hydration, ordinary, quote, and edit drafts are migrated from the former `needo.social.module.v2` state without hydrating its posts or other browser business data.
+- Any stored draft object that owns a `replyToPostId` field is dropped during both hydration and persistence. The old storage object is rewritten with that reply draft removed, so it cannot reappear on a later run.
+- Browser storage access remains best-effort; unavailable or quota-rejected storage cannot block the formal Social UI.
+- Removed five-language translation rows for `打开完整回复`, `回复草稿`, and the old explanation that directed users into the full post composer.
+- Updated translation coverage to assert those obsolete keys stay absent while preserving `回复中` localization.
+- Replaced the generic IM composer test's Social-specific `打开完整回复` example with neutral `执行自定义操作`; IM behavior and the `moreAction` contract are unchanged.
+
+### Follow-up GREEN and verification
+
+Initial focused GREEN:
+
+```bash
+npm test -- src/features/social/formal-provider.test.ts src/features/social/pages/SocialComposerPage.test.tsx src/i18n/translations.test.ts src/features/im/components.composer.test.tsx
+```
+
+```text
+Test Files  4 passed (4)
+Tests       80 passed (80)
+```
+
+Full Task 6 relevant suite:
+
+```bash
+npm test -- src/features/social/formal-provider.test.ts src/features/social/paths.test.ts src/features/social/route-pages.test.tsx src/features/social/pages/SocialComposerPage.test.tsx src/features/social/pages/SocialPostDetailPage.test.ts src/features/social/components/UnifiedSocialUi.test.ts src/features/social/components/SocialQuickReplyComposer.test.tsx src/i18n/translations.test.ts src/features/im/components.composer.test.tsx src/App.test.tsx
+```
+
+```text
+Test Files  10 passed (10)
+Tests       117 passed (117)
+```
+
+Full frontend regression:
+
+```bash
+npm test
+```
+
+```text
+Test Files  252 passed (252)
+Tests       1,526 passed (1,526)
+```
+
+Type and build verification:
+
+```bash
+npm run lint
+npm run build
+```
+
+```text
+lint   PASS — tsc -b --noEmit
+build  PASS — 495 modules transformed; built in 8.50s
+```
+
+The build retains the existing non-fatal `SocialProfilePage` mixed static/dynamic import warning and configured large-chunk warning.
+
+Production caller deletion search:
+
+```bash
+rg -n "打开完整回复|回复草稿|进入完整发帖页" src -g '*.ts' -g '*.tsx' -g '!*.test.ts' -g '!*.test.tsx'
+```
+
+Result: no matches (`rg` exit 1).
+
+Final whitespace verification:
+
+```bash
+git diff --check
+```
+
+Result: PASS with no output.
+
+### Follow-up self-review
+
+- The cleanup hydrates and persists composer drafts only; it does not restore old Social posts, profiles, interactions, notifications, mocks, or parallel business state.
+- The legacy full-state key is read only to migrate safe drafts and physically remove reply drafts; unrelated legacy fields remain untouched.
+- Ordinary, quote, and edit draft records retain their content and ordering, and are behaviorally covered through migration plus re-persistence.
+- Persisting a runtime object with a legacy `replyToPostId` property drops the complete record, proving it cannot be re-saved.
+- Formal reply post rendering, counts, parent relationships, and inline create-reply inputs remain present and covered by the full suite.
+- No backend, schema, migration, push, deployment, or Task 7/8 work was performed.

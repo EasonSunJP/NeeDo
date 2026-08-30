@@ -16,7 +16,7 @@ export function SocialDraftsPage() {
   const drafts = useMemo(
     () =>
       Object.entries(state.drafts)
-        .filter(([key, draft]) => key.startsWith(`composer:${scope}:`) && !draft.replyToPostId)
+        .filter(([key]) => key.startsWith(`composer:${scope}:`))
         .sort((left, right) => new Date(right[1].updatedAt).getTime() - new Date(left[1].updatedAt).getTime()),
     [scope, state.drafts]
   );

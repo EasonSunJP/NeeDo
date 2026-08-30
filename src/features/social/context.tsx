@@ -22,6 +22,7 @@ import {
   mapFormalSocialProfile,
   mapFormalSocialProfiles
 } from "./formal-adapter";
+import { hydrateSocialComposerDrafts, persistSocialComposerDrafts } from "./draft-storage";
 import {
   canActorViewPost,
   filterTimelinePosts,
@@ -96,6 +97,8 @@ const emptyFormalSocialState: SocialState = {
   refreshedAt: ""
 };
 
+export { hydrateSocialComposerDrafts, persistSocialComposerDrafts } from "./draft-storage";
+
 export function getMountedReplyParentReplyCountBaseline(
   posts: SocialPost[],
   replyToPostId: string | undefined
@@ -168,7 +171,10 @@ function mapFormalNotification(
 
 function FormalSocialProvider({ children }: { children: ReactNode }) {
   const { isRestoring, session } = useAuth();
-  const [state, setState] = useState<SocialState>(emptyFormalSocialState);
+  const [state, setState] = useState<SocialState>(() => ({
+    ...emptyFormalSocialState,
+    drafts: hydrateSocialComposerDrafts()
+  }));
   const [profiles, setProfiles] = useState<Record<string, SocialProfile>>({});
   const accountProfileRequestsRef = useRef(new Map<number, Promise<SocialProfile | undefined>>());
   const sessionUserId = session?.id ?? null;
@@ -309,6 +315,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   ]);
 
   useEffect(() => { void loadFormalSocial(); }, [loadFormalSocial]);
+  useEffect(() => { persistSocialComposerDrafts(state.drafts); }, [state.drafts]);
   useEffect(() => {
     if (sessionUserId === null || isRestoring) return undefined;
 
