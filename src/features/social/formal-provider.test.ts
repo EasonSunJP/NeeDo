@@ -12,11 +12,7 @@ type FormalProviderBehavior = {
   getMountedReplyParentReplyCountBaseline?: (posts: SocialPost[], replyToPostId?: string) => number | undefined;
   mergeCreatedFormalSocialPost?: (posts: SocialPost[], mapped: SocialPost, baseline: number | undefined) => SocialPost[];
   resolveFormalSocialUpdateRichText?: (content: string, richText: unknown) => SocialPost["richText"];
-  hydrateSocialComposerDrafts?: (storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) => Record<string, unknown>;
-  persistSocialComposerDrafts?: (
-    drafts: Record<string, unknown>,
-    storage: Pick<Storage, "getItem" | "setItem" | "removeItem">
-  ) => void;
+  cleanupLegacySocialReplyDrafts?: (storage: Pick<Storage, "getItem" | "setItem">) => void;
 };
 
 const behavior = socialContext as typeof socialContext & FormalProviderBehavior;
@@ -25,10 +21,16 @@ const source = readFileSync(new URL("./context.tsx", import.meta.url), "utf8");
 
 function createMemoryStorage(initial: Record<string, string>) {
   const values = new Map(Object.entries(initial));
+  const writes: string[] = [];
   return {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => { values.set(key, value); },
-    removeItem: (key: string) => { values.delete(key); }
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        writes.push(key);
+        values.set(key, value);
+      }
+    },
+    writes
   };
 }
 
@@ -79,10 +81,9 @@ describe("formal social provider gate", () => {
     expect(source).not.toContain("saveDraft: (draftKey, draft) => setState");
   });
 
-  it("purges persisted legacy reply drafts while preserving ordinary, quote, and edit drafts", () => {
-    expect(behavior.hydrateSocialComposerDrafts).toBeTypeOf("function");
-    expect(behavior.persistSocialComposerDrafts).toBeTypeOf("function");
-    if (!behavior.hydrateSocialComposerDrafts || !behavior.persistSocialComposerDrafts) return;
+  it("cleans only legacy reply drafts without hydrating or creating ongoing draft storage", () => {
+    expect(behavior.cleanupLegacySocialReplyDrafts).toBeTypeOf("function");
+    if (!behavior.cleanupLegacySocialReplyDrafts) return;
 
     const draft = (overrides: Record<string, unknown> = {}) => ({
       authorKey: "user:7",
@@ -91,9 +92,14 @@ describe("formal social provider gate", () => {
       updatedAt: "2026-08-30T00:00:00.000Z",
       ...overrides
     });
-    const storage = createMemoryStorage({
+    const unrelated = {
+      posts: [{ id: "legacy-business-data-must-not-hydrate" }],
+      notifications: [{ id: "notice-1" }],
+      custom: { preserve: true }
+    };
+    const { storage, writes } = createMemoryStorage({
       "needo.social.module.v2": JSON.stringify({
-        posts: [{ id: "legacy-business-data-must-not-hydrate" }],
+        ...unrelated,
         drafts: {
           "composer:user:root": draft(),
           "composer:user:quote": draft({ quotePostId: "41" }),
@@ -103,31 +109,31 @@ describe("formal social provider gate", () => {
       })
     });
 
-    const hydrated = behavior.hydrateSocialComposerDrafts(storage);
-    expect(Object.keys(hydrated)).toEqual([
-      "composer:user:root",
-      "composer:user:quote",
-      "composer:user:edit"
-    ]);
-    expect(JSON.parse(storage.getItem("needo.social.module.v2") ?? "{}"))
-      .not.toHaveProperty("drafts.composer:user:reply");
-    expect(Object.keys(JSON.parse(storage.getItem("needo.social.composer-drafts.v1") ?? "{}"))).toEqual([
-      "composer:user:root",
-      "composer:user:quote",
-      "composer:user:edit"
-    ]);
+    behavior.cleanupLegacySocialReplyDrafts(storage);
 
-    behavior.persistSocialComposerDrafts({
-      ...hydrated,
-      "composer:user:reply-again": draft({ replyToPostId: "44" })
-    }, storage);
-    expect(Object.keys(JSON.parse(storage.getItem("needo.social.composer-drafts.v1") ?? "{}"))).toEqual([
-      "composer:user:root",
-      "composer:user:quote",
-      "composer:user:edit"
-    ]);
-    expect(source).toContain("drafts: hydrateSocialComposerDrafts()");
-    expect(source).toContain("persistSocialComposerDrafts(state.drafts)");
+    const cleaned = JSON.parse(storage.getItem("needo.social.module.v2") ?? "{}");
+    expect(cleaned).toMatchObject(unrelated);
+    expect(cleaned.drafts).toEqual({
+      "composer:user:root": draft(),
+      "composer:user:quote": draft({ quotePostId: "41" }),
+      "composer:user:edit": draft({ editPostId: "42" })
+    });
+    expect(storage.getItem("needo.social.composer-drafts.v1")).toBeNull();
+    expect(writes).toEqual(["needo.social.module.v2"]);
+    expect(source).toContain("const [state, setState] = useState<SocialState>(emptyFormalSocialState);");
+    expect(source).toContain("cleanupLegacySocialReplyDrafts();");
+    expect(source).not.toContain("hydrateSocialComposerDrafts");
+    expect(source).not.toContain("persistSocialComposerDrafts");
+  });
+
+  it("treats legacy cleanup storage failures as non-blocking", () => {
+    expect(behavior.cleanupLegacySocialReplyDrafts).toBeTypeOf("function");
+    if (!behavior.cleanupLegacySocialReplyDrafts) return;
+
+    expect(() => behavior.cleanupLegacySocialReplyDrafts!({
+      getItem: () => { throw new Error("storage denied"); },
+      setItem: () => { throw new Error("storage denied"); }
+    })).not.toThrow();
   });
 
   it("persists published post edits through the formal update API", () => {
