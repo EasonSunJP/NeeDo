@@ -3,7 +3,8 @@ import source from "./UserCenterPage.tsx?raw";
 
 describe("UserCenterPage", () => {
   it("links the collection entry to the formal bookmarked-dynamics page", () => {
-    expect(source).toContain('{ label: "我的收藏", info: "已收藏的动态"');
+    expect(source).toContain('zh: "已收藏的动态"');
+    expect(source).toContain('{ label: "我的收藏", info: userCenterCollectionInfo[language]');
     expect(source).toContain('to: "/me/favorites"');
     expect(source).not.toContain('to: "/categories?type=store"');
   });
@@ -28,7 +29,7 @@ describe("UserCenterPage", () => {
   });
 
   it("moves shortcut helper copy behind title info triggers", () => {
-    expect(source).toContain('info: "已收藏的动态"');
+    expect(source).toContain('info: userCenterCollectionInfo[language]');
     expect(source).toContain('info: "家庭、公司、常用地址"');
     expect(source).toContain('info: "已评价与待回复"');
     expect(source).toContain('info: "保洁、护理、家电维护"');

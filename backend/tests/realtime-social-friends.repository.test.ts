@@ -26,7 +26,7 @@ describe("RealtimeRepository Social friends", () => {
               identities: []
             },
             authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" },
-            _count: { replies: 0 }
+            _count: { replies: 0, likes: 0, bookmarks: 0, views: 0, shares: 0 }
           }
         ]),
         count: jest.fn(async () => 1)
@@ -39,7 +39,10 @@ describe("RealtimeRepository Social friends", () => {
           { ownerIdentityId: 787, contactIdentityId: 101 },
           { ownerIdentityId: 101, contactIdentityId: 787 }
         ])
-      }
+      },
+      socialPostLike: { findMany: jest.fn(async () => []) },
+      socialPostBookmark: { findMany: jest.fn(async () => []) },
+      socialPostShare: { findMany: jest.fn(async () => []) }
     };
 
     const result = await new RealtimeRepository(
@@ -89,7 +92,7 @@ describe("RealtimeRepository Social friends", () => {
               identities: []
             },
             authorIdentity: { id: 101, type: "customer", displayName: "LifeDance 管理员" },
-            _count: { replies: 0 }
+            _count: { replies: 0, likes: 0, bookmarks: 0, views: 0, shares: 0 }
           }
         ]),
         count: jest.fn(async () => 1)
@@ -99,7 +102,10 @@ describe("RealtimeRepository Social friends", () => {
       },
       contact: {
         findMany: jest.fn(async () => [{ ownerIdentityId: 787, contactIdentityId: 101 }])
-      }
+      },
+      socialPostLike: { findMany: jest.fn(async () => []) },
+      socialPostBookmark: { findMany: jest.fn(async () => []) },
+      socialPostShare: { findMany: jest.fn(async () => []) }
     };
 
     const result = await new RealtimeRepository(

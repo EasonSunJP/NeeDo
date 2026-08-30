@@ -25,7 +25,7 @@ import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
@@ -50,6 +50,14 @@ import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, ty
 const defaultImMessageTranslation: ImMessageTranslationOptions = {
   enabled: false,
   language: "zh"
+};
+
+const socialPostCardCopy: Record<Language, { fallback: string; open: string }> = {
+  zh: { fallback: "查看这条动态", open: "打开原动态" },
+  "zh-Hant": { fallback: "查看這則動態", open: "開啟原動態" },
+  ja: { fallback: "この投稿を見る", open: "元の投稿を開く" },
+  en: { fallback: "View this post", open: "Open original post" },
+  ko: { fallback: "이 게시물 보기", open: "원본 게시물 열기" }
 };
 
 export function ImIcon({
@@ -2968,6 +2976,8 @@ export function MessageBubble({
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   translation?: ImMessageTranslationOptions;
 }) {
+  const i18n = useProvidedI18n();
+  const postCardCopy = socialPostCardCopy[i18n?.language ?? "zh"];
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const bodyTranslation = isMine ? defaultImMessageTranslation : translation;
   const disappearing = message.ext?.disappearing;
@@ -3145,8 +3155,8 @@ export function MessageBubble({
               <AvatarImage alt={card.authorName} className="h-8 w-8" src={card.authorAvatar} />
               <p className="min-w-0 flex-1 truncate text-[13px] font-black">{card.authorName}</p>
             </div>
-            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-5 text-[color:var(--client-muted)]">{card.text || "查看这条动态"}</p>
-            <p className="mt-3 border-t border-[color:var(--client-line)] pt-2 text-[11px] font-black text-[color:var(--client-primary)]">打开原动态</p>
+            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-5 text-[color:var(--client-muted)]">{card.text || postCardCopy.fallback}</p>
+            <p className="mt-3 border-t border-[color:var(--client-line)] pt-2 text-[11px] font-black text-[color:var(--client-primary)]">{postCardCopy.open}</p>
           </div>
         </button>
       );

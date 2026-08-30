@@ -11,6 +11,8 @@ import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirm
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import type { Language } from "../../i18n/translations";
 import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
 import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
 import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
@@ -38,6 +40,14 @@ const emptyFormalOrderCounts: FormalOrderCounts = {
   inService: 0,
   completed: 0,
   cancelled: 0
+};
+
+const userCenterCollectionInfo: Record<Language, string> = {
+  zh: "已收藏的动态",
+  "zh-Hant": "已收藏的動態",
+  ja: "お気に入りの投稿",
+  en: "Bookmarked posts",
+  ko: "즐겨찾기 게시물"
 };
 
 const accountSettings = [
@@ -584,6 +594,7 @@ function CompleteUserCenterPage({
   onFormalProfileUpdated: (profile: CustomerSelfProfile) => void;
 }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const { refreshSession } = useAuth();
   const currentCustomer = useMemo(() => mapCoreCustomerToCustomer(formalData.profile), [formalData.profile]);
   const userProfile = useMemo(() => buildUserProfile(currentCustomer), [currentCustomer]);
@@ -632,7 +643,7 @@ function CompleteUserCenterPage({
     { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" }
   ];
   const serviceTools: Array<{ label: string; info: string; value: number | string; to: string; test?: boolean }> = [
-    { label: "我的收藏", info: "已收藏的动态", value: "查看", to: "/me/favorites" },
+    { label: "我的收藏", info: userCenterCollectionInfo[language], value: "查看", to: "/me/favorites" },
     { label: "我的地址", info: "家庭、公司、常用地址", value: "—", to: "/checkout/svc-clean-1" },
     { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
     { label: "周期预约", info: "保洁、护理、家电维护", value: "—", to: "/categories?type=service" },
