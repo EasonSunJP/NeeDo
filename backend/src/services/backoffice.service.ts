@@ -25,10 +25,15 @@ import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
 import {
   parseCalendarDate,
+  resolveDashboardWindow,
   shiftCalendarDate,
   startOfTokyoCalendarDate,
   toTokyoCalendarDate
 } from "../domain/dashboard-period";
+import type {
+  DashboardActivityFacts,
+  DashboardAggregateInput
+} from "../domain/dashboard";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -557,7 +562,7 @@ export interface BackofficeNdpSummaryPayload {
 }
 
 export interface BackofficeRepositoryPort {
-  getDashboard: (scope: BackofficeScope) => Promise<BackofficeDashboardPayload>;
+  getDashboard: (input: DashboardAggregateInput) => Promise<DashboardActivityFacts>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
@@ -633,22 +638,30 @@ export class BackofficeService {
   public async getPlatformDashboard(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
-  ): Promise<BackofficeDashboardPayload> {
+  ): Promise<DashboardActivityFacts> {
     await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard");
 
-    return this.repository.getDashboard({ scope: "platform" });
+    return this.repository.getDashboard({
+      scope: { kind: "platform" },
+      city: null,
+      window: resolveDashboardWindow({ period: "last7days" }, this.now())
+    });
   }
 
   public async getMerchantDashboard(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
-  ): Promise<BackofficeDashboardPayload> {
+  ): Promise<DashboardActivityFacts> {
     const scope = this.getMerchantScope(actor);
     await this.record(actor, context, "merchant_admin.dashboard.read", "merchant_admin_dashboard", {
       shopId: scope.shopId
     });
 
-    return this.repository.getDashboard(scope);
+    return this.repository.getDashboard({
+      scope: { kind: "shop", shopId: scope.shopId },
+      city: null,
+      window: resolveDashboardWindow({ period: "last7days" }, this.now())
+    });
   }
 
   public async listPlatformOrders(

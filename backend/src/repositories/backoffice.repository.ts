@@ -17,6 +17,11 @@ import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
+import type {
+  DashboardActivityFacts,
+  DashboardAggregateInput
+} from "../domain/dashboard";
+import { DashboardRepository } from "./dashboard.repository";
 import {
   type BackofficeCsvExportPayload,
   type BackofficeAccountPayload,
@@ -26,7 +31,6 @@ import {
   type BackofficeCustomerDetailPayload,
   type BackofficeCustomerMembershipGrantData,
   type BackofficeCustomerMembershipGrantPayload,
-  type BackofficeDashboardPayload,
   type BackofficeFinanceSettlementPayload,
   type BackofficeNdpAggregate,
   type BackofficeOrderPayload,
@@ -225,146 +229,19 @@ type ServiceRecord = Prisma.ServiceGetPayload<{
 }>;
 
 export class BackofficeRepository implements BackofficeRepositoryPort {
+  private readonly dashboardRepository: DashboardRepository;
+
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
     private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
       new IdentifierAllocator(new PublicIdentifierRepository(client))
-  ) {}
+  ) {
+    this.dashboardRepository = new DashboardRepository(client);
+  }
 
-  public async getDashboard(scope: BackofficeScope): Promise<BackofficeDashboardPayload> {
-    const orderWhere = this.orderWhere(scope, {});
-    const scheduleWhere = this.scheduleWhere(scope, {});
-    const technicianWhere = this.technicianWhere(scope, {});
-    const shopWhere = this.shopWhere(scope, {});
-    const financeWhere = this.financeWhere(scope, {});
-    const [
-      orderCount,
-      latestOrders,
-      grossAggregate,
-      availableSlots,
-      bookedSlots,
-      financeAggregate,
-      technicianCount,
-      techniciansPage,
-      shopsPage
-    ] = await Promise.all([
-      this.client.bookingOrder.count({ where: orderWhere }),
-      this.client.bookingOrder.findMany({
-        where: orderWhere,
-        include: this.orderInclude(),
-        take: 8,
-        orderBy: [{ startsAt: "desc" }, { id: "desc" }]
-      }),
-      this.client.bookingOrder.aggregate({
-        where: orderWhere,
-        _sum: {
-          priceAmount: true
-        }
-      }),
-      this.client.scheduleSlot.count({
-        where: {
-          ...scheduleWhere,
-          status: "AVAILABLE"
-        }
-      }),
-      this.client.scheduleSlot.count({
-        where: {
-          ...scheduleWhere,
-          status: "BOOKED"
-        }
-      }),
-      this.client.orderFinancial.aggregate({
-        where: financeWhere,
-        _sum: {
-          serviceAmountJpy: true,
-          platformCollectedServiceAmountJpy: true,
-          offlineReportedServiceAmountJpy: true,
-          unknownOrUnreportedServiceAmountJpy: true,
-          bPlatformFeeActualNdp: true,
-          cRequestFeeActualNdp: true,
-          userRewardNdp: true,
-          campaignDiscountNdp: true,
-          bPlatformFeeHoldNdp: true,
-          cRequestFeeHoldNdp: true,
-          releasedNdp: true
-        }
-      }),
-      this.client.technicianProfile.count({ where: technicianWhere }),
-      this.client.technicianProfile.findMany({
-        where: technicianWhere,
-        include: this.technicianInclude(),
-        take: 6,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-      }),
-      this.client.shop.findMany({
-        where: shopWhere,
-        include: this.shopInclude(),
-        take: 6,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-      })
-    ]);
-    const grossAmount = this.toNumber(grossAggregate._sum.priceAmount);
-    const requestFeeNdpRevenue = financeAggregate._sum.cRequestFeeActualNdp ?? 0;
-    const platformNdpRevenue =
-      (financeAggregate._sum.bPlatformFeeActualNdp ?? 0) +
-      requestFeeNdpRevenue -
-      (financeAggregate._sum.userRewardNdp ?? 0);
-    const pendingHoldNdp = Math.max(
-      0,
-      (financeAggregate._sum.bPlatformFeeHoldNdp ?? 0) +
-        (financeAggregate._sum.cRequestFeeHoldNdp ?? 0) -
-        (financeAggregate._sum.bPlatformFeeActualNdp ?? 0) -
-        (financeAggregate._sum.cRequestFeeActualNdp ?? 0) -
-        (financeAggregate._sum.releasedNdp ?? 0)
-    );
-
-    return {
-      metrics: [
-        {
-          label: "订单总量",
-          value: String(orderCount),
-          change: "真实数据库",
-          tone: orderCount > 0 ? "good" : "neutral"
-        },
-        {
-          label: "可排班",
-          value: String(availableSlots),
-          change: "ScheduleSlot",
-          tone: availableSlots > 0 ? "good" : "warn"
-        },
-        {
-          label: "NDP 对账",
-          value: String(platformNdpRevenue),
-          change: "OrderFinancial",
-          tone: platformNdpRevenue > 0 ? "good" : "neutral"
-        },
-        {
-          label: "技师数量",
-          value: String(technicianCount),
-          change: "TechnicianProfile",
-          tone: technicianCount > 0 ? "good" : "neutral"
-        }
-      ],
-      orders: latestOrders.map((order) => this.mapOrder(order)),
-      schedule: {
-        total: availableSlots + bookedSlots,
-        available: availableSlots,
-        booked: bookedSlots
-      },
-      finance: {
-        estimatedServiceGmvJpy: financeAggregate._sum.serviceAmountJpy ?? grossAmount,
-        platformNdpRevenue,
-        requestFeeNdpRevenue,
-        userRewardNdpCost: financeAggregate._sum.userRewardNdp ?? 0,
-        pendingHoldNdp,
-        campaignDiscountNdp: financeAggregate._sum.campaignDiscountNdp ?? 0,
-        unknownOrUnreportedServiceAmountJpy:
-          financeAggregate._sum.unknownOrUnreportedServiceAmountJpy ?? 0
-      },
-      technicians: techniciansPage.map((technician) => this.mapTechnician(technician)),
-      shops: shopsPage.map((shop) => this.mapShop(shop))
-    };
+  public async getDashboard(input: DashboardAggregateInput): Promise<DashboardActivityFacts> {
+    return this.dashboardRepository.getActivityFacts(input);
   }
 
   public async listOrders(
