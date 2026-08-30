@@ -1,7 +1,18 @@
 import type { PrismaClient } from "@prisma/client";
+
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 
 const createdAt = new Date("2026-08-30T00:00:00.000Z");
+
+type ReactionState = {
+  id: number;
+  userId: number;
+  identityId: number;
+  emoji: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+};
 
 class MessageLock {
   private tail = Promise.resolve();
@@ -17,7 +28,7 @@ class MessageLock {
   }
 }
 
-function createMessageRecord(emojis: string[], reactionVersion = 0) {
+function createMessageRecord(reactions: ReactionState[], reactionVersion = 0) {
   return {
     id: 41,
     conversationId: 3,
@@ -37,39 +48,54 @@ function createMessageRecord(emojis: string[], reactionVersion = 0) {
     createdAt,
     updatedAt: createdAt,
     deletedAt: null,
-    reactions: emojis.map((emoji, index) => ({
-      id: index + 1,
-      messageId: 41,
-      userId: 7,
-      emoji,
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-      user: {
-        id: 7,
-        username: "LifeDance 管理员",
-        avatarUrl: null
-      }
-    }))
+    reactions: reactions
+      .filter((reaction) => reaction.deletedAt === null)
+      .sort((left, right) => left.id - right.id)
+      .map((reaction) => ({
+        id: reaction.id,
+        messageId: 41,
+        userId: reaction.userId,
+        identityId: reaction.identityId,
+        emoji: reaction.emoji,
+        createdAt: reaction.createdAt,
+        updatedAt: reaction.updatedAt,
+        deletedAt: reaction.deletedAt,
+        user: {
+          id: reaction.userId,
+          username: reaction.userId === 7 ? "LifeDance 管理员" : `用户 ${reaction.userId}`,
+          avatarUrl: null
+        }
+      }))
   };
 }
 
-function createConcurrentFixture() {
-  const committedReactions = new Set<string>();
-  let committedReactionVersion = 0;
+function createConcurrentFixture(
+  seed: Array<{
+    userId: number;
+    identityId?: number;
+    emoji: string;
+    deletedAt?: Date | null;
+  }> = [],
+  initialReactionVersion = 0
+) {
+  const committedReactions: ReactionState[] = seed.map((reaction, index) => ({
+    id: index + 1,
+    userId: reaction.userId,
+    identityId: reaction.identityId ?? reaction.userId,
+    emoji: reaction.emoji,
+    createdAt,
+    updatedAt: createdAt,
+    deletedAt: reaction.deletedAt ?? null
+  }));
+  let committedReactionVersion = initialReactionVersion;
+  let nextReactionId = committedReactions.length + 1;
+  let writeSequence = 0;
   const messageLock = new MessageLock();
   const lockCalls: Array<{ messageId: number; conversationId: number; userId: number }> = [];
 
   const client = {
     $transaction: async (operation: (tx: unknown) => unknown) => {
-      const ownWrites = new Set<string>();
-      let nextReactionVersion: number | undefined;
-      let snapshot: string[] | undefined;
       let releaseLock: (() => void) | undefined;
-      const readSnapshot = () => {
-        snapshot ??= [...committedReactions];
-        return [...new Set([...snapshot, ...ownWrites])];
-      };
       const transaction = {
         $queryRaw: jest.fn(async () => {
           lockCalls.push({ messageId: 41, conversationId: 3, userId: 7 });
@@ -77,34 +103,94 @@ function createConcurrentFixture() {
           return [{ id: 41 }];
         }),
         message: {
-          findFirst: jest.fn(async () => {
-            readSnapshot();
-            return { id: 41 };
-          }),
           findUnique: jest.fn(async () =>
-            createMessageRecord(readSnapshot(), committedReactionVersion)
+            createMessageRecord(committedReactions, committedReactionVersion)
           ),
           update: jest.fn(async () => {
-            nextReactionVersion = committedReactionVersion + 1;
-            return createMessageRecord(readSnapshot(), nextReactionVersion);
+            committedReactionVersion += 1;
+            return createMessageRecord(committedReactions, committedReactionVersion);
           })
         },
         messageReaction: {
-          upsert: jest.fn(async ({ create }: { create: { emoji: string } }) => {
-            ownWrites.add(create.emoji);
-            return { id: ownWrites.size, ...create };
-          }),
-          updateMany: jest.fn(async () => ({ count: 0 }))
+          findMany: jest.fn(
+            async ({ where }: {
+              where: { userId?: number; identityId?: number; deletedAt: null };
+            }) =>
+              committedReactions
+                .filter(
+                  (reaction) =>
+                    (where.identityId === undefined ||
+                      reaction.identityId === where.identityId) &&
+                    (where.userId === undefined || reaction.userId === where.userId) &&
+                    reaction.deletedAt === where.deletedAt
+                )
+                .sort(
+                  (left, right) =>
+                    right.updatedAt.getTime() - left.updatedAt.getTime() || right.id - left.id
+                )
+                .map(({ emoji }) => ({ emoji }))
+          ),
+          upsert: jest.fn(
+            async ({ create }: {
+              create: { userId: number; identityId: number; emoji: string };
+            }) => {
+              const existing = committedReactions.find(
+                (reaction) =>
+                  reaction.identityId === create.identityId && reaction.emoji === create.emoji
+              );
+              writeSequence += 1;
+              const updatedAt = new Date(createdAt.getTime() + writeSequence);
+
+              if (existing) {
+                existing.deletedAt = null;
+                existing.updatedAt = updatedAt;
+                return existing;
+              }
+
+              const added: ReactionState = {
+                id: nextReactionId,
+                userId: create.userId,
+                identityId: create.identityId,
+                emoji: create.emoji,
+                createdAt: updatedAt,
+                updatedAt,
+                deletedAt: null
+              };
+              nextReactionId += 1;
+              committedReactions.push(added);
+              return added;
+            }
+          ),
+          updateMany: jest.fn(
+            async ({ where, data }: {
+              where: {
+                userId?: number;
+                identityId?: number;
+                emoji: string;
+                deletedAt: null;
+              };
+              data: { deletedAt: Date };
+            }) => {
+              const matching = committedReactions.filter(
+                (reaction) =>
+                  (where.identityId === undefined ||
+                    reaction.identityId === where.identityId) &&
+                  (where.userId === undefined || reaction.userId === where.userId) &&
+                  reaction.emoji === where.emoji &&
+                  reaction.deletedAt === where.deletedAt
+              );
+              matching.forEach((reaction) => {
+                reaction.deletedAt = data.deletedAt;
+                reaction.updatedAt = data.deletedAt;
+              });
+              return { count: matching.length };
+            }
+          )
         }
       };
 
       try {
-        const result = await operation(transaction);
-        ownWrites.forEach((emoji) => committedReactions.add(emoji));
-        if (nextReactionVersion !== undefined) {
-          committedReactionVersion = nextReactionVersion;
-        }
-        return result;
+        return await operation(transaction);
       } finally {
         releaseLock?.();
       }
@@ -112,17 +198,18 @@ function createConcurrentFixture() {
   } as unknown as PrismaClient;
 
   return {
-    committedReactions,
+    activeReactions: () => committedReactions.filter((reaction) => reaction.deletedAt === null),
+    getReactionVersion: () => committedReactionVersion,
     lockCalls,
     repository: new RealtimeRepository(client)
   };
 }
 
 describe("RealtimeRepository message reactions", () => {
-  it("serializes reactions for one message so the second response contains both emojis", async () => {
+  it("allows one judgement and one emoji for the same user", async () => {
     const fixture = createConcurrentFixture();
 
-    const [, second] = await Promise.all([
+    const [judgement, emoji] = await Promise.all([
       fixture.repository.setMessageReaction({
         conversationId: 3,
         messageId: 41,
@@ -137,9 +224,118 @@ describe("RealtimeRepository message reactions", () => {
       })
     ]);
 
-    expect(second?.reactions.map((reaction) => reaction.emoji)).toEqual(["OK", "😂"]);
-    expect((second as { reactionVersion?: number } | null)?.reactionVersion).toBe(2);
-    expect(fixture.committedReactions).toEqual(new Set(["OK", "😂"]));
+    expect(judgement.status).toBe("updated");
+    expect(emoji.status).toBe("updated");
+    expect(emoji.status === "updated" ? emoji.message.reactions.map(({ emoji }) => emoji) : []).toEqual([
+      "OK",
+      "😂"
+    ]);
+    expect(fixture.getReactionVersion()).toBe(2);
     expect(fixture.lockCalls).toHaveLength(2);
+  });
+
+  it("isolates reaction slots between two identities of the same account", async () => {
+    const fixture = createConcurrentFixture();
+
+    const customer = await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      identityId: 70,
+      emoji: "OK"
+    });
+    const technician = await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      identityId: 71,
+      emoji: "NO"
+    });
+
+    expect(customer.status).toBe("updated");
+    expect(technician.status).toBe("updated");
+    expect(
+      fixture.activeReactions().map(({ identityId, emoji }) => ({ identityId, emoji }))
+    ).toEqual([
+      { identityId: 70, emoji: "OK" },
+      { identityId: 71, emoji: "NO" }
+    ]);
+  });
+
+  it("returns slot_occupied for a second different emoji and preserves the first", async () => {
+    const fixture = createConcurrentFixture();
+
+    await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "😂" });
+    const blocked = await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      emoji: "👍"
+    });
+
+    expect(blocked.status).toBe("slot_occupied");
+    expect(blocked.status === "slot_occupied" ? blocked.activeEmoji : undefined).toBe("😂");
+    expect(fixture.activeReactions().map(({ emoji }) => emoji)).toEqual(["😂"]);
+    expect(fixture.getReactionVersion()).toBe(1);
+  });
+
+  it("returns unchanged for the same-value PUT without incrementing reactionVersion", async () => {
+    const fixture = createConcurrentFixture();
+    const input = { conversationId: 3, messageId: 41, userId: 7, emoji: "OK" };
+
+    await fixture.repository.setMessageReaction(input);
+    const repeated = await fixture.repository.setMessageReaction(input);
+
+    expect(repeated.status).toBe("unchanged");
+    expect(repeated.status === "unchanged" ? repeated.message.reactionVersion : undefined).toBe(1);
+    expect(fixture.getReactionVersion()).toBe(1);
+  });
+
+  it("allows a new same-category value after the selected value is removed", async () => {
+    const fixture = createConcurrentFixture();
+
+    await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "OK" });
+    const removed = await fixture.repository.removeMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "OK" });
+    const replacement = await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "NO" });
+
+    expect(removed.status).toBe("updated");
+    expect(replacement.status).toBe("updated");
+    expect(fixture.activeReactions().map(({ emoji }) => emoji)).toEqual(["NO"]);
+    expect(fixture.getReactionVersion()).toBe(3);
+  });
+
+  it("lets only one of two concurrent same-category values occupy the slot", async () => {
+    const fixture = createConcurrentFixture();
+
+    const outcomes = await Promise.all([
+      fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "😂" }),
+      fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "👍" })
+    ]);
+
+    expect(outcomes.map(({ status }) => status).sort()).toEqual(["slot_occupied", "updated"]);
+    expect(fixture.activeReactions()).toHaveLength(1);
+    expect(["😂", "👍"]).toContain(fixture.activeReactions()[0]?.emoji);
+    expect(fixture.getReactionVersion()).toBe(1);
+  });
+
+  it("keeps another user's reaction untouched", async () => {
+    const fixture = createConcurrentFixture([{ userId: 8, emoji: "👍" }], 1);
+
+    const outcome = await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "😂" });
+
+    expect(outcome.status).toBe("updated");
+    expect(fixture.activeReactions().map(({ userId, emoji }) => ({ userId, emoji }))).toEqual([
+      { userId: 8, emoji: "👍" },
+      { userId: 7, emoji: "😂" }
+    ]);
+  });
+
+  it("returns unchanged when the exact DELETE has no active value", async () => {
+    const fixture = createConcurrentFixture();
+
+    const outcome = await fixture.repository.removeMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "OK" });
+
+    expect(outcome.status).toBe("unchanged");
+    expect(fixture.getReactionVersion()).toBe(0);
   });
 });

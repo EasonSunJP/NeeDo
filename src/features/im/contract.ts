@@ -4,6 +4,7 @@ import type {
   ConversationMember,
   ConversationMessage,
   CreateConversationPrivacyOptions,
+  DirectoryProfile,
   FriendRequest,
   ImBootstrapPayload,
   ImDatabase,
@@ -20,13 +21,18 @@ export type ImApi = {
   bootstrap(): Promise<ImBootstrapPayload>;
   listContacts(): Promise<{ contacts: ContactRelation[]; users: ImDatabase["users"] }>;
   searchDirectory(query: string): Promise<{ users: ImDatabase["users"] }>;
-  addContact(targetUserId: string, source?: string, description?: string): Promise<{ contact: ContactRelation }>;
+  getDirectoryProfile(userId: string): Promise<DirectoryProfile>;
+  sendFriendRequest(targetUserId: string, message?: string): Promise<{ friendRequest: FriendRequest; created: boolean }>;
   getContact(contactId: string): Promise<{ contact: ContactRelation; user?: ImDatabase["users"][number] }>;
   updateRemark(contactId: string, remarkName: string): Promise<{ contact: ContactRelation }>;
   updateContactTags(contactId: string, tags: string[]): Promise<{ contact: ContactRelation }>;
   blockContact(contactId: string): Promise<{ contact: ContactRelation }>;
   unblockContact(contactId: string): Promise<{ contact: ContactRelation }>;
-  deleteContact(contactId: string): Promise<{ contact: ContactRelation }>;
+  deleteContact(contactId: string): Promise<{
+    contactId: string;
+    counterpartUserId: string;
+    deletedConversationId?: string;
+  }>;
   listFriendRequests(): Promise<{ friendRequests: FriendRequest[]; users: ImDatabase["users"] }>;
   acceptFriendRequest(requestId: string): Promise<{ request: FriendRequest; contact?: ContactRelation }>;
   rejectFriendRequest(requestId: string): Promise<{ friendRequest: FriendRequest }>;

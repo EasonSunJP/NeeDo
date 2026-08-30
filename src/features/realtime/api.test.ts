@@ -53,13 +53,60 @@ describe("formal realtime API", () => {
     );
   });
 
-  it("adds a discovered user as a formal contact", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ id: 31 }, 201));
+  it("loads a safe profile and submits a verified friend request", async () => {
+    const friendRequest = {
+      id: 19,
+      requesterUserId: 41,
+      targetUserId: 167,
+      requester: { userId: 41, needoId: "u0000000041", username: "Requester", avatarUrl: null },
+      target: { userId: 167, needoId: "u0000000167", username: "Target", avatarUrl: null },
+      status: "pending" as const,
+      message: null,
+      respondedAt: null,
+      expiresAt: "2026-09-02T00:00:00.000Z",
+      expiredAt: null,
+      createdAt: "2026-08-30T00:00:00.000Z"
+    };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({
+        user: friendRequest.target,
+        identityCard: {
+          entityType: "account",
+          profileId: null,
+          displayName: "Target",
+          identityLabel: null,
+          verified: false,
+          creditValue: null,
+          creditReviewCount: 0,
+          gender: null,
+          age: null,
+          heightCm: null,
+          languages: [],
+          city: null,
+          serviceArea: null,
+          yearsExperience: null,
+          bio: null,
+        },
+        relationship: "none",
+        contactId: null,
+        friendRequest: null
+      }))
+      .mockResolvedValueOnce(jsonResponse({ friendRequest, created: true }));
 
-    await realtimeApi.addContact(167);
+    await realtimeApi.getDirectoryProfile(167);
+    await expect(realtimeApi.createFriendRequest({ targetUserId: 167 })).resolves.toEqual({
+      friendRequest,
+      created: true
+    });
 
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/im/contacts",
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/im/directory/167",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/im/friend-requests",
       expect.objectContaining({
         body: JSON.stringify({ targetUserId: 167 }),
         method: "POST"

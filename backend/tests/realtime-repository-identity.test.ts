@@ -2,6 +2,92 @@ import type { PrismaClient } from "@prisma/client";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 
 describe("RealtimeRepository formal identity payloads", () => {
+  it("keeps the former direct peer available for the retained history owner", async () => {
+    const createdAt = new Date("2026-08-25T00:00:00.000Z");
+    const client = {
+      conversation: {
+        findMany: jest.fn(async () => [
+          {
+            id: 91,
+            type: "DIRECT",
+            title: null,
+            friendshipPairKey: "1370:2370",
+            createdByUserId: 137,
+            createdAt,
+            updatedAt: createdAt,
+            deletedAt: null,
+            participants: [
+              {
+                id: 1,
+                conversationId: 91,
+                userId: 137,
+                identityId: 1370,
+                role: "member",
+                unreadCount: 0,
+                isPinned: false,
+                isMuted: false,
+                hiddenAt: null,
+                createdAt,
+                updatedAt: createdAt,
+                deletedAt: null,
+                user: {
+                  id: 137,
+                  needoId: "u0000000137",
+                  username: "保留历史的一方",
+                  avatarUrl: null
+                }
+              }
+            ],
+            messages: []
+          }
+        ]),
+        count: jest.fn(async () => 1)
+      },
+      userIdentity: {
+        findMany: jest.fn(async () => [
+          {
+            id: 2370,
+            user: {
+              id: 237,
+              needoId: "u0000000237",
+              username: "已删除好友关系的一方",
+              avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
+            }
+          }
+        ])
+      }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).listConversations(1370, {
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]).toMatchObject({
+      participants: [expect.objectContaining({ userId: 137 })],
+      directPeer: {
+        userId: 237,
+        needoId: "u0000000237",
+        username: "已删除好友关系的一方",
+        avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
+      }
+    });
+    expect(client.userIdentity.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [2370] },
+        isActive: true,
+        deletedAt: null,
+        user: { isActive: true, deletedAt: null }
+      },
+      select: {
+        id: true,
+        user: {
+          select: { id: true, needoId: true, username: true, avatarUrl: true }
+        }
+      }
+    });
+  });
+
   it("returns the immutable NeeDoID with conversation participants", async () => {
     const createdAt = new Date("2026-08-25T00:00:00.000Z");
     const client = {
@@ -20,6 +106,7 @@ describe("RealtimeRepository formal identity payloads", () => {
                 id: 1,
                 conversationId: 91,
                 userId: 237,
+                identityId: 2370,
                 role: "member",
                 unreadCount: 0,
                 isPinned: false,
@@ -43,7 +130,7 @@ describe("RealtimeRepository formal identity payloads", () => {
       }
     } as unknown as PrismaClient;
 
-    const result = await new RealtimeRepository(client).listConversations(137, {
+    const result = await new RealtimeRepository(client).listConversations(1370, {
       page: 1,
       pageSize: 20
     });

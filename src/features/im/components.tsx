@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -25,12 +26,14 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
+import { ImReactionValue } from "./JudgementReactionIcon";
+import { ReactionCatalog } from "./ReactionCatalog";
 import {
-  IM_COMMON_EMOJIS,
-  loadRecentImEmojis,
-  recordRecentImEmoji,
-  saveRecentImEmojis,
-} from "./emoji";
+  getRecentImReactionSnapshot,
+  recordRecentImReaction,
+  subscribeRecentImReactions
+} from "./reaction-catalog";
+import type { ImReactionCategory } from "./reaction-policy";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
 
 export function ImIcon({
@@ -539,7 +542,11 @@ export function ImChatComposer({
   voiceMode?: boolean;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
-  const [recentEmojis, setRecentEmojis] = useState(loadRecentImEmojis);
+  const recentReactions = useSyncExternalStore(
+    subscribeRecentImReactions,
+    getRecentImReactionSnapshot,
+    getRecentImReactionSnapshot
+  );
 
   useLayoutEffect(() => {
     const root = composerRootRef.current;
@@ -585,13 +592,9 @@ export function ImChatComposer({
     };
   }, [draft, panel, pendingImage, voiceMode]);
 
-  const selectEmoji = (emoji: string) => {
-    onDraftChange(`${draft}${emoji}`);
-    setRecentEmojis((current) => {
-      const next = recordRecentImEmoji(current, emoji);
-      saveRecentImEmojis(next);
-      return next;
-    });
+  const selectReactionValue = (value: string) => {
+    onDraftChange(`${draft}${value}`);
+    recordRecentImReaction(value);
   };
   const composerInputShellClass =
     "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
@@ -599,8 +602,6 @@ export function ImChatComposer({
   const composerTextareaClass =
     "block max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
   const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
-  const composerEmojiButtonClass =
-    "rounded-xl py-2 transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]";
   const composerActionButtonClass =
     "min-w-0 rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-1.5 py-3 text-center text-[color:var(--client-text)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface)_90%)] sm:px-3 sm:py-4";
   const composerActionIconClass =
@@ -712,37 +713,12 @@ export function ImChatComposer({
 
         {panel === "emoji" ? (
           <div className={cn(composerPanelClass, "overscroll-contain")} data-im-composer-panel="emoji">
-            <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">最近使用</p>
-            <div className="grid grid-cols-8 gap-2 text-center text-[24px]">
-              {recentEmojis.map((emoji) => (
-                <button
-                  aria-label={`输入表情 ${emoji}`}
-                  className={composerEmojiButtonClass}
-                  disabled={disabled}
-                  key={emoji}
-                  onClick={() => selectEmoji(emoji)}
-                  type="button"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-            <div className="my-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]" />
-            <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">所有表情</p>
-            <div className="grid grid-cols-8 gap-1 text-center text-[24px]">
-              {IM_COMMON_EMOJIS.map((emoji) => (
-                <button
-                  aria-label={`输入表情 ${emoji}`}
-                  className={composerEmojiButtonClass}
-                  disabled={disabled}
-                  key={emoji}
-                  onClick={() => selectEmoji(emoji)}
-                  type="button"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            <ReactionCatalog
+              disabled={disabled}
+              expanded
+              onSelect={selectReactionValue}
+              recentValues={recentReactions}
+            />
           </div>
         ) : null}
 
@@ -1084,6 +1060,7 @@ export function ImEntryCell({
   title,
   caption,
   badge,
+  badgeDot = false,
   to,
   onClick
 }: {
@@ -1091,6 +1068,7 @@ export function ImEntryCell({
   title: string;
   caption?: string;
   badge?: string | number;
+  badgeDot?: boolean;
   to?: string;
   onClick?: () => void;
 }) {
@@ -1098,7 +1076,7 @@ export function ImEntryCell({
     <div className="flex items-center gap-3 px-4 py-3.5">
       <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)] shadow-[0_10px_24px_rgba(15,143,92,0.12)]">
         {typeof badge === "number" && badge > 0 ? (
-          <NotificationBadge className="absolute -right-1 -top-1" count={badge} size="sm" />
+          <NotificationBadge className="absolute -right-1 -top-1" count={badge} dot={badgeDot} size="sm" />
         ) : badge ? (
           <span className="absolute -right-1 -top-1 rounded-full bg-[#f54a46] px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
             {badge}
@@ -2131,47 +2109,7 @@ export function ImMessageSelectionHandles({
   );
 }
 
-const imQuickReactions = ["OK", "😂", "🤣", "👍", "🥹", "😭"];
 const imMessageActionBackdropOpeningGraceMs = 320;
-const imDefaultReactions = [
-  "OK", "👍", "🙏", "💪", "🫰", "👏", "🙌", "+1",
-  "😄", "😊", "😆", "😁", "😅", "😂", "🤣", "🥹",
-  "😉", "😎", "🤔", "😭", "🥺", "😴", "🤫", "😳",
-  "😮", "😵", "😤", "😡", "🤯", "😘", "😇", "😐",
-  "🙂", "🙃", "😌", "😋", "😝", "😏", "😔", "😪",
-  "😷", "🤒", "🤕", "🤢", "🤮", "🥳", "🥰", "😍",
-  "🤩", "😬", "😱", "😢", "😓", "😰", "😵‍💫", "🤗",
-  "🤝", "👊", "✌️", "👌", "👋", "🤲", "💯", "✨",
-  "🌹", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤",
-  "🎉", "🎊", "🔥", "⭐", "🌟", "💡", "☕", "🍵",
-  "🍰", "🍀", "🧽", "🧹", "🛠️", "📌", "✅", "🙇"
-];
-
-function ImReactionButton({
-  emoji,
-  onClick,
-  compact = false,
-  className
-}: {
-  emoji: string;
-  onClick: () => void;
-  compact?: boolean;
-  className?: string;
-}) {
-  return (
-    <button
-      className={cn(
-        "focus-ring grid place-items-center rounded-2xl text-center font-black transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
-        compact ? "h-11 min-w-11 px-1 text-[22px]" : "h-11 px-1 text-[25px]",
-        className
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      {emoji}
-    </button>
-  );
-}
 
 function ImMessageActionButton({
   item,
@@ -2211,7 +2149,10 @@ export function ImMessageActionSheet({
   listActions = [],
   onClose,
   onExpandedChange,
-  onReact
+  onReact,
+  pendingCategory,
+  selectedEmoji,
+  selectedJudgement
 }: {
   actions: ImMessageActionSheetItem[];
   anchorElement: HTMLElement | null;
@@ -2221,11 +2162,19 @@ export function ImMessageActionSheet({
   onClose: () => void;
   onExpandedChange: (expanded: boolean) => void;
   onReact: (emoji: string) => void;
+  pendingCategory?: ImReactionCategory;
+  selectedEmoji?: string;
+  selectedJudgement?: string;
 }) {
   const backdropPointerStartedRef = useRef(false);
   const backdropInteractiveAtRef = useRef(Date.now() + imMessageActionBackdropOpeningGraceMs);
   const menuRef = useRef<HTMLElement | null>(null);
   const menuContentRef = useRef<HTMLDivElement | null>(null);
+  const recentReactions = useSyncExternalStore(
+    subscribeRecentImReactions,
+    getRecentImReactionSnapshot,
+    getRecentImReactionSnapshot
+  );
   const [menuPosition, setMenuPosition] = useState({
     arrowLeft: 28,
     contentWidth: 0,
@@ -2341,54 +2290,22 @@ export function ImMessageActionSheet({
   };
   const actionsFitOneRow = menuPosition.contentWidth >= 304;
   const reactionsFitFullRow = menuPosition.contentWidth >= 336;
-  const visibleQuickReactions = reactionsFitFullRow
-    ? imQuickReactions
-    : imQuickReactions.slice(0, 4);
-
-  const quickReactionRow = (
-    <div
-      className={cn("grid items-center gap-0.5 px-1 py-1.5", reactionsFitFullRow ? "grid-cols-7" : "grid-cols-5")}
-      data-im-message-reaction-density={reactionsFitFullRow ? "full" : "compact"}
-      data-im-message-reaction-row="quick"
-    >
-      {visibleQuickReactions.map((emoji) => (
-        <ImReactionButton emoji={emoji} key={emoji} onClick={() => onReact(emoji)} />
-      ))}
-      <button
-        aria-label={expanded ? "收起默认表情" : "展开默认表情"}
-        className={cn(
-          "focus-ring grid h-11 place-items-center rounded-full transition",
-          "bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
-        )}
-        onClick={() => onExpandedChange(!expanded)}
-        type="button"
-      >
-        <ImIcon name="more" />
-      </button>
-    </div>
-  );
-
-  const expandedReactionCatalog = expanded ? (
-    <div className="space-y-2 px-1 pb-2 pt-1">
-      <section>
-        <p className="mb-1 text-[11px] font-black text-[color:var(--client-muted)]">默认表情</p>
-        <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-9">
-          {imDefaultReactions.map((emoji) => (
-            <ImReactionButton compact emoji={emoji} key={`default-${emoji}`} onClick={() => onReact(emoji)} />
-          ))}
-        </div>
-      </section>
-    </div>
-  ) : null;
-
   const reactionSection = (
     <section
       className={menuPosition.placement === "above" ? "pt-1" : "pb-1"}
       data-im-message-action-section="reactions"
       key="reactions"
     >
-      {menuPosition.placement === "above" ? expandedReactionCatalog : quickReactionRow}
-      {menuPosition.placement === "above" ? quickReactionRow : expandedReactionCatalog}
+      <ReactionCatalog
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
+        onSelect={onReact}
+        pendingCategory={pendingCategory}
+        recentValues={recentReactions}
+        selectedEmoji={selectedEmoji}
+        selectedJudgement={selectedJudgement}
+        visibleRecentCount={reactionsFitFullRow ? 6 : 4}
+      />
     </section>
   );
 
@@ -2948,8 +2865,10 @@ export function MessageBubble({
     ? message.status === "sending"
       ? "发送中"
       : message.status === "failed"
-        ? message.failureReason === "recipient_blocked"
+      ? message.failureReason === "recipient_blocked"
           ? "对方将你拉黑，信息发送失败"
+          : message.failureReason === "not_friends"
+            ? "对方不是你的好友，信息发送失败"
           : "发送失败"
         : undefined
     : undefined;
@@ -2987,12 +2906,14 @@ export function MessageBubble({
         const nameLabel = names.join("、");
 
         return (
-          <span className={cn("relative inline-flex min-w-0 items-center overflow-visible rounded-full px-1.5 py-1", isMine ? "bg-black/[0.08]" : "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")} key={`${message.id}-${reaction.emoji}`}>
+          <span className="relative inline-flex min-w-0 items-center overflow-visible rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] px-1.5 py-1" key={`${message.id}-${reaction.emoji}`}>
             <button
               aria-pressed={reaction.reactedByMe}
               className={cn(
                 "grid h-7 min-w-7 shrink-0 place-items-center rounded-[10px] px-1 text-[18px] transition",
-                reaction.reactedByMe ? (isMine ? "bg-black/[0.12]" : "bg-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]") : "hover:bg-black/[0.06]"
+                reaction.reactedByMe
+                  ? "bg-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_50%,transparent)]"
+                  : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
               )}
               key={`${message.id}-${reaction.emoji}-emoji`}
               onClick={(event) => {
@@ -3001,7 +2922,7 @@ export function MessageBubble({
               }}
               type="button"
             >
-              {reaction.emoji}
+              <ImReactionValue judgementDisplay="summary" value={reaction.emoji} />
             </button>
             <span
               className="min-w-0 max-w-[12rem] truncate px-2 text-left text-[12px] font-black opacity-78"

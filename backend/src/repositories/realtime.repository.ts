@@ -1,4 +1,5 @@
 import {
+  ConversationAccessPolicy,
   ConversationType,
   FriendRequestStatus,
   ImDeletionAction,
@@ -10,6 +11,10 @@ import {
 } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
+import {
+  compareMessageReactionCategories,
+  getMessageReactionCategory
+} from "../constants/message-reaction.constants";
 import { prisma } from "../prisma/client";
 import type { AuthRequestContext } from "../services/auth.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -20,9 +25,16 @@ import { AppError } from "../utils/app-error";
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
 export type MessageRecallModePayload = "standard" | "traceless";
-export type FriendRequestStatusPayload = "pending" | "accepted" | "rejected";
+export type FriendRequestStatusPayload = "pending" | "accepted" | "rejected" | "expired";
 export type SocialPostVisibilityPayload = "public" | "followers";
 export type NotificationTypePayload = "orderStatus" | "friendRequest" | "system" | "social";
+
+export function toFriendshipPairKey(leftIdentityId: number, rightIdentityId: number): string {
+  const [lowIdentityId, highIdentityId] = [leftIdentityId, rightIdentityId].sort(
+    (left, right) => left - right
+  );
+  return `${lowIdentityId}:${highIdentityId}`;
+}
 
 export interface ParticipantPayload {
   userId: number;
@@ -37,6 +49,7 @@ export interface ConversationPayload {
   type: ConversationTypePayload;
   title: string | null;
   participants: ParticipantPayload[];
+  directPeer?: ParticipantPayload | null;
   lastMessage: MessagePayload | null;
   unreadCount: number;
   isPinned: boolean;
@@ -59,11 +72,13 @@ export interface MessagePayload {
   content: string | null;
   metadata: unknown;
   reactions: MessageReactionSummaryPayload[];
+  expiresAt: Date | null;
   createdAt: Date;
   recallDeadlineAt: Date;
   recalledAt: Date | null;
   recallMode: MessageRecallModePayload | null;
   contentPurgedAt: Date | null;
+  privacyPolicyVersionAtSend: number | null;
   lifecycleVersion: number;
   reactionVersion: number;
   availableRecallModes: MessageRecallModePayload[];
@@ -111,13 +126,20 @@ export interface DeleteContactInput {
   ownerIdentityId?: number;
 }
 
-export interface DeletedContactPayload {
-  contactId: number;
-  ownerUserId: number;
-  contactUserId: number;
+export interface DeleteFriendshipResult {
+  actorUserId: number;
+  actorIdentityId: number;
+  counterpartUserId: number;
+  counterpartIdentityId: number;
+  contactIds: number[];
+  deletedContactCount: number;
+  deletedFollowCount: number;
+  deletedConversationId: number | null;
   deleted: true;
   deletedAt: Date;
 }
+
+export type DeletedContactPayload = DeleteFriendshipResult;
 
 export interface DirectorySearchInput extends PaginationInput {
   query: string;
@@ -137,11 +159,61 @@ export interface FriendRequestPayload {
   requesterIdentityId: number;
   targetUserId: number;
   targetIdentityId: number;
+  requester: ParticipantPayload;
+  target: ParticipantPayload;
   status: FriendRequestStatusPayload;
   message: string | null;
   respondedAt: Date | null;
+  expiresAt: Date;
+  expiredAt: Date | null;
   createdAt: Date;
 }
+
+export interface CreateFriendRequestResult {
+  friendRequest: FriendRequestPayload;
+  created: boolean;
+}
+
+export type CreateFriendRequestOutcome =
+  | { status: "ready"; result: CreateFriendRequestResult }
+  | { status: "already_friends" }
+  | { status: "target_unavailable" };
+
+export interface DirectoryProfilePayload {
+  user: ParticipantPayload;
+  identityCard: DirectoryIdentityCardPayload;
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  contactId: number | null;
+  friendRequest: FriendRequestPayload | null;
+}
+
+export interface DirectoryIdentityCardPayload {
+  entityType: "user" | "technician" | "shop" | "account";
+  profileId: number | null;
+  displayName: string;
+  identityLabel: string | null;
+  verified: boolean;
+  creditValue: string | null;
+  creditReviewCount: number;
+  gender: string | null;
+  age: number | null;
+  heightCm: string | null;
+  languages: string[];
+  city: string | null;
+  serviceArea: string | null;
+  yearsExperience: number | null;
+  bio: string | null;
+}
+
+export interface RespondFriendRequestResult {
+  friendRequest: FriendRequestPayload;
+  recipientUserIds: number[];
+}
+
+export type RespondFriendRequestOutcome =
+  | { status: "responded"; result: RespondFriendRequestResult }
+  | { status: "expired"; friendRequest: FriendRequestPayload }
+  | { status: "not_found" };
 
 export interface SocialPostAuthorPayload {
   userId: number;
@@ -224,6 +296,10 @@ export interface CreateConversationInput {
   disappearingStartMode?: "sent" | "read_by_all";
 }
 
+export type CreateConversationOutcome =
+  | { status: "ready"; conversation: ConversationPayload }
+  | { status: "not_friends" };
+
 export interface UpdateConversationPrivacyInput {
   actorUserId: number;
   actorIdentityId?: number;
@@ -272,6 +348,11 @@ export interface CreateMessageInput {
   metadata?: unknown;
 }
 
+export type CreateMessageOutcome =
+  | { status: "created"; message: MessagePayload }
+  | { status: "not_found" }
+  | { status: "not_friends" };
+
 export interface RecallMessageInput {
   conversationId: number;
   messageId: number;
@@ -291,6 +372,12 @@ export interface MessageReactionMutationInput {
   identityId?: number;
   emoji: string;
 }
+
+export type MessageReactionMutationOutcome =
+  | { status: "updated"; message: MessagePayload }
+  | { status: "unchanged"; message: MessagePayload }
+  | { status: "slot_occupied"; message: MessagePayload; activeEmoji: string }
+  | { status: "not_found" };
 
 export interface DeleteMessageForUserInput {
   conversationId: number;
@@ -409,7 +496,7 @@ export interface CreateOrderStatusNotificationInput {
 export interface RealtimeRepositoryPort {
   findActiveUserIds: (ids: number[]) => Promise<number[]>;
   findCanonicalIdentityIdForUser: (userId: number) => Promise<number | null>;
-  createConversation: (input: CreateConversationInput) => Promise<ConversationPayload>;
+  createConversation: (input: CreateConversationInput) => Promise<CreateConversationOutcome>;
   updateConversationPrivacy: (
     input: UpdateConversationPrivacyInput
   ) => Promise<ConversationPayload | null>;
@@ -433,7 +520,7 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ConversationPayload>>;
-  createMessage: (input: CreateMessageInput) => Promise<MessagePayload | null>;
+  createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
     senderUserId: number,
@@ -444,8 +531,12 @@ export interface RealtimeRepositoryPort {
   deleteMessageForUser: (
     input: DeleteMessageForUserInput
   ) => Promise<DeleteMessageForUserPayload | null>;
-  setMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
-  removeMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
+  setMessageReaction: (
+    input: MessageReactionMutationInput
+  ) => Promise<MessageReactionMutationOutcome>;
+  removeMessageReaction: (
+    input: MessageReactionMutationInput
+  ) => Promise<MessageReactionMutationOutcome>;
   markConversationRead: (input: {
     conversationId: number;
     userId: number;
@@ -483,14 +574,23 @@ export interface RealtimeRepositoryPort {
   ensureDirectContactConversation: (
     input: EnsureTechnicianApplicationContactInput
   ) => Promise<{ conversationId: number }>;
-  createFriendRequest: (input: CreateFriendRequestInput) => Promise<FriendRequestPayload>;
+  getDirectoryProfile: (
+    viewerUserId: number,
+    viewerIdentityId: number,
+    targetUserId: number,
+    targetIdentityId: number
+  ) => Promise<DirectoryProfilePayload | null>;
+  createFriendRequest: (input: CreateFriendRequestInput) => Promise<CreateFriendRequestOutcome>;
   listFriendRequests: (
     userId: number,
     input: FriendRequestListInput
   ) => Promise<PaginatedResponse<FriendRequestPayload>>;
   respondToFriendRequest: (
     input: RespondFriendRequestInput
-  ) => Promise<FriendRequestPayload | null>;
+  ) => Promise<RespondFriendRequestOutcome>;
+  expireDueFriendRequests: (input: {
+    batchSize: number;
+  }) => Promise<FriendRequestPayload[]>;
   createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
   updateSocialPost: (input: UpdateSocialPostInput) => Promise<UpdateSocialPostResult | null>;
   listSocialPosts: (
@@ -578,6 +678,25 @@ const contactInclude = {
   }
 } satisfies Prisma.ContactInclude;
 
+const friendRequestInclude = {
+  requester: {
+    select: {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    }
+  },
+  target: {
+    select: {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    }
+  }
+} satisfies Prisma.FriendRequestInclude;
+
 type ConversationRecord = Prisma.ConversationGetPayload<{
   include: {
     participants: {
@@ -600,11 +719,76 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
 
 type MessageRecord = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
 type ContactRecord = Prisma.ContactGetPayload<{ include: typeof contactInclude }>;
-type FriendRequestRecord = Prisma.FriendRequestGetPayload<Record<string, never>>;
+type FriendRequestRecord = Prisma.FriendRequestGetPayload<{
+  include: typeof friendRequestInclude;
+}>;
 type SocialAuthorRecord = Prisma.UserGetPayload<{ select: typeof socialAuthorSelect }>;
 type SocialPostRecord = Prisma.SocialPostGetPayload<{ include: typeof socialPostInclude }>;
 type FollowRecord = Prisma.FollowGetPayload<Record<string, never>>;
 type NotificationRecord = Prisma.NotificationGetPayload<Record<string, never>>;
+
+type DirectoryReviewRecord = {
+  ratingAverage: { toString: () => string };
+  reviewCount: number;
+  deletedAt: Date | null;
+} | null;
+
+type DirectoryProfileUserRecord = {
+  id: number;
+  needoId: string;
+  username: string;
+  avatarUrl: string | null;
+  identities: Array<{
+    type: string;
+    scopeType: string | null;
+    scopeId: number | null;
+    displayName: string | null;
+    isDefault: boolean;
+  }>;
+  customerProfile: {
+    id: number;
+    displayName: string;
+    bio: string | null;
+    city: string | null;
+    membershipLevel: string;
+    isPublic: boolean;
+    gender: string;
+    age: number | null;
+    heightCm: { toString: () => string } | null;
+    languages: unknown;
+    visibility: string;
+    deletedAt: Date | null;
+    reviewSummary: DirectoryReviewRecord;
+  } | null;
+  technicianProfile: {
+    id: number;
+    displayName: string;
+    bio: string | null;
+    city: string;
+    serviceArea: string | null;
+    yearsExperience: number;
+    employmentType: string;
+    status: string;
+    verifiedAt: Date | null;
+    deletedAt: Date | null;
+    reviewSummary: DirectoryReviewRecord;
+  } | null;
+};
+
+function toDirectoryLanguages(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
 
 export class RealtimeRepository implements RealtimeRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
@@ -640,7 +824,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
-  public async createConversation(input: CreateConversationInput): Promise<ConversationPayload> {
+  public async createConversation(
+    input: CreateConversationInput
+  ): Promise<CreateConversationOutcome> {
     const creatorIdentityId = input.creatorIdentityId ??
       await this.findCanonicalIdentityIdForUser(input.creatorUserId);
     if (!creatorIdentityId) {
@@ -673,6 +859,29 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       .map((participant) => ({ userId: participant.userId, identityId: participant.identityId as number }))
       .sort((left, right) => left.identityId - right.identityId);
     const participantIdentityIds = resolvedParticipants.map((participant) => participant.identityId);
+    if (input.type === "direct") {
+      if (participantIdentityIds.length !== 2) {
+        return { status: "not_friends" };
+      }
+      const reciprocalContactCount = await this.client.contact.count({
+        where: {
+          deletedAt: null,
+          OR: [
+            {
+              ownerIdentityId: participantIdentityIds[0],
+              contactIdentityId: participantIdentityIds[1]
+            },
+            {
+              ownerIdentityId: participantIdentityIds[1],
+              contactIdentityId: participantIdentityIds[0]
+            }
+          ]
+        }
+      });
+      if (reciprocalContactCount !== 2) {
+        return { status: "not_friends" };
+      }
+    }
     const existingDirect =
       input.type === "direct"
         ? await this.findExistingDirectConversation(participantIdentityIds)
@@ -687,15 +896,25 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         },
         data: { hiddenAt: null }
       });
-      return (
-        (await this.getConversationForUser(existingDirect.id, creatorIdentityId, input.creatorUserId)) ??
-        this.mapConversation(existingDirect, creatorIdentityId)
-      );
+      return {
+        status: "ready",
+        conversation:
+          (await this.getConversationForUser(existingDirect.id, creatorIdentityId, input.creatorUserId)) ??
+          this.mapConversation(existingDirect, creatorIdentityId)
+      };
     }
 
     const conversation = await this.client.conversation.create({
       data: {
         type: this.conversationTypeToDb(input.type),
+        accessPolicy:
+          input.type === "group"
+            ? ConversationAccessPolicy.GROUP_MEMBERSHIP
+            : ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+        friendshipPairKey:
+          input.type === "direct"
+            ? toFriendshipPairKey(participantIdentityIds[0]!, participantIdentityIds[1]!)
+            : null,
         title: input.title?.trim() || null,
         createdByUserId: input.creatorUserId,
         createdByIdentityId: creatorIdentityId,
@@ -724,7 +943,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       include: this.conversationInclude(creatorIdentityId)
     });
 
-    return this.mapConversation(conversation, creatorIdentityId);
+    return {
+      status: "ready",
+      conversation: this.mapConversation(conversation, creatorIdentityId)
+    };
   }
 
   public async updateConversationPrivacy(
@@ -993,7 +1215,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       include: this.conversationInclude(identityId)
     });
 
-    return conversation ? this.mapConversation(conversation, identityId) : null;
+    if (!conversation) return null;
+    const directPeers = await this.loadMissingDirectPeers([conversation], identityId);
+    return this.mapConversation(conversation, identityId, directPeers.get(conversation.id));
   }
 
   public async listConversations(
@@ -1022,14 +1246,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       this.client.conversation.count({ where })
     ]);
 
+    const directPeers = await this.loadMissingDirectPeers(list, identityId);
+
     return buildPaginatedResponse(
-      list.map((conversation) => this.mapConversation(conversation, identityId)),
+      list.map((conversation) =>
+        this.mapConversation(conversation, identityId, directPeers.get(conversation.id))
+      ),
       total,
       pagination
     );
   }
 
-  public async createMessage(input: CreateMessageInput): Promise<MessagePayload | null> {
+  public async createMessage(input: CreateMessageInput): Promise<CreateMessageOutcome> {
     return this.client.$transaction(async (tx) => {
       const participant = await tx.conversationParticipant.findFirst({
         where: {
@@ -1038,11 +1266,55 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           deletedAt: null,
           conversation: { deletedAt: null }
         },
-        select: { id: true }
+        select: {
+          id: true,
+          createdAt: true,
+          conversation: {
+            select: {
+              type: true,
+              privacyModeEnabled: true,
+              disappearingTtlSeconds: true,
+              privacyPolicyVersion: true,
+              accessPolicy: true,
+              participants: {
+                where: { deletedAt: null },
+                select: { identityId: true }
+              }
+            }
+          }
+        }
       });
 
       if (!participant) {
-        return null;
+        return { status: "not_found" };
+      }
+      if (
+        participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED
+      ) {
+        const identityIds = participant.conversation.participants.map(
+          (item) => item.identityId
+        );
+        if (identityIds.length !== 2) {
+          return { status: "not_friends" };
+        }
+        const reciprocalContactCount = await tx.contact.count({
+          where: {
+            deletedAt: null,
+            OR: [
+              {
+                ownerIdentityId: identityIds[0],
+                contactIdentityId: identityIds[1]
+              },
+              {
+                ownerIdentityId: identityIds[1],
+                contactIdentityId: identityIds[0]
+              }
+            ]
+          }
+        });
+        if (reciprocalContactCount !== 2) {
+          return { status: "not_friends" };
+        }
       }
 
       const policy = await tx.imPolicy.findFirst({
@@ -1055,10 +1327,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
       const createdAt = new Date();
       const recallWindowSeconds = policy?.recallWindowSeconds ?? 180;
-      const expiresAt =
+      const globalExpiresAt =
         policy?.textRetentionSeconds === null || policy?.textRetentionSeconds === undefined
           ? null
           : new Date(createdAt.getTime() + policy.textRetentionSeconds * 1_000);
+      const privacyTtlSeconds = participant.conversation.disappearingTtlSeconds;
+      const usesPrivacyExpiry =
+        participant.conversation.type === ConversationType.GROUP &&
+        participant.conversation.privacyModeEnabled &&
+        typeof privacyTtlSeconds === "number" &&
+        Number.isInteger(privacyTtlSeconds) &&
+        privacyTtlSeconds >= 60 &&
+        privacyTtlSeconds <= 34_560_000;
+      const expiresAt = usesPrivacyExpiry
+        ? new Date(createdAt.getTime() + privacyTtlSeconds * 1_000)
+        : globalExpiresAt;
       const message = await tx.message.create({
         data: {
           conversationId: input.conversationId,
@@ -1070,7 +1353,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           createdAt,
           expiresAt,
           recallDeadlineAt: new Date(createdAt.getTime() + recallWindowSeconds * 1_000),
-          privacyPolicyVersionAtSend: null,
+          privacyPolicyVersionAtSend: usesPrivacyExpiry
+            ? participant.conversation.privacyPolicyVersion
+            : null,
           lifecycleVersion: policy?.version ?? 1
         },
         include: messageInclude
@@ -1105,7 +1390,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         }
       });
 
-      return this.mapMessage(message, input.senderIdentityId ?? input.senderUserId);
+      return {
+        status: "created",
+        message: this.mapMessage(message, input.senderIdentityId ?? input.senderUserId)
+      };
     });
   }
 
@@ -1149,11 +1437,24 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: RecallMessageInput
   ): Promise<StandardRecallRepositoryOutcome> {
     return this.client.$transaction(async (tx) => {
+      const participant = await tx.conversationParticipant.findFirst({
+        where: {
+          conversationId: input.conversationId,
+          identityId: input.senderIdentityId ?? input.senderUserId,
+          deletedAt: null,
+          conversation: { deletedAt: null }
+        },
+        select: { createdAt: true }
+      });
+      if (!participant) {
+        return { status: "not_found" } as const;
+      }
       const scope = {
         id: input.messageId,
         conversationId: input.conversationId,
         senderUserId: input.senderUserId,
         senderIdentityId: input.senderIdentityId ?? input.senderUserId,
+        createdAt: { gte: participant.createdAt },
         deletedAt: null,
         conversation: {
           deletedAt: null,
@@ -1191,6 +1492,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           conversationId: input.conversationId,
           senderUserId: input.senderUserId,
           senderIdentityId: input.senderIdentityId ?? input.senderUserId,
+          createdAt: { gte: participant.createdAt },
           recalledAt: null,
           recallMode: null,
           deletedAt: null,
@@ -1291,7 +1593,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const pageSize = Math.min(Math.max(input.pageSize ?? 20, 1), 100);
     const where: Prisma.MessageWhereInput = {
       conversationId: input.conversationId,
-      deletedAt: null,
+      ...this.availableMessageWhere(new Date()),
+      createdAt: { gte: participant.createdAt },
       userDeletions: {
         none: { identityId: viewerIdentityId, deletedAt: null }
       },
@@ -1329,10 +1632,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: DeleteMessageForUserInput
   ): Promise<DeleteMessageForUserPayload | null> {
     return this.client.$transaction(async (tx) => {
+      const participant = await tx.conversationParticipant.findFirst({
+        where: {
+          conversationId: input.conversationId,
+          identityId: input.identityId ?? input.userId,
+          deletedAt: null,
+          conversation: { deletedAt: null }
+        },
+        select: { createdAt: true }
+      });
+      if (!participant) return null;
       const message = await tx.message.findFirst({
         where: {
           id: input.messageId,
           conversationId: input.conversationId,
+          createdAt: { gte: participant.createdAt },
           deletedAt: null,
           conversation: {
             deletedAt: null,
@@ -1382,10 +1696,43 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async setMessageReaction(
     input: MessageReactionMutationInput
-  ): Promise<MessagePayload | null> {
+  ): Promise<MessageReactionMutationOutcome> {
     return this.client.$transaction(async (tx) => {
       const messageLocked = await this.lockMessageForParticipant(tx, input);
-      if (!messageLocked) return null;
+      if (!messageLocked) return { status: "not_found" };
+
+      const activeReactions = await tx.messageReaction.findMany({
+        where: {
+          messageId: input.messageId,
+          identityId: input.identityId ?? input.userId,
+          deletedAt: null
+        },
+        select: { emoji: true },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+      });
+      const category = getMessageReactionCategory(input.emoji);
+      const activeInSlot = activeReactions.find(
+        (reaction) => getMessageReactionCategory(reaction.emoji) === category
+      );
+
+      if (activeInSlot) {
+        const current = await tx.message.findUnique({
+          where: { id: input.messageId },
+          include: messageInclude
+        });
+        if (!current) return { status: "not_found" };
+
+        const message = this.mapMessage(current, input.identityId ?? input.userId);
+        if (activeInSlot.emoji === input.emoji) {
+          return { status: "unchanged", message };
+        }
+
+        return {
+          status: "slot_occupied",
+          message,
+          activeEmoji: activeInSlot.emoji
+        };
+      }
 
       await tx.messageReaction.upsert({
         where: {
@@ -1409,18 +1756,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return this.mapMessage(updated, input.identityId ?? input.userId);
+      return {
+        status: "updated",
+        message: this.mapMessage(updated, input.identityId ?? input.userId)
+      };
     });
   }
 
   public async removeMessageReaction(
     input: MessageReactionMutationInput
-  ): Promise<MessagePayload | null> {
+  ): Promise<MessageReactionMutationOutcome> {
     return this.client.$transaction(async (tx) => {
       const messageLocked = await this.lockMessageForParticipant(tx, input);
-      if (!messageLocked) return null;
+      if (!messageLocked) return { status: "not_found" };
 
-      await tx.messageReaction.updateMany({
+      const removed = await tx.messageReaction.updateMany({
         where: {
           messageId: input.messageId,
           identityId: input.identityId ?? input.userId,
@@ -1430,12 +1780,27 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         data: { deletedAt: new Date() }
       });
 
+      if (removed.count === 0) {
+        const current = await tx.message.findUnique({
+          where: { id: input.messageId },
+          include: messageInclude
+        });
+        if (!current) return { status: "not_found" };
+        return {
+          status: "unchanged",
+          message: this.mapMessage(current, input.identityId ?? input.userId)
+        };
+      }
+
       const updated = await tx.message.update({
         where: { id: input.messageId },
         data: { reactionVersion: { increment: 1 } },
         include: messageInclude
       });
-      return this.mapMessage(updated, input.identityId ?? input.userId);
+      return {
+        status: "updated",
+        message: this.mapMessage(updated, input.identityId ?? input.userId)
+      };
     });
   }
 
@@ -1456,6 +1821,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const latestMessage = await this.client.message.findFirst({
       where: {
         conversationId: input.conversationId,
+        createdAt: { gte: participant.createdAt },
         deletedAt: null
       },
       orderBy: { id: "desc" },
@@ -1555,12 +1921,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           deletedAt: null,
           conversation: { deletedAt: null }
         },
-        select: { id: true }
+        select: { id: true, createdAt: true }
       });
       if (!participant) return false;
 
       const latestMessage = await tx.message.findFirst({
-        where: { conversationId: input.conversationId, deletedAt: null },
+        where: {
+          conversationId: input.conversationId,
+          createdAt: { gte: participant.createdAt },
+          deletedAt: null
+        },
         orderBy: { id: "desc" },
         select: { id: true, createdAt: true }
       });
@@ -1739,41 +2109,99 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async deleteContact(input: DeleteContactInput): Promise<DeletedContactPayload | null> {
     return this.client.$transaction(async (tx) => {
-      const contact = await tx.contact.findFirst({
+      const actorIdentityId = input.ownerIdentityId ??
+        await this.findCanonicalIdentityId(tx, input.ownerUserId);
+      if (!actorIdentityId) return null;
+      const locked = await tx.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`
+          SELECT id
+          FROM contacts
+          WHERE id = ${input.contactId}
+            AND owner_user_id = ${input.ownerUserId}
+            AND owner_identity_id = ${actorIdentityId}
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `
+      );
+      if (locked.length !== 1) return null;
+
+      const ownedContact = await tx.contact.findFirst({
         where: {
           id: input.contactId,
-          ownerIdentityId: input.ownerIdentityId ?? input.ownerUserId,
+          ownerIdentityId: actorIdentityId,
           deletedAt: null,
           contactUser: {
             deletedAt: null,
             isActive: true
           }
         },
-        select: { id: true, contactUserId: true }
+        select: { id: true, contactUserId: true, contactIdentityId: true }
       });
-      if (!contact) return null;
+      if (!ownedContact) return null;
 
-      const deletedAt = new Date();
-      await tx.contact.update({
-        where: { id: contact.id },
-        data: { blockedAt: null, deletedAt }
+      const actorUserId = input.ownerUserId;
+      const counterpartUserId = ownedContact.contactUserId;
+      const counterpartIdentityId = ownedContact.contactIdentityId;
+      const bilateralContactWhere: Prisma.ContactWhereInput = {
+        OR: [
+          { ownerIdentityId: actorIdentityId, contactIdentityId: counterpartIdentityId },
+          { ownerIdentityId: counterpartIdentityId, contactIdentityId: actorIdentityId }
+        ]
+      };
+      const bilateralFollowWhere: Prisma.FollowWhereInput = {
+        OR: [
+          { followerIdentityId: actorIdentityId, followingIdentityId: counterpartIdentityId },
+          { followerIdentityId: counterpartIdentityId, followingIdentityId: actorIdentityId }
+        ]
+      };
+      const contacts = await tx.contact.findMany({
+        where: bilateralContactWhere,
+        select: { id: true },
+        orderBy: { id: "asc" }
       });
+      const contactIds = contacts.map((contact) => contact.id);
+      const deletedContacts = await tx.contact.deleteMany({ where: bilateralContactWhere });
+      const deletedFollows = await tx.follow.deleteMany({ where: bilateralFollowWhere });
+      const conversation = await tx.conversation.findFirst({
+        where: {
+          accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+          friendshipPairKey: toFriendshipPairKey(actorIdentityId, counterpartIdentityId),
+          deletedAt: null
+        },
+        select: { id: true }
+      });
+      if (conversation) {
+        await tx.conversationParticipant.deleteMany({
+          where: { conversationId: conversation.id, identityId: actorIdentityId }
+        });
+      }
+      const deletedAt = new Date();
       await tx.auditLog.create({
         data: {
-          actorId: input.ownerUserId,
-          action: "im.contact.deleted",
-          targetType: "Contact",
-          targetId: contact.id,
+          actorId: actorUserId,
+          action: "im.friendship.deleted",
+          targetType: "User",
+          targetId: counterpartUserId,
           ip: null,
           userAgent: null,
-          metadata: { contactUserId: contact.contactUserId }
+          metadata: {
+            actorIdentityId,
+            counterpartIdentityId,
+            contactIds,
+            conversationId: conversation?.id ?? null
+          }
         }
       });
 
       return {
-        contactId: contact.id,
-        ownerUserId: input.ownerUserId,
-        contactUserId: contact.contactUserId,
+        actorUserId,
+        actorIdentityId,
+        counterpartUserId,
+        counterpartIdentityId,
+        contactIds,
+        deletedContactCount: deletedContacts.count,
+        deletedFollowCount: deletedFollows.count,
+        deletedConversationId: conversation?.id ?? null,
         deleted: true,
         deletedAt
       };
@@ -1823,6 +2251,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const candidates = await transaction.conversation.findMany({
         where: {
           type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
           deletedAt: null,
           participants: {
             some: {
@@ -1854,6 +2283,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const created = await transaction.conversation.create({
         data: {
           type: ConversationType.DIRECT,
+          accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
+          friendshipPairKey: null,
           createdByUserId: input.createdByUserId,
           createdByIdentityId: creatorIdentityId,
           participants: {
@@ -1869,7 +2300,134 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
-  public async createFriendRequest(input: CreateFriendRequestInput): Promise<FriendRequestPayload> {
+  public async getDirectoryProfile(
+    viewerUserId: number,
+    viewerIdentityId: number,
+    targetUserId: number,
+    targetIdentityId: number
+  ): Promise<DirectoryProfilePayload | null> {
+    const databaseClock = await this.client.$queryRaw<Array<{ dbNow: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+    );
+    const dbNow = databaseClock[0]?.dbNow;
+    if (!dbNow) {
+      throw new Error("Database clock query returned no row");
+    }
+    const user = await this.client.user.findFirst({
+      where: { id: targetUserId, isActive: true, deletedAt: null },
+      select: {
+        id: true,
+        needoId: true,
+        username: true,
+        avatarUrl: true,
+        identities: {
+          where: { deletedAt: null, isActive: true },
+          select: {
+            type: true,
+            scopeType: true,
+            scopeId: true,
+            displayName: true,
+            isDefault: true
+          },
+          orderBy: [{ isDefault: "desc" }, { id: "asc" }]
+        },
+        customerProfile: {
+          select: {
+            id: true,
+            displayName: true,
+            bio: true,
+            city: true,
+            membershipLevel: true,
+            isPublic: true,
+            gender: true,
+            age: true,
+            heightCm: true,
+            languages: true,
+            visibility: true,
+            deletedAt: true,
+            reviewSummary: {
+              select: {
+                ratingAverage: true,
+                reviewCount: true,
+                deletedAt: true
+              }
+            }
+          }
+        },
+        technicianProfile: {
+          select: {
+            id: true,
+            displayName: true,
+            bio: true,
+            city: true,
+            serviceArea: true,
+            yearsExperience: true,
+            employmentType: true,
+            status: true,
+            verifiedAt: true,
+            deletedAt: true,
+            reviewSummary: {
+              select: {
+                ratingAverage: true,
+                reviewCount: true,
+                deletedAt: true
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!user) {
+      return null;
+    }
+    const identityCard = await this.buildDirectoryIdentityCard(user);
+    const contact = await this.client.contact.findFirst({
+      where: {
+        ownerIdentityId: viewerIdentityId,
+        contactIdentityId: targetIdentityId,
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    if (contact) {
+      return {
+        user: this.mapParticipant(user),
+        identityCard,
+        relationship: "friend",
+        contactId: contact.id,
+        friendRequest: null
+      };
+    }
+    const friendRequest = await this.client.friendRequest.findFirst({
+      where: {
+        status: FriendRequestStatus.PENDING,
+        expiresAt: { gt: dbNow },
+        deletedAt: null,
+        OR: [
+          { requesterIdentityId: viewerIdentityId, targetIdentityId },
+          { requesterIdentityId: targetIdentityId, targetIdentityId: viewerIdentityId }
+        ]
+      },
+      include: friendRequestInclude,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+
+    return {
+      user: this.mapParticipant(user),
+      identityCard,
+      relationship: friendRequest
+        ? friendRequest.requesterIdentityId === viewerIdentityId
+          ? "outgoing_pending"
+          : "incoming_pending"
+        : "none",
+      contactId: null,
+      friendRequest: friendRequest ? this.mapFriendRequest(friendRequest, dbNow) : null
+    };
+  }
+
+  public async createFriendRequest(
+    input: CreateFriendRequestInput
+  ): Promise<CreateFriendRequestOutcome> {
     return this.client.$transaction(async (tx) => {
       const requesterIdentityId = input.requesterIdentityId ??
         await this.findCanonicalIdentityId(tx, input.requesterUserId);
@@ -1882,14 +2440,101 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           statusCode: 403
         });
       }
+      const databaseClock = await tx.$queryRaw<Array<{ dbNow: Date }>>(
+        Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+      );
+      const dbNow = databaseClock[0]?.dbNow;
+      if (!dbNow) {
+        throw new Error("Database clock query returned no row");
+      }
+      const orderedUserIds = [input.requesterUserId, input.targetUserId].sort(
+        (left, right) => left - right
+      );
+      const lockedUsers = await tx.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`
+          SELECT id
+          FROM users
+          WHERE id IN (${Prisma.join(orderedUserIds)})
+            AND is_active = 1
+            AND deleted_at IS NULL
+          ORDER BY id
+          FOR UPDATE
+        `
+      );
+      if (lockedUsers.length !== 2) {
+        return { status: "target_unavailable" };
+      }
+      const activeIdentityCount = await tx.userIdentity.count({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          OR: [
+            { id: requesterIdentityId, userId: input.requesterUserId },
+            { id: targetIdentityId, userId: input.targetUserId }
+          ]
+        }
+      });
+      if (activeIdentityCount !== 2) {
+        return { status: "target_unavailable" };
+      }
+      const reciprocalContactCount = await tx.contact.count({
+        where: {
+          deletedAt: null,
+          OR: [
+            { ownerIdentityId: requesterIdentityId, contactIdentityId: targetIdentityId },
+            { ownerIdentityId: targetIdentityId, contactIdentityId: requesterIdentityId }
+          ]
+        }
+      });
+      if (reciprocalContactCount === 2) {
+        return { status: "already_friends" };
+      }
+      await this.expireDuePendingForPair(
+        tx,
+        input.requesterUserId,
+        requesterIdentityId,
+        targetIdentityId,
+        dbNow
+      );
+      const activePending = await tx.friendRequest.findFirst({
+        where: {
+          status: FriendRequestStatus.PENDING,
+          expiresAt: { gt: dbNow },
+          deletedAt: null,
+          OR: [
+            {
+              requesterIdentityId,
+              targetIdentityId
+            },
+            {
+              requesterIdentityId: targetIdentityId,
+              targetIdentityId: requesterIdentityId
+            }
+          ]
+        },
+        include: friendRequestInclude,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      });
+      if (activePending) {
+        return {
+          status: "ready",
+          result: {
+            friendRequest: this.mapFriendRequest(activePending, dbNow),
+            created: false
+          }
+        };
+      }
+      const expiresAt = new Date(dbNow.getTime() + 72 * 60 * 60 * 1_000);
       const friendRequest = await tx.friendRequest.create({
         data: {
           requesterUserId: input.requesterUserId,
           requesterIdentityId,
           targetUserId: input.targetUserId,
           targetIdentityId,
-          message: input.message?.trim() || null
-        }
+          message: input.message?.trim() || null,
+          expiresAt
+        },
+        include: friendRequestInclude
       });
       await tx.notification.create({
         data: {
@@ -1903,8 +2548,25 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           payload: { friendRequestId: friendRequest.id }
         }
       });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.requesterUserId,
+          action: "im.friend_request.created",
+          targetType: "FriendRequest",
+          targetId: friendRequest.id,
+          ip: null,
+          userAgent: null,
+          metadata: {
+            targetUserId: input.targetUserId,
+            expiresAt: friendRequest.expiresAt.toISOString()
+          }
+        }
+      });
 
-      return this.mapFriendRequest(friendRequest);
+      return {
+        status: "ready",
+        result: { friendRequest: this.mapFriendRequest(friendRequest, dbNow), created: true }
+      };
     });
   }
 
@@ -1913,14 +2575,37 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: FriendRequestListInput
   ): Promise<PaginatedResponse<FriendRequestPayload>> {
     const pagination = toPrismaPagination(input);
+    const databaseClock = await this.client.$queryRaw<Array<{ dbNow: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+    );
+    const dbNow = databaseClock[0]?.dbNow;
+    if (!dbNow) {
+      throw new Error("Database clock query returned no row");
+    }
+    const statusWhere: Prisma.FriendRequestWhereInput | undefined =
+      input.status === "pending"
+        ? { status: FriendRequestStatus.PENDING, expiresAt: { gt: dbNow } }
+        : input.status === "expired"
+          ? {
+              OR: [
+                { status: FriendRequestStatus.EXPIRED },
+                { status: FriendRequestStatus.PENDING, expiresAt: { lte: dbNow } }
+              ]
+            }
+          : input.status
+            ? { status: this.friendRequestStatusToDb(input.status) }
+            : undefined;
     const where: Prisma.FriendRequestWhereInput = {
-      deletedAt: null,
-      ...(input.status ? { status: this.friendRequestStatusToDb(input.status) } : {}),
-      ...this.friendRequestDirectionWhere(identityId, input.direction ?? "all")
+      AND: [
+        { deletedAt: null },
+        this.friendRequestDirectionWhere(identityId, input.direction ?? "all"),
+        ...(statusWhere ? [statusWhere] : [])
+      ]
     };
     const [list, total] = await Promise.all([
       this.client.friendRequest.findMany({
         where,
+        include: friendRequestInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
@@ -1929,7 +2614,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((friendRequest) => this.mapFriendRequest(friendRequest)),
+      list.map((friendRequest) => this.mapFriendRequest(friendRequest, dbNow)),
       total,
       pagination
     );
@@ -1937,19 +2622,59 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async respondToFriendRequest(
     input: RespondFriendRequestInput
-  ): Promise<FriendRequestPayload | null> {
+  ): Promise<RespondFriendRequestOutcome> {
     return this.client.$transaction(async (tx) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(tx, input.actorUserId);
+      if (!actorIdentityId) {
+        return { status: "not_found" };
+      }
+      const databaseClock = await tx.$queryRaw<Array<{ dbNow: Date }>>(
+        Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+      );
+      const dbNow = databaseClock[0]?.dbNow;
+      if (!dbNow) {
+        throw new Error("Database clock query returned no row");
+      }
+      await tx.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`
+          SELECT id
+          FROM friend_requests
+          WHERE id = ${input.id}
+          FOR UPDATE
+        `
+      );
       const friendRequest = await tx.friendRequest.findFirst({
         where: {
           id: input.id,
-          targetIdentityId: input.actorIdentityId ?? input.actorUserId,
+          targetIdentityId: actorIdentityId,
           status: FriendRequestStatus.PENDING,
           deletedAt: null
-        }
+        },
+        include: friendRequestInclude
       });
 
       if (!friendRequest) {
-        return null;
+        return { status: "not_found" };
+      }
+      if (friendRequest.expiresAt.getTime() <= dbNow.getTime()) {
+        const expired = await tx.friendRequest.update({
+          where: { id: friendRequest.id },
+          data: { status: FriendRequestStatus.EXPIRED, expiredAt: dbNow },
+          include: friendRequestInclude
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "im.friend_request.expired",
+            targetType: "FriendRequest",
+            targetId: friendRequest.id,
+            ip: null,
+            userAgent: null,
+            metadata: { source: "response_guard" }
+          }
+        });
+        return { status: "expired", friendRequest: this.mapFriendRequest(expired, dbNow) };
       }
 
       const status =
@@ -1958,8 +2683,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         where: { id: friendRequest.id },
         data: {
           status,
-          respondedAt: new Date()
-        }
+          respondedAt: dbNow
+        },
+        include: friendRequestInclude
       });
 
       if (input.action === "accept") {
@@ -1977,11 +2703,107 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             friendRequest.requesterUserId,
             friendRequest.targetIdentityId,
             friendRequest.requesterIdentityId
+          ),
+          this.upsertFollow(
+            tx,
+            friendRequest.requesterUserId,
+            friendRequest.targetUserId,
+            friendRequest.requesterIdentityId,
+            friendRequest.targetIdentityId
+          ),
+          this.upsertFollow(
+            tx,
+            friendRequest.targetUserId,
+            friendRequest.requesterUserId,
+            friendRequest.targetIdentityId,
+            friendRequest.requesterIdentityId
           )
         ]);
+        await this.restoreFriendshipConversationParticipants(
+          tx,
+          friendRequest.requesterUserId,
+          friendRequest.targetUserId,
+          friendRequest.requesterIdentityId,
+          friendRequest.targetIdentityId,
+          dbNow
+        );
       }
+      await tx.auditLog.create({
+        data: {
+          actorId: input.actorUserId,
+          action:
+            input.action === "accept" ? "im.friend_request.accepted" : "im.friend_request.rejected",
+          targetType: "FriendRequest",
+          targetId: friendRequest.id,
+          ip: null,
+          userAgent: null,
+          metadata: { requesterUserId: friendRequest.requesterUserId }
+        }
+      });
 
-      return this.mapFriendRequest(updated);
+      return {
+        status: "responded",
+        result: {
+          friendRequest: this.mapFriendRequest(updated, dbNow),
+          recipientUserIds: [friendRequest.requesterUserId, friendRequest.targetUserId]
+        }
+      };
+    });
+  }
+
+  public async expireDueFriendRequests(input: {
+    batchSize: number;
+  }): Promise<FriendRequestPayload[]> {
+    return this.client.$transaction(async (tx) => {
+      const candidates = await tx.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`
+          SELECT id
+          FROM friend_requests
+          WHERE status = 'pending'
+            AND expires_at <= CURRENT_TIMESTAMP(3)
+            AND deleted_at IS NULL
+          ORDER BY expires_at, id
+          LIMIT ${input.batchSize}
+          FOR UPDATE SKIP LOCKED
+        `
+      );
+      const ids = candidates.map((candidate) => candidate.id);
+      if (ids.length === 0) {
+        return [];
+      }
+      const databaseClock = await tx.$queryRaw<Array<{ dbNow: Date }>>(
+        Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+      );
+      const dbNow = databaseClock[0]?.dbNow;
+      if (!dbNow) {
+        throw new Error("Database clock query returned no row");
+      }
+      await tx.friendRequest.updateMany({
+        where: {
+          id: { in: ids },
+          status: FriendRequestStatus.PENDING,
+          expiresAt: { lte: dbNow },
+          deletedAt: null
+        },
+        data: { status: FriendRequestStatus.EXPIRED, expiredAt: dbNow }
+      });
+      await tx.auditLog.createMany({
+        data: ids.map((id) => ({
+          actorId: null,
+          action: "im.friend_request.expired",
+          targetType: "FriendRequest",
+          targetId: id,
+          ip: null,
+          userAgent: null,
+          metadata: { source: "expiry_worker" }
+        }))
+      });
+      const expired = await tx.friendRequest.findMany({
+        where: { id: { in: ids }, status: FriendRequestStatus.EXPIRED },
+        include: friendRequestInclude,
+        orderBy: [{ expiresAt: "asc" }, { id: "asc" }]
+      });
+      return expired.map((request) => this.mapFriendRequest(request, dbNow));
     });
   }
 
@@ -2687,6 +3509,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public async getUnreadCounts(identityId: number): Promise<UnreadCountsPayload> {
+    const databaseClock = await this.client.$queryRaw<Array<{ dbNow: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
+    );
+    const dbNow = databaseClock[0]?.dbNow;
+    if (!dbNow) {
+      throw new Error("Database clock query returned no row");
+    }
     const [conversationUnread, notifications, friendRequests] = await Promise.all([
       this.client.conversationParticipant.aggregate({
         where: {
@@ -2707,6 +3536,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         where: {
           targetIdentityId: identityId,
           status: FriendRequestStatus.PENDING,
+          expiresAt: { gt: dbNow },
           deletedAt: null
         }
       })
@@ -2804,33 +3634,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   private async findExistingDirectConversation(
     participantIdentityIds: number[]
   ): Promise<ConversationRecord | null> {
-    const candidates = await this.client.conversation.findMany({
+    if (participantIdentityIds.length !== 2) {
+      return null;
+    }
+
+    return this.client.conversation.findFirst({
       where: {
         type: ConversationType.DIRECT,
-        deletedAt: null,
-        participants: {
-          some: {
-            identityId: participantIdentityIds[0],
-            deletedAt: null
-          }
-        }
+        accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+        friendshipPairKey: toFriendshipPairKey(
+          participantIdentityIds[0]!,
+          participantIdentityIds[1]!
+        ),
+        deletedAt: null
       },
       include: this.conversationInclude(participantIdentityIds[0])
     });
-
-    return (
-      candidates.find((conversation) => {
-        const existingIds = conversation.participants
-          .filter((participant) => participant.deletedAt === null)
-          .map((participant) => participant.identityId)
-          .sort((left, right) => left - right);
-
-        return (
-          existingIds.length === participantIdentityIds.length &&
-          existingIds.every((identityId, index) => identityId === participantIdentityIds[index])
-        );
-      }) ?? null
-    );
   }
 
   private async findConversationParticipant(conversationId: number, identityId: number) {
@@ -2841,7 +3660,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         deletedAt: null,
         conversation: { deletedAt: null }
       },
-      select: { id: true, clearedThroughMessageId: true }
+      select: { id: true, clearedThroughMessageId: true, createdAt: true }
     });
   }
 
@@ -2865,6 +3684,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             WHERE cp.conversation_id = m.conversation_id
               AND cp.identity_id = ${input.identityId ?? input.userId}
               AND cp.deleted_at IS NULL
+              AND m.created_at >= cp.created_at
           )
         FOR UPDATE
       `
@@ -2912,6 +3732,141 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
+  private upsertFollow(
+    tx: Prisma.TransactionClient,
+    followerUserId: number,
+    followingUserId: number,
+    followerIdentityId: number,
+    followingIdentityId: number
+  ) {
+    return tx.follow.upsert({
+      where: {
+        followerIdentityId_followingIdentityId: {
+          followerIdentityId,
+          followingIdentityId
+        }
+      },
+      create: {
+        followerUserId,
+        followerIdentityId,
+        followingUserId,
+        followingIdentityId
+      },
+      update: { deletedAt: null }
+    });
+  }
+
+  private async restoreFriendshipConversationParticipants(
+    tx: Prisma.TransactionClient,
+    leftUserId: number,
+    rightUserId: number,
+    leftIdentityId: number,
+    rightIdentityId: number,
+    joinedAt: Date
+  ): Promise<void> {
+    const conversation = await tx.conversation.findFirst({
+      where: {
+        accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+        friendshipPairKey: toFriendshipPairKey(leftIdentityId, rightIdentityId),
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    if (!conversation) return;
+
+    const activeParticipants = await tx.conversationParticipant.findMany({
+      where: {
+        conversationId: conversation.id,
+        identityId: { in: [leftIdentityId, rightIdentityId] },
+        deletedAt: null
+      },
+      select: { identityId: true }
+    });
+    const activeIdentityIds = new Set(
+      activeParticipants.map((participant) => participant.identityId)
+    );
+    for (const participant of [
+      { userId: leftUserId, identityId: leftIdentityId },
+      { userId: rightUserId, identityId: rightIdentityId }
+    ]) {
+      if (activeIdentityIds.has(participant.identityId)) continue;
+      await tx.conversationParticipant.upsert({
+        where: {
+          conversationId_identityId: {
+            conversationId: conversation.id,
+            identityId: participant.identityId
+          }
+        },
+        create: {
+          conversationId: conversation.id,
+          userId: participant.userId,
+          identityId: participant.identityId,
+          role: "member",
+          createdAt: joinedAt
+        },
+        update: {
+          deletedAt: null,
+          createdAt: joinedAt,
+          hiddenAt: null,
+          clearedThroughMessageId: null,
+          lastReadMessageId: null,
+          lastReadAt: joinedAt,
+          unreadCount: 0,
+          isPinned: false,
+          isMuted: false
+        }
+      });
+    }
+  }
+
+  private async expireDuePendingForPair(
+    tx: Prisma.TransactionClient,
+    requesterUserId: number,
+    requesterIdentityId: number,
+    targetIdentityId: number,
+    dbNow: Date
+  ): Promise<void> {
+    const due = await tx.friendRequest.findMany({
+      where: {
+        status: FriendRequestStatus.PENDING,
+        expiresAt: { lte: dbNow },
+        deletedAt: null,
+        OR: [
+          { requesterIdentityId, targetIdentityId },
+          {
+            requesterIdentityId: targetIdentityId,
+            targetIdentityId: requesterIdentityId
+          }
+        ]
+      },
+      select: { id: true }
+    });
+    const dueIds = due.map((request) => request.id);
+    if (dueIds.length === 0) {
+      return;
+    }
+    await tx.friendRequest.updateMany({
+      where: {
+        id: { in: dueIds },
+        status: FriendRequestStatus.PENDING,
+        expiresAt: { lte: dbNow },
+        deletedAt: null
+      },
+      data: { status: FriendRequestStatus.EXPIRED, expiredAt: dbNow }
+    });
+    await tx.auditLog.createMany({
+      data: dueIds.map((id) => ({
+        actorId: requesterUserId,
+        action: "im.friend_request.expired",
+        targetType: "FriendRequest",
+        targetId: id,
+        ip: null,
+        userAgent: null,
+        metadata: { source: "new_request_guard" }
+      }))
+    });
+  }
+
   private upsertTechnicianApplicationContact(
     transaction: Prisma.TransactionClient,
     ownerUserId: number,
@@ -2954,7 +3909,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       },
       messages: {
         where: {
-          deletedAt: null,
+          ...this.availableMessageWhere(new Date()),
           ...(viewerIdentityId
             ? {
                 userDeletions: {
@@ -2972,11 +3927,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   private mapConversation(
     conversation: ConversationRecord,
-    viewerIdentityId: number
+    viewerIdentityId: number,
+    missingDirectPeer?: ParticipantPayload
   ): ConversationPayload {
     const viewer = conversation.participants.find(
       (participant) => participant.identityId === viewerIdentityId
     );
+    const activeDirectPeer =
+      conversation.type === ConversationType.DIRECT
+        ? conversation.participants.find(
+            (participant) => participant.identityId !== viewerIdentityId
+          )
+        : undefined;
 
     return {
       id: conversation.id,
@@ -2985,8 +3947,15 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       participants: conversation.participants.map((participant) =>
         this.mapParticipant(participant.user, participant.role)
       ),
+      directPeer:
+        conversation.type === ConversationType.DIRECT
+          ? activeDirectPeer
+            ? this.mapParticipant(activeDirectPeer.user, activeDirectPeer.role)
+            : (missingDirectPeer ?? null)
+          : null,
       lastMessage: conversation.messages[0]
         && conversation.messages[0].id > (viewer?.clearedThroughMessageId ?? 0)
+        && conversation.messages[0].createdAt.getTime() >= (viewer?.createdAt.getTime() ?? 0)
         ? this.mapMessage(conversation.messages[0], viewerIdentityId)
         : null,
       unreadCount: viewer?.unreadCount ?? 0,
@@ -3002,6 +3971,89 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
     };
+  }
+
+  private availableMessageWhere(now: Date): Prisma.MessageWhereInput {
+    return {
+      deletedAt: null,
+      expiredAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+    };
+  }
+
+  private getMissingDirectPeerIdentityId(
+    conversation: ConversationRecord,
+    viewerIdentityId: number
+  ): number | null {
+    if (
+      conversation.type !== ConversationType.DIRECT ||
+      conversation.participants.some(
+        (participant) => participant.identityId !== viewerIdentityId
+      ) ||
+      !conversation.friendshipPairKey
+    ) {
+      return null;
+    }
+
+    const pairIdentityIds = conversation.friendshipPairKey
+      .split(":")
+      .map((value) => Number(value));
+    if (
+      pairIdentityIds.length !== 2 ||
+      pairIdentityIds.some(
+        (identityId) => !Number.isInteger(identityId) || identityId <= 0
+      ) ||
+      !pairIdentityIds.includes(viewerIdentityId)
+    ) {
+      return null;
+    }
+
+    return pairIdentityIds.find((identityId) => identityId !== viewerIdentityId) ?? null;
+  }
+
+  private async loadMissingDirectPeers(
+    conversations: ConversationRecord[],
+    viewerIdentityId: number
+  ): Promise<Map<number, ParticipantPayload>> {
+    const missingPeerIdentityIdByConversationId = new Map<number, number>();
+    for (const conversation of conversations) {
+      const peerIdentityId = this.getMissingDirectPeerIdentityId(
+        conversation,
+        viewerIdentityId
+      );
+      if (peerIdentityId) {
+        missingPeerIdentityIdByConversationId.set(conversation.id, peerIdentityId);
+      }
+    }
+    if (missingPeerIdentityIdByConversationId.size === 0) return new Map();
+
+    const identities = await this.client.userIdentity.findMany({
+      where: {
+        id: {
+          in: Array.from(new Set(missingPeerIdentityIdByConversationId.values()))
+        },
+        isActive: true,
+        deletedAt: null,
+        user: { isActive: true, deletedAt: null }
+      },
+      select: {
+        id: true,
+        user: {
+          select: { id: true, needoId: true, username: true, avatarUrl: true }
+        }
+      }
+    });
+    const participantByIdentityId = new Map(
+      identities.map(
+        (identity) => [identity.id, this.mapParticipant(identity.user)] as const
+      )
+    );
+    const peerByConversationId = new Map<number, ParticipantPayload>();
+    for (const [conversationId, peerIdentityId] of missingPeerIdentityIdByConversationId) {
+      const participant = participantByIdentityId.get(peerIdentityId);
+      if (participant) peerByConversationId.set(conversationId, participant);
+    }
+    return peerByConversationId;
   }
 
   private mapMessage(
@@ -3041,18 +4093,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       type: this.messageTypeFromDb(message.type),
       content: message.content,
       metadata: message.metadata,
-      reactions: Array.from(reactions.entries()).map(([emoji, people]) => ({
-        emoji,
-        people,
-        reactedByMe: message.reactions.some(
-          (reaction) => reaction.emoji === emoji && reaction.identityId === viewerIdentityId
-        )
-      })),
+      reactions: Array.from(reactions.entries())
+        .sort(([left], [right]) => compareMessageReactionCategories(left, right))
+        .map(([emoji, people]) => ({
+          emoji,
+          people,
+          reactedByMe: message.reactions.some(
+            (reaction) =>
+              reaction.emoji === emoji && reaction.identityId === viewerIdentityId
+          )
+        })),
+      expiresAt: message.expiresAt,
       createdAt: message.createdAt,
       recallDeadlineAt: message.recallDeadlineAt,
       recalledAt: message.recalledAt,
       recallMode,
       contentPurgedAt: message.contentPurgedAt,
+      privacyPolicyVersionAtSend: message.privacyPolicyVersionAtSend,
       lifecycleVersion: message.lifecycleVersion,
       reactionVersion: message.reactionVersion,
       availableRecallModes: canRecall ? ["standard"] : []
@@ -3089,16 +4146,166 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     };
   }
 
-  private mapFriendRequest(friendRequest: FriendRequestRecord): FriendRequestPayload {
+  private async buildDirectoryIdentityCard(
+    user: DirectoryProfileUserRecord
+  ): Promise<DirectoryIdentityCardPayload> {
+    const identity =
+      user.identities.find((item) =>
+        ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(
+          item.type
+        )
+      ) ?? user.identities[0];
+    const fallback: DirectoryIdentityCardPayload = {
+      entityType: "account",
+      profileId: null,
+      displayName: user.username,
+      identityLabel: identity?.type ?? null,
+      verified: false,
+      creditValue: null,
+      creditReviewCount: 0,
+      gender: null,
+      age: null,
+      heightCm: null,
+      languages: [],
+      city: null,
+      serviceArea: null,
+      yearsExperience: null,
+      bio: null
+    };
+
+    if (identity?.type === "customer") {
+      const profile = user.customerProfile;
+      if (
+        !profile ||
+        profile.deletedAt !== null ||
+        !profile.isPublic ||
+        profile.visibility !== "public"
+      ) {
+        return fallback;
+      }
+      const review = profile.reviewSummary?.deletedAt === null
+        ? profile.reviewSummary
+        : null;
+      return {
+        entityType: "user",
+        profileId: profile.id,
+        displayName: profile.displayName,
+        identityLabel: profile.membershipLevel,
+        verified: false,
+        creditValue: review?.ratingAverage.toString() ?? null,
+        creditReviewCount: review?.reviewCount ?? 0,
+        gender: profile.gender === "private" ? null : profile.gender,
+        age: profile.age,
+        heightCm: profile.heightCm?.toString() ?? null,
+        languages: toDirectoryLanguages(profile.languages),
+        city: profile.city,
+        serviceArea: null,
+        yearsExperience: null,
+        bio: profile.bio
+      };
+    }
+
+    if (identity?.type === "technician") {
+      const profile = user.technicianProfile;
+      if (!profile || profile.deletedAt !== null || profile.status !== "published") {
+        return fallback;
+      }
+      const review = profile.reviewSummary?.deletedAt === null
+        ? profile.reviewSummary
+        : null;
+      return {
+        entityType: "technician",
+        profileId: profile.id,
+        displayName: profile.displayName,
+        identityLabel: profile.employmentType,
+        verified: profile.verifiedAt !== null,
+        creditValue: review?.ratingAverage.toString() ?? null,
+        creditReviewCount: review?.reviewCount ?? 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: profile.city,
+        serviceArea: profile.serviceArea,
+        yearsExperience: profile.yearsExperience,
+        bio: profile.bio
+      };
+    }
+
+    if (
+      identity &&
+      ["merchant", "merchant_owner", "merchant_staff"].includes(identity.type) &&
+      identity.scopeType === "shop" &&
+      identity.scopeId !== null
+    ) {
+      const shop = await this.client.shop.findFirst({
+        where: {
+          id: identity.scopeId,
+          status: "published",
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          city: true,
+          address: true,
+          reviewSummary: {
+            select: {
+              ratingAverage: true,
+              reviewCount: true,
+              deletedAt: true
+            }
+          }
+        }
+      });
+      if (shop) {
+        const review = shop.reviewSummary?.deletedAt === null
+          ? shop.reviewSummary
+          : null;
+        return {
+          entityType: "shop",
+          profileId: shop.id,
+          displayName: shop.name,
+          identityLabel: identity.type,
+          verified: true,
+          creditValue: review?.ratingAverage.toString() ?? null,
+          creditReviewCount: review?.reviewCount ?? 0,
+          gender: null,
+          age: null,
+          heightCm: null,
+          languages: [],
+          city: shop.city,
+          serviceArea: shop.address,
+          yearsExperience: null,
+          bio: shop.description
+        };
+      }
+    }
+
+    return fallback;
+  }
+
+  private mapFriendRequest(friendRequest: FriendRequestRecord, dbNow?: Date): FriendRequestPayload {
+    const effectivelyExpired =
+      friendRequest.status === FriendRequestStatus.PENDING &&
+      dbNow !== undefined &&
+      friendRequest.expiresAt.getTime() <= dbNow.getTime();
     return {
       id: friendRequest.id,
       requesterUserId: friendRequest.requesterUserId,
       requesterIdentityId: friendRequest.requesterIdentityId,
       targetUserId: friendRequest.targetUserId,
       targetIdentityId: friendRequest.targetIdentityId,
-      status: this.friendRequestStatusFromDb(friendRequest.status),
+      requester: this.mapParticipant(friendRequest.requester),
+      target: this.mapParticipant(friendRequest.target),
+      status: effectivelyExpired ? "expired" : this.friendRequestStatusFromDb(friendRequest.status),
       message: friendRequest.message,
       respondedAt: friendRequest.respondedAt,
+      expiresAt: friendRequest.expiresAt,
+      expiredAt: effectivelyExpired
+        ? (friendRequest.expiredAt ?? friendRequest.expiresAt)
+        : friendRequest.expiredAt,
       createdAt: friendRequest.createdAt
     };
   }
@@ -3310,6 +4517,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (status === "rejected") {
       return FriendRequestStatus.REJECTED;
     }
+    if (status === "expired") {
+      return FriendRequestStatus.EXPIRED;
+    }
 
     return FriendRequestStatus.PENDING;
   }
@@ -3320,6 +4530,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
     if (status === FriendRequestStatus.REJECTED) {
       return "rejected";
+    }
+    if (status === FriendRequestStatus.EXPIRED) {
+      return "expired";
     }
 
     return "pending";

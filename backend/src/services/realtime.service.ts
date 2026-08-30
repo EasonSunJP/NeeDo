@@ -84,7 +84,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
       }))
     );
 
-    return this.repository.createConversation({
+    const outcome = await this.repository.createConversation({
       creatorUserId: auth.userId,
       creatorIdentityId: scope.identityId,
       type: input.type,
@@ -96,6 +96,14 @@ export class RealtimeService implements OrderStatusNotificationPort {
       disappearingTtlSeconds: input.disappearingTtlSeconds,
       disappearingStartMode: input.disappearingStartMode
     });
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    return outcome.conversation;
   }
 
   public async updateConversationPrivacy(
@@ -235,15 +243,23 @@ export class RealtimeService implements OrderStatusNotificationPort {
       });
     }
 
-    const message = await this.repository.createMessage({
+    const outcome = await this.repository.createMessage({
       ...input,
       senderUserId: auth.userId,
       senderIdentityId: scope.identityId
     });
 
-    if (!message) {
+    if (outcome.status === "not_found") {
       throw this.notFoundError("error.realtime.conversation_not_found");
     }
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    const { message } = outcome;
 
     await this.publishToConversation(
       input.conversationId,
@@ -290,21 +306,32 @@ export class RealtimeService implements OrderStatusNotificationPort {
     input: Omit<MessageReactionMutationInput, "userId">
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const message = await this.repository.setMessageReaction({
+    const outcome = await this.repository.setMessageReaction({
       ...input,
       userId: auth.userId,
       identityId: scope.identityId
     });
-    if (!message) throw this.notFoundError("error.realtime.message_not_found");
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.message_not_found");
+    }
+    if (outcome.status === "slot_occupied") {
+      throw new AppError({
+        code: ERROR_CODES.MESSAGE_REACTION_SLOT_OCCUPIED,
+        message: "error.im.reaction_slot_occupied",
+        statusCode: 409
+      });
+    }
 
-    await this.publishToConversation(
-      input.conversationId,
-      "message.reaction.updated",
-      message,
-      auth.userId,
-      scope.identityId
-    );
-    return message;
+    if (outcome.status === "updated") {
+      await this.publishToConversation(
+        input.conversationId,
+        "message.reaction.updated",
+        outcome.message,
+        auth.userId,
+        scope.identityId
+      );
+    }
+    return outcome.message;
   }
 
   public async removeMessageReaction(
@@ -312,21 +339,25 @@ export class RealtimeService implements OrderStatusNotificationPort {
     input: Omit<MessageReactionMutationInput, "userId">
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const message = await this.repository.removeMessageReaction({
+    const outcome = await this.repository.removeMessageReaction({
       ...input,
       userId: auth.userId,
       identityId: scope.identityId
     });
-    if (!message) throw this.notFoundError("error.realtime.message_not_found");
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.message_not_found");
+    }
 
-    await this.publishToConversation(
-      input.conversationId,
-      "message.reaction.updated",
-      message,
-      auth.userId,
-      scope.identityId
-    );
-    return message;
+    if (outcome.status === "updated") {
+      await this.publishToConversation(
+        input.conversationId,
+        "message.reaction.updated",
+        outcome.message,
+        auth.userId,
+        scope.identityId
+      );
+    }
+    return outcome.message;
   }
 
   public async recallMessage(
@@ -457,28 +488,22 @@ export class RealtimeService implements OrderStatusNotificationPort {
     });
   }
 
-  public async addContact(auth: AuthenticatedAccessContext, contactUserId: number) {
-    if (auth.userId === contactUserId) {
+  public async getDirectoryProfile(auth: AuthenticatedAccessContext, targetUserId: number) {
+    if (auth.userId === targetUserId) {
       throw this.validationError("error.realtime.contact_self");
     }
-
-    await this.assertActiveUsers([contactUserId]);
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const contact = await this.repository.addContact({
-      ownerUserId: auth.userId,
-      ownerIdentityId: scope.identityId,
-      contactUserId,
-      source: "manual"
-    });
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: "contact.updated",
-      recipientUserId: auth.userId,
-      recipientIdentityId: scope.identityId,
-      payload: contact,
-      createdAt: new Date().toISOString()
-    });
-    return contact;
+    const targetIdentityId = await this.requireCanonicalTargetIdentity(targetUserId);
+    const profile = await this.repository.getDirectoryProfile(
+      auth.userId,
+      scope.identityId,
+      targetUserId,
+      targetIdentityId
+    );
+    if (!profile) {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    return profile;
   }
 
   public async setContactBlocked(
@@ -515,14 +540,19 @@ export class RealtimeService implements OrderStatusNotificationPort {
     });
     if (!contact) throw this.notFoundError("error.realtime.contact_not_found");
 
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: "contact.updated",
-      recipientUserId: auth.userId,
-      recipientIdentityId: scope.identityId,
-      payload: contact,
-      createdAt: new Date().toISOString()
-    });
+    for (const recipient of [
+      { userId: contact.actorUserId, identityId: contact.actorIdentityId },
+      { userId: contact.counterpartUserId, identityId: contact.counterpartIdentityId }
+    ]) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "friendship.deleted",
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
+        payload: contact,
+        createdAt: new Date().toISOString()
+      });
+    }
     return contact;
   }
 
@@ -537,23 +567,31 @@ export class RealtimeService implements OrderStatusNotificationPort {
     await this.assertActiveUsers([input.targetUserId]);
     const scope = await this.resolvePersonalIdentityScope(auth);
     const targetIdentityId = await this.requireCanonicalTargetIdentity(input.targetUserId);
-    const friendRequest = await this.repository.createFriendRequest({
+    const outcome = await this.repository.createFriendRequest({
       requesterUserId: auth.userId,
       requesterIdentityId: scope.identityId,
       targetUserId: input.targetUserId,
       targetIdentityId,
       message: input.message
     });
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: "friend_request.created",
-      recipientUserId: input.targetUserId,
-      recipientIdentityId: targetIdentityId,
-      payload: friendRequest,
-      createdAt: new Date().toISOString()
-    });
+    if (outcome.status === "target_unavailable") {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    if (outcome.status === "already_friends") {
+      throw this.validationError("error.realtime.already_friends");
+    }
+    if (outcome.result.created) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "friend_request.created",
+        recipientUserId: input.targetUserId,
+        recipientIdentityId: targetIdentityId,
+        payload: outcome.result.friendRequest,
+        createdAt: new Date().toISOString()
+      });
+    }
 
-    return friendRequest;
+    return outcome.result;
   }
 
   public async listFriendRequests(auth: AuthenticatedAccessContext, input: FriendRequestListInput) {
@@ -567,27 +605,52 @@ export class RealtimeService implements OrderStatusNotificationPort {
     action: "accept" | "reject"
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const friendRequest = await this.repository.respondToFriendRequest({
+    const outcome = await this.repository.respondToFriendRequest({
       id,
       actorUserId: auth.userId,
       actorIdentityId: scope.identityId,
       action
     });
 
-    if (!friendRequest) {
+    if (outcome.status === "not_found") {
       throw this.notFoundError("error.realtime.friend_request_not_found");
     }
+    if (outcome.status === "expired") {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.realtime.friend_request_expired",
+        statusCode: 409
+      });
+    }
 
-    this.eventGateway.publish({
-      id: this.createEventId(),
-      type: `friend_request.${friendRequest.status}`,
-      recipientUserId: friendRequest.requesterUserId,
-      recipientIdentityId: friendRequest.requesterIdentityId,
-      payload: friendRequest,
-      createdAt: new Date().toISOString()
-    });
+    const request = outcome.result.friendRequest;
+    for (const recipient of [
+      { userId: request.requesterUserId, identityId: request.requesterIdentityId },
+      { userId: request.targetUserId, identityId: request.targetIdentityId }
+    ]) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: `friend_request.${outcome.result.friendRequest.status}`,
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
+        payload: outcome.result.friendRequest,
+        createdAt: new Date().toISOString()
+      });
+      if (outcome.result.friendRequest.status === "accepted") {
+        for (const type of ["contact.updated", "social.follow.updated"] as const) {
+          this.eventGateway.publish({
+            id: this.createEventId(),
+            type,
+            recipientUserId: recipient.userId,
+            recipientIdentityId: recipient.identityId,
+            payload: outcome.result.friendRequest,
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
+    }
 
-    return friendRequest;
+    return outcome.result.friendRequest;
   }
 
   public async createSocialPost(

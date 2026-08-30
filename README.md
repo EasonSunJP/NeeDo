@@ -172,6 +172,14 @@ capacity tier.
 
 All portals require a formal authenticated session. Local preview, acceptance, and production use the same authorization path.
 
+### Formal friend verification
+
+Adding a contact now uses the persisted Step 13 friend-request flow rather than direct Contact creation. Search opens the target's formal identity profile first; a request remains actionable for exactly 72 hours by database UTC time. Repeating the same pending request does not refresh its timestamp or notification, while rejection permits immediate reapplication and expiry permits a newly notified request. Acceptance atomically creates reciprocal Contact and Follow rows.
+
+Deleting a friendship physically removes both Contact directions and both Follow directions. It also removes only the deleter's participant row from the friendship conversation, so the deleter loses the one-to-one conversation and history entry while the other account retains its history. A retained non-friend conversation cannot send new messages: the backend returns `error.im.not_friends` before message, unread, or SSE writes. Re-acceptance creates a new participant history boundary and does not restore the deleter's old history. Manual Social follow/unfollow remains independent from Contact after friendship creation.
+
+The chat information page reads the same formal directory profile and renders the contact's customer, technician, shop, or safe account identity card. It shows the persisted credit review summary and public identity fields only; points, usage count, and the personal-profile privacy toggle are not included. Full state, API, migration, and acceptance rules are documented in [`docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`](docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md#616-好友验证双向解除与身份资料卡2026-08-30).
+
 ## Formal Merchant Employee Affiliations
 
 Merchant employee identity is now founded on one global technician profile, its canonical `s##########` NeeDoID, and shop-scoped `TechnicianShopAffiliation` rows. The protected `/api/v1/merchant-admin/employees` list/detail/profile/affiliation routes derive the shop only from the active authenticated identity; profile edits are field-limited and audited, while affiliation writes enforce exclusive-versus-partner rules inside a locked database transaction and preserve ended relationships as history.

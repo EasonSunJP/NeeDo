@@ -53,38 +53,50 @@ describe("RealtimeService personal identity scope", () => {
     }));
   });
 
-  it("writes a contact and message with server-derived identity ownership", async () => {
-    const contact = { id: 4, ownerUserId: 7, ownerIdentityId: 70, contactUserId: 8 };
+  it("writes a friend request and message with server-derived identity ownership", async () => {
+    const friendRequest = {
+      id: 4,
+      requesterUserId: 7,
+      requesterIdentityId: 70,
+      targetUserId: 8,
+      targetIdentityId: 80,
+      status: "pending" as const
+    };
     const message = { id: 5, conversationId: 99, senderUserId: 7 };
     const repository = {
       findActiveUserIds: jest.fn(async () => [8]),
-      addContact: jest.fn(async () => contact),
+      findCanonicalIdentityIdForUser: jest.fn(async () => 80),
+      createFriendRequest: jest.fn(async () => ({
+        status: "ready" as const,
+        result: { friendRequest, created: true }
+      })),
       isMessageSenderBlocked: jest.fn(async () => false),
       createMessage: jest.fn(async () => message),
       getConversationForUser: jest.fn(async () => ({ participants: [] }))
     };
     const service = new RealtimeService(repository as never, eventGateway as never, scopeResolver as never);
 
-    await service.addContact(auth, 8);
+    await service.createFriendRequest(auth, { targetUserId: 8 });
     await service.createMessage(auth, {
       conversationId: 99,
       type: "text",
       content: "formal"
     });
 
-    expect(repository.addContact).toHaveBeenCalledWith({
-      contactUserId: 8,
-      ownerIdentityId: 70,
-      ownerUserId: 7,
-      source: "manual"
+    expect(repository.createFriendRequest).toHaveBeenCalledWith({
+      requesterIdentityId: 70,
+      requesterUserId: 7,
+      targetIdentityId: 80,
+      targetUserId: 8,
+      message: undefined
     });
     expect(repository.createMessage).toHaveBeenCalledWith(expect.objectContaining({
       senderIdentityId: 70,
       senderUserId: 7
     }));
     expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      recipientIdentityId: 70,
-      type: "contact.updated"
+      recipientIdentityId: 80,
+      type: "friend_request.created"
     }));
   });
 

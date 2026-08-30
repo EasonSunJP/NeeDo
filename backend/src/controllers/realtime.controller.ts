@@ -4,7 +4,6 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   contactIdParamSchema,
-  contactCreateBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
@@ -13,6 +12,7 @@ import {
   conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
   directorySearchQuerySchema,
+  directoryUserIdParamSchema,
   followCreateBodySchema,
   followTargetParamSchema,
   friendRequestCreateBodySchema,
@@ -199,13 +199,10 @@ export class RealtimeController {
     )
   );
 
-  public addContact = this.createHandler(
-    (request, response) => {
-      const body = contactCreateBodySchema.parse(request.body);
-      return this.service.addContact(getAuthenticatedAccess(response), body.targetUserId);
-    },
-    201
-  );
+  public getDirectoryProfile = this.createHandler((request, response) => {
+    const params = directoryUserIdParamSchema.parse(request.params);
+    return this.service.getDirectoryProfile(getAuthenticatedAccess(response), params.userId);
+  });
 
   public blockContact = this.createHandler((request, response) => {
     const params = contactIdParamSchema.parse(request.params);
@@ -237,13 +234,11 @@ export class RealtimeController {
     )
   );
 
-  public createFriendRequest = this.createHandler(
-    (request, response) =>
-      this.service.createFriendRequest(
-        getAuthenticatedAccess(response),
-        friendRequestCreateBodySchema.parse(request.body)
-      ),
-    201
+  public createFriendRequest = this.createHandler((request, response) =>
+    this.service.createFriendRequest(
+      getAuthenticatedAccess(response),
+      friendRequestCreateBodySchema.parse(request.body)
+    )
   );
 
   public acceptFriendRequest = this.createHandler((request, response) => {

@@ -1,7 +1,15 @@
 import type { PrismaClient } from "@prisma/client";
-import { RealtimeRepository } from "../src/repositories/realtime.repository";
+import {
+  RealtimeRepository,
+  toFriendshipPairKey
+} from "../src/repositories/realtime.repository";
 
 describe("RealtimeRepository technician application contact", () => {
+  it("normalizes friendship conversation pairs deterministically", () => {
+    expect(toFriendshipPairKey(30, 7)).toBe("7:30");
+    expect(toFriendshipPairKey(7, 30)).toBe("7:30");
+  });
+
   it("upserts bilateral contacts and reuses the exact existing direct conversation", async () => {
     const tx = {
       userIdentity: {
@@ -75,6 +83,8 @@ describe("RealtimeRepository technician application contact", () => {
     expect(tx.conversation.create).toHaveBeenCalledWith({
       data: {
         type: "DIRECT",
+        accessPolicy: "BUSINESS_CONTEXT",
+        friendshipPairKey: null,
         createdByUserId: 31,
         createdByIdentityId: 131,
         participants: {

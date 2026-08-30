@@ -122,6 +122,82 @@ describe("formal IM adapter", () => {
     );
   });
 
+  it("keeps a deleted friendship peer as the title of the retained direct history", async () => {
+    vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
+      list: [
+        {
+          id: 91,
+          type: "direct",
+          title: null,
+          participants: [
+            {
+              userId: 100,
+              needoId: "u0000000100",
+              username: "保留历史的一方",
+              avatarUrl: null,
+            },
+          ],
+          directPeer: {
+            userId: 201,
+            needoId: "u0000000201",
+            username: "已删除好友关系的一方",
+            avatarUrl: "/avatars/former-peer.png",
+          },
+          lastMessage: {
+            id: 501,
+            conversationId: 91,
+            senderUserId: 201,
+            type: "text",
+            content: "删除前的历史消息",
+            metadata: null,
+            createdAt: now,
+          },
+          unreadCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listContacts").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listFriendRequests").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+
+    const bootstrap = await createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "保留历史的一方",
+        avatarUrl: null,
+      },
+      scope: "user",
+    }).bootstrap();
+
+    expect(bootstrap.conversations[0]).toMatchObject({
+      id: "91",
+      type: "single",
+      contactUserId: "201",
+      title: "已删除好友关系的一方",
+      avatar: "/avatars/former-peer.png",
+      lastMessagePreview: "删除前的历史消息",
+    });
+    expect(bootstrap.users.find((user) => user.id === "201")).toMatchObject({
+      nickname: "已删除好友关系的一方",
+      avatar: "/avatars/former-peer.png",
+    });
+  });
+
   it("maps rich formal last messages to safe conversation previews", async () => {
     const participants = [
       {
@@ -250,13 +326,16 @@ describe("formal IM adapter", () => {
     });
   });
 
-  it("soft-deletes an owned formal contact through the persisted API", async () => {
+  it("hard-deletes an owned formal friendship through the persisted API", async () => {
     const request = vi.spyOn(httpClient, "request").mockResolvedValue({
-      contactId: 31,
-      contactUserId: 201,
+      actorUserId: 100,
+      counterpartUserId: 201,
+      contactIds: [31, 32],
+      deletedContactCount: 2,
+      deletedFollowCount: 2,
+      deletedConversationId: 91,
       deleted: true,
       deletedAt: now,
-      ownerUserId: 100,
     });
     const api = createFormalImApi({
       currentUser: {
@@ -269,12 +348,9 @@ describe("formal IM adapter", () => {
     });
 
     await expect(api.deleteContact("31")).resolves.toEqual({
-      contact: expect.objectContaining({
-        id: "31",
-        ownerUserId: "100",
-        relationStatus: "deleted",
-        targetUserId: "201",
-      }),
+      contactId: "31",
+      counterpartUserId: "201",
+      deletedConversationId: "91",
     });
     expect(request).toHaveBeenCalledWith("/im/contacts/31", {
       method: "DELETE",
@@ -712,6 +788,44 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("maps server-authoritative group privacy expiry into a visible sent-time countdown", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-created-privacy-1",
+        type: "message.created",
+        payload: {
+          id: 702,
+          conversationId: 91,
+          senderUserId: 201,
+          type: "text",
+          content: "两分钟后消失",
+          metadata: {
+            needoMessageExt: {
+              disappearing: { expiresAt: "2099-01-01T00:00:00.000Z" },
+            },
+          },
+          expiresAt: "2026-08-25T10:02:00.000Z",
+          privacyPolicyVersionAtSend: 4,
+          reactions: [],
+          createdAt: now,
+        },
+      }),
+    ).toMatchObject({
+      type: "message.created",
+      message: {
+        id: "702",
+        ext: {
+          disappearing: {
+            mode: "sent",
+            countdown: { months: 0, days: 0, hours: 0, minutes: 2 },
+            startedAt: now,
+            expiresAt: "2026-08-25T10:02:00.000Z",
+          },
+        },
+      },
+    });
+  });
+
   it("turns a connected event into one bounded catch-up refresh", () => {
     expect(
       toFormalImStoreUpdate({
@@ -831,21 +945,52 @@ describe("formal IM adapter", () => {
     expect(searchDirectory).toHaveBeenCalledTimes(2);
   });
 
-  it("persists a discovered user as a contact and maps the returned relation", async () => {
-    const addContact = vi.spyOn(realtimeApi, "addContact").mockResolvedValue({
-      id: 31,
-      ownerUserId: 100,
-      contactUserId: 201,
-      contactUser: {
+  it("loads a directory profile and sends a verified friend request", async () => {
+    const target = {
         userId: 201,
         needoId: "u0000000167",
         username: "小松 美咲",
         avatarUrl: null,
-      },
-      nickname: null,
-      source: "manual",
-      isBlocked: false,
+    };
+    const friendRequest = {
+      id: 51,
+      requesterUserId: 100,
+      targetUserId: 201,
+      requester: { userId: 100, needoId: "u0000000100", username: "测试用户", avatarUrl: null },
+      target,
+      status: "pending" as const,
+      message: null,
+      respondedAt: null,
+      expiresAt: "2026-08-28T10:00:00.000Z",
+      expiredAt: null,
       createdAt: now,
+    };
+    const getDirectoryProfile = vi.spyOn(realtimeApi, "getDirectoryProfile").mockResolvedValue({
+      user: target,
+      relationship: "none",
+      contactId: null,
+      friendRequest: null,
+      identityCard: {
+        entityType: "user",
+        profileId: 73,
+        displayName: "小松 美咲",
+        identityLabel: "premium",
+        verified: false,
+        creditValue: "4.80",
+        creditReviewCount: 28,
+        gender: "female",
+        age: 25,
+        heightCm: "164.00",
+        languages: ["日本語", "中文"],
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: null,
+        bio: "预约前请先确认时间。",
+      },
+    });
+    const createFriendRequest = vi.spyOn(realtimeApi, "createFriendRequest").mockResolvedValue({
+      friendRequest,
+      created: true,
     });
     const api = createFormalImApi({
       currentUser: {
@@ -857,10 +1002,33 @@ describe("formal IM adapter", () => {
       scope: "user",
     });
 
-    await expect(api.addContact("201")).resolves.toEqual({
-      contact: expect.objectContaining({ targetUserId: "201", relationStatus: "active" }),
+    await expect(api.getDirectoryProfile("201")).resolves.toEqual({
+      user: expect.objectContaining({ id: "201", nickname: "小松 美咲" }),
+      relationship: "none",
+      identityCard: {
+        entityType: "user",
+        profileId: "73",
+        displayName: "小松 美咲",
+        identityLabel: "premium",
+        verified: false,
+        creditValue: 4.8,
+        creditReviewCount: 28,
+        gender: "female",
+        age: 25,
+        heightCm: 164,
+        languages: ["日本語", "中文"],
+        city: "东京",
+        serviceArea: undefined,
+        yearsExperience: undefined,
+        bio: "预约前请先确认时间。",
+      },
     });
-    expect(addContact).toHaveBeenCalledWith(201);
+    await expect(api.sendFriendRequest("201")).resolves.toMatchObject({
+      friendRequest: { id: "51", expiresAt: friendRequest.expiresAt },
+      created: true,
+    });
+    expect(getDirectoryProfile).toHaveBeenCalledWith(201);
+    expect(createFriendRequest).toHaveBeenCalledWith({ targetUserId: 201 });
   });
 
   it("uploads a selected image instead of invoking the unavailable placeholder", async () => {
@@ -1020,6 +1188,7 @@ describe("formal IM adapter", () => {
       type: "message.reaction.updated",
     };
     expect(shouldForwardFormalImEvent(reactionEvent)).toBe(true);
+    expect(shouldForwardFormalImEvent({ id: "3", payload: {}, type: "friendship.deleted" })).toBe(true);
     expect(toFormalImStoreUpdate(reactionEvent)).toMatchObject({
       type: "message.updated",
       message: { id: "501" },

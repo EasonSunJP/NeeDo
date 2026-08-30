@@ -25,28 +25,267 @@ describe("RealtimeService fuzzy search", () => {
     });
   });
 
-  it("creates a manual contact for another active user and publishes the update", async () => {
-    const contact = { id: 31, ownerUserId: 41, contactUserId: 167 };
+  it("loads a safe directory profile for another user", async () => {
+    const profile = {
+      user: { userId: 167, needoId: "u0000000167", username: "Target", avatarUrl: null },
+      identityCard: {
+        entityType: "account" as const,
+        profileId: null,
+        displayName: "Target",
+        identityLabel: null,
+        verified: false,
+        creditValue: null,
+        creditReviewCount: 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: null,
+        serviceArea: null,
+        yearsExperience: null,
+        bio: null
+      },
+      relationship: "none" as const,
+      contactId: null,
+      friendRequest: null
+    };
     const repository = {
-      findActiveUserIds: jest.fn(async () => [167]),
-      addContact: jest.fn(async () => contact)
+      findCanonicalIdentityIdForUser: jest.fn(async () => 1670),
+      getDirectoryProfile: jest.fn(async () => profile)
     };
     const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, eventGateway);
 
-    await expect(service.addContact({ userId: 41 } as never, 167)).resolves.toBe(contact);
+    await expect(
+      service.getDirectoryProfile({ userId: 41, currentIdentityId: 410 } as never, 167)
+    ).resolves.toBe(profile);
 
-    expect(repository.addContact).toHaveBeenCalledWith({
-      contactUserId: 167,
-      ownerIdentityId: 41,
-      ownerUserId: 41,
-      source: "manual"
+    expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 410, 167, 1670);
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("RealtimeService friend request lifecycle", () => {
+  const friendRequest = {
+    id: 19,
+    requesterUserId: 41,
+    requesterIdentityId: 410,
+    targetUserId: 167,
+    targetIdentityId: 1670,
+    status: "pending" as const
+  };
+
+  it("publishes only when a new request was created", async () => {
+    const repository = {
+      findActiveUserIds: jest.fn(async () => [167]),
+      findCanonicalIdentityIdForUser: jest.fn(async () => 1670),
+      createFriendRequest: jest.fn(async () => ({
+        status: "ready" as const,
+        result: { friendRequest, created: false }
+      }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+    const auth = { userId: 41, currentIdentityId: 410 } as never;
+
+    await expect(
+      service.createFriendRequest(auth, { targetUserId: 167 })
+    ).resolves.toEqual({ friendRequest, created: false });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+
+    repository.createFriendRequest.mockResolvedValueOnce({
+      status: "ready",
+      result: { friendRequest, created: true }
     });
-    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      payload: contact,
-      recipientUserId: 41,
-      type: "contact.updated"
-    }));
+    await service.createFriendRequest(auth, { targetUserId: 167 });
+    expect(eventGateway.publish).toHaveBeenCalledTimes(1);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "friend_request.created",
+        recipientUserId: 167,
+        recipientIdentityId: 1670,
+        payload: friendRequest
+      })
+    );
+  });
+
+  it("publishes an accepted request to both identities", async () => {
+    const accepted = { ...friendRequest, status: "accepted" as const };
+    const repository = {
+      respondToFriendRequest: jest.fn(async () => ({
+        status: "responded" as const,
+        result: { friendRequest: accepted, recipientUserIds: [41, 167] }
+      }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.respondToFriendRequest(
+        { userId: 167, currentIdentityId: 1670 } as never,
+        19,
+        "accept"
+      )
+    ).resolves.toBe(accepted);
+    expect(eventGateway.publish).toHaveBeenCalledTimes(6);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "friend_request.accepted",
+        recipientUserId: 41,
+        recipientIdentityId: 410
+      })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "friend_request.accepted",
+        recipientUserId: 167,
+        recipientIdentityId: 1670
+      })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "contact.updated", recipientIdentityId: 410 })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "social.follow.updated", recipientIdentityId: 1670 })
+    );
+  });
+
+  it("rejects an expired response without publishing", async () => {
+    const repository = {
+      respondToFriendRequest: jest.fn(async () => ({
+        status: "expired" as const,
+        friendRequest: { ...friendRequest, status: "expired" as const }
+      }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.respondToFriendRequest(
+        { userId: 167, currentIdentityId: 1670 } as never,
+        19,
+        "accept"
+      )
+    ).rejects.toMatchObject({ message: "error.realtime.friend_request_expired" });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("RealtimeService message reaction outcomes", () => {
+  const message = {
+    id: 41,
+    conversationId: 3,
+    senderUserId: 2,
+    type: "text" as const,
+    content: "收到",
+    metadata: null,
+    reactions: [],
+    createdAt: new Date("2026-08-30T00:00:00.000Z"),
+    recallDeadlineAt: new Date("2026-08-30T00:03:00.000Z"),
+    recalledAt: null,
+    recallMode: null,
+    contentPurgedAt: null,
+    lifecycleVersion: 0,
+    reactionVersion: 1,
+    availableRecallModes: []
+  };
+
+  function createFixture(
+    setOutcome: unknown,
+    removeOutcome: unknown = { status: "unchanged", message }
+  ) {
+    const repository = {
+      setMessageReaction: jest.fn(async () => setOutcome),
+      removeMessageReaction: jest.fn(async () => removeOutcome),
+      getConversationForUser: jest.fn(async () => ({ participants: [{ userId: 1 }] }))
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    return {
+      eventGateway,
+      repository,
+      service: new RealtimeService(repository as never, eventGateway)
+    };
+  }
+
+  it("returns and publishes an updated reaction", async () => {
+    const { eventGateway, service } = createFixture({ status: "updated", message });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(eventGateway.publish).toHaveBeenCalledTimes(1);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "message.reaction.updated", payload: message })
+    );
+  });
+
+  it("returns an unchanged reaction without publishing", async () => {
+    const { eventGateway, service } = createFixture({ status: "unchanged", message });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("maps an occupied reaction slot to the formal 409 error", async () => {
+    const { eventGateway, service } = createFixture({
+      status: "slot_occupied",
+      message,
+      activeEmoji: "OK"
+    });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "NO" }
+      )
+    ).rejects.toMatchObject({
+      code: 40946,
+      message: "error.im.reaction_slot_occupied",
+      statusCode: 409
+    });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps the existing not-found behavior", async () => {
+    const { service } = createFixture({ status: "not_found" });
+
+    await expect(
+      service.setMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).rejects.toMatchObject({ statusCode: 404, message: "error.realtime.message_not_found" });
+  });
+
+  it("publishes only a changed DELETE outcome", async () => {
+    const updated = createFixture({ status: "unchanged", message }, { status: "updated", message });
+    await expect(
+      updated.service.removeMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(updated.eventGateway.publish).toHaveBeenCalledTimes(1);
+
+    const unchanged = createFixture(
+      { status: "unchanged", message },
+      { status: "unchanged", message }
+    );
+    await expect(
+      unchanged.service.removeMessageReaction(
+        { userId: 1 } as never,
+        { conversationId: 3, messageId: 41, emoji: "OK" }
+      )
+    ).resolves.toBe(message);
+    expect(unchanged.eventGateway.publish).not.toHaveBeenCalled();
   });
 });
 
@@ -322,6 +561,50 @@ describe("RealtimeService blocked-recipient delivery guard", () => {
       statusCode: 403
     });
     expect(repository.createMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("RealtimeService friendship authorization", () => {
+  it("maps a removed friendship send to a 403 without publishing", async () => {
+    const repository = {
+      isMessageSenderBlocked: jest.fn().mockResolvedValue(false),
+      createMessage: jest.fn().mockResolvedValue({ status: "not_friends" })
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(
+      service.createMessage(
+        { userId: 167 } as never,
+        { conversationId: 91, type: "text", content: "still there?" }
+      )
+    ).rejects.toMatchObject({
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+    expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("maps unauthorized direct conversation creation to a 403", async () => {
+    const repository = {
+      findActiveUserIds: jest.fn().mockResolvedValue([41, 167]),
+      findCanonicalIdentityIdForUser: jest.fn().mockResolvedValue(1670),
+      createConversation: jest.fn().mockResolvedValue({ status: "not_friends" })
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(
+      service.createConversation(
+        { userId: 41 } as never,
+        { type: "direct", participantUserIds: [167] }
+      )
+    ).rejects.toMatchObject({
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
   });
 });
 

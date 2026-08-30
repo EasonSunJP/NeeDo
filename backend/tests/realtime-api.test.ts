@@ -1,6 +1,10 @@
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
+import {
+  compareMessageReactionCategories,
+  getMessageReactionCategory
+} from "../src/constants/message-reaction.constants";
 
 interface StoredValue {
   value: string;
@@ -313,6 +317,7 @@ const createFixture = async () => {
     recallMode: "standard" | null;
     contentPurgedAt: Date | null;
     lifecycleVersion: number;
+    reactionVersion: number;
   }> = [];
   const messageReactions: Array<{
     messageId: number;
@@ -328,7 +333,9 @@ const createFixture = async () => {
   const contacts: Array<{
     id: number;
     ownerUserId: number;
+    ownerIdentityId: number;
     contactUserId: number;
+    contactIdentityId: number;
     nickname: string | null;
     isBlocked: boolean;
     createdAt: Date;
@@ -336,10 +343,16 @@ const createFixture = async () => {
   const friendRequests: Array<{
     id: number;
     requesterUserId: number;
+    requesterIdentityId: number;
     targetUserId: number;
-    status: string;
+    targetIdentityId: number;
+    requester: { userId: number; needoId: string; username: string; avatarUrl: null };
+    target: { userId: number; needoId: string; username: string; avatarUrl: null };
+    status: "pending" | "accepted" | "rejected" | "expired";
     message: string | null;
     respondedAt: Date | null;
+    expiresAt: Date;
+    expiredAt: Date | null;
     createdAt: Date;
   }> = [];
   const socialPosts: Array<{
@@ -368,6 +381,13 @@ const createFixture = async () => {
     createdAt: Date;
   }> = [];
 
+  const publicProfile = (userId: number) => ({
+    userId,
+    needoId: `u${String(userId).padStart(10, "0")}`,
+    username: users.find((user) => user.id === userId)?.username ?? "Unknown",
+    avatarUrl: null
+  });
+
   const mapMessage = (message: (typeof messages)[number], viewerUserId: number) => {
     const grouped = new Map<string, Array<{ userId: number; username: string; avatarUrl: null }>>();
     messageReactions
@@ -385,11 +405,13 @@ const createFixture = async () => {
 
     return {
       ...message,
-      reactions: Array.from(grouped.entries()).map(([emoji, people]) => ({
-        emoji,
-        people,
-        reactedByMe: people.some((person) => person.userId === viewerUserId)
-      }))
+      reactions: Array.from(grouped.entries())
+        .sort(([left], [right]) => compareMessageReactionCategories(left, right))
+        .map(([emoji, people]) => ({
+          emoji,
+          people,
+          reactedByMe: people.some((person) => person.userId === viewerUserId)
+        }))
     };
   };
 
@@ -496,7 +518,10 @@ const createFixture = async () => {
         };
         conversations.push(conversation);
 
-        return mapConversation(conversation, input.creatorUserId);
+        return {
+          status: "ready" as const,
+          conversation: mapConversation(conversation, input.creatorUserId)
+        };
       }
     ),
     updateConversationPrivacy: jest.fn(
@@ -618,7 +643,7 @@ const createFixture = async () => {
       }) => {
         const conversation = conversations.find((item) => item.id === input.conversationId);
         if (!conversation?.participantUserIds.includes(input.senderUserId)) {
-          return null;
+          return { status: "not_found" as const };
         }
 
         const message = {
@@ -633,7 +658,8 @@ const createFixture = async () => {
           recalledAt: null,
           recallMode: null,
           contentPurgedAt: null,
-          lifecycleVersion: 0
+          lifecycleVersion: 0,
+          reactionVersion: 0
         };
         messages.push(message);
         conversation.updatedAt = now;
@@ -646,7 +672,10 @@ const createFixture = async () => {
           );
         }
 
-        return mapMessage(message, input.senderUserId);
+        return {
+          status: "created" as const,
+          message: mapMessage(message, input.senderUserId)
+        };
       }
     ),
     isMessageSenderBlocked: jest.fn(async () => false),
@@ -765,23 +794,40 @@ const createFixture = async () => {
         const message = messages.find(
           (item) => item.id === input.messageId && item.conversationId === input.conversationId
         );
-        if (!conversation?.participantUserIds.includes(input.userId) || !message) return null;
-
-        if (
-          !messageReactions.some(
-            (reaction) =>
-              reaction.messageId === input.messageId &&
-              reaction.userId === input.userId &&
-              reaction.emoji === input.emoji
-          )
-        ) {
-          messageReactions.push({
-            messageId: input.messageId,
-            userId: input.userId,
-            emoji: input.emoji
-          });
+        if (!conversation?.participantUserIds.includes(input.userId) || !message) {
+          return { status: "not_found" as const };
         }
-        return mapMessage(message, input.userId);
+
+        const activeInSlot = messageReactions.find(
+          (reaction) =>
+            reaction.messageId === input.messageId &&
+            reaction.userId === input.userId &&
+            getMessageReactionCategory(reaction.emoji) ===
+              getMessageReactionCategory(input.emoji)
+        );
+
+        if (activeInSlot?.emoji === input.emoji) {
+          return {
+            status: "unchanged" as const,
+            message: mapMessage(message, input.userId)
+          };
+        }
+
+        if (activeInSlot) {
+          return {
+            status: "slot_occupied" as const,
+            message: mapMessage(message, input.userId),
+            activeEmoji: activeInSlot.emoji
+          };
+        }
+
+        messageReactions.push({
+          messageId: input.messageId,
+          userId: input.userId,
+          emoji: input.emoji
+        });
+        message.reactionVersion += 1;
+        return { status: "updated" as const, message: mapMessage(message, input.userId) };
       }
     ),
     removeMessageReaction: jest.fn(
@@ -795,7 +841,9 @@ const createFixture = async () => {
         const message = messages.find(
           (item) => item.id === input.messageId && item.conversationId === input.conversationId
         );
-        if (!conversation?.participantUserIds.includes(input.userId) || !message) return null;
+        if (!conversation?.participantUserIds.includes(input.userId) || !message) {
+          return { status: "not_found" as const };
+        }
 
         const reactionIndex = messageReactions.findIndex(
           (reaction) =>
@@ -803,8 +851,16 @@ const createFixture = async () => {
             reaction.userId === input.userId &&
             reaction.emoji === input.emoji
         );
-        if (reactionIndex >= 0) messageReactions.splice(reactionIndex, 1);
-        return mapMessage(message, input.userId);
+        if (reactionIndex < 0) {
+          return {
+            status: "unchanged" as const,
+            message: mapMessage(message, input.userId)
+          };
+        }
+
+        messageReactions.splice(reactionIndex, 1);
+        message.reactionVersion += 1;
+        return { status: "updated" as const, message: mapMessage(message, input.userId) };
       }
     ),
     markConversationRead: jest.fn(async (input: { conversationId: number; userId: number }) => {
@@ -880,9 +936,62 @@ const createFixture = async () => {
         return mapConversation(conversation, input.userId);
       }
     ),
-    listContacts: jest.fn(async (userId: number) =>
-      listPage(contacts.filter((contact) => contact.ownerUserId === userId))
+    listContacts: jest.fn(async (identityId: number) =>
+      listPage(contacts.filter((contact) => contact.ownerIdentityId === identityId))
     ),
+    getDirectoryProfile: jest.fn(async (
+      viewerUserId: number,
+      viewerIdentityId: number,
+      targetUserId: number,
+      targetIdentityId: number
+    ) => {
+      const targetUser = users.find((user) => user.id === targetUserId);
+      if (!targetUser) return null;
+      const contact = contacts.find(
+        (item) =>
+          item.ownerIdentityId === viewerIdentityId &&
+          item.contactIdentityId === targetIdentityId
+      );
+      const friendRequest = [...friendRequests]
+        .reverse()
+        .find(
+          (item) =>
+            item.status === "pending" &&
+            ((item.requesterIdentityId === viewerIdentityId &&
+              item.targetIdentityId === targetIdentityId) ||
+              (item.requesterIdentityId === targetIdentityId &&
+                item.targetIdentityId === viewerIdentityId))
+        );
+      return {
+        user: publicProfile(targetUserId),
+        identityCard: {
+          entityType: "account" as const,
+          profileId: null,
+          displayName: targetUser.username,
+          identityLabel: null,
+          verified: false,
+          creditValue: null,
+          creditReviewCount: 0,
+          gender: null,
+          age: null,
+          heightCm: null,
+          languages: [],
+          city: null,
+          serviceArea: null,
+          yearsExperience: null,
+          bio: null
+        },
+        relationship: contact
+          ? ("friend" as const)
+          : friendRequest?.requesterIdentityId === viewerIdentityId
+            ? ("outgoing_pending" as const)
+            : friendRequest
+              ? ("incoming_pending" as const)
+              : ("none" as const),
+        contactId: contact?.id ?? null,
+        friendRequest: friendRequest ?? null
+      };
+    }),
     setContactBlocked: jest.fn(
       async (input: {
         contactId: number;
@@ -899,30 +1008,94 @@ const createFixture = async () => {
     ),
     deleteContact: jest.fn(
       async (input: { contactId: number; ownerUserId: number }) => {
-        const index = contacts.findIndex(
+        const ownedContact = contacts.find(
           (item) => item.id === input.contactId && item.ownerUserId === input.ownerUserId
         );
-        if (index === -1) return null;
-        const [contact] = contacts.splice(index, 1);
-        if (!contact) return null;
+        if (!ownedContact) return null;
+        const counterpartUserId = ownedContact.contactUserId;
+        const removedContactIds = contacts
+          .filter(
+            (item) =>
+              (item.ownerUserId === input.ownerUserId &&
+                item.contactUserId === counterpartUserId) ||
+              (item.ownerUserId === counterpartUserId &&
+                item.contactUserId === input.ownerUserId)
+          )
+          .map((item) => item.id);
+        for (let index = contacts.length - 1; index >= 0; index -= 1) {
+          if (removedContactIds.includes(contacts[index]!.id)) contacts.splice(index, 1);
+        }
+        let deletedFollowCount = 0;
+        for (let index = follows.length - 1; index >= 0; index -= 1) {
+          const follow = follows[index]!;
+          if (
+            (follow.followerUserId === input.ownerUserId &&
+              follow.followingUserId === counterpartUserId) ||
+            (follow.followerUserId === counterpartUserId &&
+              follow.followingUserId === input.ownerUserId)
+          ) {
+            follows.splice(index, 1);
+            deletedFollowCount += 1;
+          }
+        }
+        const conversation = conversations.find(
+          (item) =>
+            item.type === "direct" &&
+            item.participantUserIds.includes(input.ownerUserId) &&
+            item.participantUserIds.includes(counterpartUserId)
+        );
+        if (conversation) {
+          conversation.participantUserIds = conversation.participantUserIds.filter(
+            (userId) => userId !== input.ownerUserId
+          );
+        }
         return {
-          contactId: contact.id,
-          contactUserId: contact.contactUserId,
+          actorUserId: input.ownerUserId,
+          counterpartUserId,
+          contactIds: removedContactIds,
+          deletedContactCount: removedContactIds.length,
+          deletedFollowCount,
+          deletedConversationId: conversation?.id ?? null,
           deleted: true as const,
-          deletedAt: now,
-          ownerUserId: contact.ownerUserId
+          deletedAt: now
         };
       }
     ),
     createFriendRequest: jest.fn(
-      async (input: { requesterUserId: number; targetUserId: number; message?: string | null }) => {
+      async (input: {
+        requesterUserId: number;
+        requesterIdentityId: number;
+        targetUserId: number;
+        targetIdentityId: number;
+        message?: string | null;
+      }) => {
+        const existing = friendRequests.find(
+          (item) =>
+            item.status === "pending" &&
+            ((item.requesterIdentityId === input.requesterIdentityId &&
+              item.targetIdentityId === input.targetIdentityId) ||
+              (item.requesterIdentityId === input.targetIdentityId &&
+                item.targetIdentityId === input.requesterIdentityId))
+        );
+        if (existing) {
+          return {
+            status: "ready" as const,
+            result: { friendRequest: existing, created: false }
+          };
+        }
         const friendRequest = {
           id: friendRequestId++,
           requesterUserId: input.requesterUserId,
+          requesterIdentityId: input.requesterIdentityId,
           targetUserId: input.targetUserId,
-          status: "pending",
+          targetIdentityId: input.targetIdentityId,
+          requester: publicProfile(input.requesterUserId),
+          target: publicProfile(input.targetUserId),
+          status: "pending" as const,
           message: input.message ?? null,
           respondedAt: null,
+          expiresAt: new Date(now.getTime() + 72 * 60 * 60 * 1_000),
+          expiredAt: null,
           createdAt: now
         };
         friendRequests.push(friendRequest);
@@ -938,26 +1111,35 @@ const createFixture = async () => {
           createdAt: now
         });
 
-        return friendRequest;
+        return {
+          status: "ready" as const,
+          result: { friendRequest, created: true }
+        };
       }
     ),
-    listFriendRequests: jest.fn(async (userId: number) =>
+    listFriendRequests: jest.fn(async (identityId: number) =>
       listPage(
         friendRequests.filter(
           (friendRequest) =>
-            friendRequest.requesterUserId === userId || friendRequest.targetUserId === userId
+            friendRequest.requesterIdentityId === identityId ||
+            friendRequest.targetIdentityId === identityId
         )
       )
     ),
     respondToFriendRequest: jest.fn(
-      async (input: { id: number; actorUserId: number; action: "accept" | "reject" }) => {
+      async (input: {
+        id: number;
+        actorUserId: number;
+        actorIdentityId: number;
+        action: "accept" | "reject";
+      }) => {
         const friendRequest = friendRequests.find((item) => item.id === input.id);
         if (
           !friendRequest ||
-          friendRequest.targetUserId !== input.actorUserId ||
+          friendRequest.targetIdentityId !== input.actorIdentityId ||
           friendRequest.status !== "pending"
         ) {
-          return null;
+          return { status: "not_found" as const };
         }
 
         friendRequest.status = input.action === "accept" ? "accepted" : "rejected";
@@ -966,7 +1148,9 @@ const createFixture = async () => {
           contacts.push({
             id: contactId++,
             ownerUserId: friendRequest.requesterUserId,
+            ownerIdentityId: friendRequest.requesterIdentityId,
             contactUserId: friendRequest.targetUserId,
+            contactIdentityId: friendRequest.targetIdentityId,
             nickname: null,
             isBlocked: false,
             createdAt: now
@@ -974,14 +1158,34 @@ const createFixture = async () => {
           contacts.push({
             id: contactId++,
             ownerUserId: friendRequest.targetUserId,
+            ownerIdentityId: friendRequest.targetIdentityId,
             contactUserId: friendRequest.requesterUserId,
+            contactIdentityId: friendRequest.requesterIdentityId,
             nickname: null,
             isBlocked: false,
             createdAt: now
           });
+          follows.push({
+            id: followId++,
+            followerUserId: friendRequest.requesterUserId,
+            followingUserId: friendRequest.targetUserId,
+            createdAt: now
+          });
+          follows.push({
+            id: followId++,
+            followerUserId: friendRequest.targetUserId,
+            followingUserId: friendRequest.requesterUserId,
+            createdAt: now
+          });
         }
 
-        return friendRequest;
+        return {
+          status: "responded" as const,
+          result: {
+            friendRequest,
+            recipientUserIds: [friendRequest.requesterUserId, friendRequest.targetUserId]
+          }
+        };
       }
     ),
     createSocialPost: jest.fn(
@@ -1127,17 +1331,18 @@ const createFixture = async () => {
 
       return { count };
     }),
-    getUnreadCounts: jest.fn(async (userId: number) => {
+    getUnreadCounts: jest.fn(async (identityId: number) => {
       const conversationsUnread = conversations.reduce(
-        (sum, conversation) => sum + (conversation.unreadByUserId.get(userId) ?? 0),
+        (sum, conversation) => sum + (conversation.unreadByUserId.get(identityId) ?? 0),
         0
       );
       const notificationsUnread = notifications.filter(
-        (notification) => notification.recipientUserId === userId && notification.readAt === null
+        (notification) =>
+          notification.recipientUserId === identityId && notification.readAt === null
       ).length;
       const friendRequestsUnread = friendRequests.filter(
         (friendRequest) =>
-          friendRequest.targetUserId === userId && friendRequest.status === "pending"
+          friendRequest.targetIdentityId === identityId && friendRequest.status === "pending"
       ).length;
 
       return {
@@ -1385,6 +1590,54 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(403);
   });
 
+  it("uses verified friend requests instead of direct contact creation", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/contacts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ targetUserId: 2 })
+      .expect(404);
+
+    const first = await request(fixture.app)
+      .post("/api/v1/im/friend-requests")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ targetUserId: 2 })
+      .expect(200);
+    const repeated = await request(fixture.app)
+      .post("/api/v1/im/friend-requests")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ targetUserId: 2 })
+      .expect(200);
+
+    expect(first.body.data).toMatchObject({
+      created: true,
+      friendRequest: { requesterUserId: 1, targetUserId: 2, status: "pending" }
+    });
+    expect(repeated.body.data).toMatchObject({
+      created: false,
+      friendRequest: { id: first.body.data.friendRequest.id }
+    });
+
+    await request(fixture.app)
+      .get("/api/v1/im/directory/2")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.relationship).toBe("outgoing_pending");
+        expect(body.data.user).not.toHaveProperty("email");
+        expect(body.data.identityCard).toMatchObject({
+          entityType: "account",
+          creditValue: null,
+          creditReviewCount: 0,
+          languages: []
+        });
+        expect(body.data.identityCard).not.toHaveProperty("points");
+        expect(body.data.identityCard).not.toHaveProperty("usageCount");
+      });
+  });
+
   it("blocks and unblocks only a contact owned by the authenticated user", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");
@@ -1394,7 +1647,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .post("/api/v1/im/friend-requests")
       .set("Authorization", `Bearer ${ayaToken}`)
       .send({ targetUserId: 2 })
-      .expect(201);
+      .expect(200);
     await request(fixture.app)
       .post("/api/v1/im/friend-requests/1/accept")
       .set("Authorization", `Bearer ${mikaToken}`)
@@ -1422,7 +1675,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       });
   });
 
-  it("soft-deletes only a contact owned by the authenticated user", async () => {
+  it("hard-deletes the bilateral friendship for an owned contact", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");
     const mikaToken = await fixture.login("mika@example.com");
@@ -1431,7 +1684,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .post("/api/v1/im/friend-requests")
       .set("Authorization", `Bearer ${ayaToken}`)
       .send({ targetUserId: 2 })
-      .expect(201);
+      .expect(200);
     await request(fixture.app)
       .post("/api/v1/im/friend-requests/1/accept")
       .set("Authorization", `Bearer ${mikaToken}`)
@@ -1448,10 +1701,11 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(200)
       .expect((response) => {
         expect(response.body.data).toMatchObject({
-          contactId: 1,
-          contactUserId: 2,
+          actorUserId: 1,
+          counterpartUserId: 2,
+          contactIds: [1, 2],
+          deletedContactCount: 2,
           deleted: true,
-          ownerUserId: 1
         });
       });
 
@@ -1827,7 +2081,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       });
   });
 
-  it("persists message reactions and returns them when the conversation is loaded again", async () => {
+  it("enforces one judgement plus one emoji and returns the authoritative state", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");
     const mikaToken = await fixture.login("mika@example.com");
@@ -1843,53 +2097,93 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .send({ type: "text", content: "承知しました。" })
       .expect(201);
 
-    await request(fixture.app)
+    const judgementResponse = await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "OK" })
+      .expect(200);
+    expect(judgementResponse.body.data).toMatchObject({
+      id: messageResponse.body.data.id,
+      reactionVersion: 1,
+      reactions: [
+        {
+          emoji: "OK",
+          reactedByMe: true,
+          people: [{ userId: 2, username: "Mika Technician" }]
+        }
+      ]
+    });
+
+    const emojiResponse = await request(fixture.app)
       .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
       .set("Authorization", `Bearer ${mikaToken}`)
       .send({ emoji: "😂" })
-      .expect(200)
-      .expect((response) => {
-        expect(response.body.data).toMatchObject({
-          id: messageResponse.body.data.id,
-          reactions: [
-            {
-              emoji: "😂",
-              reactedByMe: true,
-              people: [{ userId: 2, username: "Mika Technician" }]
-            }
-          ]
-        });
-      });
+      .expect(200);
+    expect(emojiResponse.body.data).toMatchObject({
+      reactionVersion: 2,
+      reactions: [{ emoji: "OK" }, { emoji: "😂" }]
+    });
 
     await request(fixture.app)
       .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
-      .set("Authorization", `Bearer ${ayaToken}`)
-      .send({ emoji: "😂" })
-      .expect(200)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "NO" })
+      .expect(409)
       .expect((response) => {
-        expect(response.body.data).toMatchObject({
-          id: messageResponse.body.data.id,
-          reactions: [
-            {
-              emoji: "😂",
-              reactedByMe: true,
-              people: [
-                { userId: 2, username: "Mika Technician" },
-                { userId: 1, username: "Aya Customer" }
-              ]
-            }
-          ]
+        expect(response.body).toEqual({
+          code: 40946,
+          message: "error.im.reaction_slot_occupied",
+          data: null
         });
       });
 
     await request(fixture.app)
       .get("/api/v1/im/conversations/1/messages?pageSize=20")
-      .set("Authorization", `Bearer ${ayaToken}`)
+      .set("Authorization", `Bearer ${mikaToken}`)
       .expect(200)
       .expect((response) => {
         expect(response.body.data.list[0]).toMatchObject({
           id: messageResponse.body.data.id,
+          reactionVersion: 2,
+          reactions: [{ emoji: "OK", reactedByMe: true }, { emoji: "😂", reactedByMe: true }]
+        });
+      });
+
+    await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "OK" })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.reactionVersion).toBe(2);
+      });
+
+    await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ emoji: "😂" })
+      .expect(200);
+
+    await request(fixture.app)
+      .delete(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "OK" })
+      .expect(200);
+
+    await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "NO" })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          reactionVersion: 5,
           reactions: [
+            {
+              emoji: "NO",
+              reactedByMe: true,
+              people: [{ userId: 2, username: "Mika Technician" }]
+            },
             {
               emoji: "😂",
               reactedByMe: true,
@@ -1912,12 +2206,15 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .post("/api/v1/im/friend-requests")
       .set("Authorization", `Bearer ${ayaToken}`)
       .send({ targetUserId: 2, message: "let us connect" })
-      .expect(201);
+      .expect(200);
     expect(friendRequestResponse.body.data).toMatchObject({
-      id: 1,
-      requesterUserId: 1,
-      targetUserId: 2,
-      status: "pending"
+      created: true,
+      friendRequest: {
+        id: 1,
+        requesterUserId: 1,
+        targetUserId: 2,
+        status: "pending"
+      }
     });
 
     const mikaNotifications = await request(fixture.app)

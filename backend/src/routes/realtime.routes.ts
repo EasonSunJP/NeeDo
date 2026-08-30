@@ -12,7 +12,6 @@ import { RealtimeService } from "../services/realtime.service";
 import { PersonalIdentityScopeService } from "../services/personal-identity-scope.service";
 import {
   contactIdParamSchema,
-  contactCreateBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
@@ -21,6 +20,7 @@ import {
   conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
   directorySearchQuerySchema,
+  directoryUserIdParamSchema,
   followCreateBodySchema,
   followTargetParamSchema,
   friendRequestCreateBodySchema,
@@ -61,7 +61,6 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   clearConversationMessages: "message:list",
   listContacts: "contact:list",
   searchDirectory: "contact:list",
-  addContact: "contact:list",
   blockContact: "contact:block",
   deleteContact: "contact:delete",
   listFriendRequests: "friend-request:list",
@@ -218,12 +217,12 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     validateRequest({ query: directorySearchQuerySchema }),
     controller.searchDirectory
   );
-  router.post(
-    "/im/contacts",
+  router.get(
+    "/im/directory/:userId",
     authenticate(),
-    authorize(REALTIME_ROUTE_PERMISSIONS.addContact),
-    validateRequest({ body: contactCreateBodySchema }),
-    controller.addContact
+    authorize(REALTIME_ROUTE_PERMISSIONS.searchDirectory),
+    validateRequest({ params: directoryUserIdParamSchema }),
+    controller.getDirectoryProfile
   );
   router.get(
     "/im/contacts",

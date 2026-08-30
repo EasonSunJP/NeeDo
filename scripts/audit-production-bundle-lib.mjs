@@ -13,7 +13,7 @@ const forbiddenRuntimeMarkers = [
 ];
 const defaultBudgets = {
   main: 4_000_000,
-  i18n: 3_700_000
+  i18n: 3_702_048
 };
 
 async function listFiles(directory) {

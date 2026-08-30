@@ -1048,7 +1048,6 @@ export function UnifiedPostText({
 }
 
 export function SocialFollowButton({
-  scope,
   actorKey,
   targetKey,
   compact = false
@@ -1059,84 +1058,19 @@ export function SocialFollowButton({
   compact?: boolean;
 }) {
   const { profiles, getFollowing, toggleFollow } = useSocial();
-  const imStore = useImStore(scope);
-  const [confirmingFriendUnfollow, setConfirmingFriendUnfollow] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"add" | "delete" | null>(null);
-  const autoFriendTargetRef = useRef<string | null>(null);
   const actor = profiles[actorKey];
   const target = profiles[targetKey];
   const following = getFollowing(actorKey).some((profile) => profileKey(profile) === targetKey);
-  const targetFollowsActor = getFollowing(targetKey).some((profile) => profileKey(profile) === actorKey);
-  const targetImUser = target ? findImUserForSocialProfile(imStore.users, target) : undefined;
-  const activeContact = targetImUser
-    ? imStore.contacts.find((contact) => contact.targetUserId === targetImUser.id && contact.relationStatus === "active" && !contact.isBlocked)
-    : undefined;
-  const isSocialFriend = following && targetFollowsActor;
-  const isFriend = Boolean(activeContact) || isSocialFriend;
-  const canUseFriendAction = Boolean(targetImUser && targetImUser.id !== imStore.currentUserId && !targetImUser.serviceAccount);
-
-  useEffect(() => {
-    if (!target || !targetImUser || !canUseFriendAction || !following || !targetFollowsActor || activeContact) {
-      return;
-    }
-
-    if (autoFriendTargetRef.current === targetImUser.id) {
-      return;
-    }
-
-    autoFriendTargetRef.current = targetImUser.id;
-    setPendingAction("add");
-    void imStore.addContact(targetImUser.id, "互相关注", `与 ${target.displayName} 互相关注后自动成为好友`).finally(() => {
-      autoFriendTargetRef.current = null;
-      setPendingAction(null);
-    });
-  }, [activeContact, canUseFriendAction, following, imStore, target, targetFollowsActor, targetImUser]);
 
   if (!actor || !target || actorKey === targetKey) {
     return null;
   }
 
-  const mode = isFriend ? "friend" : following ? "following" : "follow";
-  const label =
-    pendingAction === "add"
-      ? "同步中"
-      : pendingAction === "delete"
-        ? isFriend
-          ? "解除中"
-          : "取消中"
-        : isFriend
-          ? compact ? "好友" : "删除好友"
-          : following
-          ? "已关注"
-          : "关注";
-
-  const handleConfirmFriendUnfollow = async () => {
-    if (!activeContact && !following) {
-      return;
-    }
-
-    setPendingAction("delete");
-    try {
-      if (activeContact) {
-        await imStore.deleteContact(activeContact.id);
-      }
-      if (following) {
-        toggleFollow(actorKey, targetKey);
-      }
-      setConfirmingFriendUnfollow(false);
-    } finally {
-      setPendingAction(null);
-    }
-  };
+  const mode = following ? "following" : "follow";
+  const label = following ? "已关注" : "关注";
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-
-    if (isFriend) {
-      setConfirmingFriendUnfollow(true);
-      return;
-    }
-
     toggleFollow(actorKey, targetKey);
   };
 
@@ -1152,70 +1086,11 @@ export function SocialFollowButton({
       : socialProfileHeaderActionButtonClassName
   );
 
-  const friendUnfollowDialog = confirmingFriendUnfollow ? (
-    <div
-      aria-modal="true"
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/52 px-4 backdrop-blur-lg backdrop-saturate-75"
-      onClick={() => (pendingAction === "delete" ? undefined : setConfirmingFriendUnfollow(false))}
-      role="dialog"
-    >
-      <div
-        className="w-full max-w-[380px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_86%,var(--client-bg)_14%)] bg-[color:var(--client-bg)] p-5 text-[color:var(--client-text)] shadow-[0_24px_72px_rgba(0,0,0,0.42)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h3 className="flex items-center gap-2 text-lg font-black">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#ef4f3f] text-sm font-black text-white shadow-[0_10px_24px_rgba(239,79,63,0.26)]">
-            !
-          </span>
-          <span>{following ? "取消关注" : "删除好友"}</span>
-        </h3>
-        <p className="mt-3 text-sm font-semibold leading-7 text-[color:var(--client-muted)]">
-          {following
-            ? "目前为好友状态，取消关注后，好友状态和关注也会一起取消，将在互相的通讯录消失（并不会通知对方，但曾经的对话将会保留，对方对您账号的关注状态并不会取消，直到手动操作），确定要执行此操作吗"
-            : "目前为好友状态，删除后会从通讯录消失；曾经的对话会保留，但不会再作为好友显示。确定要执行此操作吗"}
-        </p>
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <button
-            className="focus-ring inline-flex h-11 items-center justify-center rounded-full bg-[#ef4f3f] px-4 text-sm font-black text-white shadow-[0_14px_32px_rgba(239,79,63,0.24)] transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-60"
-            disabled={pendingAction === "delete"}
-            onClick={() => void handleConfirmFriendUnfollow()}
-            type="button"
-          >
-          {pendingAction === "delete" ? "处理中" : following ? "确认取消" : "确认删除"}
-          </button>
-          <button
-            className="focus-ring inline-flex h-11 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[#090806] shadow-[0_14px_32px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-60"
-            disabled={pendingAction === "delete"}
-            onClick={() => setConfirmingFriendUnfollow(false)}
-            type="button"
-          >
-            取消
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-  if (compact) {
-    return (
-      <>
-        <button className={buttonClassName} disabled={Boolean(pendingAction)} onClick={handleClick} onPointerDown={(event) => event.stopPropagation()} type="button">
-          <span>{label}</span>
-          {mode === "following" ? <AppIcon className="h-3.5 w-3.5" name="check" /> : null}
-        </button>
-        {friendUnfollowDialog}
-      </>
-    );
-  }
-
   return (
-    <>
-      <button className={buttonClassName} disabled={Boolean(pendingAction)} onClick={handleClick} onPointerDown={(event) => event.stopPropagation()} type="button">
-        <span>{label}</span>
-        {mode === "following" ? <AppIcon className="h-3.5 w-3.5" name="check" /> : null}
-      </button>
-      {friendUnfollowDialog}
-    </>
+    <button className={buttonClassName} onClick={handleClick} onPointerDown={(event) => event.stopPropagation()} type="button">
+      <span>{label}</span>
+      {mode === "following" ? <AppIcon className="h-3.5 w-3.5" name="check" /> : null}
+    </button>
   );
 }
 

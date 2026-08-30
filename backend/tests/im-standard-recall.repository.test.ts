@@ -52,6 +52,9 @@ const createFixture = (candidate: typeof activeMessage | typeof recalledMessage 
   }));
   const conversationUpdate = jest.fn(async () => ({ id: 3 }));
   const transaction = {
+    conversationParticipant: {
+      findFirst: jest.fn(async () => ({ createdAt }))
+    },
     message: {
       findFirst: messageFindFirst,
       updateMany: messageUpdateMany,
@@ -107,6 +110,7 @@ describe("RealtimeRepository standard recall", () => {
         conversationId: 3,
         senderIdentityId: 7,
         senderUserId: 7,
+        createdAt: { gte: createdAt },
         recalledAt: null,
         recallMode: null,
         deletedAt: null,
