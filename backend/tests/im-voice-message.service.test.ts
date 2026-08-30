@@ -4,6 +4,7 @@ import {
   ImVoiceMessageService,
   type SendImVoiceMessageInput
 } from "../src/services/im-voice-message.service";
+import { AppError } from "../src/utils/app-error";
 
 const validInput: SendImVoiceMessageInput = {
   bytes: Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
@@ -57,6 +58,9 @@ describe("ImVoiceMessageService", () => {
       storage.save.mock.invocationCallOrder[0]!
     );
     expect(realtime.createMessage).toHaveBeenCalledTimes(1);
+    expect(storage.save.mock.invocationCallOrder[0]).toBeLessThan(
+      realtime.createMessage.mock.invocationCallOrder[0]!
+    );
     expect(realtime.createMessage).toHaveBeenCalledWith(auth, {
       conversationId: 91,
       type: "text",
@@ -78,7 +82,7 @@ describe("ImVoiceMessageService", () => {
     >;
     const payload = calls[0]?.[1];
     expect(collectObjectKeys(payload)).not.toEqual(
-      expect.arrayContaining(["bytes", "data", "blob"])
+      expect.arrayContaining(["bytes", "data", "blob", "base64"])
     );
     expect(storage.remove).not.toHaveBeenCalled();
   });
@@ -157,5 +161,81 @@ describe("ImVoiceMessageService", () => {
     await expect(service.send(auth, validInput)).rejects.toThrow("error.im.not_friends");
     expect(storage.remove).toHaveBeenCalledTimes(1);
     expect(storage.remove).toHaveBeenCalledWith(`${"b".repeat(64)}.ogg`);
+  });
+
+  it("retries cleanup once and preserves the original create error when cleanup then succeeds", async () => {
+    const originalError = new AppError({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+    const cleanupError = new Error("transient cleanup failure");
+    const realtime = {
+      assertMessageSendAllowed: jest.fn(async () => ({ identityId: 71 })),
+      createMessage: jest.fn(async () => {
+        throw originalError;
+      })
+    };
+    const remove = jest.fn(async (_fileKey: string) => undefined);
+    remove.mockImplementationOnce(async () => {
+      throw cleanupError;
+    });
+    const storage = {
+      save: jest.fn(async () => storedWebm),
+      remove
+    };
+    const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+
+    await expect(service.send(auth, validInput)).rejects.toBe(originalError);
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenNthCalledWith(1, storedWebm.fileKey);
+    expect(remove).toHaveBeenNthCalledWith(2, storedWebm.fileKey);
+    expect(originalError).not.toHaveProperty("cleanupError");
+  });
+
+  it("preserves the original create error and attaches final cleanup failure diagnostically", async () => {
+    const originalError = new AppError({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+    const firstCleanupError = new Error("first cleanup failure");
+    const finalCleanupError = new Error("final cleanup failure");
+    const realtime = {
+      assertMessageSendAllowed: jest.fn(async () => ({ identityId: 71 })),
+      createMessage: jest.fn(async () => {
+        throw originalError;
+      })
+    };
+    const remove = jest.fn(async (_fileKey: string) => undefined);
+    remove.mockImplementationOnce(async () => {
+      throw firstCleanupError;
+    });
+    remove.mockImplementationOnce(async () => {
+      throw finalCleanupError;
+    });
+    const storage = {
+      save: jest.fn(async () => storedWebm),
+      remove
+    };
+    const service = new ImVoiceMessageService(realtime as never, storage as never, "/media/im");
+
+    let caught: unknown;
+    try {
+      await service.send(auth, validInput);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(originalError);
+    expect(caught).toMatchObject({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.im.not_friends",
+      statusCode: 403
+    });
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect((caught as { cleanupError?: unknown }).cleanupError).toBe(finalCleanupError);
+    expect(Object.prototype.propertyIsEnumerable.call(caught, "cleanupError")).toBe(false);
+    expect(Object.keys(caught as object)).not.toContain("cleanupError");
   });
 });

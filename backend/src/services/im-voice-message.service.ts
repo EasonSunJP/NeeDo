@@ -47,8 +47,37 @@ export class ImVoiceMessageService {
     try {
       return await this.realtime.createMessage(auth, messageInput);
     } catch (error) {
-      await this.storage.remove(stored.fileKey);
+      await this.cleanupStoredFile(stored.fileKey, error);
       throw error;
+    }
+  }
+
+  private async cleanupStoredFile(fileKey: string, originalError: unknown): Promise<void> {
+    let lastCleanupError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await this.storage.remove(fileKey);
+        return;
+      } catch (cleanupError) {
+        lastCleanupError = cleanupError;
+      }
+    }
+
+    if (
+      lastCleanupError !== undefined &&
+      originalError !== null &&
+      (typeof originalError === "object" || typeof originalError === "function")
+    ) {
+      try {
+        Object.defineProperty(originalError, "cleanupError", {
+          configurable: true,
+          enumerable: false,
+          value: lastCleanupError,
+          writable: true
+        });
+      } catch {
+        return;
+      }
     }
   }
 
