@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
+import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { cn } from "../../lib/utils";
 import { merchantPrimaryModules, type MerchantPrimaryModule } from "./merchantModules";
 
@@ -112,7 +113,7 @@ export function MerchantPrimaryNavCarousel({
             {page.map((module) => (
               <Link
                 className={cn(
-                  "grid min-h-[82px] grid-rows-[34px,1fr] items-start justify-items-center gap-1.5 rounded-[18px] border px-2 py-3 text-center transition",
+                  "relative grid min-h-[82px] grid-rows-[34px,1fr] items-start justify-items-center gap-1.5 rounded-[18px] border px-2 py-3 text-center transition",
                   activeModule === module.key
                     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
                     : "border-line bg-white text-[color:var(--client-text)] hover:border-[color:var(--client-primary)]"
@@ -120,6 +121,7 @@ export function MerchantPrimaryNavCarousel({
                 key={module.key}
                 to={module.route}
               >
+                {module.badge === "Test" ? <TestFeatureBadge className="absolute -right-1 -top-1 min-h-4 px-1.5 py-0 text-[8px]" /> : null}
                 <span className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]">
                   <MerchantPrimaryIcon icon={module.icon} />
                 </span>

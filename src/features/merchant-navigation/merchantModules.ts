@@ -9,6 +9,7 @@ export type MerchantPrimaryModule = {
   caption: string;
   route: string;
   icon: "sparkles" | "calendar" | "shield" | "heart" | "order" | "menu" | "floor";
+  badge?: "Test";
   permission?: FeaturePermission;
 };
 
@@ -44,6 +45,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
     caption: "会员与会员卡",
     route: "/merchant/member",
     icon: "heart",
+    badge: "Test",
     permission: "shop.member.view"
   },
   {

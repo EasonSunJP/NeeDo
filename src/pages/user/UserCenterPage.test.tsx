@@ -28,7 +28,10 @@ describe("UserCenterPage", () => {
     expect(source).toContain('info: "保洁、护理、家电维护"');
     expect(source).toContain('label: "会员"');
     expect(source).not.toContain('label: "家庭成员"');
-    expect(source).toContain('info: "老人、儿童、共同居住人"');
+    expect(source).toContain('info: "查看已加入店铺与会员卡状态"');
+    expect(source).toContain('to: "/me/memberships"');
+    expect(source).toContain("activeShopMembershipCount");
+    expect(source).toContain("<TestFeatureBadge");
     expect(source).toContain('label: "KYC身份验证"');
     expect(source).toContain('info: "实名、证件、本人确认"');
     expect(source).toContain('to: "/me/settings/verification"');
@@ -36,7 +39,7 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain('caption: "家庭、公司、常用地址"');
     expect(source).not.toContain('caption: "已评价与待回复"');
     expect(source).not.toContain('caption: "保洁、护理、家电维护"');
-    expect(source).not.toContain('caption: "老人、儿童、共同居住人"');
+    expect(source).not.toContain('caption: "查看已加入店铺与会员卡状态"');
     expect(source).toContain("min-h-[74px]");
     expect(source).toContain("<InfoTooltipTrigger");
   });

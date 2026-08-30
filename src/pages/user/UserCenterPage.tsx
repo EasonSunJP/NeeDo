@@ -10,10 +10,12 @@ import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
 import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
 import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
 import { walletApi, type Wallet } from "../../features/wallet/api";
+import { customerShopMembershipApi } from "../../features/shop-member/api";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
@@ -24,6 +26,7 @@ import type { Customer } from "../../types/domain";
 const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "cancelled"] as const satisfies readonly BookingOrderStatus[];
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
 type FormalUserCenterData = {
+  activeShopMembershipCount: number | null;
   orderCounts: FormalOrderCounts;
   profile: CustomerSelfProfile;
   wallet: Wallet;
@@ -525,14 +528,18 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
           const page = await bookingApi.listOrders({ page: 1, pageSize: 1, status });
           return [status, page.total] as const;
         })
-      )
+      ),
+      customerShopMembershipApi.list({ page: 1, pageSize: 1, status: "active" })
+        .then((result) => result.total)
+        .catch(() => null)
     ])
-      .then(([profile, wallet, counts]) => {
+      .then(([profile, wallet, counts, activeShopMembershipCount]) => {
         if (!active) return;
         if (profile.id !== customerProfileId) {
           throw new ApiClientError("error.forbidden", 403, 403);
         }
         setFormalData({
+          activeShopMembershipCount,
           profile,
           wallet,
           orderCounts: { ...emptyFormalOrderCounts, ...Object.fromEntries(counts) }
@@ -624,12 +631,12 @@ function CompleteUserCenterPage({
     { label: "已完成", count: formalData.orderCounts.completed, to: "/orders" },
     { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" }
   ];
-  const serviceTools: Array<{ label: string; info: string; value: number | string; to: string }> = [
+  const serviceTools: Array<{ label: string; info: string; value: number | string; to: string; test?: boolean }> = [
     { label: "我的收藏", info: "店铺、技师、服务", value: "—", to: "/categories?type=store" },
     { label: "我的地址", info: "家庭、公司、常用地址", value: "—", to: "/checkout/svc-clean-1" },
     { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
     { label: "周期预约", info: "保洁、护理、家电维护", value: "—", to: "/categories?type=service" },
-    { label: "会员", info: "老人、儿童、共同居住人", value: "—", to: "/me" },
+    { label: "会员", info: "查看已加入店铺与会员卡状态", value: formalData.activeShopMembershipCount ?? "—", to: "/me/memberships", test: true },
     { label: "KYC身份验证", info: "实名、证件、本人确认", value: "去", to: "/me/settings/verification" }
   ];
   const startProfileEdit = () => {
@@ -1237,6 +1244,7 @@ function CompleteUserCenterPage({
             <section className="grid grid-cols-2 gap-3">
               {serviceTools.map((entry) => (
                 <div className={cn(pagePanelClassName, "relative min-h-[74px] px-4 py-3")} key={entry.label}>
+                  {entry.test ? <TestFeatureBadge className="pointer-events-none absolute -right-1 -top-1 z-20 min-h-4 px-1.5 py-0 text-[8px]" /> : null}
                   <Link aria-label={entry.label} className="absolute inset-0 rounded-[28px]" to={entry.to} />
                   <div className="pointer-events-none relative z-10 flex min-h-[50px] items-center justify-between gap-3">
                     <div className="min-w-0">

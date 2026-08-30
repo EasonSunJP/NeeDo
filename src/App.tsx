@@ -95,6 +95,7 @@ import { StoreDetailPage } from "./pages/user/StoreDetailPage";
 import { TechnicianServicesPage } from "./pages/user/TechnicianServicesPage";
 import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
+import { UserMembershipsPage } from "./pages/user/UserMembershipsPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
 import { UserSchedulePage } from "./pages/user/UserSchedulePage";
@@ -1174,6 +1175,8 @@ export default function App() {
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
+              <Route path="/me/memberships" element={protect("user", <UserMembershipsPage />)} />
+              <Route path="/me/memberships/:membershipPublicId" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/settings" element={protect("user", <UserSettingsPage />)} />
               <Route path="/me/settings/theme" element={protect("user", <UserSettingsThemePage />)} />
               <Route path="/me/settings/language" element={protect("user", <UserSettingsLanguagePage />)} />

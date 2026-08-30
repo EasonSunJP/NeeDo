@@ -13,4 +13,9 @@ describe("merchant primary navigation modules", () => {
       "场控"
     ]);
   });
+
+  it("marks only the membership module as Test", () => {
+    expect(merchantPrimaryModules.find((module) => module.key === "members")?.badge).toBe("Test");
+    expect(merchantPrimaryModules.filter((module) => module.badge === "Test")).toHaveLength(1);
+  });
 });
