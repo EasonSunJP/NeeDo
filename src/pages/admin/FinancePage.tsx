@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   backofficeRealDataApi,
-  type BackofficeFinanceSettlementPayload
+  type BackofficeFinanceSettlementPayload,
+  type BackofficeNdpSummaryPayload
 } from "../../api/backofficeRealData";
 import {
   merchantFinanceCenterApi,
@@ -14,39 +15,46 @@ import {
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { ModuleShell } from "../../components/admin/ModuleShell";
+import { NdpMetricValue } from "../../components/admin/NdpMetricValue";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { FilterBar } from "../../components/ui/FilterBar";
+import { useI18n } from "../../i18n/I18nProvider";
 import { downloadCsvExport, type CsvExportEnvelope } from "../../lib/downloadCsvExport";
 import { yen } from "../../lib/utils";
+import { getFinanceNdpCopy } from "./financeNdpCopy";
 
 export function FinancePage() {
+  const { language } = useI18n();
+  const ndpCopy = getFinanceNdpCopy(language);
   const [selected, setSelected] = useState<BackofficeFinanceSettlementPayload | null>(null);
   const [selectedOrderFinance, setSelectedOrderFinance] = useState<OrderFinanceDetailPayload | null>(null);
   const [settlementRows, setSettlementRows] = useState<BackofficeFinanceSettlementPayload[]>([]);
   const [payRunRows, setPayRunRows] = useState<PayRunPayload[]>([]);
+  const [ndpSummary, setNdpSummary] = useState<BackofficeNdpSummaryPayload | null>(null);
+  const [ndpSummaryError, setNdpSummaryError] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const financeSummary = useMemo(() => {
     const estimatedServiceGmv = settlementRows.reduce((sum, row) => sum + row.estimatedServiceGmvJpy, 0);
-    const platformNdpRevenue = settlementRows.reduce((sum, row) => sum + row.platformNdpRevenue, 0);
-    const requestFeeNdpRevenue = settlementRows.reduce((sum, row) => sum + row.requestFeeNdpRevenue, 0);
-    const userRewardCost = settlementRows.reduce((sum, row) => sum + row.userRewardNdpCost, 0);
-    const pendingHold = settlementRows.reduce((sum, row) => sum + row.pendingHoldNdp, 0);
-    const campaignDiscount = settlementRows.reduce((sum, row) => sum + row.campaignDiscountNdp, 0);
     const unknownIncome = settlementRows.reduce((sum, row) => sum + row.unknownOrUnreportedServiceAmountJpy, 0);
 
     return [
       ["估算服务 GMV", estimatedServiceGmv, "jpy"],
-      ["平台 NDP 净收入", platformNdpRevenue, "ndp"],
-      ["Request 费用", requestFeeNdpRevenue, "ndp"],
-      ["用户返点成本", userRewardCost, "ndp"],
-      ["待处理冻结", pendingHold, "ndp"],
-      ["活动减免", campaignDiscount, "ndp"],
       ["未上报服务收入", unknownIncome, "jpy"]
     ] as const;
   }, [settlementRows]);
+  const ndpMetrics = ndpSummary
+    ? [
+        [ndpCopy.todayConsumption, ndpSummary.todayNdpConsumption],
+        [ndpCopy.platformNetRevenue, ndpSummary.platformNetRevenue],
+        [ndpCopy.requestFees, ndpSummary.requestFeeRevenue],
+        [ndpCopy.userRewardCost, ndpSummary.userRewardCost],
+        [ndpCopy.pendingHold, ndpSummary.pendingHold],
+        [ndpCopy.campaignDiscount, ndpSummary.campaignDiscount]
+      ] as const
+    : [];
   const payrollSummary = useMemo(() => {
     const totalNetPay = payRunRows.reduce((sum, row) => sum + row.totalNetPayJpy, 0);
     const unpaid = payRunRows.reduce((sum, row) => sum + row.unpaidAmountJpy, 0);
@@ -68,6 +76,17 @@ export function FinancePage() {
     }).catch(() => {
       if (activeRequest) {
         setSettlementRows([]);
+      }
+    });
+    setNdpSummaryError(false);
+    backofficeRealDataApi.ndpSummary({ date: getTokyoCalendarDate() }).then((response) => {
+      if (activeRequest) {
+        setNdpSummary(response);
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setNdpSummary(null);
+        setNdpSummaryError(true);
       }
     });
     merchantPayrollCenterApi.listBackofficePayRuns().then((response) => {
@@ -132,7 +151,34 @@ export function FinancePage() {
               <strong className="mt-2 block text-xl">{formatFinanceAmount(Number(value), unit)}</strong>
             </article>
           ))}
+          {ndpMetrics.map(([label, value]) => (
+            <article className="rounded-lg border border-line bg-white p-4 shadow-panel" data-no-i18n key={label}>
+              <p className="text-sm text-ink/55">{label}</p>
+              <NdpMetricValue ndp={value.ndp} testNdp={value.testNdp} />
+            </article>
+          ))}
         </section>
+
+        {ndpSummaryError ? (
+          <div className="mt-3">
+            <Badge tone="red"><span data-no-i18n>{ndpCopy.loadFailed}</span></Badge>
+          </div>
+        ) : null}
+
+        {ndpSummary ? (
+          <section className="mt-5 rounded-lg border border-line bg-white p-4 shadow-panel" data-no-i18n>
+            <p className="text-sm font-bold text-ink/55">{ndpCopy.settleable}</p>
+            <strong className="mt-2 block text-2xl">
+              {ndpSummary.settleableNdp.toLocaleString("ja-JP")} NDP
+            </strong>
+            <p className="mt-1 text-xs font-bold text-ink/45">
+              <span>{ndpCopy.testExcluded}</span>
+              <span>
+                ：{ndpSummary.platformNetRevenue.testNdp.toLocaleString("ja-JP")} Test NDP
+              </span>
+            </p>
+          </section>
+        ) : null}
 
         <section className="mt-5 rounded-lg border border-line bg-white p-4 shadow-panel">
           <h2 className="font-bold">结算规则配置</h2>
@@ -279,4 +325,17 @@ function formatNdp(value: number) {
 
 function formatFinanceAmount(value: number, unit: "jpy" | "ndp") {
   return unit === "ndp" ? formatNdp(value) : yen(value);
+}
+
+function getTokyoCalendarDate(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Tokyo",
+    year: "numeric"
+  }).formatToParts(value);
+  const part = (type: "day" | "month" | "year") =>
+    parts.find((item) => item.type === type)?.value ?? "";
+
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }

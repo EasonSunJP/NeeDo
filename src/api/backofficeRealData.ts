@@ -81,6 +81,25 @@ export interface BackofficeFinanceSettlementPayload {
   createdAt: string;
 }
 
+export interface NdpAmountPair {
+  ndp: number;
+  testNdp: number;
+}
+
+export interface BackofficeNdpSummaryPayload {
+  period: {
+    date: string;
+    timeZone: "Asia/Tokyo";
+  };
+  todayNdpConsumption: NdpAmountPair;
+  platformNetRevenue: NdpAmountPair;
+  requestFeeRevenue: NdpAmountPair;
+  userRewardCost: NdpAmountPair;
+  pendingHold: NdpAmountPair;
+  campaignDiscount: NdpAmountPair;
+  settleableNdp: number;
+}
+
 export interface BackofficeTechnicianPayload {
   id: number;
   userId: number;
@@ -523,6 +542,12 @@ export const backofficeRealDataApi = {
     return httpClient.request<PaginatedApiPayload<BackofficeFinanceSettlementPayload>>(`${scopePrefix(scope)}/finance/settlements`, {
       query
     });
+  },
+  ndpSummary(query: { date?: string } = {}) {
+    return httpClient.request<BackofficeNdpSummaryPayload>(
+      "/backoffice/finance/ndp-summary",
+      { query }
+    );
   },
   exportFinanceSettlements(scope: BackofficeScope, query?: ListQuery) {
     return httpClient.request<CsvExportPayload>(`${scopePrefix(scope)}/finance/settlements/export`, {

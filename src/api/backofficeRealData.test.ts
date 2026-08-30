@@ -14,6 +14,16 @@ vi.mock("./httpClient", () => ({ httpClient: { request: vi.fn() } }));
 describe("backofficeRealDataApi master data writes", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("loads the paired NDP summary for the selected Tokyo calendar date", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await backofficeRealDataApi.ndpSummary({ date: "2026-08-30" });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/backoffice/finance/ndp-summary", {
+      query: { date: "2026-08-30" }
+    });
+  });
+
   it("uses protected operations endpoints for shops and technician approval", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
     const api = backofficeRealDataApi as typeof backofficeRealDataApi & Record<string, (...args: never[]) => Promise<unknown>>;
