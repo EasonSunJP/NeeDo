@@ -1,4 +1,152 @@
+import { ConversationAccessPolicy } from "@prisma/client";
+import { RealtimeRepository } from "../src/repositories/realtime.repository";
 import { RealtimeService } from "../src/services/realtime.service";
+
+describe("RealtimeRepository message-send eligibility", () => {
+  const createFixture = ({
+    accessPolicy = ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+    blocked = false,
+    identityIds = [410, 1670],
+    member = true,
+    reciprocalContactCount = 2
+  }: {
+    accessPolicy?: ConversationAccessPolicy;
+    blocked?: boolean;
+    identityIds?: number[];
+    member?: boolean;
+    reciprocalContactCount?: number;
+  } = {}) => {
+    const findParticipant = jest.fn(async () =>
+      member
+        ? {
+            conversation: {
+              accessPolicy,
+              participants: identityIds.map((identityId) => ({ identityId }))
+            }
+          }
+        : null
+    );
+    const countContacts = jest.fn(async () => reciprocalContactCount);
+    const repository = new RealtimeRepository({
+      conversationParticipant: { findFirst: findParticipant },
+      contact: { count: countContacts }
+    } as never);
+    const blockSpy = jest
+      .spyOn(repository, "isMessageSenderBlocked")
+      .mockResolvedValue(blocked);
+
+    return { repository, findParticipant, countContacts, blockSpy };
+  };
+
+  it("returns not_found for a non-member without checking block or contacts", async () => {
+    const { repository, findParticipant, countContacts, blockSpy } = createFixture({
+      member: false
+    });
+
+    await expect(
+      repository.checkMessageSendEligibility({
+        conversationId: 91,
+        senderUserId: 41,
+        senderIdentityId: 410
+      })
+    ).resolves.toBe("not_found");
+
+    expect(findParticipant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          conversationId: 91,
+          identityId: 410,
+          deletedAt: null,
+          conversation: { deletedAt: null }
+        })
+      })
+    );
+    expect(blockSpy).not.toHaveBeenCalled();
+    expect(countContacts).not.toHaveBeenCalled();
+  });
+
+  it("returns recipient_blocked before checking friendship contacts", async () => {
+    const { repository, countContacts, blockSpy } = createFixture({ blocked: true });
+
+    await expect(
+      repository.checkMessageSendEligibility({
+        conversationId: 91,
+        senderUserId: 41,
+        senderIdentityId: 410
+      })
+    ).resolves.toBe("recipient_blocked");
+
+    expect(blockSpy).toHaveBeenCalledWith(91, 41, 410);
+    expect(countContacts).not.toHaveBeenCalled();
+  });
+
+  it("returns not_friends when friendship-required membership is not exactly two", async () => {
+    const { repository, countContacts } = createFixture({ identityIds: [410] });
+
+    await expect(
+      repository.checkMessageSendEligibility({
+        conversationId: 91,
+        senderUserId: 41,
+        senderIdentityId: 410
+      })
+    ).resolves.toBe("not_friends");
+
+    expect(countContacts).not.toHaveBeenCalled();
+  });
+
+  it("returns not_friends when friendship-required reciprocal contacts are incomplete", async () => {
+    const { repository, countContacts } = createFixture({ reciprocalContactCount: 1 });
+
+    await expect(
+      repository.checkMessageSendEligibility({
+        conversationId: 91,
+        senderUserId: 41,
+        senderIdentityId: 410
+      })
+    ).resolves.toBe("not_friends");
+
+    expect(countContacts).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows friendship-required sends with two reciprocal contacts", async () => {
+    const { repository, countContacts } = createFixture({ reciprocalContactCount: 2 });
+
+    await expect(
+      repository.checkMessageSendEligibility({
+        conversationId: 91,
+        senderUserId: 41,
+        senderIdentityId: 410
+      })
+    ).resolves.toBe("allowed");
+
+    expect(countContacts).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        OR: [
+          { ownerIdentityId: 410, contactIdentityId: 1670 },
+          { ownerIdentityId: 1670, contactIdentityId: 410 }
+        ]
+      }
+    });
+  });
+
+  it.each([
+    ConversationAccessPolicy.BUSINESS_CONTEXT,
+    ConversationAccessPolicy.GROUP_MEMBERSHIP
+  ])("allows unblocked %s sends without querying contacts", async (accessPolicy) => {
+    const { repository, countContacts } = createFixture({ accessPolicy });
+
+    await expect(
+      repository.checkMessageSendEligibility({
+        conversationId: 91,
+        senderUserId: 41,
+        senderIdentityId: 410
+      })
+    ).resolves.toBe("allowed");
+
+    expect(countContacts).not.toHaveBeenCalled();
+  });
+});
 
 describe("RealtimeService fuzzy search", () => {
   it("keeps add-friend discovery scoped to the authenticated user", async () => {
