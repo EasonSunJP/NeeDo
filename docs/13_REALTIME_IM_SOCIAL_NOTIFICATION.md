@@ -362,8 +362,11 @@
 
 ### 自动化与待授权验收边界
 
-- 聚焦前端回归覆盖权威映射、正式 provider、好友转发页、个人中心收藏入口以及 IM 正式消息解析；聚焦后端回归覆盖 Zod、migration/permission 契约、Service SSE/幂等边界、OpenAPI 与完整 HTTP 路由。完整 lint、build、全量测试与生产 bundle 门禁应在交付前重新运行并以最终命令输出为准。
-- 当前未应用此 migration、未修改正式数据库，也未执行会产生点赞、收藏或好友消息的浏览器动作。获得临时数据写入授权后，必须确认端口与工作树归属，验证点赞/取消、同身份唯一浏览、个人中心收藏持久化、双账号好友卡片投递、重复 Idempotency-Key、SSE、刷新、移动端溢出和 console，并清理临时互动与消息；未完成这些步骤前不得标记真实页面/数据验收通过。
+- 聚焦前端回归覆盖权威映射、正式 provider、好友转发页、详情浏览、个人中心收藏入口、IM 正式消息解析和翻译质量：8 个功能文件、145 项通过，独立 i18n quality 1 项通过。最终前端全量使用 `npm test -- --testTimeout=20000`，265 个文件、1,689 项通过；默认 5 秒上限的前一轮只有既有 `ReactionCatalog` 1 项在满负载下超时，该文件随后独立 3/3 通过。没有修改该组件、断言或生产超时。
+- 聚焦后端 Social/Realtime/OpenAPI 回归为 6 个 suites、47 项通过。最终后端全量使用 `npm test -- --testTimeout=20000`，339 个 suites、2,290 项通过，另有 10 个 suites、38 项按既有配置跳过；默认 5 秒上限曾使两个 bcrypt 密集认证用例在满负载下超时，未修改 bcrypt rounds、限流或认证代码。
+- `npm --prefix backend run lint`、`npm --prefix backend run build`、根目录 `npm run lint`、`npm run i18n:audit` 与 Prisma schema validate 均退出 `0`。正式 `npm run verify:production-build` 检查 8 个 HTML 与 25 个 assets 通过；页面专属五语文案留在懒加载的 `SocialFavoritesPage` / `SocialRepostPage` chunk，`i18n` chunk 为 3,703,450 bytes，没有提高 3,704,096 bytes 预算。
+- 当前 `needo_dev` 的只读 Prisma 状态显示最后共同 migration 为 `20260831123000_shop_membership_permissions`，待应用 `20260831150000_social_post_interactions`；数据库另有仓库不存在的 `20260830300000_exchange_request_publication` 两条历史（一条 rolled back、一条 finished）。`information_schema` 中四张新互动表均不存在。因 migration history 分叉，本轮未执行 `migrate deploy`、未手写 SQL、未修改数据库历史。
+- 当前也未执行会产生点赞、收藏、浏览或好友消息的浏览器动作。必须先独立协调并解决上述 migration 分叉，再获得临时正式数据写入授权；之后确认端口与工作树归属，验证点赞/取消、同身份唯一浏览、个人中心收藏持久化、双账号好友卡片投递、重复 Idempotency-Key、SSE、刷新、移动端溢出和 console，并清理临时互动与消息。未完成这些步骤前不得标记真实页面/数据验收通过。
 
 ---
 

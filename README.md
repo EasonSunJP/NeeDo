@@ -221,12 +221,16 @@ Likes, bookmarks, unique views, and friend shares are persisted by migration `20
 
 `GET /api/v1/social/posts?bookmarked=true&page=1&pageSize=20` is the formal source for the customer-center `/me/favorites` page. Timeline, detail, and favorites consume the same returned `counters` and `viewerInteraction` fields. The SSE event `social.post.interaction.updated` refreshes the relevant formal post, while `message.created` delivers a newly shared card to sender and recipient. Legacy media-envelope counters remain a read-only baseline for existing seeded posts; new interaction rows are added to that baseline without rewriting old media JSON.
 
-Before local data acceptance, confirm the backend and frontend listeners belong to the intended checkout, then apply and inspect the additive migration:
+Before local data acceptance, confirm the backend and frontend listeners belong to the intended checkout and inspect migration status first. Apply the additive migration only when the repository history, `_prisma_migrations`, and physical schema are reconciled:
 
 ```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+# Run only after the read-only checks are consistent:
 ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
 ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ```
+
+The 2026-08-31 local `needo_dev` snapshot is not currently safe for deploy: the last common migration is `20260831123000_shop_membership_permissions`, the Social interaction migration is pending, and the database contains two repository-absent `20260830300000_exchange_request_publication` history rows (one rolled back and one finished). A read-only `information_schema` check found none of the four Social interaction tables. Do not repair history, apply raw SQL, or run `migrate deploy` until that unrelated divergence is reconciled.
 
 With explicitly approved disposable test data, verify in order: like/unlike count and state after reload; a second detail view from the same active identity does not add another view; bookmark appears under `个人中心 → 我的收藏` and disappears after unbookmark; share selects one or more bilateral friends and creates one private dynamic card per recipient; reusing the same idempotency key creates no duplicate message. Repeat at 440×956 and check failed requests, console errors, overflow, two-account SSE delivery, refresh persistence, and cleanup of the temporary interactions/messages.
 
