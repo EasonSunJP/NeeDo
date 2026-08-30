@@ -16,7 +16,7 @@ Do not merge, cherry-pick, push, or deploy until the user approves the Affiliate
 - Common ancestor with current local `main`: `f8a02ea3`
 - Divergence before this evidence note: `main` has 14 commits not in the feature branch; the feature branch has 12 commits not in `main`.
 - `git merge-base --is-ancestor codex/affiliate-merchant-task-workspace main` returned exit code `1`, proving this major-release workspace is not integrated into `main`.
-- The local `main` checkout remained clean at `30eed0ca` while the feature worktree was developed and verified.
+- The local `main` checkout was clean at `30eed0ca` when the Affiliate isolation snapshot was taken. During final verification, another task added uncommitted changes to two technician-schedule files in the main checkout; this Affiliate task did not touch, stage, or merge those files.
 
 ## Affiliate worktree inventory
 
