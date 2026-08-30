@@ -404,6 +404,11 @@ describe("ImConversationRoomPage voice recording integration", () => {
     expect(container.querySelector("button[aria-label='删除录音']")).not.toBeNull();
     expect(container.querySelector("button[aria-label='重放录音']")).not.toBeNull();
     expect(container.querySelector("button[aria-label='发送录音']")).not.toBeNull();
+    expect(container.querySelector("[data-im-voice-playback-time='true']")?.textContent).toBe("0:00 / 0:01");
+
+    previewAudio!.currentTime = 1;
+    await act(async () => previewAudio!.dispatchEvent(new Event("timeupdate", { bubbles: true })));
+    expect(container.querySelector("[data-im-voice-playback-time='true']")?.textContent).toBe("0:01 / 0:01");
 
     await act(async () => {
       container.querySelector<HTMLButtonElement>("button[aria-label='发送录音']")!.click();
@@ -418,6 +423,14 @@ describe("ImConversationRoomPage voice recording integration", () => {
     expect(container.querySelector("button[aria-label='重放录音']")).not.toBeNull();
     expect(container.querySelector("button[aria-label='发送录音']")).not.toBeNull();
     expect(container.querySelector<HTMLElement>("[data-im-composer-rich-input='true']")?.textContent).toBe("不要清空这段草稿");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button[aria-label='重放录音']")!.click();
+      await Promise.resolve();
+    });
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(previewAudio!.currentTime).toBe(0);
+    expect(container.querySelector("[data-im-voice-playback-time='true']")?.textContent).toBe("0:00 / 0:01");
 
     await act(async () => {
       container.querySelector<HTMLButtonElement>("button[aria-label='发送录音']")!.click();

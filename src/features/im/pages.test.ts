@@ -551,6 +551,10 @@ describe("IM pages", () => {
     expect(componentSource).toContain('aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}');
     expect(componentSource).toContain("previousVoicePhaseRef");
     expect(componentSource).toContain("voiceButtonRef.current?.focus()");
+    expect(componentSource).toContain("playbackSeconds={voiceRecording.playbackSeconds}");
+    expect(componentSource).toContain("voiceRecording.handlePlaybackEnded");
+    expect(componentSource).toContain("voiceRecording.updatePlaybackSeconds(event.currentTarget.currentTime)");
+    expect(componentSource).not.toContain("handleHookOwnedVoiceAudioEvent");
 
     expect(sendStart).toBeGreaterThan(-1);
     expect(sendSource).toContain("voiceRecording.beginSending()");

@@ -49,6 +49,7 @@ describe("ImVoiceRecordingOverlay", () => {
           onStop={onStop}
           onTimeUpdate={vi.fn()}
           phase="idle"
+          playbackSeconds={0}
           previewUrl={null}
           remainingSeconds={59}
         />,
@@ -71,6 +72,7 @@ describe("ImVoiceRecordingOverlay", () => {
           onStop={onStop}
           onTimeUpdate={vi.fn()}
           phase="acquiring_permission"
+          playbackSeconds={0}
           previewUrl={null}
           remainingSeconds={59}
         />,
@@ -121,6 +123,7 @@ describe("ImVoiceRecordingOverlay", () => {
             onStop={onStop}
             onTimeUpdate={onTimeUpdate}
             phase={phase}
+            playbackSeconds={3}
             previewUrl="blob:voice-preview"
             remainingSeconds={51}
           />,
@@ -135,6 +138,7 @@ describe("ImVoiceRecordingOverlay", () => {
     expect(dialog?.className).toContain("backdrop-blur");
     expect(container.querySelector("[data-im-voice-bubble='true']")?.className).toContain("bg-[#91ed63]");
     expect(container.textContent).toContain("51″ 后将停止录音");
+    expect(container.querySelector("[data-im-voice-playback-time='true']")).toBeNull();
     expect(container.textContent).not.toContain("转文字");
     expect(container.querySelector("[data-im-voice-semicircle]")).toBeNull();
     await act(async () => {
@@ -148,6 +152,7 @@ describe("ImVoiceRecordingOverlay", () => {
     const audio = container.querySelector<HTMLAudioElement>("audio")!;
     expect(audioRef.current).toBe(audio);
     expect(audio.getAttribute("src")).toBe("blob:voice-preview");
+    expect(container.querySelector("[data-im-voice-playback-time='true']")?.textContent).toBe("0:03 / 0:08");
     const previewDeleteButton = container.querySelector<HTMLButtonElement>("button[aria-label='删除录音']")!;
     expect(previewDeleteButton.querySelector("path")?.getAttribute("d")).toBe(
       "m7 7 10 10M17 7 7 17",
@@ -194,6 +199,7 @@ describe("ImVoiceRecordingOverlay", () => {
             onStop={vi.fn()}
             onTimeUpdate={vi.fn()}
             phase={phase}
+            playbackSeconds={3}
             previewUrl="blob:voice-preview"
             remainingSeconds={51}
           />,

@@ -1280,6 +1280,9 @@ function getVoiceRecordingErrorSource(errorKey: string) {
   if (errorKey === "error.im.voice_permission_denied") {
     return "请允许麦克风权限后重试";
   }
+  if (errorKey === "error.im.voice_unsupported") {
+    return "当前设备不支持浏览器录音";
+  }
   if (errorKey === "error.im.voice_autoplay_blocked") {
     return "自动播放已暂停，请点击重放";
   }
@@ -1288,8 +1291,6 @@ function getVoiceRecordingErrorSource(errorKey: string) {
   }
   return "语音发送失败，请重试";
 }
-
-const handleHookOwnedVoiceAudioEvent = () => undefined;
 
 function readImageSize(src: string) {
   return new Promise<{ width: number; height: number }>((resolve, reject) => {
@@ -6240,12 +6241,13 @@ export function ImConversationRoomPage({
           error={voiceRecordingError}
           onCancel={voiceRecording.cancel}
           onDelete={voiceRecording.cancel}
-          onPreviewEnded={handleHookOwnedVoiceAudioEvent}
+          onPreviewEnded={voiceRecording.handlePlaybackEnded}
           onReplay={() => void voiceRecording.replay()}
           onSend={() => void sendVoiceRecording()}
           onStop={() => voiceRecording.stop("manual")}
-          onTimeUpdate={handleHookOwnedVoiceAudioEvent}
+          onTimeUpdate={(event) => voiceRecording.updatePlaybackSeconds(event.currentTarget.currentTime)}
           phase={voiceRecording.phase}
+          playbackSeconds={voiceRecording.playbackSeconds}
           previewUrl={voiceRecording.previewUrl}
           remainingSeconds={voiceRecording.remainingSeconds}
         />

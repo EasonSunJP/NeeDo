@@ -63,6 +63,8 @@ function HookProbe() {
   return (
     <audio
       data-testid="preview-audio"
+      onEnded={voice.handlePlaybackEnded}
+      onTimeUpdate={(event) => voice.updatePlaybackSeconds(event.currentTarget.currentTime)}
       ref={voice.audioRef}
       src={voice.previewUrl ?? undefined}
     />
@@ -75,6 +77,8 @@ function PageLikeHookProbe() {
   return voice.phase === "idle" ? null : (
     <audio
       data-testid="page-like-preview-audio"
+      onEnded={voice.handlePlaybackEnded}
+      onTimeUpdate={(event) => voice.updatePlaybackSeconds(event.currentTarget.currentTime)}
       ref={voice.audioRef}
       src={voice.previewUrl ?? undefined}
     />
@@ -159,6 +163,7 @@ describe("useImVoiceRecording", () => {
     expect(latest.phase).toBe("recording");
     expect(latest.remainingSeconds).toBe(MAX_VOICE_RECORDING_SECONDS);
     expect(latest.progress).toBe(0);
+    expect(latest.playbackSeconds).toBe(0);
   });
 
   it("can open after the StrictMode effect cleanup and setup cycle", async () => {
@@ -336,16 +341,20 @@ describe("useImVoiceRecording", () => {
     expect(latest.blob).toBeNull();
   });
 
-  it("replays from zero and follows pause and ended events", async () => {
+  it("tracks preview playback, replays from zero, and finishes at the total duration", async () => {
     const recorder = await openRecording();
     await finishRecorder(recorder);
     const audio = container.querySelector<HTMLAudioElement>('[data-testid="preview-audio"]')!;
 
-    audio.currentTime = 1;
+    audio.currentTime = 1.4;
+    await act(async () => audio.dispatchEvent(new Event("timeupdate", { bubbles: true })));
+    expect(latest.playbackSeconds).toBe(1.4);
+
     await act(async () => {
       await latest.replay();
     });
     expect(audio.currentTime).toBe(0);
+    expect(latest.playbackSeconds).toBe(0);
     expect(audioPlay).toHaveBeenCalledTimes(2);
     expect(latest.phase).toBe("preview_playing");
 
@@ -357,6 +366,7 @@ describe("useImVoiceRecording", () => {
       audio.dispatchEvent(new Event("ended"));
     });
     expect(latest.phase).toBe("preview_paused");
+    expect(latest.playbackSeconds).toBe(latest.durationSeconds);
   });
 
   it("follows ended events when the page mounts audio only after leaving idle", async () => {
@@ -401,6 +411,15 @@ describe("useImVoiceRecording", () => {
     expect(latest.blob).toBe(blob);
     expect(latest.previewUrl).toBe(previewUrl);
 
+    const audio = container.querySelector<HTMLAudioElement>('[data-testid="preview-audio"]')!;
+    audio.currentTime = 1;
+    await act(async () => audio.dispatchEvent(new Event("timeupdate", { bubbles: true })));
+    expect(latest.playbackSeconds).toBe(1);
+    await act(async () => latest.replay());
+    expect(audio.currentTime).toBe(0);
+    expect(latest.playbackSeconds).toBe(0);
+    expect(latest.phase).toBe("preview_playing");
+
     await act(async () => latest.beginSending());
     await act(async () => latest.finishSending());
     expect(latest.phase).toBe("idle");
@@ -409,6 +428,29 @@ describe("useImVoiceRecording", () => {
     expect(audioPause).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith(previewUrl);
+  });
+
+  it.each([
+    ["mediaDevices", () => {
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: undefined,
+      });
+    }],
+    ["MediaRecorder", () => {
+      vi.stubGlobal("MediaRecorder", undefined);
+    }],
+  ] as const)("reports unsupported recording when %s is unavailable", async (_api, removeApi) => {
+    removeApi();
+
+    await act(async () => {
+      await latest.open();
+    });
+
+    expect(latest.phase).toBe("idle");
+    expect(latest.error).toBe("error.im.voice_unsupported");
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
   });
 
   it("cleans up recorder errors and permission denials with error keys", async () => {

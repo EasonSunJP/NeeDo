@@ -19,6 +19,7 @@ export interface UseImVoiceRecordingResult {
   blob: Blob | null;
   previewUrl: string | null;
   durationSeconds: number;
+  playbackSeconds: number;
   remainingSeconds: number;
   progress: number;
   error: string | null;
@@ -26,6 +27,8 @@ export interface UseImVoiceRecordingResult {
   cancel: () => void;
   stop: (reason?: ImVoiceRecordingStopReason) => void;
   replay: () => Promise<void>;
+  updatePlaybackSeconds: (currentTime: number) => void;
+  handlePlaybackEnded: () => void;
   beginSending: () => void;
   finishSending: () => void;
   failSending: (errorKey: string) => void;
@@ -42,6 +45,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
+  const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(MAX_VOICE_RECORDING_SECONDS);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +117,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     setBlob(null);
     setPreviewUrl(null);
     setDurationSeconds(0);
+    setPlaybackSeconds(0);
     setRemainingSeconds(MAX_VOICE_RECORDING_SECONDS);
     setProgress(0);
     setError(null);
@@ -168,6 +173,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     const attempt = playbackAttemptRef.current + 1;
     playbackAttemptRef.current = attempt;
     if (resetTime) audio.currentTime = 0;
+    if (resetTime && mountedRef.current) setPlaybackSeconds(0);
     try {
       await audio.play();
       if (
@@ -176,7 +182,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
         generationRef.current === generation &&
         objectUrlRef.current === expectedUrl &&
         (phaseRef.current === "preview_paused" ||
-          phaseRef.current === "preview_playing")
+          phaseRef.current === "preview_playing" ||
+          phaseRef.current === "send_error")
       ) {
         setError(null);
         transition("preview_playing");
@@ -188,7 +195,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
         generationRef.current === generation &&
         objectUrlRef.current === expectedUrl &&
         (phaseRef.current === "preview_paused" ||
-          phaseRef.current === "preview_playing")
+          phaseRef.current === "preview_playing" ||
+          phaseRef.current === "send_error")
       ) {
         setError("error.im.voice_autoplay_blocked");
         transition("preview_paused");
@@ -198,6 +206,12 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
   const open = useCallback(async () => {
     if (phaseRef.current !== "idle") return;
+
+    const mediaDevices = typeof navigator === "undefined" ? undefined : navigator.mediaDevices;
+    if (!mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      if (mountedRef.current) setError("error.im.voice_unsupported");
+      return;
+    }
 
     const generation = generationRef.current + 1;
     generationRef.current = generation;
@@ -209,6 +223,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       setBlob(null);
       setPreviewUrl(null);
       setDurationSeconds(0);
+      setPlaybackSeconds(0);
       setRemainingSeconds(MAX_VOICE_RECORDING_SECONDS);
       setProgress(0);
     }
@@ -216,7 +231,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await mediaDevices.getUserMedia({ audio: true });
     } catch {
       if (mountedRef.current && generationRef.current === generation) {
         transition("idle");
@@ -294,6 +309,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
         setBlob(null);
         setPreviewUrl(null);
         setDurationSeconds(0);
+        setPlaybackSeconds(0);
         setRemainingSeconds(MAX_VOICE_RECORDING_SECONDS);
         setProgress(0);
         setError("error.im.voice_recording_failed");
@@ -309,6 +325,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       setBlob(recordedBlob);
       setPreviewUrl(url);
       setDurationSeconds(measuredDuration);
+      setPlaybackSeconds(0);
       setRemainingSeconds(MAX_VOICE_RECORDING_SECONDS - measuredDuration);
       setProgress(measuredDuration / MAX_VOICE_RECORDING_SECONDS);
       setError(null);
@@ -370,7 +387,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
   const replay = useCallback(async () => {
     if (
       phaseRef.current !== "preview_paused" &&
-      phaseRef.current !== "preview_playing"
+      phaseRef.current !== "preview_playing" &&
+      phaseRef.current !== "send_error"
     ) {
       return;
     }
@@ -378,6 +396,34 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     if (!currentUrl) return;
     await attemptPlayback(generationRef.current, currentUrl, true);
   }, [attemptPlayback]);
+
+  const updatePlaybackSeconds = useCallback((currentTime: number) => {
+    if (
+      phaseRef.current !== "preview_paused" &&
+      phaseRef.current !== "preview_playing" &&
+      phaseRef.current !== "send_error"
+    ) {
+      return;
+    }
+    const total = stoppedDurationRef.current;
+    if (!Number.isFinite(currentTime) || total <= 0) return;
+    setPlaybackSeconds(Math.min(total, Math.max(0, currentTime)));
+  }, []);
+
+  const handlePlaybackEnded = useCallback(() => {
+    if (
+      phaseRef.current !== "preview_paused" &&
+      phaseRef.current !== "preview_playing" &&
+      phaseRef.current !== "send_error"
+    ) {
+      return;
+    }
+    setPlaybackSeconds(stoppedDurationRef.current);
+    if (phaseRef.current === "preview_playing") {
+      playbackAttemptRef.current += 1;
+      transition("preview_paused");
+    }
+  }, [transition]);
 
   const beginSending = useCallback(() => {
     if (
@@ -421,10 +467,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       }
     };
     audio.addEventListener("pause", markPaused);
-    audio.addEventListener("ended", markPaused);
     return () => {
       audio.removeEventListener("pause", markPaused);
-      audio.removeEventListener("ended", markPaused);
     };
   }, [phase, transition]);
 
@@ -471,6 +515,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     blob,
     previewUrl,
     durationSeconds,
+    playbackSeconds,
     remainingSeconds,
     progress,
     error,
@@ -478,6 +523,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     cancel,
     stop,
     replay,
+    updatePlaybackSeconds,
+    handlePlaybackEnded,
     beginSending,
     finishSending,
     failSending,

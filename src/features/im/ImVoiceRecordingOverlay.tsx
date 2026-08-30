@@ -16,6 +16,12 @@ export type ImVoiceRecordingOverlayCopy = {
   stopAriaLabel: string;
 };
 
+function formatVoicePlaybackSeconds(value: number) {
+  const wholeSeconds = Math.max(0, Math.floor(Number.isFinite(value) ? value : 0));
+  const minutes = Math.floor(wholeSeconds / 60);
+  return `${minutes}:${String(wholeSeconds % 60).padStart(2, "0")}`;
+}
+
 export function ImVoiceRecordingOverlay({
   audioRef,
   copy,
@@ -29,6 +35,7 @@ export function ImVoiceRecordingOverlay({
   onStop,
   onTimeUpdate,
   phase,
+  playbackSeconds,
   previewUrl,
   remainingSeconds,
 }: {
@@ -44,6 +51,7 @@ export function ImVoiceRecordingOverlay({
   onStop: () => void;
   onTimeUpdate: ReactEventHandler<HTMLAudioElement>;
   phase: ImVoiceRecordingPhase;
+  playbackSeconds: number;
   previewUrl: string | null;
   remainingSeconds: number;
 }) {
@@ -124,9 +132,19 @@ export function ImVoiceRecordingOverlay({
         data-im-voice-duration-seconds={durationSeconds}
       >
         <span aria-hidden="true" className="absolute -bottom-3 left-1/2 h-6 w-6 -translate-x-1/2 rotate-45 bg-[#91ed63]" />
-        <p aria-live="polite" className="relative text-xl font-black tabular-nums" id="im-voice-recording-title">
-          {bubbleText}
-        </p>
+        <div className="relative">
+          <p aria-live="polite" className="text-xl font-black tabular-nums" id="im-voice-recording-title">
+            {bubbleText}
+          </p>
+          {!isRecording ? (
+            <p
+              className="mt-2 text-sm font-black tabular-nums text-[#245629]/80"
+              data-im-voice-playback-time="true"
+            >
+              {formatVoicePlaybackSeconds(playbackSeconds)} / {formatVoicePlaybackSeconds(durationSeconds)}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-auto flex items-center justify-center gap-5" data-im-voice-recording-actions="true">
