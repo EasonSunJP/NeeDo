@@ -55,4 +55,29 @@ describe("shop membership API clients", () => {
     });
     expect(httpClient.request).toHaveBeenNthCalledWith(2, "/customer-profile/me/shop-memberships/member%2F2");
   });
+
+  it("uses formal card-plan lifecycle routes without wallet or card mutations", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    const draft = { expectedLockVersion: 0 } as never;
+    const scenario = { eligibleAmountJpy: 10_000 } as never;
+
+    await merchantShopMembershipApi.listCardPlans({ page: 2, pageSize: 10 });
+    await merchantShopMembershipApi.getCardPlan(" plan/1 ");
+    await merchantShopMembershipApi.createCardPlan(draft);
+    await merchantShopMembershipApi.saveCardPlanDraft("plan-id", draft);
+    await merchantShopMembershipApi.previewCardPlan("plan-id", scenario);
+    await merchantShopMembershipApi.publishCardPlan("plan-id", 3);
+    await merchantShopMembershipApi.retireCardPlan("plan-id");
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/merchant-admin/shop-membership-card-plans", { query: { page: 2, pageSize: 10 } });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/merchant-admin/shop-membership-card-plans/plan%2F1");
+    expect(httpClient.request).toHaveBeenNthCalledWith(3, "/merchant-admin/shop-membership-card-plans", { method: "POST", body: draft });
+    expect(httpClient.request).toHaveBeenNthCalledWith(4, "/merchant-admin/shop-membership-card-plans/plan-id/draft", { method: "PATCH", body: draft });
+    expect(httpClient.request).toHaveBeenNthCalledWith(5, "/merchant-admin/shop-membership-card-plans/plan-id/preview", { method: "POST", body: scenario });
+    expect(httpClient.request).toHaveBeenNthCalledWith(6, "/merchant-admin/shop-membership-card-plans/plan-id/publish", { method: "POST", body: { expectedLockVersion: 3 } });
+    expect(httpClient.request).toHaveBeenNthCalledWith(7, "/merchant-admin/shop-membership-card-plans/plan-id/retire", { method: "POST", body: {} });
+    expect(merchantShopMembershipApi).not.toHaveProperty("issueCard");
+    expect(merchantShopMembershipApi).not.toHaveProperty("topUpCard");
+    expect(merchantShopMembershipApi).not.toHaveProperty("redeemCard");
+  });
 });

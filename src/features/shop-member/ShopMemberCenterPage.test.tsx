@@ -21,6 +21,14 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain("后续独立开放");
   });
 
+  it("splits issued cards from card plans and uses exact plan permissions", () => {
+    expect(source).toContain("已发会员卡");
+    expect(source).toContain("卡方案");
+    expect(source).toContain("<CardPlanWorkspace");
+    expect(source).toContain('hasPermission("shop.member.card_plan.manage")');
+    expect(source).toContain('hasPermission("shop.member.card_plan.publish")');
+  });
+
   it("provides real loading, empty, error, retry, and permission states", () => {
     expect(source).toContain("正在读取会员数据");
     expect(source).toContain("当前店铺暂无会员");
