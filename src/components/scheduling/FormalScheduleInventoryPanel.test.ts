@@ -31,9 +31,9 @@ describe("FormalScheduleInventoryPanel", () => {
     expect(source).toContain("当前范围没有正式可预约时段");
   });
 
-  it("keeps merchant inventory and the technician workspace on formal shared-calendar data", () => {
-    expect(merchantSource).toContain('scope="merchant-admin"');
-    expect(merchantSource).toContain("<FormalScheduleInventoryPanel");
+  it("keeps the merchant appointment overview and technician workspace on the formal shared calendar", () => {
+    expect(merchantSource).toContain('<UnifiedUserCalendar currentStore={store}');
+    expect(merchantSource).not.toContain("<FormalScheduleInventoryPanel");
     expect(technicianSource).toContain("<UnifiedUserCalendar");
     expect(technicianSource).toContain('displayMode="parallel"');
     expect(technicianSource).toContain("formalOnly");

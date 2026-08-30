@@ -46,6 +46,21 @@ describe("ContactEventTimeline comment composer visibility", () => {
     expect(markup).not.toContain('aria-label="评论"');
   });
 
+  it("keeps the approved inset dashed frame for an empty status record panel", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimelinePanel
+        emptyLabel="暂无执行 / 异常记录"
+        events={[]}
+        showCommentComposer={false}
+        title="状态记录"
+      />
+    );
+
+    expect(markup).toContain("border-dashed");
+    expect(markup).toContain("min-h-[72px]");
+    expect(markup).toContain("暂无执行 / 异常记录");
+  });
+
   it("keeps the previous primary visual when tone is omitted", () => {
     const markup = renderToStaticMarkup(
       <ContactEventTimeline
