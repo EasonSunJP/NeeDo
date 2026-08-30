@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
-import { realtimeApi, subscribeRealtimeEvents, type RealtimeNotification } from "../realtime/api";
+import { realtimeApi, subscribeRealtimeEvents, type RealtimeNotification, type RealtimeSocialPost } from "../realtime/api";
+import { normalizeImMessageRichText } from "../im/reaction-policy";
 import type {
   PostInteractionState,
   SocialComposerDraft,
@@ -94,6 +95,44 @@ const emptyFormalSocialState: SocialState = {
   profileOverrides: {},
   refreshedAt: ""
 };
+
+export function getMountedReplyParentReplyCountBaseline(
+  posts: SocialPost[],
+  replyToPostId: string | undefined
+): number | undefined {
+  return replyToPostId === undefined
+    ? undefined
+    : posts.find((post) => post.id === replyToPostId)?.replyCount;
+}
+
+export function mergeCreatedFormalSocialPost(
+  posts: SocialPost[],
+  mapped: SocialPost,
+  parentReplyCountBaseline: number | undefined
+): SocialPost[] {
+  return sortPostsByNewest([
+    mapped,
+    ...posts
+      .filter((post) => post.id !== mapped.id)
+      .map((post) => post.id === mapped.replyToPostId && post.replyCount === parentReplyCountBaseline
+        ? { ...post, replyCount: parentReplyCountBaseline + 1 }
+        : post)
+  ]);
+}
+
+export async function createFormalSocialPost(
+  request: () => Promise<RealtimeSocialPost>,
+  onSuccess: (created: RealtimeSocialPost, mapped: SocialPost) => void
+): Promise<SocialPost> {
+  const created = await request();
+  const mapped = mapFormalSocialPost(created);
+  onSuccess(created, mapped);
+  return mapped;
+}
+
+export function resolveFormalSocialUpdateRichText(content: string, richText: unknown) {
+  return normalizeImMessageRichText(content.trim(), richText);
+}
 
 function formalSocialMutationUnavailable(..._args: unknown[]): never {
   throw new Error("error.feature_unavailable");
@@ -328,33 +367,36 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       if (input.visibility && !["public", "followers"].includes(input.visibility)) {
         throw new Error("error.social.visibility_unavailable");
       }
-      const created = await realtimeApi.createSocialPost({
-        content: input.text.trim(),
-        media: buildFormalSocialCreateMediaEnvelope({
-          media: input.media ?? [],
-          quotePostId: input.quotePostId,
-          replyToPostId: input.replyToPostId,
-          postType: input.postType,
-          locationLabel: input.locationLabel,
-          richText: input.richText
+      const parentReplyCountBaseline = getMountedReplyParentReplyCountBaseline(
+        state.posts,
+        input.replyToPostId
+      );
+      return createFormalSocialPost(
+        () => realtimeApi.createSocialPost({
+          content: input.text.trim(),
+          media: buildFormalSocialCreateMediaEnvelope({
+            media: input.media ?? [],
+            quotePostId: input.quotePostId,
+            replyToPostId: input.replyToPostId,
+            postType: input.postType,
+            locationLabel: input.locationLabel,
+            richText: input.richText
+          }),
+          mentionUserIds: input.mentionUserIds ?? [],
+          visibility: input.visibility === "followers" ? "followers" : "public"
         }),
-        mentionUserIds: input.mentionUserIds ?? [],
-        visibility: input.visibility === "followers" ? "followers" : "public"
-      });
-      const mapped = mapFormalSocialPost(created);
-      setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([created]) }));
-      setState((current) => ({
-        ...current,
-        posts: sortPostsByNewest([
-          mapped,
-          ...current.posts
-            .filter((post) => post.id !== mapped.id)
-            .map((post) => post.id === mapped.replyToPostId
-              ? { ...post, replyCount: post.replyCount + 1 }
-              : post)
-        ])
-      }));
-      return mapped;
+        (created, mapped) => {
+          setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([created]) }));
+          setState((current) => ({
+            ...current,
+            posts: mergeCreatedFormalSocialPost(
+              current.posts,
+              mapped,
+              parentReplyCountBaseline
+            )
+          }));
+        }
+      );
     };
     const updatePost = async (input: SocialUpdatePostInput) => {
       if (!session || input.actorKey !== actorKey) throw new Error("error.auth.forbidden");
@@ -374,7 +416,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
           repostPostId: currentPost.repostPostId,
           postType: input.postType,
           locationLabel: input.locationLabel,
-          richText: currentPost.richText
+          richText: resolveFormalSocialUpdateRichText(input.text, currentPost.richText)
         }),
         mentionUserIds: input.mentionUserIds ?? [],
         visibility: input.visibility === "followers" ? "followers" : "public"
