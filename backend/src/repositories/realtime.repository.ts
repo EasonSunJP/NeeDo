@@ -353,6 +353,18 @@ export type CreateMessageOutcome =
   | { status: "not_found" }
   | { status: "not_friends" };
 
+export type MessageSendEligibility =
+  | "allowed"
+  | "not_found"
+  | "recipient_blocked"
+  | "not_friends";
+
+export interface CheckMessageSendEligibilityInput {
+  conversationId: number;
+  senderUserId: number;
+  senderIdentityId?: number;
+}
+
 export interface RecallMessageInput {
   conversationId: number;
   messageId: number;
@@ -520,6 +532,9 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ConversationPayload>>;
+  checkMessageSendEligibility: (
+    input: CheckMessageSendEligibilityInput
+  ) => Promise<MessageSendEligibility>;
   createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
@@ -1255,6 +1270,72 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async checkMessageSendEligibility(
+    input: CheckMessageSendEligibilityInput
+  ): Promise<MessageSendEligibility> {
+    const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
+    const participant = await this.client.conversationParticipant.findFirst({
+      where: {
+        conversationId: input.conversationId,
+        identityId: senderIdentityId,
+        deletedAt: null,
+        conversation: { deletedAt: null }
+      },
+      select: {
+        conversation: {
+          select: {
+            accessPolicy: true,
+            participants: {
+              where: { deletedAt: null },
+              select: { identityId: true }
+            }
+          }
+        }
+      }
+    });
+    if (!participant) {
+      return "not_found";
+    }
+    if (
+      await this.isMessageSenderBlocked(
+        input.conversationId,
+        input.senderUserId,
+        senderIdentityId
+      )
+    ) {
+      return "recipient_blocked";
+    }
+    if (
+      participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED
+    ) {
+      const identityIds = participant.conversation.participants.map(
+        ({ identityId }) => identityId
+      );
+      if (identityIds.length !== 2) {
+        return "not_friends";
+      }
+      const reciprocalCount = await this.client.contact.count({
+        where: {
+          deletedAt: null,
+          OR: [
+            {
+              ownerIdentityId: identityIds[0],
+              contactIdentityId: identityIds[1]
+            },
+            {
+              ownerIdentityId: identityIds[1],
+              contactIdentityId: identityIds[0]
+            }
+          ]
+        }
+      });
+      if (reciprocalCount !== 2) {
+        return "not_friends";
+      }
+    }
+    return "allowed";
   }
 
   public async createMessage(input: CreateMessageInput): Promise<CreateMessageOutcome> {

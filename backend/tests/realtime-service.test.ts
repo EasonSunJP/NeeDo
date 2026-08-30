@@ -540,10 +540,14 @@ describe("RealtimeService standard message recall", () => {
   });
 });
 
-describe("RealtimeService blocked-recipient delivery guard", () => {
-  it("rejects before persistence when the direct-chat recipient has blocked the sender", async () => {
+describe("RealtimeService message-send preflight", () => {
+  it.each([
+    ["not_found", "error.realtime.conversation_not_found", 404],
+    ["recipient_blocked", "error.im.recipient_blocked", 403],
+    ["not_friends", "error.im.not_friends", 403]
+  ] as const)("maps %s before createMessage", async (status, message, statusCode) => {
     const repository = {
-      isMessageSenderBlocked: jest.fn(async () => true),
+      checkMessageSendEligibility: jest.fn().mockResolvedValue(status),
       createMessage: jest.fn()
     };
     const service = new RealtimeService(repository as never, {
@@ -557,34 +561,34 @@ describe("RealtimeService blocked-recipient delivery guard", () => {
         { conversationId: 91, type: "text", content: "hello" }
       )
     ).rejects.toMatchObject({
-      message: "error.im.recipient_blocked",
-      statusCode: 403
+      message,
+      statusCode
     });
     expect(repository.createMessage).not.toHaveBeenCalled();
   });
-});
 
-describe("RealtimeService friendship authorization", () => {
-  it("maps a removed friendship send to a 403 without publishing", async () => {
+  it("keeps the transaction-time friendship result as the final race-safe gate", async () => {
     const repository = {
-      isMessageSenderBlocked: jest.fn().mockResolvedValue(false),
+      checkMessageSendEligibility: jest.fn().mockResolvedValue("allowed"),
       createMessage: jest.fn().mockResolvedValue({ status: "not_friends" })
     };
-    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
-    const service = new RealtimeService(repository as never, eventGateway);
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, gateway);
 
     await expect(
       service.createMessage(
-        { userId: 167 } as never,
-        { conversationId: 91, type: "text", content: "still there?" }
+        { userId: 41 } as never,
+        { conversationId: 91, type: "text", content: "hello" }
       )
     ).rejects.toMatchObject({
       message: "error.im.not_friends",
       statusCode: 403
     });
-    expect(eventGateway.publish).not.toHaveBeenCalled();
+    expect(gateway.publish).not.toHaveBeenCalled();
   });
+});
 
+describe("RealtimeService friendship authorization", () => {
   it("maps unauthorized direct conversation creation to a 403", async () => {
     const repository = {
       findActiveUserIds: jest.fn().mockResolvedValue([41, 167]),

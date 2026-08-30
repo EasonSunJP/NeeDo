@@ -70,6 +70,7 @@ describe("RealtimeService personal identity scope", () => {
         status: "ready" as const,
         result: { friendRequest, created: true }
       })),
+      checkMessageSendEligibility: jest.fn(async () => "allowed" as const),
       isMessageSenderBlocked: jest.fn(async () => false),
       createMessage: jest.fn(async () => message),
       getConversationForUser: jest.fn(async () => ({ participants: [] }))

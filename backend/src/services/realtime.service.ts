@@ -226,22 +226,41 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.listConversations(scope.identityId, input);
   }
 
-  public async createMessage(
+  public async assertMessageSendAllowed(
     auth: AuthenticatedAccessContext,
-    input: Omit<CreateMessageInput, "senderUserId">
+    conversationId: number
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    if (await this.repository.isMessageSenderBlocked(
-      input.conversationId,
-      auth.userId,
-      scope.identityId
-    )) {
+    const eligibility = await this.repository.checkMessageSendEligibility({
+      conversationId,
+      senderUserId: auth.userId,
+      senderIdentityId: scope.identityId
+    });
+    if (eligibility === "not_found") {
+      throw this.notFoundError("error.realtime.conversation_not_found");
+    }
+    if (eligibility === "recipient_blocked") {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
         message: "error.im.recipient_blocked",
         statusCode: 403
       });
     }
+    if (eligibility === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    return scope;
+  }
+
+  public async createMessage(
+    auth: AuthenticatedAccessContext,
+    input: Omit<CreateMessageInput, "senderUserId">
+  ) {
+    const scope = await this.assertMessageSendAllowed(auth, input.conversationId);
 
     const outcome = await this.repository.createMessage({
       ...input,
