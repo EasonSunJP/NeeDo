@@ -192,3 +192,21 @@
 - [ ] Verify desktop, 390px, and 440px technician routes; click day/week/month, detail, edit/save/reload, order state actions allowed by test data, contacts, chat, social, schedule, and Exchange.
 - [ ] Record console errors, failed network calls, horizontal overflow, hidden panel state, and exact evidence. Fix failures through new red-green cycles.
 - [ ] Run `git diff --check` and `git status --short`; report local branch/commit status separately from push/deployment.
+
+### Task 9: Restore deployed technician home details and identity avatar inheritance
+
+**Files:**
+- Modify: `src/pages/mobile/TechnicianPortalPage.tsx`
+- Modify: `src/components/mobile/ContactEventTimeline.tsx`
+- Create: `backend/src/repositories/identity-avatar.repository.ts`
+- Modify: `backend/src/repositories/customer-profile.repository.ts`
+- Modify: `backend/src/repositories/technician-profile.repository.ts`
+- Modify: `backend/src/repositories/backoffice.repository.ts`
+- Modify: `backend/prisma/schema.prisma`
+- Create: `backend/prisma/migrations/20260830230000_identity_avatar_bootstrap/migration.sql`
+
+- [x] Compare the deployed `user.html#/technician` heading, information trigger, and status timeline against the local formal technician page.
+- [x] Restore the deployed `TitleWithInfo` typography and three-column `ContactEventTimelinePanel` while mapping only formal Booking history.
+- [x] Add an immutable first-avatar baseline and identity-specific customer, technician, and shop writes.
+- [x] Apply the additive migration only to the local `needo_dev` database; do not deploy or mutate the online database.
+- [ ] Complete focused/full tests, lint, production build, and browser acceptance at desktop, 390px, and 440px.

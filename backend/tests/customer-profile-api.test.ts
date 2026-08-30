@@ -253,8 +253,15 @@ const createFixture = async () => {
       userId === 11 && profileId === 41 ? profile : null
     ),
     updateMine: jest.fn(
-      async (userId: number, profileId: number, mutation: CustomerProfileMutation) => {
-        if (userId !== 11 || profileId !== 41) throw new Error("unexpected profile scope");
+      async (
+        userId: number,
+        profileId: number,
+        ownerIdentityId: number,
+        mutation: CustomerProfileMutation
+      ) => {
+        if (userId !== 11 || profileId !== 41 || ownerIdentityId !== 1) {
+          throw new Error("unexpected profile scope");
+        }
         profile = {
           ...profile,
           ...(mutation.displayName === undefined
@@ -336,6 +343,7 @@ describe("customer profile current-user API", () => {
       expect(fixture.customerProfileRepository.updateMine).toHaveBeenCalledWith(
         11,
         41,
+        1,
         expect.objectContaining({
           displayName: "松尾 雄大",
           visibility: "network",

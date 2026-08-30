@@ -11,7 +11,7 @@ WHERE `avatar_url` IS NOT NULL
 
 UPDATE `users` AS `u`
 SET
-  `u`.`avatar_bootstrap_url` = (
+  `avatar_bootstrap_url` = (
     SELECT `ma`.`url`
     FROM `customer_profiles` AS `cp`
     INNER JOIN `media_assets` AS `ma`
@@ -24,7 +24,23 @@ SET
     ORDER BY `ma`.`id` DESC
     LIMIT 1
   ),
-  `u`.`avatar_bootstrapped_at` = COALESCE(`u`.`updated_at`, `u`.`created_at`)
+  `avatar_bootstrapped_at` = COALESCE(`u`.`updated_at`, `u`.`created_at`),
+  `avatar_url` = COALESCE(
+    `u`.`avatar_url`,
+    (
+      SELECT `ma`.`url`
+      FROM `customer_profiles` AS `cp`
+      INNER JOIN `media_assets` AS `ma`
+        ON `ma`.`customer_profile_id` = `cp`.`id`
+        AND `ma`.`usage_type` = 'avatar'
+        AND `ma`.`is_active` = TRUE
+        AND `ma`.`deleted_at` IS NULL
+      WHERE `cp`.`user_id` = `u`.`id`
+        AND `cp`.`deleted_at` IS NULL
+      ORDER BY `ma`.`id` DESC
+      LIMIT 1
+    )
+  )
 WHERE `u`.`avatar_bootstrap_url` IS NULL
   AND EXISTS (
     SELECT 1
@@ -40,7 +56,7 @@ WHERE `u`.`avatar_bootstrap_url` IS NULL
 
 UPDATE `users` AS `u`
 SET
-  `u`.`avatar_bootstrap_url` = (
+  `avatar_bootstrap_url` = (
     SELECT `ma`.`url`
     FROM `technician_profiles` AS `tp`
     INNER JOIN `media_assets` AS `ma`
@@ -53,8 +69,8 @@ SET
     ORDER BY `ma`.`id` DESC
     LIMIT 1
   ),
-  `u`.`avatar_bootstrapped_at` = COALESCE(`u`.`updated_at`, `u`.`created_at`),
-  `u`.`avatar_url` = COALESCE(
+  `avatar_bootstrapped_at` = COALESCE(`u`.`updated_at`, `u`.`created_at`),
+  `avatar_url` = COALESCE(
     `u`.`avatar_url`,
     (
       SELECT `ma`.`url`
@@ -81,4 +97,49 @@ WHERE `u`.`avatar_bootstrap_url` IS NULL
       AND `ma`.`deleted_at` IS NULL
     WHERE `tp`.`user_id` = `u`.`id`
       AND `tp`.`deleted_at` IS NULL
+  );
+
+UPDATE `users` AS `u`
+SET
+  `avatar_bootstrap_url` = (
+    SELECT `ma`.`url`
+    FROM `shops` AS `s`
+    INNER JOIN `media_assets` AS `ma`
+      ON `ma`.`shop_id` = `s`.`id`
+      AND `ma`.`usage_type` = 'avatar'
+      AND `ma`.`is_active` = TRUE
+      AND `ma`.`deleted_at` IS NULL
+    WHERE `s`.`owner_user_id` = `u`.`id`
+      AND `s`.`deleted_at` IS NULL
+    ORDER BY `ma`.`id` DESC
+    LIMIT 1
+  ),
+  `avatar_bootstrapped_at` = COALESCE(`u`.`updated_at`, `u`.`created_at`),
+  `avatar_url` = COALESCE(
+    `u`.`avatar_url`,
+    (
+      SELECT `ma`.`url`
+      FROM `shops` AS `s`
+      INNER JOIN `media_assets` AS `ma`
+        ON `ma`.`shop_id` = `s`.`id`
+        AND `ma`.`usage_type` = 'avatar'
+        AND `ma`.`is_active` = TRUE
+        AND `ma`.`deleted_at` IS NULL
+      WHERE `s`.`owner_user_id` = `u`.`id`
+        AND `s`.`deleted_at` IS NULL
+      ORDER BY `ma`.`id` DESC
+      LIMIT 1
+    )
+  )
+WHERE `u`.`avatar_bootstrap_url` IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM `shops` AS `s`
+    INNER JOIN `media_assets` AS `ma`
+      ON `ma`.`shop_id` = `s`.`id`
+      AND `ma`.`usage_type` = 'avatar'
+      AND `ma`.`is_active` = TRUE
+      AND `ma`.`deleted_at` IS NULL
+    WHERE `s`.`owner_user_id` = `u`.`id`
+      AND `s`.`deleted_at` IS NULL
   );
