@@ -147,13 +147,16 @@ export function ImVoiceRecordingOverlay({
         </div>
       </div>
 
-      <div className="mt-auto flex items-center justify-center gap-5" data-im-voice-recording-actions="true">
+      <div
+        className="absolute left-1/2 top-[57%] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-7"
+        data-im-voice-recording-actions="true"
+      >
         {isRecording ? (
           <>
             <button
               aria-label={copy.cancelAriaLabel}
               autoFocus
-              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-ring inline-flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
               onClick={onCancel}
               type="button"
             >
@@ -161,12 +164,12 @@ export function ImVoiceRecordingOverlay({
             </button>
             <button
               aria-label={copy.stopAriaLabel}
-              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-ring inline-flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
               disabled={phase === "acquiring_permission"}
               onClick={onStop}
               type="button"
             >
-              <span aria-hidden="true" className="h-4 w-4 rounded-[3px] bg-current" />
+              <span aria-hidden="true" className="h-6 w-6 rounded-[3px] bg-current" />
             </button>
           </>
         ) : (
@@ -174,7 +177,7 @@ export function ImVoiceRecordingOverlay({
             <button
               aria-label={copy.deleteAriaLabel}
               autoFocus
-              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-ring inline-flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isSending}
               onClick={onDelete}
               type="button"
@@ -183,12 +186,12 @@ export function ImVoiceRecordingOverlay({
             </button>
             <button
               aria-label={copy.replayAriaLabel}
-              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-ring inline-flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isSending}
               onClick={onReplay}
               type="button"
             >
-              <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="h-7 w-7" fill="none" viewBox="0 0 24 24">
                 <path d="M7 8.5a7 7 0 1 1-1 8.9" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
                 <path d="M5 5.5v4h4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
                 <path d="m10 9 5 3-5 3V9Z" fill="currentColor" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.4" />
@@ -197,15 +200,15 @@ export function ImVoiceRecordingOverlay({
             <button
               aria-busy={isSending || undefined}
               aria-label={isSending ? copy.sendingAriaLabel : copy.sendAriaLabel}
-              className="focus-ring inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-ring inline-flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/72 text-white shadow-[0_10px_28px_rgba(0,0,0,0.24)] transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isSending}
               onClick={onSend}
               type="button"
             >
               {isSending ? (
-                <span aria-hidden="true" className="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white motion-reduce:animate-none" />
+                <span aria-hidden="true" className="h-7 w-7 animate-spin rounded-full border-2 border-white/35 border-t-white motion-reduce:animate-none" />
               ) : (
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="h-7 w-7" fill="none" viewBox="0 0 24 24">
                   <path d="m4 4 16 8-16 8 3.2-8L4 4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
                   <path d="M7.2 12H20" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
                 </svg>

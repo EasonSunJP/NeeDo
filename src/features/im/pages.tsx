@@ -1375,6 +1375,9 @@ function getVoiceRecordingFileExtension(blob: Blob) {
 }
 
 function getVoiceRecordingErrorSource(errorKey: string) {
+  if (errorKey === "error.im.voice_input_muted") {
+    return "没有检测到麦克风声音，请检查输入设备后重试";
+  }
   if (errorKey === "error.im.voice_permission_denied") {
     return "请允许麦克风权限后重试";
   }

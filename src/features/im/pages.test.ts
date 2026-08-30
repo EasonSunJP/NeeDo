@@ -578,6 +578,8 @@ describe("IM pages", () => {
     expect(componentSource).toContain("playbackSeconds={voiceRecording.playbackSeconds}");
     expect(componentSource).toContain("voiceRecording.handlePlaybackEnded");
     expect(componentSource).toContain("voiceRecording.updatePlaybackSeconds(event.currentTarget.currentTime)");
+    expect(pagesSource).toContain('errorKey === "error.im.voice_input_muted"');
+    expect(pagesSource).toContain('return "没有检测到麦克风声音，请检查输入设备后重试"');
     expect(componentSource).not.toContain("handleHookOwnedVoiceAudioEvent");
 
     expect(sendStart).toBeGreaterThan(-1);

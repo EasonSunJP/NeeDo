@@ -52,6 +52,7 @@ describe("translations", () => {
       "正在发送录音",
       "录音失败，请重试",
       "请允许麦克风权限后重试",
+      "没有检测到麦克风声音，请检查输入设备后重试",
       "当前设备不支持浏览器录音",
       "自动播放已暂停，请点击重放",
       "语音发送失败，请重试",
@@ -101,6 +102,13 @@ describe("translations", () => {
         ja: "この端末ではブラウザ録音を利用できません",
         en: "Browser recording is not supported on this device",
         ko: "현재 기기에서는 브라우저 녹음을 지원하지 않습니다",
+      },
+      "没有检测到麦克风声音，请检查输入设备后重试": {
+        zh: "没有检测到麦克风声音，请检查输入设备后重试",
+        "zh-Hant": "沒有偵測到麥克風聲音，請檢查輸入裝置後重試",
+        ja: "マイクから音声が検出されません。入力デバイスを確認してから再試行してください",
+        en: "No microphone input detected. Check your input device and try again.",
+        ko: "마이크 입력이 감지되지 않았습니다. 입력 장치를 확인한 후 다시 시도하세요",
       },
     } as const;
 

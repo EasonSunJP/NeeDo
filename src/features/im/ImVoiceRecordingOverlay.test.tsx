@@ -141,6 +141,19 @@ describe("ImVoiceRecordingOverlay", () => {
     expect(container.querySelector("[data-im-voice-playback-time='true']")).toBeNull();
     expect(container.textContent).not.toContain("转文字");
     expect(container.querySelector("[data-im-voice-semicircle]")).toBeNull();
+    const actions = container.querySelector<HTMLElement>(
+      "[data-im-voice-recording-actions='true']",
+    )!;
+    expect(actions.className).toContain("top-[57%]");
+    expect(actions.className).toContain("left-1/2");
+    expect(actions.className).toContain("-translate-x-1/2");
+    expect(actions.className).toContain("-translate-y-1/2");
+    expect(actions.className).toContain("gap-7");
+    expect(actions.className).not.toContain("mt-auto");
+    for (const button of actions.querySelectorAll("button")) {
+      expect(button.className).toContain("h-[72px]");
+      expect(button.className).toContain("w-[72px]");
+    }
     await act(async () => {
       container.querySelector<HTMLButtonElement>("button[aria-label='取消录音']")?.click();
       container.querySelector<HTMLButtonElement>("button[aria-label='停止录音']")?.click();
