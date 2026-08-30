@@ -28,6 +28,14 @@ const activeTechnicianIdentifier = {
   shopId: null
 };
 
+const inactiveTechnicianIdentifier = {
+  ...activeTechnicianIdentifier,
+  id: 13,
+  publicId: "s0000000001",
+  numberPart: "0000000001",
+  status: "RETIRED"
+};
+
 const publishedShopWithoutServices = {
   id: 21,
   name: "LifeDance Wellness 渋谷",
@@ -46,7 +54,10 @@ const publishedTechnicianWithoutServices = {
   reviewSummary: null,
   user: {
     avatarBootstrapUrl: null,
-    identities: [{ publicIdentifier: activeTechnicianIdentifier }]
+    identities: [
+      { publicIdentifier: inactiveTechnicianIdentifier },
+      { publicIdentifier: activeTechnicianIdentifier }
+    ]
   }
 };
 
@@ -127,9 +138,107 @@ describe("CoreReadRepository multi-entity search", () => {
         },
         OR: expect.arrayContaining([{ displayName: { contains: "ひかり" } }])
       }),
+      include: expect.objectContaining({
+        user: {
+          select: expect.objectContaining({
+            identities: expect.objectContaining({
+              where: expect.objectContaining({
+                deletedAt: null,
+                isActive: true,
+                publicIdentifier: {
+                  is: expect.objectContaining({
+                    kind: "S",
+                    status: "ACTIVE",
+                    deletedAt: null
+                  })
+                }
+              })
+            })
+          })
+        }
+      }),
       skip: 0,
       take: 20
     }));
+  });
+
+  it("does not expose a soft-deleted technician attached to a published service", async () => {
+    const unpublishedTechnician = {
+      ...publishedTechnicianWithoutServices,
+      status: "published",
+      deletedAt: now
+    };
+    const service = {
+      id: 61,
+      publicId: "83b6d591-d7ca-4ca0-b975-7a44363e1f3a",
+      categoryId: 3,
+      shopId: 21,
+      technicianProfileId: unpublishedTechnician.id,
+      name: "Private recovery",
+      description: null,
+      city: "Tokyo",
+      serviceMode: "store",
+      priceAmount: 8800,
+      currency: "JPY",
+      durationMinutes: 60,
+      status: "published",
+      isRecommended: false,
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      category: {
+        id: 3,
+        code: "wellness",
+        name: "Wellness",
+        nameJa: "ウェルネス",
+        nameEn: "Wellness",
+        parentId: null,
+        iconUrl: null,
+        sortOrder: 0,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null
+      },
+      shop: {
+        ...publishedShopWithoutServices,
+        shopNo: null,
+        ownerUserId: null,
+        description: null,
+        latitude: null,
+        longitude: null,
+        phone: null,
+        status: "published",
+        isRecommended: false,
+        pricingMode: "MERCHANT",
+        technicianPricingRatePercent: 100,
+        pricingModeUpdatedAt: null,
+        pricingModeUpdatedBy: null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null
+      },
+      technicianProfile: unpublishedTechnician,
+      mediaAssets: [],
+      reviewSummary: null
+    };
+    const repository = new CoreReadRepository({
+      service: {
+        findMany: jest.fn(async () => [service]),
+        count: jest.fn(async () => 1)
+      }
+    } as never);
+
+    await expect(repository.search({
+      entityType: "service",
+      keywords: ["recovery"],
+      categoryIds: [],
+      page: 1,
+      pageSize: 20
+    })).resolves.toMatchObject({
+      list: [{ technician: null }]
+    });
   });
 
   it("combines keywords and category IDs as one OR group", async () => {

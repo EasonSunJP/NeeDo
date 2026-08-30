@@ -336,8 +336,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       }),
       this.client.technicianProfile.findMany({
         where: {
-          deletedAt: null,
-          status: PUBLISHED_STATUS,
+          ...this.publishedTechnicianProfileWhere(),
           isRecommended: true,
           ...cityWhere
         },
@@ -426,7 +425,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           orderBy: this.buildServiceOrderBy("recommended")
         },
         technicians: {
-          where: { deletedAt: null, status: PUBLISHED_STATUS },
+          where: this.publishedTechnicianProfileWhere(),
           include: this.technicianCardInclude(),
           orderBy: [{ id: "asc" }]
         }
@@ -440,8 +439,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     const technician = await this.client.technicianProfile.findFirst({
       where: {
         id,
-        deletedAt: null,
-        status: PUBLISHED_STATUS
+        ...this.publishedTechnicianProfileWhere()
       },
       include: {
         ...this.technicianCardInclude(),
@@ -520,7 +518,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             where: {
               deletedAt: null,
               isActive: true,
-              type: { in: ["technician", "service", "s"] }
+              type: { in: ["technician", "service", "s"] },
+              publicIdentifier: {
+                is: this.publicIdentifierWhere("S")
+              }
             },
             include: { publicIdentifier: true }
           }
@@ -618,6 +619,16 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
+  private publishedTechnicianProfileWhere(): Prisma.TechnicianProfileWhereInput {
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      user: {
+        identities: { some: this.activeTechnicianIdentityWhere() }
+      }
+    };
+  }
+
   private buildShopSearchWhere(input: CoreSearchInput): Prisma.ShopWhereInput {
     const keywords = this.searchKeywords(input);
     const searchBranches: Prisma.ShopWhereInput[] = keywords.flatMap((keyword) => [
@@ -702,11 +713,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     }
 
     return {
-      deletedAt: null,
-      status: PUBLISHED_STATUS,
-      user: {
-        identities: { some: this.activeTechnicianIdentityWhere() }
-      },
+      ...this.publishedTechnicianProfileWhere(),
       ...(input.city ? { city: input.city } : {}),
       ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
     };
@@ -815,7 +822,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       description: service.description,
       category: this.mapCategory(service.category),
       shop,
-      technician: service.technicianProfile
+      technician: service.technicianProfile && this.isPublicTechnicianCard(service.technicianProfile)
         ? this.mapTechnicianCard(service.technicianProfile)
         : null,
       city: service.city,
@@ -868,7 +875,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private mapTechnicianCard(technician: TechnicianCardRecord): TechnicianCardPayload {
     const identifier = technician.user.identities.find(
-      (identity) => identity.publicIdentifier?.kind === "S"
+      (identity) => this.isActivePublicIdentifier(identity.publicIdentifier, "S")
     )?.publicIdentifier;
 
     return {
@@ -881,6 +888,28 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         technician.user.avatarBootstrapUrl,
       reviewSummary: this.mapReviewSummary(technician.reviewSummary)
     };
+  }
+
+  private isPublicTechnicianCard(technician: TechnicianCardRecord): boolean {
+    return (
+      technician.deletedAt === null &&
+      technician.status === PUBLISHED_STATUS &&
+      technician.user.identities.some((identity) =>
+        this.isActivePublicIdentifier(identity.publicIdentifier, "S")
+      )
+    );
+  }
+
+  private isActivePublicIdentifier(
+    identifier: PublicIdentifier | null,
+    expectedKind: "S" | "SHOP"
+  ): identifier is PublicIdentifier {
+    return Boolean(
+      identifier &&
+      identifier.kind === expectedKind &&
+      identifier.status === "ACTIVE" &&
+      identifier.deletedAt === null
+    );
   }
 
   private mapTechnicianDetail(technician: TechnicianDetailRecord): TechnicianDetailPayload {
@@ -916,12 +945,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   private requirePublicId(identifier: PublicIdentifier | null, expectedKind: "S" | "SHOP"): string {
-    if (
-      identifier &&
-      identifier.kind === expectedKind &&
-      identifier.status === "ACTIVE" &&
-      identifier.deletedAt === null
-    ) {
+    if (this.isActivePublicIdentifier(identifier, expectedKind)) {
       return identifier.publicId;
     }
 

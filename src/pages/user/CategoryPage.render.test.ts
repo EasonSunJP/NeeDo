@@ -31,6 +31,15 @@ const category = {
   updatedAt: "2026-08-31T00:00:00.000Z"
 };
 
+const cleaningCategory = {
+  ...category,
+  id: 4,
+  code: "cleaning",
+  name: "Cleaning",
+  nameJa: "清掃",
+  nameEn: "Cleaning"
+};
+
 const movingCategory = {
   ...category,
   id: 19,
@@ -74,7 +83,7 @@ function resetQueryStates(overrides: Partial<Record<QueryKey, QueryState>> = {})
   queryHarness.calls = [];
   queryHarness.queries = {};
   queryHarness.states = {
-    categories: { data: page([category]), error: null, loading: false },
+    categories: { data: page([cleaningCategory, category]), error: null, loading: false },
     shop: { data: page([shop]), error: null, loading: false },
     technician: { data: page([technician]), error: null, loading: false },
     service: { data: page([]), error: null, loading: false },
@@ -104,13 +113,6 @@ vi.mock("../../components/mobile/FloatingHomeHeader", () => ({
 
 vi.mock("../../components/mobile/MobileShell", () => ({
   MobileShell: ({ children }: { children: ReactNode }) => createElement("main", null, children)
-}));
-
-vi.mock("../../shared/profile-card", () => ({
-  getTechnicianDynamicPath: (value: { id: string }) => `/profiles/technician/${value.id}`,
-  TechnicianShowcaseCard: ({ technician: value }: { technician: { name: string } }) => createElement("article", null, value.name),
-  UnifiedSimpleProfileCard: ({ store, technician: value }: { store?: { name: string }; technician?: { name: string } }) =>
-    createElement("article", null, store?.name ?? value?.name ?? "")
 }));
 
 vi.mock("../../features/core-read/api", async (importOriginal) => {
@@ -167,6 +169,19 @@ describe("CategoryPage formal category state", () => {
 
     expect(html).toContain("LifeDance Wellness 渋谷");
     expect(html).toContain("橘 ひかり");
+    expect(html).not.toContain("预约确认");
+    expect(html).not.toContain("可预约");
+    expect(html).not.toContain("预约服务");
+    expect(html).not.toContain("接单率");
+  });
+
+  it("keeps the bare category route scoped to the displayed cleaning category", () => {
+    resetQueryStates();
+    renderCategoryPage("/categories");
+
+    expect(queryHarness.queries.shop).toMatchObject({ categoryIds: [4] });
+    expect(queryHarness.queries.technician).toMatchObject({ categoryIds: [4] });
+    expect(queryHarness.queries.service).toMatchObject({ categoryIds: [4] });
   });
 
   it("keeps successful sections and a scoped retry when one entity request fails", () => {

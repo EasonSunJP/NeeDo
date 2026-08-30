@@ -13,7 +13,13 @@ import {
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import {
+  coreReadApi,
+  mapCoreCategoryToServiceCategory,
+  mapCoreServiceToServiceItem,
+  type CoreShopCard,
+  type CoreTechnicianCard
+} from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -21,8 +27,7 @@ import { getCategoryHeroImage, type HomeCategoryId } from "../../lib/homeCategor
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn, yen } from "../../lib/utils";
-import { TechnicianShowcaseCard, getTechnicianDynamicPath, UnifiedSimpleProfileCard } from "../../shared/profile-card";
-import type { ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
+import type { ServiceCategory, ServiceItem } from "../../types/domain";
 import { parseCategorySearchDraft } from "./categorySearch";
 
 const categoryDescriptionMap: Record<HomeCategoryId, string> = {
@@ -148,69 +153,6 @@ function areStringListsEqual(left: string[], right: string[]) {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
-function getDeterministicRank(seed: string) {
-  let hash = 0;
-
-  for (const char of seed) {
-    hash = (hash * 33 + char.charCodeAt(0)) % 10007;
-  }
-
-  return hash % 17;
-}
-
-function buildCategoryTokens(category: ServiceCategory, relatedServices: ServiceItem[]) {
-  return Array.from(
-    new Set([
-      category.name,
-      category.id,
-      categoryDescriptionMap[category.id as HomeCategoryId] ?? "",
-      ...relatedServices.flatMap((service) => [service.name, service.summary, ...service.tags])
-    ])
-  );
-}
-
-function getTechnicianGenderLabels(gender?: Technician["gender"]) {
-  if (gender === "female") {
-    return ["女", "女性", "女性技师", "女技师"];
-  }
-
-  if (gender === "male") {
-    return ["男", "男性", "男性技师", "男技师"];
-  }
-
-  return [];
-}
-
-function buildTechnicianSearchFragments(technician: Technician) {
-  return [
-    technician.name,
-    technician.nickname ?? "",
-    technician.bio ?? "",
-    technician.identityLabel ?? "",
-    technician.role,
-    technician.status,
-    ...getTechnicianGenderLabels(technician.gender),
-    ...technician.skills,
-    ...technician.serviceAreas,
-    ...technician.languages,
-    ...(technician.profileTags ?? [])
-  ];
-}
-
-function buildStoreSearchFragments(store: Store, linkedTechnicians: Technician[]) {
-  return [
-    store.name,
-    store.area,
-    store.address,
-    store.description,
-    store.rankLabel,
-    store.businessHours,
-    store.mode,
-    ...store.tags,
-    ...linkedTechnicians.flatMap(buildTechnicianSearchFragments)
-  ];
-}
-
 function normalizeEntityFilter(value: string | null): CategoryEntityFilter {
   if (value === "store" || value === "technician" || value === "service") {
     return value;
@@ -245,34 +187,6 @@ function resolveMatchedCategories(categories: ServiceCategory[], tagIds: string[
   }
 
   return categories.filter((category) => selectedCategoryIds.includes(category.id as HomeCategoryId));
-}
-
-function scoreByTokens(fragments: string[], tokens: string[]) {
-  const haystack = fragments.filter(Boolean).map(normalizeText).join("|");
-
-  return tokens.reduce((total, token, index) => {
-    const normalized = normalizeText(token);
-
-    if (!normalized || !haystack.includes(normalized)) {
-      return total;
-    }
-
-    return total + Math.max(1, 6 - index);
-  }, 0);
-}
-
-function rankStoreForCategory(store: Store, linkedTechnicians: Technician[], category: ServiceCategory, tokens: string[]) {
-  const semanticScore = scoreByTokens(buildStoreSearchFragments(store, linkedTechnicians), tokens);
-  const modeScore = category.mode === "store" ? 12 : category.mode === "both" ? 6 : 2;
-
-  return semanticScore * 10 + modeScore + getDeterministicRank(`${category.id}:${store.id}`);
-}
-
-function rankTechnicianForCategory(technician: Technician, category: ServiceCategory, tokens: string[]) {
-  const semanticScore = scoreByTokens(buildTechnicianSearchFragments(technician), tokens);
-  const modeScore = category.mode === "home" ? 12 : category.mode === "both" ? 8 : 3;
-
-  return semanticScore * 10 + modeScore + getDeterministicRank(`${category.id}:${technician.id}`);
 }
 
 function CoreReadInlineState({
@@ -361,6 +275,59 @@ function ServicePreviewCard({ service }: { service: ServiceItem }) {
   );
 }
 
+type DirectSearchProfileCardProps =
+  | { entityType: "shop"; profile: CoreShopCard }
+  | { entityType: "technician"; profile: CoreTechnicianCard };
+
+function DirectSearchProfileCard(props: DirectSearchProfileCardProps) {
+  const { language } = useI18n();
+  const isShop = props.entityType === "shop";
+  const name = isShop ? props.profile.name : props.profile.displayName;
+  const imageUrl = isShop ? props.profile.coverUrl : props.profile.avatarUrl;
+  const secondary = isShop ? props.profile.address : props.profile.publicId;
+  const rating = Number.parseFloat(props.profile.reviewSummary.ratingAverage);
+  const reviewCount = props.profile.reviewSummary.reviewCount;
+  const detailTo = isShop
+    ? `/stores/${props.profile.id}`
+    : `/profiles/technician/${props.profile.id}`;
+
+  return (
+    <Link
+      className="flex min-w-0 items-center gap-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-3 shadow-[0_14px_30px_rgba(0,0,0,0.05)]"
+      data-search-entity={props.entityType}
+      to={detailTo}
+    >
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[20px] bg-[color:var(--client-primary-soft)] text-[22px] font-black text-[color:var(--client-primary)]">
+        {imageUrl ? (
+          <img
+            alt={name}
+            className="h-full w-full object-cover"
+            src={getGeneratedImageThumbnailUrl(imageUrl)}
+          />
+        ) : (
+          <span aria-hidden="true">{name.trim().slice(0, 1)}</span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <h4 className="line-clamp-1 text-[15px] font-black text-[color:var(--client-text)]">{name}</h4>
+          <Badge className="shrink-0 whitespace-nowrap" tone="green">
+            {translateText(isShop ? "店铺" : "技师", language)}
+          </Badge>
+        </div>
+        <p className="mt-1 line-clamp-1 text-[12px] text-[color:var(--client-muted)]">
+          {[props.profile.city, secondary].filter(Boolean).join(" · ")}
+        </p>
+        {reviewCount > 0 && Number.isFinite(rating) ? (
+          <p className="mt-2 text-[12px] font-black text-[color:var(--client-text)]">
+            ★ {rating.toFixed(1)} · {reviewCount}
+          </p>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
 export function CategoryPage() {
   const navigate = useNavigate();
   const { language } = useI18n();
@@ -387,13 +354,21 @@ export function CategoryPage() {
     [availableCategories]
   );
   const selectedHomeCategoryIds = useMemo(
-    () => uniqueStrings([
-      ...appliedTagIds
+    () => {
+      const explicitCategoryIds = uniqueStrings([
+        ...appliedTagIds
         .map((tagId) => popularCategoryTagMap.get(tagId)?.categoryId ?? "")
         .filter(Boolean),
-      searchParams.get("category") ?? ""
-    ].filter(Boolean)),
-    [appliedTagIds, searchParams]
+        searchParams.get("category") ?? ""
+      ].filter(Boolean));
+
+      if (explicitCategoryIds.length > 0 || appliedCustomLabels.length > 0) {
+        return explicitCategoryIds;
+      }
+
+      return ["cleaning"];
+    },
+    [appliedCustomLabels, appliedTagIds, searchParams]
   );
   const searchCategoryIds = useMemo(
     () => uniqueStrings(
@@ -443,26 +418,12 @@ export function CategoryPage() {
     [serviceSearchQuery.data]
   );
   const apiStores = useMemo(
-    () => shopSearchQuery.data?.list.map(mapCoreShopToStore) ?? [],
+    () => shopSearchQuery.data?.list ?? [],
     [shopSearchQuery.data]
   );
   const apiTechnicians = useMemo(
-    () => technicianSearchQuery.data?.list.map(mapCoreTechnicianToTechnician) ?? [],
+    () => technicianSearchQuery.data?.list ?? [],
     [technicianSearchQuery.data]
-  );
-  const serviceByTechnicianId = useMemo(
-    () => {
-      const entries = (serviceSearchQuery.data?.list ?? [])
-        .filter((service) => Boolean(service.technician))
-        .map((service) => [String(service.technician?.id), mapCoreServiceToServiceItem(service)] as const);
-
-      if (entries.length > 0) {
-        return new Map(entries);
-      }
-
-      return new Map<string, ServiceItem>();
-    },
-    [serviceSearchQuery.data]
   );
 
   useEffect(() => {
@@ -531,54 +492,22 @@ export function CategoryPage() {
       .slice(0, entityFilter === "service" ? 20 : 4),
     [apiServices, entityFilter]
   );
-  const categoryTokens = useMemo(
-    () => activeCategory
-      ? uniqueStrings([...buildCategoryTokens(activeCategory, relatedServices), ...appliedSearchKeywords])
-      : uniqueStrings(appliedSearchKeywords),
-    [activeCategory, appliedSearchKeywords, relatedServices]
-  );
-
   const relatedStores = useMemo(
-    () => {
-      return apiStores
-        .map((store) => {
-          const linkedTechnicians = apiTechnicians.filter((technician) => technician.storeId === store.id);
-
-          return {
-            store,
-            technicians: linkedTechnicians,
-            score: activeCategory
-              ? rankStoreForCategory(store, linkedTechnicians, activeCategory, categoryTokens)
-              : Math.round(store.rating * 100) + store.reviewCount
-          };
-        })
-        .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "store" ? 10 : 3);
-    },
-    [activeCategory, apiStores, apiTechnicians, categoryTokens, entityFilter]
+    () => apiStores.slice(0, entityFilter === "store" ? 10 : 3),
+    [apiStores, entityFilter]
   );
 
   const relatedTechnicians = useMemo(
-    () => {
-      return apiTechnicians
-        .map((technician) => ({
-          technician,
-          score: activeCategory
-            ? rankTechnicianForCategory(technician, activeCategory, categoryTokens)
-            : Math.round(technician.rating * 100) + technician.reviewCount
-        }))
-        .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "technician" ? 20 : 4);
-    },
-    [activeCategory, apiTechnicians, categoryTokens, entityFilter]
+    () => apiTechnicians.slice(0, entityFilter === "technician" ? 20 : 4),
+    [apiTechnicians, entityFilter]
   );
 
-  const bookableStoreProfiles = useMemo(
-    () => relatedStores.map((item) => ({ id: `shop-${item.store.id}`, ...item })),
+  const shopProfiles = useMemo(
+    () => relatedStores.map((store) => ({ id: `shop-${store.id}`, store })),
     [relatedStores]
   );
-  const bookableTechnicianProfiles = useMemo(
-    () => relatedTechnicians.map((item) => ({ id: `technician-${item.technician.id}`, ...item })),
+  const technicianProfiles = useMemo(
+    () => relatedTechnicians.map((technician) => ({ id: `technician-${technician.id}`, technician })),
     [relatedTechnicians]
   );
 
@@ -1012,16 +941,12 @@ export function CategoryPage() {
                       onRetry={() => setShopRetryKey((current) => current + 1)}
                       title={`${t("店铺")} · ${t("搜索失败，请稍后重试")}`}
                     />
-                  ) : bookableStoreProfiles.length > 0 ? (
-                    bookableStoreProfiles.map((item) => (
-                      <UnifiedSimpleProfileCard
-                        className="border-transparent"
-                        detailTo={`/stores/${item.store.id}`}
+                  ) : shopProfiles.length > 0 ? (
+                    shopProfiles.map((item) => (
+                      <DirectSearchProfileCard
                         entityType="shop"
                         key={item.id}
-                        store={item.store}
-                        technicians={item.technicians}
-                        variant="list"
+                        profile={item.store}
                       />
                     ))
                   ) : (
@@ -1041,32 +966,15 @@ export function CategoryPage() {
                       onRetry={() => setTechnicianRetryKey((current) => current + 1)}
                       title={`${t("技师")} · ${t("搜索失败，请稍后重试")}`}
                     />
-                  ) : bookableTechnicianProfiles.length > 0 ? (
+                  ) : technicianProfiles.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
-                      {bookableTechnicianProfiles.map((item, index) => {
-                        const directService = serviceByTechnicianId.get(item.technician.id);
-
-                        return directService ? (
-                          <TechnicianShowcaseCard
-                            detailTo={getTechnicianDynamicPath(item.technician)}
-                            directService={directService}
-                            fallbackServices={[]}
-                            key={item.id}
-                            language={language}
-                            rankIndex={index}
-                            technician={item.technician}
-                          />
-                        ) : (
-                          <UnifiedSimpleProfileCard
-                            className="border-transparent"
-                            detailTo={getTechnicianDynamicPath(item.technician)}
-                            entityType="technician"
-                            key={item.id}
-                            technician={{ ...item.technician, profileTags: [], skills: [] }}
-                            variant="list"
-                          />
-                        );
-                      })}
+                      {technicianProfiles.map((item) => (
+                        <DirectSearchProfileCard
+                          entityType="technician"
+                          key={item.id}
+                          profile={item.technician}
+                        />
+                      ))}
                     </div>
                   ) : (
                     <CoreReadScopedState description={t("没有找到匹配结果")} title={t("技师")} />

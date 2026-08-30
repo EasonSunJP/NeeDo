@@ -16,7 +16,6 @@ describe("CategoryPage technician showcase card", () => {
     expect(technicianShowcaseCardSource).toContain('taxSuffix: "세금 포함"');
     expect(technicianShowcaseCardSource).not.toContain('taxSuffix: "税后"');
     expect(technicianShowcaseCardSource).not.toContain('taxSuffix: "세후"');
-    expect(categoryPageSource).toContain("language={language}");
     expect(technicianShowcaseCardSource).toContain("{duration}{copy.minuteSuffix}({copy.taxSuffix})");
   });
 
@@ -47,16 +46,19 @@ describe("CategoryPage technician showcase card", () => {
     expect(categoryPageSource).toContain('title={`${t("服务")} · ${t("搜索失败，请稍后重试")}`}');
   });
 
-  it("shows up to 20 technician cards and routes cards through the technician dynamic path", () => {
+  it("shows up to 20 technician cards and routes cards to the formal profile", () => {
     expect(categoryPageSource).toContain('pageSize: 40');
     expect(categoryPageSource).toContain('entityFilter === "technician" ? 20');
-    expect(categoryPageSource).toContain("getTechnicianDynamicPath(item.technician)");
+    expect(categoryPageSource).toContain('`/profiles/technician/${props.profile.id}`');
   });
 
-  it("disables legacy category content", () => {
+  it("keeps direct shop and technician cards capability-neutral", () => {
     expect(categoryPageSource).toContain("serviceSearchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? []");
-    expect(categoryPageSource).toContain("shopSearchQuery.data?.list.map(mapCoreShopToStore) ?? []");
-    expect(categoryPageSource).toContain("technicianSearchQuery.data?.list.map(mapCoreTechnicianToTechnician) ?? []");
+    expect(categoryPageSource).toContain("shopSearchQuery.data?.list ?? []");
+    expect(categoryPageSource).toContain("technicianSearchQuery.data?.list ?? []");
+    expect(categoryPageSource).not.toContain("mapCoreShopToStore");
+    expect(categoryPageSource).not.toContain("mapCoreTechnicianToTechnician");
+    expect(categoryPageSource).not.toContain("TechnicianShowcaseCard");
     expect(categoryPageSource).not.toContain("legacyServices");
     expect(categoryPageSource).not.toContain("legacyStores");
     expect(categoryPageSource).not.toContain("legacyTechnicians");

@@ -9526,7 +9526,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     code: { type: "integer", enum: [0] },
                     message: { type: "string", enum: ["success"] },
                     data: {
-                      oneOf: [
+                      anyOf: [
                         { $ref: "#/components/schemas/ServiceCardPage" },
                         { $ref: "#/components/schemas/ShopCardPage" },
                         { $ref: "#/components/schemas/TechnicianCardPage" }

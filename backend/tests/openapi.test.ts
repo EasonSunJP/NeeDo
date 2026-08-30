@@ -2053,7 +2053,10 @@ describe("GET /api/v1/openapi.json", () => {
       })
     ]));
     expect(
-      search.responses["200"].content?.["application/json"].schema.properties.data.oneOf
+      search.responses["200"].content?.["application/json"].schema.properties.data.anyOf
     ).toHaveLength(3);
+    expect(
+      search.responses["200"].content?.["application/json"].schema.properties.data
+    ).not.toHaveProperty("oneOf");
   });
 });
