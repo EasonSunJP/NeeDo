@@ -479,8 +479,18 @@ describe("GET /api/v1/openapi.json", () => {
       })
     );
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/cancel");
-    expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/start");
-    expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/complete");
+    expect(response.body.paths).not.toHaveProperty("/api/v1/orders/{id}/start");
+    expect(response.body.paths).not.toHaveProperty("/api/v1/orders/{id}/complete");
+    expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/checkout");
+    expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/checkout/payment-method");
+    expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/checkout/pay/ndp");
+    expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/checkout/confirm-receipt");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/backoffice/orders/{id}/checkout/confirm-receipt"
+    );
+    expect(response.body.components.schemas.OrderCheckout.description).toMatch(
+      /never returned/i
+    );
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/orders/{id}/payment/confirm"
     );

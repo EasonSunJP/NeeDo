@@ -1,0 +1,304 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- stateful Prisma transaction harness */
+import { BookingService } from "../src/services/booking.service";
+import { BookingRepository } from "../src/repositories/booking.repository";
+
+const customer = {
+  userId: 101,
+  email: "customer@example.com",
+  accessTokenJti: "checkout-customer-jti",
+  accessTokenExpiresAt: 2_000_000_000,
+  roles: ["customer"],
+  permissions: [
+    "order:checkout:read",
+    "order:checkout:payment-method:write",
+    "order:checkout:ndp:pay"
+  ],
+  currentIdentityType: "customer",
+  currentIdentityScopeType: "customer_profile",
+  currentIdentityScopeId: 501
+};
+
+describe("formal order checkout service", () => {
+  it("creates and returns the immutable checkout projection for the owning customer", async () => {
+    const repository = {
+      getOrCreateCheckout: jest.fn(async () => ({
+        outcome: "ok",
+        applied: true,
+        checkout: {
+          orderId: 41,
+          status: "awaitingCheckout",
+          baseAmountJpy: 8_800,
+          addOnAmountJpy: 2_200,
+          discountAmountJpy: 800,
+          checkoutAmountJpy: 10_200,
+          payableNdp: 15_300,
+          rate: { ruleId: 7, version: 3, ndpUnits: 3, jpyUnits: 2 },
+          paymentMethod: null,
+          paymentSelectedAt: null,
+          otherMethod: null,
+          paymentEvidence: null,
+          createdAt: new Date("2026-09-01T10:00:00.000Z"),
+          updatedAt: new Date("2026-09-01T10:00:00.000Z")
+        }
+      }))
+    };
+    const rateService = {
+      resolveEffectiveRate: jest.fn(async () => ({
+        ruleId: 7,
+        publicId: "00000000-0000-4000-8000-000000000007",
+        version: 3,
+        ndpUnits: 3,
+        jpyUnits: 2,
+        effectiveFrom: new Date("2026-08-01T00:00:00.000Z")
+      }))
+    };
+    const service = new BookingService(
+      repository as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      rateService as never
+    );
+
+    await expect(
+      service.getCheckout(customer, 41)
+    ).resolves.toMatchObject({
+      orderId: 41,
+      checkoutAmountJpy: 10_200,
+      payableNdp: 15_300,
+      paymentEvidence: null
+    });
+    expect(repository.getOrCreateCheckout).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose checkout to a non-participant", async () => {
+    const repository = {
+      getOrCreateCheckout: jest.fn(async () => ({ outcome: "not_found" }))
+    };
+    const service = new BookingService(repository as never);
+
+    await expect(
+      service.getCheckout(customer, 999)
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("captures one authoritative instant and passes the effective half-open rate snapshot once", async () => {
+    const captured = new Date("2026-10-01T00:00:00.000Z");
+    const repository = {
+      getOrCreateCheckout: jest
+        .fn()
+        .mockResolvedValueOnce({ outcome: "rate_required" })
+        .mockResolvedValueOnce({ outcome: "ok", applied: true, checkout: { orderId: 41 } })
+    };
+    const rateService = {
+      resolveEffectiveRate: jest.fn(async (at: Date) => ({
+        ruleId: 8,
+        publicId: "00000000-0000-4000-8000-000000000008",
+        version: 4,
+        ndpUnits: 5,
+        jpyUnits: 4,
+        effectiveFrom: at
+      }))
+    };
+    const service = new BookingService(
+      repository as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      rateService as never,
+      () => captured
+    );
+    await service.getCheckout(customer, 41);
+    expect(rateService.resolveEffectiveRate).toHaveBeenCalledWith(captured);
+    expect(repository.getOrCreateCheckout).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      rate: expect.objectContaining({ ruleId: 8, resolvedAt: captured })
+    }));
+  });
+});
+
+const decimal = (value: number) => ({
+  toString: () => String(value),
+  toFixed: (places = 0) => value.toFixed(places)
+});
+
+const createRepositoryHarness = (options: { affiliateInvalid?: boolean; overflow?: boolean; auditFailure?: boolean } = {}) => {
+  const order: any = {
+    id: 41, orderNo: "ND41", orderType: "BOOKING", status: "AWAITING_CHECKOUT",
+    paymentMethod: "ONSITE", paymentStatus: "PENDING", paymentAmountJpy: 0,
+    paymentConfirmedById: null, paymentConfirmedAt: null, paymentReference: null, paymentNote: null,
+    paymentRefundedById: null, paymentRefundedAt: null, paymentRefundReference: null, paymentRefundReason: null,
+    customerUserId: 101, serviceId: 11, technicianServiceId: null, shopId: 12,
+    technicianProfileId: 702, scheduleSlotId: 13, fulfillmentMode: "store",
+    serviceNameSnapshot: "Service", pricingModeSnapshot: "merchant", serviceOwnerType: "shop",
+    serviceOwnerId: 11, servicePriceSnapshot: decimal(options.overflow ? 2_147_483_647 : 8_800),
+    serviceDurationSnapshot: 60, serviceSnapshotJson: {}, service: { name: "Service" },
+    technicianService: null, shop: { name: "Shop" }, technicianProfile: { userId: 202, displayName: "Tech" },
+    priceAmount: decimal(8_800), currency: "JPY", startsAt: new Date("2026-09-01T09:00:00.000Z"),
+    endsAt: new Date("2026-09-01T10:00:00.000Z"), note: null, cancelReason: null,
+    createdAt: new Date(), updatedAt: new Date(),
+    serviceSession: { id: 5, startedAt: new Date("2026-09-01T09:00:00.000Z"), expectedEndsAt: new Date("2026-09-01T10:00:00.000Z"), endedAt: new Date("2026-09-01T10:00:00.000Z"), addOns: [{ id: 3, serviceId: 19, status: "ACCEPTED", serviceNameSnapshot: "Extra", priceAmountJpy: options.overflow ? 1 : 2_200, currency: "JPY", durationMinutes: 30, serviceSnapshotJson: {}, proposedByUserId: 202, proposedAt: new Date(), acceptedByUserId: 101, acceptedAt: new Date(), rejectedByUserId: null, rejectedAt: null, resolutionReason: null, deletedAt: null }] },
+    statusHistory: [{ id: 1, bookingOrderId: 41, fromStatus: "PENDING", toStatus: "CONFIRMED", actorUserId: 202, reason: null, createdAt: new Date(), updatedAt: new Date(), deletedAt: null }],
+    affiliateAttributions: options.affiliateInvalid ? [{ id: 1, taskId: 1, source: "CODE", originalPriceJpy: 8_800, customerDiscountJpy: 800, finalPriceJpy: 8_001, rewardAllocatedNdp: 10, status: "ATTRIBUTED", claim: { publicCode: "A" } }] : [{ id: 1, taskId: 1, source: "CODE", originalPriceJpy: options.overflow ? 2_147_483_647 : 8_800, customerDiscountJpy: options.overflow ? 0 : 800, finalPriceJpy: options.overflow ? 2_147_483_647 : 8_000, rewardAllocatedNdp: 10, status: "ATTRIBUTED", claim: { publicCode: "A" } }]
+  };
+  let checkout: any = null;
+  const events: any[] = [];
+  const histories: any[] = [];
+  const audits: any[] = [];
+  let nextCheckoutId = 9;
+  const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("en-US");
+  const tx: any = {
+    $queryRaw: jest.fn(async () => [{ id: order.id }]),
+    bookingOrder: {
+      findFirst: jest.fn(async ({ where }: any) => where.id === order.id && !order.deletedAt ? order : null),
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        if (where.id !== order.id || (where.status && where.status !== order.status) || (where.paymentStatus && where.paymentStatus !== order.paymentStatus)) return { count: 0 };
+        Object.assign(order, data);
+        return { count: 1 };
+      })
+    },
+    orderCheckout: {
+      findUnique: jest.fn(async ({ where }: any) => checkout && ((where.bookingOrderId && where.bookingOrderId === checkout.bookingOrderId) || (where.id && where.id === checkout.id)) ? checkout : null),
+      create: jest.fn(async ({ data }: any) => {
+        checkout = { id: nextCheckoutId++, paymentMethod: null, paymentSelectedAt: null, otherMethodCode: null, otherMethodLabel: null, otherPaymentReference: null, ledgerTransactionId: null, receiptConfirmedById: null, receiptConfirmedAt: null, receiptConfirmationReason: null, deletedAt: null, ...data };
+        return checkout;
+      }),
+      update: jest.fn(async ({ data }: any) => {
+        Object.assign(checkout, data);
+        return checkout;
+      })
+    },
+    orderServiceEvent: {
+      findUnique: jest.fn(async ({ where }: any) => events.find((event) => normalize(event.idempotencyKey) === normalize(where.idempotencyKey)) ?? null),
+      findFirst: jest.fn(async () => [...events].reverse().find((event) => event.eventType === "RECEIPT_CONFIRMED") ?? null),
+      create: jest.fn(async ({ data }: any) => {
+        const event = { id: events.length + 1, deletedAt: null, ...data };
+        events.push(event);
+        return event;
+      })
+    },
+    orderStatusHistory: { create: jest.fn(async ({ data }: any) => { histories.push(data); order.statusHistory.push({ id: histories.length + 10, deletedAt: null, ...data }); return data; }) },
+    orderFinancial: { findUnique: jest.fn(async () => null), update: jest.fn(async () => null), upsert: jest.fn(async () => null) },
+    auditLog: { create: jest.fn(async ({ data }: any) => { if (options.auditFailure) throw new Error("audit failed"); audits.push(data); return data; }) }
+  };
+  const client: any = {
+    $transaction: jest.fn(async (handler: (value: any) => Promise<unknown>) => {
+      const orderSnapshot = { ...order, statusHistory: [...order.statusHistory] };
+      const checkoutSnapshot = checkout ? { ...checkout } : null;
+      const eventLength = events.length;
+      const historyLength = histories.length;
+      const auditLength = audits.length;
+      try { return await handler(tx); } catch (error) {
+        Object.keys(order).forEach((key) => delete order[key]); Object.assign(order, orderSnapshot);
+        checkout = checkoutSnapshot;
+        events.splice(eventLength); histories.splice(historyLength); audits.splice(auditLength);
+        throw error;
+      }
+    })
+  };
+  return { repository: new BookingRepository(client), order, events, histories, audits, get checkout() { return checkout; } };
+};
+
+const rate = { ruleId: 7, publicId: "00000000-0000-4000-8000-000000000007", version: 3, ndpUnits: 3, jpyUnits: 2, effectiveFrom: new Date("2026-08-01T00:00:00.000Z"), resolvedAt: new Date("2026-09-01T10:00:00.000Z") };
+const customerInput = { orderId: 41, actorUserId: 101, technicianProfileId: null };
+
+describe("formal checkout repository state", () => {
+  it("creates one immutable affiliate/add-on/rate snapshot with BigInt ceil and supports only exact participants", async () => {
+    const h = createRepositoryHarness();
+    const first = await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    expect(first).toMatchObject({ outcome: "ok", applied: true, checkout: { baseAmountJpy: 8_800, addOnAmountJpy: 2_200, discountAmountJpy: 800, checkoutAmountJpy: 10_200, payableNdp: 15_300 } });
+    const repeated = await h.repository.getOrCreateCheckout({ ...customerInput, rate: { ...rate, ndpUnits: 99 } });
+    expect(repeated).toMatchObject({ outcome: "ok", applied: false, checkout: { payableNdp: 15_300 } });
+    expect(h.events.filter((event) => event.eventType === "CHECKOUT_CREATED")).toHaveLength(1);
+    await expect(h.repository.getOrCreateCheckout({ orderId: 41, actorUserId: 202, technicianProfileId: 702, rate: null })).resolves.toMatchObject({ outcome: "ok" });
+    await expect(h.repository.getOrCreateCheckout({ orderId: 41, actorUserId: 999, technicianProfileId: null, rate: null })).resolves.toEqual({ outcome: "not_found" });
+  });
+
+  it("fails closed on inconsistent affiliate history and signed-INT overflow", async () => {
+    await expect(createRepositoryHarness({ affiliateInvalid: true }).repository.getOrCreateCheckout({ ...customerInput, rate })).resolves.toEqual({ outcome: "invalid_snapshot" });
+    await expect(createRepositoryHarness({ overflow: true }).repository.getOrCreateCheckout({ ...customerInput, rate })).resolves.toEqual({ outcome: "invalid_snapshot" });
+  });
+
+  it("rounds payable NDP upward with checked BigInt arithmetic", async () => {
+    const h = createRepositoryHarness();
+    h.order.affiliateAttributions[0].customerDiscountJpy = 801;
+    h.order.affiliateAttributions[0].finalPriceJpy = 7_999;
+    const result = await h.repository.getOrCreateCheckout({
+      ...customerInput,
+      rate: { ...rate, ndpUnits: 1, jpyUnits: 3 }
+    });
+    expect(result).toMatchObject({
+      outcome: "ok",
+      checkout: { checkoutAmountJpy: 10_199, payableNdp: 3_400 }
+    });
+  });
+
+  it("selects cash without completing, then exact technician receipt completes once", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    const selected = await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-select-cash-001" });
+    expect(selected).toMatchObject({ outcome: "ok", checkout: { status: "awaitingPaymentConfirmation", paymentMethod: "cash", paymentEvidence: null } });
+    expect(h.order.status).toBe("AWAITING_PAYMENT_CONFIRMATION");
+    const settle = jest.fn(async () => undefined);
+    const affiliate = jest.fn(async () => undefined);
+    const receipt = await h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 202, technicianProfileId: 702, reason: "cash received", idempotencyKey: "checkout-receipt-cash-01", evidence: "technician_receipt_confirmation" }, { settle, settleAffiliate: affiliate });
+    expect(receipt).toMatchObject({ outcome: "ok", applied: true, checkout: { status: "completed", paymentEvidence: "technician_receipt_confirmation" } });
+    expect(settle).toHaveBeenCalledTimes(1); expect(affiliate).toHaveBeenCalledTimes(1);
+    const replay = await h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 202, technicianProfileId: 702, reason: "cash received", idempotencyKey: "checkout-receipt-cash-01", evidence: "technician_receipt_confirmation" }, { settle, settleAffiliate: affiliate });
+    expect(replay).toMatchObject({ outcome: "ok", applied: false });
+    expect(settle).toHaveBeenCalledTimes(1); expect(affiliate).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back every NDP completion write on settlement failure, then rejects collation-equivalent reuse", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "ndp", idempotencyKey: "checkout-select-ndp-001" });
+    const debit = jest.fn(async () => ({ transactionId: 91 }));
+    const failed = await h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Checkout-Pay-Key-0001" }, { debit, settle: async () => { throw new Error("settlement failed"); } }).catch((error) => error);
+    expect(failed).toMatchObject({ message: "settlement failed" });
+    expect(h.order.status).toBe("AWAITING_CHECKOUT");
+    expect(h.checkout.ledgerTransactionId).toBeNull();
+    expect(h.events.some((event) => event.eventType === "NDP_PAYMENT_APPLIED")).toBe(false);
+    const applied = await h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Checkout-Pay-Key-0001" }, { debit, settle: async () => undefined });
+    expect(applied).toMatchObject({ outcome: "ok", checkout: { status: "completed", paymentEvidence: "ndp_ledger" } });
+    await expect(h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "checkout-pay-key-0001" }, { debit })).resolves.toEqual({ outcome: "conflict" });
+    await expect(h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Ｃheckout-Pay-Key-0001" }, { debit })).resolves.toEqual({ outcome: "conflict" });
+  });
+
+  it("writes operations receipt audit in the same transaction and distinguishes its evidence", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "other", otherMethodCode: "CARD", otherMethodLabel: "Card terminal", idempotencyKey: "checkout-select-other-01" });
+    const result = await h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 303, technicianProfileId: null, reason: "verified terminal slip", idempotencyKey: "checkout-ops-override-01", evidence: "operations_receipt_override", audit: { actorId: 303, action: "backoffice.order.checkout.receipt_override", targetType: "BookingOrder", targetId: 41, ip: "127.0.0.1", userAgent: null, metadata: { reason: "verified terminal slip" } } }, {});
+    expect(result).toMatchObject({ outcome: "ok", checkout: { paymentEvidence: "operations_receipt_override" } });
+    expect(h.audits).toHaveLength(1);
+    expect(h.audits[0].metadata).toEqual(expect.objectContaining({ orderId: 41, checkoutId: 9, selectedMethod: "other", checkoutAmountJpy: 10_200, reason: "verified terminal slip" }));
+  });
+
+  it("rolls back operations completion when the same-transaction audit fails", async () => {
+    const h = createRepositoryHarness({ auditFailure: true });
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-audit-select-01" });
+    await expect(h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 303, technicianProfileId: null, reason: "verified receipt", idempotencyKey: "checkout-audit-failure-1", evidence: "operations_receipt_override", audit: { actorId: 303, action: "backoffice.order.checkout.receipt_override", targetType: "BookingOrder", targetId: 41 } })).rejects.toThrow("audit failed");
+    expect(h.order.status).toBe("AWAITING_PAYMENT_CONFIRMATION");
+    expect(h.checkout.receiptConfirmedAt).toBeNull();
+    expect(h.events.some((event) => event.idempotencyKey === "checkout-audit-failure-1")).toBe(false);
+  });
+
+  it("closes legacy payment bypass and NDP refund while preserving cash receipt refund", async () => {
+    const formal = createRepositoryHarness();
+    await expect(formal.repository.confirmManualPayment({ scope: "backoffice", orderId: 41, actorUserId: 303, method: "onsite", amountJpy: 8_800 })).resolves.toEqual({ outcome: "invalid_state" });
+
+    const ndp = createRepositoryHarness();
+    await ndp.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await ndp.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "checkout-pay-refund-lock" }, { debit: async () => ({ transactionId: 91 }) });
+    await expect(ndp.repository.refundManualPayment({ scope: "backoffice", orderId: 41, actorUserId: 303, reason: "refund requested" })).resolves.toEqual({ outcome: "invalid_state" });
+
+    const cash = createRepositoryHarness();
+    await cash.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await cash.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-select-refund-01" });
+    await cash.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 202, technicianProfileId: 702, reason: "cash received", idempotencyKey: "checkout-receipt-refund-1", evidence: "technician_receipt_confirmation" });
+    await expect(cash.repository.refundManualPayment({ scope: "backoffice", orderId: 41, actorUserId: 303, reason: "cash returned" })).resolves.toMatchObject({ outcome: "ok", order: { paymentStatus: "refunded" } });
+  });
+});

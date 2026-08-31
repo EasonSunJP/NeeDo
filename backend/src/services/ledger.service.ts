@@ -500,6 +500,26 @@ export interface BookingLedgerSettlementInput {
   };
 }
 
+export interface CheckoutPaymentLedgerInput {
+  bookingOrderId: number;
+  checkoutId: number;
+  customerUserId: number;
+  payableNdp: number;
+  idempotencyKey: string;
+  actorUserId: number;
+}
+
+export interface CheckoutPaymentLedgerResult {
+  transactionId: number;
+}
+
+export interface CheckoutPaymentLedgerPort {
+  debitCheckoutPayment: (
+    input: CheckoutPaymentLedgerInput,
+    context?: LedgerMutationContext
+  ) => Promise<CheckoutPaymentLedgerResult>;
+}
+
 export interface LedgerMutationContext {
   transactionClient?: LedgerTransactionClient;
 }
@@ -574,7 +594,9 @@ export interface BookingLedgerSettlementPort {
 const PLATFORM_WALLET_OWNER_ID = 1;
 const PLATFORM_FEE_DEBT_ALLOCATION_BATCH_SIZE = 100;
 
-export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewardSettlementPort {
+export class LedgerService
+  implements BookingLedgerSettlementPort, AffiliateRewardSettlementPort, CheckoutPaymentLedgerPort
+{
   public constructor(
     private readonly repository: LedgerRepositoryPort,
     private readonly feeCalculationService?: Pick<FeeCalculationService, "calculateFee">,
@@ -663,6 +685,109 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
         walletId: wallet.id
       };
+    }, context.transactionClient);
+  }
+
+  public debitCheckoutPayment(
+    input: CheckoutPaymentLedgerInput,
+    context: LedgerMutationContext = {}
+  ): Promise<CheckoutPaymentLedgerResult> {
+    return this.repository.runInTransaction(async (repository) => {
+      const digest = createHash("sha256").update(input.idempotencyKey).digest("hex").slice(0, 32);
+      const idempotencyKey = `checkout:${input.checkoutId}:ndp:${digest}`;
+      const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
+      if (existing) {
+        const metadata =
+          existing.metadata && typeof existing.metadata === "object"
+            ? (existing.metadata as Record<string, unknown>)
+            : {};
+        if (
+          existing.idempotencyKey !== idempotencyKey ||
+          existing.type !== "booking_complete_settlement" ||
+          existing.referenceType !== "order_checkout_payment" ||
+          existing.referenceId !== input.checkoutId ||
+          existing.actorUserId !== input.actorUserId ||
+          existing.amount !== input.payableNdp ||
+          metadata.bookingOrderId !== input.bookingOrderId ||
+          metadata.checkoutId !== input.checkoutId ||
+          metadata.customerUserId !== input.customerUserId ||
+          metadata.commandKey !== input.idempotencyKey ||
+          metadata.purpose !== "checkout_ndp_payment"
+        ) {
+          throw new AppError({
+            code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+            message: "error.idempotency.key_reused",
+            statusCode: 409
+          });
+        }
+        return { transactionId: existing.id };
+      }
+      if (
+        input.actorUserId !== input.customerUserId ||
+        !Number.isInteger(input.payableNdp) ||
+        input.payableNdp < 0 ||
+        input.payableNdp > 2_147_483_647
+      ) {
+        throw this.walletMutationError();
+      }
+      const currency = await this.resolveCurrencyForUser(repository, input.customerUserId);
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: "user",
+        ownerId: input.customerUserId,
+        currency
+      });
+      if (!repository.lockWalletById) throw this.repositoryUnavailableError();
+      const lockedWallet = await repository.lockWalletById(wallet.id);
+      if (
+        !lockedWallet ||
+        lockedWallet.ownerType !== "user" ||
+        lockedWallet.ownerId !== input.customerUserId ||
+        lockedWallet.currency !== currency
+      ) {
+        throw this.walletMutationError();
+      }
+      const updatedWallet = await repository.applyWalletDelta({
+        walletId: lockedWallet.id,
+        availableDelta: -input.payableNdp,
+        frozenDelta: 0,
+        requireAvailableAtLeast: input.payableNdp
+      });
+      if (!updatedWallet) throw this.insufficientAvailableError();
+      const transaction = await repository.createTransaction({
+        idempotencyKey,
+        type: "booking_complete_settlement",
+        referenceType: "order_checkout_payment",
+        referenceId: input.checkoutId,
+        actorUserId: input.actorUserId,
+        amount: input.payableNdp,
+        currency,
+        metadata: {
+          purpose: "checkout_ndp_payment",
+          commandKey: input.idempotencyKey,
+          bookingOrderId: input.bookingOrderId,
+          checkoutId: input.checkoutId,
+          customerUserId: input.customerUserId,
+          walletId: lockedWallet.id
+        }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: lockedWallet.id,
+        direction: "available_debit",
+        amount: input.payableNdp,
+        availableDelta: -input.payableNdp,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedWallet.availableBalance,
+        frozenBalanceAfter: updatedWallet.frozenBalance,
+        reason: "checkout_ndp_payment"
+      });
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.checkout.ndp_payment",
+        expectedAmount: input.payableNdp,
+        actualAmount: input.payableNdp,
+        metadata: { bookingOrderId: input.bookingOrderId, checkoutId: input.checkoutId }
+      });
+      return { transactionId: transaction.id };
     }, context.transactionClient);
   }
 

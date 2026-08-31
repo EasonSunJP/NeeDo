@@ -4293,9 +4293,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           orderType: { type: "string", enum: ["booking", "request"] },
           status: {
             type: "string",
-            enum: ["pending", "confirmed", "inService", "completed", "cancelled"]
+            enum: ["pending", "confirmed", "inService", "awaitingCheckout", "awaitingPaymentConfirmation", "completed", "cancelled"]
           },
-          paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"] },
+          paymentMethod: { type: "string", enum: ["onsite", "bank_transfer", "cash", "ndp", "other"] },
           paymentStatus: {
             type: "string",
             enum: ["pending", "confirmed", "refundPending", "refunded"]
@@ -4333,6 +4333,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: { $ref: "#/components/schemas/OrderStatusHistory" }
           }
+        }
+      },
+      OrderCheckout: {
+        type: "object",
+        additionalProperties: false,
+        description: "Public immutable checkout projection. Idempotency keys, wallet balances, raw ledger data and audit metadata are never returned.",
+        required: ["id", "orderId", "status", "baseAmountJpy", "addOnAmountJpy", "discountAmountJpy", "checkoutAmountJpy", "payableNdp", "rate", "calculation", "paymentMethod", "paymentSelectedAt", "otherMethod", "paymentEvidence", "receiptConfirmedAt", "receiptConfirmationReason", "createdAt", "updatedAt"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          orderId: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: ["awaitingCheckout", "awaitingPaymentConfirmation", "completed"] },
+          baseAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          addOnAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          checkoutAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          payableNdp: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          rate: {
+            type: "object",
+            additionalProperties: false,
+            required: ["ruleId", "publicId", "version", "ndpUnits", "jpyUnits", "effectiveFrom"],
+            properties: {
+              ruleId: { type: "integer" }, publicId: { type: "string", format: "uuid" },
+              version: { type: "integer" }, ndpUnits: { type: "integer", minimum: 1 },
+              jpyUnits: { type: "integer", minimum: 1 }, effectiveFrom: { type: "string", format: "date-time" }
+            }
+          },
+          calculation: { type: "object", additionalProperties: true },
+          paymentMethod: { type: ["string", "null"], enum: ["cash", "ndp", "other", null] },
+          paymentSelectedAt: { type: ["string", "null"], format: "date-time" },
+          otherMethod: { oneOf: [{ type: "object", additionalProperties: false, required: ["code", "label"], properties: { code: { type: "string" }, label: { type: "string" } } }, { type: "null" }] },
+          paymentEvidence: { type: ["string", "null"], enum: ["ndp_ledger", "technician_receipt_confirmation", "operations_receipt_override", null] },
+          receiptConfirmedAt: { type: ["string", "null"], format: "date-time" },
+          receiptConfirmationReason: { type: ["string", "null"], maxLength: 500 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
         }
       },
       Wallet: {
@@ -11367,7 +11402,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["pending", "confirmed", "inService", "completed", "cancelled"]
+              enum: ["pending", "confirmed", "inService", "awaitingCheckout", "awaitingPaymentConfirmation", "completed", "cancelled"]
             }
           }
         ],
@@ -11526,32 +11561,65 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
-    [`${config.API_PREFIX}/orders/{id}/start`]: {
-      post: {
-        tags: ["Booking"],
-        summary: "Start service for a confirmed Booking order",
+    [`${config.API_PREFIX}/orders/{id}/checkout`]: {
+      get: {
+        tags: ["Booking Checkout"],
+        summary: "Read or create immutable checkout evidence as the owning customer or assigned technician",
+        description: "Requires order:checkout:read. The service session must be ended. Existing evidence remains readable after completion and never exposes idempotency, wallet, ledger or audit internals.",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
-        ],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         responses: {
-          "200": { description: "Order moved to inService" },
-          "409": { description: "Invalid state transition" }
+          "200": jsonDataResponse("Checkout projection", { $ref: "#/components/schemas/OrderCheckout" }),
+          "401": jsonErrorResponse("Authentication required"),
+          "403": jsonErrorResponse("Missing checkout read permission"),
+          "404": jsonErrorResponse("Order participant or order not found"),
+          "409": jsonErrorResponse("Checkout state or immutable snapshot is inconsistent")
         }
       }
     },
-    [`${config.API_PREFIX}/orders/{id}/complete`]: {
+    [`${config.API_PREFIX}/orders/{id}/checkout/payment-method`]: {
       post: {
-        tags: ["Booking"],
-        summary: "Complete an inService Booking order",
+        tags: ["Booking Checkout"], summary: "Select cash, NDP, or other payment as the owning customer",
+        description: "Requires order:checkout:payment-method:write. Selection never completes an order.",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
-        ],
-        responses: {
-          "200": { description: "Order completed" },
-          "409": { description: "Invalid state transition" }
-        }
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        requestBody: authJsonBody({
+          method: { type: "string", enum: ["cash", "ndp", "other"] },
+          otherMethodCode: { type: "string", maxLength: 40 },
+          otherMethodLabel: { type: "string", maxLength: 80 },
+          idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+        }, ["method", "idempotencyKey"]),
+        responses: { "200": jsonDataResponse("Selected checkout method", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing permission"), "404": jsonErrorResponse("Owning customer or order not found"), "409": jsonErrorResponse("Invalid state or idempotency conflict") }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/checkout/pay/ndp`]: {
+      post: {
+        tags: ["Booking Checkout"], summary: "Atomically pay the snapshotted checkout amount with NDP",
+        description: "Requires order:checkout:ndp:pay. Debits only the owning customer's classified NDP wallet and completes only after all booking, settlement and affiliate writes commit.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        requestBody: authJsonBody({ idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["idempotencyKey"]),
+        responses: { "200": jsonDataResponse("Completed NDP checkout", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing permission"), "404": jsonErrorResponse("Owning customer or order not found"), "409": jsonErrorResponse("Invalid state, insufficient balance, or idempotency conflict") }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/checkout/confirm-receipt`]: {
+      post: {
+        tags: ["Booking Checkout"], summary: "Assigned technician confirms cash or other receipt",
+        description: "Requires order:checkout:receipt:confirm and exact assigned-technician identity.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 }, idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["reason", "idempotencyKey"]),
+        responses: { "200": jsonDataResponse("Completed receipt checkout", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing permission"), "404": jsonErrorResponse("Assigned technician or order not found"), "409": jsonErrorResponse("Invalid state or idempotency conflict") }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/checkout/confirm-receipt`]: {
+      post: {
+        tags: ["Booking Checkout"], summary: "Audited operations receipt override",
+        description: "Requires backoffice:order:checkout:receipt-override and a global/platform identity. Audit and completion commit in one transaction.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 }, idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["reason", "idempotencyKey"]),
+        responses: { "200": jsonDataResponse("Completed operations override", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing override permission"), "404": jsonErrorResponse("Order not found"), "409": jsonErrorResponse("Invalid state or idempotency conflict") }
       }
     },
     [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/confirm`]: {

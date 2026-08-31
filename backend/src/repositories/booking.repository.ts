@@ -9,6 +9,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
+import type { AuditLogCreateInput } from "./audit-log.repository";
+import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
   AffiliateCheckoutPrepared,
   AffiliateCheckoutSummary
@@ -24,6 +26,11 @@ const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
 
 class FulfillmentTransactionAbort extends Error {}
+class CheckoutTransactionAbort extends Error {
+  public constructor(public readonly outcome: CheckoutMutationFailure) {
+    super(outcome);
+  }
+}
 
 export const deriveOrderServiceVerificationCode = (orderId: number): string => {
   const digest = createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
@@ -379,6 +386,118 @@ export interface OrderServiceSessionPayload {
   addOns: OrderAddOnPayload[];
 }
 
+export type CheckoutPaymentMethod = "cash" | "ndp" | "other";
+export type CheckoutPaymentEvidence =
+  | "ndp_ledger"
+  | "technician_receipt_confirmation"
+  | "operations_receipt_override";
+
+export interface OrderCheckoutPayload {
+  id: number;
+  orderId: number;
+  status: BookingOrderStatusPayload;
+  baseAmountJpy: number;
+  addOnAmountJpy: number;
+  discountAmountJpy: number;
+  checkoutAmountJpy: number;
+  payableNdp: number;
+  rate: {
+    ruleId: number;
+    publicId: string;
+    version: number;
+    ndpUnits: number;
+    jpyUnits: number;
+    effectiveFrom: string;
+  };
+  calculation: {
+    formula: "base_plus_accepted_add_ons_minus_discount";
+    baseAmountJpy: number;
+    acceptedAddOnIds: number[];
+    addOnAmountJpy: number;
+    discountAmountJpy: number;
+    checkoutAmountJpy: number;
+    rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)";
+  };
+  paymentMethod: CheckoutPaymentMethod | null;
+  paymentSelectedAt: Date | null;
+  otherMethod: { code: string; label: string } | null;
+  paymentEvidence: CheckoutPaymentEvidence | null;
+  receiptConfirmedAt: Date | null;
+  receiptConfirmationReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CheckoutActorInput {
+  orderId: number;
+  actorUserId: number;
+  technicianProfileId: number | null;
+}
+
+export interface CheckoutRateSnapshotInput {
+  ruleId: number;
+  publicId: string;
+  version: number;
+  ndpUnits: number;
+  jpyUnits: number;
+  effectiveFrom: Date;
+  resolvedAt: Date;
+}
+
+export interface GetCheckoutRepositoryInput extends CheckoutActorInput {
+  rate: CheckoutRateSnapshotInput | null;
+}
+
+export interface SelectCheckoutPaymentMethodRepositoryInput extends CheckoutActorInput {
+  method: CheckoutPaymentMethod;
+  otherMethodCode?: string;
+  otherMethodLabel?: string;
+  idempotencyKey: string;
+}
+
+export interface PayCheckoutWithNdpRepositoryInput extends CheckoutActorInput {
+  idempotencyKey: string;
+}
+
+export interface ConfirmCheckoutReceiptRepositoryInput extends CheckoutActorInput {
+  reason: string;
+  idempotencyKey: string;
+  evidence: Extract<
+    CheckoutPaymentEvidence,
+    "technician_receipt_confirmation" | "operations_receipt_override"
+  >;
+  audit?: AuditLogCreateInput;
+}
+
+export type CheckoutMutationFailure =
+  | "not_found"
+  | "invalid_state"
+  | "conflict"
+  | "invalid_snapshot"
+  | "rate_required";
+export type CheckoutMutationResult =
+  | { outcome: "ok"; checkout: OrderCheckoutPayload; applied: boolean }
+  | { outcome: CheckoutMutationFailure };
+
+export interface CheckoutMutationContext {
+  transactionClient: LedgerTransactionClient;
+  order: BookingOrderPayload;
+  checkout: OrderCheckoutPayload;
+}
+
+export interface CheckoutNdpPaymentOptions {
+  debit: (
+    context: CheckoutMutationContext & { idempotencyKey: string }
+  ) => Promise<{ transactionId: number }>;
+  settle?: (context: CheckoutMutationContext) => Promise<void>;
+  settleAffiliate?: (context: CheckoutMutationContext) => Promise<void>;
+}
+
+export interface CheckoutReceiptOptions {
+  settle?: (context: CheckoutMutationContext) => Promise<void>;
+  settleAffiliate?: (context: CheckoutMutationContext) => Promise<void>;
+}
+
 export interface BookingOrderPayload {
   id: number;
   orderNo: string;
@@ -513,6 +632,18 @@ export interface BookingRepositoryPort {
     input: DecideOrderAddOnRepositoryInput
   ) => Promise<FulfillmentMutationResult>;
   endService: (input: EndServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
+  getOrCreateCheckout: (input: GetCheckoutRepositoryInput) => Promise<CheckoutMutationResult>;
+  selectCheckoutPaymentMethod: (
+    input: SelectCheckoutPaymentMethodRepositoryInput
+  ) => Promise<CheckoutMutationResult>;
+  payCheckoutWithNdp: (
+    input: PayCheckoutWithNdpRepositoryInput,
+    options: CheckoutNdpPaymentOptions
+  ) => Promise<CheckoutMutationResult>;
+  confirmCheckoutReceipt: (
+    input: ConfirmCheckoutReceiptRepositoryInput,
+    options?: CheckoutReceiptOptions
+  ) => Promise<CheckoutMutationResult>;
   transitionOrder: (
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
@@ -578,6 +709,7 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
     };
   };
 }>;
+type CheckoutRecord = Prisma.OrderCheckoutGetPayload<Record<string, never>>;
 
 const ACTIVE_ORDER_DB_STATUSES = ["PENDING", "CONFIRMED", "IN_SERVICE"] as const;
 const HARD_LOCK_ORDER_DB_STATUSES = ["CONFIRMED", "IN_SERVICE"] as const;
@@ -1693,6 +1825,373 @@ export class BookingRepository implements BookingRepositoryPort {
     });
   }
 
+  public getOrCreateCheckout(input: GetCheckoutRepositoryInput): Promise<CheckoutMutationResult> {
+    return this.runCheckoutTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      if (!current || !this.checkoutParticipantMatches(current, input)) {
+        return { outcome: "not_found" };
+      }
+      const existing = await tx.orderCheckout.findUnique({
+        where: { bookingOrderId: current.id }
+      });
+      if (existing && !existing.deletedAt) {
+        if (
+          current.status !== DatabaseBookingOrderStatus.AWAITING_CHECKOUT &&
+          current.status !== DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION &&
+          current.status !== DatabaseBookingOrderStatus.COMPLETED
+        ) {
+          return { outcome: "invalid_state" };
+        }
+        return {
+          outcome: "ok",
+          checkout: this.mapCheckout(
+            existing,
+            current.status,
+            await this.resolveStoredCheckoutEvidence(tx, existing)
+          ),
+          applied: false
+        };
+      }
+      if (
+        current.status !== DatabaseBookingOrderStatus.AWAITING_CHECKOUT ||
+        !current.serviceSession?.endedAt
+      ) {
+        return { outcome: "invalid_state" };
+      }
+      if (!input.rate) return { outcome: "rate_required" };
+
+      const calculation = this.calculateCheckout(current, input.rate);
+      const now = input.rate.resolvedAt;
+      const checkout = await tx.orderCheckout.create({
+        data: {
+          bookingOrderId: current.id,
+          baseAmountJpy: calculation.baseAmountJpy,
+          addOnAmountJpy: calculation.addOnAmountJpy,
+          discountAmountJpy: calculation.discountAmountJpy,
+          checkoutAmountJpy: calculation.checkoutAmountJpy,
+          payableNdp: calculation.payableNdp,
+          ndpRateRuleId: input.rate.ruleId,
+          rateSnapshotJson: calculation.rate as unknown as Prisma.InputJsonValue,
+          calculationSnapshotJson: calculation.calculation as unknown as Prisma.InputJsonValue,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      await tx.orderServiceEvent.create({
+        data: {
+          bookingOrderId: current.id,
+          serviceSessionId: current.serviceSession.id,
+          orderCheckoutId: checkout.id,
+          eventType: DatabaseOrderServiceEventType.CHECKOUT_CREATED,
+          actorUserId: input.actorUserId,
+          idempotencyKey: `checkout:${current.id}:created`,
+          metadata: {
+            checkoutAmountJpy: checkout.checkoutAmountJpy,
+            payableNdp: checkout.payableNdp,
+            rateRuleId: checkout.ndpRateRuleId
+          },
+          occurredAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      return {
+        outcome: "ok",
+        checkout: this.mapCheckout(checkout, current.status),
+        applied: true
+      };
+    });
+  }
+
+  public selectCheckoutPaymentMethod(
+    input: SelectCheckoutPaymentMethodRepositoryInput
+  ): Promise<CheckoutMutationResult> {
+    return this.runCheckoutTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      const checkout = current
+        ? await tx.orderCheckout.findUnique({ where: { bookingOrderId: current.id } })
+        : null;
+      const replay = await this.resolveCheckoutReplay(tx, current, checkout, input, {
+        eventType: DatabaseOrderServiceEventType.PAYMENT_METHOD_SELECTED,
+        method: input.method,
+        otherMethodCode: input.otherMethodCode?.trim() ?? null,
+        otherMethodLabel: input.otherMethodLabel?.trim() ?? null
+      });
+      if (replay) return replay;
+      if (!current || !checkout || checkout.deletedAt || current.customerUserId !== input.actorUserId) {
+        return { outcome: "not_found" };
+      }
+      if (!current.serviceSession) return { outcome: "invalid_state" };
+      if (
+        current.status !== DatabaseBookingOrderStatus.AWAITING_CHECKOUT &&
+        current.status !== DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION
+      ) {
+        return { outcome: "invalid_state" };
+      }
+      if (checkout.paymentMethod || checkout.ledgerTransactionId || checkout.receiptConfirmedAt) {
+        return { outcome: "invalid_state" };
+      }
+      const otherMethodCode = input.method === "other" ? input.otherMethodCode?.trim() : null;
+      const otherMethodLabel = input.method === "other" ? input.otherMethodLabel?.trim() : null;
+      if (input.method === "other" && (!otherMethodCode || !otherMethodLabel)) {
+        return { outcome: "invalid_snapshot" };
+      }
+      const now = new Date();
+      const nextStatus =
+        input.method === "ndp"
+          ? DatabaseBookingOrderStatus.AWAITING_CHECKOUT
+          : DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION;
+      await tx.orderCheckout.update({
+        where: { id: checkout.id },
+        data: {
+          paymentMethod: servicePaymentMethodToDb(input.method),
+          paymentSelectedAt: now,
+          otherMethodCode: otherMethodCode ?? null,
+          otherMethodLabel: otherMethodLabel ?? null,
+          updatedAt: now
+        }
+      });
+      if (current.status !== nextStatus) {
+        const updated = await tx.bookingOrder.updateMany({
+          where: { id: current.id, status: current.status, deletedAt: null },
+          data: { status: nextStatus, updatedAt: now }
+        });
+        if (updated.count !== 1) throw new CheckoutTransactionAbort("conflict");
+        await tx.orderStatusHistory.create({
+          data: {
+            bookingOrderId: current.id,
+            fromStatus: current.status,
+            toStatus: nextStatus,
+            actorUserId: input.actorUserId,
+            reason: "checkout_payment_method_selected",
+            createdAt: now,
+            updatedAt: now
+          }
+        });
+      }
+      await tx.orderServiceEvent.create({
+        data: {
+          bookingOrderId: current.id,
+          serviceSessionId: current.serviceSession.id,
+          orderCheckoutId: checkout.id,
+          eventType: DatabaseOrderServiceEventType.PAYMENT_METHOD_SELECTED,
+          actorUserId: input.actorUserId,
+          idempotencyKey: input.idempotencyKey,
+          metadata: {
+            method: input.method,
+            ...(otherMethodCode ? { otherMethodCode } : {}),
+            ...(otherMethodLabel ? { otherMethodLabel } : {})
+          },
+          occurredAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      const next = await tx.orderCheckout.findUnique({ where: { id: checkout.id } });
+      if (!next) throw new CheckoutTransactionAbort("conflict");
+      return { outcome: "ok", checkout: this.mapCheckout(next, nextStatus), applied: true };
+    });
+  }
+
+  public payCheckoutWithNdp(
+    input: PayCheckoutWithNdpRepositoryInput,
+    options: CheckoutNdpPaymentOptions
+  ): Promise<CheckoutMutationResult> {
+    return this.runCheckoutTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      const checkout = current
+        ? await tx.orderCheckout.findUnique({ where: { bookingOrderId: current.id } })
+        : null;
+      const replay = await this.resolveCheckoutReplay(tx, current, checkout, input, {
+        eventType: DatabaseOrderServiceEventType.NDP_PAYMENT_APPLIED
+      });
+      if (replay) return replay;
+      if (!current || !checkout || checkout.deletedAt || current.customerUserId !== input.actorUserId) {
+        return { outcome: "not_found" };
+      }
+      if (!current.serviceSession) return { outcome: "invalid_state" };
+      if (
+        current.status !== DatabaseBookingOrderStatus.AWAITING_CHECKOUT ||
+        (checkout.paymentMethod !== null && checkout.paymentMethod !== DatabaseServicePaymentMethod.NDP) ||
+        checkout.ledgerTransactionId ||
+        checkout.receiptConfirmedAt
+      ) {
+        return { outcome: "invalid_state" };
+      }
+      const before = this.mapCheckout(checkout, current.status);
+      const debit = await options.debit({
+        transactionClient: tx,
+        order: this.mapOrder(current),
+        checkout: before,
+        idempotencyKey: input.idempotencyKey
+      });
+      const now = new Date();
+      await tx.orderCheckout.update({
+        where: { id: checkout.id },
+        data: {
+          paymentMethod: DatabaseServicePaymentMethod.NDP,
+          paymentSelectedAt: checkout.paymentSelectedAt ?? now,
+          ledgerTransactionId: debit.transactionId,
+          updatedAt: now
+        }
+      });
+      const updated = await tx.bookingOrder.updateMany({
+        where: {
+          id: current.id,
+          status: DatabaseBookingOrderStatus.AWAITING_CHECKOUT,
+          paymentStatus: "PENDING",
+          deletedAt: null
+        },
+        data: {
+          status: DatabaseBookingOrderStatus.COMPLETED,
+          paymentMethod: DatabaseServicePaymentMethod.NDP,
+          paymentStatus: "CONFIRMED",
+          paymentAmountJpy: checkout.checkoutAmountJpy,
+          paymentConfirmedById: input.actorUserId,
+          paymentConfirmedAt: now,
+          paymentReference: `checkout:${checkout.id}:ledger:${debit.transactionId}`,
+          updatedAt: now
+        }
+      });
+      if (updated.count !== 1) throw new CheckoutTransactionAbort("conflict");
+      await this.persistCheckoutCompletionEvidence(tx, current, checkout, input, {
+        eventType: DatabaseOrderServiceEventType.NDP_PAYMENT_APPLIED,
+        now,
+        reason: "checkout_ndp_payment_applied",
+        metadata: { paymentEvidence: "ndp_ledger", ledgerTransactionId: debit.transactionId }
+      });
+      const context = { transactionClient: tx, order: this.mapOrder(current), checkout: before };
+      await options.settle?.(context);
+      await options.settleAffiliate?.(context);
+      const next = await tx.orderCheckout.findUnique({ where: { id: checkout.id } });
+      if (!next) throw new CheckoutTransactionAbort("conflict");
+      return {
+        outcome: "ok",
+        checkout: this.mapCheckout(next, DatabaseBookingOrderStatus.COMPLETED),
+        applied: true
+      };
+    });
+  }
+
+  public confirmCheckoutReceipt(
+    input: ConfirmCheckoutReceiptRepositoryInput,
+    options: CheckoutReceiptOptions = {}
+  ): Promise<CheckoutMutationResult> {
+    return this.runCheckoutTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      const checkout = current
+        ? await tx.orderCheckout.findUnique({ where: { bookingOrderId: current.id } })
+        : null;
+      const replay = await this.resolveCheckoutReplay(tx, current, checkout, input, {
+        eventType: DatabaseOrderServiceEventType.RECEIPT_CONFIRMED,
+        reason: input.reason.trim(),
+        paymentEvidence: input.evidence
+      });
+      if (replay) return replay;
+      const authorized =
+        input.evidence === "operations_receipt_override"
+          ? Boolean(current)
+          : Boolean(
+              current?.technicianProfileId &&
+                current.technicianProfile &&
+                current.technicianProfileId === input.technicianProfileId &&
+                current.technicianProfile.userId === input.actorUserId
+            );
+      if (!current || !checkout || checkout.deletedAt || !authorized) {
+        return { outcome: "not_found" };
+      }
+      if (!current.serviceSession) return { outcome: "invalid_state" };
+      if (
+        current.status !== DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION ||
+        (checkout.paymentMethod !== DatabaseServicePaymentMethod.CASH &&
+          checkout.paymentMethod !== DatabaseServicePaymentMethod.OTHER) ||
+        checkout.ledgerTransactionId ||
+        checkout.receiptConfirmedAt
+      ) {
+        return { outcome: "invalid_state" };
+      }
+      const now = new Date();
+      await tx.orderCheckout.update({
+        where: { id: checkout.id },
+        data: {
+          receiptConfirmedById: input.actorUserId,
+          receiptConfirmedAt: now,
+          receiptConfirmationReason: input.reason.trim(),
+          updatedAt: now
+        }
+      });
+      const updated = await tx.bookingOrder.updateMany({
+        where: {
+          id: current.id,
+          status: DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION,
+          paymentStatus: "PENDING",
+          deletedAt: null
+        },
+        data: {
+          status: DatabaseBookingOrderStatus.COMPLETED,
+          paymentMethod: checkout.paymentMethod,
+          paymentStatus: "CONFIRMED",
+          paymentAmountJpy: checkout.checkoutAmountJpy,
+          paymentConfirmedById: input.actorUserId,
+          paymentConfirmedAt: now,
+          paymentReference:
+            input.evidence === "operations_receipt_override"
+              ? `checkout:${checkout.id}:operations-receipt`
+              : `checkout:${checkout.id}:technician-receipt`,
+          paymentNote: input.reason.trim(),
+          updatedAt: now
+        }
+      });
+      if (updated.count !== 1) throw new CheckoutTransactionAbort("conflict");
+      await this.persistCheckoutCompletionEvidence(tx, current, checkout, input, {
+        eventType: DatabaseOrderServiceEventType.RECEIPT_CONFIRMED,
+        now,
+        reason: input.reason.trim(),
+        metadata: { paymentEvidence: input.evidence, reason: input.reason.trim() }
+      });
+      const before = this.mapCheckout(checkout, current.status);
+      const context = { transactionClient: tx, order: this.mapOrder(current), checkout: before };
+      await options.settle?.(context);
+      await options.settleAffiliate?.(context);
+      if (input.audit) {
+        const auditMetadata =
+          input.audit.metadata &&
+          typeof input.audit.metadata === "object" &&
+          !Array.isArray(input.audit.metadata)
+            ? (input.audit.metadata as Record<string, unknown>)
+            : {};
+        await tx.auditLog.create({
+          data: toAuditLogCreateData({
+            ...input.audit,
+            metadata: {
+              ...auditMetadata,
+              orderId: current.id,
+              checkoutId: checkout.id,
+              selectedMethod: servicePaymentMethodFromDb(checkout.paymentMethod),
+              checkoutAmountJpy: checkout.checkoutAmountJpy,
+              reason: input.reason.trim()
+            }
+          })
+        });
+      }
+      const next = await tx.orderCheckout.findUnique({ where: { id: checkout.id } });
+      if (!next) throw new CheckoutTransactionAbort("conflict");
+      return {
+        outcome: "ok",
+        checkout: this.mapCheckout(
+          next,
+          DatabaseBookingOrderStatus.COMPLETED,
+          input.evidence
+        ),
+        applied: true
+      };
+    });
+  }
+
   public async transitionOrder(
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
@@ -1848,6 +2347,17 @@ export class BookingRepository implements BookingRepositoryPort {
       if (!current) {
         return { outcome: "not_found" };
       }
+      const formalCheckout = await tx.orderCheckout.findUnique({
+        where: { bookingOrderId: current.id }
+      });
+      if (
+        current.serviceSession ||
+        (formalCheckout && !formalCheckout.deletedAt) ||
+        current.status === DatabaseBookingOrderStatus.AWAITING_CHECKOUT ||
+        current.status === DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION
+      ) {
+        return { outcome: "invalid_state" };
+      }
 
       const amountJpy = Math.round(Number(current.priceAmount.toString()));
 
@@ -1970,6 +2480,17 @@ export class BookingRepository implements BookingRepositoryPort {
 
       if (!current) {
         return { outcome: "not_found" };
+      }
+      const formalCheckout = await tx.orderCheckout.findUnique({
+        where: { bookingOrderId: current.id }
+      });
+      if (
+        formalCheckout &&
+        !formalCheckout.deletedAt &&
+        (formalCheckout.ledgerTransactionId !== null ||
+          formalCheckout.paymentMethod === DatabaseServicePaymentMethod.NDP)
+      ) {
+        return { outcome: "invalid_state" };
       }
 
       const reason = input.reason.trim();
@@ -2361,6 +2882,340 @@ export class BookingRepository implements BookingRepositoryPort {
         throw replayedError;
       }
     }
+  }
+
+  private async runCheckoutTransaction(
+    mutation: (transaction: Prisma.TransactionClient) => Promise<CheckoutMutationResult>
+  ): Promise<CheckoutMutationResult> {
+    const operation = () => this.client.$transaction((transaction) => mutation(transaction));
+    try {
+      return await runWithTransactionConflictRetry(operation);
+    } catch (error) {
+      if (error instanceof CheckoutTransactionAbort) return { outcome: error.outcome };
+      if (isRetryableTransactionConflict(error)) return { outcome: "conflict" };
+      if (!this.isPrismaUniqueConflict(error)) throw error;
+      try {
+        return await runWithTransactionConflictRetry(operation);
+      } catch (replayedError) {
+        if (replayedError instanceof CheckoutTransactionAbort) {
+          return { outcome: replayedError.outcome };
+        }
+        if (
+          isRetryableTransactionConflict(replayedError) ||
+          this.isPrismaUniqueConflict(replayedError)
+        ) {
+          return { outcome: "conflict" };
+        }
+        throw replayedError;
+      }
+    }
+  }
+
+  private checkoutParticipantMatches(order: OrderRecord, input: CheckoutActorInput): boolean {
+    if (order.customerUserId === input.actorUserId && input.technicianProfileId === null) {
+      return true;
+    }
+    return Boolean(
+      input.technicianProfileId &&
+        order.technicianProfileId === input.technicianProfileId &&
+        order.technicianProfile?.userId === input.actorUserId
+    );
+  }
+
+  private calculateCheckout(current: OrderRecord, rate: CheckoutRateSnapshotInput) {
+    const maxInt = 2_147_483_647;
+    if (current.currency !== "JPY") throw new CheckoutTransactionAbort("invalid_snapshot");
+    const baseAmountJpy = current.affiliateAttributions[0]
+      ? current.affiliateAttributions[0].originalPriceJpy
+      : this.exactJpyInteger(current.servicePriceSnapshot ?? current.priceAmount);
+    const discountAmountJpy = current.affiliateAttributions[0]?.customerDiscountJpy ?? 0;
+    const accepted =
+      current.serviceSession?.addOns.filter(
+        (addOn) => addOn.status === "ACCEPTED" && addOn.deletedAt === null
+      ) ?? [];
+    for (const addOn of accepted) {
+      if (addOn.currency !== "JPY") throw new CheckoutTransactionAbort("invalid_snapshot");
+      this.assertPersistedInt(addOn.priceAmountJpy, maxInt);
+    }
+    this.assertPersistedInt(baseAmountJpy, maxInt);
+    this.assertPersistedInt(discountAmountJpy, maxInt);
+    this.assertPersistedInt(rate.ndpUnits, maxInt);
+    this.assertPersistedInt(rate.jpyUnits, maxInt);
+    this.assertPersistedInt(rate.ruleId, maxInt);
+    this.assertPersistedInt(rate.version, maxInt);
+    if (rate.ndpUnits === 0 || rate.jpyUnits === 0 || rate.ruleId === 0 || rate.version === 0) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    const affiliate = current.affiliateAttributions[0];
+    if (
+      affiliate &&
+      (affiliate.finalPriceJpy < 0 ||
+        affiliate.originalPriceJpy - affiliate.customerDiscountJpy !== affiliate.finalPriceJpy)
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    const addOnTotal = accepted.reduce((total, addOn) => total + BigInt(addOn.priceAmountJpy), 0n);
+    const checkoutAmount = BigInt(baseAmountJpy) + addOnTotal - BigInt(discountAmountJpy);
+    if (checkoutAmount < 0n || checkoutAmount > BigInt(maxInt) || addOnTotal > BigInt(maxInt)) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    const payable =
+      (checkoutAmount * BigInt(rate.ndpUnits) + BigInt(rate.jpyUnits) - 1n) /
+      BigInt(rate.jpyUnits);
+    if (payable > BigInt(maxInt)) throw new CheckoutTransactionAbort("invalid_snapshot");
+    const addOnAmountJpy = Number(addOnTotal);
+    const checkoutAmountJpy = Number(checkoutAmount);
+    const rateSnapshot = {
+      ruleId: rate.ruleId,
+      publicId: rate.publicId,
+      version: rate.version,
+      ndpUnits: rate.ndpUnits,
+      jpyUnits: rate.jpyUnits,
+      effectiveFrom: rate.effectiveFrom.toISOString()
+    };
+    return {
+      baseAmountJpy,
+      addOnAmountJpy,
+      discountAmountJpy,
+      checkoutAmountJpy,
+      payableNdp: Number(payable),
+      rate: rateSnapshot,
+      calculation: {
+        formula: "base_plus_accepted_add_ons_minus_discount" as const,
+        baseAmountJpy,
+        acceptedAddOnIds: accepted.map((addOn) => addOn.id),
+        addOnAmountJpy,
+        discountAmountJpy,
+        checkoutAmountJpy,
+        rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" as const
+      }
+    };
+  }
+
+  private exactJpyInteger(value: DecimalLike | number): number {
+    const text = typeof value === "number" ? String(value) : value.toString();
+    if (!/^\d+(?:\.0+)?$/.test(text)) throw new CheckoutTransactionAbort("invalid_snapshot");
+    const parsed = Number(text);
+    if (!Number.isSafeInteger(parsed)) throw new CheckoutTransactionAbort("invalid_snapshot");
+    return parsed;
+  }
+
+  private assertPersistedInt(value: number, maxInt: number): void {
+    if (!Number.isInteger(value) || value < 0 || value > maxInt) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+  }
+
+  private async resolveCheckoutReplay(
+    transaction: Prisma.TransactionClient,
+    current: OrderRecord | null,
+    checkout: CheckoutRecord | null,
+    input: CheckoutActorInput & { idempotencyKey: string },
+    expectation: {
+      eventType: DatabaseOrderServiceEventType;
+      method?: CheckoutPaymentMethod;
+      otherMethodCode?: string | null;
+      otherMethodLabel?: string | null;
+      reason?: string;
+      paymentEvidence?: CheckoutPaymentEvidence;
+    }
+  ): Promise<CheckoutMutationResult | null> {
+    const event = await transaction.orderServiceEvent.findUnique({
+      where: { idempotencyKey: input.idempotencyKey }
+    });
+    if (!event) return null;
+    if (
+      !this.constantTimeTextEquals(event.idempotencyKey, input.idempotencyKey) ||
+      !current ||
+      !checkout ||
+      event.bookingOrderId !== input.orderId ||
+      event.orderCheckoutId !== checkout.id ||
+      event.actorUserId !== input.actorUserId ||
+      event.eventType !== expectation.eventType
+    ) {
+      return { outcome: "conflict" };
+    }
+    const metadata =
+      event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+        ? (event.metadata as Record<string, unknown>)
+        : {};
+    if (
+      (expectation.method !== undefined && metadata.method !== expectation.method) ||
+      (expectation.otherMethodCode !== undefined &&
+        (metadata.otherMethodCode ?? null) !== expectation.otherMethodCode) ||
+      (expectation.otherMethodLabel !== undefined &&
+        (metadata.otherMethodLabel ?? null) !== expectation.otherMethodLabel) ||
+      (expectation.reason !== undefined && metadata.reason !== expectation.reason) ||
+      (expectation.paymentEvidence !== undefined &&
+        metadata.paymentEvidence !== expectation.paymentEvidence)
+    ) {
+      return { outcome: "conflict" };
+    }
+    if (current.status !== DatabaseBookingOrderStatus.COMPLETED && expectation.eventType !== DatabaseOrderServiceEventType.PAYMENT_METHOD_SELECTED) {
+      return { outcome: "conflict" };
+    }
+    return {
+      outcome: "ok",
+      checkout: this.mapCheckout(
+        checkout,
+        current.status,
+        expectation.paymentEvidence
+      ),
+      applied: false
+    };
+  }
+
+  private async resolveStoredCheckoutEvidence(
+    transaction: Prisma.TransactionClient,
+    checkout: CheckoutRecord
+  ): Promise<CheckoutPaymentEvidence | undefined> {
+    if (checkout.ledgerTransactionId) return "ndp_ledger";
+    if (!checkout.receiptConfirmedAt) return undefined;
+    const event = await transaction.orderServiceEvent.findFirst({
+      where: {
+        bookingOrderId: checkout.bookingOrderId,
+        orderCheckoutId: checkout.id,
+        eventType: DatabaseOrderServiceEventType.RECEIPT_CONFIRMED,
+        deletedAt: null
+      },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }]
+    });
+    const metadata =
+      event?.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+        ? (event.metadata as Record<string, unknown>)
+        : {};
+    return metadata.paymentEvidence === "operations_receipt_override"
+      ? "operations_receipt_override"
+      : "technician_receipt_confirmation";
+  }
+
+  private async persistCheckoutCompletionEvidence(
+    transaction: Prisma.TransactionClient,
+    current: OrderRecord,
+    checkout: CheckoutRecord,
+    input: CheckoutActorInput & { idempotencyKey: string },
+    evidence: {
+      eventType: DatabaseOrderServiceEventType;
+      now: Date;
+      reason: string;
+      metadata: Prisma.InputJsonObject;
+    }
+  ): Promise<void> {
+    await transaction.orderStatusHistory.create({
+      data: {
+        bookingOrderId: current.id,
+        fromStatus: current.status,
+        toStatus: DatabaseBookingOrderStatus.COMPLETED,
+        actorUserId: input.actorUserId,
+        reason: evidence.reason,
+        createdAt: evidence.now,
+        updatedAt: evidence.now
+      }
+    });
+    await transaction.orderServiceEvent.create({
+      data: {
+        bookingOrderId: current.id,
+        serviceSessionId: current.serviceSession!.id,
+        orderCheckoutId: checkout.id,
+        eventType: evidence.eventType,
+        actorUserId: input.actorUserId,
+        idempotencyKey: input.idempotencyKey,
+        reason: evidence.reason,
+        metadata: evidence.metadata,
+        occurredAt: evidence.now,
+        createdAt: evidence.now,
+        updatedAt: evidence.now
+      }
+    });
+  }
+
+  private mapCheckout(
+    checkout: CheckoutRecord,
+    status: DatabaseBookingOrderStatus,
+    evidenceOverride?: CheckoutPaymentEvidence
+  ): OrderCheckoutPayload {
+    const rate = checkout.rateSnapshotJson as unknown as OrderCheckoutPayload["rate"];
+    const calculation =
+      checkout.calculationSnapshotJson as unknown as OrderCheckoutPayload["calculation"];
+    if (
+      !rate ||
+      typeof rate !== "object" ||
+      !calculation ||
+      typeof calculation !== "object"
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    const amounts = [
+      checkout.baseAmountJpy,
+      checkout.addOnAmountJpy,
+      checkout.discountAmountJpy,
+      checkout.checkoutAmountJpy,
+      checkout.payableNdp,
+      rate.ruleId,
+      rate.version,
+      rate.ndpUnits,
+      rate.jpyUnits
+    ];
+    if (
+      amounts.some(
+        (value) => !Number.isInteger(value) || value < 0 || value > 2_147_483_647
+      ) ||
+      rate.ruleId === 0 ||
+      rate.version === 0 ||
+      rate.ndpUnits === 0 ||
+      rate.jpyUnits === 0 ||
+      checkout.baseAmountJpy + checkout.addOnAmountJpy - checkout.discountAmountJpy !==
+        checkout.checkoutAmountJpy ||
+      BigInt(checkout.payableNdp) !==
+        (BigInt(checkout.checkoutAmountJpy) * BigInt(rate.ndpUnits) +
+          BigInt(rate.jpyUnits) -
+          1n) /
+          BigInt(rate.jpyUnits) ||
+      calculation.formula !== "base_plus_accepted_add_ons_minus_discount" ||
+      calculation.rateFormula !== "ceil(jpy_times_ndp_units_divided_by_jpy_units)" ||
+      calculation.baseAmountJpy !== checkout.baseAmountJpy ||
+      calculation.addOnAmountJpy !== checkout.addOnAmountJpy ||
+      calculation.discountAmountJpy !== checkout.discountAmountJpy ||
+      calculation.checkoutAmountJpy !== checkout.checkoutAmountJpy ||
+      !Array.isArray(calculation.acceptedAddOnIds) ||
+      calculation.acceptedAddOnIds.some(
+        (id) => !Number.isInteger(id) || id <= 0 || id > 2_147_483_647
+      )
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    const paymentEvidence: CheckoutPaymentEvidence | null = evidenceOverride ?? (checkout.ledgerTransactionId
+      ? "ndp_ledger"
+      : checkout.receiptConfirmedAt
+        ? "technician_receipt_confirmation"
+        : null);
+    return {
+      id: checkout.id,
+      orderId: checkout.bookingOrderId,
+      status: bookingOrderStatusFromDb(status),
+      baseAmountJpy: checkout.baseAmountJpy,
+      addOnAmountJpy: checkout.addOnAmountJpy,
+      discountAmountJpy: checkout.discountAmountJpy,
+      checkoutAmountJpy: checkout.checkoutAmountJpy,
+      payableNdp: checkout.payableNdp,
+      rate,
+      calculation,
+      paymentMethod: checkout.paymentMethod
+        ? (servicePaymentMethodFromDb(checkout.paymentMethod) as CheckoutPaymentMethod)
+        : null,
+      paymentSelectedAt: checkout.paymentSelectedAt,
+      otherMethod:
+        checkout.paymentMethod === DatabaseServicePaymentMethod.OTHER &&
+        checkout.otherMethodCode &&
+        checkout.otherMethodLabel
+          ? { code: checkout.otherMethodCode, label: checkout.otherMethodLabel }
+          : null,
+      paymentEvidence,
+      receiptConfirmedAt: checkout.receiptConfirmedAt,
+      receiptConfirmationReason: checkout.receiptConfirmationReason,
+      createdAt: checkout.createdAt,
+      updatedAt: checkout.updatedAt
+    };
   }
 
   private isPrismaUniqueConflict(error: unknown): boolean {

@@ -10,11 +10,13 @@ import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { NdpExchangeRateRepository } from "../repositories/ndp-exchange-rate.repository";
 import { PlatformFeePolicyRepository } from "../repositories/platform-fee-policy.repository";
 import { BookingService } from "../services/booking.service";
 import { AuditLogService } from "../services/audit-log.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
+import { NdpExchangeRateService } from "../services/ndp-exchange-rate.service";
 import { PlatformFeePolicyService } from "../services/platform-fee-policy.service";
 import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../services/affiliate-link-token.service";
@@ -22,6 +24,7 @@ import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
   createOrderAddOnBodySchema,
+  confirmReceiptBodySchema,
   endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
@@ -31,6 +34,8 @@ import {
   orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  payWithNdpBodySchema,
+  selectPaymentMethodBodySchema,
   startServiceBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotListQuerySchema,
@@ -47,6 +52,11 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   serviceStart: "order:service:start",
   addOnWrite: "order:add-on:write",
   serviceEnd: "order:service:end",
+  checkoutRead: "order:checkout:read",
+  checkoutPaymentMethodWrite: "order:checkout:payment-method:write",
+  checkoutNdpPay: "order:checkout:ndp:pay",
+  checkoutReceiptConfirm: "order:checkout:receipt:confirm",
+  checkoutReceiptOverride: "backoffice:order:checkout:receipt-override",
   merchantPaymentWrite: "merchant-admin:order-payment:write",
   backofficePaymentWrite: "backoffice:order-payment:write",
   scheduleList: "schedule:slots:list",
@@ -78,6 +88,12 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
           platformFeePolicyService
         )
       : undefined;
+  const ndpExchangeRateService =
+    dependencies.ndpExchangeRateService ??
+    new NdpExchangeRateService(
+      dependencies.ndpExchangeRateRepository ?? new NdpExchangeRateRepository(),
+      auditLogService
+    );
   const bookingService = new BookingService(
     dependencies.bookingRepository ?? new BookingRepository(),
     ledgerService,
@@ -91,7 +107,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
           publicBaseUrl: config.AFFILIATE_PUBLIC_BASE_URL
         }),
         { rewardLedger: ledgerService }
-      )
+      ),
+    ndpExchangeRateService
   );
   const controller = new BookingController(bookingService);
 
@@ -169,6 +186,41 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.serviceEnd),
     validateRequest({ params: orderIdParamSchema, body: endServiceBodySchema }),
     controller.endService
+  );
+  router.get(
+    "/orders/:id/checkout",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutRead),
+    validateRequest({ params: orderIdParamSchema }),
+    controller.getCheckout
+  );
+  router.post(
+    "/orders/:id/checkout/payment-method",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutPaymentMethodWrite),
+    validateRequest({ params: orderIdParamSchema, body: selectPaymentMethodBodySchema }),
+    controller.selectCheckoutPaymentMethod
+  );
+  router.post(
+    "/orders/:id/checkout/pay/ndp",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutNdpPay),
+    validateRequest({ params: orderIdParamSchema, body: payWithNdpBodySchema }),
+    controller.payCheckoutWithNdp
+  );
+  router.post(
+    "/orders/:id/checkout/confirm-receipt",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutReceiptConfirm),
+    validateRequest({ params: orderIdParamSchema, body: confirmReceiptBodySchema }),
+    controller.confirmCheckoutReceipt
+  );
+  router.post(
+    "/backoffice/orders/:id/checkout/confirm-receipt",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutReceiptOverride),
+    validateRequest({ params: orderIdParamSchema, body: confirmReceiptBodySchema }),
+    controller.overrideCheckoutReceipt
   );
   router.post(
     "/merchant-admin/orders/:id/payment/confirm",

@@ -7,6 +7,10 @@ import type {
   BookingOrderPayload,
   BookingOrderStatusPayload,
   BookingRepositoryPort,
+  CheckoutActorInput,
+  CheckoutMutationContext,
+  CheckoutMutationResult,
+  OrderCheckoutPayload,
   FulfillmentActorInput,
   FulfillmentMutationResult,
   ManualPaymentMutationResult,
@@ -24,13 +28,19 @@ import type {
 } from "../repositories/booking.repository";
 import type {
   CreateOrderAddOnInput,
+  ConfirmReceiptInput,
   EndServiceInput,
   OrderAddOnDecisionInput,
+  PayWithNdpInput,
+  SelectPaymentMethodInput,
   StartServiceInput
 } from "../validators/booking.validator";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { AuditLogService } from "./audit-log.service";
-import type { BookingLedgerSettlementPort } from "./ledger.service";
+import type {
+  BookingLedgerSettlementPort,
+  CheckoutPaymentLedgerPort
+} from "./ledger.service";
 import type { OrderStatusNotificationInput, OrderStatusNotificationPort } from "./realtime.service";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
@@ -40,6 +50,7 @@ import {
   type AffiliatePromotionInput
 } from "./affiliate-checkout.service";
 import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
+import type { NdpExchangeRateService } from "./ndp-exchange-rate.service";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -96,16 +107,19 @@ const ORDER_TRANSITIONS = {
 export class BookingService {
   public constructor(
     private readonly repository: BookingRepositoryPort,
-    private readonly ledgerService?: BookingLedgerSettlementPort,
+    private readonly ledgerService?: BookingLedgerSettlementPort & Partial<CheckoutPaymentLedgerPort>,
     private readonly notificationService?: OrderStatusNotificationPort,
-    private readonly auditLogService?: Pick<AuditLogService, "record">,
+    private readonly auditLogService?: Pick<AuditLogService, "record"> &
+      Partial<Pick<AuditLogService, "createInput">>,
     private readonly affiliateCheckoutService?: Pick<
       AffiliateCheckoutService,
       | "prepareCheckout"
       | "persistAttribution"
       | "invalidateCancelledBooking"
       | "settleCompletedBooking"
-    >
+    >,
+    private readonly ndpExchangeRateService?: Pick<NdpExchangeRateService, "resolveEffectiveRate">,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   public listAvailableSlots(input: AvailabilityListInput) {
@@ -451,6 +465,132 @@ export class BookingService {
     return mutation.order;
   }
 
+  public async getCheckout(
+    actor: AuthenticatedBookingActor,
+    orderId: number
+  ): Promise<OrderCheckoutPayload> {
+    const actorInput = this.checkoutActorInput(actor, orderId);
+    const existing = await this.repository.getOrCreateCheckout({ ...actorInput, rate: null });
+    if (existing.outcome !== "rate_required") return this.requireCheckoutMutation(existing).checkout;
+    if (!this.ndpExchangeRateService) throw this.dependencyUnavailableError();
+    const resolvedAt = this.now();
+    const rate = await this.ndpExchangeRateService.resolveEffectiveRate(resolvedAt);
+    const created = await this.repository.getOrCreateCheckout({
+      ...actorInput,
+      rate: { ...rate, resolvedAt }
+    });
+    return this.requireCheckoutMutation(created).checkout;
+  }
+
+  public async selectCheckoutPaymentMethod(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    input: SelectPaymentMethodInput,
+    context: AuthRequestContext
+  ): Promise<OrderCheckoutPayload> {
+    this.assertOwningCustomerIdentity(actor);
+    const result = await this.repository.selectCheckoutPaymentMethod({
+      ...this.checkoutActorInput(actor, orderId),
+      ...input
+    });
+    const mutation = this.requireCheckoutMutation(result);
+    if (mutation.applied) {
+      await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, false);
+    }
+    return mutation.checkout;
+  }
+
+  public async payCheckoutWithNdp(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    input: PayWithNdpInput,
+    context: AuthRequestContext
+  ): Promise<OrderCheckoutPayload> {
+    this.assertOwningCustomerIdentity(actor);
+    if (!this.ledgerService?.debitCheckoutPayment) throw this.dependencyUnavailableError();
+    const result = await this.repository.payCheckoutWithNdp(
+      { ...this.checkoutActorInput(actor, orderId), idempotencyKey: input.idempotencyKey },
+      {
+        debit: async ({ transactionClient, order, checkout, idempotencyKey }) =>
+          this.ledgerService!.debitCheckoutPayment!(
+            {
+              bookingOrderId: order.id,
+              checkoutId: checkout.id,
+              customerUserId: order.customerUserId,
+              payableNdp: checkout.payableNdp,
+              idempotencyKey,
+              actorUserId: actor.userId
+            },
+            { transactionClient }
+          ),
+        settle: (checkoutContext) => this.settleCheckoutBooking(checkoutContext, actor.userId),
+        settleAffiliate: (checkoutContext) =>
+          this.settleCheckoutAffiliate(checkoutContext, actor.userId)
+      }
+    );
+    const mutation = this.requireCheckoutMutation(result);
+    if (mutation.applied) {
+      await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, true);
+    }
+    return mutation.checkout;
+  }
+
+  public async confirmCheckoutReceipt(
+    actor: AuthenticatedAccessContext,
+    orderId: number,
+    input: ConfirmReceiptInput,
+    context: AuthRequestContext,
+    operationsOverride = false
+  ): Promise<OrderCheckoutPayload> {
+    if (operationsOverride) {
+      if (
+        actor.currentIdentityScopeType !== "global" &&
+        actor.currentIdentityScopeType !== "platform"
+      ) {
+        throw this.notFoundError();
+      }
+      if (!this.auditLogService?.createInput) throw this.dependencyUnavailableError();
+    } else if (
+      actor.currentIdentityType !== "technician" ||
+      actor.currentIdentityScopeType !== "technician_profile" ||
+      !actor.currentIdentityScopeId
+    ) {
+      throw this.notFoundError();
+    }
+    const result = await this.repository.confirmCheckoutReceipt(
+      {
+        ...this.checkoutActorInput(actor, orderId),
+        reason: input.reason,
+        idempotencyKey: input.idempotencyKey,
+        evidence: operationsOverride
+          ? "operations_receipt_override"
+          : "technician_receipt_confirmation",
+        ...(operationsOverride
+          ? {
+              audit: this.auditLogService!.createInput!({
+                actor,
+                action: "backoffice.order.checkout.receipt_override",
+                targetType: "BookingOrder",
+                targetId: orderId,
+                context,
+                metadata: { orderId, reason: input.reason }
+              })
+            }
+          : {})
+      },
+      {
+        settle: (checkoutContext) => this.settleCheckoutBooking(checkoutContext, actor.userId),
+        settleAffiliate: (checkoutContext) =>
+          this.settleCheckoutAffiliate(checkoutContext, actor.userId)
+      }
+    );
+    const mutation = this.requireCheckoutMutation(result);
+    if (mutation.applied) {
+      await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, true);
+    }
+    return mutation.checkout;
+  }
+
   public async confirmManualPayment(
     actor: AuthenticatedAccessContext,
     orderId: number,
@@ -474,6 +614,113 @@ export class BookingService {
     }
 
     return order;
+  }
+
+  private checkoutActorInput(
+    actor: AuthenticatedBookingActor,
+    orderId: number
+  ): CheckoutActorInput {
+    return {
+      orderId,
+      actorUserId: actor.userId,
+      technicianProfileId:
+        actor.currentIdentityType === "technician" &&
+        actor.currentIdentityScopeType === "technician_profile" &&
+        actor.currentIdentityScopeId
+          ? actor.currentIdentityScopeId
+          : null
+    };
+  }
+
+  private assertOwningCustomerIdentity(actor: AuthenticatedBookingActor): void {
+    if (!this.isCustomerSharedIdentity(actor)) throw this.notFoundError();
+  }
+
+  private requireCheckoutMutation(
+    result: CheckoutMutationResult
+  ): Extract<CheckoutMutationResult, { outcome: "ok" }> {
+    if (result.outcome === "ok") return result;
+    if (result.outcome === "not_found") throw this.notFoundError();
+    if (result.outcome === "rate_required") throw this.dependencyUnavailableError();
+    if (result.outcome === "invalid_snapshot") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_CHECKOUT_INVALID_SNAPSHOT,
+        message: "error.order.checkout.invalid_snapshot",
+        statusCode: 409
+      });
+    }
+    if (result.outcome === "invalid_state") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_CHECKOUT_INVALID_STATE,
+        message: "error.order.checkout.invalid_state",
+        statusCode: 409
+      });
+    }
+    throw new AppError({
+      code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+      message: "error.idempotency.key_reused",
+      statusCode: 409
+    });
+  }
+
+  private async settleCheckoutBooking(
+    context: CheckoutMutationContext,
+    actorUserId: number
+  ): Promise<void> {
+    if (!this.ledgerService) throw this.dependencyUnavailableError();
+    const confirmed = context.order.statusHistory.find((history) => history.toStatus === "confirmed");
+    await this.ledgerService.settleBookingCompletion(
+      {
+        bookingOrderId: context.order.id,
+        orderType: context.order.orderType,
+        shopId: context.order.shopId,
+        technicianProfileId: context.order.technicianProfileId,
+        serviceId: context.order.serviceId,
+        serviceAmountJpy: context.checkout.checkoutAmountJpy,
+        scheduledStartAt: context.order.startsAt,
+        acceptedAt: confirmed?.createdAt,
+        completedAt: this.now(),
+        customerUserId: context.order.customerUserId,
+        actorUserId
+      },
+      { transactionClient: context.transactionClient }
+    );
+  }
+
+  private async settleCheckoutAffiliate(
+    context: CheckoutMutationContext,
+    actorUserId: number
+  ): Promise<void> {
+    if (!this.affiliateCheckoutService) return;
+    await this.affiliateCheckoutService.settleCompletedBooking({
+      bookingOrderId: context.order.id,
+      customerUserId: context.order.customerUserId,
+      shopId: context.order.shopId,
+      serviceId: context.order.serviceId,
+      actorUserId,
+      transactionClient: context.transactionClient
+    });
+  }
+
+  private async notifyCheckoutCompletionBestEffort(
+    actor: AuthenticatedBookingActor,
+    checkout: OrderCheckoutPayload,
+    _context: AuthRequestContext,
+    completed: boolean
+  ): Promise<void> {
+    if (!completed) return;
+    const order = await this.repository.findOrderById(checkout.orderId);
+    if (!order) return;
+    await this.notifyOrderStatusChangedBestEffort({
+      actorUserId: actor.userId,
+      orderId: order.id,
+      orderNo: order.orderNo,
+      fromStatus:
+        checkout.paymentMethod === "ndp" ? "awaitingCheckout" : "awaitingPaymentConfirmation",
+      toStatus: "completed",
+      serviceName: order.serviceName,
+      recipientUserIds: this.resolveOrderNotificationRecipients(actor, order)
+    });
   }
 
   public async refundManualPayment(
@@ -734,6 +981,14 @@ export class BookingService {
       code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
       message: "error.booking.slot_unavailable",
       statusCode: 409
+    });
+  }
+
+  private dependencyUnavailableError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+      message: "error.dependency_unavailable",
+      statusCode: 503
     });
   }
 

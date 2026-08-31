@@ -5,6 +5,7 @@ import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
   createOrderAddOnBodySchema,
+  confirmReceiptBodySchema,
   endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
@@ -14,6 +15,8 @@ import {
   orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  payWithNdpBodySchema,
+  selectPaymentMethodBodySchema,
   startServiceBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotListQuerySchema,
@@ -259,6 +262,108 @@ export class BookingController {
             this.getOrderId(request),
             endServiceBodySchema.parse(request.body),
             getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getCheckout = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.getCheckout(this.getActor(response), this.getOrderId(request))
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public selectCheckoutPaymentMethod = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.selectCheckoutPaymentMethod(
+            this.getActor(response),
+            this.getOrderId(request),
+            selectPaymentMethodBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public payCheckoutWithNdp = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.payCheckoutWithNdp(
+            this.getActor(response),
+            this.getOrderId(request),
+            payWithNdpBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public confirmCheckoutReceipt = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.confirmCheckoutReceipt(
+            getAuthenticatedAccess(response),
+            this.getOrderId(request),
+            confirmReceiptBodySchema.parse(request.body),
+            getRequestContext(request),
+            false
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public overrideCheckoutReceipt = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.confirmCheckoutReceipt(
+            getAuthenticatedAccess(response),
+            this.getOrderId(request),
+            confirmReceiptBodySchema.parse(request.body),
+            getRequestContext(request),
+            true
           )
         )
       );
