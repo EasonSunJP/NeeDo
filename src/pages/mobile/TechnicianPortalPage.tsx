@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "reac
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
-import { AppIcon, FeatureSegmentedTabs, IconButton } from "../../components/client-ui/AppScaffold";
+import { AppIcon, FeatureSegmentedTabs, IconButton, PrimaryButton, StickyBottomBar } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import type { ContactEventTimelineEntry } from "../../components/mobile/ContactEventTimeline";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { roleBasedTabConfig, technicianNavItems } from "../../components/mobile/navItems";
 import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
+import { TechnicianDataCenterPanel } from "../../components/technician/TechnicianDataCenterPanel";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
@@ -25,6 +27,8 @@ import {
   type TechnicianProfileVisibility,
   type TechnicianSelfProfile
 } from "../../features/core-read/technicianProfileApi";
+import type { TechnicianDataCenterPeriod } from "../../features/core-read/technicianDataCenterApi";
+import type { TechnicianDataCenterPayload } from "../../features/core-read/technicianDataCenterApi";
 import {
   pricingModeApi,
   type ShopPricingMode,
@@ -81,6 +85,10 @@ function getPortalView(view: string | undefined): TechnicianPortalView {
 
 function getMeTab(value: string | null): TechnicianMeTab {
   return value === "services" || value === "data" ? value : "info";
+}
+
+function getDataCenterPeriod(value: string | null): TechnicianDataCenterPeriod {
+  return value === "last30days" || value === "week" || value === "month" || value === "year" ? value : "last7days";
 }
 
 function parseNullableNumber(value: string) {
@@ -801,20 +809,12 @@ function TechnicianShopRequiredPanel() {
   );
 }
 
-function DataCenter({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
-  const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
-  const reviewCount = technician ? String(technician.reviewSummary.reviewCount) : "—";
-  return (
-    <div className="space-y-4">
-      <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
-        <p className={cn(surface.muted, "text-xs font-black")}>服务数据</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {[["服务评分", rating > 0 ? rating.toFixed(1) : "—"], ["评价数量", reviewCount], ["从业年限", `${profile.yearsExperience} 年`], ["资料更新时间", new Date(profile.updatedAt).toLocaleDateString("zh-CN")]].map(([label, value]) => <div className={cn(surface.metric, "rounded-[18px] border p-3")} key={label}><p className={cn(surface.muted, "text-xs font-bold")}>{label}</p><strong className="mt-1 block text-xl">{value}</strong></div>)}
-        </div>
-      </section>
-      <section className={cn(surface.panel, "rounded-[24px] border p-4 text-sm font-bold leading-6 text-[color:var(--client-muted)]")}>收入、工时与履约趋势仅在正式统计接口返回真实聚合数据后展示；当前页面不会生成演示统计。</section>
-    </div>
-  );
+function DataCenter({ period, onPeriodChange, onRangeLoaded }: {
+  period: TechnicianDataCenterPeriod;
+  onPeriodChange: (period: TechnicianDataCenterPeriod) => void;
+  onRangeLoaded: (range: TechnicianDataCenterPayload["range"]) => void;
+}) {
+  return <TechnicianDataCenterPanel onPeriodChange={onPeriodChange} onRangeLoaded={onRangeLoaded} period={period} />;
 }
 
 function TechnicianPortalContent({ initialSelfProfile, technician }: {
@@ -822,10 +822,13 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
   technician: CoreTechnicianDetail | null;
 }) {
   const { view } = useParams();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selfProfile, setSelfProfile] = useState(initialSelfProfile);
+  const [dataCenterRange, setDataCenterRange] = useState<TechnicianDataCenterPayload["range"] | null>(null);
   const activeView = getPortalView(view);
   const meTab = getMeTab(searchParams.get("meTab"));
+  const dataCenterPeriod = getDataCenterPeriod(searchParams.get("period"));
   const shopId = technician?.shop?.id ?? selfProfile.shopId;
   const technicianPortalConfig = roleBasedTabConfig.technician;
   const updateMeTab = (tab: TechnicianMeTab) => {
@@ -833,30 +836,40 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
     next.set("meTab", tab);
     setSearchParams(next, { replace: true });
   };
+  const updateDataCenterPeriod = (period: TechnicianDataCenterPeriod) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("meTab", "data");
+    next.set("period", period);
+    setSearchParams(next, { replace: true });
+  };
   const defaultCategoryId = technician?.services[0]?.category.id ?? null;
 
   return (
-    <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"}>
+    <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"} showBottomNav={!(activeView === "me" && meTab === "data")}>
       {activeView === "tasks" ? <TasksView profile={selfProfile} technician={technician} /> : null}
       {activeView === "me" ? (
         <>
-          <FloatingHomeHeader panelClassName="relative overflow-hidden" stacked>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                {selfProfile.avatarUrl ? <AvatarImage alt={selfProfile.displayName} className="h-12 w-12" src={selfProfile.avatarUrl} /> : <span className="grid h-12 w-12 place-items-center rounded-full bg-[color:var(--client-primary-soft)] text-lg font-black">{selfProfile.displayName.slice(0, 1)}</span>}
-                <div className="min-w-0"><h1 className="truncate text-[22px] font-black tracking-[-0.04em]">{selfProfile.displayName}</h1><p className={cn(surface.muted, "mt-1 text-xs font-semibold")}>信息卡与数据中心</p></div>
-              </div>
-              <IconButton icon="settings" label="打开技师设置" to={technicianPortalConfig.settingsPath} />
-            </div>
-            <FeatureSegmentedTabs items={[{ label: "信息卡", value: "info" }, { label: "服务信息", value: "services" }, { label: "数据中心", value: "data" }]} onChange={(value) => updateMeTab(value as TechnicianMeTab)} value={meTab} variant="header" />
-          </FloatingHomeHeader>
+          <MobileFullscreenHeader
+            action={<IconButton icon="settings" label="打开技师设置" to={technicianPortalConfig.settingsPath} />}
+            footer={<FeatureSegmentedTabs items={[{ label: "信息卡", value: "info" }, { label: "服务信息", value: "services" }, { label: "数据中心", value: "data" }]} onChange={(value) => updateMeTab(value as TechnicianMeTab)} value={meTab} variant="header" />}
+            maxWidth="880px"
+            onBack={() => navigate("/technician")}
+            title="个人中心"
+          />
           <div className="space-y-4 px-4 pb-32 pt-1">
             {meTab === "info" ? <TechnicianInfoCard onSaved={setSelfProfile} profile={selfProfile} /> : null}
             {meTab === "services" ? shopId
               ? <FormalTechnicianServicesPanel defaultCategoryId={defaultCategoryId} shopId={shopId} />
               : <TechnicianShopRequiredPanel /> : null}
-            {meTab === "data" ? <DataCenter profile={selfProfile} technician={technician} /> : null}
+             {meTab === "data" ? <DataCenter onPeriodChange={updateDataCenterPeriod} onRangeLoaded={setDataCenterRange} period={dataCenterPeriod} /> : null}
           </div>
+           {meTab === "data" && dataCenterRange ? (
+             <StickyBottomBar>
+               <PrimaryButton className="w-full" onClick={() => navigate(`/technician/schedule?period=${dataCenterPeriod}&from=${encodeURIComponent(dataCenterRange.startsAt)}&to=${encodeURIComponent(dataCenterRange.endsAt)}`)}>
+                确认详细排班记录
+              </PrimaryButton>
+            </StickyBottomBar>
+          ) : null}
         </>
       ) : null}
     </MobileShell>
