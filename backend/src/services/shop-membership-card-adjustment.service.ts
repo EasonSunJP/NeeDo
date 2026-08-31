@@ -211,7 +211,7 @@ export class ShopMembershipCardAdjustmentService {
     const existing = await this.repository.findByDecisionIdempotencyKey(customerUserId, input.idempotencyKey);
     if (existing) {
       if (existing.decisionFingerprint !== decisionFingerprint) throw this.idempotencyConflict();
-      return this.toPublic(existing, true);
+      return this.replayDecision(existing);
     }
     const audit = this.auditInputFactory.createInput({
       actor,
@@ -228,14 +228,24 @@ export class ShopMembershipCardAdjustmentService {
       decisionFingerprint,
       audit
     });
-    if (result.kind === "approved" || result.kind === "rejected" || result.kind === "replayed") {
-      return this.toPublic(result.value, result.kind === "replayed");
+    if (result.kind === "approved" || result.kind === "rejected") {
+      return this.toPublic(result.value, false);
+    }
+    if (result.kind === "replayed") {
+      return this.replayDecision(result.value);
     }
     if (result.kind === "expired") throw this.expired();
     if (result.kind === "invalidated") throw this.snapshotConflict();
     if (result.kind === "not_found") throw this.notFound();
     if (result.kind === "idempotency_conflict") throw this.idempotencyConflict();
     throw this.invalidState();
+  }
+
+  private replayDecision(record: ShopMembershipCardAdjustmentRecord) {
+    if (record.status === "expired") throw this.expired();
+    if (record.status === "invalidated") throw this.snapshotConflict();
+    if (record.status !== "approved" && record.status !== "rejected") throw this.invalidState();
+    return this.toPublic(record, true);
   }
 
   public async cancel(

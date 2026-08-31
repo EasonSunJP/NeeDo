@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import adjustmentActionSource from "./IssuedCardAdjustmentAction.tsx?raw";
 import source from "./ShopMemberCenterPage.tsx?raw";
 
 describe("ShopMemberCenterPage formal UI", () => {
@@ -31,7 +32,9 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain('hasPermission("shop.member.card.issue")');
     expect(source).toContain("<CardIssuanceDialog");
     expect(source).toContain("开卡");
-    expect(source).toContain("申请调整");
+    expect(source).toContain("<IssuedCardAdjustmentAction");
+    expect(adjustmentActionSource).toContain("申请调整");
+    expect(adjustmentActionSource).toContain("已有调整等待客户确认");
     expect(source).toContain("<CardAdjustmentRequestDialog");
     expect(source).toContain("<CardAdjustmentRequestList");
     expect(source).toContain('hasPermission("shop.member.card.adjust.request")');

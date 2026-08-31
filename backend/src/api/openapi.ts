@@ -529,6 +529,29 @@ const shopMembershipPageSchema = (itemSchema: Record<string, unknown>) => ({
   }
 });
 
+const shopMembershipCardRequired = ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "initialPrincipalJpy", "initialUses", "issuanceSource", "platformFeeRateBpsSnapshot", "planPublicId", "planVersionPublicId", "planVersion", "issuedAt", "expiresAt", "frozenAt"];
+const shopMembershipCardProperties = {
+  publicId: { type: "string", format: "uuid" },
+  cardNoMasked: { type: "string" },
+  name: { type: "string", minLength: 1, maxLength: 120 },
+  type: { type: "string", enum: ["stored_value", "count", "benefit"] },
+  status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
+  principalBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+  bonusBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+  remainingUses: { type: ["integer", "null"], minimum: 0 },
+  totalUses: { type: ["integer", "null"], minimum: 0 },
+  initialPrincipalJpy: { type: ["integer", "null"], minimum: 0 },
+  initialUses: { type: ["integer", "null"], minimum: 0 },
+  issuanceSource: { type: ["string", "null"], enum: ["offline_paid", "historical_replacement", "manual_grant", null] },
+  platformFeeRateBpsSnapshot: { type: ["integer", "null"], minimum: 0, maximum: 10_000 },
+  planPublicId: { type: ["string", "null"], format: "uuid" },
+  planVersionPublicId: { type: ["string", "null"], format: "uuid" },
+  planVersion: { type: ["integer", "null"], minimum: 1 },
+  issuedAt: { type: "string", format: "date-time" },
+  expiresAt: { type: ["string", "null"], format: "date-time" },
+  frozenAt: { type: ["string", "null"], format: "date-time" }
+};
+
 const affiliatePlatformFeeErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
@@ -7661,27 +7684,35 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopMembershipCard: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "initialPrincipalJpy", "initialUses", "issuanceSource", "platformFeeRateBpsSnapshot", "planPublicId", "planVersionPublicId", "planVersion", "issuedAt", "expiresAt", "frozenAt"],
+        required: shopMembershipCardRequired,
+        properties: shopMembershipCardProperties
+      },
+      MerchantShopMembershipCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [...shopMembershipCardRequired, "membershipPublicId", "customerNeedoId", "customerDisplayName", "pendingAdjustment"],
         properties: {
-          publicId: { type: "string", format: "uuid" },
-          cardNoMasked: { type: "string" },
-          name: { type: "string", minLength: 1, maxLength: 120 },
-          type: { type: "string", enum: ["stored_value", "count", "benefit"] },
-          status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
-          principalBalanceJpy: { type: ["integer", "null"], minimum: 0 },
-          bonusBalanceJpy: { type: ["integer", "null"], minimum: 0 },
-          remainingUses: { type: ["integer", "null"], minimum: 0 },
-          totalUses: { type: ["integer", "null"], minimum: 0 },
-          initialPrincipalJpy: { type: ["integer", "null"], minimum: 0 },
-          initialUses: { type: ["integer", "null"], minimum: 0 },
-          issuanceSource: { type: ["string", "null"], enum: ["offline_paid", "historical_replacement", "manual_grant", null] },
-          platformFeeRateBpsSnapshot: { type: ["integer", "null"], minimum: 0, maximum: 10_000 },
-          planPublicId: { type: ["string", "null"], format: "uuid" },
-          planVersionPublicId: { type: ["string", "null"], format: "uuid" },
-          planVersion: { type: ["integer", "null"], minimum: 1 },
-          issuedAt: { type: "string", format: "date-time" },
-          expiresAt: { type: ["string", "null"], format: "date-time" },
-          frozenAt: { type: ["string", "null"], format: "date-time" }
+          ...shopMembershipCardProperties,
+          membershipPublicId: { type: "string", format: "uuid" },
+          customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          customerDisplayName: { type: "string", minLength: 1, maxLength: 120 },
+          pendingAdjustment: {
+            oneOf: [
+              { type: "null" },
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["publicId", "status", "beforeValue", "targetValue", "expiresAt"],
+                properties: {
+                  publicId: { type: "string", format: "uuid" },
+                  status: { type: "string", enum: ["pending"] },
+                  beforeValue: { type: "integer", minimum: 0 },
+                  targetValue: { type: "integer", minimum: 0 },
+                  expiresAt: { type: "string", format: "date-time" }
+                }
+              }
+            ]
+          }
         }
       },
       ShopMembership: {
@@ -8208,7 +8239,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "status", in: "query", schema: { type: "string", enum: ["active", "frozen", "expired", "void"] } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated read-only membership cards", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCard" })),
+          "200": jsonDataResponse("Paginated read-only membership cards", shopMembershipPageSchema({ $ref: "#/components/schemas/MerchantShopMembershipCard" })),
           ...shopMembershipErrorResponses
         }
       }

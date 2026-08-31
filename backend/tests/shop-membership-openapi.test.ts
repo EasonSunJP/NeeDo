@@ -11,7 +11,7 @@ describe("shop membership OpenAPI", () => {
     };
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<"get" | "post", Operation>>;
-      components: { schemas: Record<string, { additionalProperties?: boolean }> };
+      components: { schemas: Record<string, { additionalProperties?: boolean; required?: string[]; properties?: Record<string, unknown> }> };
     };
     const operations = [
       document.paths["/api/v1/merchant-admin/shop-memberships/overview"].get,
@@ -65,6 +65,12 @@ describe("shop membership OpenAPI", () => {
     }));
     expect(document.components.schemas.ShopMembershipCardIssuanceRequest.additionalProperties).toBe(false);
     expect(document.components.schemas.ShopMembershipCardIssuanceResult.additionalProperties).toBe(false);
+    expect(document.components.schemas.MerchantShopMembershipCard.required).toEqual(expect.arrayContaining([
+      "membershipPublicId", "customerNeedoId", "customerDisplayName", "pendingAdjustment"
+    ]));
+    expect(document.components.schemas.MerchantShopMembershipCard.properties).toEqual(expect.objectContaining({
+      pendingAdjustment: expect.any(Object)
+    }));
 
     const adjustmentOperations = [
       document.paths["/api/v1/merchant-admin/shop-membership-cards/{publicId}/adjustment-requests"].post,

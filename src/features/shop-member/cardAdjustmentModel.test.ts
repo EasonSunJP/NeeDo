@@ -25,7 +25,8 @@ const card = (overrides: Partial<MerchantShopMembershipCard> = {}): MerchantShop
   membershipPublicId: "00000000-0000-4000-8000-000000000602",
   customerNeedoId: "u0000000041",
   customerDisplayName: "王小美",
-  ...overrides
+  ...overrides,
+  pendingAdjustment: overrides.pendingAdjustment ?? null
 });
 
 describe("card adjustment model", () => {

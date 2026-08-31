@@ -118,9 +118,11 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
 
   public async listMerchantRequests(shopId: number, input: ShopMembershipCardAdjustmentListInput) {
     const pagination = toPrismaPagination(input);
+    const databaseNow = await this.getDatabaseNow(this.client);
     const where: Prisma.ShopMembershipCardAdjustmentRequestWhereInput = {
       shopId,
       status: input.status ? this.statusToDb(input.status) : undefined,
+      ...this.visibleStatusFilter(input.status, databaseNow),
       card: input.cardPublicId ? { publicId: input.cardPublicId, deletedAt: null } : undefined,
       deletedAt: null
     };
@@ -139,8 +141,10 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
 
   public async listCustomerRequests(customerUserId: number, input: ShopMembershipCardAdjustmentListInput) {
     const pagination = toPrismaPagination(input);
+    const databaseNow = await this.getDatabaseNow(this.client);
     const where: Prisma.ShopMembershipCardAdjustmentRequestWhereInput = {
       status: input.status ? this.statusToDb(input.status) : undefined,
+      ...this.visibleStatusFilter(input.status, databaseNow),
       card: {
         publicId: input.cardPublicId,
         membership: { customerProfile: { userId: customerUserId }, deletedAt: null },
@@ -159,6 +163,22 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
       this.client.shopMembershipCardAdjustmentRequest.count({ where })
     ]);
     return buildPaginatedResponse(records.map((record) => this.mapAdjustment(record)), total, input);
+  }
+
+  private visibleStatusFilter(
+    status: ShopMembershipCardAdjustmentStatusPayload | undefined,
+    databaseNow: Date
+  ): Prisma.ShopMembershipCardAdjustmentRequestWhereInput {
+    if (status === "pending") return { expiresAt: { gt: databaseNow } };
+    if (status !== undefined) return {};
+    return {
+      AND: [{
+        OR: [
+          { status: { not: ShopMembershipCardAdjustmentStatus.PENDING } },
+          { status: ShopMembershipCardAdjustmentStatus.PENDING, expiresAt: { gt: databaseNow } }
+        ]
+      }]
+    };
   }
 
   public async expireDue(input: {
@@ -231,15 +251,35 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
             : { kind: "idempotency_conflict" as const };
         }
 
-        const databaseNow = await this.getDatabaseNow(transaction);
-        const card = await this.loadMerchantCard(transaction, input.shopId, input.cardPublicId);
+        let databaseNow = await this.getDatabaseNow(transaction);
+        let card = await this.loadMerchantCard(transaction, input.shopId, input.cardPublicId);
         if (!card) return { kind: "not_found" as const };
         if (!this.isCardAdjustable(card, databaseNow) || !this.matchesCreateSnapshot(card, input)) return { kind: "invalid_state" as const };
         const pending = await transaction.shopMembershipCardAdjustmentRequest.findFirst({
           where: { cardId: card.id, status: ShopMembershipCardAdjustmentStatus.PENDING, deletedAt: null },
-          select: { id: true }
+          select: { publicId: true }
         });
-        if (pending) return { kind: "pending_conflict" as const };
+        if (pending) {
+          const lockedId = await this.lockRequest(transaction, pending.publicId);
+          if (!lockedId) throw this.transactionStateConflict();
+          databaseNow = await this.getDatabaseNow(transaction);
+          const lockedPending = await transaction.shopMembershipCardAdjustmentRequest.findFirst({
+            where: { id: lockedId, cardId: card.id, status: ShopMembershipCardAdjustmentStatus.PENDING, deletedAt: null },
+            select: adjustmentSelect
+          });
+          if (lockedPending) {
+            if (lockedPending.expiresAt > databaseNow) return { kind: "pending_conflict" as const };
+            await this.expireLockedRequest(transaction, lockedPending, databaseNow);
+          }
+          const replacementPending = await transaction.shopMembershipCardAdjustmentRequest.findFirst({
+            where: { cardId: card.id, status: ShopMembershipCardAdjustmentStatus.PENDING, deletedAt: null },
+            select: { id: true }
+          });
+          if (replacementPending) return { kind: "pending_conflict" as const };
+          card = await this.loadMerchantCard(transaction, input.shopId, input.cardPublicId);
+          if (!card) return { kind: "not_found" as const };
+          if (!this.isCardAdjustable(card, databaseNow) || !this.matchesCreateSnapshot(card, input)) return { kind: "invalid_state" as const };
+        }
 
         const created = await transaction.shopMembershipCardAdjustmentRequest.create({
           data: {
@@ -342,7 +382,7 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
         if (!request) return { kind: "not_found" as const };
         if (request.status !== ShopMembershipCardAdjustmentStatus.PENDING) return { kind: "invalid_state" as const };
         if (request.expiresAt <= databaseNow) {
-          const expired = await this.expireLockedRequest(transaction, request, databaseNow);
+          const expired = await this.expireLockedRequest(transaction, request, databaseNow, input);
           return { kind: "expired" as const, value: expired };
         }
         if (!this.matchesDecisionSnapshot(request, databaseNow)) {
@@ -492,10 +532,24 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
     return update.count === 1;
   }
 
-  private async expireLockedRequest(client: Prisma.TransactionClient, request: AdjustmentRecord, databaseNow: Date): Promise<ShopMembershipCardAdjustmentRecord> {
+  private async expireLockedRequest(
+    client: Prisma.TransactionClient,
+    request: AdjustmentRecord,
+    databaseNow: Date,
+    decision?: Pick<DecideShopMembershipCardAdjustmentRepositoryInput, "decisionIdempotencyKey" | "decisionFingerprint">
+  ): Promise<ShopMembershipCardAdjustmentRecord> {
     const update = await client.shopMembershipCardAdjustmentRequest.updateMany({
       where: { id: request.id, status: ShopMembershipCardAdjustmentStatus.PENDING, pendingKey: request.pendingKey, expiresAt: { lte: databaseNow }, deletedAt: null },
-      data: { status: ShopMembershipCardAdjustmentStatus.EXPIRED, pendingKey: null }
+      data: {
+        status: ShopMembershipCardAdjustmentStatus.EXPIRED,
+        pendingKey: null,
+        ...(decision
+          ? {
+              decisionIdempotencyKey: decision.decisionIdempotencyKey,
+              decisionFingerprint: decision.decisionFingerprint
+            }
+          : {})
+      }
     });
     if (update.count !== 1) throw this.transactionStateConflict();
     await client.auditLog.create({

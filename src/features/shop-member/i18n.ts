@@ -310,6 +310,16 @@ const shopMembershipCardAdjustmentTranslations: Record<string, TranslationEntry>
   "返回": { "zh-Hant": "返回", ja: "戻る", en: "Back", ko: "돌아가기" },
   "确认提交": { "zh-Hant": "確認提交", ja: "確定して送信", en: "Confirm", ko: "확인 제출" },
   "处理中": { "zh-Hant": "處理中", ja: "処理中", en: "Processing", ko: "처리 중" },
+  "最近处理记录": { "zh-Hant": "最近處理記錄", ja: "最近の処理履歴", en: "Recent outcomes", ko: "최근 처리 기록" },
+  "客户已同意": { "zh-Hant": "客戶已同意", ja: "お客様が承認済み", en: "Approved by customer", ko: "고객 동의 완료" },
+  "客户已拒绝": { "zh-Hant": "客戶已拒絕", ja: "お客様が拒否済み", en: "Rejected by customer", ko: "고객 거절 완료" },
+  "店铺已撤回": { "zh-Hant": "店鋪已撤回", ja: "店舗が取り消し済み", en: "Cancelled by store", ko: "매장 철회 완료" },
+  "已超时失效": { "zh-Hant": "已逾時失效", ja: "期限切れ", en: "Expired", ko: "시간 초과로 만료됨" },
+  "卡状态变化，已失效": { "zh-Hant": "卡狀態變化，已失效", ja: "カード状態の変更により無効", en: "Invalidated by card change", ko: "카드 상태 변경으로 무효화됨" },
+  "已有调整等待客户确认": { "zh-Hant": "已有調整等待客戶確認", ja: "お客様の確認待ちの変更があります", en: "A change is awaiting customer review", ko: "고객 확인 대기 중인 변경이 있습니다" },
+  "查看调整申请": { "zh-Hant": "查看調整申請", ja: "変更申請を確認", en: "View change request", ko: "변경 요청 보기" },
+  "正在核对调整状态": { "zh-Hant": "正在核對調整狀態", ja: "変更状態を確認中", en: "Checking change status", ko: "변경 상태 확인 중" },
+  "调整状态读取失败": { "zh-Hant": "調整狀態讀取失敗", ja: "変更状態を読み込めませんでした", en: "Could not load change status", ko: "변경 상태를 불러오지 못했습니다" },
   "已截止": { "zh-Hant": "已截止", ja: "期限切れ", en: "Closed", ko: "마감됨" }
 };
 

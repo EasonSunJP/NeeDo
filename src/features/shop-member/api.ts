@@ -196,6 +196,13 @@ export type MerchantShopMembershipCard = ShopMembershipCard & {
   membershipPublicId: string;
   customerNeedoId: string;
   customerDisplayName: string;
+  pendingAdjustment: {
+    publicId: string;
+    status: "pending";
+    beforeValue: number;
+    targetValue: number;
+    expiresAt: string;
+  } | null;
 };
 
 export type ShopMembershipCardIssuanceRequest = {

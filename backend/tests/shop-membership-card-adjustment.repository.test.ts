@@ -87,6 +87,28 @@ const decisionInput = {
 };
 
 describe("ShopMembershipCardAdjustmentRepository", () => {
+  it("never returns database-expired rows as pending even when lazy expiry has more than one batch", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ now }]),
+      shopMembershipCardAdjustmentRequest: { findMany, count }
+    } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardAdjustmentRepository(client);
+
+    await repository.listMerchantRequests(71, { page: 1, pageSize: 20, status: "pending" });
+    expect(findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({ status: "PENDING", expiresAt: { gt: now } })
+    }));
+
+    await repository.listCustomerRequests(41, { page: 1, pageSize: 20 });
+    expect(findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({
+        AND: [{ OR: [{ status: { not: "PENDING" } }, { status: "PENDING", expiresAt: { gt: now } }] }]
+      })
+    }));
+  });
+
   it("creates a 72-hour pending request, audit and customer notification in one transaction", async () => {
     const transaction = {
       $queryRaw: jest.fn().mockResolvedValue([{ now }]),
@@ -129,6 +151,44 @@ describe("ShopMembershipCardAdjustmentRepository", () => {
       title: "shop_membership.card_adjustment.request.title",
       body: "shop_membership.card_adjustment.request.body"
     }) });
+  });
+
+  it("expires a due pending request under lock before creating its replacement", async () => {
+    const due = adjustment({ expiresAt: now });
+    const expired = adjustment({ status: "EXPIRED", pendingKey: null, expiresAt: now, updatedAt: now });
+    const replacement = adjustment({ id: 92, publicId: "00000000-0000-4000-8000-000000000603", expiresAt });
+    const transaction = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ now }])
+        .mockResolvedValueOnce([{ id: 91 }])
+        .mockResolvedValueOnce([{ now }]),
+      shopMembershipCard: { findFirst: jest.fn().mockResolvedValue(card) },
+      shopMembershipCardAdjustmentRequest: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ publicId: requestPublicId })
+          .mockResolvedValueOnce(due)
+          .mockResolvedValueOnce(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue(expired),
+        create: jest.fn().mockResolvedValue(replacement)
+      },
+      userIdentity: { findFirst: jest.fn().mockResolvedValue({ id: 141 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+      notification: { create: jest.fn().mockResolvedValue({ id: 2 }) }
+    };
+    const client = { $transaction: jest.fn(async (callback) => callback(transaction)) } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardAdjustmentRepository(client);
+
+    await expect(repository.createRequestWithAuditAndNotification(createInput)).resolves.toMatchObject({
+      kind: "created",
+      value: { publicId: replacement.publicId }
+    });
+    expect(transaction.shopMembershipCardAdjustmentRequest.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 91, status: "PENDING", expiresAt: { lte: now } }),
+      data: expect.objectContaining({ status: "EXPIRED", pendingKey: null })
+    }));
+    expect(transaction.shopMembershipCardAdjustmentRequest.create).toHaveBeenCalledTimes(1);
   });
 
   it("approves against the current snapshot and changes principal exactly once", async () => {
@@ -190,7 +250,12 @@ describe("ShopMembershipCardAdjustmentRepository", () => {
     expect(transaction.shopMembershipCard.updateMany).not.toHaveBeenCalled();
     expect(transaction.shopMembershipCardAdjustmentRequest.updateMany).toHaveBeenCalledWith({
       where: { id: 91, status: "PENDING", pendingKey: "card:81", expiresAt: { lte: expiresAt }, deletedAt: null },
-      data: { status: "EXPIRED", pendingKey: null }
+      data: {
+        status: "EXPIRED",
+        pendingKey: null,
+        decisionIdempotencyKey: decisionInput.decisionIdempotencyKey,
+        decisionFingerprint: decisionInput.decisionFingerprint
+      }
     });
     expect(transaction.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ actorId: null, action: "system.shop_membership_card.adjustment.expire" }) });
   });

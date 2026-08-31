@@ -231,6 +231,41 @@ describe("ShopMembershipCardAdjustmentService", () => {
     }
   });
 
+  it.each(["expired", "invalidated"] as const)("replays a decision-triggered %s outcome as the same conflict", async (status) => {
+    const customer = actor({ currentIdentityType: "customer", currentIdentityScopeType: "customer_profile", currentIdentityScopeId: 51, userId: 41 });
+    const firstRepository = repository({
+      decideRequestWithAuditAndNotification: jest.fn(async (input) => ({
+        kind: status,
+        value: record({
+          status,
+          decisionFingerprint: input.decisionFingerprint,
+          invalidatedAt: status === "invalidated" ? now : null
+        })
+      }))
+    });
+    const input = { decision: "approve" as const, idempotencyKey: `decision-${status}-replay` };
+    const expectedError = status === "expired"
+      ? ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRED
+      : ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_SNAPSHOT_CONFLICT;
+
+    await expect(new ShopMembershipCardAdjustmentService(firstRepository, audit, () => now)
+      .decide(customer, requestContext, requestPublicId, input))
+      .rejects.toMatchObject({ code: expectedError, statusCode: 409 });
+    const decisionFingerprint = firstRepository.decideRequestWithAuditAndNotification.mock.calls[0][0].decisionFingerprint;
+    const replayRepository = repository({
+      findByDecisionIdempotencyKey: jest.fn(async () => record({
+        status,
+        decisionFingerprint,
+        invalidatedAt: status === "invalidated" ? now : null
+      }))
+    });
+
+    await expect(new ShopMembershipCardAdjustmentService(replayRepository, audit, () => now)
+      .decide(customer, requestContext, requestPublicId, input))
+      .rejects.toMatchObject({ code: expectedError, statusCode: 409 });
+    expect(replayRepository.decideRequestWithAuditAndNotification).not.toHaveBeenCalled();
+  });
+
   it("lets the scoped shop cancel a pending request", async () => {
     const repo = repository();
     const service = new ShopMembershipCardAdjustmentService(repo, audit, () => now);

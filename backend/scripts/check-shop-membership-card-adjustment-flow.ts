@@ -153,6 +153,311 @@ async function assertRejectedCode(action: () => Promise<unknown>, expectedCode: 
   assert(matched, message);
 }
 
+async function verifyCommittedConcurrencyAndRollback(
+  client: PrismaClient,
+  createClient: () => PrismaClient,
+  marker: string
+) {
+  const before = await captureProtectedState(client);
+  let membershipId: number | null = null;
+  const requestPublicIds: string[] = [];
+  const workerA = createClient();
+  const workerB = createClient();
+  const failureBase = createClient();
+
+  try {
+    const shop = await client.shop.findFirst({
+      where: { deletedAt: null },
+      orderBy: { id: "asc" },
+      select: { id: true }
+    });
+    const actor = await client.user.findFirst({
+      where: { isActive: true, deletedAt: null, identities: { some: { isActive: true, deletedAt: null } } },
+      orderBy: { id: "asc" },
+      select: { id: true, email: true }
+    });
+    assert(shop && actor, "committed concurrency check requires a local shop and active actor");
+    const customer = await client.customerProfile.findFirst({
+      where: {
+        deletedAt: null,
+        userId: { not: actor.id },
+        user: { is: { isActive: true, deletedAt: null, identities: { some: { isActive: true, deletedAt: null } } } }
+      },
+      orderBy: { id: "asc" },
+      select: { id: true, user: { select: { id: true, email: true } } }
+    });
+    assert(customer, "committed concurrency check requires a different active customer");
+
+    const fixture = await client.$transaction(async (transaction) => {
+      const membership = await transaction.shopCustomerMembership.create({
+        data: {
+          shopId: shop.id,
+          customerProfileId: customer.id,
+          status: ShopCustomerMembershipStatus.ACTIVE,
+          source: ShopCustomerMembershipSource.MERCHANT_MANUAL,
+          activeKey: marker,
+          createdById: actor.id,
+          updatedById: actor.id
+        },
+        select: { id: true }
+      });
+      const createCard = (suffix: string, principalBalanceJpy: number) => transaction.shopMembershipCard.create({
+        data: {
+          membershipId: membership.id,
+          issuedById: actor.id,
+          cardNo: `NMC-ADJ-${Date.now()}-${suffix}`,
+          name: `并发回滚校验卡-${suffix}`,
+          type: ShopMembershipCardType.STORED_VALUE,
+          status: ShopMembershipCardStatus.ACTIVE,
+          initialPrincipalJpy: principalBalanceJpy,
+          lockVersion: 1,
+          principalBalanceJpy,
+          bonusBalanceJpy: 300,
+          issuedAt: new Date()
+        },
+        select: { publicId: true }
+      });
+      const [raceCard, doubleApprovalCard, cancelRaceCard, expiryRaceCard, rollbackCard] = await Promise.all([
+        createCard("race", 10_000),
+        createCard("double", 11_000),
+        createCard("cancel", 12_000),
+        createCard("expiry", 13_000),
+        createCard("rollback", 20_000)
+      ]);
+      return { membershipId: membership.id, raceCard, doubleApprovalCard, cancelRaceCard, expiryRaceCard, rollbackCard };
+    });
+    membershipId = fixture.membershipId;
+
+    const merchantActor: AuthenticatedAccessContext = {
+      userId: actor.id,
+      email: actor.email,
+      accessTokenJti: `${marker}-merchant`,
+      accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 900,
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: shop.id,
+      roles: ["merchant_owner"],
+      permissions: ["shop.member.card.adjust.request"]
+    };
+    const customerActor: AuthenticatedAccessContext = {
+      userId: customer.user.id,
+      email: customer.user.email,
+      accessTokenJti: `${marker}-customer`,
+      accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 900,
+      currentIdentityType: "customer",
+      currentIdentityScopeType: "customer_profile",
+      currentIdentityScopeId: customer.id,
+      roles: ["customer"],
+      permissions: ["customer-profile:read"]
+    };
+    const requestContext = { ip: "127.0.0.1", userAgent: marker };
+    const serviceFor = (prismaClient: PrismaClient) => new ShopMembershipCardAdjustmentService(
+      new ShopMembershipCardAdjustmentRepository(prismaClient),
+      new AuditLogService(new AuditLogRepository(prismaClient))
+    );
+    const serviceA = serviceFor(workerA);
+    const serviceB = serviceFor(workerB);
+    const notificationCountFor = async (requestPublicId: string) => {
+      const rows = await client.notification.findMany({
+        where: { title: { startsWith: "shop_membership.card_adjustment." } },
+        select: { payload: true }
+      });
+      return rows.filter((notification) => notification.payload
+        && typeof notification.payload === "object"
+        && !Array.isArray(notification.payload)
+        && (notification.payload as Record<string, unknown>).requestPublicId === requestPublicId).length;
+    };
+    const terminalAuditCountFor = async (requestId: number) => client.auditLog.count({
+      where: {
+        targetType: "ShopMembershipCardAdjustmentRequest",
+        targetId: requestId,
+        action: {
+          in: [
+            "customer.shop_membership_card.adjustment.approve",
+            "customer.shop_membership_card.adjustment.reject",
+            "merchant.shop_membership_card.adjustment.cancel",
+            "system.shop_membership_card.adjustment.expire"
+          ]
+        }
+      }
+    });
+    const raceRequest = await serviceA.create(merchantActor, requestContext, fixture.raceCard.publicId, {
+      targetPrincipalBalanceJpy: 15_000,
+      targetRemainingUses: null,
+      reason: "双连接并发决策校验",
+      idempotencyKey: `${marker}-race-request`
+    });
+    requestPublicIds.push(raceRequest.publicId);
+    const raceResults = await Promise.allSettled([
+      serviceA.decide(customerActor, requestContext, raceRequest.publicId, { decision: "approve", idempotencyKey: `${marker}-race-approve` }),
+      serviceB.decide(customerActor, requestContext, raceRequest.publicId, { decision: "reject", idempotencyKey: `${marker}-race-reject` })
+    ]);
+    assert(raceResults.filter((result) => result.status === "fulfilled").length === 1, "concurrent opposing decisions did not produce exactly one winner");
+    const raceState = await client.shopMembershipCardAdjustmentRequest.findUniqueOrThrow({
+      where: { publicId: raceRequest.publicId },
+      select: { id: true, status: true, decisionIdempotencyKey: true, card: { select: { principalBalanceJpy: true, bonusBalanceJpy: true, lockVersion: true } } }
+    });
+    assert(raceState.status === "APPROVED" || raceState.status === "REJECTED", "concurrent decision did not reach one terminal status");
+    assert(raceState.status === "APPROVED"
+      ? raceState.card.principalBalanceJpy === 15_000 && raceState.card.lockVersion === 2
+      : raceState.card.principalBalanceJpy === 10_000 && raceState.card.lockVersion === 1,
+    "concurrent decision card mutation did not match the winning terminal status");
+    assert(raceState.card.bonusBalanceJpy === 300, "concurrent decision changed the bonus balance");
+    assert(await terminalAuditCountFor(raceState.id) === 1, "opposing decisions did not create exactly one winning terminal audit");
+    assert(await notificationCountFor(raceRequest.publicId) === 2, "opposing decisions did not create exactly one outcome notification");
+
+    const doubleApprovalRequest = await serviceA.create(merchantActor, requestContext, fixture.doubleApprovalCard.publicId, {
+      targetPrincipalBalanceJpy: 16_000,
+      targetRemainingUses: null,
+      reason: "双连接重复同意校验",
+      idempotencyKey: `${marker}-double-request`
+    });
+    requestPublicIds.push(doubleApprovalRequest.publicId);
+    const doubleApprovalResults = await Promise.allSettled([
+      serviceA.decide(customerActor, requestContext, doubleApprovalRequest.publicId, { decision: "approve", idempotencyKey: `${marker}-double-approve-a` }),
+      serviceB.decide(customerActor, requestContext, doubleApprovalRequest.publicId, { decision: "approve", idempotencyKey: `${marker}-double-approve-b` })
+    ]);
+    assert(doubleApprovalResults.filter((result) => result.status === "fulfilled").length === 1, "double approval did not produce exactly one winner");
+    const doubleApprovalState = await client.shopMembershipCardAdjustmentRequest.findUniqueOrThrow({
+      where: { publicId: doubleApprovalRequest.publicId },
+      select: { id: true, status: true, card: { select: { principalBalanceJpy: true, bonusBalanceJpy: true, lockVersion: true } } }
+    });
+    assert(doubleApprovalState.status === "APPROVED" && doubleApprovalState.card.principalBalanceJpy === 16_000 && doubleApprovalState.card.lockVersion === 2, "double approval did not mutate the card exactly once");
+    assert(doubleApprovalState.card.bonusBalanceJpy === 300, "double approval changed the bonus balance");
+    assert(await terminalAuditCountFor(doubleApprovalState.id) === 1, "double approval did not create exactly one terminal audit");
+    assert(await notificationCountFor(doubleApprovalRequest.publicId) === 2, "double approval did not create exactly one outcome notification");
+
+    const cancelRaceRequest = await serviceA.create(merchantActor, requestContext, fixture.cancelRaceCard.publicId, {
+      targetPrincipalBalanceJpy: 17_000,
+      targetRemainingUses: null,
+      reason: "同意与撤回竞争校验",
+      idempotencyKey: `${marker}-cancel-race-request`
+    });
+    requestPublicIds.push(cancelRaceRequest.publicId);
+    const cancelRaceResults = await Promise.allSettled([
+      serviceA.decide(customerActor, requestContext, cancelRaceRequest.publicId, { decision: "approve", idempotencyKey: `${marker}-cancel-race-approve` }),
+      serviceB.cancel(merchantActor, requestContext, cancelRaceRequest.publicId)
+    ]);
+    assert(cancelRaceResults.filter((result) => result.status === "fulfilled").length === 1, "approve-versus-cancel did not produce exactly one winner");
+    const cancelRaceState = await client.shopMembershipCardAdjustmentRequest.findUniqueOrThrow({
+      where: { publicId: cancelRaceRequest.publicId },
+      select: { id: true, status: true, card: { select: { principalBalanceJpy: true, bonusBalanceJpy: true, lockVersion: true } } }
+    });
+    assert(cancelRaceState.status === "APPROVED" || cancelRaceState.status === "CANCELLED", "approve-versus-cancel did not reach a valid terminal status");
+    assert(cancelRaceState.status === "APPROVED"
+      ? cancelRaceState.card.principalBalanceJpy === 17_000 && cancelRaceState.card.lockVersion === 2
+      : cancelRaceState.card.principalBalanceJpy === 12_000 && cancelRaceState.card.lockVersion === 1,
+    "approve-versus-cancel card mutation did not match the winner");
+    assert(cancelRaceState.card.bonusBalanceJpy === 300, "approve-versus-cancel changed the bonus balance");
+    assert(await terminalAuditCountFor(cancelRaceState.id) === 1, "approve-versus-cancel did not create exactly one terminal audit");
+    assert(await notificationCountFor(cancelRaceRequest.publicId) === 2, "approve-versus-cancel did not create exactly one outcome notification");
+
+    const expiryRaceRequest = await serviceA.create(merchantActor, requestContext, fixture.expiryRaceCard.publicId, {
+      targetPrincipalBalanceJpy: 18_000,
+      targetRemainingUses: null,
+      reason: "同意与到期竞争校验",
+      idempotencyKey: `${marker}-expiry-race-request`
+    });
+    requestPublicIds.push(expiryRaceRequest.publicId);
+    await client.shopMembershipCardAdjustmentRequest.update({
+      where: { publicId: expiryRaceRequest.publicId },
+      data: { expiresAt: new Date(Date.now() - 1_000) }
+    });
+    await Promise.allSettled([
+      serviceA.decide(customerActor, requestContext, expiryRaceRequest.publicId, { decision: "approve", idempotencyKey: `${marker}-expiry-race-approve` }),
+      new ShopMembershipCardAdjustmentRepository(workerB).expireDue({ batchSize: 100, shopId: shop.id })
+    ]);
+    const expiryRaceState = await client.shopMembershipCardAdjustmentRequest.findUniqueOrThrow({
+      where: { publicId: expiryRaceRequest.publicId },
+      select: { id: true, status: true, card: { select: { principalBalanceJpy: true, bonusBalanceJpy: true, lockVersion: true } } }
+    });
+    assert(expiryRaceState.status === "EXPIRED", "approve-versus-expiry did not preserve expiry as the only winner after the deadline");
+    assert(expiryRaceState.card.principalBalanceJpy === 13_000 && expiryRaceState.card.bonusBalanceJpy === 300 && expiryRaceState.card.lockVersion === 1, "approve-versus-expiry changed the card");
+    assert(await terminalAuditCountFor(expiryRaceState.id) === 1, "approve-versus-expiry did not create exactly one terminal audit");
+    assert(await notificationCountFor(expiryRaceRequest.publicId) === 3, "approve-versus-expiry did not create the exact request and expiry notification set");
+
+    const rollbackRequest = await serviceA.create(merchantActor, requestContext, fixture.rollbackCard.publicId, {
+      targetPrincipalBalanceJpy: 25_000,
+      targetRemainingUses: null,
+      reason: "审计故障事务回滚校验",
+      idempotencyKey: `${marker}-rollback-request`
+    });
+    requestPublicIds.push(rollbackRequest.publicId);
+    const rollbackBefore = await client.shopMembershipCardAdjustmentRequest.findUniqueOrThrow({
+      where: { publicId: rollbackRequest.publicId },
+      select: { id: true, status: true, decisionIdempotencyKey: true, card: { select: { principalBalanceJpy: true, bonusBalanceJpy: true, lockVersion: true } } }
+    });
+    const failureClient = failureBase.$extends({
+      query: {
+        auditLog: {
+          async create({ args, query }) {
+            const action = typeof args.data.action === "string" ? args.data.action : "";
+            if (action === "customer.shop_membership_card.adjustment.approve") throw new Error("injected_adjustment_audit_failure");
+            return query(args);
+          }
+        }
+      }
+    }) as unknown as PrismaClient;
+    let injectedFailureObserved = false;
+    try {
+      await serviceFor(failureClient).decide(customerActor, requestContext, rollbackRequest.publicId, {
+        decision: "approve",
+        idempotencyKey: `${marker}-rollback-approve`
+      });
+    } catch (error) {
+      injectedFailureObserved = error instanceof Error && error.message === "injected_adjustment_audit_failure";
+    }
+    assert(injectedFailureObserved, "failure injection did not reach the post-card-update audit write");
+    const rollbackAfter = await client.shopMembershipCardAdjustmentRequest.findUniqueOrThrow({
+      where: { publicId: rollbackRequest.publicId },
+      select: { id: true, status: true, decisionIdempotencyKey: true, card: { select: { principalBalanceJpy: true, bonusBalanceJpy: true, lockVersion: true } } }
+    });
+    assert(sameValue(rollbackAfter, rollbackBefore), "audit failure did not roll back the request and card atomically");
+    const rolledBackApprovalAudits = await client.auditLog.count({
+      where: { targetType: "ShopMembershipCardAdjustmentRequest", targetId: rollbackAfter.id, action: "customer.shop_membership_card.adjustment.approve" }
+    });
+    assert(rolledBackApprovalAudits === 0, "failed approval left an audit row behind");
+
+    return {
+      separateClients: 3,
+      concurrentDecisionWinner: raceState.status.toLowerCase(),
+      concurrentDecisionSingleWinner: true,
+      doubleApprovalSingleMutation: true,
+      approveVersusCancelSingleWinner: true,
+      approveVersusExpiryPreservesDeadline: true,
+      exactAuditAndNotificationSets: true,
+      failureInjectionObserved: true,
+      failureRollbackAtomic: true
+    };
+  } finally {
+    await Promise.allSettled([workerA.$disconnect(), workerB.$disconnect(), failureBase.$disconnect()]);
+    if (membershipId !== null) {
+      const requests = await client.shopMembershipCardAdjustmentRequest.findMany({
+        where: { card: { membershipId } },
+        select: { id: true, publicId: true }
+      });
+      const requestIds = requests.map((request) => request.id);
+      const requestPublicIdSet = new Set([...requestPublicIds, ...requests.map((request) => request.publicId)]);
+      const notifications = await client.notification.findMany({
+        where: { title: { startsWith: "shop_membership.card_adjustment." } },
+        select: { id: true, payload: true }
+      });
+      const notificationIds = notifications.filter((notification) => {
+        if (!notification.payload || typeof notification.payload !== "object" || Array.isArray(notification.payload)) return false;
+        const requestPublicId = (notification.payload as Record<string, unknown>).requestPublicId;
+        return typeof requestPublicId === "string" && requestPublicIdSet.has(requestPublicId);
+      }).map((notification) => notification.id);
+      if (notificationIds.length) await client.notification.deleteMany({ where: { id: { in: notificationIds } } });
+      if (requestIds.length) await client.auditLog.deleteMany({ where: { targetType: "ShopMembershipCardAdjustmentRequest", targetId: { in: requestIds } } });
+      await client.shopMembershipCardAdjustmentRequest.deleteMany({ where: { card: { membershipId } } });
+      await client.shopMembershipCard.deleteMany({ where: { membershipId } });
+      await client.shopCustomerMembership.delete({ where: { id: membershipId } });
+    }
+    const after = await captureProtectedState(client);
+    assert(sameValue(after, before), "committed concurrency fixture cleanup did not restore the protected database state");
+  }
+}
+
 let closeDatabase: (() => Promise<void>) | undefined;
 
 async function main(): Promise<void> {
@@ -162,7 +467,7 @@ async function main(): Promise<void> {
   loadDotenv({ path: envFile });
   const databaseName = assertSafeLocalDatabase();
   const loaded = await import("../src/prisma/client");
-  const { prisma, disconnectPrisma } = (loaded.default ?? loaded) as typeof import("../src/prisma/client");
+  const { prisma, disconnectPrisma, createPrismaClient } = (loaded.default ?? loaded) as typeof import("../src/prisma/client");
   closeDatabase = disconnectPrisma;
   const migrationEvidence = await verifyPhysicalMigration(prisma);
   const before = await captureProtectedState(prisma);
@@ -403,7 +708,8 @@ async function main(): Promise<void> {
   const after = await captureProtectedState(prisma);
   const cleanupVerified = sameValue(after, before);
   assert(cleanupVerified, "rollback cleanup did not restore the protected database state");
-  console.log(JSON.stringify({ ...report, cleanupVerified }, null, 2));
+  const concurrencyAndRollback = await verifyCommittedConcurrencyAndRollback(prisma, createPrismaClient, `${marker}-committed`);
+  console.log(JSON.stringify({ ...report, cleanupVerified, concurrencyAndRollback }, null, 2));
   await closeDatabase();
   closeDatabase = undefined;
 }
