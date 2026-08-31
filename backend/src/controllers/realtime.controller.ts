@@ -4,6 +4,9 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   contactIdParamSchema,
+  contactCardCandidateListQuerySchema,
+  contactCardIdempotencyKeySchema,
+  contactCardSendBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
@@ -78,6 +81,29 @@ export class RealtimeController {
       content: body.content,
       metadata: body.metadata
     });
+  }, 201);
+
+  public listContactCardCandidates = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.listContactCardCandidates(
+      getAuthenticatedAccess(response),
+      params.conversationId,
+      contactCardCandidateListQuerySchema.parse(request.query)
+    );
+  });
+
+  public sendContactCard = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    const body = contactCardSendBodySchema.parse(request.body);
+    const idempotencyKey = contactCardIdempotencyKeySchema.parse(
+      request.get("Idempotency-Key")
+    );
+    return this.service.sendContactCard(
+      getAuthenticatedAccess(response),
+      params.conversationId,
+      body.targetUserId,
+      idempotencyKey
+    );
   }, 201);
 
   public setMessageReaction = this.createHandler((request, response) => {

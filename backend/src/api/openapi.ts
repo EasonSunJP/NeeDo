@@ -2495,6 +2495,49 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           replayed: { type: "boolean" }
         }
       },
+      ContactCardCandidate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["targetUserId", "needoId", "nickname", "avatarUrl", "relationship"],
+        properties: {
+          targetUserId: { type: "string", pattern: "^u[0-9]{10}$" },
+          needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          nickname: { type: "string", minLength: 1, maxLength: 191 },
+          avatarUrl: { type: ["string", "null"] },
+          relationship: { type: "string", enum: ["self", "friend"] }
+        }
+      },
+      ContactCardCandidatePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ContactCardCandidate" }
+          },
+          total: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          page: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ContactCardSendRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["targetUserId"],
+        properties: {
+          targetUserId: { type: "string", pattern: "^u[0-9]{10}$" }
+        }
+      },
+      ContactCardSendResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["message", "replayed"],
+        properties: {
+          message: { $ref: "#/components/schemas/RealtimeMessage" },
+          replayed: { type: "boolean" }
+        }
+      },
       RealtimeParticipant: {
         type: "object",
         required: ["userId", "needoId", "username", "avatarUrl"],
@@ -15651,6 +15694,88 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Current participant history cleared through the latest message" },
           "404": { description: "Conversation not found for current participant" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/contact-card-candidates`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "List the active identity's self and current friends available to share",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: safeIntegerMaximum
+            }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          {
+            name: "query",
+            in: "query",
+            schema: { type: "string", maxLength: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated contact-card candidates", {
+            $ref: "#/components/schemas/ContactCardCandidatePage"
+          }),
+          "400": jsonErrorResponse("Invalid conversation ID or pagination query"),
+          "401": jsonErrorResponse("Missing or invalid Bearer access token"),
+          "403": jsonErrorResponse("Missing message:create permission or sending is blocked"),
+          "404": jsonErrorResponse("Conversation not found for the active identity")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/contact-cards`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Send a server-authored immutable contact-card snapshot",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: safeIntegerMaximum
+            }
+          },
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            required: true,
+            schema: { type: "string", minLength: 8, maxLength: 191 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ContactCardSendRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created contact-card message or exact replay", {
+            $ref: "#/components/schemas/ContactCardSendResult"
+          }),
+          "400": jsonErrorResponse("Invalid command or missing Idempotency-Key"),
+          "401": jsonErrorResponse("Missing or invalid Bearer access token"),
+          "403": jsonErrorResponse("Target is not self/current friend or sending is blocked"),
+          "404": jsonErrorResponse("Conversation or target user not found"),
+          "409": jsonErrorResponse("Idempotency key reused for a different target")
         }
       }
     },
