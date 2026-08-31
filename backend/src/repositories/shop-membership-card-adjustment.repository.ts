@@ -161,6 +161,63 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
     return buildPaginatedResponse(records.map((record) => this.mapAdjustment(record)), total, input);
   }
 
+  public async expireDue(input: {
+    batchSize: number;
+    shopId?: number;
+    customerUserId?: number;
+  }): Promise<{ scanned: number; expired: number; failed: number }> {
+    const databaseNow = await this.getDatabaseNow(this.client);
+    const candidates = await this.client.shopMembershipCardAdjustmentRequest.findMany({
+      where: {
+        shopId: input.shopId,
+        status: ShopMembershipCardAdjustmentStatus.PENDING,
+        expiresAt: { lte: databaseNow },
+        card: input.customerUserId === undefined
+          ? undefined
+          : {
+              membership: {
+                customerProfile: { userId: input.customerUserId },
+                deletedAt: null
+              },
+              deletedAt: null
+            },
+        deletedAt: null
+      },
+      select: { publicId: true },
+      orderBy: { id: "asc" },
+      take: input.batchSize
+    });
+    const summary = { scanned: candidates.length, expired: 0, failed: 0 };
+
+    for (const candidate of candidates) {
+      try {
+        const expired = await runWithTransactionConflictRetry(() =>
+          this.client.$transaction(async (transaction) => {
+            const lockedId = await this.lockRequest(transaction, candidate.publicId);
+            if (!lockedId) return false;
+            const request = await transaction.shopMembershipCardAdjustmentRequest.findFirst({
+              where: {
+                id: lockedId,
+                status: ShopMembershipCardAdjustmentStatus.PENDING,
+                deletedAt: null
+              },
+              select: adjustmentSelect
+            });
+            if (!request) return false;
+            const currentDatabaseNow = await this.getDatabaseNow(transaction);
+            if (request.expiresAt > currentDatabaseNow) return false;
+            await this.expireLockedRequest(transaction, request, currentDatabaseNow);
+            return true;
+          })
+        );
+        if (expired) summary.expired += 1;
+      } catch {
+        summary.failed += 1;
+      }
+    }
+    return summary;
+  }
+
   public async createRequestWithAuditAndNotification(input: CreateShopMembershipCardAdjustmentRepositoryInput): Promise<ShopMembershipCardAdjustmentCreateResult> {
     try {
       return await runWithTransactionConflictRetry(() => this.client.$transaction(async (transaction) => {

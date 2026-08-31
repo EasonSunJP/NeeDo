@@ -125,6 +125,11 @@ export interface ShopMembershipCardAdjustmentRepositoryPort {
   findByDecisionIdempotencyKey: (customerUserId: number, idempotencyKey: string) => Promise<ShopMembershipCardAdjustmentRecord | null>;
   decideRequestWithAuditAndNotification: (input: DecideShopMembershipCardAdjustmentRepositoryInput) => Promise<ShopMembershipCardAdjustmentDecisionResult>;
   cancelRequestWithAuditAndNotification: (input: CancelShopMembershipCardAdjustmentRepositoryInput) => Promise<ShopMembershipCardAdjustmentCancelResult>;
+  expireDue?: (input: {
+    batchSize: number;
+    shopId?: number;
+    customerUserId?: number;
+  }) => Promise<{ scanned: number; expired: number; failed: number }>;
   listMerchantRequests?: (shopId: number, input: ShopMembershipCardAdjustmentListInput) => Promise<{ list: ShopMembershipCardAdjustmentRecord[]; total: number; page: number; page_size: number }>;
   listCustomerRequests?: (customerUserId: number, input: ShopMembershipCardAdjustmentListInput) => Promise<{ list: ShopMembershipCardAdjustmentRecord[]; total: number; page: number; page_size: number }>;
 }
@@ -261,13 +266,17 @@ export class ShopMembershipCardAdjustmentService {
 
   public async listMerchant(actor: AuthenticatedAccessContext, input: ShopMembershipCardAdjustmentListInput) {
     if (!this.repository.listMerchantRequests) throw this.invalidState();
-    const page = await this.repository.listMerchantRequests(requireMerchantShopId(actor), input);
+    const shopId = requireMerchantShopId(actor);
+    await this.repository.expireDue?.({ batchSize: 100, shopId });
+    const page = await this.repository.listMerchantRequests(shopId, input);
     return { ...page, list: page.list.map((item) => this.toPublic(item, false)) };
   }
 
   public async listCustomer(actor: AuthenticatedAccessContext, input: ShopMembershipCardAdjustmentListInput) {
     if (!this.repository.listCustomerRequests) throw this.invalidState();
-    const page = await this.repository.listCustomerRequests(this.requireCustomer(actor), input);
+    const customerUserId = this.requireCustomer(actor);
+    await this.repository.expireDue?.({ batchSize: 100, customerUserId });
+    const page = await this.repository.listCustomerRequests(customerUserId, input);
     return { ...page, list: page.list.map((item) => this.toPublic(item, false)) };
   }
 

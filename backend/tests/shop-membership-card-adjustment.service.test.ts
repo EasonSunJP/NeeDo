@@ -243,4 +243,21 @@ describe("ShopMembershipCardAdjustmentService", () => {
       audit: expect.objectContaining({ action: "merchant.shop_membership_card.adjustment.cancel" })
     }));
   });
+
+  it("expires due requests before returning merchant and customer lists", async () => {
+    const expireDue = jest.fn().mockResolvedValue({ scanned: 1, expired: 1, failed: 0 });
+    const listMerchantRequests = jest.fn().mockResolvedValue({ list: [record({ status: "expired" })], total: 1, page: 1, page_size: 20 });
+    const listCustomerRequests = jest.fn().mockResolvedValue({ list: [record({ status: "expired" })], total: 1, page: 1, page_size: 20 });
+    const repo = repository({ expireDue, listMerchantRequests, listCustomerRequests });
+    const service = new ShopMembershipCardAdjustmentService(repo, audit, () => now);
+    const customer = actor({ currentIdentityType: "customer", currentIdentityScopeType: "customer_profile", currentIdentityScopeId: 51, userId: 41 });
+
+    await service.listMerchant(actor(), { page: 1, pageSize: 20 });
+    await service.listCustomer(customer, { page: 1, pageSize: 20 });
+
+    expect(expireDue).toHaveBeenNthCalledWith(1, { batchSize: 100, shopId: 71 });
+    expect(expireDue).toHaveBeenNthCalledWith(2, { batchSize: 100, customerUserId: 41 });
+    expect(listMerchantRequests.mock.invocationCallOrder[0]).toBeGreaterThan(expireDue.mock.invocationCallOrder[0]);
+    expect(listCustomerRequests.mock.invocationCallOrder[0]).toBeGreaterThan(expireDue.mock.invocationCallOrder[1]);
+  });
 });

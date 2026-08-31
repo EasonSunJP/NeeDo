@@ -195,6 +195,49 @@ describe("ShopMembershipCardAdjustmentRepository", () => {
     expect(transaction.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ actorId: null, action: "system.shop_membership_card.adjustment.expire" }) });
   });
 
+  it("expires a scoped worker batch with audit and both notifications", async () => {
+    const expired = adjustment({ status: "EXPIRED", pendingKey: null, updatedAt: expiresAt });
+    const transaction = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 91 }]).mockResolvedValueOnce([{ now: expiresAt }]),
+      shopMembershipCardAdjustmentRequest: {
+        findFirst: jest.fn().mockResolvedValue(adjustment()),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue(expired)
+      },
+      userIdentity: { findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+      notification: { create: jest.fn().mockResolvedValue({ id: 2 }) }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ now: expiresAt }]),
+      shopMembershipCardAdjustmentRequest: {
+        findMany: jest.fn().mockResolvedValue([{ publicId: requestPublicId }])
+      },
+      $transaction: jest.fn(async (callback) => callback(transaction))
+    } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardAdjustmentRepository(client);
+
+    await expect(repository.expireDue({ batchSize: 100, customerUserId: 41 })).resolves.toEqual({
+      scanned: 1,
+      expired: 1,
+      failed: 0
+    });
+    expect(client.shopMembershipCardAdjustmentRequest.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: "PENDING",
+        expiresAt: { lte: expiresAt },
+        deletedAt: null,
+        card: expect.objectContaining({ membership: expect.objectContaining({ customerProfile: { userId: 41 } }) })
+      }),
+      take: 100
+    }));
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      actorId: null,
+      action: "system.shop_membership_card.adjustment.expire"
+    }) });
+    expect(transaction.notification.create).toHaveBeenCalledTimes(2);
+  });
+
   it("invalidates a stale snapshot without overwriting the newer card", async () => {
     const stale = adjustment({ card: { ...card, lockVersion: 2, principalBalanceJpy: 11_000 } });
     const invalidated = adjustment({ status: "INVALIDATED", pendingKey: null, invalidatedAt: now, card: stale.card });

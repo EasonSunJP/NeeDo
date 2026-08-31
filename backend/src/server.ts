@@ -8,6 +8,7 @@ import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.r
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
+import { ShopMembershipCardAdjustmentRepository } from "./repositories/shop-membership-card-adjustment.repository";
 import { ExchangePostRepository } from "./repositories/exchange.repository";
 import { AuthRepository } from "./repositories/auth.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
@@ -19,6 +20,7 @@ import { RealtimeRepository } from "./repositories/realtime.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
 import { BookingUserRewardExpiryService } from "./services/booking-user-reward-expiry.service";
+import { ShopMembershipCardAdjustmentExpiryService } from "./services/shop-membership-card-adjustment-expiry.service";
 import { ContentPublicationSchedulerService } from "./services/content-publication-scheduler.service";
 import { FriendRequestExpiryService } from "./services/friend-request-expiry.service";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
@@ -35,6 +37,7 @@ import { LedgerService } from "./services/ledger.service";
 import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
 import { AffiliateTaskExpiryWorker } from "./workers/affiliate-task-expiry.worker";
 import { BookingUserRewardExpiryWorker } from "./workers/booking-user-reward-expiry.worker";
+import { ShopMembershipCardAdjustmentExpiryWorker } from "./workers/shop-membership-card-adjustment-expiry.worker";
 import { ExchangePostExpiryWorker } from "./workers/exchange-post-expiry.worker";
 import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worker";
@@ -163,6 +166,14 @@ const bookingUserRewardExpiryWorker = new BookingUserRewardExpiryWorker(
   env.BOOKING_USER_REWARD_EXPIRY_INTERVAL_MS,
   env.BOOKING_USER_REWARD_EXPIRY_BATCH_SIZE
 );
+const shopMembershipCardAdjustmentExpiryWorker = new ShopMembershipCardAdjustmentExpiryWorker(
+  new ShopMembershipCardAdjustmentExpiryService(
+    new ShopMembershipCardAdjustmentRepository()
+  ),
+  logger,
+  env.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_INTERVAL_MS,
+  env.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_BATCH_SIZE
+);
 const exchangePostExpiryWorker = new ExchangePostExpiryWorker(
   exchangeService,
   logger,
@@ -209,6 +220,7 @@ const server = app.listen(env.PORT, () => {
   identityApplicationPurgeWorker.start();
   affiliateTaskExpiryWorker.start();
   bookingUserRewardExpiryWorker.start();
+  shopMembershipCardAdjustmentExpiryWorker.start();
   if (env.EXCHANGE_EXPIRY_WORKER_ENABLED) {
     exchangePostExpiryWorker.start();
   }
@@ -232,6 +244,7 @@ const shutdown = createShutdownHandler({
       logger.error({ error }, "Realtime gateway shutdown failed");
     });
     bookingUserRewardExpiryWorker.stop();
+    shopMembershipCardAdjustmentExpiryWorker.stop();
     exchangePostExpiryWorker.stop();
     contentPublicationWorker.stop();
     affiliateAllianceInvitationExpiryWorker.stop();

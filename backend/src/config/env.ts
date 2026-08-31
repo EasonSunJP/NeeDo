@@ -263,6 +263,17 @@ const envSchema = z
       .default(100),
     BOOKING_USER_REWARD_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
     BOOKING_USER_REWARD_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
+    SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(60_000)
+      .default(300_000),
+    SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_BATCH_SIZE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100),
     EXCHANGE_EXPIRY_WORKER_ENABLED: booleanSchema.default(true),
     EXCHANGE_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
     EXCHANGE_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
