@@ -102,6 +102,22 @@ describe("chat-record OpenAPI contract", () => {
       }
     });
     const safeMaximum = 2_147_483_647;
+    const realtimeMessageProperties = api.components.schemas.RealtimeMessage.properties!;
+    expect(realtimeMessageProperties.id).toEqual({
+      type: "integer",
+      minimum: 1,
+      maximum: safeMaximum
+    });
+    expect(realtimeMessageProperties.conversationId).toEqual({
+      type: "integer",
+      minimum: 1,
+      maximum: safeMaximum
+    });
+    expect(realtimeMessageProperties.senderUserId).toEqual({
+      type: ["integer", "null"],
+      minimum: 1,
+      maximum: safeMaximum
+    });
     expect(commandSchema).toMatchObject({
       properties: {
         messageIds: { items: { maximum: safeMaximum } },

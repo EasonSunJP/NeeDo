@@ -1698,9 +1698,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "createdAt"
         ],
         properties: {
-          id: { type: "integer" },
-          conversationId: { type: "integer" },
-          senderUserId: { type: ["integer", "null"] },
+          id: { type: "integer", minimum: 1, maximum: PRISMA_INT_MAX },
+          conversationId: { type: "integer", minimum: 1, maximum: PRISMA_INT_MAX },
+          senderUserId: {
+            type: ["integer", "null"],
+            minimum: 1,
+            maximum: PRISMA_INT_MAX
+          },
           type: { type: "string", enum: ["text", "system", "orderStatus"] },
           content: { type: ["string", "null"] },
           metadata: {},

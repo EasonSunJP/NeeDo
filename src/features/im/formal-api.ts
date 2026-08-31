@@ -114,7 +114,17 @@ function responseInteger(value: unknown, minimum: number, maximum = prismaIntMax
 }
 function isoDate(value: unknown): string {
   const text = boundedString(value, 1, 64);
-  if (!Number.isFinite(Date.parse(text))) invalidChatRecord();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/u.exec(text);
+  if (!match) return invalidChatRecord();
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, offsetHourText, offsetMinuteText] = match;
+  const [year, month, day, hour, minute, second] = [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number);
+  if (year === 0 || month < 1 || month > 12 || day < 1 || hour > 23 || minute > 59 || second > 59 || (offsetHourText !== undefined && (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59))) invalidChatRecord();
+  const calendar = new Date(0);
+  calendar.setUTCHours(hour, minute, second, 0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day || calendar.getUTCHours() !== hour || calendar.getUTCMinutes() !== minute || calendar.getUTCSeconds() !== second) invalidChatRecord();
+  const timestamp = Date.parse(text);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().length === 0) invalidChatRecord();
   return text;
 }
 
@@ -148,7 +158,7 @@ function toChatRecordItem(value: import("../realtime/api").RealtimeChatRecordIte
   return { id: String(responseInteger(item.id, 1)), position: responseInteger(item.position, 1, 100), senderDisplayName: boundedString(item.senderDisplayName, 1, 120), senderAvatarUrl: item.senderAvatarUrl as string | null, messageType: boundedString(item.messageType, 1, 64), content: item.content as string | null, metadata: item.metadata, sentAt: isoDate(item.sentAt) };
 }
 
-function chatRecordPage(value: unknown, withCursor: boolean) {
+function rawChatRecordPage(value: unknown, withCursor: boolean) {
   const keys = ["list", "total", "page", "page_size", ...(withCursor ? ["nextCursor"] : [])];
   const page = exactRecord(value, keys);
   if (!Array.isArray(page.list)) invalidChatRecord();
@@ -156,11 +166,31 @@ function chatRecordPage(value: unknown, withCursor: boolean) {
   const pageSize = responseInteger(page.page_size, 1, 100);
   const total = responseInteger(page.total, 0);
   const pageNumber = responseInteger(page.page, 1);
-  const offset = (pageNumber - 1) * pageSize;
-  if (list.length > pageSize || list.length > total || (list.length > 0 && (offset >= total || offset + list.length > total))) invalidChatRecord();
   const nextCursor = withCursor ? page.nextCursor : undefined;
-  if (withCursor && nextCursor !== null) responseInteger(nextCursor, 1, 100);
   return { list, total, page: pageNumber, page_size: pageSize, ...(withCursor ? { nextCursor: nextCursor as number | null } : {}) };
+}
+
+function chatRecordFavoritePage(value: unknown, requestedPage: number, requestedPageSize: number) {
+  const page = rawChatRecordPage(value, false);
+  const offset = (requestedPage - 1) * requestedPageSize;
+  const expectedLength = Math.min(requestedPageSize, Math.max(page.total - offset, 0));
+  if (page.page !== requestedPage || page.page_size !== requestedPageSize || page.list.length !== expectedLength) invalidChatRecord();
+  return page;
+}
+
+function chatRecordItemPage(value: unknown, beforePosition: number | undefined, requestedPageSize: number) {
+  const page = rawChatRecordPage(value, true);
+  if (page.page_size !== requestedPageSize || (beforePosition === undefined ? page.page !== 1 : page.page < 2)) invalidChatRecord();
+  const offset = (page.page - 1) * requestedPageSize;
+  const expectedLength = Math.min(requestedPageSize, Math.max(page.total - offset, 0));
+  if (page.list.length !== expectedLength) invalidChatRecord();
+  const hasMore = offset + page.list.length < page.total;
+  if (hasMore) {
+    if (page.nextCursor === null || responseInteger(page.nextCursor, 1) === beforePosition) invalidChatRecord();
+  } else if (page.nextCursor !== null) {
+    invalidChatRecord();
+  }
+  return page;
 }
 
 function toRealtimeChatRecordCommand(command: import("./chat-records").ImChatRecordCommand) {
@@ -195,34 +225,44 @@ function assertChatRecordDeliveryConsistency(bundle: import("./chat-records").Im
 }
 
 function parseChatRecordDeliveryMessage(value: unknown, targetConversationId: number): import("../realtime/api").RealtimeMessage {
-  if (!value || typeof value !== "object" || Array.isArray(value)) invalidChatRecord();
-  const message = value as Record<string, unknown>;
-  const allowed = new Set([
+  const message = exactRecord(value, [
     "availableRecallModes", "content", "contentPurgedAt", "conversationId", "createdAt", "expiresAt",
     "id", "lifecycleVersion", "metadata", "privacyPolicyVersionAtSend", "reactionVersion", "reactions",
     "recallDeadlineAt", "recalledAt", "recallMode", "senderUserId", "type",
   ]);
-  if (Object.keys(message).some((key) => !allowed.has(key))) invalidChatRecord();
-  for (const required of ["content", "conversationId", "createdAt", "id", "metadata", "senderUserId", "type"]) {
-    if (!Object.prototype.hasOwnProperty.call(message, required)) invalidChatRecord();
-  }
   responseInteger(message.id, 1);
   if (responseInteger(message.conversationId, 1) !== targetConversationId) invalidChatRecord();
   responseInteger(message.senderUserId, 1);
   if (message.type !== "text" || typeof message.content !== "string") invalidChatRecord();
   boundedString(message.content, 1, 255);
   isoDate(message.createdAt);
-  for (const field of ["contentPurgedAt", "expiresAt", "recallDeadlineAt", "recalledAt"] as const) {
+  isoDate(message.recallDeadlineAt);
+  for (const field of ["contentPurgedAt", "expiresAt", "recalledAt"] as const) {
     const fieldValue = message[field];
-    if (fieldValue !== undefined && fieldValue !== null) isoDate(fieldValue);
+    if (fieldValue !== null) isoDate(fieldValue);
   }
-  if (message.recallMode !== undefined && message.recallMode !== null && message.recallMode !== "standard" && message.recallMode !== "traceless") invalidChatRecord();
-  for (const field of ["lifecycleVersion", "privacyPolicyVersionAtSend", "reactionVersion"] as const) {
-    const fieldValue = message[field];
-    if (fieldValue !== undefined && fieldValue !== null) responseInteger(fieldValue, 0);
+  if (message.recallMode !== null && message.recallMode !== "standard" && message.recallMode !== "traceless") invalidChatRecord();
+  if (message.privacyPolicyVersionAtSend !== null) responseInteger(message.privacyPolicyVersionAtSend, 0);
+  responseInteger(message.lifecycleVersion, 0);
+  responseInteger(message.reactionVersion, 0);
+  if (!Array.isArray(message.availableRecallModes) || message.availableRecallModes.some((mode) => mode !== "standard")) invalidChatRecord();
+  const reactions = message.reactions;
+  if (!Array.isArray(reactions)) return invalidChatRecord();
+  for (const reactionValue of reactions) {
+    const reaction = exactRecord(reactionValue, ["emoji", "people", "reactedByMe"]);
+    boundedString(reaction.emoji, 1, 32);
+    const people = reaction.people;
+    if (!Array.isArray(people) || typeof reaction.reactedByMe !== "boolean") return invalidChatRecord();
+    for (const personValue of people) {
+      if (!personValue || typeof personValue !== "object" || Array.isArray(personValue)) invalidChatRecord();
+      const person = personValue as Record<string, unknown>;
+      const keys = Object.keys(person);
+      if (!keys.includes("userId") || !keys.includes("needoId") || !keys.includes("username") || !keys.includes("avatarUrl") || keys.some((key) => !["userId", "needoId", "username", "avatarUrl", "role"].includes(key))) invalidChatRecord();
+      responseInteger(person.userId, 1);
+      if (typeof person.needoId !== "string" || !/^(?:u|s|b|o|needo)[0-9]{10}$/u.test(person.needoId) || typeof person.username !== "string" || (person.avatarUrl !== null && typeof person.avatarUrl !== "string")) invalidChatRecord();
+      if (person.role !== undefined && person.role !== "owner" && person.role !== "admin" && person.role !== "member") invalidChatRecord();
+    }
   }
-  if (message.availableRecallModes !== undefined && (!Array.isArray(message.availableRecallModes) || message.availableRecallModes.some((mode) => mode !== "standard"))) invalidChatRecord();
-  if (message.reactions !== undefined && !Array.isArray(message.reactions)) invalidChatRecord();
   parseChatRecordMessageMetadata(message.metadata);
   return message as unknown as import("../realtime/api").RealtimeMessage;
 }
@@ -1112,7 +1152,7 @@ export function createFormalImApi({
     async listChatRecordItems(publicId, query = {}) {
       const safeQuery = { ...(query.beforePosition === undefined ? {} : { beforePosition: positive(query.beforePosition) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) };
       const result = await realtimeApi.listChatRecordItems(assertUuid(publicId), safeQuery);
-      const page = chatRecordPage(result, true);
+      const page = chatRecordItemPage(result, safeQuery.beforePosition, safeQuery.pageSize ?? 20);
       return { ...page, list: page.list.map((item) => toChatRecordItem(item as import("../realtime/api").RealtimeChatRecordItem)), nextCursor: page.nextCursor! };
     },
     getChatRecordMedia(publicId, checksumSha256) { return realtimeApi.getChatRecordMedia(assertUuid(publicId), assertChecksum(checksumSha256)); },
@@ -1123,8 +1163,9 @@ export function createFormalImApi({
       return { replayed: result.replayed as boolean, favorite: toChatRecordFavorite(result.favorite as import("../realtime/api").RealtimeChatRecordFavorite) };
     },
     async listChatRecordFavorites(query = {}) {
-      const result = await realtimeApi.listChatRecordFavorites({ ...(query.page === undefined ? {} : { page: positive(query.page) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) });
-      const page = chatRecordPage(result, false);
+      const safeQuery = { ...(query.page === undefined ? {} : { page: positive(query.page) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) };
+      const result = await realtimeApi.listChatRecordFavorites(safeQuery);
+      const page = chatRecordFavoritePage(result, safeQuery.page ?? 1, safeQuery.pageSize ?? 20);
       return { ...page, list: page.list.map((item) => toChatRecordFavorite(item as import("../realtime/api").RealtimeChatRecordFavorite)) };
     },
     removeChatRecordFavorite(favoriteId) { return realtimeApi.removeChatRecordFavorite(toNumericId(favoriteId)); },

@@ -201,3 +201,57 @@ PASS
 ```
 
 Targeted backend Prettier check passed for the new constant, validator, chat-record service, and focused chat-record tests. It continued to report whole-file legacy style in `realtime.service.ts`, `openapi.ts`, `im-chat-record-api.test.ts`, and `realtime-service.test.ts`; no `--write` was run because it would reformat unrelated legacy content. ESLint and both TypeScript builds pass, and no formatter-only churn is retained.
+
+## Third review remediation — 2026-08-31
+
+- The shared `PRISMA_INT_MAX` now bounds `RealtimeMessage.id`, `conversationId`, and nullable `senderUserId` in OpenAPI with exact `minimum: 1` / `maximum: 2_147_483_647` assertions. No runtime message route or payload was changed.
+- Formal chat-record date-time parsing now requires an RFC3339-shaped full date-time with `T` and `Z`/numeric offset, validates calendar fields without accepting `Date.parse` normalization, requires a finite parse/ISO round-trip, and rejects numeric strings, date-only values, missing zones, and impossible dates.
+- Delivery parsing now uses the exact 17-key final OpenAPI `RealtimeMessage.required` contract. It validates database-bounded message/conversation/sender IDs, the target conversation, transport type/content, all required lifecycle/expiry/null fields, recall modes, versions, complete reactions and participant fields, and chat-record metadata/bundle consistency. Unknown message/reaction fields are rejected; participant `role` remains the sole optional OpenAPI field.
+- Favorite offset pages and item cursor pages use separate validators bound to the caller's query/defaults. Favorites require an exact full offset page except for a legitimate empty overrun. Items require the requested page size, page 1 without a cursor, page 2+ with a cursor, exact page length, a distinct positive cursor only while more rows remain, and `null` at the terminal page. Cursor values are treated as repository positions, never message IDs.
+
+### Contract evidence and bounded omission
+
+The review text named `readCount`, `isRecalled`, `hiddenForViewer`, `disappearing`, and `sendStatus` as examples. They are not fields in the final backend `RealtimeMessage.required`, `MessagePayload`, either backend `mapMessage`, the frontend `RealtimeMessage`, or any message database output contract. Adding them would change every message API and fabricate values outside Task 5. The strict delivery parser therefore follows the final existing OpenAPI required list exactly; no loose chat-record-only substitute or invented field was added.
+
+### Third-review RED
+
+```text
+frontend formal: 1 file / 43 tests, 7 failures
+  raw required/reaction 1 + strict date-time 4 + favorites pagination 1 + items pagination 1
+
+backend OpenAPI: 1 suite / 4 tests, 1 failure
+  RealtimeMessage ID bounds absent
+```
+
+### Third-review GREEN and verification
+
+```text
+npm test -- --run src/features/im/formal-api.test.ts
+1 file, 44 tests passed
+
+npm test -- --run src/features/im src/features/realtime
+29 files, 321 tests passed
+
+cd backend && npm test -- --runInBand tests/im-chat-record-openapi.test.ts
+1 suite, 4 tests passed
+
+cd backend && npm test -- --runInBand tests/im-chat-record.service.test.ts tests/im-chat-record.repository.test.ts tests/im-chat-record-api.test.ts tests/im-chat-record-openapi.test.ts tests/im-chat-record-schema.test.ts tests/openapi.test.ts
+6 suites, 108 tests passed
+
+npm run lint
+PASS
+
+cd backend && npm run lint
+PASS
+
+npm run build
+PASS (pre-existing Vite dynamic-import and chunk-size warnings only)
+
+cd backend && npm run build
+PASS
+
+git diff --check
+PASS
+```
+
+The targeted backend Prettier check passes for `im-chat-record-openapi.test.ts` and continues to identify pre-existing whole-file style in the large legacy `openapi.ts`. No formatter write was run and no unrelated formatting churn is included.
