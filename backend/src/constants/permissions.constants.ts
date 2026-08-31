@@ -530,6 +530,41 @@ export const SYSTEM_PERMISSIONS = [
     "修改全局平台费金额与店铺收费状态"
   ),
   createPermission(
+    "backoffice:membership-tier:read",
+    "平台会员等级读取",
+    "api",
+    "backoffice",
+    "读取固定平台会员等级及其版本"
+  ),
+  createPermission(
+    "backoffice:membership-tier:publish",
+    "平台会员等级发布",
+    "api",
+    "backoffice",
+    "保存并发布平台会员等级版本"
+  ),
+  createPermission(
+    "backoffice:membership-benefit:read",
+    "平台会员权益读取",
+    "api",
+    "backoffice",
+    "读取固定平台会员权益目录"
+  ),
+  createPermission(
+    "backoffice:membership-benefit:write",
+    "平台会员权益管理",
+    "api",
+    "backoffice",
+    "启用或停用平台会员权益"
+  ),
+  createPermission(
+    "backoffice:user-membership:write",
+    "用户平台会员管理",
+    "api",
+    "backoffice",
+    "发放、续费、升级、降级或终止用户平台会员资格"
+  ),
+  createPermission(
     "backoffice:order-acceptance-pause:read",
     "运营接单暂停读取",
     "api",
@@ -1490,7 +1525,9 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "role:list",
   "menu:permission-management",
   "page:permission-management",
-  "permission:list"
+  "permission:list",
+  "backoffice:membership-tier:read",
+  "backoffice:membership-benefit:read"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -1599,6 +1636,9 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:dashboard:read",
   "backoffice:platform-fee-policy:read",
   "backoffice:platform-fee-policy:write",
+  "backoffice:membership-tier:publish",
+  "backoffice:membership-benefit:write",
+  "backoffice:user-membership:write",
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
   "backoffice:orders:list",

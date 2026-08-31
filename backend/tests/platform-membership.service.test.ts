@@ -37,6 +37,8 @@ const membership = (
 const repository = (
   overrides: Partial<jest.Mocked<PlatformMembershipRepositoryPort>> = {}
 ): jest.Mocked<PlatformMembershipRepositoryPort> => ({
+  listTiersForAdministration: jest.fn(),
+  listBenefitsForAdministration: jest.fn(),
   hasActiveCustomerProfile: jest.fn(async (userId: number) => {
     void userId;
     return true;
@@ -55,6 +57,7 @@ const repository = (
   saveTierDraftWithAudit: jest.fn(),
   publishTierDraftWithAudit: jest.fn(),
   changeEntitlementWithAudit: jest.fn(),
+  updateBenefitWithAudit: jest.fn(),
   ...overrides
 });
 

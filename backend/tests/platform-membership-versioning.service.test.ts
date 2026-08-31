@@ -79,6 +79,8 @@ type PublishDraftArgument = Parameters<
 const repository = (
   overrides: Partial<jest.Mocked<PlatformMembershipRepositoryPort>> = {}
 ): jest.Mocked<PlatformMembershipRepositoryPort> => ({
+  listTiersForAdministration: jest.fn(),
+  listBenefitsForAdministration: jest.fn(),
   hasActiveCustomerProfile: jest.fn(),
   findActiveEntitlementAt: jest.fn(),
   findPublishedTierAt: jest.fn(),
@@ -103,6 +105,7 @@ const repository = (
     };
   }),
   changeEntitlementWithAudit: jest.fn(),
+  updateBenefitWithAudit: jest.fn(),
   ...overrides
 });
 const audit = {

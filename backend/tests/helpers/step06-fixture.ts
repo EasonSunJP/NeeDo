@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import request from "supertest";
 import type { Express } from "express";
 import { createApp } from "../../src/app";
+import type { AppDependencies } from "../../src/app";
 
 interface StoredValue {
   value: string;
@@ -229,7 +230,9 @@ const attachRolePermissions = (
   }
 };
 
-export const createStep06Fixture = async () => {
+export const createStep06Fixture = async (
+  dependencyOverrides: Partial<AppDependencies> = {}
+) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const auditLogs: AuditLogEntry[] = [];
   const permissionAssignCalls: Array<{ roleId: number; permissionIds: number[] }> = [];
@@ -828,7 +831,8 @@ export const createStep06Fixture = async () => {
     permissionRepository,
     roleRepository,
     userRepository,
-    testAccountRepository
+    testAccountRepository,
+    ...dependencyOverrides
   } as never);
   const loginAsAdmin = async (): Promise<string> => {
     const response = await request(app)
