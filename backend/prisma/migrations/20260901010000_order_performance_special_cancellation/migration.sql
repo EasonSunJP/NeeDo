@@ -108,7 +108,7 @@ ALTER TABLE `order_performance_assessment_revisions`
     FOREIGN KEY (`assessment_id`) REFERENCES `order_performance_assessments`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `order_performance_assessment_revisions_booking_order_id_fkey`
     FOREIGN KEY (`booking_order_id`) REFERENCES `booking_orders`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
-  ADD CONSTRAINT `order_performance_assessment_revisions_technician_profile_id_fkey`
+  ADD CONSTRAINT `order_performance_revisions_technician_profile_id_fkey`
     FOREIGN KEY (`technician_profile_id`) REFERENCES `technician_profiles`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `order_performance_assessment_revisions_actor_user_id_fkey`
     FOREIGN KEY (`actor_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;

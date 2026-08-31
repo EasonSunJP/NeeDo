@@ -67,6 +67,11 @@ describe("Order performance schema", () => {
     expect(migration).toContain("order_performance_assessment_revisions_actor_user_id_fkey");
     expect(migration).toContain("technician_performance_summaries_technician_profile_id_fkey");
 
+    const overlongMySqlIdentifiers = [...migration.matchAll(/`([^`]+)`/gu)]
+      .map((match) => match[1])
+      .filter((identifier) => identifier.length > 64);
+    expect(overlongMySqlIdentifiers).toEqual([]);
+
     for (const targetTable of ["booking_orders", "technician_profiles", "users"]) {
       expect(migration).toContain(`REFERENCES \`${targetTable}\`(\`id\`)`);
     }
