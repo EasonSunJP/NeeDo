@@ -3715,10 +3715,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["membershipLevel", "grantMode", "durationUnit", "durationValue", "startsAt"],
         properties: {
-          membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
+          membershipLevel: {
+            type: "string",
+            enum: ["silver", "gold", "black_diamond"]
+          },
           grantMode: { type: "string", enum: ["operator_complimentary"] },
-          durationUnit: { type: "string", enum: ["forever", "day", "month"] },
-          durationValue: { type: ["integer", "null"], minimum: 1, maximum: 1200 },
+          durationUnit: { type: "string", enum: ["month"] },
+          durationValue: { type: "integer", enum: [1, 12] },
           startsAt: { type: "string", format: "date-time" }
         }
       },
@@ -12893,7 +12896,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/backoffice/customers/{id}/membership`]: {
       put: {
         tags: ["Master Data"],
-        summary: "Assign a complimentary customer membership level and validity period",
+        summary: "Grant a fixed paid platform membership through the formal entitlement ledger",
         security: [{ bearerAuth: [] }],
         parameters: [idPathParameter()],
         requestBody: {

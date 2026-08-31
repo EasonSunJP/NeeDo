@@ -167,6 +167,7 @@ import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
+import type { PlatformMembershipService } from "./services/platform-membership.service";
 import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
@@ -270,6 +271,7 @@ export interface AppDependencies {
   merchantApplicationReviewRepository?: MerchantApplicationReviewRepositoryPort;
   merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
+  platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
   affiliateMarketplaceRepository?: AffiliateMarketplaceRepositoryPort;

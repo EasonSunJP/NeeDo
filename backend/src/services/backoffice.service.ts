@@ -26,6 +26,7 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
+import type { PlatformMembershipService } from "./platform-membership.service";
 import {
   parseCalendarDate,
   resolveDashboardWindow,
@@ -53,43 +54,6 @@ import type {
 } from "../repositories/merchant-shop-context.repository";
 
 export type { BackofficeDashboardPayload } from "../domain/dashboard";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-export const resolveCustomerMembershipGrant = (
-  input: Pick<BackofficeCustomerMembershipGrantBody, "durationUnit" | "durationValue" | "startsAt">
-): { durationValue: number | null; startsAt: Date; expiresAt: Date | null } => {
-  const startsAt = new Date(input.startsAt);
-  if (input.durationUnit === "forever") {
-    return { durationValue: null, startsAt, expiresAt: null };
-  }
-
-  const durationValue = input.durationValue as number;
-  if (input.durationUnit === "day") {
-    return {
-      durationValue,
-      startsAt,
-      expiresAt: new Date(startsAt.getTime() + durationValue * DAY_MS)
-    };
-  }
-
-  const targetMonthFirst = new Date(
-    Date.UTC(
-      startsAt.getUTCFullYear(),
-      startsAt.getUTCMonth() + durationValue,
-      1,
-      startsAt.getUTCHours(),
-      startsAt.getUTCMinutes(),
-      startsAt.getUTCSeconds(),
-      startsAt.getUTCMilliseconds()
-    )
-  );
-  const lastTargetDay = new Date(
-    Date.UTC(targetMonthFirst.getUTCFullYear(), targetMonthFirst.getUTCMonth() + 1, 0)
-  ).getUTCDate();
-  targetMonthFirst.setUTCDate(Math.min(startsAt.getUTCDate(), lastTargetDay));
-  return { durationValue, startsAt, expiresAt: targetMonthFirst };
-};
 
 export type {
   TechnicianRankingPeriod,
@@ -464,14 +428,9 @@ export interface BackofficeCustomerMembershipGrantPayload {
   membershipGrantedBy: { needoId: string; username: string };
 }
 
-export interface BackofficeCustomerMembershipGrantData {
-  customerProfileId: number;
-  membershipLevel: string;
-  durationUnit: "forever" | "day" | "month";
-  durationValue: number | null;
-  startsAt: Date;
-  expiresAt: Date | null;
-  grantedById: number;
+export interface BackofficeCustomerMembershipGrantContext {
+  customerUserId: number;
+  membershipGrantedBy: { needoId: string; username: string };
 }
 
 export interface BackofficeServicePayload {
@@ -607,9 +566,10 @@ export interface BackofficeRepositoryPort {
     id: number,
     input: BackofficeCustomerUpdateBody
   ) => Promise<BackofficeCustomerPayload | null>;
-  assignCustomerMembership: (
-    input: BackofficeCustomerMembershipGrantData
-  ) => Promise<BackofficeCustomerMembershipGrantPayload | null>;
+  findCustomerMembershipGrantContext: (
+    customerProfileId: number,
+    grantedById: number
+  ) => Promise<BackofficeCustomerMembershipGrantContext | null>;
   softDeleteCustomer: (id: number) => Promise<BackofficeCustomerPayload | null>;
   listServices: (
     input: BackofficeScope & BackofficeListQuery
@@ -627,7 +587,8 @@ export class BackofficeService {
     private readonly auditLogService: AuditLogService,
     private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort,
     private readonly now: () => Date = () => new Date(),
-    private readonly avatarStorage?: CustomerAvatarStoragePort
+    private readonly avatarStorage?: CustomerAvatarStoragePort,
+    private readonly platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">
   ) {}
 
   public async getPlatformDashboard(
@@ -1513,29 +1474,32 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeCustomerMembershipGrantPayload> {
-    const period = resolveCustomerMembershipGrant(input);
-    const membership = this.requireResult(
-      await this.repository.assignCustomerMembership({
-        customerProfileId: id,
-        membershipLevel: input.membershipLevel,
-        durationUnit: input.durationUnit,
-        durationValue: period.durationValue,
-        startsAt: period.startsAt,
-        expiresAt: period.expiresAt,
-        grantedById: actor.userId
-      }),
+    const grantContext = this.requireResult(
+      await this.repository.findCustomerMembershipGrantContext(id, actor.userId),
       "error.customer.not_found"
     );
-    await this.record(actor, context, "backoffice.customer.membership.assign", "CustomerProfile", {
-      customerProfileId: id,
-      membershipLevel: input.membershipLevel,
-      grantMode: input.grantMode,
-      durationUnit: input.durationUnit,
-      durationValue: period.durationValue,
-      startsAt: period.startsAt.toISOString(),
-      expiresAt: period.expiresAt?.toISOString() ?? null
-    });
-    return membership;
+    const membership = await this.requirePlatformMembershipService().changeEntitlement(
+      actor,
+      context,
+      grantContext.customerUserId,
+      {
+        kind: "grant",
+        targetTierCode: input.membershipLevel,
+        billingCycle: input.durationValue === 12 ? "annual" : "monthly",
+        source: "operations",
+        sourceReference: `backoffice:customer:${id}:membership:${input.membershipLevel}:${input.startsAt}`,
+        expectedCurrentLockVersion: null
+      }
+    );
+    return {
+      membershipLevel: membership.tierCode,
+      membershipGrantMode: "operator_complimentary",
+      membershipDurationUnit: "month",
+      membershipDurationValue: input.durationValue,
+      membershipStartsAt: membership.startsAt.toISOString(),
+      membershipExpiresAt: membership.expiresAt?.toISOString() ?? null,
+      membershipGrantedBy: grantContext.membershipGrantedBy
+    };
   }
 
   public async deletePlatformCustomer(
@@ -1731,6 +1695,15 @@ export class BackofficeService {
       throw new AppError({ code: ERROR_CODES.NOT_FOUND, message, statusCode: 404 });
     }
     return value;
+  }
+
+  private requirePlatformMembershipService(): Pick<PlatformMembershipService, "changeEntitlement"> {
+    if (this.platformMembershipService) return this.platformMembershipService;
+    throw new AppError({
+      code: ERROR_CODES.INTERNAL,
+      message: "error.platform_membership.service_unavailable",
+      statusCode: 500
+    });
   }
 
   private emailExistsError(): AppError {
