@@ -13,6 +13,16 @@ import {
 export class ExchangeController {
   public constructor(private readonly service: ExchangeService) {}
 
+  public getRequestPublicationContext = this.handle(async (_request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getRequestPublicationContext(getAuthenticatedAccess(response))
+        )
+      );
+  });
+
   public listPosts = this.handle(async (request, response) => {
     const query = exchangeListQuerySchema.parse(request.query);
     response.status(200).json(

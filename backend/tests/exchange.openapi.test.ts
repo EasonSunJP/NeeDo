@@ -33,7 +33,7 @@ const document = (): ExchangeOpenApiDocument =>
   createOpenApiDocument(env) as unknown as ExchangeOpenApiDocument;
 
 describe("formal Exchange OpenAPI contract", () => {
-  it("documents exactly the nine enabled Exchange routes", () => {
+  it("documents the enabled Exchange publication and fee routes", () => {
     const paths = document().paths;
     const expected = [
       ["/api/v1/exchange/posts", "get"],
@@ -44,7 +44,11 @@ describe("formal Exchange OpenAPI contract", () => {
       ["/api/v1/exchange/posts/{id}/comments", "post"],
       ["/api/v1/exchange/posts/{id}/like", "put"],
       ["/api/v1/exchange/posts/{id}/like", "delete"],
-      ["/api/v1/exchange/posts/{id}/shares", "post"]
+      ["/api/v1/exchange/posts/{id}/shares", "post"],
+      ["/api/v1/exchange/request-publication-context", "get"],
+      ["/api/v1/backoffice/exchange-request-fee/current", "get"],
+      ["/api/v1/backoffice/exchange-request-fee/versions", "get"],
+      ["/api/v1/backoffice/exchange-request-fee/versions", "post"]
     ] as const;
 
     for (const [path, method] of expected) {
@@ -55,6 +59,28 @@ describe("formal Exchange OpenAPI contract", () => {
     for (const deferred of ["offers", "matches", "bookings", "orders", "payments"]) {
       expect(paths).not.toHaveProperty(`/api/v1/exchange/posts/{id}/${deferred}`);
     }
+  });
+
+  it("documents the Request publication context and paginated fee administration permissions", () => {
+    const paths = document().paths;
+    expect(paths["/api/v1/exchange/request-publication-context"].get).toEqual(
+      expect.objectContaining({
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "exchange:posts:create-demand"
+      })
+    );
+    expect(paths["/api/v1/backoffice/exchange-request-fee/versions"].get).toEqual(
+      expect.objectContaining({ "x-required-permission": "backoffice:exchange-request-fee:read" })
+    );
+    expect(paths["/api/v1/backoffice/exchange-request-fee/versions"].post).toEqual(
+      expect.objectContaining({ "x-required-permission": "backoffice:exchange-request-fee:write" })
+    );
+    expect(paths["/api/v1/backoffice/exchange-request-fee/versions"].get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page" }),
+        expect.objectContaining({ name: "page_size" })
+      ])
+    );
   });
 
   it("documents permissions, bounded pagination, and required idempotency keys", () => {
@@ -114,8 +140,7 @@ describe("formal Exchange OpenAPI contract", () => {
 
   it("documents the Request terminal financial conflict on withdrawal", () => {
     const description =
-      document().paths["/api/v1/exchange/posts/{id}/withdraw"].post.responses["409"]
-        .description;
+      document().paths["/api/v1/exchange/posts/{id}/withdraw"].post.responses["409"].description;
 
     expect(description).toContain("error.exchange.request_financial_state_conflict");
     for (const existing of [

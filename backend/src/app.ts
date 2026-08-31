@@ -141,6 +141,7 @@ import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
+import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
@@ -344,6 +345,7 @@ export const createApp = (
   apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
+  apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));

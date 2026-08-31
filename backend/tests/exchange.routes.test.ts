@@ -156,12 +156,12 @@ const createFixture = async () => {
   ]);
   const merchantStaffRole = createRole(3, "merchant_staff", [
     ...authPermissions,
+    ...commonPermissions
+  ]);
+  const merchantStaffScopedDemandRole = createRole(4, "merchant_staff_scoped_demand", [
+    ...authPermissions,
     ...commonPermissions,
     "exchange:posts:create-demand"
-  ]);
-  const merchantStaffWithoutDemandRole = createRole(4, "merchant_staff_limited", [
-    ...authPermissions,
-    ...commonPermissions
   ]);
   const makeUser = (
     id: number,
@@ -208,13 +208,20 @@ const createFixture = async () => {
     makeUser(9, "merchant-staff@example.test", "merchant_staff", merchantStaffRole),
     makeUser(
       10,
-      "merchant-staff-limited@example.test",
+      "merchant-staff-scoped-demand@example.test",
       "merchant_staff",
-      merchantStaffWithoutDemandRole
+      merchantStaffScopedDemandRole
     )
   ];
   const service = {
     listPosts: jest.fn(async () => ({ list: [post], total: 1, page: 1, page_size: 20 })),
+    getRequestPublicationContext: jest.fn(async () => ({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel: "gold",
+      maxTargetProviderCount: 5,
+      publicationFee: { amountNdp: 1000, currency: "NDP", ruleSetVersion: 3 }
+    })),
     getPost: jest.fn(async () => post),
     publish: jest.fn(async () => post),
     withdraw: jest.fn(async () => ({ ...post, status: "withdrawn" as const })),
@@ -301,7 +308,7 @@ describe("formal Exchange routes", () => {
     const customerToken = await login("customer@example.test");
     const technicianToken = await login("technician@example.test");
     const merchantStaffToken = await login("merchant-staff@example.test");
-    const limitedMerchantStaffToken = await login("merchant-staff-limited@example.test");
+    const scopedMerchantStaffToken = await login("merchant-staff-scoped-demand@example.test");
     const demandBody = {
       type: "demand",
       title: post.title,
@@ -349,13 +356,13 @@ describe("formal Exchange routes", () => {
       .set("Authorization", `Bearer ${merchantStaffToken}`)
       .set("Idempotency-Key", "publish-demand-0003")
       .send(demandBody)
-      .expect(201);
+      .expect(403);
     await request(app)
       .post("/api/v1/exchange/posts")
-      .set("Authorization", `Bearer ${limitedMerchantStaffToken}`)
+      .set("Authorization", `Bearer ${scopedMerchantStaffToken}`)
       .set("Idempotency-Key", "publish-demand-0004")
       .send(demandBody)
-      .expect(403);
+      .expect(201);
     await request(app)
       .post("/api/v1/exchange/posts")
       .set("Authorization", `Bearer ${customerToken}`)
@@ -363,6 +370,38 @@ describe("formal Exchange routes", () => {
       .send(demandBody)
       .expect(400);
     expect(service.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes a demand publication context only to the exact publish permission", async () => {
+    const { app, login, service } = await createFixture();
+    const customerToken = await login("customer@example.test");
+    const merchantStaffToken = await login("merchant-staff@example.test");
+    const scopedMerchantStaffToken = await login("merchant-staff-scoped-demand@example.test");
+
+    const response = await request(app)
+      .get("/api/v1/exchange/request-publication-context")
+      .set("Authorization", `Bearer ${customerToken}`)
+      .expect(200);
+    expect(response.body.data).toEqual({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel: "gold",
+      maxTargetProviderCount: 5,
+      publicationFee: { amountNdp: 1000, currency: "NDP", ruleSetVersion: 3 }
+    });
+    expect(JSON.stringify(response.body.data)).not.toMatch(/ruleSetId|ruleId|walletBalance/);
+    expect(service.getRequestPublicationContext).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7 })
+    );
+
+    await request(app)
+      .get("/api/v1/exchange/request-publication-context")
+      .set("Authorization", `Bearer ${merchantStaffToken}`)
+      .expect(403);
+    await request(app)
+      .get("/api/v1/exchange/request-publication-context")
+      .set("Authorization", `Bearer ${scopedMerchantStaffToken}`)
+      .expect(200);
   });
 
   it("exposes comments, like, unlike, share, and withdrawal without deferred routes", async () => {

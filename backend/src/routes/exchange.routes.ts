@@ -79,6 +79,12 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
     controller.listPosts
   );
   router.get(
+    "/exchange/request-publication-context",
+    authenticate(),
+    createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.createDemand),
+    controller.getRequestPublicationContext
+  );
+  router.get(
     "/exchange/posts/:id",
     authenticate(),
     createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.postDetail),
