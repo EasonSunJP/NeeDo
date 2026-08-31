@@ -556,7 +556,7 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     expect(client.values.has("auth:v2:login:account:lock:7")).toBe(false);
   });
 
-  it("rejects non-exact audit ACK and DLQ script responses", async () => {
+  it("rejects malformed audit ACK, DLQ, and conflict counter script responses", async () => {
     let evalCount = 0;
     const client = {
       isOpen: true,
@@ -565,7 +565,9 @@ describe("RedisAuthSessionStore refresh-session index", () => {
       }),
       eval: jest.fn(async () => {
         evalCount += 1;
-        return evalCount === 1 ? ["rejected"] : ["ok", "unexpected"];
+        if (evalCount === 1) return ["rejected"];
+        if (evalCount === 2) return ["ok", "unexpected"];
+        return ["ok", "0"];
       })
     };
     const store = new RedisAuthSessionStore(() => client as never);
@@ -586,6 +588,16 @@ describe("RedisAuthSessionStore refresh-session index", () => {
         streamId: "2-0",
         reason: "invalid_completion_event",
         deliveryCount: 1
+      })
+    ).rejects.toMatchObject({ code: 50301 });
+    await expect(
+      store.recordMerchantShopSwitchAuditConflict({
+        kind: "completion",
+        streamId: "3-0",
+        auditId: 93,
+        operationId: "operation-93",
+        status: "completed",
+        deliveryCount: 99
       })
     ).rejects.toMatchObject({ code: 50301 });
   });

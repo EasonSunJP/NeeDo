@@ -174,7 +174,7 @@ describe("MerchantShopAuditOutboxService", () => {
     const Service = MerchantShopAuditOutboxService as unknown as new (
       repository: { completeMerchantShopSwitchAudit: typeof complete },
       sessionStore: Record<string, unknown>,
-      options: { maxPagesPerDrain: number; maxDeliveryAttempts: number }
+      options: { maxPagesPerDrain: number; maxDeterministicConflicts: number }
     ) => MerchantShopAuditOutboxService;
     const service = new Service(
       { completeMerchantShopSwitchAudit: complete },
@@ -188,7 +188,7 @@ describe("MerchantShopAuditOutboxService", () => {
           deadLetterLength: 0
         }))
       },
-      { maxPagesPerDrain: 2, maxDeliveryAttempts: 5 }
+      { maxPagesPerDrain: 2, maxDeterministicConflicts: 5 }
     );
 
     await expect(service.drain()).resolves.toMatchObject({ read: 3, completed: 2, failed: 1 });
@@ -210,7 +210,7 @@ describe("MerchantShopAuditOutboxService", () => {
     const Service = MerchantShopAuditOutboxService as unknown as new (
       repository: { completeMerchantShopSwitchAudit: jest.Mock },
       sessionStore: Record<string, unknown>,
-      options: { maxPagesPerDrain: number; maxDeliveryAttempts: number }
+      options: { maxPagesPerDrain: number; maxDeterministicConflicts: number }
     ) => MerchantShopAuditOutboxService;
     const service = new Service(
       { completeMerchantShopSwitchAudit: jest.fn(async () => false) },
@@ -220,6 +220,7 @@ describe("MerchantShopAuditOutboxService", () => {
           nextPendingCursor: "0-0"
         })),
         acknowledgeMerchantShopSwitchAuditOutbox: jest.fn(async () => undefined),
+        recordMerchantShopSwitchAuditConflict: jest.fn(async () => 3),
         deadLetterMerchantShopSwitchAuditOutbox: deadLetter,
         getMerchantShopSwitchAuditOutboxStats: jest.fn(async () => ({
           streamLength: 0,
@@ -227,7 +228,7 @@ describe("MerchantShopAuditOutboxService", () => {
           deadLetterLength: 1
         }))
       },
-      { maxPagesPerDrain: 1, maxDeliveryAttempts: 3 }
+      { maxPagesPerDrain: 1, maxDeterministicConflicts: 3 }
     );
 
     await expect(service.drain()).resolves.toMatchObject({
@@ -244,6 +245,103 @@ describe("MerchantShopAuditOutboxService", () => {
       },
       { abortSignal: undefined }
     );
+  });
+
+  it("does not count transient database failures toward deterministic conflict exhaustion", async () => {
+    const event = {
+      kind: "completion" as const,
+      streamId: "10-0",
+      auditId: 100,
+      operationId: "operation-conflict",
+      status: "completed" as const,
+      deliveryCount: 99
+    };
+    const complete = jest
+      .fn<Promise<boolean>, []>()
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockResolvedValue(false);
+    let deterministicConflictCount = 0;
+    const recordConflict = jest.fn(async () => {
+      deterministicConflictCount += 1;
+      return deterministicConflictCount;
+    });
+    const deadLetter = jest.fn(async () => undefined);
+    const Service = MerchantShopAuditOutboxService as unknown as new (
+      repository: { completeMerchantShopSwitchAudit: typeof complete },
+      sessionStore: Record<string, unknown>,
+      options: { maxPagesPerDrain: number; maxDeterministicConflicts: number }
+    ) => MerchantShopAuditOutboxService;
+    const service = new Service(
+      { completeMerchantShopSwitchAudit: complete },
+      {
+        readMerchantShopSwitchAuditOutbox: jest.fn(async () => ({
+          items: [event],
+          nextPendingCursor: "0-0"
+        })),
+        acknowledgeMerchantShopSwitchAuditOutbox: jest.fn(async () => undefined),
+        recordMerchantShopSwitchAuditConflict: recordConflict,
+        deadLetterMerchantShopSwitchAuditOutbox: deadLetter,
+        getMerchantShopSwitchAuditOutboxStats: jest.fn(async () => ({
+          streamLength: 1,
+          pendingCount: 1,
+          deadLetterLength: 0
+        }))
+      },
+      { maxPagesPerDrain: 1, maxDeterministicConflicts: 3 }
+    );
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(service.drain()).resolves.toMatchObject({ failed: 1, deadLettered: 0 });
+    }
+    expect(recordConflict).not.toHaveBeenCalled();
+    await expect(service.drain()).resolves.toMatchObject({ failed: 1, deadLettered: 0 });
+    expect(recordConflict).toHaveBeenLastCalledWith(event, { abortSignal: undefined });
+    await expect(service.drain()).resolves.toMatchObject({ failed: 1, deadLettered: 0 });
+    await expect(service.drain()).resolves.toMatchObject({ failed: 0, deadLettered: 1 });
+    expect(deadLetter).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops after an abort that happens while database completion is in flight", async () => {
+    const abortController = new AbortController();
+    const acknowledge = jest.fn(async () => undefined);
+    const stats = jest.fn(async () => ({
+      streamLength: 1,
+      pendingCount: 1,
+      deadLetterLength: 0
+    }));
+    const complete = jest.fn(async () => {
+      abortController.abort(new Error("deadline"));
+      return true;
+    });
+    const service = new MerchantShopAuditOutboxService(
+      { completeMerchantShopSwitchAudit: complete },
+      {
+        readMerchantShopSwitchAuditOutbox: jest.fn(async () => ({
+          items: [
+            {
+              kind: "completion" as const,
+              streamId: "11-0",
+              auditId: 101,
+              operationId: "operation-aborted",
+              status: "completed" as const,
+              deliveryCount: 1
+            }
+          ],
+          nextPendingCursor: "0-0"
+        })),
+        acknowledgeMerchantShopSwitchAuditOutbox: acknowledge,
+        deadLetterMerchantShopSwitchAuditOutbox: jest.fn(async () => undefined),
+        getMerchantShopSwitchAuditOutboxStats: stats
+      }
+    );
+
+    await expect(service.drain({ abortSignal: abortController.signal })).rejects.toThrow(
+      "deadline"
+    );
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect(stats).not.toHaveBeenCalled();
   });
 });
 
@@ -394,5 +492,35 @@ describe("MerchantShopAuditOutboxWorker", () => {
         silentServer.close((error) => (error ? reject(error) : resolve()))
       );
     }
+  });
+
+  it("retains and retries a runtime whose first destroy attempt fails", async () => {
+    jest.useFakeTimers();
+    const destroy = jest
+      .fn<void, []>()
+      .mockImplementationOnce(() => {
+        throw new Error("destroy failed");
+      })
+      .mockImplementation(() => undefined);
+    const drain = jest.fn(
+      ({ abortSignal }: { abortSignal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          abortSignal.addEventListener("abort", () => reject(abortSignal.reason), { once: true });
+        })
+    );
+    const worker = new MerchantShopAuditOutboxWorker(
+      () => ({ service: { drain } as never, destroy }),
+      { info: jest.fn(), error: jest.fn() },
+      5_000,
+      1_000,
+      { drainTimeoutMs: 20, shutdownTimeoutMs: 10 }
+    );
+
+    worker.start();
+    await jest.advanceTimersByTimeAsync(20);
+    expect(destroy).toHaveBeenCalledTimes(1);
+    await worker.stop();
+    expect(destroy).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
   });
 });

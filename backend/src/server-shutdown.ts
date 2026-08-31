@@ -9,16 +9,57 @@ type ShutdownDependencies = {
   exit: (code: number) => void;
   logger: ShutdownLogger;
   stopWorker: () => void | Promise<void>;
+  forceStopWorker?: () => void;
+  workerStopTimeoutMs?: number;
 };
 
 export const createShutdownHandler = ({
   closeServer,
   disconnect,
   exit,
+  forceStopWorker,
   logger,
-  stopWorker
+  stopWorker,
+  workerStopTimeoutMs
 }: ShutdownDependencies) => {
   let shuttingDown = false;
+
+  const stopWorkersWithinDeadline = async (): Promise<void> => {
+    if (!forceStopWorker || workerStopTimeoutMs === undefined) {
+      await stopWorker();
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(
+        () => {
+          logger.error({ workerStopTimeoutMs }, "NeeDo backend worker shutdown deadline exceeded");
+          try {
+            forceStopWorker();
+          } catch (error) {
+            logger.error({ error }, "NeeDo backend worker force shutdown failed");
+          }
+          finish();
+        },
+        Math.max(1, Math.floor(workerStopTimeoutMs))
+      );
+      timeout.unref();
+      void Promise.resolve()
+        .then(stopWorker)
+        .then(finish)
+        .catch((error) => {
+          logger.error({ error }, "NeeDo backend worker shutdown failed");
+          finish();
+        });
+    });
+  };
 
   return (signal: NodeJS.Signals): void => {
     if (shuttingDown) {
@@ -28,7 +69,7 @@ export const createShutdownHandler = ({
     shuttingDown = true;
     logger.info({ signal }, "NeeDo backend shutdown requested");
     void Promise.resolve()
-      .then(stopWorker)
+      .then(stopWorkersWithinDeadline)
       .catch((error) => {
         logger.error({ error }, "NeeDo backend worker shutdown failed");
       })

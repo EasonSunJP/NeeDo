@@ -3,6 +3,7 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { checkRedisHealth, createRedisClient, disconnectRedis } from "./config/redis";
 import { disconnectPrisma } from "./prisma/client";
+import { createMerchantShopAuditCompletionRuntime } from "./prisma/merchant-shop-audit-completion.runtime";
 import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.repository";
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
@@ -79,10 +80,33 @@ const merchantShopAuditOutboxWorker = new MerchantShopAuditOutboxWorker(
         logger.error(event, "Merchant shop audit outbox receipt post-state mismatch");
       }
     });
+    const completionRuntime = createMerchantShopAuditCompletionRuntime(env, {
+      socketTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_DRAIN_TIMEOUT_MS,
+      onDisconnectError: (error) => {
+        logger.error({ error }, "Merchant shop audit completion database disconnect failed");
+      }
+    });
     return {
-      service: new MerchantShopAuditOutboxService(authRepository, sessionStore),
-      destroy: () => {
-        if (redisClient.isOpen) redisClient.destroy();
+      service: new MerchantShopAuditOutboxService(completionRuntime.repository, sessionStore),
+      destroy: async () => {
+        let redisError: unknown;
+        try {
+          if (redisClient.isOpen) redisClient.destroy();
+        } catch (error) {
+          redisError = error;
+        }
+        try {
+          await completionRuntime.destroy();
+        } catch (databaseError) {
+          if (redisError) {
+            throw new AggregateError(
+              [redisError, databaseError],
+              "Merchant shop audit worker runtime shutdown failed"
+            );
+          }
+          throw databaseError;
+        }
+        if (redisError) throw redisError;
       }
     };
   },
@@ -201,6 +225,8 @@ const shutdown = createShutdownHandler({
   },
   exit: (code) => process.exit(code),
   logger,
+  forceStopWorker: () => merchantShopAuditOutboxWorker.forceDestroy(),
+  workerStopTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_SHUTDOWN_TIMEOUT_MS,
   stopWorker: async () => {
     void realtimeEventGateway.close().catch((error) => {
       logger.error({ error }, "Realtime gateway shutdown failed");

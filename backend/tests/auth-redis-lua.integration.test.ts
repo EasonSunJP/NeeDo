@@ -565,11 +565,13 @@ describeRedis("Redis auth-store Lua integration", () => {
   it("walks more than one pending batch fairly, wraps the claim cursor, and bounds deterministic failures", async () => {
     const outboxKey = `${switchOutboxKey}:cursor`;
     const deadLetterKey = `${outboxKey}:dlq`;
+    const conflictKey = `${outboxKey}:conflicts`;
     const group = `${marker}-cursor-group`;
-    extraKeys.push(outboxKey, deadLetterKey);
+    extraKeys.push(outboxKey, deadLetterKey, conflictKey);
     const sourceConsumer = new RedisAuthSessionStore(() => client!, {
       merchantShopAuditOutboxKey: outboxKey,
       merchantShopAuditDeadLetterKey: deadLetterKey,
+      merchantShopAuditConflictKey: conflictKey,
       merchantShopAuditGroup: group,
       merchantShopAuditConsumer: `${marker}-cursor-source`,
       merchantShopAuditClaimIdleMs: 60_000,
@@ -578,6 +580,7 @@ describeRedis("Redis auth-store Lua integration", () => {
     const takeoverConsumer = new RedisAuthSessionStore(() => client!, {
       merchantShopAuditOutboxKey: outboxKey,
       merchantShopAuditDeadLetterKey: deadLetterKey,
+      merchantShopAuditConflictKey: conflictKey,
       merchantShopAuditGroup: group,
       merchantShopAuditConsumer: `${marker}-cursor-takeover`,
       merchantShopAuditClaimIdleMs: 0,
@@ -596,11 +599,17 @@ describeRedis("Redis auth-store Lua integration", () => {
     await sourceConsumer.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" });
     await sourceConsumer.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" });
 
-    const completeAudit = jest.fn(async (input: { auditId: number }) => input.auditId !== 93_001);
+    let firstEventAttempts = 0;
+    const completeAudit = jest.fn(async (input: { auditId: number }) => {
+      if (input.auditId !== 93_001) return true;
+      firstEventAttempts += 1;
+      if (firstEventAttempts <= 3) throw new Error("database unavailable");
+      return false;
+    });
     const service = new MerchantShopAuditOutboxService(
       { completeMerchantShopSwitchAudit: completeAudit as never },
       takeoverConsumer,
-      { maxPagesPerDrain: 1, maxDeliveryAttempts: 3 }
+      { maxPagesPerDrain: 1, maxDeterministicConflicts: 3 }
     );
 
     await expect(service.drain()).resolves.toMatchObject({ read: 2, completed: 1, failed: 1 });
@@ -609,6 +618,34 @@ describeRedis("Redis auth-store Lua integration", () => {
     await expect(client!.xRange(outboxKey, "-", "+")).resolves.toEqual([
       expect.objectContaining({ id: ids[0] })
     ]);
+    await expect(client!.hGet(conflictKey, ids[0]!)).resolves.toBeNull();
+    await expect(service.drain()).resolves.toMatchObject({
+      read: 1,
+      completed: 0,
+      failed: 1,
+      deadLettered: 0
+    });
+    await expect(service.drain()).resolves.toMatchObject({
+      read: 1,
+      completed: 0,
+      failed: 1,
+      deadLettered: 0
+    });
+    await expect(client!.hGet(conflictKey, ids[0]!)).resolves.toBeNull();
+    await expect(service.drain()).resolves.toMatchObject({
+      read: 1,
+      completed: 0,
+      failed: 1,
+      deadLettered: 0
+    });
+    await expect(client!.hGet(conflictKey, ids[0]!)).resolves.toBe("1");
+    await expect(service.drain()).resolves.toMatchObject({
+      read: 1,
+      completed: 0,
+      failed: 1,
+      deadLettered: 0
+    });
+    await expect(client!.hGet(conflictKey, ids[0]!)).resolves.toBe("2");
     await expect(service.drain()).resolves.toMatchObject({
       read: 1,
       completed: 0,
@@ -618,8 +655,9 @@ describeRedis("Redis auth-store Lua integration", () => {
       pendingCount: 0,
       deadLetterLength: 1
     });
+    await expect(client!.hGet(conflictKey, ids[0]!)).resolves.toBeNull();
     expect(completeAudit.mock.calls.map(([input]) => input.auditId)).toEqual([
-      93_001, 93_002, 93_003, 93_004, 93_005, 93_001
+      93_001, 93_002, 93_003, 93_004, 93_005, 93_001, 93_001, 93_001, 93_001, 93_001
     ]);
   });
 

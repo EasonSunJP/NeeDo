@@ -119,6 +119,10 @@ export interface AuthSessionStore {
     event: MerchantShopSwitchAuditPoisonEvent,
     options?: MerchantShopSwitchAuditOutboxCommandOptions
   ) => Promise<void>;
+  recordMerchantShopSwitchAuditConflict?: (
+    event: MerchantShopSwitchAuditOutboxEvent,
+    options?: MerchantShopSwitchAuditOutboxCommandOptions
+  ) => Promise<number>;
   getMerchantShopSwitchAuditOutboxStats?: (
     options?: MerchantShopSwitchAuditOutboxCommandOptions
   ) => Promise<MerchantShopSwitchAuditOutboxStats>;
@@ -149,11 +153,13 @@ interface RedisAuthSessionStoreOptions {
   merchantShopSwitchMaxAttempts?: number;
   merchantShopAuditOutboxKey?: string;
   merchantShopAuditDeadLetterKey?: string;
+  merchantShopAuditConflictKey?: string;
   merchantShopAuditGroup?: string;
   merchantShopAuditConsumer?: string;
   merchantShopAuditClaimIdleMs?: number;
   merchantShopAuditBatchSize?: number;
   merchantShopAuditDeadLetterMaxLength?: number;
+  merchantShopAuditConflictTtlSeconds?: number;
   onSecurityEvent?: (event: { operation: string; reason: string }) => void;
 }
 
@@ -163,11 +169,13 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   private readonly merchantShopSwitchMaxAttempts: number;
   private readonly merchantShopAuditOutboxKey: string;
   private readonly merchantShopAuditDeadLetterKey: string;
+  private readonly merchantShopAuditConflictKey: string;
   private readonly merchantShopAuditGroup: string;
   private readonly merchantShopAuditConsumer: string;
   private readonly merchantShopAuditClaimIdleMs: number;
   private readonly merchantShopAuditBatchSize: number;
   private readonly merchantShopAuditDeadLetterMaxLength: number;
+  private readonly merchantShopAuditConflictTtlSeconds: number;
   private readonly onSecurityEvent: (event: { operation: string; reason: string }) => void;
 
   public constructor(
@@ -185,6 +193,8 @@ export class RedisAuthSessionStore implements AuthSessionStore {
       options.merchantShopAuditOutboxKey ?? MERCHANT_SHOP_SWITCH_AUDIT_OUTBOX_KEY;
     this.merchantShopAuditDeadLetterKey =
       options.merchantShopAuditDeadLetterKey ?? `${this.merchantShopAuditOutboxKey}:dlq`;
+    this.merchantShopAuditConflictKey =
+      options.merchantShopAuditConflictKey ?? `${this.merchantShopAuditOutboxKey}:conflicts`;
     this.merchantShopAuditGroup =
       options.merchantShopAuditGroup ?? MERCHANT_SHOP_SWITCH_AUDIT_GROUP;
     this.merchantShopAuditConsumer =
@@ -201,6 +211,10 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     this.merchantShopAuditDeadLetterMaxLength = Math.max(
       1,
       Math.floor(options.merchantShopAuditDeadLetterMaxLength ?? 1_000)
+    );
+    this.merchantShopAuditConflictTtlSeconds = Math.max(
+      1,
+      Math.floor(options.merchantShopAuditConflictTtlSeconds ?? 7 * 24 * 60 * 60)
     );
     this.onSecurityEvent = options.onSecurityEvent ?? (() => undefined);
   }
@@ -470,7 +484,11 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   ): Promise<void> {
     const response = await this.evalMerchantShopAuditOutbox(
       MERCHANT_SHOP_SWITCH_AUDIT_ACK_LUA,
-      [this.merchantShopAuditOutboxKey, this.merchantShopSwitchReceiptKey(event.operationId)],
+      [
+        this.merchantShopAuditOutboxKey,
+        this.merchantShopSwitchReceiptKey(event.operationId),
+        this.merchantShopAuditConflictKey
+      ],
       [this.merchantShopAuditGroup, event.streamId, event.operationId],
       options.abortSignal
     );
@@ -485,7 +503,11 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   ): Promise<void> {
     const response = await this.evalMerchantShopAuditOutbox(
       MERCHANT_SHOP_SWITCH_AUDIT_DEAD_LETTER_LUA,
-      [this.merchantShopAuditOutboxKey, this.merchantShopAuditDeadLetterKey],
+      [
+        this.merchantShopAuditOutboxKey,
+        this.merchantShopAuditDeadLetterKey,
+        this.merchantShopAuditConflictKey
+      ],
       [
         this.merchantShopAuditGroup,
         event.streamId,
@@ -497,6 +519,28 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     if (!this.isExactOkResponse(response)) {
       throw this.redisUnavailableError(new Error("DLQ write rejected"));
     }
+  }
+
+  public async recordMerchantShopSwitchAuditConflict(
+    event: MerchantShopSwitchAuditOutboxEvent,
+    options: MerchantShopSwitchAuditOutboxCommandOptions = {}
+  ): Promise<number> {
+    const response = await this.evalMerchantShopAuditOutbox(
+      MERCHANT_SHOP_SWITCH_AUDIT_CONFLICT_LUA,
+      [this.merchantShopAuditConflictKey],
+      [event.streamId, String(this.merchantShopAuditConflictTtlSeconds)],
+      options.abortSignal
+    );
+    const count = Number(response[1]);
+    if (
+      response.length !== 2 ||
+      response[0] !== "ok" ||
+      !Number.isSafeInteger(count) ||
+      count <= 0
+    ) {
+      throw this.redisUnavailableError(new Error("Audit conflict increment rejected"));
+    }
+    return count;
   }
 
   public async getMerchantShopSwitchAuditOutboxStats(
@@ -1024,9 +1068,12 @@ local streamType = keyType(KEYS[1])
 if streamType ~= 'stream' then return {'rejected'} end
 local receiptType = keyType(KEYS[2])
 if receiptType ~= 'none' and receiptType ~= 'hash' then return {'rejected'} end
+local conflictType = keyType(KEYS[3])
+if conflictType ~= 'none' and conflictType ~= 'hash' then return {'rejected'} end
 if redis.acl_check_cmd and (
   not redis.acl_check_cmd('XACK', KEYS[1], ARGV[1], ARGV[2]) or
   not redis.acl_check_cmd('XDEL', KEYS[1], ARGV[2]) or
+  (conflictType == 'hash' and not redis.acl_check_cmd('HDEL', KEYS[3], ARGV[2])) or
   (receiptType == 'hash' and not redis.acl_check_cmd('HSET', KEYS[2], 'auditState', 'completed'))
 ) then return {'rejected'} end
 if receiptType == 'hash' and redis.call('HGET', KEYS[2], 'outboxId') == ARGV[2] and
@@ -1035,6 +1082,7 @@ if receiptType == 'hash' and redis.call('HGET', KEYS[2], 'outboxId') == ARGV[2] 
 end
 redis.call('XACK', KEYS[1], ARGV[1], ARGV[2])
 redis.call('XDEL', KEYS[1], ARGV[2])
+if conflictType == 'hash' then redis.call('HDEL', KEYS[3], ARGV[2]) end
 return {'ok'}
 `;
 
@@ -1057,11 +1105,14 @@ end
 if keyType(KEYS[1]) ~= 'stream' then return {'rejected'} end
 local dlqType = keyType(KEYS[2])
 if dlqType ~= 'none' and dlqType ~= 'stream' then return {'rejected'} end
+local conflictType = keyType(KEYS[3])
+if conflictType ~= 'none' and conflictType ~= 'hash' then return {'rejected'} end
 if not streamHasCapacity(KEYS[2]) then return {'rejected'} end
 if redis.acl_check_cmd and (
   not redis.acl_check_cmd('XADD', KEYS[2], 'MAXLEN', ARGV[4], '*', 'sourceStreamId', ARGV[2], 'reason', ARGV[3], 'status', 'poison') or
   not redis.acl_check_cmd('XACK', KEYS[1], ARGV[1], ARGV[2]) or
-  not redis.acl_check_cmd('XDEL', KEYS[1], ARGV[2])
+  not redis.acl_check_cmd('XDEL', KEYS[1], ARGV[2]) or
+  (conflictType == 'hash' and not redis.acl_check_cmd('HDEL', KEYS[3], ARGV[2]))
 ) then return {'rejected'} end
 redis.call(
   'XADD', KEYS[2], 'MAXLEN', ARGV[4], '*',
@@ -1069,7 +1120,30 @@ redis.call(
 )
 redis.call('XACK', KEYS[1], ARGV[1], ARGV[2])
 redis.call('XDEL', KEYS[1], ARGV[2])
+if conflictType == 'hash' then redis.call('HDEL', KEYS[3], ARGV[2]) end
 return {'ok'}
+`;
+
+const MERCHANT_SHOP_SWITCH_AUDIT_CONFLICT_LUA = `
+-- auth-merchant-shop-switch-audit-conflict
+local function keyType(key)
+  local result = redis.call('TYPE', key)
+  if type(result) == 'table' then return result.ok end
+  return result
+end
+local conflictType = keyType(KEYS[1])
+if conflictType ~= 'none' and conflictType ~= 'hash' then return {'rejected'} end
+local current = conflictType == 'hash' and redis.call('HGET', KEYS[1], ARGV[1]) or false
+if current and (string.match(current, '^%d+$') == nil or string.len(current) > 9) then
+  return {'rejected'}
+end
+if redis.acl_check_cmd and (
+  not redis.acl_check_cmd('HINCRBY', KEYS[1], ARGV[1], '1') or
+  not redis.acl_check_cmd('EXPIRE', KEYS[1], ARGV[2])
+) then return {'rejected'} end
+local count = redis.call('HINCRBY', KEYS[1], ARGV[1], 1)
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+return {'ok', tostring(count)}
 `;
 
 const GOOGLE_UNLINK_COMPLETE_LUA = `
