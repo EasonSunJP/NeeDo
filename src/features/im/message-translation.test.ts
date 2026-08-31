@@ -1,54 +1,76 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildImMessageTranslationBatches,
+  collectCompletedImMessageTranslationIds,
   getImMessageCopyText,
-  getImMessageDisplayParts,
-  getImMessageDisplayText,
+  getImMessageTranslationSource,
+  getImTranslationTargetLanguage,
+  isImMessageTranslationEligible,
+  mergeTranslatedImMessageResults,
+  resolveVisibleImMessageTranslation,
 } from "./message-translation";
 import type { ConversationMessage, MessageExt } from "./model";
 
 describe("IM message display translation", () => {
-  it("keeps disabled message text unchanged", () => {
-    expect(getImMessageDisplayText("测试测试", undefined, {
-      enabled: false,
-      language: "ja"
-    })).toBe("测试测试");
+  const message = (overrides: Partial<ConversationMessage> = {}): ConversationMessage => ({
+    id: "41",
+    localId: "41",
+    conversationId: "91",
+    senderId: "partner",
+    type: "text",
+    content: "测试测试",
+    status: "sent",
+    sentAt: "2026-08-31T00:00:00.000Z",
+    clientSeq: 1,
+    ...overrides,
   });
 
-  it("translates enabled message text without changing unknown free text or whitespace", () => {
-    expect(getImMessageDisplayText("测试测试", undefined, {
-      enabled: true,
-      language: "ja"
-    })).toBe("テストテスト");
-    expect(getImMessageDisplayText("  free text  ", undefined, {
-      enabled: true,
-      language: "ja"
-    })).toBe("  free text  ");
-  });
-
-  it("translates only rich text segments and preserves judgement tokens without mutating raw input", () => {
-    const richText: MessageExt["richText"] = {
-      version: 1,
-      parts: [
-        { type: "judgement", value: "Done" },
-        { type: "text", value: "测试" },
-        { type: "judgement", value: "OK" }
-      ]
-    };
-    const originalParts = richText.parts.map((part) => ({ ...part }));
-
-    expect(getImMessageDisplayParts("Done测试OK", richText, {
-      enabled: true,
-      language: "ja"
-    })).toEqual([
-      { type: "judgement", value: "Done" },
-      { type: "text", value: "テスト" },
-      { type: "judgement", value: "OK" }
+  it("maps the exact App language union to the formal translation target", () => {
+    expect((["zh", "zh-Hant", "ja", "en", "ko"] as const).map(getImTranslationTargetLanguage)).toEqual([
+      "zh",
+      "zh-Hant",
+      "ja",
+      "en",
+      "ko",
     ]);
-    expect(getImMessageDisplayText("Done测试OK", richText, {
-      enabled: true,
-      language: "ja"
-    })).toBe("DoneテストOK");
-    expect(richText.parts).toEqual(originalParts);
+  });
+
+  it("accepts only settled authoritative text or image/video captions", () => {
+    expect(isImMessageTranslationEligible(message())).toBe(true);
+    expect(isImMessageTranslationEligible(message({ type: "image", content: "/media/a.jpg", ext: { caption: "说明" } }))).toBe(true);
+    expect(isImMessageTranslationEligible(message({ type: "video", content: "/media/a.mp4", ext: { caption: "  " } }))).toBe(false);
+    expect(isImMessageTranslationEligible(message({ id: "local-1", localId: "local-1" }))).toBe(false);
+    expect(isImMessageTranslationEligible(message({ status: "sending" }))).toBe(false);
+    expect(isImMessageTranslationEligible(message({ type: "file", ext: { fileName: "x.pdf" } }))).toBe(false);
+    expect(getImMessageTranslationSource(message({ type: "image", ext: { caption: " 说明 " } }))).toBe(" 说明 ");
+  });
+
+  it("deduplicates authoritative IDs and chunks automatic requests at fifty in source order", () => {
+    const messages = Array.from({ length: 52 }, (_, index) => message({ id: String(index + 1), localId: String(index + 1), clientSeq: index + 1 }));
+    messages.splice(10, 0, messages[0]!);
+    messages.push(message({ id: "local-pending", localId: "local-pending", status: "sending" }));
+
+    const chunks = buildImMessageTranslationBatches(messages);
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toHaveLength(50);
+    expect(chunks[1]).toEqual(["51", "52"]);
+    expect(chunks.flat()).toEqual(Array.from({ length: 52 }, (_, index) => String(index + 1)));
+  });
+
+  it("keeps successful translated text, marks every returned ID completed, and gives automatic display priority", () => {
+    const results = [
+      { messageId: "2", status: "same_language" },
+      { messageId: "1", status: "translated", translatedContent: "一" },
+      { messageId: "3", status: "ineligible" },
+      { messageId: "4", status: "translated", translatedContent: "  " },
+    ] as const;
+    const merged = mergeTranslatedImMessageResults({}, results);
+
+    expect(merged).toEqual({ "1": { content: "一", visible: true } });
+    expect(collectCompletedImMessageTranslationIds(results)).toEqual(["2", "1", "3", "4"]);
+    expect(resolveVisibleImMessageTranslation(true, { content: "手动", visible: true }, { content: "自动", visible: true })).toEqual({ content: "自动", visible: true });
+    expect(resolveVisibleImMessageTranslation(false, { content: "手动", visible: true }, { content: "自动", visible: true })).toEqual({ content: "手动", visible: true });
   });
 
   it("always copies the stored original text without mutating the message", () => {
@@ -66,6 +88,7 @@ describe("IM message display translation", () => {
     const original = structuredClone(message);
 
     expect(getImMessageCopyText(message)).toBe("测试测试");
+    expect(getImMessageCopyText(message, "テストテスト")).toBe("テストテスト");
     expect(message).toEqual(original);
   });
 

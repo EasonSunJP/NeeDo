@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImMessageActionSheet, ImQuotedMessagePreview, MessageBubble } from "./components";
 import type { ImMessageActionSheetItem } from "./components";
 import type { ConversationMessage } from "./model";
+import { getRecentImReactionSnapshot, recordRecentImReaction } from "./reaction-catalog";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
@@ -45,15 +46,19 @@ function buildActionSpies() {
     forward: vi.fn(),
     pin: vi.fn(),
     recall: vi.fn(),
-    reply: vi.fn()
+    reply: vi.fn(),
+    translate: vi.fn(),
+    multiselect: vi.fn(),
   };
   const actions: ImMessageActionSheetItem[] = [
     { icon: "reply", key: "reply", label: "回复", onClick: spies.reply },
     { icon: "forward", key: "forward", label: "转发", onClick: spies.forward },
     { icon: "copy", key: "copy", label: "复制", onClick: spies.copy },
+    { icon: "translate", key: "translate", label: "翻译", onClick: spies.translate },
     { icon: "pin", key: "pin", label: "信息置顶", onClick: spies.pin },
     { icon: "delete", key: "recall", label: "撤回", onClick: spies.recall },
-    { icon: "delete", key: "delete", label: "删除", onClick: spies.delete }
+    { icon: "delete", key: "delete", label: "删除", onClick: spies.delete },
+    { icon: "select", key: "multiselect", label: "多选", onClick: spies.multiselect },
   ];
 
   return { actions, spies };
@@ -112,9 +117,11 @@ describe("ImMessageActionSheet", () => {
           { icon: "reply", key: "reply", label: "回复", onClick: vi.fn() },
           { icon: "forward", key: "forward", label: "转发", onClick: vi.fn() },
           { icon: "copy", key: "copy", label: "复制", onClick: vi.fn() },
+          { icon: "translate", key: "translate", label: "翻译", onClick: vi.fn() },
           { icon: "pin", key: "pin", label: "信息置顶", onClick: vi.fn() },
           { icon: "delete", key: "recall", label: "撤回", onClick: vi.fn() },
-          { icon: "delete", key: "delete", label: "删除", onClick: vi.fn() }
+          { icon: "delete", key: "delete", label: "删除", onClick: vi.fn() },
+          { icon: "select", key: "multiselect", label: "多选", onClick: vi.fn() },
         ],
         anchorElement: anchor,
         expanded: false,
@@ -151,7 +158,8 @@ describe("ImMessageActionSheet", () => {
     expect(arrow?.className).toContain("client-liquid-glass-arrow");
     expect(arrow?.className).toContain("-bottom-2");
     expect(actionGrid?.compareDocumentPosition(reactions!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(actionGrid?.className).toContain("grid-cols-6");
+    expect(actionGrid?.className).toContain("grid-cols-4");
+    expect(actionGrid?.dataset.imMessageActionLayout).toBe("two-row");
     expect(actionGrid?.className).not.toContain("min-[480px]");
     expect(quickReactionGrid?.className).toContain("grid-cols-7");
     expect(quickReactionGrid?.className).not.toContain("min-[480px]");
@@ -160,9 +168,12 @@ describe("ImMessageActionSheet", () => {
         .find((candidate) => candidate.textContent?.trim() === emoji);
       expect(button).toBeDefined();
     }
-    expect(actionGrid?.querySelectorAll('[data-im-message-action-item="true"]')).toHaveLength(6);
-    expect(actionItem?.className).toContain("py-2");
-    expect(actionItem?.querySelector("span")?.className).toContain("h-8");
+    expect(actionGrid?.querySelectorAll('[data-im-message-action-item="true"]')).toHaveLength(8);
+    expect(actionGrid?.textContent).toContain("翻译");
+    expect(actionGrid?.textContent).toContain("多选");
+    expect(actionItem?.className).toContain("min-h-11");
+    expect(actionItem?.className).toContain("py-1");
+    expect(actionItem?.querySelector("span")?.className).toContain("h-7");
     expect(
       [...menu!.querySelectorAll("button")].some((button) => button.textContent?.trim() === "收起")
     ).toBe(false);
@@ -182,11 +193,10 @@ describe("ImMessageActionSheet", () => {
   });
 
   it.each([
-    { contentWidth: 360, expectedActionLayout: "single-row", expectedReactionDensity: "full", expectedReactionCount: 7 },
-    { contentWidth: 280, expectedActionLayout: "two-row", expectedReactionDensity: "compact", expectedReactionCount: 5 }
+    { contentWidth: 360, expectedReactionDensity: "full", expectedReactionCount: 7 },
+    { contentWidth: 280, expectedReactionDensity: "compact", expectedReactionCount: 5 }
   ])("derives its compact layout from the rendered menu width: $contentWidth", async ({
     contentWidth,
-    expectedActionLayout,
     expectedReactionCount,
     expectedReactionDensity
   }) => {
@@ -240,12 +250,46 @@ describe("ImMessageActionSheet", () => {
     const actionGrid = menu?.querySelector<HTMLElement>('[data-im-message-action-section="actions"]');
     const quickReactionGrid = menu?.querySelector<HTMLElement>('[data-im-message-reaction-row="quick"]');
 
-    expect(actionGrid?.dataset.imMessageActionLayout).toBe(expectedActionLayout);
+    expect(actionGrid?.dataset.imMessageActionLayout).toBe("two-row");
+    expect(actionGrid?.className).toContain("grid-cols-4");
     expect(quickReactionGrid?.dataset.imMessageReactionDensity).toBe(expectedReactionDensity);
     expect(quickReactionGrid?.querySelectorAll("button")).toHaveLength(expectedReactionCount);
     expect(actionGrid?.className).not.toContain("min-[480px]");
     expect(quickReactionGrid?.className).not.toContain("min-[480px]");
 
+    await act(async () => root.unmount());
+  });
+
+  it("keeps the common reaction snapshot stable until the menu is reopened", async () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 });
+    const anchor = document.createElement("div");
+    anchor.dataset.imMessageSide = "left";
+    document.body.append(anchor);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this === anchor) return buildRect({ bottom: 560, height: 60, left: 0, top: 500, width: 640 });
+      if (this.dataset.imMessageActionSheet === "true") return buildRect({ bottom: 292, height: 280, left: 40, top: 12, width: 376 });
+      if (this.dataset.imMessageActionContent === "true") return buildRect({ bottom: 284, height: 264, left: 48, top: 20, width: 360 });
+      return buildRect({ bottom: 0, height: 0, left: 0, top: 0, width: 0 });
+    });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const { actions } = buildActionSpies();
+    const renderMenu = async (open: boolean) => {
+      await act(async () => root.render(open ? <ImMessageActionSheet actions={actions} anchorElement={anchor} expanded={false} isNight onClose={vi.fn()} onExpandedChange={vi.fn()} onReact={vi.fn()} /> : null));
+    };
+    const readQuickOrder = () => [...document.querySelectorAll<HTMLElement>('[data-im-message-reaction-row="quick"] [data-im-reaction-value]')].map((item) => item.dataset.imReactionValue);
+
+    await renderMenu(true);
+    const before = readQuickOrder();
+    const next = getRecentImReactionSnapshot().find((reaction) => reaction !== before[0])!;
+    recordRecentImReaction(next);
+    expect(readQuickOrder()).toEqual(before);
+
+    await renderMenu(false);
+    await renderMenu(true);
+    expect(readQuickOrder()[0]).toBe(next);
     await act(async () => root.unmount());
   });
 
@@ -696,7 +740,7 @@ describe("MessageBubble quoted media", () => {
 });
 
 describe("MessageBubble translation display boundary", () => {
-  const japaneseTranslation = { enabled: true, language: "ja" } as const;
+  const japaneseTranslation = (content: string) => ({ content, language: "ja", visible: true } as const);
   const messageBase = {
     conversationId: "conversation-translation-1",
     senderId: "sender-1",
@@ -723,13 +767,15 @@ describe("MessageBubble translation display boundary", () => {
     expect(container.textContent).toContain("测试测试");
 
     await act(async () => {
-      root.render(createElement(MessageBubble, { message, isMine: true, translation: japaneseTranslation }));
+      root.render(createElement(MessageBubble, { message, isMine: true, translation: japaneseTranslation("テストテスト") }));
     });
     expect(container.textContent).toContain("测试测试");
+    expect(container.querySelector('[data-im-message-translation="true"]')?.textContent).toBe("テストテスト");
 
     await act(async () => {
-      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation }));
+      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation("テストテスト") }));
     });
+    expect(container.textContent).toContain("测试测试");
     expect(container.textContent).toContain("テストテスト");
     expect(container.querySelector('[data-no-i18n][data-im-message-selectable-text="true"]')).not.toBeNull();
 
@@ -759,12 +805,13 @@ describe("MessageBubble translation display boundary", () => {
     };
 
     await act(async () => {
-      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation }));
+      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation("DoneテストOK") }));
     });
 
     const richText = container.querySelector<HTMLElement>('[data-im-message-rich-text="true"]');
-    expect(richText?.textContent).toBe("テスト");
+    expect(richText?.textContent).toBe("测试");
     expect([...richText!.querySelectorAll("img")].map((image) => image.alt)).toEqual(["Done", "OK"]);
+    expect(container.querySelector('[data-im-message-translation="true"]')?.textContent).toBe("DoneテストOK");
 
     await act(async () => root.unmount());
   });
@@ -800,7 +847,7 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => {
       root.render(createElement("div", null,
         createElement("section", { "data-test-main-media-caption": "true" },
-          createElement(MessageBubble, { message: mediaMessage, isMine: false, translation: japaneseTranslation })
+          createElement(MessageBubble, { message: mediaMessage, isMine: false, translation: japaneseTranslation("テストテスト") })
         ),
         createElement("section", { "data-test-quoted-text": "true" },
           createElement(ImQuotedMessagePreview, { message: quotedText })
@@ -811,7 +858,8 @@ describe("MessageBubble translation display boundary", () => {
       ));
     });
 
-    expect(container.querySelector('[data-test-main-media-caption] [data-no-i18n]')?.textContent).toBe("テストテスト");
+    expect(container.querySelector('[data-test-main-media-caption] [data-no-i18n]')?.textContent).toBe("测试测试");
+    expect(container.querySelector('[data-test-main-media-caption] [data-im-message-translation="true"]')?.textContent).toBe("テストテスト");
     expect(container.querySelector('[data-test-quoted-text] [data-no-i18n]')?.textContent).toBe("测试测试");
     expect(container.querySelector('[data-test-quoted-media-caption] [data-im-quoted-media-caption="true"] [data-no-i18n]')?.textContent).toBe("测试测试");
 
@@ -834,7 +882,7 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => {
       root.render(createElement("div", null,
         createElement("section", { "data-test-main-file-name": "true" },
-          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
+          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation("ファイル") })
         ),
         createElement("section", { "data-test-quoted-file-name-enabled": "true" },
           createElement(ImQuotedMessagePreview, { message: fileMessage })
@@ -904,7 +952,7 @@ describe("MessageBubble translation display boundary", () => {
     await act(async () => {
       root.render(createElement("div", null,
         createElement("section", { "data-test-main-file-fallback": "true" },
-          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
+          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation("ファイル") })
         ),
         createElement("section", { "data-test-quoted-file-fallback": "true" },
           createElement(ImQuotedMessagePreview, { message: fileMessage })

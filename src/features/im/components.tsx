@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type ClipboardEvent as ReactClipboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -35,8 +34,7 @@ import { ImChatRecordCard } from "./ImChatRecordCard";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
-  recordRecentImReaction,
-  subscribeRecentImReactions
+  recordRecentImReaction
 } from "./reaction-catalog";
 import {
   encodeImComposerJudgement,
@@ -45,11 +43,10 @@ import {
   parseImComposerDraft,
   type ImReactionCategory
 } from "./reaction-policy";
-import { getImMessageDisplayParts, type ImMessageTranslationOptions } from "./message-translation";
+import { getImMessageDisplayParts, getImMessageTranslationSource, type ImMessageTranslationOptions } from "./message-translation";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
 
 const defaultImMessageTranslation: ImMessageTranslationOptions = {
-  enabled: false,
   language: "zh"
 };
 
@@ -2322,7 +2319,7 @@ function ImMessageActionButton({
   return (
     <button
       className={cn(
-        "focus-ring min-h-11 min-w-0 rounded-[14px] px-1 py-2 text-center transition",
+        "focus-ring min-h-11 min-w-0 rounded-[14px] px-0.5 py-1 text-center transition",
         "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] text-[color:var(--client-text)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_13%,var(--client-surface)_87%)]",
         danger && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
         item.disabled && "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]"
@@ -2332,7 +2329,7 @@ function ImMessageActionButton({
       onClick={item.onClick}
       type="button"
     >
-      <span className={cn("mx-auto grid h-8 w-8 place-items-center rounded-xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
+      <span className={cn("mx-auto grid h-7 w-7 place-items-center rounded-[10px] bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
         <ImIcon name={item.icon === "pin" ? "top" : item.icon} />
       </span>
       <span className="mt-1 block truncate text-[11px] font-black leading-4">{item.label}</span>
@@ -2369,10 +2366,8 @@ export function ImMessageActionSheet({
   const backdropInteractiveAtRef = useRef(Date.now() + imMessageActionBackdropOpeningGraceMs);
   const menuRef = useRef<HTMLElement | null>(null);
   const menuContentRef = useRef<HTMLDivElement | null>(null);
-  const recentReactions = useSyncExternalStore(
-    subscribeRecentImReactions,
-    getRecentImReactionSnapshot,
-    getRecentImReactionSnapshot
+  const [recentReactions, setRecentReactions] = useState<readonly string[]>(
+    () => getRecentImReactionSnapshot()
   );
   const [menuPosition, setMenuPosition] = useState({
     arrowLeft: 28,
@@ -2383,6 +2378,10 @@ export function ImMessageActionSheet({
     ready: false,
     top: 12
   });
+
+  useLayoutEffect(() => {
+    setRecentReactions(getRecentImReactionSnapshot());
+  }, [anchorElement]);
 
   useLayoutEffect(() => {
     if (!anchorElement || typeof window === "undefined") {
@@ -2487,7 +2486,6 @@ export function ImMessageActionSheet({
     top: menuPosition.top,
     width: "min(520px, calc(100vw - 32px))"
   };
-  const actionsFitOneRow = menuPosition.contentWidth >= 304;
   const reactionsFitFullRow = menuPosition.contentWidth >= 336;
   const reactionSection = (
     <section
@@ -2510,8 +2508,8 @@ export function ImMessageActionSheet({
 
   const actionSection = actions.length > 0 ? (
     <div
-      className={cn("grid gap-1", actionsFitOneRow ? "grid-cols-6" : "grid-cols-3")}
-      data-im-message-action-layout={actionsFitOneRow ? "single-row" : "two-row"}
+      className="grid grid-cols-4 gap-1"
+      data-im-message-action-layout="two-row"
       data-im-message-action-section="actions"
       key="actions"
     >
@@ -2970,7 +2968,12 @@ export function MessageBubble({
   translation?: ImMessageTranslationOptions;
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
-  const bodyTranslation = isMine ? defaultImMessageTranslation : translation;
+  const visibleTranslation = translation.visible
+    && typeof translation.content === "string"
+    && translation.content.trim()
+    && getImMessageTranslationSource(message) !== null
+      ? translation.content
+      : undefined;
   const disappearing = message.ext?.disappearing;
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
@@ -3009,7 +3012,6 @@ export function MessageBubble({
           )}
           content={message.content}
           richText={message.ext?.richText}
-          translation={bodyTranslation}
           selectable
         />
       );
@@ -3032,7 +3034,6 @@ export function MessageBubble({
               className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
               content={message.ext.caption}
               richText={message.ext.captionRichText}
-              translation={bodyTranslation}
               selectable
             />
           ) : null}
@@ -3274,6 +3275,15 @@ export function MessageBubble({
       <div className={cn("flex flex-col", message.type === "contact-card" ? "max-w-[calc(100%-3.25rem)]" : "max-w-[78%]", isMine ? "items-end" : "items-start")}>
         {showSender && !isMine ? <p className="mb-1 px-1 text-[11px] font-bold text-[color:var(--client-muted)]">{senderName}</p> : null}
         <div className={cn("inline-flex min-w-0 max-w-full overflow-hidden", bubbleShellClass)} data-im-message-bubble="true">{contentNode}</div>
+        {visibleTranslation ? (
+          <p
+            className="mt-1 max-w-full whitespace-pre-wrap break-words px-1 text-[13px] font-semibold leading-5 text-[color:var(--client-muted)] [overflow-wrap:anywhere]"
+            data-im-message-translation="true"
+            data-no-i18n="true"
+          >
+            {visibleTranslation}
+          </p>
+        ) : null}
         {disappearing ? <DisappearingCountdownStatus disappearing={disappearing} now={disappearingNow} /> : null}
         {status ? <p className={cn("mt-1 px-1 text-[11px] font-bold", message.status === "failed" ? "text-[#ef4f3f]" : "text-[color:var(--client-muted)]")}>{status}</p> : null}
       </div>

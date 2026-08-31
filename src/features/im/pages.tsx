@@ -109,7 +109,17 @@ import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contac
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
-import { getImMessageCopyText } from "./message-translation";
+import {
+  buildImMessageTranslationBatches,
+  collectCompletedImMessageTranslationIds,
+  getImMessageCopyText,
+  getImTranslationTargetLanguage,
+  imAutomaticTranslationRetryDelayMs,
+  isImMessageTranslationEligible,
+  mergeTranslatedImMessageResults,
+  resolveVisibleImMessageTranslation,
+  type VisibleMessageTranslation,
+} from "./message-translation";
 import {
   FriendDeletionConfirmDialog,
   useFriendDeletionConfirmation,
@@ -4729,10 +4739,7 @@ export function ImConversationRoomPage({
   const [searchParams] = useSearchParams();
   const back = useRoomBackTarget();
   const { conversation, messages, members } = useConversationData(store, conversationId);
-  const messageTranslation = {
-    enabled: conversation?.autoTranslateMessages ?? false,
-    language,
-  };
+  const automaticTranslationEnabled = conversation?.autoTranslateMessages ?? false;
   const [draft, setDraft] = useState("");
   const [quotedMessageId, setQuotedMessageId] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<"emoji" | "more" | null>(null);
@@ -4742,6 +4749,9 @@ export function ImConversationRoomPage({
   const [menuState, setMenuState] = useState<MessageMenuState | null>(null);
   const [messageMenuExpanded, setMessageMenuExpanded] = useState(false);
   const [messageReactions, setMessageReactions] = useState<ImMessageReactionState>({});
+  const [manualTranslations, setManualTranslations] = useState<Record<string, VisibleMessageTranslation>>({});
+  const [automaticTranslations, setAutomaticTranslations] = useState<Record<string, VisibleMessageTranslation>>({});
+  const [manualTranslationPendingIds, setManualTranslationPendingIds] = useState<Set<string>>(() => new Set());
   const [mediaPreview, setMediaPreview] = useState<ConversationMessage | null>(null);
   const [mediaPreviewScale, setMediaPreviewScale] = useState(1);
   const [contactCardPickerOpen, setContactCardPickerOpen] = useState(false);
@@ -4768,6 +4778,12 @@ export function ImConversationRoomPage({
   const listStateRef = useRef({ conversationId: "", messageCount: 0 });
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const reactionPendingKeysRef = useRef(new Set<string>());
+  const translationInflightIdsRef = useRef(new Set<string>());
+  const translationCompletedIdsRef = useRef(new Set<string>());
+  const translationRetryAfterRef = useRef(new Map<string, number>());
+  const translationScopeRef = useRef(`${conversationId}:${language}`);
+  const translationGenerationRef = useRef(0);
+  const manualTranslationPendingIdsRef = useRef(new Set<string>());
   const [reactionPendingKeys, setReactionPendingKeys] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLDivElement | null>(null);
   const voiceButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -4808,6 +4824,18 @@ export function ImConversationRoomPage({
     }
     setPendingImage(undefined);
   }, [conversationId]);
+
+  useEffect(() => {
+    translationGenerationRef.current += 1;
+    translationScopeRef.current = `${conversationId}:${language}`;
+    translationInflightIdsRef.current.clear();
+    translationCompletedIdsRef.current.clear();
+    translationRetryAfterRef.current.clear();
+    manualTranslationPendingIdsRef.current.clear();
+    setManualTranslations({});
+    setAutomaticTranslations({});
+    setManualTranslationPendingIds(new Set());
+  }, [conversationId, language]);
 
   useEffect(() => {
     let disposed = false;
@@ -4863,6 +4891,81 @@ export function ImConversationRoomPage({
     });
     setMessageReactions(next);
   }, [messages]);
+
+  useEffect(() => {
+    if (!automaticTranslationEnabled) {
+      if (Object.keys(automaticTranslations).length > 0) {
+        setAutomaticTranslations({});
+      }
+      translationInflightIdsRef.current.clear();
+      translationCompletedIdsRef.current.clear();
+      translationRetryAfterRef.current.clear();
+      return;
+    }
+
+    const now = Date.now();
+    for (const [messageId, retryAfter] of translationRetryAfterRef.current.entries()) {
+      if (retryAfter <= now) {
+        translationRetryAfterRef.current.delete(messageId);
+      }
+    }
+
+    const excludedIds = new Set<string>([
+      ...translationCompletedIdsRef.current,
+      ...Object.keys(automaticTranslations),
+      ...translationInflightIdsRef.current,
+    ]);
+    translationRetryAfterRef.current.forEach((retryAfter, messageId) => {
+      if (retryAfter > now) {
+        excludedIds.add(messageId);
+      }
+    });
+    const chunks = buildImMessageTranslationBatches(
+      messages.filter((message) => message.senderId !== store.currentUserId),
+      excludedIds,
+    );
+    if (chunks.length === 0) {
+      return;
+    }
+
+    const scopeKey = `${conversationId}:${language}`;
+    const targetLanguage = getImTranslationTargetLanguage(language);
+    const generation = translationGenerationRef.current;
+    chunks.forEach((messageIds) => {
+      messageIds.forEach((messageId) => translationInflightIdsRef.current.add(messageId));
+      void store.translateMessages(conversationId, messageIds, targetLanguage)
+        .then((results) => {
+          if (
+            translationScopeRef.current !== scopeKey
+            || translationGenerationRef.current !== generation
+          ) {
+            return;
+          }
+          const completedIds = collectCompletedImMessageTranslationIds(results);
+          completedIds.forEach((messageId) => {
+            translationCompletedIdsRef.current.add(messageId);
+            translationRetryAfterRef.current.delete(messageId);
+          });
+          setAutomaticTranslations((current) => mergeTranslatedImMessageResults(current, results));
+        })
+        .catch(() => {
+          if (
+            translationScopeRef.current !== scopeKey
+            || translationGenerationRef.current !== generation
+          ) {
+            return;
+          }
+          const retryAfter = Date.now() + imAutomaticTranslationRetryDelayMs;
+          messageIds.forEach((messageId) => translationRetryAfterRef.current.set(messageId, retryAfter));
+        })
+        .finally(() => {
+          if (translationGenerationRef.current !== generation) {
+            return;
+          }
+          messageIds.forEach((messageId) => translationInflightIdsRef.current.delete(messageId));
+        });
+    });
+  }, [automaticTranslationEnabled, automaticTranslations, conversationId, language, messages, store.currentUserId]);
 
   useEffect(() => {
     if (!mediaPreview) {
@@ -5780,8 +5883,15 @@ export function ImConversationRoomPage({
       }))
     );
 
+  const getVisibleMessageTranslation = (message: ConversationMessage) =>
+    resolveVisibleImMessageTranslation(
+      automaticTranslationEnabled,
+      manualTranslations[message.id],
+      automaticTranslations[message.id],
+    );
+
   const copyMessageContent = async (message: ConversationMessage) => {
-    const content = getImMessageCopyText(message);
+    const content = getImMessageCopyText(message, getVisibleMessageTranslation(message)?.content);
     closeMessageMenu();
 
     try {
@@ -5794,6 +5904,82 @@ export function ImConversationRoomPage({
     } catch {
       setActionNotice("复制失败，请重试");
     }
+  };
+
+  const translateMessageManually = (message: ConversationMessage) => {
+    if (
+      automaticTranslationEnabled
+      || !isImMessageTranslationEligible(message)
+      || manualTranslationPendingIdsRef.current.has(message.id)
+    ) {
+      closeMessageMenu();
+      return;
+    }
+
+    const cached = manualTranslations[message.id];
+    if (cached) {
+      setManualTranslations((current) => ({
+        ...current,
+        [message.id]: { ...cached, visible: !cached.visible },
+      }));
+      closeMessageMenu();
+      return;
+    }
+
+    const scopeKey = `${conversationId}:${language}`;
+    const generation = translationGenerationRef.current;
+    manualTranslationPendingIdsRef.current.add(message.id);
+    setManualTranslationPendingIds((current) => new Set(current).add(message.id));
+    void store.translateMessages(conversationId, [message.id], getImTranslationTargetLanguage(language))
+      .then((results) => {
+        if (
+          translationScopeRef.current !== scopeKey
+          || translationGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        const translated = results.find((result) =>
+          result.messageId === message.id
+          && result.status === "translated"
+          && typeof result.translatedContent === "string"
+          && result.translatedContent.trim()
+        );
+        if (!translated?.translatedContent) {
+          setActionNotice("翻译失败，请稍后重试");
+          return;
+        }
+        setManualTranslations((current) => ({
+          ...current,
+          [message.id]: { content: translated.translatedContent!, visible: true },
+        }));
+      })
+      .catch(() => {
+        if (
+          translationScopeRef.current !== scopeKey
+          || translationGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        setActionNotice("翻译失败，请稍后重试");
+      })
+      .finally(() => {
+        if (
+          translationScopeRef.current !== scopeKey
+          || translationGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        manualTranslationPendingIdsRef.current.delete(message.id);
+        setManualTranslationPendingIds((current) => {
+          if (!current.has(message.id)) {
+            return current;
+          }
+          const next = new Set(current);
+          next.delete(message.id);
+          return next;
+        });
+      });
+    closeMessageMenu();
   };
 
   const scrollToMessage = (messageId: string) => {
@@ -5920,6 +6106,19 @@ export function ImConversationRoomPage({
         onClick: () => void copyMessageContent(message)
       },
       {
+        key: "translate-message",
+        label: automaticTranslationEnabled
+          ? "翻译"
+          : manualTranslations[message.id]?.visible
+            ? "隐藏译文"
+            : manualTranslations[message.id]
+              ? "显示译文"
+              : "翻译",
+        icon: "translate",
+        disabled: automaticTranslationEnabled || !isImMessageTranslationEligible(message) || manualTranslationPendingIds.has(message.id),
+        onClick: () => translateMessageManually(message)
+      },
+      {
         key: "pin-message",
         label: pinned ? "取消信息置顶" : "信息置顶",
         icon: "pin",
@@ -5951,6 +6150,14 @@ export function ImConversationRoomPage({
           })
           .catch(() => setActionNotice("删除失败，请稍后重试"));
       }
+    });
+
+    primaryActions.push({
+      key: "multiselect",
+      label: "多选",
+      icon: "select",
+      disabled: true,
+      onClick: () => undefined
     });
 
     return { primaryActions, listActions: [] };
@@ -6194,7 +6401,10 @@ export function ImConversationRoomPage({
                   renderContactCardAction={renderContactCardAction}
                   senderName={senderName}
                   showSender={showSender}
-                  translation={messageTranslation}
+                  translation={{
+                    ...getVisibleMessageTranslation(message),
+                    language,
+                  }}
                 />
               );
 
