@@ -30,10 +30,12 @@ describe("shop membership permissions", () => {
   it("grants all membership controls to owners and read-only access to staff", () => {
     const assignments = buildRolePermissionAssignments();
     expect(assignments.merchant_owner).toEqual(expect.arrayContaining(membershipPermissions));
+    expect(assignments.merchant_owner).toContain("shop.member.card.adjust.request");
     expect(assignments.merchant_staff).toContain("shop.member.view");
     expect(assignments.merchant_staff).not.toContain("shop.member.create");
     expect(assignments.merchant_staff).not.toContain("shop.member.analytics.view");
     expect(assignments.merchant_staff).not.toContain("shop.member.operation_log.view");
+    expect(assignments.merchant_staff).not.toContain("shop.member.card.adjust.request");
   });
 
   it("deploys the same role grants when migrations run without a seed", () => {

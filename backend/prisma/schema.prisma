@@ -555,6 +555,17 @@ enum ShopMembershipCardIssuanceSource {
   @@map("shop_membership_card_issuance_source")
 }
 
+enum ShopMembershipCardAdjustmentStatus {
+  PENDING     @map("pending")
+  APPROVED    @map("approved")
+  REJECTED    @map("rejected")
+  CANCELLED   @map("cancelled")
+  EXPIRED     @map("expired")
+  INVALIDATED @map("invalidated")
+
+  @@map("shop_membership_card_adjustment_status")
+}
+
 enum MembershipRewardFeePolicyStatus {
   ACTIVE     @map("active")
   SUPERSEDED @map("superseded")
@@ -705,120 +716,123 @@ model User {
   updatedAt            DateTime             @updatedAt @map("updated_at")
   deletedAt            DateTime?            @map("deleted_at")
 
-  identities                            UserIdentity[]
-  userRoles                             UserRole[]
-  loginLogs                             LoginLog[]                          @relation("LoginLogUser")
-  auditLogs                             AuditLog[]                          @relation("AuditLogActor")
-  grantedCustomerMemberships            CustomerProfile[]                   @relation("CustomerMembershipGrantedBy")
-  createdShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipCreatedBy")
-  updatedShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipUpdatedBy")
-  createdShopMembershipCardPlans        ShopMembershipCardPlan[]            @relation("ShopMembershipCardPlanCreatedBy")
-  updatedShopMembershipCardPlans        ShopMembershipCardPlan[]            @relation("ShopMembershipCardPlanUpdatedBy")
-  publishedShopMembershipPlanVersions   ShopMembershipCardPlanVersion[]     @relation("ShopMembershipCardPlanVersionPublishedBy")
-  issuedShopMembershipCards             ShopMembershipCard[]                @relation("ShopMembershipCardIssuedBy")
-  createdMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyCreatedBy")
-  updatedMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyUpdatedBy")
-  ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
-  requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
-  reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
-  ownedShops                            Shop[]                              @relation("ShopOwner")
-  technicianProfile                     TechnicianProfile?
-  customerProfile                       CustomerProfile?
-  affiliateProfile                      AffiliateProfile?
-  ownedAffiliateAlliances               AffiliateAlliance[]                 @relation("AffiliateAllianceOwner")
-  affiliateAllianceMemberships          AffiliateAllianceMember[]           @relation("AffiliateAllianceMemberUser")
-  receivedAffiliateAllianceInvitations  AffiliateAllianceInvitation[]       @relation("AffiliateAllianceInvitationInvitee")
-  bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
-  orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
-  orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
-  assignedBackofficeTags                BackofficeProfileTag[]              @relation("BackofficeProfileTagAssigner")
-  orderTimelineComments                 OrderTimelineComment[]              @relation("OrderTimelineCommentActor")
-  pricingModeUpdates                    Shop[]                              @relation("ShopPricingModeUpdatedBy")
-  createdTechnicianServices             TechnicianService[]                 @relation("TechnicianServiceCreatedBy")
-  updatedTechnicianServices             TechnicianService[]                 @relation("TechnicianServiceUpdatedBy")
-  reportedOrderFinancials               OrderFinancial[]                    @relation("OrderFinancialIncomeReporter")
-  confirmedOrderFinancials              OrderFinancial[]                    @relation("OrderFinancialIncomeConfirmer")
-  confirmedBookingPayments              BookingOrder[]                      @relation("BookingOrderPaymentConfirmer")
-  refundedBookingPayments               BookingOrder[]                      @relation("BookingOrderPaymentRefunder")
-  generatedPayRuns                      PayRun[]                            @relation("PayRunGeneratedBy")
-  approvedPayRuns                       PayRun[]                            @relation("PayRunApprovedBy")
-  createdPayslipLines                   PayslipLine[]                       @relation("PayslipLineCreatedBy")
-  createdPayoutRecords                  PayoutRecord[]                      @relation("PayoutRecordCreatedBy")
-  requestedPayrollAdjustments           PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentRequestedBy")
-  approvedPayrollAdjustments            PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentApprovedBy")
-  rejectedPayrollAdjustments            PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentRejectedBy")
-  createdConversations                  Conversation[]                      @relation("ConversationCreator")
-  conversationParticipants              ConversationParticipant[]
-  sentMessages                          Message[]                           @relation("MessageSender")
-  messageReactions                      MessageReaction[]
-  messageUserDeletions                  MessageUserDeletion[]
-  createdImChatRecordBundles            ImChatRecordBundle[]            @relation("ImChatRecordBundleCreator")
-  sentImChatRecordItems                 ImChatRecordItem[]              @relation("ImChatRecordItemSender")
-  imChatRecordFavorites                 ImChatRecordFavorite[]          @relation("ImChatRecordFavoriteOwner")
-  imBatchDeleteCommands                 ImMessageBatchDeleteCommand[]   @relation("ImMessageBatchDeleteOwner")
-  imPoliciesUpdated                     ImPolicy[]                          @relation("ImPolicyUpdater")
-  conversationPrivacyUpdates            Conversation[]                      @relation("ConversationPrivacyUpdater")
-  ownedContacts                         Contact[]                           @relation("ContactOwner")
-  contactEntries                        Contact[]                           @relation("ContactUser")
-  sentFriendRequests                    FriendRequest[]                     @relation("FriendRequestRequester")
-  receivedFriendRequests                FriendRequest[]                     @relation("FriendRequestTarget")
-  socialPosts                           SocialPost[]                        @relation("SocialPostAuthor")
-  socialPostLikes                      SocialPostLike[]                    @relation("SocialPostLikeActor")
-  socialPostBookmarks                  SocialPostBookmark[]                @relation("SocialPostBookmarkActor")
-  socialPostViews                      SocialPostView[]                    @relation("SocialPostViewActor")
-  socialPostShares                     SocialPostShare[]                   @relation("SocialPostShareActor")
-  receivedSocialPostShares             SocialPostShare[]                   @relation("SocialPostShareRecipient")
-  following                             Follow[]                            @relation("FollowFollower")
-  followers                             Follow[]                            @relation("FollowFollowing")
-  exchangePosts                         ExchangePost[]                      @relation("ExchangePostAuthor")
-  exchangeComments                      ExchangeComment[]                   @relation("ExchangeCommentAuthor")
-  exchangeLikes                         ExchangeLike[]                      @relation("ExchangeLikeActor")
-  exchangeShares                        ExchangeShare[]                     @relation("ExchangeShareActor")
-  receivedNotifications                 Notification[]                      @relation("NotificationRecipient")
-  actedNotifications                    Notification[]                      @relation("NotificationActor")
-  ownedMerchantAccounts                 MerchantAccount[]                   @relation("MerchantAccountOwner")
-  createdMerchantMemberships            MerchantShopMembership[]            @relation("MerchantMembershipCreatedBy")
-  removedMerchantMemberships            MerchantShopMembership[]            @relation("MerchantMembershipRemovedBy")
-  createdSaasFreePeriods                SaasFreePeriod[]                    @relation("SaasFreePeriodCreatedBy")
-  reviewedSaasPayments                  SaasPayment[]                       @relation("SaasPaymentReviewedBy")
-  createdEntitySuspensions              EntitySuspension[]                  @relation("EntitySuspensionCreatedBy")
-  releasedEntitySuspensions             EntitySuspension[]                  @relation("EntitySuspensionReleasedBy")
-  reviewedAffiliateTasks                AffiliateTask[]                     @relation("AffiliateTaskReviewer")
-  createdAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleCreatedBy")
-  updatedAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleUpdatedBy")
-  affiliateClaims                       AffiliateClaim[]                    @relation("AffiliateClaimUser")
-  affiliateTouchesAsClaimant            AffiliateTouch[]                    @relation("AffiliateTouchClaimant")
-  affiliateTouchesAsCustomer            AffiliateTouch[]                    @relation("AffiliateTouchCustomer")
-  affiliateAttributionsClaimed          AffiliateAttribution[]              @relation("AffiliateAttributionClaimant")
-  affiliateAttributionsAsCustomer       AffiliateAttribution[]              @relation("AffiliateAttributionCustomer")
-  reviewedAffiliateRisks                AffiliateRiskEvent[]                @relation("AffiliateRiskReviewer")
-  identityApplications                  IdentityApplication[]               @relation("IdentityApplicationApplicant")
-  reviewedIdentityApplications          IdentityApplication[]               @relation("IdentityApplicationReviewer")
-  protectedBankAccounts                 ProtectedBankAccount[]
-  contractAcceptances                   ContractAcceptance[]
-  applicationMediaAssets                MediaAsset[]                        @relation("ApplicationMediaOwner")
-  ekycVerifications                     EkycVerification[]
-  externalAccounts                      ExternalAuthAccount[]
-  createdTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationCreatedBy")
-  updatedTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationUpdatedBy")
-  createdShopPayrollSchedulePolicies    ShopPayrollSchedulePolicy[]         @relation("ShopPayrollSchedulePolicyCreatedBy")
-  updatedShopPayrollSchedulePolicies    ShopPayrollSchedulePolicy[]         @relation("ShopPayrollSchedulePolicyUpdatedBy")
-  createdTechnicianPayrollOverrides     TechnicianPayrollScheduleOverride[] @relation("TechnicianPayrollScheduleOverrideCreatedBy")
-  updatedTechnicianPayrollOverrides     TechnicianPayrollScheduleOverride[] @relation("TechnicianPayrollScheduleOverrideUpdatedBy")
-  createdShopPlatformFeePolicies        ShopPlatformFeePolicy[]             @relation("ShopPlatformFeePolicyCreatedBy")
-  updatedShopPlatformFeePolicies        ShopPlatformFeePolicy[]             @relation("ShopPlatformFeePolicyUpdatedBy")
-  createdOrderAcceptancePauses          OrderAcceptancePause[]              @relation("OrderAcceptancePauseCreatedBy")
-  releasedOrderAcceptancePauses         OrderAcceptancePause[]              @relation("OrderAcceptancePauseReleasedBy")
-  createdOfficialAnnouncements          OfficialAnnouncement[]              @relation("OfficialAnnouncementCreatedBy")
-  createdOfficialAnnouncementReleases   OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseCreatedBy")
-  updatedOfficialAnnouncementReleases   OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseUpdatedBy")
-  publishedOfficialAnnouncementReleases OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleasePublishedBy")
-  disabledOfficialAnnouncementReleases  OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseDisabledBy")
-  createdCarouselReleases               CarouselRelease[]                   @relation("CarouselReleaseCreatedBy")
-  updatedCarouselReleases               CarouselRelease[]                   @relation("CarouselReleaseUpdatedBy")
-  publishedCarouselReleases             CarouselRelease[]                   @relation("CarouselReleasePublishedBy")
-  disabledCarouselReleases              CarouselRelease[]                   @relation("CarouselReleaseDisabledBy")
-  contentPublicationCommands            ContentPublicationCommand[]         @relation("ContentPublicationCommandActor")
+  identities                             UserIdentity[]
+  userRoles                              UserRole[]
+  loginLogs                              LoginLog[]                            @relation("LoginLogUser")
+  auditLogs                              AuditLog[]                            @relation("AuditLogActor")
+  grantedCustomerMemberships             CustomerProfile[]                     @relation("CustomerMembershipGrantedBy")
+  createdShopCustomerMemberships         ShopCustomerMembership[]              @relation("ShopMembershipCreatedBy")
+  updatedShopCustomerMemberships         ShopCustomerMembership[]              @relation("ShopMembershipUpdatedBy")
+  createdShopMembershipCardPlans         ShopMembershipCardPlan[]              @relation("ShopMembershipCardPlanCreatedBy")
+  updatedShopMembershipCardPlans         ShopMembershipCardPlan[]              @relation("ShopMembershipCardPlanUpdatedBy")
+  publishedShopMembershipPlanVersions    ShopMembershipCardPlanVersion[]       @relation("ShopMembershipCardPlanVersionPublishedBy")
+  issuedShopMembershipCards              ShopMembershipCard[]                  @relation("ShopMembershipCardIssuedBy")
+  requestedShopMembershipCardAdjustments ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentRequestedBy")
+  decidedShopMembershipCardAdjustments   ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentDecidedBy")
+  cancelledShopMembershipCardAdjustments ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentCancelledBy")
+  createdMembershipRewardFeePolicies     MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyCreatedBy")
+  updatedMembershipRewardFeePolicies     MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyUpdatedBy")
+  ledgerTransactions                     LedgerTransaction[]                   @relation("LedgerTransactionActor")
+  requestedWalletAdjustments             WalletAdjustmentRequest[]             @relation("WalletAdjustmentRequestedBy")
+  reviewedWalletAdjustments              WalletAdjustmentRequest[]             @relation("WalletAdjustmentReviewedBy")
+  ownedShops                             Shop[]                                @relation("ShopOwner")
+  technicianProfile                      TechnicianProfile?
+  customerProfile                        CustomerProfile?
+  affiliateProfile                       AffiliateProfile?
+  ownedAffiliateAlliances                AffiliateAlliance[]                   @relation("AffiliateAllianceOwner")
+  affiliateAllianceMemberships           AffiliateAllianceMember[]             @relation("AffiliateAllianceMemberUser")
+  receivedAffiliateAllianceInvitations   AffiliateAllianceInvitation[]         @relation("AffiliateAllianceInvitationInvitee")
+  bookingOrders                          BookingOrder[]                        @relation("BookingOrderCustomer")
+  orderHistories                         OrderStatusHistory[]                  @relation("OrderStatusHistoryActor")
+  orderReviewsGiven                      OrderReview[]                         @relation("OrderReviewReviewer")
+  assignedBackofficeTags                 BackofficeProfileTag[]                @relation("BackofficeProfileTagAssigner")
+  orderTimelineComments                  OrderTimelineComment[]                @relation("OrderTimelineCommentActor")
+  pricingModeUpdates                     Shop[]                                @relation("ShopPricingModeUpdatedBy")
+  createdTechnicianServices              TechnicianService[]                   @relation("TechnicianServiceCreatedBy")
+  updatedTechnicianServices              TechnicianService[]                   @relation("TechnicianServiceUpdatedBy")
+  reportedOrderFinancials                OrderFinancial[]                      @relation("OrderFinancialIncomeReporter")
+  confirmedOrderFinancials               OrderFinancial[]                      @relation("OrderFinancialIncomeConfirmer")
+  confirmedBookingPayments               BookingOrder[]                        @relation("BookingOrderPaymentConfirmer")
+  refundedBookingPayments                BookingOrder[]                        @relation("BookingOrderPaymentRefunder")
+  generatedPayRuns                       PayRun[]                              @relation("PayRunGeneratedBy")
+  approvedPayRuns                        PayRun[]                              @relation("PayRunApprovedBy")
+  createdPayslipLines                    PayslipLine[]                         @relation("PayslipLineCreatedBy")
+  createdPayoutRecords                   PayoutRecord[]                        @relation("PayoutRecordCreatedBy")
+  requestedPayrollAdjustments            PayrollAdjustmentRequest[]            @relation("PayrollAdjustmentRequestedBy")
+  approvedPayrollAdjustments             PayrollAdjustmentRequest[]            @relation("PayrollAdjustmentApprovedBy")
+  rejectedPayrollAdjustments             PayrollAdjustmentRequest[]            @relation("PayrollAdjustmentRejectedBy")
+  createdConversations                   Conversation[]                        @relation("ConversationCreator")
+  conversationParticipants               ConversationParticipant[]
+  sentMessages                           Message[]                             @relation("MessageSender")
+  messageReactions                       MessageReaction[]
+  messageUserDeletions                   MessageUserDeletion[]
+  createdImChatRecordBundles             ImChatRecordBundle[]                  @relation("ImChatRecordBundleCreator")
+  sentImChatRecordItems                  ImChatRecordItem[]                    @relation("ImChatRecordItemSender")
+  imChatRecordFavorites                  ImChatRecordFavorite[]                @relation("ImChatRecordFavoriteOwner")
+  imBatchDeleteCommands                  ImMessageBatchDeleteCommand[]         @relation("ImMessageBatchDeleteOwner")
+  imPoliciesUpdated                      ImPolicy[]                            @relation("ImPolicyUpdater")
+  conversationPrivacyUpdates             Conversation[]                        @relation("ConversationPrivacyUpdater")
+  ownedContacts                          Contact[]                             @relation("ContactOwner")
+  contactEntries                         Contact[]                             @relation("ContactUser")
+  sentFriendRequests                     FriendRequest[]                       @relation("FriendRequestRequester")
+  receivedFriendRequests                 FriendRequest[]                       @relation("FriendRequestTarget")
+  socialPosts                            SocialPost[]                          @relation("SocialPostAuthor")
+  socialPostLikes                        SocialPostLike[]                      @relation("SocialPostLikeActor")
+  socialPostBookmarks                    SocialPostBookmark[]                  @relation("SocialPostBookmarkActor")
+  socialPostViews                        SocialPostView[]                      @relation("SocialPostViewActor")
+  socialPostShares                       SocialPostShare[]                     @relation("SocialPostShareActor")
+  receivedSocialPostShares               SocialPostShare[]                     @relation("SocialPostShareRecipient")
+  following                              Follow[]                              @relation("FollowFollower")
+  followers                              Follow[]                              @relation("FollowFollowing")
+  exchangePosts                          ExchangePost[]                        @relation("ExchangePostAuthor")
+  exchangeComments                       ExchangeComment[]                     @relation("ExchangeCommentAuthor")
+  exchangeLikes                          ExchangeLike[]                        @relation("ExchangeLikeActor")
+  exchangeShares                         ExchangeShare[]                       @relation("ExchangeShareActor")
+  receivedNotifications                  Notification[]                        @relation("NotificationRecipient")
+  actedNotifications                     Notification[]                        @relation("NotificationActor")
+  ownedMerchantAccounts                  MerchantAccount[]                     @relation("MerchantAccountOwner")
+  createdMerchantMemberships             MerchantShopMembership[]              @relation("MerchantMembershipCreatedBy")
+  removedMerchantMemberships             MerchantShopMembership[]              @relation("MerchantMembershipRemovedBy")
+  createdSaasFreePeriods                 SaasFreePeriod[]                      @relation("SaasFreePeriodCreatedBy")
+  reviewedSaasPayments                   SaasPayment[]                         @relation("SaasPaymentReviewedBy")
+  createdEntitySuspensions               EntitySuspension[]                    @relation("EntitySuspensionCreatedBy")
+  releasedEntitySuspensions              EntitySuspension[]                    @relation("EntitySuspensionReleasedBy")
+  reviewedAffiliateTasks                 AffiliateTask[]                       @relation("AffiliateTaskReviewer")
+  createdAffiliatePlatformFeeRules       AffiliatePlatformFeeRule[]            @relation("AffiliatePlatformFeeRuleCreatedBy")
+  updatedAffiliatePlatformFeeRules       AffiliatePlatformFeeRule[]            @relation("AffiliatePlatformFeeRuleUpdatedBy")
+  affiliateClaims                        AffiliateClaim[]                      @relation("AffiliateClaimUser")
+  affiliateTouchesAsClaimant             AffiliateTouch[]                      @relation("AffiliateTouchClaimant")
+  affiliateTouchesAsCustomer             AffiliateTouch[]                      @relation("AffiliateTouchCustomer")
+  affiliateAttributionsClaimed           AffiliateAttribution[]                @relation("AffiliateAttributionClaimant")
+  affiliateAttributionsAsCustomer        AffiliateAttribution[]                @relation("AffiliateAttributionCustomer")
+  reviewedAffiliateRisks                 AffiliateRiskEvent[]                  @relation("AffiliateRiskReviewer")
+  identityApplications                   IdentityApplication[]                 @relation("IdentityApplicationApplicant")
+  reviewedIdentityApplications           IdentityApplication[]                 @relation("IdentityApplicationReviewer")
+  protectedBankAccounts                  ProtectedBankAccount[]
+  contractAcceptances                    ContractAcceptance[]
+  applicationMediaAssets                 MediaAsset[]                          @relation("ApplicationMediaOwner")
+  ekycVerifications                      EkycVerification[]
+  externalAccounts                       ExternalAuthAccount[]
+  createdTechnicianShopAffiliations      TechnicianShopAffiliation[]           @relation("TechnicianShopAffiliationCreatedBy")
+  updatedTechnicianShopAffiliations      TechnicianShopAffiliation[]           @relation("TechnicianShopAffiliationUpdatedBy")
+  createdShopPayrollSchedulePolicies     ShopPayrollSchedulePolicy[]           @relation("ShopPayrollSchedulePolicyCreatedBy")
+  updatedShopPayrollSchedulePolicies     ShopPayrollSchedulePolicy[]           @relation("ShopPayrollSchedulePolicyUpdatedBy")
+  createdTechnicianPayrollOverrides      TechnicianPayrollScheduleOverride[]   @relation("TechnicianPayrollScheduleOverrideCreatedBy")
+  updatedTechnicianPayrollOverrides      TechnicianPayrollScheduleOverride[]   @relation("TechnicianPayrollScheduleOverrideUpdatedBy")
+  createdShopPlatformFeePolicies         ShopPlatformFeePolicy[]               @relation("ShopPlatformFeePolicyCreatedBy")
+  updatedShopPlatformFeePolicies         ShopPlatformFeePolicy[]               @relation("ShopPlatformFeePolicyUpdatedBy")
+  createdOrderAcceptancePauses           OrderAcceptancePause[]                @relation("OrderAcceptancePauseCreatedBy")
+  releasedOrderAcceptancePauses          OrderAcceptancePause[]                @relation("OrderAcceptancePauseReleasedBy")
+  createdOfficialAnnouncements           OfficialAnnouncement[]                @relation("OfficialAnnouncementCreatedBy")
+  createdOfficialAnnouncementReleases    OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleaseCreatedBy")
+  updatedOfficialAnnouncementReleases    OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleaseUpdatedBy")
+  publishedOfficialAnnouncementReleases  OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleasePublishedBy")
+  disabledOfficialAnnouncementReleases   OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleaseDisabledBy")
+  createdCarouselReleases                CarouselRelease[]                     @relation("CarouselReleaseCreatedBy")
+  updatedCarouselReleases                CarouselRelease[]                     @relation("CarouselReleaseUpdatedBy")
+  publishedCarouselReleases              CarouselRelease[]                     @relation("CarouselReleasePublishedBy")
+  disabledCarouselReleases               CarouselRelease[]                     @relation("CarouselReleaseDisabledBy")
+  contentPublicationCommands             ContentPublicationCommand[]           @relation("ContentPublicationCommandActor")
 
   @@index([email])
   @@index([phone])
@@ -897,8 +911,8 @@ model Shop {
   updatedAt                    DateTime        @updatedAt @map("updated_at")
   deletedAt                    DateTime?       @map("deleted_at")
 
-  owner                      User?                           @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  pricingModeUpdater         User?                           @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
+  owner                      User?                                 @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  pricingModeUpdater         User?                                 @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
   services                   Service[]
   technicianServices         TechnicianService[]
   technicians                TechnicianProfile[]
@@ -918,7 +932,7 @@ model Shop {
   payerSaasInvoices          SaasInvoice[]
   saasInvoiceLines           SaasInvoiceLine[]
   entitySuspensions          EntitySuspension[]
-  publishedAffiliateTasks    AffiliateTask[]                 @relation("AffiliateShopPublisher")
+  publishedAffiliateTasks    AffiliateTask[]                       @relation("AffiliateShopPublisher")
   affiliateTaskScopes        AffiliateTaskShop[]
   affiliateServiceScopes     AffiliateTaskService[]
   affiliateTouches           AffiliateTouch[]
@@ -934,6 +948,7 @@ model Shop {
   orderAcceptancePauses      OrderAcceptancePause[]
   customerMemberships        ShopCustomerMembership[]
   membershipCardPlans        ShopMembershipCardPlan[]
+  membershipCardAdjustments  ShopMembershipCardAdjustmentRequest[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -1265,39 +1280,41 @@ model ShopCustomerMembership {
 }
 
 model ShopMembershipCard {
-  id                          Int                               @id @default(autoincrement())
-  publicId                    String                            @unique @default(uuid()) @map("public_id") @db.Char(36)
-  membershipId                Int                               @map("membership_id")
-  planId                      Int?                              @map("plan_id")
-  planVersionId               Int?                              @map("plan_version_id")
-  issuedById                  Int?                              @map("issued_by_id")
-  cardNo                      String                            @unique @map("card_no") @db.VarChar(40)
-  name                        String                            @db.VarChar(120)
-  type                        ShopMembershipCardType
-  status                      ShopMembershipCardStatus          @default(ACTIVE)
-  issuanceSource              ShopMembershipCardIssuanceSource? @map("issuance_source")
-  issuanceReference           String?                           @map("issuance_reference") @db.VarChar(160)
-  issuanceNote                String?                           @map("issuance_note") @db.VarChar(500)
-  initialPrincipalJpy         Int?                              @map("initial_principal_jpy")
-  initialUses                 Int?                              @map("initial_uses")
-  platformFeeRateBpsSnapshot  Int?                              @map("platform_fee_rate_bps_snapshot")
-  issuanceIdempotencyKey      String?                           @unique(map: "shop_membership_cards_issuance_idempotency_key") @map("issuance_idempotency_key") @db.VarChar(160)
-  issuanceFingerprint         String?                           @map("issuance_fingerprint") @db.Char(64)
-  principalBalanceJpy         Int?                              @map("principal_balance_jpy")
-  bonusBalanceJpy             Int?                              @map("bonus_balance_jpy")
-  remainingUses               Int?                              @map("remaining_uses")
-  totalUses                   Int?                              @map("total_uses")
-  issuedAt                    DateTime                          @map("issued_at")
-  expiresAt                   DateTime?                         @map("expires_at")
-  frozenAt                    DateTime?                         @map("frozen_at")
-  createdAt                   DateTime                          @default(now()) @map("created_at")
-  updatedAt                   DateTime                          @updatedAt @map("updated_at")
-  deletedAt                   DateTime?                         @map("deleted_at")
+  id                         Int                               @id @default(autoincrement())
+  publicId                   String                            @unique @default(uuid()) @map("public_id") @db.Char(36)
+  membershipId               Int                               @map("membership_id")
+  planId                     Int?                              @map("plan_id")
+  planVersionId              Int?                              @map("plan_version_id")
+  issuedById                 Int?                              @map("issued_by_id")
+  cardNo                     String                            @unique @map("card_no") @db.VarChar(40)
+  name                       String                            @db.VarChar(120)
+  type                       ShopMembershipCardType
+  status                     ShopMembershipCardStatus          @default(ACTIVE)
+  issuanceSource             ShopMembershipCardIssuanceSource? @map("issuance_source")
+  issuanceReference          String?                           @map("issuance_reference") @db.VarChar(160)
+  issuanceNote               String?                           @map("issuance_note") @db.VarChar(500)
+  initialPrincipalJpy        Int?                              @map("initial_principal_jpy")
+  initialUses                Int?                              @map("initial_uses")
+  platformFeeRateBpsSnapshot Int?                              @map("platform_fee_rate_bps_snapshot")
+  issuanceIdempotencyKey     String?                           @unique(map: "shop_membership_cards_issuance_idempotency_key") @map("issuance_idempotency_key") @db.VarChar(160)
+  issuanceFingerprint        String?                           @map("issuance_fingerprint") @db.Char(64)
+  lockVersion                Int                               @default(1) @map("lock_version")
+  principalBalanceJpy        Int?                              @map("principal_balance_jpy")
+  bonusBalanceJpy            Int?                              @map("bonus_balance_jpy")
+  remainingUses              Int?                              @map("remaining_uses")
+  totalUses                  Int?                              @map("total_uses")
+  issuedAt                   DateTime                          @map("issued_at")
+  expiresAt                  DateTime?                         @map("expires_at")
+  frozenAt                   DateTime?                         @map("frozen_at")
+  createdAt                  DateTime                          @default(now()) @map("created_at")
+  updatedAt                  DateTime                          @updatedAt @map("updated_at")
+  deletedAt                  DateTime?                         @map("deleted_at")
 
-  membership  ShopCustomerMembership          @relation(fields: [membershipId], references: [id], onDelete: Restrict)
-  plan        ShopMembershipCardPlan?          @relation("ShopMembershipCardPlanCards", fields: [planId], references: [id], onDelete: Restrict)
-  planVersion ShopMembershipCardPlanVersion?   @relation("ShopMembershipCardPlanVersionCards", fields: [planVersionId], references: [id], onDelete: Restrict)
-  issuedBy    User?                            @relation("ShopMembershipCardIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  membership  ShopCustomerMembership                @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  plan        ShopMembershipCardPlan?               @relation("ShopMembershipCardPlanCards", fields: [planId], references: [id], onDelete: Restrict)
+  planVersion ShopMembershipCardPlanVersion?        @relation("ShopMembershipCardPlanVersionCards", fields: [planVersionId], references: [id], onDelete: Restrict)
+  issuedBy    User?                                 @relation("ShopMembershipCardIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  adjustments ShopMembershipCardAdjustmentRequest[]
 
   @@index([membershipId, status, deletedAt], map: "shop_membership_cards_membership_status_idx")
   @@index([planId, deletedAt], map: "shop_membership_cards_plan_idx")
@@ -1306,6 +1323,50 @@ model ShopMembershipCard {
   @@index([status, expiresAt, deletedAt], map: "shop_membership_cards_status_expiry_idx")
   @@index([deletedAt], map: "shop_membership_cards_deleted_idx")
   @@map("shop_membership_cards")
+}
+
+model ShopMembershipCardAdjustmentRequest {
+  id                        Int                                @id @default(autoincrement())
+  publicId                  String                             @unique @default(uuid()) @map("public_id") @db.Char(36)
+  cardId                    Int                                @map("card_id")
+  shopId                    Int                                @map("shop_id")
+  requestedById             Int                                @map("requested_by_id")
+  status                    ShopMembershipCardAdjustmentStatus @default(PENDING)
+  pendingKey                String?                            @unique(map: "shop_membership_card_adjustments_pending_key") @map("pending_key") @db.VarChar(191)
+  reason                    String                             @db.VarChar(500)
+  beforePrincipalBalanceJpy Int?                               @map("before_principal_balance_jpy")
+  targetPrincipalBalanceJpy Int?                               @map("target_principal_balance_jpy")
+  beforeRemainingUses       Int?                               @map("before_remaining_uses")
+  targetRemainingUses       Int?                               @map("target_remaining_uses")
+  cardLockVersionBefore     Int                                @map("card_lock_version_before")
+  requestIdempotencyKey     String                             @unique(map: "shop_membership_card_adjustments_request_idempotency_key") @map("request_idempotency_key") @db.VarChar(160)
+  requestFingerprint        String                             @map("request_fingerprint") @db.Char(64)
+  decisionIdempotencyKey    String?                            @unique(map: "shop_membership_card_adjustments_decision_idempotency_key") @map("decision_idempotency_key") @db.VarChar(160)
+  decisionFingerprint       String?                            @map("decision_fingerprint") @db.Char(64)
+  expiresAt                 DateTime                           @map("expires_at")
+  decidedAt                 DateTime?                          @map("decided_at")
+  decidedById               Int?                               @map("decided_by_id")
+  cancelledAt               DateTime?                          @map("cancelled_at")
+  cancelledById             Int?                               @map("cancelled_by_id")
+  invalidatedAt             DateTime?                          @map("invalidated_at")
+  createdAt                 DateTime                           @default(now()) @map("created_at")
+  updatedAt                 DateTime                           @updatedAt @map("updated_at")
+  deletedAt                 DateTime?                          @map("deleted_at")
+
+  card        ShopMembershipCard @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  shop        Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  requestedBy User               @relation("ShopMembershipCardAdjustmentRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy   User?              @relation("ShopMembershipCardAdjustmentDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  cancelledBy User?              @relation("ShopMembershipCardAdjustmentCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  @@index([cardId, status, createdAt, deletedAt], map: "shop_membership_card_adjustments_card_status_idx")
+  @@index([shopId, status, createdAt, deletedAt], map: "shop_membership_card_adjustments_shop_status_idx")
+  @@index([status, expiresAt, deletedAt], map: "shop_membership_card_adjustments_status_expiry_idx")
+  @@index([requestedById], map: "shop_membership_card_adjustments_requested_by_idx")
+  @@index([decidedById], map: "shop_membership_card_adjustments_decided_by_idx")
+  @@index([cancelledById], map: "shop_membership_card_adjustments_cancelled_by_idx")
+  @@index([deletedAt], map: "shop_membership_card_adjustments_deleted_idx")
+  @@map("shop_membership_card_adjustment_requests")
 }
 
 model MembershipRewardFeePolicyVersion {
@@ -1393,7 +1454,7 @@ model ShopMembershipCardPlanVersion {
   platformFeePolicy MembershipRewardFeePolicyVersion? @relation(fields: [platformFeePolicyId], references: [id], onDelete: Restrict)
   publishedBy       User?                             @relation("ShopMembershipCardPlanVersionPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
   rules             ShopMembershipRewardRule[]
-  cards             ShopMembershipCard[]               @relation("ShopMembershipCardPlanVersionCards")
+  cards             ShopMembershipCard[]              @relation("ShopMembershipCardPlanVersionCards")
 
   @@unique([planId, version], map: "shop_membership_card_plan_versions_plan_version_key")
   @@index([planId, status, updatedAt, deletedAt], map: "shop_membership_card_plan_versions_plan_status_idx")
@@ -2105,17 +2166,17 @@ model Conversation {
   updatedAt              DateTime                 @updatedAt @map("updated_at")
   deletedAt              DateTime?                @map("deleted_at")
 
-  createdBy            User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdByIdentity    UserIdentity?             @relation("ConversationCreatorIdentity", fields: [createdByIdentityId], references: [id], onDelete: SetNull)
-  privacyUpdatedBy     User?                     @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
-  participants         ConversationParticipant[]
-  messages             Message[]
-  deletionSync         ImDeletionSync[]
-  messageUserDeletions MessageUserDeletion[]
+  createdBy                 User?                         @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByIdentity         UserIdentity?                 @relation("ConversationCreatorIdentity", fields: [createdByIdentityId], references: [id], onDelete: SetNull)
+  privacyUpdatedBy          User?                         @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
+  participants              ConversationParticipant[]
+  messages                  Message[]
+  deletionSync              ImDeletionSync[]
+  messageUserDeletions      MessageUserDeletion[]
   sourceImChatRecordBundles ImChatRecordBundle[]          @relation("ImChatRecordSourceConversation")
   imChatRecordDeliveries    ImChatRecordDelivery[]
   imBatchDeleteCommands     ImMessageBatchDeleteCommand[] @relation("ImMessageBatchDeleteConversation")
-  socialPostShares            SocialPostShare[]
+  socialPostShares          SocialPostShare[]
 
   @@index([type])
   @@index([createdByUserId])
@@ -2182,16 +2243,16 @@ model Message {
   updatedAt                  DateTime           @updatedAt @map("updated_at")
   deletedAt                  DateTime?          @map("deleted_at")
 
-  conversation   Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
-  sender         User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
-  senderIdentity UserIdentity?             @relation("MessageSenderIdentity", fields: [senderIdentityId], references: [id], onDelete: SetNull)
-  readMarkers    ConversationParticipant[] @relation("ParticipantLastReadMessage")
-  reactions      MessageReaction[]
-  userDeletions  MessageUserDeletion[]
-  sourceImChatRecordItems ImChatRecordItem[]      @relation("ImChatRecordSourceMessage")
+  conversation            Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sender                  User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  senderIdentity          UserIdentity?             @relation("MessageSenderIdentity", fields: [senderIdentityId], references: [id], onDelete: SetNull)
+  readMarkers             ConversationParticipant[] @relation("ParticipantLastReadMessage")
+  reactions               MessageReaction[]
+  userDeletions           MessageUserDeletion[]
+  sourceImChatRecordItems ImChatRecordItem[]        @relation("ImChatRecordSourceMessage")
   imChatRecordDelivery    ImChatRecordDelivery?
   translations            ImMessageTranslation[]
-  socialPostShare          SocialPostShare?
+  socialPostShare         SocialPostShare?
 
   @@index([conversationId, id])
   @@index([senderUserId])
@@ -2247,9 +2308,9 @@ model ImChatRecordBundle {
   updatedAt            DateTime  @updatedAt @map("updated_at")
   deletedAt            DateTime? @map("deleted_at")
 
-  createdByUser      User         @relation("ImChatRecordBundleCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  createdByIdentity  UserIdentity @relation("ImChatRecordBundleIdentity", fields: [createdByIdentityId], references: [id], onDelete: Restrict)
-  sourceConversation Conversation @relation("ImChatRecordSourceConversation", fields: [sourceConversationId], references: [id], onDelete: Restrict)
+  createdByUser      User                   @relation("ImChatRecordBundleCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByIdentity  UserIdentity           @relation("ImChatRecordBundleIdentity", fields: [createdByIdentityId], references: [id], onDelete: Restrict)
+  sourceConversation Conversation           @relation("ImChatRecordSourceConversation", fields: [sourceConversationId], references: [id], onDelete: Restrict)
   items              ImChatRecordItem[]
   deliveries         ImChatRecordDelivery[]
   favorites          ImChatRecordFavorite[]
@@ -2506,10 +2567,10 @@ model SocialPost {
   updatedAt        DateTime             @updatedAt @map("updated_at")
   deletedAt        DateTime?            @map("deleted_at")
 
-  author         User         @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
-  authorIdentity UserIdentity @relation("SocialPostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
-  replyToPost    SocialPost?  @relation("SocialPostReplies", fields: [replyToPostId], references: [id], onDelete: SetNull)
-  replies        SocialPost[] @relation("SocialPostReplies")
+  author         User                 @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorIdentity UserIdentity         @relation("SocialPostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+  replyToPost    SocialPost?          @relation("SocialPostReplies", fields: [replyToPostId], references: [id], onDelete: SetNull)
+  replies        SocialPost[]         @relation("SocialPostReplies")
   likes          SocialPostLike[]
   bookmarks      SocialPostBookmark[]
   views          SocialPostView[]
@@ -2687,37 +2748,37 @@ model UserIdentity {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  user                     User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
-  publicIdentifier         PublicIdentifier?
-  exchangePosts            ExchangePost[]            @relation("ExchangePostAuthorIdentity")
-  ownedExchangePosts       ExchangePost[]            @relation("ExchangePostOwnerIdentity")
-  exchangeComments         ExchangeComment[]         @relation("ExchangeCommentAuthorIdentity")
-  exchangeLikes            ExchangeLike[]            @relation("ExchangeLikeActorIdentity")
-  exchangeShares           ExchangeShare[]           @relation("ExchangeShareActorIdentity")
-  createdConversations     Conversation[]            @relation("ConversationCreatorIdentity")
-  conversationParticipants ConversationParticipant[] @relation("ConversationParticipantIdentity")
-  sentMessages             Message[]                 @relation("MessageSenderIdentity")
-  messageUserDeletions     MessageUserDeletion[]     @relation("MessageUserDeletionIdentity")
-  messageReactions         MessageReaction[]         @relation("MessageReactionIdentity")
+  user                       User                          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  publicIdentifier           PublicIdentifier?
+  exchangePosts              ExchangePost[]                @relation("ExchangePostAuthorIdentity")
+  ownedExchangePosts         ExchangePost[]                @relation("ExchangePostOwnerIdentity")
+  exchangeComments           ExchangeComment[]             @relation("ExchangeCommentAuthorIdentity")
+  exchangeLikes              ExchangeLike[]                @relation("ExchangeLikeActorIdentity")
+  exchangeShares             ExchangeShare[]               @relation("ExchangeShareActorIdentity")
+  createdConversations       Conversation[]                @relation("ConversationCreatorIdentity")
+  conversationParticipants   ConversationParticipant[]     @relation("ConversationParticipantIdentity")
+  sentMessages               Message[]                     @relation("MessageSenderIdentity")
+  messageUserDeletions       MessageUserDeletion[]         @relation("MessageUserDeletionIdentity")
+  messageReactions           MessageReaction[]             @relation("MessageReactionIdentity")
   createdImChatRecordBundles ImChatRecordBundle[]          @relation("ImChatRecordBundleIdentity")
   sentImChatRecordItems      ImChatRecordItem[]            @relation("ImChatRecordItemSenderIdentity")
   imChatRecordFavorites      ImChatRecordFavorite[]        @relation("ImChatRecordFavoriteIdentity")
   imBatchDeleteCommands      ImMessageBatchDeleteCommand[] @relation("ImMessageBatchDeleteIdentity")
-  ownedContacts            Contact[]                 @relation("ContactOwnerIdentity")
-  contactTargets           Contact[]                 @relation("ContactTargetIdentity")
-  requestedFriendRequests  FriendRequest[]           @relation("FriendRequestRequesterIdentity")
-  targetedFriendRequests   FriendRequest[]           @relation("FriendRequestTargetIdentity")
-  socialPosts              SocialPost[]              @relation("SocialPostAuthorIdentity")
-  socialPostLikes          SocialPostLike[]           @relation("SocialPostLikeActorIdentity")
-  socialPostBookmarks      SocialPostBookmark[]       @relation("SocialPostBookmarkActorIdentity")
-  socialPostViews          SocialPostView[]           @relation("SocialPostViewActorIdentity")
-  socialPostShares         SocialPostShare[]          @relation("SocialPostShareActorIdentity")
-  receivedSocialPostShares SocialPostShare[]          @relation("SocialPostShareRecipientIdentity")
-  following                Follow[]                  @relation("FollowFollowerIdentity")
-  followers                Follow[]                  @relation("FollowFollowingIdentity")
-  receivedNotifications    Notification[]            @relation("NotificationRecipientIdentity")
-  actedNotifications       Notification[]            @relation("NotificationActorIdentity")
-  ownedMediaAssets         MediaAsset[]              @relation("MediaAssetOwnerIdentity")
+  ownedContacts              Contact[]                     @relation("ContactOwnerIdentity")
+  contactTargets             Contact[]                     @relation("ContactTargetIdentity")
+  requestedFriendRequests    FriendRequest[]               @relation("FriendRequestRequesterIdentity")
+  targetedFriendRequests     FriendRequest[]               @relation("FriendRequestTargetIdentity")
+  socialPosts                SocialPost[]                  @relation("SocialPostAuthorIdentity")
+  socialPostLikes            SocialPostLike[]              @relation("SocialPostLikeActorIdentity")
+  socialPostBookmarks        SocialPostBookmark[]          @relation("SocialPostBookmarkActorIdentity")
+  socialPostViews            SocialPostView[]              @relation("SocialPostViewActorIdentity")
+  socialPostShares           SocialPostShare[]             @relation("SocialPostShareActorIdentity")
+  receivedSocialPostShares   SocialPostShare[]             @relation("SocialPostShareRecipientIdentity")
+  following                  Follow[]                      @relation("FollowFollowerIdentity")
+  followers                  Follow[]                      @relation("FollowFollowingIdentity")
+  receivedNotifications      Notification[]                @relation("NotificationRecipientIdentity")
+  actedNotifications         Notification[]                @relation("NotificationActorIdentity")
+  ownedMediaAssets           MediaAsset[]                  @relation("MediaAssetOwnerIdentity")
 
   @@index([userId])
   @@index([type])
