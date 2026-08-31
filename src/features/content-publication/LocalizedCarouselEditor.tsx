@@ -21,6 +21,7 @@ import { PermissionGate } from "../../auth/PermissionGate";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { CarouselReleasePreview } from "./CarouselReleasePreview";
 import { contentPublicationEditorText } from "./i18n";
 
 export const contentEditorLocales = [
@@ -1113,6 +1114,12 @@ export function LocalizedCarouselEditor({
     if (!draft)
       return (
         <>
+          {state.sceneState?.published ? (
+            <CarouselReleasePreview
+              locale={state.selectedLocale}
+              release={state.sceneState.published}
+            />
+          ) : null}
           <section className="rounded-lg border border-line bg-white p-5 shadow-panel">
             <h2 className="text-lg font-black text-ink">
               {state.history.length > 0

@@ -768,6 +768,48 @@ describe("LocalizedCarouselEditor", () => {
     expect(apiMocks.getBackofficeCarouselScene).toHaveBeenCalledTimes(2);
   });
 
+  it("renders the published release when the scene has no draft", async () => {
+    const published = {
+      ...scene.published!,
+      slides: scene.published!.slides.map((slide, index) =>
+        index === 0
+          ? {
+              ...slide,
+              translations: {
+                ...slide.translations,
+                "zh-CN": {
+                  ...slide.translations["zh-CN"],
+                  title: "正式轮播",
+                },
+              },
+            }
+          : slide,
+      ),
+    };
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue({
+      scene: "USER_HOME",
+      draft: null,
+      scheduled: null,
+      published,
+    });
+    apiMocks.getCarouselHistory.mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+
+    await renderEditor();
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="published-carousel-preview"]')
+          ?.textContent,
+      ).toContain("正式轮播"),
+    );
+    expect(container.querySelector('input[name="title"]')).toBeNull();
+  });
+
   it("bootstraps a published-only scene by cloning an explicitly selected historical release", async () => {
     const publishedOnly = { ...scene, draft: null };
     const clonedDraft = { ...draft, lockVersion: 1 };
