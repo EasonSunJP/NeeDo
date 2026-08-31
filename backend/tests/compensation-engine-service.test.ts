@@ -15,6 +15,8 @@ const baseRuleSet: CompensationRuleSet = {
   dailyRateJpy: 0,
   fixedOrderPayJpy: 1000,
   commissionRatePercent: 50,
+  extensionCommissionRatePercent: 50,
+  nominationFeeJpy: 0,
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "split",
   technicianNdpSharePercent: 30,

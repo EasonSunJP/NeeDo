@@ -31,6 +31,8 @@ const compensationRule = {
   dailyRateJpy: 0,
   fixedOrderPayJpy: 0,
   commissionRatePercent: 20,
+  extensionCommissionRatePercent: 20,
+  nominationFeeJpy: 0,
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "shop" as const,
   technicianNdpSharePercent: 0,

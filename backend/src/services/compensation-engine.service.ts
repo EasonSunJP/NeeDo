@@ -32,6 +32,8 @@ export interface CompensationRuleSet {
   dailyRateJpy: number;
   fixedOrderPayJpy: number;
   commissionRatePercent: number;
+  extensionCommissionRatePercent: number;
+  nominationFeeJpy: number;
   guaranteedMinimumJpy: number;
   ndpFeeBearer: CompensationNdpBearer;
   technicianNdpSharePercent: number;

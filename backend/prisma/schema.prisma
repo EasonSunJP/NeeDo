@@ -770,6 +770,7 @@ model User {
   ownedShops                             Shop[]                                @relation("ShopOwner")
   technicianProfile                      TechnicianProfile?
   customerProfile                        CustomerProfile?
+  merchantIdentityProfiles               MerchantIdentityProfile[]
   affiliateProfile                       AffiliateProfile?
   ownedAffiliateAlliances                AffiliateAlliance[]                   @relation("AffiliateAllianceOwner")
   affiliateAllianceMemberships           AffiliateAllianceMember[]             @relation("AffiliateAllianceMemberUser")
@@ -1006,6 +1007,8 @@ model ShopFinanceRuleSet {
   dailyRateJpy          Int       @default(0) @map("daily_rate_jpy")
   fixedOrderPayJpy      Int       @default(0) @map("fixed_order_pay_jpy")
   commissionRateBps     Int       @default(6000) @map("commission_rate_bps")
+  extensionCommissionRateBps Int  @default(6000) @map("extension_commission_rate_bps")
+  nominationFeeJpy      Int       @default(0) @map("nomination_fee_jpy")
   guaranteedMinimumJpy  Int       @default(0) @map("guaranteed_minimum_jpy")
   ndpFeeBearer          String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
   technicianNdpShareBps Int       @default(0) @map("technician_ndp_share_bps")
@@ -1045,6 +1048,8 @@ model TechnicianCompensationProfile {
   dailyRateJpy          Int       @default(0) @map("daily_rate_jpy")
   fixedOrderPayJpy      Int       @default(0) @map("fixed_order_pay_jpy")
   commissionRateBps     Int       @default(6000) @map("commission_rate_bps")
+  extensionCommissionRateBps Int  @default(6000) @map("extension_commission_rate_bps")
+  nominationFeeJpy      Int       @default(0) @map("nomination_fee_jpy")
   guaranteedMinimumJpy  Int       @default(0) @map("guaranteed_minimum_jpy")
   ndpFeeBearer          String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
   technicianNdpShareBps Int       @default(0) @map("technician_ndp_share_bps")
@@ -1282,6 +1287,30 @@ model CustomerProfile {
   @@index([membershipGrantedById], map: "customer_profiles_membership_granted_by_idx")
   @@index([deletedAt])
   @@map("customer_profiles")
+}
+
+model MerchantIdentityProfile {
+  id          Int       @id @default(autoincrement())
+  identityId  Int       @unique(map: "merchant_identity_profiles_identity_id_key") @map("identity_id")
+  userId      Int       @map("user_id")
+  displayName String    @map("display_name") @db.VarChar(120)
+  gender      String    @default("private") @db.VarChar(20)
+  age         Int?
+  heightCm    Decimal?  @map("height_cm") @db.Decimal(5, 2)
+  languages   Json?
+  bio         String?   @db.Text
+  visibility  String    @default("public") @db.VarChar(20)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  identity UserIdentity @relation(fields: [identityId], references: [id], onDelete: Restrict)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([visibility])
+  @@index([deletedAt])
+  @@map("merchant_identity_profiles")
 }
 
 model UserExperienceAccount {
@@ -2862,6 +2891,7 @@ model UserIdentity {
   receivedNotifications      Notification[]                @relation("NotificationRecipientIdentity")
   actedNotifications         Notification[]                @relation("NotificationActorIdentity")
   ownedMediaAssets           MediaAsset[]                  @relation("MediaAssetOwnerIdentity")
+  merchantIdentityProfile    MerchantIdentityProfile?
 
   @@index([userId])
   @@index([type])
@@ -3904,6 +3934,11 @@ model OrderFinancial {
   shopId                              Int                   @map("shop_id")
   technicianProfileId                 Int?                  @map("technician_profile_id")
   serviceAmountJpy                    Int                   @default(0) @map("service_amount_jpy")
+  baseServiceAmountJpy                Int?                  @map("base_service_amount_jpy")
+  extensionAmountJpy                  Int?                  @map("extension_amount_jpy")
+  nominationChargeAmountJpy           Int?                  @map("nomination_charge_amount_jpy")
+  wasTechnicianNominated              Boolean?              @map("was_technician_nominated")
+  compensationBasisVersion            String?               @map("compensation_basis_version") @db.VarChar(80)
   platformCollectedServiceAmountJpy   Int                   @default(0) @map("platform_collected_service_amount_jpy")
   offlineReportedServiceAmountJpy     Int                   @default(0) @map("offline_reported_service_amount_jpy")
   unknownOrUnreportedServiceAmountJpy Int                   @default(0) @map("unknown_or_unreported_service_amount_jpy")
