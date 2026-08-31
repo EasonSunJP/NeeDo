@@ -3953,6 +3953,208 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotent: { type: "boolean" }
         }
       },
+      BackofficeUserGroup: {
+        type: "object",
+        required: [
+          "code",
+          "kind",
+          "name",
+          "description",
+          "status",
+          "mutableName",
+          "memberCount"
+        ],
+        properties: {
+          code: { type: "string", minLength: 1, maxLength: 96 },
+          kind: { type: "string", enum: ["system", "custom"] },
+          name: { type: "string", minLength: 1, maxLength: 80 },
+          description: { type: ["string", "null"], maxLength: 500 },
+          status: { type: "string", enum: ["active", "archived"] },
+          mutableName: { type: "boolean" },
+          memberCount: { type: "integer", minimum: 0 }
+        }
+      },
+      BackofficeUserGroupMember: {
+        type: "object",
+        required: ["needoId", "displayName", "membershipLevel", "isOperationsMember"],
+        properties: {
+          needoId: { type: "string", minLength: 1, maxLength: 64 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"], format: "uri" },
+          membershipLevel: {
+            type: "string",
+            enum: ["free", "silver", "gold", "black_diamond"]
+          },
+          isOperationsMember: { type: "boolean" }
+        }
+      },
+      BackofficeUserGroupCreateInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "description"],
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 80 },
+          description: { type: ["string", "null"], maxLength: 500 }
+        }
+      },
+      BackofficeUserGroupUpdateInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "description"],
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 80 },
+          description: { type: ["string", "null"], maxLength: 500 }
+        }
+      },
+      BackofficeUserGroupArchiveInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason"],
+        properties: {
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      BackofficeUserGroupMembersInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["userIds", "reason"],
+        properties: {
+          userIds: {
+            type: "array",
+            uniqueItems: true,
+            maxItems: 5000,
+            items: { type: "string", minLength: 1, maxLength: 64 }
+          },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      UserGlobalPolicyVersion: {
+        type: "object",
+        required: [
+          "versionPublicId",
+          "version",
+          "status",
+          "lockVersion",
+          "requirePhone",
+          "requireEmail",
+          "requireHomeServiceEkyc",
+          "requireStoreServiceEkyc",
+          "ndpPerBaseExp",
+          "baseExpUnitsPerThreshold",
+          "effectiveFrom",
+          "effectiveTo"
+        ],
+        properties: {
+          versionPublicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: ["draft", "published", "archived"] },
+          lockVersion: { type: "integer", minimum: 1 },
+          requirePhone: { type: "boolean" },
+          requireEmail: { type: "boolean" },
+          requireHomeServiceEkyc: { type: "boolean" },
+          requireStoreServiceEkyc: { type: "boolean" },
+          ndpPerBaseExp: { type: "integer", minimum: 1 },
+          baseExpUnitsPerThreshold: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      UserGlobalPolicyDraftInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "expectedCurrentVersion",
+          "expectedDraftLockVersion",
+          "requirePhone",
+          "requireEmail",
+          "requireHomeServiceEkyc",
+          "requireStoreServiceEkyc",
+          "ndpPerBaseExp",
+          "baseExpUnitsPerThreshold",
+          "effectiveFrom"
+        ],
+        properties: {
+          expectedCurrentVersion: { type: "integer", minimum: 0 },
+          expectedDraftLockVersion: { type: ["integer", "null"], minimum: 1 },
+          requirePhone: { type: "boolean" },
+          requireEmail: { type: "boolean" },
+          requireHomeServiceEkyc: { type: "boolean" },
+          requireStoreServiceEkyc: { type: "boolean" },
+          ndpPerBaseExp: { type: "integer", minimum: 1 },
+          baseExpUnitsPerThreshold: { type: "integer", minimum: 1 },
+          effectiveFrom: {
+            type: "string",
+            format: "date-time",
+            description: "Japan-offset timestamp ending in +09:00"
+          }
+        }
+      },
+      VersionPublishInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "expectedLockVersion"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          expectedLockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      NdpExperienceCampaign: {
+        type: "object",
+        required: [
+          "versionPublicId",
+          "version",
+          "status",
+          "lockVersion",
+          "name",
+          "description",
+          "factorBps",
+          "effectiveFrom",
+          "effectiveTo"
+        ],
+        properties: {
+          versionPublicId: { type: "string", minLength: 1, maxLength: 64 },
+          version: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: ["draft", "published", "archived"] },
+          lockVersion: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          description: { type: ["string", "null"], maxLength: 500 },
+          factorBps: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: "string", format: "date-time" }
+        }
+      },
+      NdpExperienceCampaignDraftInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "expectedPublishedVersion",
+          "expectedDraftLockVersion",
+          "name",
+          "description",
+          "factorBps",
+          "effectiveFrom",
+          "effectiveTo"
+        ],
+        properties: {
+          expectedPublishedVersion: { type: "integer", minimum: 0 },
+          expectedDraftLockVersion: { type: ["integer", "null"], minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          description: { type: ["string", "null"], maxLength: 500 },
+          factorBps: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: "string", format: "date-time" }
+        }
+      },
+      NdpExperienceCampaignArchiveInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "expectedLockVersion", "reason"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
       BackofficeCustomerMembershipGrantInput: {
         type: "object",
         additionalProperties: false,
@@ -13226,6 +13428,400 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "404": { description: "User or tier not found" },
           "409": { description: "Version conflict" },
           "422": { description: "Target is not an active customer" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/user-groups`]: {
+      get: {
+        tags: ["User Management"],
+        summary: "List fixed system groups and operator-created groups",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          { name: "search", in: "query", schema: { type: "string", maxLength: 80 } },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "archived"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated user groups", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/BackofficeUserGroup" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1 }
+            }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      },
+      post: {
+        tags: ["User Management"],
+        summary: "Create a custom user group",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeUserGroupCreateInput" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created user group", {
+            $ref: "#/components/schemas/BackofficeUserGroup"
+          }),
+          "400": { description: "Invalid group" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "409": { description: "Group name conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/user-groups/{groupCode}`]: {
+      put: {
+        tags: ["User Management"],
+        summary: "Rename or describe a custom user group",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "groupCode",
+            in: "path",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 96 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeUserGroupUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated user group", {
+            $ref: "#/components/schemas/BackofficeUserGroup"
+          }),
+          "400": { description: "Invalid group" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Group not found" },
+          "422": { description: "System groups are immutable" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/user-groups/{groupCode}/archive`]: {
+      post: {
+        tags: ["User Management"],
+        summary: "Archive a custom user group",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "groupCode",
+            in: "path",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 96 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeUserGroupArchiveInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "User group archived" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Group not found" },
+          "422": { description: "System groups are immutable" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/user-groups/{groupCode}/members`]: {
+      get: {
+        tags: ["User Management"],
+        summary: "List members of a derived system group or custom group",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "groupCode",
+            in: "path",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 96 }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          { name: "search", in: "query", schema: { type: "string", maxLength: 80 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated group members", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/BackofficeUserGroupMember" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1 }
+            }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Group not found" }
+        }
+      },
+      put: {
+        tags: ["User Management"],
+        summary: "Replace the members of a custom user group",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "groupCode",
+            in: "path",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 96 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeUserGroupMembersInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Group members replaced" },
+          "400": { description: "Invalid member list" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Group or user not found" },
+          "422": { description: "System groups are immutable" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/user-global-settings`]: {
+      get: {
+        tags: ["User Management"],
+        summary: "Read the effective and draft global user policy",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Global user policy", {
+            type: "object",
+            properties: {
+              current: {
+                anyOf: [
+                  { $ref: "#/components/schemas/UserGlobalPolicyVersion" },
+                  { type: "null" }
+                ]
+              },
+              draft: {
+                anyOf: [
+                  { $ref: "#/components/schemas/UserGlobalPolicyVersion" },
+                  { type: "null" }
+                ]
+              }
+            }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/user-global-settings/draft`]: {
+      put: {
+        tags: ["User Management"],
+        summary: "Save a versioned global user policy draft",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UserGlobalPolicyDraftInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Saved global policy draft", {
+            $ref: "#/components/schemas/UserGlobalPolicyVersion"
+          }),
+          "400": { description: "Invalid policy draft" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/user-global-settings/publish`]: {
+      post: {
+        tags: ["User Management"],
+        summary: "Publish the expected global user policy draft",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/VersionPublishInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Published global user policy", {
+            $ref: "#/components/schemas/UserGlobalPolicyVersion"
+          }),
+          "400": { description: "Invalid publication" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Draft not found" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/ndp-experience-campaigns`]: {
+      get: {
+        tags: ["User Management"],
+        summary: "List versioned temporary NDP experience factors",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["draft", "published", "archived"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated NDP experience campaigns", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/NdpExperienceCampaign" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1 }
+            }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/ndp-experience-campaigns/draft`]: {
+      put: {
+        tags: ["User Management"],
+        summary: "Save a temporary NDP experience factor draft",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/NdpExperienceCampaignDraftInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Saved NDP experience campaign draft", {
+            $ref: "#/components/schemas/NdpExperienceCampaign"
+          }),
+          "400": { description: "Invalid campaign" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/ndp-experience-campaigns/{versionPublicId}/publish`]: {
+      post: {
+        tags: ["User Management"],
+        summary: "Publish an NDP experience campaign after overlap validation",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "versionPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 64 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/VersionPublishInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Published NDP experience campaign", {
+            $ref: "#/components/schemas/NdpExperienceCampaign"
+          }),
+          "400": { description: "Invalid publication" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Campaign not found" },
+          "409": { description: "Version or effective-range conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/ndp-experience-campaigns/{versionPublicId}/archive`]: {
+      post: {
+        tags: ["User Management"],
+        summary: "Archive an NDP experience campaign",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "versionPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 64 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/NdpExperienceCampaignArchiveInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Campaign archived" },
+          "400": { description: "Invalid archive request" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Campaign not found" },
+          "409": { description: "Version conflict" }
         }
       }
     },

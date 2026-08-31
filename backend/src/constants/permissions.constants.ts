@@ -565,6 +565,48 @@ export const SYSTEM_PERMISSIONS = [
     "发放、续费、升级、降级或终止用户平台会员资格"
   ),
   createPermission(
+    "backoffice:user-group:read",
+    "用户分组读取",
+    "api",
+    "backoffice",
+    "分页读取系统派生分组与自定义用户分组"
+  ),
+  createPermission(
+    "backoffice:user-group:write",
+    "用户分组管理",
+    "api",
+    "backoffice",
+    "创建、编辑、归档自定义分组并维护成员"
+  ),
+  createPermission(
+    "backoffice:user-policy:read",
+    "用户全局策略读取",
+    "api",
+    "backoffice",
+    "读取账号绑定与服务 eKYC 全局策略"
+  ),
+  createPermission(
+    "backoffice:user-policy:publish",
+    "用户全局策略发布",
+    "api",
+    "backoffice",
+    "保存并发布用户全局策略版本"
+  ),
+  createPermission(
+    "backoffice:ndp-experience-campaign:read",
+    "NDP经验活动读取",
+    "api",
+    "backoffice",
+    "分页读取 NDP 经验倍率活动"
+  ),
+  createPermission(
+    "backoffice:ndp-experience-campaign:publish",
+    "NDP经验活动发布",
+    "api",
+    "backoffice",
+    "保存、发布或归档 NDP 经验倍率活动"
+  ),
+  createPermission(
     "backoffice:order-acceptance-pause:read",
     "运营接单暂停读取",
     "api",
@@ -1527,7 +1569,10 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "page:permission-management",
   "permission:list",
   "backoffice:membership-tier:read",
-  "backoffice:membership-benefit:read"
+  "backoffice:membership-benefit:read",
+  "backoffice:user-group:read",
+  "backoffice:user-policy:read",
+  "backoffice:ndp-experience-campaign:read"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -1639,6 +1684,9 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:membership-tier:publish",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
+  "backoffice:user-group:write",
+  "backoffice:user-policy:publish",
+  "backoffice:ndp-experience-campaign:publish",
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
   "backoffice:orders:list",
