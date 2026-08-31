@@ -173,9 +173,9 @@ describe("chat-record validators", () => {
     expect(() => chatRecordCommandBodySchema.parse({ ...command, actorUserId: 999 })).toThrow();
   });
 
-  it("accepts safe coerced IDs and rejects unsafe integers in every numeric schema", () => {
-    expect(messageIdsSchema.parse(["993"])).toEqual([993]);
-    for (const value of [9007199254740992, "9007199254740992"]) {
+  it("accepts canonical Prisma Int IDs and rejects lossy or non-canonical numeric input", () => {
+    expect(messageIdsSchema.parse([993, "2147483647"])).toEqual([993, 2_147_483_647]);
+    for (const value of [Number("9007199254740990.6"), "1e3", "01", "2147483648"]) {
       expect(() => messageIdsSchema.parse([value])).toThrow();
       expect(() =>
         chatRecordCommandBodySchema.parse({
@@ -228,9 +228,10 @@ describe("chat-record HTTP API", () => {
     expect(fixture.service.createDelivery).not.toHaveBeenCalled();
   });
 
-  it("rejects unsafe numeric path, body, query, cursor, favorite, conversation, and message IDs", async () => {
+  it.each(["9007199254740990.6", "1e3", "01", "2147483648"])(
+    "rejects non-canonical or out-of-range numeric input %s across all ID boundaries",
+    async (unsafe) => {
     const fixture = createFixture();
-    const unsafe = "9007199254740992";
     const authorization = { Authorization: `Bearer ${fixture.token}` };
     const calls = [
       request(fixture.app)
@@ -267,7 +268,8 @@ describe("chat-record HTTP API", () => {
     expect(fixture.service.listFavorites).not.toHaveBeenCalled();
     expect(fixture.service.removeFavorite).not.toHaveBeenCalled();
     expect(fixture.realtimeService.deleteMessagesForUser).not.toHaveBeenCalled();
-  });
+    }
+  );
 
   it("coerces safe string IDs through delivery and batch routes", async () => {
     const fixture = createFixture();

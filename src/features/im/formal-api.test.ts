@@ -1453,11 +1453,41 @@ describe("formal IM adapter", () => {
     }
   });
 
+  it("rejects malformed raw delivery messages before mapping the chat-record snapshot", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const summary = { publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    const metadata = { needoMessageType: "chat-record", needoMessageExt: { bundlePublicId: publicId, itemCount: 1, preview: summary.preview, senderNames: summary.senderNames, senderCount: 1, title: summary.title, titleKind: "single" } };
+    const validMessage = { id: 801, conversationId: 91, senderUserId: 100, type: "text" as const, content: summary.title, metadata, createdAt: now };
+    const malformed = [
+      { ...validMessage, id: 2_147_483_648 },
+      { ...validMessage, conversationId: 92 },
+      { ...validMessage, senderUserId: Number.MAX_SAFE_INTEGER + 1 },
+      { ...validMessage, senderUserId: null },
+      { ...validMessage, type: "system" },
+      { ...validMessage, createdAt: "not-a-date" },
+      { ...validMessage, content: "different" },
+    ];
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    for (const message of malformed) {
+      vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValueOnce({ replayed: false, bundle: summary, message } as never);
+      await expect(api.createChatRecordDelivery("91", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+  });
+
+  it("accepts an empty chat-record page beyond the current total", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [], total: 0, page: 2, page_size: 20, nextCursor: null });
+    vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValueOnce({ list: [], total: 0, page: 3, page_size: 20 });
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    await expect(api.listChatRecordItems(publicId)).resolves.toMatchObject({ list: [], total: 0, page: 2, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordFavorites()).resolves.toMatchObject({ list: [], total: 0, page: 3, page_size: 20 });
+  });
+
   it("rejects inconsistent or unsafe chat-record pagination", async () => {
     const publicId = "22222222-2222-4222-8222-222222222222";
     const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
     const malformedPages = [
-      { list: [], total: 0, page: 2, page_size: 20, nextCursor: null },
+      { list: [{ id: 901, position: 1, senderDisplayName: "A", senderAvatarUrl: null, messageType: "text", content: "one", metadata: null, sentAt: now }], total: 1, page: 2, page_size: 20, nextCursor: null },
       { list: [], total: 0, page: 1, page_size: Number.MAX_SAFE_INTEGER + 1, nextCursor: null },
       { list: [], total: 0, page: 1, page_size: 20, nextCursor: Number.MAX_SAFE_INTEGER + 1 },
       { list: [], total: 0, page: 1, page_size: 20, nextCursor: null, extra: true }
@@ -1471,6 +1501,7 @@ describe("formal IM adapter", () => {
   it("rejects unsafe chat-record IDs and malformed UUIDs before requests", async () => {
     const create = vi.spyOn(realtimeApi, "createChatRecordDelivery");
     const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    await expect(api.createChatRecordDelivery("2147483648", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.validation.invalid_id");
     await expect(api.createChatRecordDelivery("9007199254740992", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.validation.invalid_id");
     await expect(api.createChatRecordDelivery("91", { idempotencyKey: "not-a-uuid", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.validation.invalid_uuid");
     expect(create).not.toHaveBeenCalled();

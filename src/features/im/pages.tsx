@@ -7981,15 +7981,15 @@ export function ImNewConversationPage() {
     if (mode !== "forward" || !store.pendingChatRecordForward) return [];
     const keyword = deferredQuery.trim().toLowerCase();
     return store.conversations.filter((conversation) => {
-      if (conversation.isDeleted || conversation.id === store.pendingChatRecordForward?.sourceConversationId || (conversation.type !== "single" && conversation.type !== "group")) return false;
+      if (conversation.isDeleted || (conversation.type !== "single" && conversation.type !== "group")) return false;
       return !keyword || getConversationDisplayName(store, conversation).toLowerCase().includes(keyword);
     });
   }, [deferredQuery, mode, store, store.conversations, store.pendingChatRecordForward]);
   const existingForwardContactUserIds = useMemo(() => new Set(
-    forwardConversations
-      .filter((conversation) => conversation.type === "single" && conversation.contactUserId)
+    store.conversations
+      .filter((conversation) => !conversation.isDeleted && conversation.type === "single" && conversation.contactUserId)
       .map((conversation) => conversation.contactUserId as string)
-  ), [forwardConversations]);
+  ), [store.conversations]);
   const newDirectForwardContacts = useMemo(() => mode === "forward"
     ? contacts.filter((contact) => !existingForwardContactUserIds.has(contact.targetUserId))
     : contacts, [contacts, existingForwardContactUserIds, mode]);

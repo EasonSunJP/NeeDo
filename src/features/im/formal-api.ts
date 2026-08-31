@@ -55,6 +55,7 @@ const formalRuntimeConfig = {
   recallWindowMs: 180_000,
   separatorThresholdMs: 300_000,
 } as const;
+const prismaIntMax = 2_147_483_647;
 
 const richMessageTypes = new Set<ImMessageType>([
   "text",
@@ -80,7 +81,7 @@ function toNumericId(id: string) {
   if (!/^[1-9]\d*$/.test(id)) throw new Error("error.validation.invalid_id");
   const value = Number(id);
 
-  if (!Number.isSafeInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > prismaIntMax) {
     throw new Error("error.validation.invalid_id");
   }
 
@@ -91,7 +92,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const checksumPattern = /^[0-9a-f]{64}$/;
 function assertUuid(value: string) { if (!uuidPattern.test(value)) throw new Error("error.validation.invalid_uuid"); return value; }
 function assertChecksum(value: string) { if (!checksumPattern.test(value)) throw new Error("error.validation.invalid_checksum"); return value; }
-function toStringId(value: number) { if (!Number.isSafeInteger(value) || value <= 0) throw new Error("error.response.invalid_id"); return String(value); }
+function toStringId(value: number) { if (!Number.isSafeInteger(value) || value <= 0 || value > prismaIntMax) throw new Error("error.response.invalid_id"); return String(value); }
 function positive(value: number, max?: number) { if (!Number.isSafeInteger(value) || value <= 0 || (max !== undefined && value > max)) throw new Error("error.validation.invalid_id"); return value; }
 
 const invalidChatRecord = (): never => { throw new Error("error.response.invalid_chat_record"); };
@@ -107,7 +108,7 @@ function boundedString(value: unknown, minimum: number, maximum: number): string
   if (typeof value !== "string" || value.length < minimum || value.length > maximum) invalidChatRecord();
   return value as string;
 }
-function responseInteger(value: unknown, minimum: number, maximum = Number.MAX_SAFE_INTEGER): number {
+function responseInteger(value: unknown, minimum: number, maximum = prismaIntMax): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum || value > maximum) invalidChatRecord();
   return value as number;
 }
@@ -155,7 +156,8 @@ function chatRecordPage(value: unknown, withCursor: boolean) {
   const pageSize = responseInteger(page.page_size, 1, 100);
   const total = responseInteger(page.total, 0);
   const pageNumber = responseInteger(page.page, 1);
-  if (list.length > pageSize || list.length > total || pageNumber > Math.max(1, Math.ceil(total / pageSize))) invalidChatRecord();
+  const offset = (pageNumber - 1) * pageSize;
+  if (list.length > pageSize || list.length > total || (list.length > 0 && (offset >= total || offset + list.length > total))) invalidChatRecord();
   const nextCursor = withCursor ? page.nextCursor : undefined;
   if (withCursor && nextCursor !== null) responseInteger(nextCursor, 1, 100);
   return { list, total, page: pageNumber, page_size: pageSize, ...(withCursor ? { nextCursor: nextCursor as number | null } : {}) };
@@ -190,6 +192,39 @@ function assertChatRecordDeliveryConsistency(bundle: import("./chat-records").Im
   const metadata = parseChatRecordMessageMetadata(message.metadata);
   const expectedTitleKind = bundle.senderCount === 1 ? "single" : bundle.senderCount === 2 ? "pair" : "group";
   if (metadata.chatRecord.publicId !== bundle.publicId || metadata.chatRecord.itemCount !== bundle.itemCount || metadata.chatRecord.preview !== bundle.preview || metadata.senderCount !== bundle.senderCount || metadata.title !== bundle.title || metadata.chatRecord.titleKind !== expectedTitleKind || metadata.chatRecord.senderNames.length !== bundle.senderNames.length || metadata.chatRecord.senderNames.some((name: string, index: number) => name !== bundle.senderNames[index]) || message.content !== bundle.title) invalidChatRecord();
+}
+
+function parseChatRecordDeliveryMessage(value: unknown, targetConversationId: number): import("../realtime/api").RealtimeMessage {
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalidChatRecord();
+  const message = value as Record<string, unknown>;
+  const allowed = new Set([
+    "availableRecallModes", "content", "contentPurgedAt", "conversationId", "createdAt", "expiresAt",
+    "id", "lifecycleVersion", "metadata", "privacyPolicyVersionAtSend", "reactionVersion", "reactions",
+    "recallDeadlineAt", "recalledAt", "recallMode", "senderUserId", "type",
+  ]);
+  if (Object.keys(message).some((key) => !allowed.has(key))) invalidChatRecord();
+  for (const required of ["content", "conversationId", "createdAt", "id", "metadata", "senderUserId", "type"]) {
+    if (!Object.prototype.hasOwnProperty.call(message, required)) invalidChatRecord();
+  }
+  responseInteger(message.id, 1);
+  if (responseInteger(message.conversationId, 1) !== targetConversationId) invalidChatRecord();
+  responseInteger(message.senderUserId, 1);
+  if (message.type !== "text" || typeof message.content !== "string") invalidChatRecord();
+  boundedString(message.content, 1, 255);
+  isoDate(message.createdAt);
+  for (const field of ["contentPurgedAt", "expiresAt", "recallDeadlineAt", "recalledAt"] as const) {
+    const fieldValue = message[field];
+    if (fieldValue !== undefined && fieldValue !== null) isoDate(fieldValue);
+  }
+  if (message.recallMode !== undefined && message.recallMode !== null && message.recallMode !== "standard" && message.recallMode !== "traceless") invalidChatRecord();
+  for (const field of ["lifecycleVersion", "privacyPolicyVersionAtSend", "reactionVersion"] as const) {
+    const fieldValue = message[field];
+    if (fieldValue !== undefined && fieldValue !== null) responseInteger(fieldValue, 0);
+  }
+  if (message.availableRecallModes !== undefined && (!Array.isArray(message.availableRecallModes) || message.availableRecallModes.some((mode) => mode !== "standard"))) invalidChatRecord();
+  if (message.reactions !== undefined && !Array.isArray(message.reactions)) invalidChatRecord();
+  parseChatRecordMessageMetadata(message.metadata);
+  return message as unknown as import("../realtime/api").RealtimeMessage;
 }
 
 const secondsPerMinute = 60;
@@ -1069,7 +1104,7 @@ export function createFormalImApi({
       const result = exactRecord(rawResult, ["replayed", "bundle", "message"]);
       if (typeof result.replayed !== "boolean") invalidChatRecord();
       const bundle = toChatRecordSummary(result.bundle as import("../realtime/api").RealtimeChatRecordSummary);
-      const rawMessage = result.message as import("../realtime/api").RealtimeMessage;
+      const rawMessage = parseChatRecordDeliveryMessage(result.message, toNumericId(targetConversationId));
       assertChatRecordDeliveryConsistency(bundle, rawMessage);
       return { replayed: result.replayed as boolean, bundle, message: toConversationMessage(rawMessage) };
     },

@@ -6,9 +6,10 @@ import {
   IM_PRIVACY_TTL_MIN_SECONDS
 } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
+import { PRISMA_INT_MAX } from "../constants/database";
 
 type OpenApiDocument = Record<string, unknown>;
-const safeIntegerMaximum = Number.MAX_SAFE_INTEGER;
+const safeIntegerMaximum = PRISMA_INT_MAX;
 
 const payrollCsvResponse = (description: string) => ({
   description,

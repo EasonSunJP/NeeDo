@@ -814,19 +814,56 @@ describe("formal IM forwarding", () => {
     expect(store?.conversations[0]).toMatchObject({ lastMessageId: "700", lastMessagePreview: "earlier", lastMessageTime: sentAt });
   });
 
-  it("clears every last-message field after deleting all loaded messages", async () => {
+  it("clears every last-message field after deleting all messages from a complete history without changing unread state", async () => {
     mocked.session = { activePublicId: "u0000000193", avatarUrl: null, id: 193, primaryPublicId: "u0000000193", username: "清空摘要测试" };
     mocked.api = {
-      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "100", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [conversation({ lastMessageId: "700", lastMessagePreview: "原消息", lastMessageType: "text", lastMessageStatus: "sent", unreadCount: 4 })], members: [] }),
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "100", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [conversation({ lastMessageId: "700", lastMessagePreview: "原消息", lastMessageType: "text", lastMessageStatus: "sent", unreadCount: 4, mentionMe: true, mentionAll: true })], members: [] }),
       listMessages: vi.fn().mockResolvedValue({ messages: [message()], nextCursor: null, hasMore: false }),
       batchDeleteMessages: vi.fn().mockResolvedValue({ conversationId: "91", messageIds: ["700"], count: 1, deleted: true, replayed: false })
     };
     await renderStore();
     await act(async () => { await store?.loadMessages("91", { reset: true }); await store?.batchDeleteMessages("91", ["700"], "delete-all"); });
-    expect(store?.conversations[0]).toMatchObject({ lastMessagePreview: "", unreadCount: 0 });
+    expect(store?.conversations[0]).toMatchObject({ lastMessagePreview: "", unreadCount: 4, mentionMe: true, mentionAll: true });
     expect(store?.conversations[0].lastMessageId).toBeUndefined();
     expect(store?.conversations[0].lastMessageType).toBeUndefined();
     expect(store?.conversations[0].lastMessageStatus).toBeUndefined();
+  });
+
+  it("refreshes the authoritative conversation after deleting the last message from an incomplete history", async () => {
+    mocked.session = { activePublicId: "u0000000194", avatarUrl: null, id: 194, primaryPublicId: "u0000000194", username: "部分历史刷新测试" };
+    const earlier = message({ id: "700", localId: "700", content: "loaded older" });
+    const latest = message({ id: "701", localId: "701", content: "latest", sentAt: "2026-08-25T10:01:00.000Z" });
+    const authoritative = conversation({ lastMessageId: "700", lastMessagePreview: "server older", lastMessageTime: sentAt, unreadCount: 6, mentionMe: true });
+    const getConversation = vi.fn().mockResolvedValue({ conversation: authoritative, members: [], users: [] });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "100", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [conversation({ lastMessageId: "701", lastMessagePreview: "latest", lastMessageTime: latest.sentAt, unreadCount: 6, mentionMe: true })], members: [] }),
+      listMessages: vi.fn().mockResolvedValue({ messages: [earlier, latest], nextCursor: "699", hasMore: true }),
+      batchDeleteMessages: vi.fn().mockResolvedValue({ conversationId: "91", messageIds: ["701"], count: 1, deleted: true, replayed: false }),
+      getConversation,
+    };
+    await renderStore();
+    await act(async () => { await store?.loadMessages("91", { reset: true }); await store?.batchDeleteMessages("91", ["701"], "delete-partial-last"); });
+    expect(getConversation).toHaveBeenCalledWith("91");
+    expect(store?.messagesByConversation["91"]).toEqual([earlier]);
+    expect(store?.conversations[0]).toMatchObject({ lastMessageId: "700", lastMessagePreview: "server older", unreadCount: 6, mentionMe: true });
+  });
+
+  it("keeps a successful delete and invalidates a partial summary when authoritative refresh fails", async () => {
+    mocked.session = { activePublicId: "u0000000195", avatarUrl: null, id: 195, primaryPublicId: "u0000000195", username: "部分历史失效测试" };
+    const latest = message({ id: "701", localId: "701", content: "deleted private body", sentAt: "2026-08-25T10:01:00.000Z" });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "100", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [conversation({ lastMessageId: "701", lastMessagePreview: "deleted private body", lastMessageTime: latest.sentAt, unreadCount: 6, mentionMe: true, mentionAll: true })], members: [] }),
+      listMessages: vi.fn().mockResolvedValue({ messages: [latest], nextCursor: "700", hasMore: true }),
+      batchDeleteMessages: vi.fn().mockResolvedValue({ conversationId: "91", messageIds: ["701"], count: 1, deleted: true, replayed: false }),
+      getConversation: vi.fn().mockRejectedValue(new Error("refresh failed")),
+    };
+    await renderStore();
+    await act(async () => { await expect(store?.loadMessages("91", { reset: true })).resolves.toBeUndefined(); });
+    await act(async () => { await expect(store?.batchDeleteMessages("91", ["701"], "delete-partial-failure")).resolves.toBeUndefined(); });
+    expect(store?.messagesByConversation["91"]).toEqual([]);
+    expect(store?.conversations[0]).toMatchObject({ lastMessagePreview: "", unreadCount: 6, mentionMe: true, mentionAll: true });
+    expect(store?.conversations[0].lastMessageId).toBeUndefined();
+    expect(store?.paginationByConversation["91"]).toMatchObject({ hasMore: true, loaded: false, loading: false, nextCursor: null });
   });
 
   it("does not remove messages optimistically when batch deletion fails", async () => {

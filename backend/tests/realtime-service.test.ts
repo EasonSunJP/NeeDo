@@ -1170,7 +1170,7 @@ describe("RealtimeService group privacy and membership", () => {
       publish: jest.fn(),
       subscribe: jest.fn()
     });
-    const unsafe = Number.MAX_SAFE_INTEGER + 1;
+    const unsafe = 2_147_483_648;
 
     await expect(
       service.deleteMessagesForUser(

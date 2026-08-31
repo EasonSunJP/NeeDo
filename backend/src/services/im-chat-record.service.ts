@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { logger } from "../config/logger";
 import { ERROR_CODES } from "../constants/error-codes";
+import { PRISMA_INT_MAX } from "../constants/database";
 import type {
   AuthorizedChatRecordMedia,
   ChatRecordCommand,
@@ -472,7 +473,7 @@ export class ImChatRecordService {
   }
 
   private isSafePositiveInteger(value: number): boolean {
-    return Number.isSafeInteger(value) && value > 0;
+    return Number.isSafeInteger(value) && value > 0 && value <= PRISMA_INT_MAX;
   }
 
   private sourceUnavailable(): AppError {

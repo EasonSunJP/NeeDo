@@ -310,6 +310,8 @@ describe("ImNewConversationPage chat-record forwarding", () => {
   });
 
   it.each([
+    ["source direct", buildForwardConversation("source-conversation", "single", "partner-user"), "测试好友"],
+    ["source group", buildForwardConversation("source-conversation", "group"), "项目群"],
     ["existing direct", buildForwardConversation("direct-conversation", "single", "partner-user"), "测试好友"],
     ["existing group", buildForwardConversation("group-conversation", "group"), "项目群"],
   ])("forwards directly to an %s target without ensuring a new direct conversation", async (_label, conversation, targetLabel) => {
@@ -327,6 +329,17 @@ describe("ImNewConversationPage chat-record forwarding", () => {
     expect(store.ensureDirectConversation).not.toHaveBeenCalled();
     expect(store.forwardSelectedMessages).toHaveBeenCalledWith(conversation.id, expect.any(String));
     expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe(`/messages/${conversation.id}`);
+    await act(async () => view.root.unmount());
+  });
+
+  it("does not offer a contact as new when any valid existing direct conversation already targets it", async () => {
+    const sourceDirect = buildForwardConversation("source-conversation", "single", "partner-user");
+    const store = buildForwardPageStore({ conversations: [sourceDirect] });
+    const view = await renderForwardPage(store);
+    const partnerTargets = Array.from(view.container.querySelectorAll("button"))
+      .filter((button) => button.textContent?.includes("测试好友"));
+    expect(partnerTargets).toHaveLength(1);
+    expect(view.container.querySelector('[data-forward-conversation-id="source-conversation"]')).not.toBeNull();
     await act(async () => view.root.unmount());
   });
 

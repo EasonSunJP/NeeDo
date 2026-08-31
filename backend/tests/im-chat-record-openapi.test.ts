@@ -101,7 +101,7 @@ describe("chat-record OpenAPI contract", () => {
         senderNames: api.components.schemas.ImChatRecordSummary.properties?.senderNames
       }
     });
-    const safeMaximum = Number.MAX_SAFE_INTEGER;
+    const safeMaximum = 2_147_483_647;
     expect(commandSchema).toMatchObject({
       properties: {
         messageIds: { items: { maximum: safeMaximum } },

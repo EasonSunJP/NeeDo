@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import { logger } from "../config/logger";
 import { ERROR_CODES } from "../constants/error-codes";
+import { PRISMA_INT_MAX } from "../constants/database";
 import type {
   ConversationPayload,
   CreateConversationInput,
@@ -348,7 +349,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     if (
       !Number.isSafeInteger(input.conversationId) ||
       input.conversationId <= 0 ||
-      input.messageIds.some((messageId) => !Number.isSafeInteger(messageId) || messageId <= 0)
+      input.conversationId > PRISMA_INT_MAX ||
+      input.messageIds.some(
+        (messageId) =>
+          !Number.isSafeInteger(messageId) || messageId <= 0 || messageId > PRISMA_INT_MAX
+      )
     ) {
       throw this.validationError("error.validation_failed");
     }

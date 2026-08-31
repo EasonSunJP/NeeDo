@@ -454,8 +454,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         conversation.id === conversationId
           ? {
               ...conversation,
-              ...buildConversationLastMessageSummary(lastMessage, snapshot.currentUserId ?? "", snapshot.usersById, conversation.updatedAt),
-              ...(lastMessage ? {} : { unreadCount: 0, mentionMe: false, mentionAll: false })
+              ...buildConversationLastMessageSummary(lastMessage, snapshot.currentUserId ?? "", snapshot.usersById, conversation.updatedAt)
             }
           : conversation
       ))
@@ -1009,6 +1008,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       messageIds: [...messageIds],
     });
     const removed = new Set(response.messageIds);
+    const conversation = snapshot.conversations.find((item) => item.id === conversationId);
+    const pagination = snapshot.paginationByConversation[conversationId];
+    const removedCurrentLast = Boolean(conversation?.lastMessageId && removed.has(conversation.lastMessageId));
     const remaining = (snapshot.messagesByConversation[conversationId] ?? [])
       .filter((message) => !removed.has(message.id));
     snapshot = {
@@ -1018,8 +1020,35 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         [conversationId]: remaining,
       },
     };
-    rebuildConversationMessageSummary(conversationId);
-    emit();
+    if (!removedCurrentLast) {
+      emit();
+      return;
+    }
+    if (pagination?.loaded && !pagination.hasMore) {
+      rebuildConversationMessageSummary(conversationId);
+      emit();
+      return;
+    }
+    try {
+      await loadConversation(conversationId);
+    } catch {
+      snapshot = {
+        ...snapshot,
+        conversations: sortConversations(snapshot.conversations.map((item) =>
+          item.id === conversationId
+            ? {
+                ...item,
+                ...buildConversationLastMessageSummary(undefined, snapshot.currentUserId ?? "", snapshot.usersById, item.updatedAt),
+              }
+            : item
+        )),
+        paginationByConversation: {
+          ...snapshot.paginationByConversation,
+          [conversationId]: { hasMore: true, nextCursor: null, loaded: false, loading: false },
+        },
+      };
+      emit();
+    }
   }
 
   async function translateMessages(

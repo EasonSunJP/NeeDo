@@ -147,3 +147,57 @@ PASS
 ```
 
 An attempted broad Prettier invocation was stopped when `npx` produced no output, and the available backend Prettier was then found to rewrite unrelated legacy formatting (9,060 additions / 3,119 deletions). Those formatter-only changes were backed up, fully reverted, and the review semantics were replayed as a focused 18-file diff (about 767 additions / 135 deletions before this report update). No formatter churn is retained.
+
+## Second review remediation — 2026-08-31
+
+This follow-up supersedes the first-review statements about `Number.MAX_SAFE_INTEGER`, source-conversation exclusion, and clearing unread/mention state:
+
+- A shared Zod union now accepts either a numeric positive integer or a canonical decimal string matching `^[1-9]\\d*$`, then enforces the actual Prisma `Int` maximum `2_147_483_647`. Chat-record and batch validators, both service boundaries, the formal client ID boundary, and OpenAPI use the same database limit. Fractional/lossy numbers, exponent strings, leading-zero strings, and values above the database maximum are rejected across target/source conversation, message, cursor, page, favorite, and batch boundaries.
+- Empty pages beyond the current total remain valid. Non-empty pages must fit `page_size` and their offset plus returned length must not exceed `total`.
+- Delivery parsing now validates the raw backend message before mapping: exact supported keys, database-safe message/conversation/sender IDs, target-conversation equality, required `text` transport type with `chat-record` metadata, valid timestamps and lifecycle fields, and consistency of title/content, public ID, item count, preview, sender snapshot/count, and title kind.
+- Batch deletion removes server-confirmed deleted messages first. A complete local history rebuilds only last-message fields while preserving authoritative unread/mention state. If the deleted message is the last message of an incomplete history, the store refreshes the formal conversation summary. Refresh failure does not falsify the successful delete: deleted content remains removed, summary content is safely invalidated, unread/mention state is preserved, and pagination is marked for recoverable reload.
+- Forward mode includes the source direct/group conversation as a valid existing target. Existing-direct contact de-duplication is computed from every valid store conversation independently of search/display filtering, so source direct chats cannot be offered as duplicate new-direct contacts.
+
+### Second-review RED
+
+```text
+backend focused: 4 suites / 101 tests, 8 failures
+  validator + four HTTP boundary variants + service + realtime + OpenAPI
+frontend focused: 3 files / 100 tests, 8 failures
+  formal 2 + store 3 + rendered picker 3
+```
+
+The two new partial-history store tests initially reused a cached scoped store because their session IDs were not unique. The harness was corrected to use distinct sessions before evaluating the production behavior; this was a test-isolation defect, not accepted as product RED evidence.
+
+### Second-review GREEN and verification
+
+```text
+npm test -- --run src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/pages.test.tsx
+3 files, 100 tests passed
+
+npm test -- --run src/features/im src/features/realtime
+29 files, 315 tests passed
+
+cd backend && npm test -- --runInBand tests/im-chat-record-api.test.ts tests/im-chat-record-openapi.test.ts tests/im-chat-record.service.test.ts tests/realtime-service.test.ts
+4 suites, 101 tests passed
+
+cd backend && npm test -- --runInBand tests/im-chat-record.service.test.ts tests/im-chat-record.repository.test.ts tests/im-chat-record-api.test.ts tests/im-chat-record-openapi.test.ts tests/im-chat-record-schema.test.ts tests/realtime-service.test.ts tests/message-batch-delete.test.ts tests/im-message-translation.service.test.ts tests/im-message-translation.repository.test.ts tests/im-message-translation-api.test.ts
+10 suites, 189 tests passed
+
+npm run lint
+PASS
+
+cd backend && npm run lint
+PASS
+
+npm run build
+PASS (pre-existing Vite dynamic-import and chunk-size warnings only)
+
+cd backend && npm run build
+PASS
+
+git diff --check
+PASS
+```
+
+Targeted backend Prettier check passed for the new constant, validator, chat-record service, and focused chat-record tests. It continued to report whole-file legacy style in `realtime.service.ts`, `openapi.ts`, `im-chat-record-api.test.ts`, and `realtime-service.test.ts`; no `--write` was run because it would reformat unrelated legacy content. ESLint and both TypeScript builds pass, and no formatter-only churn is retained.

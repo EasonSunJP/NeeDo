@@ -1,12 +1,23 @@
 import { z } from "zod";
+import { PRISMA_INT_MAX } from "../constants/database";
 
-const safePositiveInteger = (max = Number.MAX_SAFE_INTEGER) =>
-  z.coerce
+const safePositiveInteger = (max = PRISMA_INT_MAX) => {
+  const numeric = z
     .number()
     .int()
     .positive()
     .max(max)
     .refine(Number.isSafeInteger, "error.validation.safe_integer_required");
+
+  return z.union([
+    numeric,
+    z
+      .string()
+      .regex(/^[1-9]\d*$/u)
+      .transform((value) => Number(value))
+      .pipe(numeric)
+  ]);
+};
 
 export const safePositiveIntegerSchema = safePositiveInteger();
 

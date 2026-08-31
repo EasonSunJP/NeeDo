@@ -526,7 +526,7 @@ describe("ImChatRecordService", () => {
 
   it("rejects unsafe integer IDs at the service boundary", async () => {
     const fixture = createFixture();
-    const unsafe = Number.MAX_SAFE_INTEGER + 1;
+    const unsafe = 2_147_483_648;
 
     await expect(
       fixture.service.createDelivery(auth, context, {
