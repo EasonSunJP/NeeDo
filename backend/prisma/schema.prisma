@@ -547,6 +547,14 @@ enum ShopMembershipCardStatus {
   @@map("shop_membership_card_status")
 }
 
+enum ShopMembershipCardIssuanceSource {
+  OFFLINE_PAID           @map("offline_paid")
+  HISTORICAL_REPLACEMENT @map("historical_replacement")
+  MANUAL_GRANT           @map("manual_grant")
+
+  @@map("shop_membership_card_issuance_source")
+}
+
 enum MembershipRewardFeePolicyStatus {
   ACTIVE     @map("active")
   SUPERSEDED @map("superseded")
@@ -707,6 +715,7 @@ model User {
   createdShopMembershipCardPlans        ShopMembershipCardPlan[]            @relation("ShopMembershipCardPlanCreatedBy")
   updatedShopMembershipCardPlans        ShopMembershipCardPlan[]            @relation("ShopMembershipCardPlanUpdatedBy")
   publishedShopMembershipPlanVersions   ShopMembershipCardPlanVersion[]     @relation("ShopMembershipCardPlanVersionPublishedBy")
+  issuedShopMembershipCards             ShopMembershipCard[]                @relation("ShopMembershipCardIssuedBy")
   createdMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyCreatedBy")
   updatedMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyUpdatedBy")
   ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
@@ -1247,27 +1256,44 @@ model ShopCustomerMembership {
 }
 
 model ShopMembershipCard {
-  id                  Int                      @id @default(autoincrement())
-  publicId            String                   @unique @default(uuid()) @map("public_id") @db.Char(36)
-  membershipId        Int                      @map("membership_id")
-  cardNo              String                   @unique @map("card_no") @db.VarChar(40)
-  name                String                   @db.VarChar(120)
-  type                ShopMembershipCardType
-  status              ShopMembershipCardStatus @default(ACTIVE)
-  principalBalanceJpy Int?                     @map("principal_balance_jpy")
-  bonusBalanceJpy     Int?                     @map("bonus_balance_jpy")
-  remainingUses       Int?                     @map("remaining_uses")
-  totalUses           Int?                     @map("total_uses")
-  issuedAt            DateTime                 @map("issued_at")
-  expiresAt           DateTime?                @map("expires_at")
-  frozenAt            DateTime?                @map("frozen_at")
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
-  deletedAt           DateTime?                @map("deleted_at")
+  id                          Int                               @id @default(autoincrement())
+  publicId                    String                            @unique @default(uuid()) @map("public_id") @db.Char(36)
+  membershipId                Int                               @map("membership_id")
+  planId                      Int?                              @map("plan_id")
+  planVersionId               Int?                              @map("plan_version_id")
+  issuedById                  Int?                              @map("issued_by_id")
+  cardNo                      String                            @unique @map("card_no") @db.VarChar(40)
+  name                        String                            @db.VarChar(120)
+  type                        ShopMembershipCardType
+  status                      ShopMembershipCardStatus          @default(ACTIVE)
+  issuanceSource              ShopMembershipCardIssuanceSource? @map("issuance_source")
+  issuanceReference           String?                           @map("issuance_reference") @db.VarChar(160)
+  issuanceNote                String?                           @map("issuance_note") @db.VarChar(500)
+  initialPrincipalJpy         Int?                              @map("initial_principal_jpy")
+  initialUses                 Int?                              @map("initial_uses")
+  platformFeeRateBpsSnapshot  Int?                              @map("platform_fee_rate_bps_snapshot")
+  issuanceIdempotencyKey      String?                           @unique(map: "shop_membership_cards_issuance_idempotency_key") @map("issuance_idempotency_key") @db.VarChar(160)
+  issuanceFingerprint         String?                           @map("issuance_fingerprint") @db.Char(64)
+  principalBalanceJpy         Int?                              @map("principal_balance_jpy")
+  bonusBalanceJpy             Int?                              @map("bonus_balance_jpy")
+  remainingUses               Int?                              @map("remaining_uses")
+  totalUses                   Int?                              @map("total_uses")
+  issuedAt                    DateTime                          @map("issued_at")
+  expiresAt                   DateTime?                         @map("expires_at")
+  frozenAt                    DateTime?                         @map("frozen_at")
+  createdAt                   DateTime                          @default(now()) @map("created_at")
+  updatedAt                   DateTime                          @updatedAt @map("updated_at")
+  deletedAt                   DateTime?                         @map("deleted_at")
 
-  membership ShopCustomerMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  membership  ShopCustomerMembership          @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  plan        ShopMembershipCardPlan?          @relation("ShopMembershipCardPlanCards", fields: [planId], references: [id], onDelete: Restrict)
+  planVersion ShopMembershipCardPlanVersion?   @relation("ShopMembershipCardPlanVersionCards", fields: [planVersionId], references: [id], onDelete: Restrict)
+  issuedBy    User?                            @relation("ShopMembershipCardIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
 
   @@index([membershipId, status, deletedAt], map: "shop_membership_cards_membership_status_idx")
+  @@index([planId, deletedAt], map: "shop_membership_cards_plan_idx")
+  @@index([planVersionId, deletedAt], map: "shop_membership_cards_plan_version_idx")
+  @@index([issuedById], map: "shop_membership_cards_issued_by_idx")
   @@index([status, expiresAt, deletedAt], map: "shop_membership_cards_status_expiry_idx")
   @@index([deletedAt], map: "shop_membership_cards_deleted_idx")
   @@map("shop_membership_cards")
@@ -1317,6 +1343,7 @@ model ShopMembershipCardPlan {
   versions       ShopMembershipCardPlanVersion[] @relation("ShopMembershipCardPlanVersions")
   createdBy      User?                           @relation("ShopMembershipCardPlanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy      User?                           @relation("ShopMembershipCardPlanUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cards          ShopMembershipCard[]            @relation("ShopMembershipCardPlanCards")
 
   @@index([shopId, status, updatedAt, deletedAt], map: "shop_membership_card_plans_shop_status_idx")
   @@index([createdById], map: "shop_membership_card_plans_created_by_idx")
@@ -1357,6 +1384,7 @@ model ShopMembershipCardPlanVersion {
   platformFeePolicy MembershipRewardFeePolicyVersion? @relation(fields: [platformFeePolicyId], references: [id], onDelete: Restrict)
   publishedBy       User?                             @relation("ShopMembershipCardPlanVersionPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
   rules             ShopMembershipRewardRule[]
+  cards             ShopMembershipCard[]               @relation("ShopMembershipCardPlanVersionCards")
 
   @@unique([planId, version], map: "shop_membership_card_plan_versions_plan_version_key")
   @@index([planId, status, updatedAt, deletedAt], map: "shop_membership_card_plan_versions_plan_status_idx")

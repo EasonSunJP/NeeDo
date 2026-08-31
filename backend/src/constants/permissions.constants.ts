@@ -990,6 +990,13 @@ export const SYSTEM_PERMISSIONS = [
     "发布或停用当前店铺的不可变会员卡方案版本"
   ),
   createPermission(
+    "shop.member.card.issue",
+    "店铺会员卡开卡",
+    "api",
+    "shop-membership",
+    "按当前店铺的已发布卡方案为有效会员正式开卡"
+  ),
+  createPermission(
     "page:backoffice-membership-reward-fee",
     "会员返点平台费读取",
     "page",
@@ -1625,7 +1632,8 @@ const MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES = [
   "shop.member.analytics.view",
   "shop.member.operation_log.view",
   "shop.member.card_plan.manage",
-  "shop.member.card_plan.publish"
+  "shop.member.card_plan.publish",
+  "shop.member.card.issue"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const AFFILIATE_ENTRY_PERMISSION_CODES = [
