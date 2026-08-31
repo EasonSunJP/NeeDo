@@ -835,7 +835,6 @@ const dashboardTranslations: TranslationMap = {
   "平台": { "zh-Hant": "平台", ja: "プラットフォーム", en: "Platform", ko: "플랫폼" },
   "用户返点": { "zh-Hant": "用戶返點", ja: "利用者還元", en: "Customer reward", ko: "사용자 리워드" },
   "数据大盘加载失败": { "zh-Hant": "數據大盤載入失敗", ja: "ダッシュボードを読み込めませんでした", en: "Dashboard failed to load", ko: "대시보드를 불러오지 못했습니다" },
-  "登录状态已失效，请重新登录": { "zh-Hant": "登入狀態已失效，請重新登入", ja: "ログインの有効期限が切れました。再度ログインしてください", en: "Your session expired. Sign in again", ko: "로그인 세션이 만료되었습니다. 다시 로그인해 주세요" },
   "当前身份无权查看数据大盘": { "zh-Hant": "目前身份無權查看數據大盤", ja: "現在の権限ではダッシュボードを表示できません", en: "This identity cannot view the dashboard", ko: "현재 권한으로 대시보드를 볼 수 없습니다" },
   "数据大盘服务暂时不可用，请稍后重试": { "zh-Hant": "數據大盤服務暫時不可用，請稍後重試", ja: "ダッシュボードは一時的に利用できません。後でもう一度お試しください", en: "The dashboard is temporarily unavailable. Try again later", ko: "대시보드를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요" },
   "重新加载数据大盘": { "zh-Hant": "重新載入數據大盤", ja: "ダッシュボードを再読み込み", en: "Reload dashboard", ko: "대시보드 다시 불러오기" },
