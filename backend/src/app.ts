@@ -155,6 +155,7 @@ import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
+import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
@@ -166,6 +167,7 @@ import type { VerificationChallengeStore } from "./services/auth-verification-ch
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import type { ExchangeService } from "./services/exchange.service";
+import type { ExchangeClaimService } from "./services/exchange-claim.service";
 import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
   SseRealtimeEventGateway,
@@ -288,6 +290,7 @@ export interface AppDependencies {
   imVoiceStorage?: ImVoiceStoragePort;
   imVoiceMessageService?: ImVoiceMessageService;
   exchangeService?: ExchangeService;
+  exchangeClaimService?: ExchangeClaimService;
   exchangeRequestFeeService?: ExchangeRequestFeeService;
   ledgerService?: LedgerService;
 }
@@ -389,6 +392,7 @@ export const createApp = (
   apiRouter.use(createImMessageTranslationRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
+  apiRouter.use(createExchangeClaimRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {

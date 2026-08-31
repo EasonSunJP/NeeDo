@@ -1093,6 +1093,23 @@ const exchangeErrorResponses = {
   }
 };
 
+const exchangeClaimErrorResponses = {
+  "400": { description: "error.validation — strict claim request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description:
+      "error.forbidden or error.exchange.claim_not_allowed — denied permission or provider identity scope"
+  },
+  "404": {
+    description:
+      "error.exchange.claim_option_not_found or error.exchange.claim_not_found — scoped claim resource is unavailable"
+  },
+  "409": {
+    description:
+      "error.exchange.claim_selective_only, error.exchange.claim_quote_below_budget, error.exchange.claim_quote_above_budget, error.exchange.claim_schedule_unavailable, error.exchange.claim_time_conflict, error.exchange.claim_duplicate, error.exchange.claim_idempotency_conflict, or error.exchange.claim_invalid_state"
+  }
+};
+
 const exchangeRequestFeeErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
@@ -1152,6 +1169,21 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
   const mutationParameters = (includeId = true) => [
     ...(includeId ? [postId] : []),
     exchangeIdempotencyKeyParameter
+  ];
+  const claimOptionParameters = [
+    postId,
+    ...pageParameters,
+    { name: "shop_id", in: "query", schema: { type: "integer", minimum: 1 } },
+    {
+      name: "technician_profile_id",
+      in: "query",
+      schema: { type: "integer", minimum: 1 }
+    },
+    {
+      name: "service_ref",
+      in: "query",
+      schema: { type: "string", pattern: "^(?:shop|technician):[1-9][0-9]*$" }
+    }
   ];
 
   return {
@@ -1276,6 +1308,82 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
           ...exchangeErrorResponses
         }
       })
+    },
+    [`${base}/{id}/claim-options`]: {
+      get: exchangeOperation(
+        "List formally eligible claim service, technician and schedule options",
+        "exchange:claim-options:list",
+        {
+          description:
+            "Returns only options inside the selective Request window and the active provider shop or technician scope. Active claim soft locks and confirmed bookings are excluded.",
+          parameters: claimOptionParameters,
+          responses: {
+            "200": jsonDataResponse("Paginated eligible claim options", {
+              $ref: "#/components/schemas/ExchangeClaimOptionPage"
+            }),
+            ...exchangeClaimErrorResponses
+          }
+        }
+      )
+    },
+    [`${base}/{id}/claims`]: {
+      post: exchangeOperation(
+        "Create one selective Request claim with a temporary technician time lock",
+        "exchange:claims:create",
+        {
+          parameters: [postId, exchangeIdempotencyKeyParameter],
+          requestBody: body("ExchangeClaimCreateRequest"),
+          responses: {
+            "201": jsonDataResponse("Persisted active Exchange claim", {
+              $ref: "#/components/schemas/ExchangeClaim"
+            }),
+            ...exchangeClaimErrorResponses
+          }
+        }
+      ),
+      get: exchangeOperation(
+        "List claims received by the active identity's own Request",
+        "exchange:claims:list-owned-request",
+        {
+          parameters: [postId, ...pageParameters],
+          responses: {
+            "200": jsonDataResponse("Paginated claims for an owned Request", {
+              $ref: "#/components/schemas/ExchangeClaimPage"
+            }),
+            ...exchangeClaimErrorResponses
+          }
+        }
+      )
+    },
+    [`${base}/{id}/claims/mine`]: {
+      get: exchangeOperation(
+        "Read the active provider identity's claim for one Request",
+        "exchange:claims:read-own",
+        {
+          parameters: [postId],
+          responses: {
+            "200": jsonDataResponse("Own Exchange claim or null", {
+              oneOf: [{ $ref: "#/components/schemas/ExchangeClaim" }, { type: "null" }]
+            }),
+            ...exchangeClaimErrorResponses
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/exchange/claims/{claimId}/withdraw`]: {
+      post: exchangeOperation(
+        "Withdraw the active provider identity's pre-match claim",
+        "exchange:claims:withdraw-own",
+        {
+          parameters: [idPathParameter("claimId")],
+          responses: {
+            "200": jsonDataResponse("Withdrawn Exchange claim", {
+              $ref: "#/components/schemas/ExchangeClaim"
+            }),
+            ...exchangeClaimErrorResponses
+          }
+        }
+      )
     },
     [contextBase]: {
       get: exchangeOperation(
@@ -1996,6 +2104,140 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ExchangeClaimShop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "name"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 160 }
+        }
+      },
+      ExchangeClaimTechnician: {
+        type: "object",
+        additionalProperties: false,
+        required: ["profileId", "publicId", "displayName"],
+        properties: {
+          profileId: { type: "integer", minimum: 1 },
+          publicId: { type: "string", minLength: 1, maxLength: 32 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 }
+        }
+      },
+      ExchangeClaimService: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ref", "name", "durationMinutes"],
+        properties: {
+          ref: { type: "string", pattern: "^(?:shop|technician):[1-9][0-9]*$" },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          durationMinutes: { type: "integer", minimum: 1 }
+        }
+      },
+      ExchangeClaimOption: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "scheduleSlotId",
+          "shop",
+          "technician",
+          "service",
+          "startsAt",
+          "endsAt"
+        ],
+        properties: {
+          scheduleSlotId: { type: "integer", minimum: 1 },
+          shop: { $ref: "#/components/schemas/ExchangeClaimShop" },
+          technician: { $ref: "#/components/schemas/ExchangeClaimTechnician" },
+          service: { $ref: "#/components/schemas/ExchangeClaimService" },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" }
+        }
+      },
+      ExchangeClaimOptionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ExchangeClaimOption" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ExchangeClaimProvider: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "displayName", "avatarUrl"],
+        properties: {
+          publicId: { type: "string", minLength: 1, maxLength: 32 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"], maxLength: 500 }
+        }
+      },
+      ExchangeClaim: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "exchangePostId",
+          "status",
+          "provider",
+          "shop",
+          "technician",
+          "service",
+          "scheduleSlotId",
+          "quoteAmountJpy",
+          "currency",
+          "message",
+          "estimatedStartsAt",
+          "estimatedEndsAt",
+          "createdAt",
+          "withdrawnAt",
+          "terminalAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          exchangePostId: { type: "integer", minimum: 1 },
+          status: {
+            type: "string",
+            enum: ["active", "withdrawn", "request_withdrawn", "request_expired"]
+          },
+          provider: { $ref: "#/components/schemas/ExchangeClaimProvider" },
+          shop: { $ref: "#/components/schemas/ExchangeClaimShop" },
+          technician: { $ref: "#/components/schemas/ExchangeClaimTechnician" },
+          service: { $ref: "#/components/schemas/ExchangeClaimService" },
+          scheduleSlotId: { type: "integer", minimum: 1 },
+          quoteAmountJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
+          currency: { type: "string", enum: ["JPY"] },
+          message: { type: ["string", "null"], maxLength: 1000 },
+          estimatedStartsAt: { type: "string", format: "date-time" },
+          estimatedEndsAt: { type: "string", format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          withdrawnAt: { type: ["string", "null"], format: "date-time" },
+          terminalAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ExchangeClaimPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ExchangeClaim" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ExchangeClaimCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scheduleSlotId", "quoteAmountJpy"],
+        properties: {
+          scheduleSlotId: { type: "integer", minimum: 1 },
+          quoteAmountJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
+          message: { type: ["string", "null"], maxLength: 1000, default: null }
         }
       },
       ExchangeDemandPublishRequest: {
