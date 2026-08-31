@@ -3172,8 +3172,8 @@ model WalletHold {
   updatedAt         DateTime        @updatedAt @map("updated_at")
   deletedAt         DateTime?       @map("deleted_at")
 
-  bookingOrder             BookingOrder?             @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
-  exchangePost             ExchangePost?             @relation(fields: [exchangePostId], references: [id], onDelete: Restrict)
+  bookingOrder             BookingOrder?             @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangePost             ExchangePost?             @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   exchangeRequestFinancial ExchangeRequestFinancial?
 
   @@index([ownerType, ownerId])
@@ -3213,7 +3213,7 @@ model ExchangeRequestFinancial {
   walletHold        WalletHold         @relation(fields: [walletHoldId], references: [id], onDelete: Restrict)
 
   @@index([payerType, payerId, createdAt])
-  @@index([walletOwnerType, walletOwnerId, currency])
+  @@index([walletOwnerType, walletOwnerId, currency], map: "exchange_request_financials_wallet_owner_idx")
   @@index([state, createdAt])
   @@index([feeRuleSetId])
   @@index([feeRuleId])

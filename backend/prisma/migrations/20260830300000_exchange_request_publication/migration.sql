@@ -75,13 +75,18 @@ ALTER TABLE `fee_calculation_logs`
     FOREIGN KEY (`exchange_post_id`) REFERENCES `exchange_posts`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 ALTER TABLE `wallet_holds`
+  DROP FOREIGN KEY `wallet_holds_booking_order_id_fkey`;
+
+ALTER TABLE `wallet_holds`
   MODIFY `booking_order_id` INTEGER NULL,
   ADD COLUMN `exchange_post_id` INTEGER NULL,
   ADD UNIQUE INDEX `wallet_holds_exchange_post_id_key` (`exchange_post_id`),
   ADD CONSTRAINT `wallet_holds_exactly_one_business_ref`
     CHECK ((`booking_order_id` IS NULL) <> (`exchange_post_id` IS NULL)),
+  ADD CONSTRAINT `wallet_holds_booking_order_id_fkey`
+    FOREIGN KEY (`booking_order_id`) REFERENCES `booking_orders`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `wallet_holds_exchange_post_id_fkey`
-    FOREIGN KEY (`exchange_post_id`) REFERENCES `exchange_posts`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+    FOREIGN KEY (`exchange_post_id`) REFERENCES `exchange_posts`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- Immutable rule/version/log/hold references keep each Request publication fee
 -- reproducible even after operations changes the active global rule.
@@ -110,7 +115,7 @@ CREATE TABLE `exchange_request_financials` (
   UNIQUE INDEX `exchange_request_financials_fee_calculation_log_id_key` (`fee_calculation_log_id`),
   UNIQUE INDEX `exchange_request_financials_wallet_hold_id_key` (`wallet_hold_id`),
   INDEX `exchange_request_financials_payer_type_payer_id_idx` (`payer_type`, `payer_id`),
-  INDEX `exchange_request_financials_wallet_owner_type_wallet_owner_id_idx` (`wallet_owner_type`, `wallet_owner_id`),
+  INDEX `exchange_request_financials_wallet_owner_idx` (`wallet_owner_type`, `wallet_owner_id`, `currency`),
   INDEX `exchange_request_financials_fee_rule_set_id_idx` (`fee_rule_set_id`),
   INDEX `exchange_request_financials_fee_rule_id_idx` (`fee_rule_id`),
   INDEX `exchange_request_financials_state_idx` (`state`),

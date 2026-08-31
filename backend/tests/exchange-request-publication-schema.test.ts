@@ -77,6 +77,9 @@ describe("Exchange Request publication schema", () => {
     expect(financial).toMatch(/currency\s+String\s+@db\.VarChar\(10\)/);
     expect(financial).toMatch(/state\s+ExchangeRequestFinancialState\s+@default\(HELD\)/);
     expect(financial).toMatch(/deletedAt\s+DateTime\?/);
+    expect(financial).toMatch(
+      /@@index\(\[walletOwnerType, walletOwnerId, currency\], map: "exchange_request_financials_wallet_owner_idx"\)/
+    );
 
     const calculationLog = modelBlock("FeeCalculationLog");
     expect(calculationLog).toMatch(/exchangePostId\s+Int\?/);
@@ -85,6 +88,12 @@ describe("Exchange Request publication schema", () => {
     const hold = modelBlock("WalletHold");
     expect(hold).toMatch(/bookingOrderId\s+Int\?/);
     expect(hold).toMatch(/exchangePostId\s+Int\?\s+@unique/);
+    expect(hold).toMatch(
+      /bookingOrder\s+BookingOrder\?[\s\S]*onDelete:\s*Restrict,\s*onUpdate:\s*Restrict/
+    );
+    expect(hold).toMatch(
+      /exchangePost\s+ExchangePost\?[\s\S]*onDelete:\s*Restrict,\s*onUpdate:\s*Restrict/
+    );
   });
 
   it("uses dedicated Request publication ledger vocabulary", () => {
@@ -105,7 +114,21 @@ describe("Exchange Request publication schema", () => {
   it("ships an additive guarded migration with the initial 1000 NDP rule and exact role grants", () => {
     expect(existsSync(migrationPath)).toBe(true);
     expect(migration).toContain("wallet_holds_exactly_one_business_ref");
+    expect(migration).toContain("DROP FOREIGN KEY `wallet_holds_booking_order_id_fkey`");
+    expect(migration).toMatch(
+      /ALTER TABLE `wallet_holds`\s+DROP FOREIGN KEY `wallet_holds_booking_order_id_fkey`;\s+ALTER TABLE `wallet_holds`\s+MODIFY/
+    );
+    expect(migration).toMatch(
+      /wallet_holds_booking_order_id_fkey[\s\S]*ON DELETE RESTRICT ON UPDATE RESTRICT/
+    );
+    expect(migration).toMatch(
+      /wallet_holds_exchange_post_id_fkey[\s\S]*ON DELETE RESTRICT ON UPDATE RESTRICT/
+    );
     expect(migration).toContain("exchange_request_financials");
+    expect(migration).toContain("exchange_request_financials_wallet_owner_idx");
+    expect(migration).not.toContain(
+      "exchange_request_financials_wallet_owner_type_wallet_owner_id_idx"
+    );
     expect(migration).toContain("exchange_request_publication");
     expect(migration).toContain("exchange_request_publication_fee");
     expect(migration).toContain("'exchange_request'");
