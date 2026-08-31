@@ -617,6 +617,16 @@ enum ShopMembershipCardAdjustmentStatus {
   @@map("shop_membership_card_adjustment_status")
 }
 
+enum ShopMembershipCardTopUpPaymentMethod {
+  CASH          @map("cash")
+  CARD          @map("card")
+  PAYPAY        @map("paypay")
+  BANK_TRANSFER @map("bank_transfer")
+  OTHER         @map("other")
+
+  @@map("shop_membership_card_topup_payment_method")
+}
+
 enum MembershipRewardFeePolicyStatus {
   ACTIVE     @map("active")
   SUPERSEDED @map("superseded")
@@ -810,6 +820,7 @@ model User {
   requestedShopMembershipCardAdjustments  ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentRequestedBy")
   decidedShopMembershipCardAdjustments    ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentDecidedBy")
   cancelledShopMembershipCardAdjustments  ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentCancelledBy")
+  createdShopMembershipCardTopUps          ShopMembershipCardTopUp[]             @relation("ShopMembershipCardTopUpCreatedBy")
   createdMembershipRewardFeePolicies      MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyCreatedBy")
   updatedMembershipRewardFeePolicies      MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyUpdatedBy")
   ledgerTransactions                      LedgerTransaction[]                   @relation("LedgerTransactionActor")
@@ -1036,6 +1047,7 @@ model Shop {
   customerMemberships        ShopCustomerMembership[]
   membershipCardPlans        ShopMembershipCardPlan[]
   membershipCardAdjustments  ShopMembershipCardAdjustmentRequest[]
+  membershipCardTopUps       ShopMembershipCardTopUp[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -1549,6 +1561,7 @@ model ShopMembershipCard {
   planVersion ShopMembershipCardPlanVersion?        @relation("ShopMembershipCardPlanVersionCards", fields: [planVersionId], references: [id], onDelete: Restrict)
   issuedBy    User?                                 @relation("ShopMembershipCardIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
   adjustments ShopMembershipCardAdjustmentRequest[]
+  topUps      ShopMembershipCardTopUp[]
 
   @@index([membershipId, status, deletedAt], map: "shop_membership_cards_membership_status_idx")
   @@index([planId, deletedAt], map: "shop_membership_cards_plan_idx")
@@ -1601,6 +1614,36 @@ model ShopMembershipCardAdjustmentRequest {
   @@index([cancelledById], map: "shop_membership_card_adjustments_cancelled_by_idx")
   @@index([deletedAt], map: "shop_membership_card_adjustments_deleted_idx")
   @@map("shop_membership_card_adjustment_requests")
+}
+
+model ShopMembershipCardTopUp {
+  id                        Int                                  @id @default(autoincrement())
+  publicId                  String                               @unique @default(uuid()) @map("public_id") @db.Char(36)
+  cardId                    Int                                  @map("card_id")
+  shopId                    Int                                  @map("shop_id")
+  createdById               Int                                  @map("created_by_id")
+  amountJpy                 Int                                  @map("amount_jpy")
+  paymentMethod             ShopMembershipCardTopUpPaymentMethod @map("payment_method")
+  paymentReference          String?                              @map("payment_reference") @db.VarChar(160)
+  note                      String?                              @db.VarChar(500)
+  principalBalanceBeforeJpy Int                                  @map("principal_balance_before_jpy")
+  principalBalanceAfterJpy  Int                                  @map("principal_balance_after_jpy")
+  cardLockVersionBefore     Int                                  @map("card_lock_version_before")
+  idempotencyKey            String                               @unique(map: "shop_membership_card_topups_idempotency_key") @map("idempotency_key") @db.VarChar(160)
+  requestFingerprint        String                               @map("request_fingerprint") @db.Char(64)
+  createdAt                 DateTime                             @default(now()) @map("created_at")
+  updatedAt                 DateTime                             @updatedAt @map("updated_at")
+  deletedAt                 DateTime?                            @map("deleted_at")
+
+  card      ShopMembershipCard @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  shop      Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy User               @relation("ShopMembershipCardTopUpCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([cardId, createdAt, deletedAt], map: "shop_membership_card_topups_card_created_idx")
+  @@index([shopId, createdAt, deletedAt], map: "shop_membership_card_topups_shop_created_idx")
+  @@index([createdById], map: "shop_membership_card_topups_created_by_idx")
+  @@index([deletedAt], map: "shop_membership_card_topups_deleted_idx")
+  @@map("shop_membership_card_topups")
 }
 
 model MembershipRewardFeePolicyVersion {

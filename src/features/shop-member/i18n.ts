@@ -24,10 +24,10 @@ export const shopMembershipTranslations: Record<string, TranslationEntry> = {
   "真实审计记录": { "zh-Hant": "真實稽核記錄", ja: "正式な監査記録", en: "Persisted audit records", ko: "정식 감사 기록" },
   "当前店铺暂无会员活动": { "zh-Hant": "目前店鋪暫無會員活動", ja: "この店舗にはまだ会員アクティビティがありません", en: "No membership activity for this store yet", ko: "현재 매장에 회원 활동이 없습니다" },
   "后续独立开放": { "zh-Hant": "後續獨立開放", ja: "今後、個別に提供予定", en: "Coming in separate steps", ko: "후속 단계에서 별도 제공" },
-  "开卡、充值、核销和退款会分别接入独立状态机与账本；本页当前不会修改会员卡资金或次数。": { "zh-Hant": "開卡、儲值、核銷和退款會分別接入獨立狀態機與帳本；本頁目前不會修改會員卡資金或次數。", ja: "カード発行、チャージ、利用処理、返金はそれぞれ独立した状態管理と台帳に接続します。この画面では現在、残高や利用回数を変更しません。", en: "Card issuing, top-up, redemption, and refunds will each use separate state machines and ledgers. This page does not change balances or usage counts.", ko: "카드 발급, 충전, 사용 처리, 환불은 각각 독립된 상태 머신과 원장에 연결됩니다. 현재 이 페이지에서는 잔액이나 사용 횟수를 변경하지 않습니다." },
+  "开卡、客户确认调整与充值已分别接入正式流程；核销和退款仍是后续独立步骤。": { "zh-Hant": "開卡、客戶確認調整與儲值已分別接入正式流程；核銷和退款仍是後續獨立步驟。", ja: "カード発行、顧客確認付き変更、チャージはそれぞれ正式フローに接続済みです。利用処理と返金は後続の独立ステップです。", en: "Issuance, customer-approved changes, and top-up now use formal flows. Redemption and refunds remain separate later steps.", ko: "카드 발급, 고객 확인 변경 및 충전은 각각 정식 흐름에 연결되었습니다. 사용 처리와 환불은 후속 별도 단계입니다." },
   "当前店铺暂无会员": { "zh-Hant": "目前店鋪暫無會員", ja: "この店舗にはまだ会員がいません", en: "No members for this store yet", ko: "현재 매장에 회원이 없습니다" },
   "当前店铺暂无会员卡": { "zh-Hant": "目前店鋪暫無會員卡", ja: "この店舗にはまだ会員カードがありません", en: "No membership cards for this store yet", ko: "현재 매장에 회원 카드가 없습니다" },
-  "已开通的店铺会员仍会保留；开卡将在后续步骤开放。": { "zh-Hant": "已開通的店鋪會員仍會保留；開卡將在後續步驟開放。", ja: "登録済みの店舗会員は保持されます。カード発行は後続ステップで提供します。", en: "Existing store memberships remain active. Card issuing will be added in a later step.", ko: "개설된 매장 회원 관계는 유지됩니다. 카드 발급은 후속 단계에서 제공됩니다." },
+  "已开通的店铺会员仍会保留；开卡已接入正式数据库、审计与通知。": { "zh-Hant": "已開通的店鋪會員仍會保留；開卡已接入正式資料庫、稽核與通知。", ja: "登録済みの店舗会員は維持されます。カード発行は正式DB・監査・通知に接続済みです。", en: "Existing store memberships remain active. Issuance now uses the formal database, audit, and notifications.", ko: "개설된 매장 회원 관계는 유지됩니다. 카드 발급은 정식 데이터베이스, 감사 및 알림에 연결되었습니다." },
   "会员数据分页": { "zh-Hant": "會員資料分頁", ja: "会員データのページ移動", en: "Membership pagination", ko: "회원 데이터 페이지" },
   "新增会员趋势": { "zh-Hant": "新增會員趨勢", ja: "新規会員の推移", en: "New member trend", ko: "신규 회원 추이" },
   "新增会员趋势图": { "zh-Hant": "新增會員趨勢圖", ja: "新規会員の推移グラフ", en: "New member trend chart", ko: "신규 회원 추이 차트" },
@@ -239,7 +239,7 @@ const shopMembershipCardIssuanceTranslations: Record<string, TranslationEntry> =
   "请补充本次开卡来源的参考号或说明": { "zh-Hant": "請補充本次開卡來源的參考號或說明", ja: "発行理由の参照番号または説明を入力してください", en: "Add a reference or note for this issuance", ko: "이번 발급 출처의 참조 번호나 설명을 입력하세요" },
   "请选择仍在启用的已发布卡方案": { "zh-Hant": "請選擇仍在啟用的已發布卡方案", ja: "現在も有効な公開済みカードプランを選択してください", en: "Select an active published card plan", ko: "현재 활성화된 게시 카드 플랜을 선택하세요" },
   "开卡未完成，请检查填写内容或网络后重试": { "zh-Hant": "開卡未完成，請檢查填寫內容或網路後重試", ja: "カードを発行できませんでした。入力内容または通信環境を確認して再試行してください", en: "Issuance did not complete. Check the form or connection and retry.", ko: "카드 발급이 완료되지 않았습니다. 입력 내용이나 네트워크를 확인한 후 다시 시도하세요." },
-  "充值、核销、退款仍会分别接入独立状态机与账本。": { "zh-Hant": "儲值、核銷、退款仍會分別接入獨立狀態機與帳本。", ja: "チャージ、利用処理、返金はそれぞれ独立した状態管理と台帳に接続します。", en: "Top-up, redemption, and refunds will each use separate state machines and ledgers.", ko: "충전, 사용 처리, 환불은 각각 별도 상태 머신과 원장에 연결됩니다." }
+  "充值已接入正式状态管理与账本；核销和退款仍是后续独立步骤。": { "zh-Hant": "儲值已接入正式狀態管理與帳本；核銷和退款仍是後續獨立步驟。", ja: "チャージは正式な状態管理と台帳に接続済みです。利用処理と返金は後続の独立ステップです。", en: "Top-up now uses formal state management and a ledger. Redemption and refunds remain separate later steps.", ko: "충전은 정식 상태 관리와 원장에 연결되었습니다. 사용 처리와 환불은 후속 별도 단계입니다." }
 };
 
 const shopMembershipCardAdjustmentTranslations: Record<string, TranslationEntry> = {
@@ -255,9 +255,9 @@ const shopMembershipCardAdjustmentTranslations: Record<string, TranslationEntry>
   "shop_membership.card_adjustment.expired.body": { "zh-Hant": "72 小時內未確認，申請已失效且會員卡未變更。", ja: "72時間以内に確認されなかったため失効し、カードは変更されませんでした。", en: "It was not reviewed within 72 hours, so it expired without changing the card.", ko: "72시간 내 확인되지 않아 만료되었으며 카드는 변경되지 않았습니다." },
   "shop_membership.card_adjustment.invalidated.title": { "zh-Hant": "會員卡調整已失效", ja: "会員カード変更が無効になりました", en: "Membership card change invalidated", ko: "회원 카드 변경 무효화됨" },
   "shop_membership.card_adjustment.invalidated.body": { "zh-Hant": "會員卡狀態已變化，為避免覆蓋新資料，本次申請未執行。", ja: "カード状態が変わったため、新しいデータを上書きせず申請を無効にしました。", en: "The card changed, so this request was invalidated to protect the newer data.", ko: "카드 상태가 변경되어 새 데이터를 보호하기 위해 요청이 무효화되었습니다." },
-  "先定义发卡边界与 NDP 返点。开卡与客户确认调整已独立接入；充值、核销、退款仍是后续步骤。": { "zh-Hant": "先定義發卡邊界與 NDP 返點。開卡與客戶確認調整已獨立接入；儲值、核銷、退款仍是後續步驟。", ja: "発行条件とNDP還元を定義します。発行と顧客承認付き変更は対応済みで、チャージ、利用処理、返金は後続です。", en: "Define issuance boundaries and NDP rewards. Issuing and customer-approved changes are connected; top-up, redemption, and refunds remain later steps.", ko: "발급 범위와 NDP 리워드를 정의합니다. 발급과 고객 승인 변경은 연결되었으며 충전, 사용, 환불은 후속 단계입니다." },
+  "先定义发卡边界与 NDP 返点。开卡、客户确认调整与充值已独立接入；核销和退款仍是后续步骤。": { "zh-Hant": "先定義發卡邊界與 NDP 返點。開卡、客戶確認調整與儲值已獨立接入；核銷和退款仍是後續步驟。", ja: "発行条件とNDP還元を定義します。発行、顧客承認付き変更、チャージは個別に接続済みで、利用処理と返金は後続です。", en: "Define issuance boundaries and NDP rewards. Issuance, customer-approved changes, and top-up are independently connected; redemption and refunds remain later steps.", ko: "발급 범위와 NDP 리워드를 정의합니다. 카드 발급, 고객 승인 변경 및 충전은 독립적으로 연결되었으며 사용 처리와 환불은 후속 단계입니다." },
   "之后店铺若调整余额或次数，必须另行发起变更并由客人在 72 小时内点击同意；该审批流已接入正式数据库、审计与通知。": { "zh-Hant": "之後店鋪若調整餘額或次數，必須另行發起變更並由客人在 72 小時內點擊同意；該審批流程已接入正式資料庫、稽核與通知。", ja: "残高や回数の変更は別途申請し、顧客が72時間以内に同意する必要があります。正式DB、監査、通知に接続済みです。", en: "Later balance or usage changes require a separate request and customer approval within 72 hours. The flow uses the formal database, audit, and notifications.", ko: "이후 잔액이나 횟수 변경은 별도 요청과 72시간 내 고객 동의가 필요하며 정식 DB, 감사, 알림에 연결됩니다." },
-  "金额与次数调整已采用客户 72 小时确认流程；充值、核销、退款仍会分别接入独立状态机与账本。调整不会自动发放 NDP。": { "zh-Hant": "金額與次數調整已採用客戶 72 小時確認流程；儲值、核銷、退款仍會分別接入獨立狀態機與帳本。調整不會自動發放 NDP。", ja: "金額・回数変更は顧客の72時間確認フローに対応済みです。チャージ、利用処理、返金は今後それぞれ独立した状態管理と台帳に接続します。変更でNDPは自動付与されません。", en: "Amount and usage changes now use a 72-hour customer confirmation flow. Top-up, redemption, and refunds will use separate state machines and ledgers. Changes do not auto-award NDP.", ko: "금액 및 횟수 변경은 고객의 72시간 확인 흐름을 사용합니다. 충전, 사용, 환불은 별도 상태 머신과 원장에 연결되며 변경으로 NDP가 자동 지급되지 않습니다." },
+  "金额与次数调整已采用客户 72 小时确认流程；充值已接入正式数据库、审计与通知，核销和退款仍会分别作为独立步骤。上述操作均不会自动发放 NDP。": { "zh-Hant": "金額與次數調整已採用客戶 72 小時確認流程；儲值已接入正式資料庫、稽核與通知，核銷和退款仍分別作為獨立步驟。上述操作均不會自動發放 NDP。", ja: "金額・回数変更は顧客の72時間確認フローに対応済みです。チャージは正式DB・監査・通知に接続済みで、利用処理と返金は引き続き個別ステップとして実装します。これらの操作でNDPが自動付与されることはありません。", en: "Amount and usage changes use 72-hour customer confirmation. Top-up now uses the formal database, audit, and notifications. Redemption and refunds remain separate steps. None of these actions automatically award NDP.", ko: "금액 및 횟수 변경은 고객의 72시간 확인 흐름을 사용합니다. 충전은 정식 데이터베이스, 감사 및 알림에 연결되었고 사용 처리와 환불은 각각 별도 단계로 남아 있습니다. 이러한 작업으로 NDP가 자동 지급되지는 않습니다." },
   "申请调整": { "zh-Hant": "申請調整", ja: "変更申請", en: "Request change", ko: "변경 요청" },
   "调整申请": { "zh-Hant": "調整申請", ja: "変更申請", en: "Change requests", ko: "변경 요청" },
   "申请调整会员卡": { "zh-Hant": "申請調整會員卡", ja: "会員カードの変更を申請", en: "Request membership card change", ko: "회원 카드 변경 요청" },
@@ -323,8 +323,57 @@ const shopMembershipCardAdjustmentTranslations: Record<string, TranslationEntry>
   "已截止": { "zh-Hant": "已截止", ja: "期限切れ", en: "Closed", ko: "마감됨" }
 };
 
+const shopMembershipCardTopUpTranslations: Record<string, TranslationEntry> = {
+  "Offline top-up": { "zh-Hant": "線下儲值", ja: "店頭チャージ", en: "Offline top-up", ko: "오프라인 충전" },
+  "Top-up ledger": { "zh-Hant": "儲值台帳", ja: "チャージ台帳", en: "Top-up ledger", ko: "충전 원장" },
+  "会员卡充值": { "zh-Hant": "會員卡儲值", ja: "会員カードチャージ", en: "Membership card top-up", ko: "회원 카드 충전" },
+  "确认已在线下收款后，按实际收款金额增加会员卡本金。": { "zh-Hant": "確認已在線下收款後，按實際收款金額增加會員卡本金。", ja: "店頭での入金確認後、実際の受取額をカード元本に加算します。", en: "After confirming offline payment, add the exact received amount to card principal.", ko: "오프라인 결제를 확인한 후 실제 수령 금액을 카드 원금에 추가합니다." },
+  "关闭会员卡充值": { "zh-Hant": "關閉會員卡儲值", ja: "会員カードチャージを閉じる", en: "Close membership card top-up", ko: "회원 카드 충전 닫기" },
+  "立即到账": { "zh-Hant": "立即入帳", ja: "即時反映", en: "Credited immediately", ko: "즉시 반영" },
+  "充值前本金": { "zh-Hant": "儲值前本金", ja: "チャージ前元本", en: "Principal before", ko: "충전 전 원금" },
+  "充值后本金": { "zh-Hant": "儲值後本金", ja: "チャージ後元本", en: "Principal after", ko: "충전 후 원금" },
+  "实际收款金额（JPY）": { "zh-Hant": "實際收款金額（JPY）", ja: "実際の受取額（JPY）", en: "Amount received (JPY)", ko: "실제 수령 금액(JPY)" },
+  "实际收款金额": { "zh-Hant": "實際收款金額", ja: "実際の受取額", en: "Amount received", ko: "실제 수령 금액" },
+  "收款方式": { "zh-Hant": "收款方式", ja: "受取方法", en: "Payment method", ko: "결제 수단" },
+  "现金": { "zh-Hant": "現金", ja: "現金", en: "Cash", ko: "현금" },
+  "银行卡": { "zh-Hant": "銀行卡", ja: "カード", en: "Bank card", ko: "카드" },
+  "银行转账": { "zh-Hant": "銀行轉帳", ja: "銀行振込", en: "Bank transfer", ko: "계좌 이체" },
+  "其他": { "zh-Hant": "其他", ja: "その他", en: "Other", ko: "기타" },
+  "收款凭证": { "zh-Hant": "收款憑證", ja: "入金証憑", en: "Payment reference", ko: "결제 증빙" },
+  "收据号、POS 交易号或转账流水号": { "zh-Hant": "收據號、POS 交易號或轉帳流水號", ja: "領収書番号、POS取引番号、振込明細番号", en: "Receipt, POS transaction, or transfer reference", ko: "영수증, POS 거래 또는 이체 번호" },
+  "备注": { "zh-Hant": "備註", ja: "メモ", en: "Note", ko: "메모" },
+  "未填写凭证时，必须说明可核对的线下收款情况": { "zh-Hant": "未填寫憑證時，必須說明可核對的線下收款情況", ja: "証憑がない場合は、確認可能な店頭入金内容を記載してください", en: "Without a reference, describe verifiable offline payment details", ko: "증빙이 없으면 확인 가능한 오프라인 결제 내용을 입력하세요" },
+  "只增加已收款本金，不会产生 NDP": { "zh-Hant": "只增加已收款本金，不會產生 NDP", ja: "受取済み元本のみ加算し、NDP は発生しません", en: "Adds paid principal only; no NDP is created", ko: "수령한 원금만 추가하며 NDP는 발생하지 않습니다" },
+  "提交后立即到账并写入不可修改的充值、审计与客户通知记录；不增加赠送余额，不触发返点或平台费。": { "zh-Hant": "提交後立即入帳並寫入不可修改的儲值、稽核與客戶通知記錄；不增加贈送餘額，不觸發返點或平台費。", ja: "送信後すぐに反映され、変更不可のチャージ・監査・顧客通知記録が作成されます。ボーナス残高、還元、プラットフォーム手数料は発生しません。", en: "It is credited immediately with immutable top-up, audit, and customer-notification records. No bonus balance, rewards, or platform fee is created.", ko: "제출 즉시 반영되고 수정 불가능한 충전, 감사 및 고객 알림 기록이 생성됩니다. 보너스 잔액, 리워드 또는 플랫폼 수수료는 발생하지 않습니다." },
+  "充值中": { "zh-Hant": "儲值中", ja: "チャージ中", en: "Crediting", ko: "충전 중" },
+  "确认充值": { "zh-Hant": "確認儲值", ja: "チャージを確定", en: "Confirm top-up", ko: "충전 확인" },
+  "充值记录": { "zh-Hant": "儲值記錄", ja: "チャージ履歴", en: "Top-up history", ko: "충전 내역" },
+  "每笔均为不可修改的正式记录，可核对收款金额、经办人和充值后本金。": { "zh-Hant": "每筆均為不可修改的正式記錄，可核對收款金額、經辦人和儲值後本金。", ja: "各明細は変更不可の正式記録で、受取額、担当者、チャージ後元本を確認できます。", en: "Each entry is an immutable formal record of the amount received, operator, and resulting principal.", ko: "각 항목은 수정 불가능한 공식 기록으로 수령 금액, 처리자, 충전 후 원금을 확인할 수 있습니다." },
+  "正在读取充值记录": { "zh-Hant": "正在讀取儲值記錄", ja: "チャージ履歴を読み込んでいます", en: "Loading top-up history", ko: "충전 내역을 불러오는 중" },
+  "充值记录读取失败，请稍后重试": { "zh-Hant": "儲值記錄讀取失敗，請稍後重試", ja: "チャージ履歴を読み込めませんでした。後でもう一度お試しください", en: "Could not load top-up history. Try again later.", ko: "충전 내역을 불러오지 못했습니다. 잠시 후 다시 시도하세요." },
+  "当前身份没有查看充值记录的权限": { "zh-Hant": "目前身分沒有查看儲值記錄的權限", ja: "現在のIDにはチャージ履歴を表示する権限がありません", en: "The current identity cannot view top-up history", ko: "현재 신원에는 충전 내역 조회 권한이 없습니다" },
+  "暂无充值记录": { "zh-Hant": "暫無儲值記錄", ja: "チャージ履歴はまだありません", en: "No top-up history yet", ko: "충전 내역이 없습니다" },
+  "线下收款并完成正式充值后，记录会显示在这里。": { "zh-Hant": "線下收款並完成正式儲值後，記錄會顯示在這裡。", ja: "店頭で入金を受け、正式なチャージが完了するとここに表示されます。", en: "Formal top-ups appear here after offline payment is received.", ko: "오프라인 결제 후 공식 충전이 완료되면 여기에 표시됩니다." },
+  "充值金额": { "zh-Hant": "儲值金額", ja: "チャージ額", en: "Top-up amount", ko: "충전 금액" },
+  "充值前": { "zh-Hant": "儲值前", ja: "チャージ前", en: "Before top-up", ko: "충전 전" },
+  "充值后": { "zh-Hant": "儲值後", ja: "チャージ後", en: "After top-up", ko: "충전 후" },
+  "处理时间": { "zh-Hant": "處理時間", ja: "処理日時", en: "Processed at", ko: "처리 시간" },
+  "经办人": { "zh-Hant": "經辦人", ja: "担当者", en: "Operator", ko: "처리자" },
+  "充值记录分页": { "zh-Hant": "儲值記錄分頁", ja: "チャージ履歴のページ移動", en: "Top-up history pagination", ko: "충전 내역 페이지" },
+  "当前账号没有会员卡充值权限": { "zh-Hant": "目前帳號沒有會員卡儲值權限", ja: "現在のアカウントには会員カードチャージ権限がありません", en: "This account cannot top up membership cards", ko: "현재 계정에는 회원 카드 충전 권한이 없습니다" },
+  "会员卡状态、待确认调整或余额已变化，请刷新后重试": { "zh-Hant": "會員卡狀態、待確認調整或餘額已變化，請重新整理後再試", ja: "カード状態、確認待ち変更、または残高が変わりました。更新して再試行してください", en: "The card state, pending change, or balance changed. Refresh and try again.", ko: "카드 상태, 대기 중 변경 또는 잔액이 바뀌었습니다. 새로고침 후 다시 시도하세요." },
+  "请输入 1–10,000,000 的整数金额": { "zh-Hant": "請輸入 1–10,000,000 的整數金額", ja: "1〜10,000,000 の整数金額を入力してください", en: "Enter a whole amount from 1 to 10,000,000", ko: "1~10,000,000 사이의 정수 금액을 입력하세요" },
+  "请填写收款凭证或备注，作为线下收款依据": { "zh-Hant": "請填寫收款憑證或備註，作為線下收款依據", ja: "店頭入金の根拠として証憑またはメモを入力してください", en: "Enter a payment reference or note as offline payment evidence", ko: "오프라인 결제 근거로 결제 증빙 또는 메모를 입력하세요" },
+  "这张卡有待客户确认的调整，暂时不能充值": { "zh-Hant": "這張卡有待客戶確認的調整，暫時不能儲值", ja: "このカードには顧客確認待ちの変更があるため、現在チャージできません", en: "This card has a pending customer-approved change and cannot be topped up yet", ko: "이 카드에는 고객 확인 대기 중인 변경이 있어 현재 충전할 수 없습니다" },
+  "当前会员卡不支持充值": { "zh-Hant": "目前會員卡不支援儲值", ja: "現在の会員カードはチャージできません", en: "This membership card cannot be topped up", ko: "현재 회원 카드는 충전할 수 없습니다" },
+  "充值未提交，请检查内容或网络后重试": { "zh-Hant": "儲值未提交，請檢查內容或網路後重試", ja: "チャージを送信できませんでした。内容または通信環境を確認して再試行してください", en: "The top-up was not submitted. Check the details or connection and try again.", ko: "충전이 제출되지 않았습니다. 내용 또는 네트워크를 확인한 후 다시 시도하세요." },
+  "shop_membership.card_topup.created.title": { "zh-Hant": "會員卡儲值已完成", ja: "会員カードのチャージが完了しました", en: "Membership card top-up completed", ko: "회원 카드 충전 완료" },
+  "shop_membership.card_topup.created.body": { "zh-Hant": "店鋪已將線下收款金額增加到你的會員卡本金，請查看儲值記錄。", ja: "店舗で受け取った金額が会員カード元本に加算されました。チャージ履歴をご確認ください。", en: "The store added the offline payment to your card principal. Review the top-up record.", ko: "매장에서 오프라인 결제 금액을 카드 원금에 추가했습니다. 충전 내역을 확인하세요." }
+};
+
 Object.assign(shopMembershipTranslations, shopMembershipCardPlanTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardIssuanceTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardAdjustmentTranslations);
+Object.assign(shopMembershipTranslations, shopMembershipCardTopUpTranslations);
 
 Object.assign(translations, shopMembershipTranslations);

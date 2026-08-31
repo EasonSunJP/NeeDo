@@ -111,6 +111,20 @@ ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-issuance-f
 ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-adjustment-flow
 ```
 
+### 4.5 会员卡线下收款充值（2026-09-01）
+
+- 店铺负责人或管理员可使用 `shop.member.card.topup.create`，为当前 JWT 店铺范围内仍有效的储值会员卡登记已确认线下收款；`merchant_staff` 默认只读。次数卡、权益卡、冻结/到期/作废卡、已结束会员关系和存在未到期待确认调整的卡均不可充值。
+- 每笔充值只把实际收款整数金额增加到 `principalBalanceJpy`，不改 `bonusBalanceJpy`、次数、NDP 或钱包。收款凭证和备注至少填写一项；相同幂等键与相同内容只返回原记录，内容变化返回冲突。
+- 会员卡行先使用 `FOR UPDATE` 锁定，再按 `lockVersion` 和原本金执行条件更新；本金快照、不可变充值记录、`merchant.shop_membership_card.topup.create` 审计与客户系统通知在同一事务提交。商家历史按当前店铺分页，客户历史只按当前 customer identity 所有人分页。
+- Migration `20260901040000_shop_membership_card_topup` 新增 `shop_membership_card_topups`、正数/非负/守恒/锁版本 CHECK、三个外键、幂等唯一索引和 RBAC。因为本机 migration 历史存在与本分支无关的 Exchange/IM 分叉，验收时只执行该 additive SQL，独立确认物理表与 RBAC 后再登记本 migration，没有应用或改写其他 migration。
+- `check:shop-membership-card-topup-flow` 在本地 `needo_dev` 回滚事务中验证：实收 5000 JPY 使本金 10000→15000、赠送余额保持 500；充值/审计/通知各 1 条；幂等重放、内容冲突、待确认调整阻断、跨店隐藏、商家/客户历史范围均通过；Wallet、LedgerTransaction、WalletLedger 完全不变，事务结束后保护基线完全恢复。
+
+本地验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-topup-flow
+```
+
 ---
 
 ## 5. 交付物
