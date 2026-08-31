@@ -868,6 +868,36 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response.message;
   }
 
+  async function sendContactCard(
+    conversationId: string,
+    targetUserId: string,
+    idempotencyKey: string,
+  ) {
+    await hydrateStore();
+    const response = await api.sendContactCard(conversationId, targetUserId, idempotencyKey);
+    upsertMessage(response.message);
+    const conversation = getConversationById(
+      { conversations: snapshot.conversations },
+      conversationId,
+    );
+
+    if (conversation) {
+      upsertConversation({
+        ...conversation,
+        ...buildConversationLastMessageSummary(
+          response.message,
+          snapshot.currentUserId ?? "",
+          snapshot.usersById,
+          response.message.sentAt,
+        ),
+        updatedAt: response.message.sentAt,
+      });
+    }
+
+    emit();
+    return response.message;
+  }
+
   async function estimateTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignEstimate> {
     await hydrateStore();
     return api.estimateTagMessageCampaign(input);
@@ -1443,6 +1473,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       setActiveConversation,
       setDraft,
       sendMessage,
+      sendContactCard,
       sendVoiceMessage,
       estimateTagMessageCampaign,
       sendTagMessageCampaign,

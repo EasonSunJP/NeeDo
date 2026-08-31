@@ -57,6 +57,17 @@ export type RealtimeChatRecordDelivery = { replayed: boolean; bundle: RealtimeCh
 export type RealtimeChatRecordFavoriteMutation = { replayed: boolean; favorite: RealtimeChatRecordFavorite };
 export type RealtimeBatchDeleteResult = { conversationId: number; messageIds: number[]; count: number; deleted: true; replayed: boolean };
 export type RealtimeMessageTranslationResult = { messageId: number; status: "translated" | "same_language" | "ineligible"; translatedContent?: string };
+export type RealtimeContactCardCandidate = {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
+};
+export type RealtimeContactCardSendResult = {
+  message: RealtimeMessage;
+  replayed: boolean;
+};
 
 export type RealtimeMessageReaction = {
   emoji: string;
@@ -297,6 +308,29 @@ export const realtimeApi = {
   },
   listMessages(conversationId: number, query: { beforeId?: number; pageSize?: number } = {}) {
     return httpClient.request<RealtimeMessageHistory>(`/im/conversations/${conversationId}/messages`, { query });
+  },
+  listContactCardCandidates(
+    conversationId: number,
+    query: PageQuery & { query?: string } = {},
+  ) {
+    return httpClient.request<PaginatedRealtimeData<RealtimeContactCardCandidate>>(
+      `/im/conversations/${conversationId}/contact-card-candidates`,
+      { query },
+    );
+  },
+  sendContactCard(
+    conversationId: number,
+    targetUserId: string,
+    idempotencyKey: string,
+  ) {
+    return httpClient.request<RealtimeContactCardSendResult>(
+      `/im/conversations/${conversationId}/contact-cards`,
+      {
+        body: { targetUserId },
+        headers: { "Idempotency-Key": idempotencyKey },
+        method: "POST",
+      },
+    );
   },
   createMessage(conversationId: number, input: { content: string; metadata?: Record<string, unknown>; type?: RealtimeMessage["type"] }) {
     return httpClient.request<RealtimeMessage>(`/im/conversations/${conversationId}/messages`, { body: input, method: "POST" });

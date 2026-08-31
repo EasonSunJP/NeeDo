@@ -7,6 +7,7 @@ import type {
   DirectoryProfile,
   FriendRequest,
   ImBootstrapPayload,
+  ImContactCardCandidate,
   ImDatabase,
   ImMessageType,
   MessageExt,
@@ -48,6 +49,20 @@ export type ImApi = {
     nextCursor: string | null;
     hasMore: boolean;
   }>;
+  listContactCardCandidates(
+    conversationId: string,
+    query?: { page?: number; pageSize?: number; query?: string },
+  ): Promise<{
+    list: ImContactCardCandidate[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
+  sendContactCard(
+    conversationId: string,
+    targetUserId: string,
+    idempotencyKey: string,
+  ): Promise<{ message: ConversationMessage; replayed: boolean }>;
   createConversation(
     memberIds: string[],
     title?: string,

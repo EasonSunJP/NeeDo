@@ -27,6 +27,10 @@ import {
   imMessageInclude as messageInclude,
   persistImMessageInTransaction
 } from "./im-message-send.transaction";
+import {
+  contactCardRequestFingerprint,
+  persistImContactCardInTransaction
+} from "./im-contact-card-send.transaction";
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -151,6 +155,18 @@ export type DeletedContactPayload = DeleteFriendshipResult;
 export interface DirectorySearchInput extends PaginationInput {
   query: string;
   ownerIdentityId?: number;
+}
+
+export interface ContactCardCandidateListInput extends PaginationInput {
+  query?: string;
+}
+
+export interface ContactCardCandidatePayload {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
 }
 
 export interface AddContactInput {
@@ -420,6 +436,24 @@ export type CreateMessageOutcome =
   | { status: "recipient_blocked" }
   | { status: "not_friends" };
 
+export interface SendContactCardInput {
+  conversationId: number;
+  senderUserId: number;
+  senderIdentityId: number;
+  targetUserPublicId: string;
+  idempotencyKey: string;
+}
+
+export type SendContactCardOutcome =
+  | { status: "created"; message: MessagePayload }
+  | { status: "replayed"; message: MessagePayload }
+  | { status: "target_not_found" }
+  | { status: "target_not_allowed" }
+  | { status: "idempotency_conflict" }
+  | { status: "not_found" }
+  | { status: "recipient_blocked" }
+  | { status: "not_friends" };
+
 export type MessageSendEligibility =
   | "allowed"
   | "not_found"
@@ -629,6 +663,7 @@ export interface RealtimeRepositoryPort {
     input: CheckMessageSendEligibilityInput
   ) => Promise<MessageSendEligibility>;
   createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
+  sendContactCard: (input: SendContactCardInput) => Promise<SendContactCardOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
     senderUserId: number,
@@ -675,6 +710,11 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ContactPayload>>;
+  listContactCardCandidates: (
+    userId: number,
+    identityId: number,
+    input: ContactCardCandidateListInput
+  ) => Promise<PaginatedResponse<ContactCardCandidatePayload>>;
   searchDirectory: (
     userId: number,
     input: DirectorySearchInput
@@ -1461,6 +1501,47 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
+  public async sendContactCard(
+    input: SendContactCardInput
+  ): Promise<SendContactCardOutcome> {
+    const requestFingerprint = contactCardRequestFingerprint(input);
+    try {
+      const outcome = await this.client.$transaction((tx) =>
+        persistImContactCardInTransaction(tx, {
+          ...input,
+          requestFingerprint,
+          transactionNow: new Date()
+        })
+      );
+      if (outcome.status === "created" || outcome.status === "replayed") {
+        return {
+          status: outcome.status,
+          message: this.mapMessage(outcome.message, input.senderIdentityId)
+        };
+      }
+      return outcome;
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) throw error;
+      const replay = await this.client.imContactCardSendCommand.findUnique({
+        where: {
+          actorIdentityId_idempotencyKey: {
+            actorIdentityId: input.senderIdentityId,
+            idempotencyKey: input.idempotencyKey
+          }
+        },
+        include: { message: { include: messageInclude } }
+      });
+      if (!replay) throw error;
+      if (replay.requestFingerprint !== requestFingerprint) {
+        return { status: "idempotency_conflict" };
+      }
+      return {
+        status: "replayed",
+        message: this.mapMessage(replay.message, input.senderIdentityId)
+      };
+    }
+  }
+
   public async isMessageSenderBlocked(
     conversationId: number,
     senderUserId: number,
@@ -2133,6 +2214,100 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async listContactCardCandidates(
+    userId: number,
+    identityId: number,
+    input: ContactCardCandidateListInput
+  ): Promise<PaginatedResponse<ContactCardCandidatePayload>> {
+    const pagination = toPrismaPagination(input);
+    const query = input.query?.trim() ?? "";
+    const searchWhere: Prisma.UserWhereInput = query
+      ? {
+          OR: [
+            { username: { contains: query } },
+            { needoId: { contains: query } }
+          ]
+        }
+      : {};
+    const projection = {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    } as const;
+
+    const self = await this.client.user.findFirst({
+      where: {
+        id: userId,
+        isActive: true,
+        deletedAt: null,
+        ...searchWhere
+      },
+      select: projection
+    });
+    const selfCount = self ? 1 : 0;
+    const friendWhere: Prisma.UserWhereInput = {
+      id: { not: userId },
+      isActive: true,
+      deletedAt: null,
+      contactEntries: {
+        some: {
+          ownerIdentityId: identityId,
+          blockedAt: null,
+          deletedAt: null,
+          contactIdentity: {
+            isActive: true,
+            deletedAt: null,
+            ownedContacts: {
+              some: {
+                contactIdentityId: identityId,
+                blockedAt: null,
+                deletedAt: null
+              }
+            }
+          }
+        }
+      },
+      ...searchWhere
+    };
+
+    const includeSelfOnPage = Boolean(self && pagination.skip === 0);
+    const friendSkip = Math.max(0, pagination.skip - selfCount);
+    const friendTake = Math.max(0, pagination.take - (includeSelfOnPage ? 1 : 0));
+    const [friends, friendCount] = await Promise.all([
+      friendTake > 0
+        ? this.client.user.findMany({
+            where: friendWhere,
+            select: projection,
+            skip: friendSkip,
+            take: friendTake,
+            orderBy: [{ username: "asc" }, { needoId: "asc" }, { id: "asc" }]
+          })
+        : Promise.resolve([]),
+      this.client.user.count({ where: friendWhere })
+    ]);
+
+    const list: ContactCardCandidatePayload[] = [];
+    if (includeSelfOnPage && self) {
+      list.push({
+        targetUserId: self.needoId,
+        needoId: self.needoId,
+        nickname: self.username,
+        avatarUrl: self.avatarUrl,
+        relationship: "self"
+      });
+    }
+    list.push(...friends.map((candidate) => ({
+      targetUserId: candidate.needoId,
+      needoId: candidate.needoId,
+      nickname: candidate.username,
+      avatarUrl: candidate.avatarUrl,
+      relationship: "friend" as const
+    })));
+
+    return buildPaginatedResponse(list, selfCount + friendCount, pagination);
   }
 
   public async searchDirectory(

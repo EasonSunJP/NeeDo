@@ -796,6 +796,9 @@ model User {
   createdConversations                   Conversation[]                        @relation("ConversationCreator")
   conversationParticipants               ConversationParticipant[]
   sentMessages                           Message[]                             @relation("MessageSender")
+  experienceAccount                      UserExperienceAccount?
+  sentImContactCardCommands              ImContactCardSendCommand[]            @relation("ImContactCardSendActor")
+  targetedImContactCardCommands          ImContactCardSendCommand[]            @relation("ImContactCardSendTarget")
   messageReactions                       MessageReaction[]
   messageUserDeletions                   MessageUserDeletion[]
   createdImChatRecordBundles             ImChatRecordBundle[]                  @relation("ImChatRecordBundleCreator")
@@ -1279,6 +1282,24 @@ model CustomerProfile {
   @@index([membershipGrantedById], map: "customer_profiles_membership_granted_by_idx")
   @@index([deletedAt])
   @@map("customer_profiles")
+}
+
+model UserExperienceAccount {
+  id            Int       @id @default(autoincrement())
+  publicId      String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  userId        Int       @unique @map("user_id")
+  currentLevel  Int       @default(1) @map("current_level")
+  totalExpUnits BigInt    @default(0) @map("total_exp_units")
+  lockVersion   Int       @default(1) @map("lock_version")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([currentLevel, deletedAt], map: "user_experience_level_deleted_idx")
+  @@index([deletedAt])
+  @@map("user_experience_accounts")
 }
 
 model ShopCustomerMembership {
@@ -2203,6 +2224,7 @@ model Conversation {
   privacyUpdatedBy          User?                         @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
   participants              ConversationParticipant[]
   messages                  Message[]
+  contactCardSendCommands   ImContactCardSendCommand[]
   deletionSync              ImDeletionSync[]
   messageUserDeletions      MessageUserDeletion[]
   sourceImChatRecordBundles ImChatRecordBundle[]          @relation("ImChatRecordSourceConversation")
@@ -2281,6 +2303,7 @@ model Message {
   readMarkers             ConversationParticipant[] @relation("ParticipantLastReadMessage")
   reactions               MessageReaction[]
   userDeletions           MessageUserDeletion[]
+  contactCardSendCommand  ImContactCardSendCommand?
   sourceImChatRecordItems ImChatRecordItem[]        @relation("ImChatRecordSourceMessage")
   imChatRecordDelivery    ImChatRecordDelivery?
   translations            ImMessageTranslation[]
@@ -2296,6 +2319,33 @@ model Message {
   @@index([senderUserId, recallDeadlineAt])
   @@index([deletedAt])
   @@map("messages")
+}
+
+model ImContactCardSendCommand {
+  id                 Int       @id @default(autoincrement())
+  conversationId     Int       @map("conversation_id")
+  actorUserId        Int       @map("actor_user_id")
+  actorIdentityId    Int       @map("actor_identity_id")
+  targetUserId       Int       @map("target_user_id")
+  messageId          Int       @unique @map("message_id")
+  idempotencyKey     String    @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint String    @map("request_fingerprint") @db.Char(64)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  actorUser     User         @relation("ImContactCardSendActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorIdentity UserIdentity @relation(fields: [actorIdentityId], references: [id], onDelete: Restrict)
+  targetUser    User         @relation("ImContactCardSendTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+  message       Message      @relation(fields: [messageId], references: [id], onDelete: Restrict)
+
+  @@unique([actorIdentityId, idempotencyKey])
+  @@index([conversationId, actorIdentityId, deletedAt], map: "im_contact_card_command_conversation_actor_idx")
+  @@index([actorUserId, deletedAt], map: "im_contact_card_command_actor_user_idx")
+  @@index([targetUserId, deletedAt], map: "im_contact_card_command_target_user_idx")
+  @@index([deletedAt])
+  @@map("im_contact_card_send_commands")
 }
 
 model MessageUserDeletion {
@@ -2790,6 +2840,7 @@ model UserIdentity {
   createdConversations       Conversation[]                @relation("ConversationCreatorIdentity")
   conversationParticipants   ConversationParticipant[]     @relation("ConversationParticipantIdentity")
   sentMessages               Message[]                     @relation("MessageSenderIdentity")
+  imContactCardSendCommands  ImContactCardSendCommand[]
   messageUserDeletions       MessageUserDeletion[]         @relation("MessageUserDeletionIdentity")
   messageReactions           MessageReaction[]             @relation("MessageReactionIdentity")
   createdImChatRecordBundles ImChatRecordBundle[]          @relation("ImChatRecordBundleIdentity")
