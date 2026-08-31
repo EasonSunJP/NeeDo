@@ -11,17 +11,18 @@ describe("UserMembershipsPage formal UI", () => {
     expect(source).toContain("<MembershipCardAdjustmentInbox");
   });
 
-  it("supports real membership and card states without deferred mutations", () => {
+  it("supports real membership, card states, and read-only top-up history", () => {
     for (const copy of ["有效", "已结束", "已冻结", "已到期", "暂无会员卡", "查看店铺"]) {
       expect(source).toContain(copy);
     }
-    expect(source).not.toContain("立即充值");
     expect(source).not.toContain("扫码核销");
     expect(source).not.toContain("申请退款");
     expect(source).not.toContain("开卡会在后续");
     for (const copy of ["方案版本", "开卡时间", "开卡来源", "线下已付款", "历史补卡", "人工发放", "平台费率快照", "开卡不会自动产生 NDP"]) {
       expect(source).toContain(copy);
     }
+    expect(source).toContain("<CardTopUpHistory");
+    expect(source).toContain('mode="customer"');
   });
 
   it("has explicit loading, empty, error, and retry copy", () => {

@@ -13,14 +13,16 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).not.toContain("shopMemberStore");
   });
 
-  it("keeps card money and redemption mutations out of this micro-step", () => {
+  it("opens only the completed top-up mutation while redemption and refund remain separate", () => {
     expect(source).not.toContain("扫码核销");
-    expect(source).not.toContain("立即充值");
     expect(source).not.toContain("申请退款");
     expect(source).not.toContain("开卡演示");
     expect(source).not.toContain("开卡将在后续");
     expect(source).toContain("开通会员");
-    expect(source).toContain("后续独立开放");
+    expect(source).toContain("充值记录");
+    expect(source).toContain("<CardTopUpDialog");
+    expect(source).toContain("<CardTopUpHistory");
+    expect(source).toContain('hasPermission("shop.member.card.topup.create")');
   });
 
   it("splits issued cards from card plans and uses exact plan permissions", () => {

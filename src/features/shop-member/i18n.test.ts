@@ -27,5 +27,8 @@ describe("shop membership feature translations", () => {
     expect(translateText("查看调整申请", "en")).toBe("View change request");
     expect(translateText("调整状态读取失败", "ko")).toBe("변경 상태를 불러오지 못했습니다");
     expect(translateText("shop_membership.card_adjustment.expired.title", "en")).toBe("Membership card change expired");
+    expect(translateText("会员卡充值", "ja")).toBe("会員カードチャージ");
+    expect(translateText("充值记录", "en")).toBe("Top-up history");
+    expect(translateText("shop_membership.card_topup.created.title", "ko")).toBe("회원 카드 충전 완료");
   });
 });

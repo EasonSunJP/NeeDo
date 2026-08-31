@@ -5,6 +5,7 @@ export type ShopMembershipStatus = "active" | "ended";
 export type ShopMembershipCardType = "stored_value" | "count" | "benefit";
 export type ShopMembershipCardStatus = "active" | "frozen" | "expired" | "void";
 export type ShopMembershipCardIssuanceSource = "offline_paid" | "historical_replacement" | "manual_grant";
+export type ShopMembershipCardTopUpPaymentMethod = "cash" | "card" | "paypay" | "bank_transfer" | "other";
 export type ShopMembershipAnalyticsPeriod = "last7days" | "last30days" | "last90days";
 export type ShopMembershipCardPlanStatus = "draft" | "active" | "retired";
 export type ShopMembershipCardPlanVersionStatus = "draft" | "published" | "retired";
@@ -320,6 +321,40 @@ export type ShopMembershipCardAdjustmentQuery = {
   cardPublicId?: string;
 };
 
+export type ShopMembershipCardTopUpRequest = {
+  amountJpy: number;
+  paymentMethod: ShopMembershipCardTopUpPaymentMethod;
+  paymentReference: string | null;
+  note: string | null;
+  idempotencyKey: string;
+};
+
+export type ShopMembershipCardTopUp = {
+  publicId: string;
+  amountJpy: number;
+  paymentMethod: ShopMembershipCardTopUpPaymentMethod;
+  paymentReference: string | null;
+  note: string | null;
+  principalBalanceBeforeJpy: number;
+  principalBalanceAfterJpy: number;
+  createdAt: string;
+  updatedAt: string;
+  card: Pick<
+    ShopMembershipCard,
+    "publicId" | "cardNoMasked" | "name" | "type" | "status" | "principalBalanceJpy" | "bonusBalanceJpy"
+  >;
+  shop: { shopNo: string | null; name: string };
+  customer: { needoId: string; displayName: string };
+  createdBy: { needoId: string; displayName: string };
+  replayed: boolean;
+};
+
+export type ShopMembershipCardTopUpQuery = {
+  page?: number;
+  pageSize?: number;
+  cardPublicId?: string;
+};
+
 export type MembershipListQuery = {
   page?: number;
   pageSize?: number;
@@ -394,6 +429,17 @@ export const merchantShopMembershipApi = {
       body: {}
     });
   },
+  topUpCard(cardPublicId: string, body: ShopMembershipCardTopUpRequest) {
+    return httpClient.request<ShopMembershipCardTopUp>(`${publicPath("/merchant-admin/shop-membership-cards", cardPublicId)}/top-ups`, {
+      method: "POST",
+      body
+    });
+  },
+  topUps(query: ShopMembershipCardTopUpQuery = {}) {
+    return httpClient.request<PaginatedShopMemberships<ShopMembershipCardTopUp>>("/merchant-admin/shop-membership-card-top-ups", {
+      query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, cardPublicId: query.cardPublicId }
+    });
+  },
   activities(query: MembershipActivityQuery = {}) {
     return httpClient.request<PaginatedShopMemberships<ShopMembershipActivity>>("/merchant-admin/shop-membership-activities", {
       query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20 }
@@ -445,6 +491,11 @@ export const customerShopMembershipApi = {
     return httpClient.request<ShopMembershipCardAdjustment>(`${publicPath("/customer-profile/me/shop-membership-card-adjustment-requests", requestPublicId)}/decision`, {
       method: "POST",
       body
+    });
+  },
+  topUps(query: ShopMembershipCardTopUpQuery = {}) {
+    return httpClient.request<PaginatedShopMemberships<ShopMembershipCardTopUp>>("/customer-profile/me/shop-membership-card-top-ups", {
+      query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, cardPublicId: query.cardPublicId }
     });
   }
 };
