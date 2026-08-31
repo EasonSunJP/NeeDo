@@ -355,7 +355,8 @@
 ### 验证和仍待授权项
 
 - 五语言新增文案使用完整短语键处理动态选中数量和批量删除确认，不依赖片段拼接；日语“选择到这里”为 `ここまで`。自动化测试覆盖紧凑菜单、无滤镜遮罩、翻译显隐/复制、固定范围按钮、手势仲裁、不可变记录卡/详情、收藏分页、身份访问、媒体、幂等和仅本人删除。
-- 本轮未应用 migration、未读取或修改共享数据库、未创建测试消息/收藏、未调用真实 DeepL、未合并/推送/部署。390px/440px 双账号浏览器验收依赖正式 migration、临时消息/收藏和仅本人永久删除验证，必须另行取得这些数据写入与清理授权；在此之前不标记为通过。
+- 本轮未应用 migration、未读取或修改共享数据库、未创建测试消息/收藏、未调用真实 DeepL，也未推送或部署；代码已在完整自动化验证后合并到本地 `main`。390px/440px 双账号浏览器验收依赖正式 migration、临时消息/收藏和仅本人永久删除验证，必须另行取得这些数据写入与清理授权；在此之前不标记为通过。
+
 ## 6.26 可听语音预览与居中放大控制（2026-08-31）
 
 - 自动化聚焦命令 `npm test -- src/features/im/useImVoiceRecording.test.tsx src/features/im/ImVoiceRecordingOverlay.test.tsx src/features/im/pages.test.ts src/features/im/pages.test.tsx src/features/im/components.composer.test.tsx src/i18n/translations.test.ts` 通过：6 个 test files、154 个 tests、0 failures。
