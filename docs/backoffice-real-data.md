@@ -1,6 +1,6 @@
 # Step 12 — Backoffice / Merchant Admin Real Data
 
-本文件记录 Step 12 第一批真实数据接入范围。目标是让运营后台与商户后台先从正式后端读取核心经营数据，同时保留既有 UI 结构，不重做后台界面。
+本文件记录 Step 12 正式数据接入范围。运营后台与商户后台的总览、数据大屏和经营驾驶舱现已各自收敛为唯一的“数据大盘”，并从正式后端读取经营数据。
 
 ## 本次接入范围
 
@@ -20,6 +20,78 @@
 - 运营后台工资汇总：只读查看 Pay Run 总额、未支付、申诉和周期状态。
 - 商户后台员工列表与详细信息卡：按 canonical 技师 NeeDoID 读取 `/api/v1/merchant-admin/employees`，维护本店员工基础资料、从属关系、日程、工资结算周期及薪酬规则，并显示最新正式工资单统计。
 - 商户后台门店设置：维护店铺默认工资结算周期，并由后端计算本期自然结算日与计划支付日。
+
+## 统一数据大盘正式合同（2026-08-31）
+
+### 唯一路由与查询
+
+- 运营后台唯一页面为 `/admin`，调用 `GET /api/v1/backoffice/dashboard`。
+- 商户后台唯一页面为 `/merchant-admin`，调用 `GET /api/v1/merchant-admin/dashboard`。
+- 两端页面、标题和菜单统一命名为“数据大盘”。旧 `/admin/analytics`、`/merchant-admin/analytics`、`AnalyticsPage` 与 `MerchantAdminAnalyticsPage` 已从生产路由和页面入口删除，不保留第二套 Dashboard DTO。
+- Dashboard 查询参数为 `period=today|last7days|last30days|week|month|year|custom`；缺省为 `last7days`。`period=custom` 必须同时传 `from=YYYY-MM-DD` 和 `to=YYYY-MM-DD`，其他期间禁止传 `from`/`to`；自定义首尾日期均包含且最多 366 天。
+- 运营接口可额外传 `city=<数据库中持久化的精确城市值>`；城市选项只读取响应中的 `filter.availableCities`。商户接口严格拒绝 `city`，两端都不接受客户端 `shopId`。
+
+所有日期按 `Asia/Tokyo` 日历解释。`today` 按小时分桶；`last7days`、`last30days`、`week`、`month` 和不超过 92 天的自定义范围按天分桶；`year` 及超过 92 天的自定义范围按月分桶。服务端返回 `bucket.key` 与 `bucket.label`，浏览器不重新解释 UTC。上一周期与当前周期等长并紧邻：流量指标比较两个完整期间，累计指标比较两个期末存量。`changeRatePercent=(current-previous)/previous*100`，保留两位；上一期为 0 时返回 `null`，不伪造增长率。
+
+### 具名响应字段
+
+两个 Dashboard 都返回同一具名结构，旧的松散 `metrics` 标签数组和 `orders`、`technicians`、`shops` 预览数组不再返回：
+
+- `filter`: `period`、`from`、`to`、`previousFrom`、`previousTo`、`timeZone="Asia/Tokyo"`、`granularity`、`city`、`availableCities`。
+- `summary`: `availableScheduleSlots`、`activeTechnicians`、`registeredTechnicians`、`shopCount`、`newCustomers`、`pendingOrders`、`serviceGmvJpy`。前三项和运营端的店铺/新增用户项使用 `{ current, previous, changeRatePercent }`；商户端 `shopCount` 与 `newCustomers` 为 `null`。
+- `series.buckets[]`: `key`、`label`、`orderCount`、`serviceGmvJpy`、`platformNetRevenueNdp`、`frozenNdp`、`shopCount`、`registeredTechnicianCount`、`shopEstimatedGrossProfitJpy`、`scheduleTotalHours`、`scheduleAvailableHours`、`scheduleBookedHours`。
+- `finance`: `platformNetRevenue`、`frozen`、`userReward` 均为 `{ ndp, testNdp }`；运营端另有 `walletStock`、`withdrawn`，商户端另有 `shopNdpCost={ totalNdp, platformNdp, userRewardNdp }`。
+- `shop`: 商户端返回 `publicId`、名称、城市、地址、状态、`billing` 与当前 `wallet`；运营端为 `null`。`billing` 给出 `cadence=monthly|annual|free`、`state=trial|paid|free|overdue`、`trialEndsAt`、`paidThrough`。钱包使用 `status=available|not_opened` 区分余额 0 与未开通，并返回 `currency=NDP`、`availableBalance`、`frozenBalance`；这是当前快照，不随历史期间变化。
+- `membership`: 运营端为 `null`；商户端见下方会员合同。
+- `scope`: 运营端为 `{ kind:"platform", shopPublicId:null }`；商户端为 `{ kind:"shop", shopPublicId }`，店铺使用服务端签名后的公开 ID。
+
+### 运营指标口径
+
+- `availableScheduleSlots`: 期间内未删除、状态为 `AVAILABLE` 的正式 `ScheduleSlot` 数。
+- `activeTechnicians`: 期间内至少有一个排班时段，或参与至少一笔非取消订单的未删除技师去重数。
+- `registeredTechnicians`: 截至期间结束时未删除正式技师档案累计数；不要求已发布或期间活跃。
+- `shopCount`: 截至期间结束时未删除正式店铺累计数。
+- `newCustomers`: 期间内新建且未删除的 `CustomerProfile` 去重数。
+- 订单总量按服务时间统计未删除订单；服务 GMV 只统计已完成、未退款订单的正式服务金额。
+- 平台 NDP 净收入为实际 B 端平台费与 Request fee 扣除已入账用户返点；冻结 NDP 为各分桶结束时仍有效的正式 hold 存量。
+- 用户奖励 NDP 只统计期间内实际入账返点；存量 NDP 为期末所有钱包正数可用余额加冻结余额；提现 NDP 只统计已审核通过、关联正式账本交易且已扣减钱包的金额。
+- 正式 NDP 是主值，Test NDP 只作为明确标注的次级值；Test NDP 不进入提现、可结算值或正式主值。
+
+运营城市筛选作用于订单、GMV、排班、店铺、技师、新增用户及能够按订单店铺追溯的 NDP 指标。`finance.walletStock` 与 `finance.withdrawn` 始终是全平台口径，并固定带 `cityFilterApplied:false`、`scopeLabel:"platform_global"`；页面标记“不受城市筛选影响”。
+
+### 商户指标、利润与会员合同
+
+商户数据始终限制在当前已签名店铺范围：
+
+- 可排班、活跃技师、注册技师沿用上方口径，但只统计当前店铺。
+- `membership.memberCount` 是会员卡功能接通后的大字来源；本阶段会员数据源未建立，因此固定返回 `memberCount:null` 与 `memberDataStatus:"not_available"`。前端显示“会员数 —”和“会员功能尚未开放”，绝不把 `null` 转成 0，也不读取浏览器会员 Store。
+- `membership.completedCustomerCount` 是当前筛选期间内至少完成一笔订单的用户去重数，重复完成多单仍只计一人，并以小字“利用者数”显示。
+- `shopEstimatedGrossProfitJpy = 服务 GMV - 技师毛收入 - 店铺承担 NDP`，只统计已完成、未退款且服务收入已上报或确认的订单。
+- 技师毛收入沿用薪酬引擎：`基础报酬 + 订单分成 + 保底补足 + 奖金 - 扣款`。技师承担 NDP 不属于毛收入，只在技师净收入中扣除。
+- 排班柱状图按分桶显示 `scheduleTotalHours`、`scheduleAvailableHours`、`scheduleBookedHours`。总排班时长是有效 `AVAILABLE` 与 `BOOKED` 时段时长之和；空闲和已预约是总时长的状态拆分，不与总时长再次相加。
+- `shopNdpCost.totalNdp = platformNdp + userRewardNdp`，分别显示平台净收入与用户返点；`finance.frozen` 是期间结束时当前店铺仍有效的正式平台费 hold 存量。
+
+### 多店列表、切店、RBAC 与审计
+
+多店商户使用：
+
+- `GET /api/v1/merchant-admin/manageable-shops?page=1&page_size=20`，`page_size` 范围为 1–100。响应为标准分页 `{ list, total, page, page_size }`；每项只返回 `publicId`、`name`、`city`、`status`、`selected`。
+- `POST /api/v1/auth/merchant-shop/switch`，请求体为 `{ refreshToken, shopPublicId }`，其中公开 ID 必须匹配 `shop` 加 10 位数字。成功响应返回轮换后的 `accessToken`、`refreshToken`、`expiresIn`、`me` 与已签名的 `shopPublicId`。
+
+直接 shop-scoped 身份只能看到自己的店铺；merchant-account-scoped 身份只能看到当前 `MerchantAccount` 有效且未删除 membership 所管理的店铺。服务端在切换时重新验证身份、商户账号、membership、店铺状态和权限，并轮换 Access/Refresh Token；旧 Access Token 加入黑名单，旧 Refresh Token 被原子替换。Refresh 会重新验证店铺关系；离开商户身份会清除店铺上下文；切到单店身份会固定其店铺。商户订单、排班、财务、员工和设置统一读取同一服务端范围解析器，客户端不得通过任意 `shopId` 扩权；旧店铺迟到响应不能覆盖新店铺数据。
+
+Dashboard 与店铺列表读取分别要求 `backoffice:dashboard:read`、`merchant-admin:dashboard:read`；切店要求 `auth:me:read`。正式审计 action 为 `backoffice.dashboard.read`、`merchant_admin.dashboard.read`、`merchant_admin.manageable_shops.read` 与 `auth.merchant_shop.switch`。切店审计先写 durable authorized-attempt，再通过 Redis 原子 session commit 与恢复 worker 完成；不得出现已轮换 session 却无审计证据的成功路径。
+
+本次复用现有 Booking、OrderFinancial、ScheduleSlot、TechnicianProfile、Shop、Wallet、Ledger、Hold、Withdrawal、MerchantAccount、MerchantShopMembership 与 SaaS 计费数据，**没有新增 Prisma schema 或 migration**，也没有新增 mock、静态曲线或浏览器本地会员数据。
+
+### 本地正式运行验收（2026-08-31）
+
+- 隔离工作树以正式后端 `3000`、前端 `5180`、MySQL `3307`、Redis `6379` 启动；`/api/v1/health`、`/api/v1/ready` 与前端入口均通过。前后端监听进程的 cwd 均已核对为本隔离工作树。
+- 正式 `admin@lifedance.com` 与 `merchant@example.com` 账号通过忽略跟踪的本地环境密码登录；验收过程未打印密码、Access Token 或 Refresh Token，也未修改订单、钱包、会员或其他业务数据。
+- 运营数据大盘在 `1440×1000` 浅色与 `390×844` 窄屏完成验收：五个大指标、三个图表、三个 NDP 卡、六个预设期间、有效/无效自定义期间、城市应用/重置、失败后重试、键盘焦点、旧分析路由删除与横向溢出均通过。
+- 商户数据大盘在 `1440×1000` 深色与 `390×844` 窄屏完成验收：店铺/计费/钱包、四个大指标、会员数不可用加真实利用者数、三个图表、NDP 成本拆分、冻结 NDP、期间筛选、无效期间恢复、失败后重试、键盘焦点、旧分析路由删除与横向溢出均通过。当前正式商户身份只有一个可管理店铺，因此切换按钮按合同隐藏；多店 Shop A → Shop B 轮换没有伪造浏览器证据，仍由自动化 API/状态机测试覆盖。
+- 浏览器验收发现并修复了同店查询失败后遮罩阻断“重置/重试”，以及真正切店加载失败时遮罩阻断“重试”的两个恢复缺陷。同店失败现在保留并明确标记上次成功结果；遮罩仅在真实 owner 过渡的 loading 阶段冻结旧数据。
+- 数据大盘 API、重试后的网络、SSE 导航退出与页面控制台没有未解释的失败；但两端共享的全局已发布内容加载仍发现五个 `/media/content/*` 404。它们是本地对象存储缺少已被数据库发布记录引用的媒体对象，不属于 Dashboard 请求，也不能在本次“禁止业务数据写入/无 migration”边界内伪造或修补。需由内容对象恢复或发布记录治理任务处理，详见对应实施计划的精确路径。
 
 调度中心后端接口已提供：
 
