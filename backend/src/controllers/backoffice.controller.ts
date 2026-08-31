@@ -19,6 +19,7 @@ import {
   backofficeTechnicianUpdateBodySchema,
   merchantShopUpdateBodySchema,
   merchantDashboardQuerySchema,
+  manageableMerchantShopsQuerySchema,
   technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
 
@@ -64,6 +65,26 @@ export class BackofficeController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public manageableMerchantShops = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.service.listManageableMerchantShops(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            manageableMerchantShopsQuerySchema.parse(request.query)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }

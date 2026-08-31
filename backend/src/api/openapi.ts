@@ -1152,6 +1152,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           completedCustomerCount: { type: "integer", minimum: 0 }
         }
       },
+      ManageableMerchantShop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "name", "city", "status", "selected"],
+        properties: {
+          publicId: { type: "string", pattern: "^(?:s|shop)[0-9]{10}$" },
+          name: { type: "string", minLength: 1 },
+          city: { type: "string", minLength: 1 },
+          status: { type: "string", minLength: 1 },
+          selected: { type: "boolean" }
+        }
+      },
+      ManageableMerchantShopPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ManageableMerchantShop" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       Dashboard: {
         type: "object",
         additionalProperties: false,
@@ -11366,6 +11392,35 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...dashboardErrorResponses,
           "403": { description: "Missing merchant scope or permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/manageable-shops`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Paginated public-safe shops manageable by the authenticated merchant identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "page",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, default: 1 }
+          },
+          {
+            name: "page_size",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated manageable merchant shops", {
+            $ref: "#/components/schemas/ManageableMerchantShopPage"
+          }),
+          "400": { description: "error.validation — strict pagination validation failed" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant-admin dashboard permission or shop scope" }
         }
       }
     },

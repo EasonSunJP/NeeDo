@@ -30,6 +30,7 @@ import {
   type AffiliateCheckoutService,
   type AffiliatePromotionInput
 } from "./affiliate-checkout.service";
+import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -37,6 +38,10 @@ export interface AuthenticatedBookingActor {
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
+  selectedMerchantShopId?: number;
+  selectedMerchantShopPublicId?: string;
+  isReadOnlyMerchantPreview?: boolean;
+  merchantPreviewShopId?: number;
 }
 export interface BookingCreateInput
   extends Omit<BookingCreateRepositoryInput, "customerUserId">, AffiliatePromotionInput {
@@ -499,31 +504,17 @@ export class BookingService {
   }
 
   private getScheduleScope(actor: AuthenticatedAccessContext): ScheduleScope {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return { scope: "merchant", shopId: actor.currentIdentityScopeId };
-    }
     if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
       return { scope: "technician", technicianProfileId: actor.currentIdentityScopeId };
     }
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.auth.identity_forbidden",
-      statusCode: 403
-    });
+    return { scope: "merchant", shopId: requireMerchantShopId(actor) };
   }
 
   private getManualPaymentScope(actor: AuthenticatedAccessContext): ManualPaymentScope {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return { scope: "merchant", shopId: actor.currentIdentityScopeId };
-    }
     if (actor.currentIdentityType === "platform") {
       return { scope: "backoffice" };
     }
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.auth.identity_forbidden",
-      statusCode: 403
-    });
+    return { scope: "merchant", shopId: requireMerchantShopId(actor) };
   }
 
   private requireManualPaymentMutation(result: ManualPaymentMutationResult): BookingOrderPayload {
@@ -819,8 +810,11 @@ export class BookingService {
       return input;
     }
 
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return { ...input, shopId: actor.currentIdentityScopeId };
+    if (this.isMerchantShopActor(actor)) {
+      return {
+        ...input,
+        shopId: requireMerchantShopId(actor as AuthenticatedAccessContext)
+      };
     }
 
     if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
@@ -845,8 +839,8 @@ export class BookingService {
 
   private canAccessOrder(actor: AuthenticatedBookingActor, order: BookingOrderPayload): boolean {
     if (this.isPlatformOrderActor(actor)) return true;
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return order.shopId === actor.currentIdentityScopeId;
+    if (this.isMerchantShopActor(actor)) {
+      return order.shopId === requireMerchantShopId(actor as AuthenticatedAccessContext);
     }
     if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
       return order.technicianProfileId === actor.currentIdentityScopeId;
@@ -867,6 +861,10 @@ export class BookingService {
       actor.currentIdentityType === "platform" ||
       actor.currentIdentityType === "platform_admin"
     );
+  }
+
+  private isMerchantShopActor(actor: AuthenticatedBookingActor): boolean {
+    return hasMerchantShopScope(actor as AuthenticatedAccessContext);
   }
 
   private isCustomerSharedIdentity(actor: AuthenticatedBookingActor): boolean {

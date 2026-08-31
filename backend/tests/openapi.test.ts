@@ -668,6 +668,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{shopId}/services");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/services/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/dashboard");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/manageable-shops");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule");
     const merchantDashboard = response.body.paths["/api/v1/merchant-admin/dashboard"].get;
@@ -700,6 +701,24 @@ describe("GET /api/v1/openapi.json", () => {
         "403": expect.objectContaining({ description: expect.stringContaining("scope") })
       })
     );
+    const manageableShops = response.body.paths["/api/v1/merchant-admin/manageable-shops"].get;
+    expect(manageableShops.parameters).toEqual([
+      expect.objectContaining({ in: "query", name: "page" }),
+      expect.objectContaining({ in: "query", name: "page_size" })
+    ]);
+    expect(manageableShops.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object)
+      })
+    );
+    expect(manageableShops.responses["200"].content["application/json"].schema.properties.data)
+      .toEqual({ $ref: "#/components/schemas/ManageableMerchantShopPage" });
+    expect(response.body.components.schemas.ManageableMerchantShop).toMatchObject({
+      additionalProperties: false,
+      required: ["publicId", "name", "city", "status", "selected"]
+    });
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/shops/{shopId}/finance/rules"
     );

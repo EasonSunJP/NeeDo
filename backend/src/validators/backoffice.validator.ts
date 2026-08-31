@@ -12,6 +12,17 @@ const paginationQuerySchema = {
 
 const isoDateSchema = z.coerce.date();
 
+export const manageableMerchantShopsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(100).default(20)
+  })
+  .strict();
+
+export type ManageableMerchantShopsQuery = z.infer<
+  typeof manageableMerchantShopsQuerySchema
+>;
+
 export const backofficeListQuerySchema = z.object({
   ...paginationQuerySchema,
   keyword: z.string().trim().max(100).optional(),

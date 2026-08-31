@@ -7,6 +7,7 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeRepository } from "../repositories/backoffice.repository";
+import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeService } from "../services/backoffice.service";
 import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
@@ -27,6 +28,7 @@ import {
   backofficeTechnicianUpdateBodySchema,
   merchantShopUpdateBodySchema,
   merchantDashboardQuerySchema,
+  manageableMerchantShopsQuerySchema,
   technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -78,7 +80,8 @@ export const createBackofficeRoutes = (
       new CustomerAvatarFileStorage(
         config.CUSTOMER_AVATAR_STORAGE_DIR,
         config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
-      )
+      ),
+    dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository()
   );
   const controller = new BackofficeController(service);
 
@@ -177,6 +180,13 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantDashboard),
     validateRequest({ query: merchantDashboardQuerySchema }),
     controller.merchantDashboard
+  );
+  router.get(
+    "/merchant-admin/manageable-shops",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantDashboard),
+    validateRequest({ query: manageableMerchantShopsQuerySchema }),
+    controller.manageableMerchantShops
   );
   router.get(
     "/merchant-admin/orders",

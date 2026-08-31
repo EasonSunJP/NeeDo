@@ -4,6 +4,7 @@ import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { IdentifierAllocator, PublicIdentifierRecord } from "./public-identifier.service";
+import { requireMerchantShopId } from "./merchant-shop-scope";
 
 export type EmployeeRelationshipType = "exclusive" | "partner";
 export type EmployeeCurrentWorkStatus = "active" | "on_leave" | "suspended";
@@ -412,14 +413,7 @@ export class TechnicianShopAffiliationService {
   }
 
   private requireMerchantShopScope(actor: AuthenticatedAccessContext): number {
-    if (
-      actor.currentIdentityScopeType === "shop" &&
-      typeof actor.currentIdentityScopeId === "number" &&
-      actor.currentIdentityScopeId > 0
-    ) {
-      return actor.currentIdentityScopeId;
-    }
-    throw this.forbidden();
+    return requireMerchantShopId(actor);
   }
 
   private assertMutationDates(input: EmployeeAffiliationMutationInput): void {

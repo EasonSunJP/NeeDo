@@ -1,6 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type { MerchantShopContextRepositoryPort } from "../repositories/merchant-shop-context.repository";
 import { AppError } from "../utils/app-error";
+import type { AuthenticatedAccessContext } from "./auth.service";
 
 export interface MerchantShopIdentityScope {
   type: string;
@@ -42,6 +43,50 @@ export const merchantShopIdentityForbidden = (): AppError =>
     message: "error.identity.forbidden",
     statusCode: 403
   });
+
+const isValidShopId = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+
+export function hasMerchantShopScope(actor: AuthenticatedAccessContext): boolean {
+  return (
+    actor.isReadOnlyMerchantPreview === true ||
+    actor.currentIdentityScopeType === "shop" ||
+    actor.selectedMerchantShopId !== undefined
+  );
+}
+
+export function requireMerchantShopId(actor: AuthenticatedAccessContext): number {
+  if (actor.isReadOnlyMerchantPreview === true) {
+    if (isValidShopId(actor.merchantPreviewShopId)) return actor.merchantPreviewShopId;
+    throw merchantShopIdentityForbidden();
+  }
+
+  if (actor.currentIdentityScopeType === "shop") {
+    if (isValidShopId(actor.currentIdentityScopeId)) return actor.currentIdentityScopeId;
+    throw merchantShopIdentityForbidden();
+  }
+
+  if (isValidShopId(actor.selectedMerchantShopId)) {
+    const identityKind = resolveFormalMerchantIdentityKind({
+      type: actor.currentIdentityType ?? "",
+      scopeType: actor.currentIdentityScopeType ?? null,
+      scopeId: actor.currentIdentityScopeId ?? null
+    });
+    if (identityKind === "merchant_account") return actor.selectedMerchantShopId;
+  }
+  throw merchantShopIdentityForbidden();
+}
+
+export function assertMerchantShopId(
+  actor: AuthenticatedAccessContext,
+  requestedShopId: number
+): number {
+  const resolvedShopId = requireMerchantShopId(actor);
+  if (!isValidShopId(requestedShopId) || requestedShopId !== resolvedShopId) {
+    throw merchantShopIdentityForbidden();
+  }
+  return resolvedShopId;
+}
 
 export const resolveFormalMerchantIdentityKind = (
   identity: MerchantShopIdentityScope

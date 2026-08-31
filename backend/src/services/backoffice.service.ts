@@ -14,6 +14,7 @@ import type {
   BackofficeShopUpdateBody,
   MerchantShopUpdateBody,
   MerchantDashboardQuery,
+  ManageableMerchantShopsQuery,
   BackofficeTechnicianApproveBody,
   BackofficeTechnicianUpdateBody,
   BackofficeTechnicianRankingQuery,
@@ -41,6 +42,16 @@ import type {
   DashboardPlatformGlobalNdpPair
 } from "../domain/dashboard";
 import { DashboardMerchantSnapshotService } from "./dashboard-merchant-snapshot.service";
+import {
+  merchantShopIdentityForbidden,
+  requireMerchantShopId,
+  resolveFormalMerchantIdentityKind
+} from "./merchant-shop-scope";
+import {
+  MerchantShopContextRepository,
+  type MerchantShopContextPage,
+  type MerchantShopContextRepositoryPort
+} from "../repositories/merchant-shop-context.repository";
 
 export type { BackofficeDashboardPayload } from "../domain/dashboard";
 
@@ -608,7 +619,9 @@ export class BackofficeService {
     private readonly repository: BackofficeRepositoryPort,
     private readonly auditLogService: AuditLogService,
     private readonly now: () => Date = () => new Date(),
-    private readonly avatarStorage?: CustomerAvatarStoragePort
+    private readonly avatarStorage?: CustomerAvatarStoragePort,
+    private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort =
+      new MerchantShopContextRepository()
   ) {}
 
   public async getPlatformDashboard(
@@ -653,6 +666,55 @@ export class BackofficeService {
       window
     });
     return this.composeDashboard(aggregate, window, null, scope.shopId);
+  }
+
+  public async listManageableMerchantShops(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: ManageableMerchantShopsQuery
+  ): Promise<MerchantShopContextPage> {
+    let identityScopeType: "shop" | "merchant_account";
+    let identityScopeId: number;
+    let selectedShopPublicId: string | null = null;
+
+    const identityKind =
+      actor.isReadOnlyMerchantPreview === true
+        ? "shop"
+        : resolveFormalMerchantIdentityKind({
+            type: actor.currentIdentityType ?? "",
+            scopeType: actor.currentIdentityScopeType ?? null,
+            scopeId: actor.currentIdentityScopeId ?? null
+          });
+    if (identityKind === "shop") {
+      identityScopeType = "shop";
+      identityScopeId = requireMerchantShopId(actor);
+    } else {
+      if (identityKind !== "merchant_account" || !actor.currentIdentityScopeId) {
+        throw merchantShopIdentityForbidden();
+      }
+      requireMerchantShopId(actor);
+      if (!actor.selectedMerchantShopPublicId) throw merchantShopIdentityForbidden();
+      identityScopeType = "merchant_account";
+      identityScopeId = actor.currentIdentityScopeId;
+      selectedShopPublicId = actor.selectedMerchantShopPublicId;
+    }
+
+    const page = await this.merchantShopContextRepository.listManageableShops({
+      identityScopeType,
+      identityScopeId,
+      selectedShopPublicId,
+      now: this.now(),
+      page: query.page,
+      pageSize: query.page_size
+    });
+    await this.record(
+      actor,
+      context,
+      "merchant_admin.manageable_shops.read",
+      "merchant_shop_context",
+      { page: query.page, pageSize: query.page_size, total: page.total }
+    );
+    return page;
   }
 
   private composeDashboard(
@@ -1583,18 +1645,7 @@ export class BackofficeService {
   private getMerchantScope(
     actor: AuthenticatedAccessContext
   ): BackofficeScope & { scope: "merchant" } {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return {
-        scope: "merchant",
-        shopId: actor.currentIdentityScopeId
-      };
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    return { scope: "merchant", shopId: requireMerchantShopId(actor) };
   }
 
   private record(

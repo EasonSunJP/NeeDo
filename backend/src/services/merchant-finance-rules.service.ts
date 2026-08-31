@@ -1,5 +1,3 @@
-import { ERROR_CODES } from "../constants/error-codes";
-import { AppError } from "../utils/app-error";
 import type {
   ParsedShopFinanceRuleSetBody,
   ShopFinanceRulePreviewBody,
@@ -7,6 +5,7 @@ import type {
 } from "../validators/merchant-finance-rules.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertMerchantShopId } from "./merchant-shop-scope";
 
 export type ShopFinanceRuleStatus = "active" | "archived";
 export type ShopFinanceWageMode =
@@ -366,15 +365,7 @@ export class MerchantFinanceRulesService {
   }
 
   private assertMerchantShopScope(actor: AuthenticatedAccessContext, shopId: number): void {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId === shopId) {
-      return;
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    assertMerchantShopId(actor, shopId);
   }
 
   private async record(

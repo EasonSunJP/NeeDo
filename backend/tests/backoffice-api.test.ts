@@ -317,6 +317,35 @@ const createFixture = async () => {
       auditLogs.push(entry);
     })
   };
+  const merchantShopContextRepository = {
+    listManageableShops: jest.fn(
+      async (input: {
+        identityScopeType: string;
+        identityScopeId: number;
+        selectedShopPublicId: string | null;
+        page: number;
+        pageSize: number;
+      }) => ({
+        list:
+          input.page === 1
+            ? [
+                {
+                  publicId: "s0000000011",
+                  name: "Aoyama Care Studio",
+                  city: "Tokyo",
+                  status: "published",
+                  selected: true
+                }
+              ]
+            : [],
+        total: 1,
+        page: input.page,
+        page_size: input.pageSize
+      })
+    ),
+    resolveShop: jest.fn(),
+    resolveDefaultShop: jest.fn()
+  };
   const backofficeRepository = {
     getDashboard: jest.fn(async (input: {
       scope: { kind: "platform" } | { kind: "shop"; shopId: number };
@@ -562,7 +591,8 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
-    backofficeRepository
+    backofficeRepository,
+    merchantShopContextRepository
   } as never);
   const login = async (email: string) => {
     const response = await request(app)
@@ -573,10 +603,60 @@ const createFixture = async () => {
     return response.body.data.accessToken as string;
   };
 
-  return { app, auditLogs, backofficeRepository, login };
+  return { app, auditLogs, backofficeRepository, merchantShopContextRepository, login };
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
+  it("lists only safe manageable-shop fields with strict pagination, permission, and audit", async () => {
+    const fixture = await createFixture();
+    const merchantToken = await fixture.login("merchant@example.com");
+    const response = await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops?page=1&page_size=10")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual({
+      list: [
+        {
+          publicId: "s0000000011",
+          name: "Aoyama Care Studio",
+          city: "Tokyo",
+          status: "published",
+          selected: true
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    expect(fixture.merchantShopContextRepository.listManageableShops).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identityScopeType: "shop",
+        identityScopeId: 11,
+        selectedShopPublicId: null,
+        page: 1,
+        pageSize: 10
+      })
+    );
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "merchant_admin.manageable_shops.read" })
+      ])
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops?pageSize=10")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(400);
+    await request(fixture.app).get("/api/v1/merchant-admin/manageable-shops").expect(401);
+
+    const viewerToken = await fixture.login("viewer@example.com");
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403);
+  });
+
   it("assigns an audited complimentary user membership through the write permission", async () => {
     const fixture = await createFixture();
     const adminToken = await fixture.login("admin@example.com");
