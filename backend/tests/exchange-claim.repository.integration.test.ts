@@ -20,14 +20,20 @@ const requireSafeDatabaseUrl = (): URL => {
   }
   const parsed = new URL(databaseUrl);
   const databaseName = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+  const explicitlyAllowedDevelopmentDatabase =
+    process.env.ALLOW_EXCHANGE_CLAIM_DEV_INTEGRATION === "true" &&
+    loaded.parsed?.NODE_ENV === "development" &&
+    loaded.parsed?.DEPLOY_ENV === "local" &&
+    /(?:^|[_-])dev(?:$|[_-])/iu.test(databaseName);
   if (
     parsed.protocol !== "mysql:" ||
     !allowedHosts.has(parsed.hostname) ||
-    !/(?:^|[_-])test(?:$|[_-])/iu.test(databaseName) ||
+    (!/(?:^|[_-])test(?:$|[_-])/iu.test(databaseName) &&
+      !explicitlyAllowedDevelopmentDatabase) ||
     /(?:^|[_-])prod(?:uction)?(?:$|[_-])/iu.test(databaseName)
   ) {
     throw new Error(
-      "Exchange claim integration requires a loopback MySQL database with test in its name"
+      "Exchange claim integration requires a loopback test database or an explicitly allowed local development database"
     );
   }
   return parsed;
@@ -69,6 +75,8 @@ describeIntegration("ExchangeClaimRepository guarded concurrency", () => {
 
   it("allows exactly one active claim for concurrent attempts on one technician", async () => {
     const marker = randomUUID().replaceAll("-", "").slice(0, 10);
+    const numberPartBase = String(Number.parseInt(marker.slice(0, 8), 16) % 1_000_000_000)
+      .padStart(9, "0");
     const now = new Date("2026-09-01T00:00:00.000Z");
     const serviceStartAt = new Date("2026-09-02T01:00:00.000Z");
     const serviceEndAt = new Date("2026-09-02T02:00:00.000Z");
@@ -121,10 +129,10 @@ describeIntegration("ExchangeClaimRepository guarded concurrency", () => {
       });
       created.identityIds.push(claimantIdentity.id, technicianIdentity.id);
       for (const [identityId, kind, prefix, sequence] of [
-        [claimantIdentity.id, "B", "B", "1"],
-        [technicianIdentity.id, "S", "S", "2"]
+        [claimantIdentity.id, "B", "b", "1"],
+        [technicianIdentity.id, "S", "s", "2"]
       ] as const) {
-        const numberPart = `${marker.replace(/\D/gu, "")}0000000000${sequence}`.slice(-10);
+        const numberPart = `${numberPartBase}${sequence}`;
         const publicIdentifier = await client.publicIdentifier.create({
           data: {
             publicId: `${prefix}${numberPart}`,
@@ -212,7 +220,7 @@ describeIntegration("ExchangeClaimRepository guarded concurrency", () => {
           areaLabel: "Tokyo",
           serviceStartAt,
           serviceEndAt,
-          expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+          expiresAt: new Date("2026-09-02T03:00:00.000Z"),
           idempotencyKey: `claim-it-post:${marker}`,
           demand: {
             create: {

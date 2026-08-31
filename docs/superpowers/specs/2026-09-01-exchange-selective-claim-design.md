@@ -192,3 +192,18 @@ Request 详情的当前匹配前地址投影保持不变。抢单记录不复制
 - 真实测试账号完成商户或技师提交、刷新持久化、重复拦截、时间冲突、撤回和发出者查看的浏览器验收。
 - 不创建 Match、BookingOrder、Payment 或新的钱包扣款；不推送、不部署、不发起真实支付。
 
+## 12. 已验证实现边界（2026-09-01）
+
+本微步骤已经实现并自动化验证：
+
+- migration `20260901100000_exchange_selective_claim` 在本机 `needo_dev` 物理落表；独立检查确认 21 列、13 个索引（含主键）、3 个 CHECK、8 个 `RESTRICT/RESTRICT` 外键、5 个 permission 及 19 条有效角色授权关系。
+- 增量 migration `20260901130000_exchange_claim_withdraw_idempotency` 已独立核验 2 个 nullable 字段、1 个唯一索引和 1 个成对空值 CHECK；合计为 23 列、14 个索引和 4 个 CHECK。
+- 较早且与本步骤无关的 migration `20260831160000_im_chat_records_translation` 仍保持 pending；本步骤未执行会连带应用它的全量 `migrate deploy`。
+- `ExchangeClaimRepository`、`ExchangeClaimService`、Controller、Zod、OpenAPI、RBAC 与审计已接通；五个正式接口均位于 `/api/v1`，两个列表均分页。
+- 本地 claim lifecycle fixture 检查器以具名、精确的 Prisma fixture 建立 Request、排班、服务与身份，再通过正式 Repository/Service 证明排班投影、创建持久化、幂等重放、重复拦截、跨 Request 技师时间冲突、抢单者撤回释放、Request 到期释放和审计持久化，并按捕获 ID 精确清理；它不单独证明正式发布与 TEST_NDP 冻结。
+- 撤回写入通过 migration `20260901130000_exchange_claim_withdraw_idempotency` 持久化幂等键与负载指纹；同键重试返回首次成功结果，不重复写审计。
+- MySQL 并发集成测试证明同一技师重叠时段的两个并发尝试只产生一条有效抢单。
+- 前端仅在服务端 `viewer.canClaim` / `viewer.canViewClaims` 授权时组合正式抢单面板或发布者只读列表；五语言、必填星号、原文留言、分页和服务端错误反馈均已覆盖测试。
+- 后端相关 12 个测试套件共 119 项通过；前端 Exchange 与移动路由 11 个测试文件共 60 项通过；前后端 lint/build 和 production bundle audit 通过，未提高 bundle budget。
+
+明确未实现：速配自动匹配、发布者选择服务者、总预算追加、未满员提前结束与半额 NDP 规则、匹配成立、成立后双方同意取消、预约、`BookingOrder`、订单支付、钱包结算或真实扣款。
