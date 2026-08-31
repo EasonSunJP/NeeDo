@@ -699,6 +699,32 @@ async function renderConversationRoom(store: Record<string, unknown>, conversati
   return { container, root };
 }
 
+async function renderRoutedConversationRoom(store: Record<string, unknown>, conversationId = "conversation-room") {
+  roomHarness.store = store;
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <MemoryRouter initialEntries={[`/messages/${conversationId}`]}>
+        <I18nProvider>
+          <ClientThemeProvider>
+            <ImScopeProvider scope="user">
+              <Routes>
+                <Route path="/messages/:conversationId" element={<><ImConversationRoomPage conversationId={conversationId} /><LocationProbe /></>} />
+                <Route path="*" element={<LocationProbe />} />
+              </Routes>
+            </ImScopeProvider>
+          </ClientThemeProvider>
+        </I18nProvider>
+      </MemoryRouter>,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  return { container, root };
+}
+
 async function openActionMenuForText(text: string) {
   const bubble = Array.from(document.querySelectorAll<HTMLElement>("[data-im-message-bubble]"))
     .find((element) => element.textContent?.includes(text));
@@ -765,6 +791,46 @@ function roomMessage(overrides: Record<string, unknown>) {
 }
 
 describe("ImConversationRoomPage formal message multiselect", () => {
+  it("cancels a stationary chat-record-card tap without activating its underlying route", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [
+      roomMessage({ content: "进入多选" }),
+      roomMessage({
+        clientSeq: 2,
+        content: "后端标题",
+        ext: { chatRecord: { publicId: "11111111-1111-4111-8111-111111111111", itemCount: 1, preview: "A: saved", senderNames: ["A"], titleKind: "single" } },
+        id: "502",
+        localId: "502",
+        sentAt: "2026-08-31T00:02:00.000Z",
+        type: "chat-record",
+      }),
+    ];
+    const view = await renderRoutedConversationRoom(store);
+    await openActionMenuForText("进入多选");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    const opener = view.container.querySelector<HTMLAnchorElement>("[data-im-chat-record-opener]")!;
+
+    await act(async () => {
+      dispatchRoomPointer(opener, "pointerdown", 10, 10);
+      dispatchRoomPointer(opener, "pointerup", 10, 10);
+      opener.click();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).toBeNull();
+    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe("/messages/conversation-room");
+
+    await act(async () => {
+      opener.click();
+      await Promise.resolve();
+    });
+    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe("/messages/chat-records/11111111-1111-4111-8111-111111111111");
+    await act(async () => view.root.unmount());
+  });
+
   it("enters from the eligible menu action, anchors the pressed row, and uses only row circles as toggles", async () => {
     installConversationRoomDomStubs();
     localStorage.setItem("needo.language", "zh");

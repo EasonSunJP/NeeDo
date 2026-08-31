@@ -4790,6 +4790,8 @@ export function ImConversationRoomPage({
   const multiSelect = useImMessageMultiSelect({ messages, messageRefs, scrollRoot: listRef });
   const [multiSelectPendingAction, setMultiSelectPendingAction] = useState<ImMultiSelectAction | null>(null);
   const multiSelectPendingRef = useRef<ImMultiSelectAction | null>(null);
+  const suppressNextMultiSelectClickRef = useRef(false);
+  const suppressNextMultiSelectClickTimerRef = useRef<number | null>(null);
   const [multiSelectNotice, setMultiSelectNotice] = useState<string | null>(null);
   const [multiSelectDeleteConfirmationOpen, setMultiSelectDeleteConfirmationOpen] = useState(false);
   const reactionPendingKeysRef = useRef(new Set<string>());
@@ -4839,6 +4841,12 @@ export function ImConversationRoomPage({
     }
     setPendingImage(undefined);
   }, [conversationId]);
+
+  useEffect(() => () => {
+    if (suppressNextMultiSelectClickTimerRef.current !== null) {
+      window.clearTimeout(suppressNextMultiSelectClickTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     translationGenerationRef.current += 1;
@@ -5819,6 +5827,28 @@ export function ImConversationRoomPage({
     closeConversationFloatingUi();
   };
 
+  const armMultiSelectReleaseClickSuppression = () => {
+    suppressNextMultiSelectClickRef.current = true;
+    if (suppressNextMultiSelectClickTimerRef.current !== null) {
+      window.clearTimeout(suppressNextMultiSelectClickTimerRef.current);
+    }
+    suppressNextMultiSelectClickTimerRef.current = window.setTimeout(() => {
+      suppressNextMultiSelectClickRef.current = false;
+      suppressNextMultiSelectClickTimerRef.current = null;
+    }, 0);
+  };
+
+  const handleConversationClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressNextMultiSelectClickRef.current) return;
+    suppressNextMultiSelectClickRef.current = false;
+    if (suppressNextMultiSelectClickTimerRef.current !== null) {
+      window.clearTimeout(suppressNextMultiSelectClickTimerRef.current);
+      suppressNextMultiSelectClickTimerRef.current = null;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   const selectMessageText = (message: ConversationMessage) => {
     window.requestAnimationFrame(() => {
       const root = messageRefs.current[message.id];
@@ -6354,13 +6384,18 @@ export function ImConversationRoomPage({
         className="im-conversation-room-shell fixed inset-x-0 inset-y-0 z-20 mx-auto flex h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden overscroll-none [overflow-x:clip]"
         data-im-conversation-voice-underlay="true"
         inert={voiceRecording.phase !== "idle" || undefined}
+        onClickCapture={handleConversationClickCapture}
         onPointerCancelCapture={() => multiSelect.onPointerCancelCapture()}
         onPointerDownCapture={(event) => {
           multiSelect.onPointerDownCapture(event);
           handleConversationPointerDownCapture(event);
         }}
         onPointerMoveCapture={(event) => multiSelect.onPointerMoveCapture(event)}
-        onPointerUpCapture={(event) => multiSelect.onPointerUpCapture(event)}
+        onPointerUpCapture={(event) => {
+          if (multiSelect.onPointerUpCapture(event) === "cancel-selection") {
+            armMultiSelectReleaseClickSuppression();
+          }
+        }}
         ref={conversationUnderlayRef}
         style={{ maxWidth: "min(880px, 100%)" }}
       >

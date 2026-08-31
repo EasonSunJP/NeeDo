@@ -264,7 +264,7 @@ export function useImMessageMultiSelect({
 
   const onPointerUpCapture = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture || gesture.pointerId !== event.pointerId) return null;
     const movedPx = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
     const result = classifyPointerRelease({
       movedPx,
@@ -273,6 +273,7 @@ export function useImMessageMultiSelect({
     });
     gestureRef.current = null;
     if (result === "cancel-selection") exit();
+    return result;
   }, [exit, scrollRoot]);
 
   const onPointerCancelCapture = useCallback(() => {
