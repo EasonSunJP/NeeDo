@@ -297,6 +297,42 @@ describe("NdpExchangeRateService and repository state", () => {
     ).rejects.toMatchObject({ code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED, statusCode: 409 });
   });
 
+  it.each([
+    ["ndp-rate-case-collision-0001", "NDP-RATE-CASE-COLLISION-0001"],
+    ["ndp-rate-é-collision-0001", "ndp-rate-e\u0301-collision-0001"]
+  ])(
+    "rejects a database-collation idempotency collision for byte-distinct keys",
+    async (storedKey, collidingKey) => {
+      const harness = createHarness();
+      await harness.service.publish(
+        actor,
+        publishInput({ idempotencyKey: storedKey }),
+        context
+      );
+      harness.tx.ndpExchangeRateRule.findUnique.mockImplementation(
+        async ({ where }: { where: { idempotencyKey: string } }) =>
+          harness.rows.find(
+            (row) =>
+              row.idempotencyKey.normalize("NFD").toLocaleLowerCase("en") ===
+              where.idempotencyKey.normalize("NFD").toLocaleLowerCase("en")
+          ) ?? null
+      );
+
+      await expect(
+        harness.service.publish(
+          actor,
+          publishInput({ idempotencyKey: collidingKey }),
+          context
+        )
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        statusCode: 409
+      });
+      expect(harness.rows).toHaveLength(2);
+      expect(harness.audits).toHaveLength(1);
+    }
+  );
+
   it("fails closed when no effective rate exists", async () => {
     const harness = createHarness({ noInitial: true });
     await expect(harness.service.resolveEffectiveRate(new Date())).rejects.toMatchObject({

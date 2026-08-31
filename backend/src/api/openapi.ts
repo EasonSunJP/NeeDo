@@ -6251,7 +6251,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           ndpUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           jpyUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
-          expectedVersion: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          expectedVersion: { type: "integer", minimum: 0, maximum: safeIntegerMaximum - 1 },
           effectiveFrom: { type: "string", format: "date-time" },
           reason: { type: "string", minLength: 1, maxLength: 500 },
           idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }

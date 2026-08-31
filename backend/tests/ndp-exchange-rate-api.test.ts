@@ -142,10 +142,36 @@ describe("formal NDP exchange-rate API", () => {
     expect(JSON.stringify(response.body)).not.toContain("rate-publish-api-0001");
   });
 
+  it("accepts only persistence-safe upper integer boundaries", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .post("/api/v1/backoffice/ndp-exchange-rates")
+      .set("Authorization", "Bearer operator")
+      .send({
+        ndpUnits: 2_147_483_647,
+        jpyUnits: 2_147_483_647,
+        expectedVersion: 2_147_483_646,
+        effectiveFrom: "2026-10-01T00:00:00.000Z",
+        reason: "maximum persistence-safe boundary",
+        idempotencyKey: "rate-publish-api-max-int"
+      })
+      .expect(201);
+    expect(fixture.repository.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ndpUnits: 2_147_483_647,
+        jpyUnits: 2_147_483_647,
+        expectedVersion: 2_147_483_646
+      })
+    );
+  });
+
   it.each<[Record<string, unknown>, string]>([
     [{ ndpUnits: 0 }, "non-positive units"],
     [{ ndpUnits: 1.5 }, "fractional units"],
     [{ jpyUnits: Number.MAX_SAFE_INTEGER + 1 }, "unsafe units"],
+    [{ ndpUnits: 2_147_483_648 }, "NDP units above MySQL INT"],
+    [{ jpyUnits: 2_147_483_648 }, "JPY units above MySQL INT"],
+    [{ expectedVersion: 2_147_483_647 }, "version whose successor exceeds MySQL INT"],
     [{ unknown: true }, "unknown fields"],
     [{ reason: "   " }, "invisible reasons"]
   ])("strictly rejects %s (%s)", async (override) => {
@@ -240,7 +266,12 @@ describe("formal NDP exchange-rate API", () => {
   it("publishes authenticated OpenAPI contracts without idempotency examples", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<string, Record<string, unknown>>>;
-      components: { schemas: Record<string, unknown> };
+      components: {
+        schemas: Record<
+          string,
+          { properties?: Record<string, { maximum?: number }> }
+        >;
+      };
     };
     const path = document.paths["/api/v1/backoffice/ndp-exchange-rates"];
     expect(path.get).toMatchObject({
@@ -261,5 +292,10 @@ describe("formal NDP exchange-rate API", () => {
     expect(JSON.stringify(path)).toContain(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS.write);
     expect(JSON.stringify(document.components.schemas)).toContain("idempotencyKey");
     expect(JSON.stringify(path)).not.toMatch(/idempotencyKey[^}]+example/i);
+    expect(document.components.schemas.NdpExchangeRatePublish?.properties).toMatchObject({
+      ndpUnits: { maximum: 2_147_483_647 },
+      jpyUnits: { maximum: 2_147_483_647 },
+      expectedVersion: { maximum: 2_147_483_646 }
+    });
   });
 });

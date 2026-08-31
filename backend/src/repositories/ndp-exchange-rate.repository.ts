@@ -269,6 +269,7 @@ export class NdpExchangeRateRepository implements NdpExchangeRateRepositoryPort 
 
   private isEquivalentReplay(rate: StoredRate, input: NdpExchangeRatePublishInput): boolean {
     return (
+      rate.idempotencyKey === input.idempotencyKey &&
       rate.createdById === input.actorUserId &&
       rate.version === input.expectedVersion + 1 &&
       rate.ndpUnits === input.ndpUnits &&

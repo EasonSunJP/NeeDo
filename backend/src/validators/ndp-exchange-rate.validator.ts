@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { PRISMA_INT_MAX } from "../constants/database";
 
 const hasVisibleContent = (value: string): boolean => /[\p{L}\p{N}\p{P}\p{S}]/u.test(value);
-const positiveSafeInteger = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
-const nonNegativeSafeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const positivePersistenceInteger = z.number().int().positive().max(PRISMA_INT_MAX);
+const versionWithSafeSuccessor = z.number().int().min(0).max(PRISMA_INT_MAX - 1);
 const isoDate = z.union([
   z.date(),
   z
@@ -21,9 +22,9 @@ export const ndpExchangeRateListQuerySchema = z
 
 export const ndpExchangeRatePublishBodySchema = z
   .object({
-    ndpUnits: positiveSafeInteger,
-    jpyUnits: positiveSafeInteger,
-    expectedVersion: nonNegativeSafeInteger,
+    ndpUnits: positivePersistenceInteger,
+    jpyUnits: positivePersistenceInteger,
+    expectedVersion: versionWithSafeSuccessor,
     effectiveFrom: isoDate,
     reason: z.string().trim().min(1).max(500).refine(hasVisibleContent),
     idempotencyKey: z.string().trim().min(16).max(160).refine(hasVisibleContent)
