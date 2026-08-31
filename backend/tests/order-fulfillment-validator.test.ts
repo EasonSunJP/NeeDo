@@ -77,6 +77,9 @@ describe("order fulfillment validators", () => {
     });
 
     it("rejects non-positive, fractional and out-of-range service ids", () => {
+      expect(
+        createOrderAddOnBodySchema.parse({ serviceId: 2_147_483_647, idempotencyKey })
+      ).toEqual({ serviceId: 2_147_483_647, idempotencyKey });
       for (const serviceId of [0, -1, 1.5, 2_147_483_648]) {
         expect(() => createOrderAddOnBodySchema.parse({ serviceId, idempotencyKey })).toThrow();
       }
@@ -86,6 +89,10 @@ describe("order fulfillment validators", () => {
       expect(
         endServiceBodySchema.parse({ reason: "  customer_completed  ", idempotencyKey })
       ).toEqual({ reason: "customer_completed", idempotencyKey });
+      expect(endServiceBodySchema.parse({ reason: "x".repeat(500), idempotencyKey })).toEqual({
+        reason: "x".repeat(500),
+        idempotencyKey
+      });
       expect(() => endServiceBodySchema.parse({ reason: "   ", idempotencyKey })).toThrow();
       expect(() =>
         endServiceBodySchema.parse({ reason: "x".repeat(501), idempotencyKey })
@@ -149,6 +156,35 @@ describe("order fulfillment validators", () => {
     });
 
     it("bounds other payment code and label", () => {
+      expect(
+        selectPaymentMethodBodySchema.parse({
+          method: "other",
+          otherMethodCode: "c".repeat(40),
+          otherMethodLabel: "l".repeat(80),
+          idempotencyKey
+        })
+      ).toEqual({
+        method: "other",
+        otherMethodCode: "c".repeat(40),
+        otherMethodLabel: "l".repeat(80),
+        idempotencyKey
+      });
+      expect(() =>
+        selectPaymentMethodBodySchema.parse({
+          method: "other",
+          otherMethodCode: "   ",
+          otherMethodLabel: "Other",
+          idempotencyKey
+        })
+      ).toThrow();
+      expect(() =>
+        selectPaymentMethodBodySchema.parse({
+          method: "other",
+          otherMethodCode: "other",
+          otherMethodLabel: "   ",
+          idempotencyKey
+        })
+      ).toThrow();
       expect(() =>
         selectPaymentMethodBodySchema.parse({
           method: "other",
@@ -176,6 +212,9 @@ describe("order fulfillment validators", () => {
       expect(
         confirmReceiptBodySchema.parse({ idempotencyKey, reason: "  cash received  " })
       ).toEqual({ idempotencyKey, reason: "cash received" });
+      expect(
+        confirmReceiptBodySchema.parse({ idempotencyKey, reason: "r".repeat(500) })
+      ).toEqual({ idempotencyKey, reason: "r".repeat(500) });
       expect(() => confirmReceiptBodySchema.parse({ idempotencyKey, reason: "  " })).toThrow();
       expect(() =>
         confirmReceiptBodySchema.parse({ idempotencyKey, reason: "x".repeat(501) })
