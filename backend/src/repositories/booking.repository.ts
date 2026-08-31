@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { createHash } from "node:crypto";
+import { OrderPerformanceOutcome, Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import type {
@@ -8,6 +9,10 @@ import type {
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
+import {
+  classifyAdverseOutcomeInTransaction,
+  recalculateTechnicianSummaryInTransaction
+} from "./order-performance.repository";
 
 export type BookingOrderStatusPayload =
   | "pending"
@@ -154,6 +159,12 @@ export type ScheduleSlotDeleteInput = ScheduleScope & { id: number };
 
 export type ScheduleSlotReadInput = ScheduleScope & { id: number };
 
+export type OrderTransitionActorContext = {
+  userId: number;
+  identityId: number | null;
+  identityType: string;
+};
+
 export type ScheduleMutationResult =
   | { outcome: "ok"; slot: ScheduleSlotPayload }
   | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" };
@@ -161,6 +172,7 @@ export type ScheduleMutationResult =
 export interface OrderTransitionRepositoryInput {
   id: number;
   actorUserId: number;
+  actor?: OrderTransitionActorContext;
   fromStatus: BookingOrderStatusPayload;
   toStatus: BookingOrderStatusPayload;
   reason?: string | null;
@@ -1100,6 +1112,14 @@ export class BookingRepository implements BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
   ): Promise<OrderTransitionGuardedResult> {
+    const actor: OrderTransitionActorContext = input.actor ?? {
+      userId: input.actorUserId,
+      identityId: null,
+      identityType: "unknown"
+    };
+    if (actor.userId !== input.actorUserId) {
+      throw new Error("error.order.transition_actor_mismatch");
+    }
     return runWithTransactionConflictRetry(() =>
       this.client.$transaction(async (tx) => {
         const current = await tx.bookingOrder.findFirst({
@@ -1177,10 +1197,53 @@ export class BookingRepository implements BookingRepositoryPort {
             bookingOrderId: input.id,
             fromStatus: this.statusToDb(input.fromStatus),
             toStatus: this.statusToDb(input.toStatus),
-            actorUserId: input.actorUserId,
+            actorUserId: actor.userId,
             reason: input.reason?.trim() || null
           }
         });
+
+        if (
+          input.toStatus === "cancelled" &&
+          current.technicianProfileId !== null &&
+          current.technicianProfile?.userId === actor.userId
+        ) {
+          const publicReason = input.reason?.trim() || null;
+          const idempotencyKey = `booking-transition:${current.id}:technician-cancelled`;
+          const requestFingerprint = createHash("sha256")
+            .update(
+              JSON.stringify({
+                action: "classify_technician_cancelled",
+                bookingOrderId: current.id,
+                technicianProfileId: current.technicianProfileId,
+                actorUserId: actor.userId,
+                actorIdentityId: actor.identityId,
+                actorIdentityType: actor.identityType,
+                publicReason
+              })
+            )
+            .digest("hex");
+          const classification = await classifyAdverseOutcomeInTransaction(tx, {
+            bookingOrderId: current.id,
+            technicianProfileId: current.technicianProfileId,
+            outcome: OrderPerformanceOutcome.TECHNICIAN_CANCELLED,
+            actorUserId: actor.userId,
+            publicReason,
+            internalNote: null,
+            idempotencyKey,
+            requestFingerprint,
+            expectedRevision: 0,
+            calculatedAt: new Date()
+          });
+          if (classification.outcome !== "ok") {
+            throw new Error("error.order_performance.classification_conflict");
+          }
+        } else if (input.toStatus === "completed" && current.technicianProfileId !== null) {
+          await recalculateTechnicianSummaryInTransaction(
+            tx,
+            current.technicianProfileId,
+            new Date()
+          );
+        }
 
         if (options.settle) {
           await options.settle({

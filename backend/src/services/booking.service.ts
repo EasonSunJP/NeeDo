@@ -35,6 +35,7 @@ import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-sco
 export interface AuthenticatedBookingActor {
   userId: number;
   roles: string[];
+  currentIdentityId?: number;
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
@@ -409,6 +410,11 @@ export class BookingService {
     const transitionInput = {
       id,
       actorUserId: actor.userId,
+      actor: {
+        userId: actor.userId,
+        identityId: actor.currentIdentityId ?? null,
+        identityType: actor.currentIdentityType ?? actor.roles[0] ?? "unknown"
+      },
       fromStatus: order.status,
       toStatus: rule.to,
       reason

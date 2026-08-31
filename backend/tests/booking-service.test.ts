@@ -577,6 +577,33 @@ describe("BookingService state machine", () => {
     });
   });
 
+  it("passes authenticated identity metadata into the atomic order transition", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+    const scopedTechnician = {
+      userId: 3,
+      roles: ["technician"],
+      currentIdentityId: 303,
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 1
+    };
+
+    await service.transitionOrder(scopedTechnician, 1, "cancel", "临时无法到达");
+
+    expect(repository.transitionOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 3,
+        actor: {
+          userId: 3,
+          identityId: 303,
+          identityType: "technician"
+        }
+      }),
+      expect.any(Object)
+    );
+  });
+
   it("runs affiliate cancellation inside the transition transaction without a ledger service", async () => {
     const repository = createRepository(makeOrder("pending"));
     const affiliateCheckout = {
