@@ -35,6 +35,7 @@ type DataCenterRow =
 
 const tabs: DataTab[] = ["订单数据", "客户数据", "员工/技师数据", "门店数据", "服务数据", "排班数据", "库存数据", "评价数据", "结算数据"];
 const unsupportedTabs = new Set<DataTab>(["库存数据", "评价数据"]);
+const retiredDashboardModules = new Set(["big-screen", "charts", "fullscreen-charts"]);
 const pageSize = 20;
 
 function describeDataCenterError(error: unknown) {
@@ -157,25 +158,12 @@ function detailValue(value: unknown) {
   return String(value);
 }
 
-function HistoricalChartsUnavailable() {
-  return (
-    <AdminLayout>
-      <ModuleShell title="历史全屏图表尚未启用" description="该入口保留用于正式时间序列分析；当前不再加载演示图表。">
-        <section className="rounded-lg border border-line bg-white p-6 shadow-panel">
-          <p className="text-sm font-bold leading-6 text-ink/60">复购、留存、渠道、城市和评价趋势需要正式聚合接口、统一时区口径与权限验收。接口完成前，本页不会生成虚构曲线。</p>
-          <Button className="mt-4" to="/admin/data" variant="secondary">返回数据中心</Button>
-        </section>
-      </ModuleShell>
-    </AdminLayout>
-  );
-}
-
 export function DataCenterPage() {
   const [searchParams] = useSearchParams();
   const module = searchParams.get("module");
 
-  if (module === "big-screen" || module === "charts" || module === "fullscreen-charts") {
-    return <HistoricalChartsUnavailable />;
+  if (module && retiredDashboardModules.has(module)) {
+    return <Navigate replace to="/admin" />;
   }
   if (module === "cities") return <Navigate replace to="/admin/cities" />;
   return <DataCenterTablePage />;
