@@ -159,7 +159,7 @@ describe("ShopMembershipCardIssuanceService", () => {
     ["count mixed principal", { ...storedValueInput, initialPrincipalJpy: null, initialUses: 8 }, context({ version: { ...context().version, cardType: "count", minInitialPrincipalJpy: null, maxInitialPrincipalJpy: null, minInitialUses: 1, maxInitialUses: 20 } }), { initialPrincipalJpy: 1 }],
     ["benefit with value", { ...storedValueInput, initialPrincipalJpy: null, issuanceSource: "manual_grant", issuanceReference: null, issuanceNote: "赠送原因" }, context({ version: { ...context().version, cardType: "benefit", validity: { mode: "never" }, minInitialPrincipalJpy: null, maxInitialPrincipalJpy: null } }), { initialUses: 1 }]
   ])("rejects invalid %s fields", async (_label, base, issuanceContext, invalid) => {
-    const repo = repository({ getIssuanceContext: jest.fn(async (_shopId, _membershipPublicId, _planPublicId) => ({ kind: "ready" as const, value: issuanceContext as ReturnType<typeof context> })) });
+    const repo = repository({ getIssuanceContext: jest.fn(async () => ({ kind: "ready" as const, value: issuanceContext as ReturnType<typeof context> })) });
     const service = new ShopMembershipCardIssuanceService(repo, audit, () => now, () => "NMC-00112233445566778899AABB");
 
     await expect(service.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, { ...base, ...invalid } as ShopMembershipCardIssuanceInput))
@@ -183,7 +183,7 @@ describe("ShopMembershipCardIssuanceService", () => {
     const first = await firstService.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, storedValueInput);
     const persisted = await firstRepo.issueCardWithAuditAndNotification.mock.results[0].value;
     if (persisted.kind !== "created") throw new Error("expected created card");
-    const replayRepo = repository({ findByIdempotencyKey: jest.fn(async (_shopId, _key) => persisted.value) });
+    const replayRepo = repository({ findByIdempotencyKey: jest.fn(async () => persisted.value) });
     const replayService = new ShopMembershipCardIssuanceService(replayRepo, audit, () => new Date("2026-09-01T03:00:00.000Z"), () => "NMC-DIFFERENT");
 
     const replay = await replayService.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, storedValueInput);
@@ -195,7 +195,7 @@ describe("ShopMembershipCardIssuanceService", () => {
   });
 
   it("rejects same idempotency key with a different normalized request", async () => {
-    const repo = repository({ findByIdempotencyKey: jest.fn(async (_shopId, _key) => issuedCard({
+    const repo = repository({ findByIdempotencyKey: jest.fn(async () => issuedCard({
       principalBalanceJpy: 5_000,
       initialPrincipalJpy: 5_000,
       issuanceReference: "another",
@@ -213,7 +213,7 @@ describe("ShopMembershipCardIssuanceService", () => {
 
   it("rejects an already expired fixed-date version", async () => {
     const repo = repository({
-      getIssuanceContext: jest.fn(async (_shopId, _membershipPublicId, _planPublicId) => ({ kind: "ready" as const, value: context({ version: { ...context().version, validity: { mode: "fixed_date", expiresAt: new Date("2026-08-31T02:59:59.000Z") } } }) }))
+      getIssuanceContext: jest.fn(async () => ({ kind: "ready" as const, value: context({ version: { ...context().version, validity: { mode: "fixed_date", expiresAt: new Date("2026-08-31T02:59:59.000Z") } } }) }))
     });
     const service = new ShopMembershipCardIssuanceService(repo, audit, () => now, () => "NMC-00112233445566778899AABB");
 

@@ -81,6 +81,22 @@ ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
 ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-plan-flow
 ```
 
+### 4.3 会员卡正式发卡（2026-08-31）
+
+- 店铺负责人或管理员可使用 `shop.member.card.issue`，从当前店铺的有效会员和仍启用的当前已发布方案正式发卡；`merchant_staff` 默认保持只读。会员、方案和版本均由后端再次按 JWT 店铺范围校验。
+- 储值卡把线下已确认的初始本金同时写入 `initialPrincipalJpy` 和当前本金余额，赠送余额固定为 0；次卡把初始次数同时写入 `initialUses`、剩余次数和总次数；权益卡不写金额或次数。有效期严格由发布版本计算，客户端不能覆盖。
+- 每张新卡保存方案、方案版本、操作人、开卡来源、初始值、平台费率和幂等指纹快照。卡、`merchant.shop_membership_card.issue` 审计和用户 `SYSTEM` 通知在同一事务中写入；相同幂等键和相同内容返回原卡且不重复通知，内容变化则返回冲突。
+- 发卡只是登记线下付款或历史卡的最终初始状态，不是线上充值或返点节点。本步骤不改店铺/客户 NDP 钱包，不创建 `LedgerTransaction` 或 `WalletLedger`；方案中的平台费只在以后实际完成服务并发生返点时扣除。
+- 已应用 migration：`20260831160000_shop_membership_card_issuance`。物理库已独立确认 11 个新增快照字段、3 个 CHECK、3 个外键和开卡幂等唯一索引，并确认默认授权只有 `admin`、`merchant_owner`。
+- `check:shop-membership-card-issuance-flow` 在本地 `needo_dev` 的真实事务中验证储值卡 5000 JPY、次卡 4 次和权益卡三种发卡，验证有效期、1000 bps 费率快照、3 条审计、3 条通知、幂等重放和变更冲突；钱包与 NDP 账本不变，事务主动回滚后全库保护基线完全一致。
+
+本地验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-issuance-flow
+```
+
 ---
 
 ## 5. 交付物

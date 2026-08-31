@@ -223,6 +223,18 @@ Supported rule kinds are `fixed_per_completion`, `percent_of_eligible_amount`, `
 
 Preview returns matched rule details plus `customerRewardNdp`, `platformFeeNdp`, and `totalShopDebitNdp`. The platform fee is rounded up from the customer reward. Publishing stores the effective fee policy public ID and basis-point rate on the immutable version; later fee versions do not alter that snapshot. Saving or publishing does not reserve wallet funds and does not write ledger entries.
 
+### Merchant card issuance
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `POST` | `/api/v1/merchant-admin/shop-memberships/:membershipPublicId/cards` | Issue one card from the current active published plan version to a current-shop active member | `shop.member.card.issue` |
+
+The strict request contains `planPublicId`, nullable `initialPrincipalJpy`, nullable `initialUses`, `issuanceSource`, nullable `issuanceReference`, nullable `issuanceNote`, and `idempotencyKey`. `issuanceSource` is `offline_paid`, `historical_replacement`, or `manual_grant`. Offline payment requires a reference or note; the other sources require a note.
+
+Stored-value plans require principal within the published issuance range and create zero bonus balance. Count plans require uses within the published range. Benefit plans reject both values. The server derives issue time and expiry from the current published version and snapshots the exact plan version and platform fee rate. Card, audit, and customer notification commit atomically. An identical idempotent replay returns the original card with `replayed: true`; the same key with changed normalized content returns `409`.
+
+Issuance does not debit a store wallet, credit customer NDP, or create ledger entries. Platform fees are charged only at a later actual reward settlement node. Internal issuance references and notes are returned to the authorized merchant issuance response but are excluded from shared customer card reads.
+
 ### Operations membership reward fee
 
 | Method | Path | Purpose | Permission |
@@ -232,6 +244,6 @@ Preview returns matched rule details plus `customerRewardNdp`, `platformFeeNdp`,
 
 The create body requires `feeRateBps` from 0 through 10,000, `expectedVersion`, ISO-8601 `effectiveFrom`, and a non-empty reason. The initial version is 1000 bps (10%). Creating a version writes an audit record; stale versions or overlapping policy boundaries return a conflict response.
 
-Issuance, customer approval for later balance/use-count changes, top-up, redemption, refund, and reward ledger settlement are intentionally outside these configuration endpoints and must be implemented as separate state-machine microsteps.
+Customer approval for later balance/use-count changes, top-up, redemption, refund, and reward ledger settlement remain outside these configuration and issuance endpoints and must be implemented as separate state-machine microsteps.
 
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
