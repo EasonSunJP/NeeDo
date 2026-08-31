@@ -43,6 +43,19 @@ const mediaMetadata = {
   "audio/ogg": {
     extension: "ogg",
     matches: (bytes: Buffer) => bytes.subarray(0, 4).toString("ascii") === "OggS"
+  },
+  "video/mp4": {
+    extension: "mp4",
+    matches: (bytes: Buffer) =>
+      bytes.length >= 12 && bytes.subarray(4, 8).toString("ascii") === "ftyp"
+  },
+  "video/webm": {
+    extension: "webm",
+    matches: (bytes: Buffer) => bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
+  },
+  "application/pdf": {
+    extension: "pdf",
+    matches: (bytes: Buffer) => bytes.subarray(0, 5).toString("ascii") === "%PDF-"
   }
 } as const;
 
@@ -232,7 +245,7 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
 
   private targetPath(fileKey: string): string {
     if (
-      !/^[a-f0-9]{64}\/[0-9a-f-]{36}\/[a-f0-9]{64}\.(?:jpg|png|webp|webm|mp4|ogg)$/u.test(
+      !/^[a-f0-9]{64}\/[0-9a-f-]{36}\/[a-f0-9]{64}\.(?:jpg|png|webp|webm|mp4|ogg|pdf)$/u.test(
         fileKey
       ) ||
       basename(fileKey) !== fileKey.split("/").at(-1)

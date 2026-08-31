@@ -24,7 +24,9 @@ import { AppError } from "../utils/app-error";
 
 const MAX_ITEMS = 100;
 const DEFAULT_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 100;
+const MAX_ITEM_PAGE_SIZE = 50;
+const MAX_FAVORITE_PAGE_SIZE = 100;
+const TYPED_PREVIEW_PREFIX = "needo-chat-record-preview:v1:";
 
 export type CreateChatRecordDeliveryCommand = ChatRecordCommand & {
   targetConversationId: number;
@@ -215,7 +217,7 @@ export class ImChatRecordService {
     if (input.beforePosition !== undefined && !this.isSafePositiveInteger(input.beforePosition)) {
       throw this.validation("error.validation_failed");
     }
-    const pageSize = this.pageSize(input.pageSize);
+    const pageSize = this.pageSize(input.pageSize, MAX_ITEM_PAGE_SIZE);
     const bundle = await this.getBundle(auth, publicId);
     return this.repository.listItems({
       bundleId: bundle.id,
@@ -234,7 +236,7 @@ export class ImChatRecordService {
     return this.repository.listFavorites({
       identityId: scope.identityId,
       page,
-      pageSize: this.pageSize(input.pageSize)
+      pageSize: this.pageSize(input.pageSize, MAX_FAVORITE_PAGE_SIZE)
     });
   }
 
@@ -364,9 +366,12 @@ export class ImChatRecordService {
           senderIdentityId: message.senderIdentityId,
           senderDisplayNameSnapshot: message.senderDisplayName,
           senderAvatarSnapshot: message.senderAvatarUrl,
-          messageType: message.messageType,
+          messageType: sourcePolicy.messageType,
           contentSnapshot: mediaSource ? null : message.content,
-          metadataSnapshot: media ? { media } : null,
+          metadataSnapshot: {
+            ...sourcePolicy.snapshotMetadata,
+            ...(media ? { media } : {})
+          },
           sentAtSnapshot: message.sentAt,
           media
         });
@@ -395,11 +400,7 @@ export class ImChatRecordService {
     return {
       clones,
       items,
-      preview: ordered
-        .slice(0, 2)
-        .map((message) => this.previewLine(message))
-        .join("\n")
-        .slice(0, 500),
+      preview: this.typedPreview(ordered),
       senderNames,
       title: this.title(senderNames, titleKind),
       titleKind
@@ -419,22 +420,56 @@ export class ImChatRecordService {
     );
   }
 
-  private previewLine(message: ChatRecordSourceMessage): string {
+  private previewLine(message: ChatRecordSourceMessage): {
+    sender: string;
+    text?: string;
+    type: string;
+  } {
     const sourcePolicy = parseChatRecordSourcePolicy(message.messageType, message.metadata);
     if (!sourcePolicy) throw this.sourceUnavailable();
-    const content =
-      sourcePolicy.kind === "media"
-        ? sourcePolicy.media.mimeType.startsWith("image/")
-          ? "[图片]"
-          : "[语音]"
-        : this.safeTextPreview(message.content);
-    return `${message.senderDisplayName}: ${content}`.slice(0, 245);
+    const display = sourcePolicy.snapshotMetadata.display;
+    const text = sourcePolicy.messageType === "text" || sourcePolicy.messageType === "emoji"
+      ? this.safeTextPreview(message.content)
+      : sourcePolicy.messageType === "image" || sourcePolicy.messageType === "video"
+        ? this.recordString(display?.caption)
+        : sourcePolicy.messageType === "file"
+          ? this.recordString(display?.fileName)
+          : sourcePolicy.messageType === "location"
+            ? this.nestedRecordString(display?.location, "title")
+            : sourcePolicy.messageType === "contact-card"
+              ? this.nestedRecordString(display?.contactCard, "displayName")
+              : sourcePolicy.messageType === "service-card"
+                ? this.nestedRecordString(display?.serviceCard, "name")
+                : sourcePolicy.messageType === "schedule-invite"
+                  ? this.nestedRecordString(display?.scheduleInvite, "title")
+                  : undefined;
+    return {
+      sender: message.senderDisplayName.trim().slice(0, 60) || "NeeDo",
+      type: sourcePolicy.messageType,
+      ...(text ? { text: text.slice(0, 100) } : {})
+    };
   }
 
   private safeTextPreview(content: string | null): string {
     const compact = content?.replace(/\s+/gu, " ").trim();
-    if (!compact) return "[文本]";
-    return compact;
+    return compact ?? "";
+  }
+
+  private typedPreview(messages: ChatRecordSourceMessage[]): string {
+    const encoded = `${TYPED_PREVIEW_PREFIX}${JSON.stringify({
+      lines: messages.slice(0, 2).map((message) => this.previewLine(message))
+    })}`;
+    if (encoded.length > 500) throw this.sourceUnavailable();
+    return encoded;
+  }
+
+  private recordString(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  private nestedRecordString(value: unknown, key: string): string | undefined {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    return this.recordString((value as Record<string, unknown>)[key]);
   }
 
   private title(senderNames: string[], kind: ChatRecordTitleKind): string {
@@ -464,9 +499,9 @@ export class ImChatRecordService {
     }
   }
 
-  private pageSize(value?: number): number {
+  private pageSize(value: number | undefined, maximum: number): number {
     const pageSize = value ?? DEFAULT_PAGE_SIZE;
-    if (!this.isSafePositiveInteger(pageSize) || pageSize > MAX_PAGE_SIZE) {
+    if (!this.isSafePositiveInteger(pageSize) || pageSize > maximum) {
       throw this.validation("error.validation_failed");
     }
     return pageSize;

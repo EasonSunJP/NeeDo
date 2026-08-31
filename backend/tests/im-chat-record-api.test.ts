@@ -359,6 +359,18 @@ describe("chat-record HTTP API", () => {
     });
   });
 
+  it("rejects item pages above 50 while favorites retain their independent 100 cap", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .get(`/api/v1/im/chat-records/${publicId}/items?pageSize=51`)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/im/chat-record-favorites?page=1&pageSize=100")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(200);
+  });
+
   it("streams protected bytes with private immutable validators and no storage descriptor", async () => {
     const fixture = createFixture();
     const response = await request(fixture.app)

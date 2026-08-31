@@ -3022,7 +3022,9 @@ export function MessageBubble({
     }
 
     if (message.type === "image" || message.type === "video") {
-      const image = <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />;
+      const image = message.type === "video" && readOnly
+        ? <video aria-label={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls preload="metadata" src={message.ext?.url ?? message.content} />
+        : <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />;
       return (
         <div className="space-y-2">
           {readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">

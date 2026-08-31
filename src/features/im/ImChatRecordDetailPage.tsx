@@ -8,9 +8,10 @@ import type {
   ImChatRecordItem,
   ImChatRecordItemPage,
   ImChatRecordMedia,
+  ImChatRecordSnapshotType,
   ImChatRecordSummary,
 } from "./chat-records";
-import { deriveImChatRecordTitleKind, formatLocalizedImChatRecordTitle } from "./chat-records";
+import { deriveImChatRecordTitleKind, formatLocalizedImChatRecordTitle, IM_CHAT_RECORD_SNAPSHOT_TYPES } from "./chat-records";
 import { MessageBubble } from "./components";
 import { restoreImChatRecordFocus } from "./chat-record-focus";
 import type { ConversationMessage, ImMessageType, ImRoleType } from "./model";
@@ -47,21 +48,74 @@ function mergeSnapshotItems(older: ImChatRecordItem[], current: ImChatRecordItem
     });
 }
 
-function snapshotMedia(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const media = (value as { media?: unknown }).media;
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function boundedString(value: unknown, maximum: number, allowEmpty = false) {
+  return typeof value === "string" && value.length <= maximum && (allowEmpty || value.trim().length > 0)
+    ? value
+    : undefined;
+}
+
+function finiteNumber(value: unknown, minimum: number, maximum: number) {
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum
+    ? value
+    : undefined;
+}
+
+function snapshotType(item: ImChatRecordItem): ImChatRecordSnapshotType | null {
+  const metadata = record(item.metadata);
+  const declared = metadata?.type;
+  if (metadata?.snapshotVersion === 1) {
+    return typeof declared === "string"
+      && declared === item.messageType
+      && IM_CHAT_RECORD_SNAPSHOT_TYPES.includes(declared as ImChatRecordSnapshotType)
+      ? declared as ImChatRecordSnapshotType
+      : null;
+  }
+  const legacyMimeType = record(metadata?.media)?.mimeType;
+  if (typeof legacyMimeType === "string") {
+    if (["image/jpeg", "image/png", "image/webp"].includes(legacyMimeType)) return "image";
+    if (["audio/webm", "audio/mp4", "audio/ogg"].includes(legacyMimeType)) return "voice";
+  }
+  return ["text", "emoji", "image", "voice"].includes(item.messageType)
+    ? item.messageType as ImChatRecordSnapshotType
+    : null;
+}
+
+function snapshotDisplay(item: ImChatRecordItem) {
+  const metadata = record(item.metadata);
+  return metadata?.snapshotVersion === 1 && metadata.type === item.messageType
+    ? record(metadata.display)
+    : null;
+}
+
+const snapshotMediaMimeTypes: Record<"image" | "video" | "voice" | "file", ReadonlySet<string>> = {
+  image: new Set(["image/jpeg", "image/png", "image/webp"]),
+  video: new Set(["video/mp4", "video/webm"]),
+  voice: new Set(["audio/webm", "audio/mp4", "audio/ogg"]),
+  file: new Set(["application/pdf"]),
+};
+
+function snapshotMedia(item: ImChatRecordItem) {
+  const type = snapshotType(item);
+  if (type !== "image" && type !== "video" && type !== "voice" && type !== "file") return null;
+  const media = record(item.metadata)?.media;
   if (!media || typeof media !== "object" || Array.isArray(media)) return null;
   const { checksumSha256, mimeType, size } = media as Record<string, unknown>;
   if (
     typeof checksumSha256 !== "string" ||
     !checksumPattern.test(checksumSha256) ||
     typeof mimeType !== "string" ||
-    !/^(?:image|audio)\/[a-z0-9.+-]+$/iu.test(mimeType) ||
+    !snapshotMediaMimeTypes[type].has(mimeType) ||
     typeof size !== "number" ||
     !Number.isSafeInteger(size) ||
-    size < 0
+    size <= 0
   ) return null;
-  return { checksumSha256, mimeType, size };
+  return { checksumSha256, mimeType, size, type };
 }
 
 function mediaMatchesSnapshot(media: ImChatRecordMedia, snapshot: NonNullable<ReturnType<typeof snapshotMedia>>) {
@@ -76,25 +130,112 @@ function mediaMatchesSnapshot(media: ImChatRecordMedia, snapshot: NonNullable<Re
 }
 
 function toSnapshotMessage(item: ImChatRecordItem, language: Language, mediaUrl?: string): ConversationMessage {
-  const metadata = snapshotMedia(item.metadata);
-  const type: ImMessageType = metadata?.mimeType.startsWith("image/")
-    ? "image"
-    : metadata?.mimeType.startsWith("audio/")
-      ? "voice"
-      : item.messageType === "emoji"
-        ? "emoji"
-        : "text";
+  const media = snapshotMedia(item);
+  const type = snapshotType(item);
+  const display = snapshotDisplay(item);
+  let messageType: ImMessageType = type === "emoji" ? "emoji" : "text";
+  let ext: ConversationMessage["ext"];
+  let content = item.content ?? "";
+
+  if (media && mediaUrl) {
+    messageType = media.type;
+    content = mediaUrl;
+    ext = {
+      url: mediaUrl,
+      mimeType: media.mimeType,
+      fileSize: media.size,
+      caption: boundedString(display?.caption, 2_000, true),
+      duration: finiteNumber(display?.duration, 0, Number.MAX_SAFE_INTEGER),
+      fileName: boundedString(display?.fileName, 255) ?? translateText("聊天记录媒体", language),
+      height: finiteNumber(display?.height, 0, Number.MAX_SAFE_INTEGER),
+      width: finiteNumber(display?.width, 0, Number.MAX_SAFE_INTEGER),
+    };
+  } else if (type === "location") {
+    const location = record(display?.location);
+    const title = boundedString(location?.title, 255);
+    const address = boundedString(location?.address, 500);
+    const latitude = finiteNumber(location?.latitude, -90, 90);
+    const longitude = finiteNumber(location?.longitude, -180, 180);
+    if (title && address && latitude !== undefined && longitude !== undefined) {
+      messageType = type;
+      content = "";
+      ext = { location: { title, address, latitude, longitude } };
+    }
+  } else if (type === "contact-card") {
+    const card = record(display?.contactCard);
+    const userId = boundedString(card?.userId, 191);
+    const displayName = boundedString(card?.displayName, 160);
+    const profileKind = card?.profileKind;
+    if (userId && displayName && ["person", "technician", "store", "service"].includes(String(profileKind))) {
+      messageType = type;
+      content = "";
+      ext = { contactCard: {
+        userId,
+        displayName,
+        profileKind: profileKind as NonNullable<ConversationMessage["ext"]>["contactCard"] extends infer T ? T extends { profileKind: infer K } ? K : never : never,
+        avatar: boundedString(card?.avatar, 2_048, true) ?? "",
+        entityId: boundedString(card?.entityId, 191),
+        entityType: ["user", "technician", "shop"].includes(String(card?.entityType)) ? card?.entityType as "user" | "technician" | "shop" : undefined,
+        headline: boundedString(card?.headline, 500, true),
+        userIdLabel: boundedString(card?.userIdLabel, 160, true),
+      } };
+    }
+  } else if (type === "service-card") {
+    const card = record(display?.serviceCard);
+    const serviceId = boundedString(card?.serviceId, 191);
+    const name = boundedString(card?.name, 255);
+    const summary = boundedString(card?.summary, 2_000, true);
+    const priceLabel = boundedString(card?.priceLabel, 160);
+    if (serviceId && name && summary !== undefined && priceLabel) {
+      messageType = type;
+      content = "";
+      ext = { serviceCard: {
+        serviceId,
+        name,
+        summary,
+        priceLabel,
+        cover: boundedString(card?.cover, 2_048, true) ?? "",
+        durationLabel: boundedString(card?.durationLabel, 160, true),
+        providerId: boundedString(card?.providerId, 191, true),
+        providerName: boundedString(card?.providerName, 160, true),
+        providerType: card?.providerType === "store" || card?.providerType === "technician" ? card.providerType : undefined,
+        tags: Array.isArray(card?.tags) ? card.tags.filter((tag): tag is string => typeof tag === "string").slice(0, 4) : undefined,
+      } };
+    }
+  } else if (type === "schedule-invite") {
+    const invite = record(display?.scheduleInvite);
+    const scheduleId = boundedString(invite?.scheduleId, 191);
+    const title = boundedString(invite?.title, 255);
+    const date = boundedString(invite?.date, 32);
+    const timeRange = boundedString(invite?.timeRange, 80);
+    if (scheduleId && title && date && timeRange) {
+      messageType = type;
+      content = "";
+      ext = { scheduleInvite: {
+        scheduleId,
+        title,
+        date,
+        timeRange,
+        attendeeLabel: boundedString(invite?.attendeeLabel, 255, true),
+        hostName: boundedString(invite?.hostName, 160, true),
+        location: boundedString(invite?.location, 500, true),
+        note: boundedString(invite?.note, 2_000, true),
+        reminderLabel: boundedString(invite?.reminderLabel, 160, true),
+        statusLabel: boundedString(invite?.statusLabel, 160, true),
+      } };
+    }
+  }
   return {
     id: item.id,
     localId: `chat-record-${item.id}`,
     conversationId: "immutable-chat-record",
     senderId: `snapshot-${item.position}`,
-    type,
-    content: mediaUrl ?? item.content ?? "",
+    type: messageType,
+    content,
     status: "sent",
     sentAt: item.sentAt,
     clientSeq: item.position,
-    ext: mediaUrl ? { url: mediaUrl, fileName: translateText("聊天记录媒体", language) } : undefined,
+    ext,
   };
 }
 
@@ -109,7 +250,7 @@ function ProtectedSnapshotMedia({
   publicId: string;
   language: Language;
 }) {
-  const metadata = snapshotMedia(item.metadata);
+  const metadata = snapshotMedia(item);
   const [revision, setRevision] = useState(0);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -148,7 +289,7 @@ function ProtectedSnapshotMedia({
 }
 
 function SnapshotTimelineItem({ api, item, publicId, language }: { api: ImChatRecordReadApi; item: ImChatRecordItem; publicId: string; language: Language }) {
-  const media = snapshotMedia(item.metadata);
+  const media = snapshotMedia(item);
   return (
     <li className="relative pb-5 last:pb-0">
       <span aria-hidden="true" className="absolute -left-[17px] top-4 h-2.5 w-2.5 rounded-full bg-[color:var(--client-primary)] ring-4 ring-[color:var(--client-bg)]" />

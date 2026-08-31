@@ -134,7 +134,20 @@ describe("chat-record OpenAPI contract", () => {
       properties: { id: { maximum: safeMaximum } }
     });
     expect(api.components.schemas.ImChatRecordItemPage).toMatchObject({
-      properties: { nextCursor: { maximum: safeMaximum } }
+      properties: {
+        nextCursor: { maximum: safeMaximum },
+        page_size: { type: "integer", minimum: 1, maximum: 50 }
+      }
+    });
+    const itemPageParameters = (
+      api.paths["/api/v1/im/chat-records/{publicId}/items"].get as unknown as {
+        parameters: Array<{ name: string; schema: unknown }>;
+      }
+    ).parameters;
+    expect(itemPageParameters.find((parameter) => parameter.name === "pageSize")?.schema).toMatchObject({
+      type: "integer",
+      minimum: 1,
+      maximum: 50
     });
     for (const [path, method, parameterName] of [
       [
@@ -163,7 +176,7 @@ describe("chat-record OpenAPI contract", () => {
     const media =
       api.paths["/api/v1/im/chat-records/{publicId}/media/{checksumSha256}"].get.responses["200"];
     expect(Object.keys(media.content).sort()).toEqual(
-      ["audio/mp4", "audio/ogg", "audio/webm", "image/jpeg", "image/png", "image/webp"].sort()
+      ["application/pdf", "audio/mp4", "audio/ogg", "audio/webm", "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"].sort()
     );
     for (const response of Object.values(media.content))
       expect(response.schema).toEqual({ type: "string", format: "binary" });

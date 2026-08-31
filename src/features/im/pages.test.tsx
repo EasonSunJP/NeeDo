@@ -1032,6 +1032,53 @@ describe("ImConversationRoomPage formal message multiselect", () => {
     await act(async () => view.root.unmount());
   });
 
+  it("reuses the same favorite UUID after an ambiguous lost response and does not duplicate a pending click", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    let rejectFirst!: (error: unknown) => void;
+    const first = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [roomMessage({ content: "收藏重试" })];
+    store.favoriteSelectedMessages = vi.fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce(undefined);
+    const view = await renderConversationRoom(store);
+    await openActionMenuForText("收藏重试");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    const favorite = view.container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="favorite"]')!;
+    await act(async () => { favorite.click(); favorite.click(); await Promise.resolve(); });
+    expect(store.favoriteSelectedMessages).toHaveBeenCalledTimes(1);
+    await act(async () => { rejectFirst(new Error("lost response")); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { favorite.click(); await Promise.resolve(); await Promise.resolve(); });
+    expect(store.favoriteSelectedMessages).toHaveBeenCalledTimes(2);
+    expect(store.favoriteSelectedMessages.mock.calls[0]?.[2]).toBe(store.favoriteSelectedMessages.mock.calls[1]?.[2]);
+    await act(async () => view.root.unmount());
+  });
+
+  it("reuses the same batch-delete UUID after an ambiguous failure", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [roomMessage({ content: "删除重试" })];
+    store.batchDeleteMessages = vi.fn()
+      .mockRejectedValueOnce(new Error("lost response"))
+      .mockResolvedValueOnce(undefined);
+    const view = await renderConversationRoom(store);
+    await openActionMenuForText("删除重试");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => view.container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="delete"]')?.click());
+    const confirm = () => Array.from(view.container.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
+      .find((button) => button.textContent?.trim() === "删除")!;
+    await act(async () => { confirm().click(); await Promise.resolve(); await Promise.resolve(); });
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).not.toBeNull();
+    await act(async () => { confirm().click(); await Promise.resolve(); await Promise.resolve(); });
+    expect(store.batchDeleteMessages).toHaveBeenCalledTimes(2);
+    expect(store.batchDeleteMessages.mock.calls[0]?.[2]).toBe(store.batchDeleteMessages.mock.calls[1]?.[2]);
+    await act(async () => view.root.unmount());
+  });
+
   it("confirms atomic local-only deletion and forwards single selections through chat-record state", async () => {
     installConversationRoomDomStubs();
     localStorage.setItem("needo.language", "zh");
@@ -1180,6 +1227,37 @@ describe("ImConversationRoomPage translation actions", () => {
     clickMenuButton("复制");
     await act(async () => { await Promise.resolve(); });
     expect(writeText).toHaveBeenCalledWith("失败原文");
+    await act(async () => view.root.unmount());
+  });
+
+  it.each([
+    ["same_language", "当前内容无需翻译"],
+    ["ineligible", "此消息不支持翻译"],
+  ] as const)("reports the manual %s result without treating it as a provider failure", async (status, expectedNotice) => {
+    installConversationRoomDomStubs();
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [{
+      conversationId: "conversation-room",
+      id: "503",
+      localId: "503",
+      senderId: "partner-user",
+      type: "text",
+      content: "无需变更的原文",
+      status: "sent",
+      sentAt: "2026-08-31T00:01:00.000Z",
+      clientSeq: 1,
+    }];
+    store.translateMessages = vi.fn().mockResolvedValue([{ messageId: "503", status }]);
+    const view = await renderConversationRoom(store);
+
+    await openActionMenuForText("无需变更的原文");
+    clickMenuButton("翻译");
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(view.container.textContent).toContain(expectedNotice);
+    expect(view.container.textContent).not.toContain("翻译失败，请稍后重试");
+    expect(view.container.querySelector('[data-im-message-translation="true"]')).toBeNull();
+    expect(store.translateMessages).toHaveBeenCalledWith("conversation-room", ["503"], "zh");
     await act(async () => view.root.unmount());
   });
 

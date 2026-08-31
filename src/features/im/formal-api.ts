@@ -1159,7 +1159,7 @@ export function createFormalImApi({
     },
     async getChatRecord(publicId) { return toChatRecordSummary(await realtimeApi.getChatRecord(assertUuid(publicId))); },
     async listChatRecordItems(publicId, query = {}) {
-      const safeQuery = { ...(query.beforePosition === undefined ? {} : { beforePosition: positive(query.beforePosition) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) };
+      const safeQuery = { ...(query.beforePosition === undefined ? {} : { beforePosition: positive(query.beforePosition) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 50) }) };
       const result = await realtimeApi.listChatRecordItems(assertUuid(publicId), safeQuery);
       const page = chatRecordItemPage(result, safeQuery.beforePosition, safeQuery.pageSize ?? 20);
       return { ...page, nextCursor: page.nextCursor! };

@@ -60,6 +60,47 @@ export function isImMessageMultiSelectEligible(message: ConversationMessage) {
   );
 }
 
+const snapshotMediaMimeTypes: Record<string, Set<string>> = {
+  image: new Set(["image/jpeg", "image/png", "image/webp"]),
+  video: new Set(["video/mp4", "video/webm"]),
+  voice: new Set(["audio/webm", "audio/mp4", "audio/ogg"]),
+  file: new Set(["application/pdf"]),
+};
+
+export function isImMessageChatRecordSnapshotEligible(message: ConversationMessage) {
+  if (!isImMessageMultiSelectEligible(message)) return false;
+  if (message.type === "text" || message.type === "emoji") return true;
+  if (["image", "video", "voice", "file"].includes(message.type)) {
+    const ext = message.ext;
+    return Boolean(
+      ext && typeof ext.url === "string" && ext.url.trim() &&
+      typeof ext.mimeType === "string" && snapshotMediaMimeTypes[message.type]?.has(ext.mimeType) &&
+      Number.isSafeInteger(ext.fileSize) && (ext.fileSize ?? 0) > 0 && (ext.fileSize ?? 0) <= 8 * 1024 * 1024,
+    );
+  }
+  if (message.type === "location") {
+    const location = message.ext?.location;
+    return Boolean(
+      location?.title.trim() && location.address.trim() &&
+      Number.isFinite(location.latitude) && location.latitude >= -90 && location.latitude <= 90 &&
+      Number.isFinite(location.longitude) && location.longitude >= -180 && location.longitude <= 180,
+    );
+  }
+  if (message.type === "contact-card") {
+    const card = message.ext?.contactCard;
+    return Boolean(card?.userId.trim() && card.displayName.trim() && card.profileKind);
+  }
+  if (message.type === "service-card") {
+    const card = message.ext?.serviceCard;
+    return Boolean(card?.serviceId.trim() && card.name.trim() && card.priceLabel.trim());
+  }
+  if (message.type === "schedule-invite") {
+    const invite = message.ext?.scheduleInvite;
+    return Boolean(invite?.scheduleId.trim() && invite.title.trim() && invite.date.trim() && invite.timeRange.trim());
+  }
+  return false;
+}
+
 export function selectRangeToViewportPoint({
   anchorId,
   pointY,

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  IM_CHAT_RECORD_SNAPSHOT_TYPES,
   formatImChatRecordPreview,
   formatImChatRecordTitle,
+  formatLocalizedImChatRecordPreview,
   formatImSelectedMessagesForClipboard,
   type ImChatRecordItem,
 } from "./chat-records";
@@ -25,6 +27,23 @@ function recordItem(
 }
 
 describe("IM chat-record presentation helpers", () => {
+  it("keeps the frontend snapshot type contract aligned with the formal backend contract", async () => {
+    const backend = await import("../../../backend/src/services/im-chat-record-source.policy");
+    expect(IM_CHAT_RECORD_SNAPSHOT_TYPES).toEqual(backend.CHAT_RECORD_SNAPSHOT_MESSAGE_TYPES);
+  });
+
+  it.each([
+    ["zh", "A: [图片] 用户说明"],
+    ["zh-Hant", "A: [圖片] 用户说明"],
+    ["ja", "A: [画像] 用户说明"],
+    ["en", "A: [Image] 用户说明"],
+    ["ko", "A: [이미지] 用户说明"],
+  ] as const)("localizes only typed preview placeholders in %s and preserves user text", (language, expected) => {
+    const encoded = `needo-chat-record-preview:v1:${JSON.stringify({ lines: [{ sender: "A", type: "image", text: "用户说明" }] })}`;
+    expect(formatLocalizedImChatRecordPreview(encoded, language)).toBe(expected);
+    expect(formatLocalizedImChatRecordPreview("A: legacy plain preview", language)).toBe("A: legacy plain preview");
+  });
+
   it("formats single, pair, and group titles from first-seen sender snapshots", () => {
     expect(formatImChatRecordTitle(["最初の名前"], "single")).toBe(
       "最初の名前",

@@ -1,5 +1,21 @@
 export type ImChatRecordTitleKind = "single" | "pair" | "group";
 
+export const IM_CHAT_RECORD_SNAPSHOT_TYPES = [
+  "text",
+  "emoji",
+  "image",
+  "video",
+  "voice",
+  "file",
+  "location",
+  "contact-card",
+  "service-card",
+  "schedule-invite",
+] as const;
+
+export type ImChatRecordSnapshotType = (typeof IM_CHAT_RECORD_SNAPSHOT_TYPES)[number];
+const typedPreviewPrefix = "needo-chat-record-preview:v1:";
+
 export type ImChatRecordItem = {
   id: string;
   position: number;
@@ -85,6 +101,50 @@ export function formatLocalizedImChatRecordCount(
   if (language === "ko") return `메시지 ${itemCount}개`;
   if (language === "zh-Hant") return `${itemCount}則訊息`;
   return `${itemCount}条信息`;
+}
+
+const previewPlaceholders: Record<ImChatRecordSnapshotType, Record<import("../../i18n/translations").Language, string>> = {
+  text: { zh: "[文本]", "zh-Hant": "[文字]", ja: "[テキスト]", en: "[Text]", ko: "[텍스트]" },
+  emoji: { zh: "[表情]", "zh-Hant": "[表情]", ja: "[絵文字]", en: "[Emoji]", ko: "[이모지]" },
+  image: { zh: "[图片]", "zh-Hant": "[圖片]", ja: "[画像]", en: "[Image]", ko: "[이미지]" },
+  video: { zh: "[视频]", "zh-Hant": "[影片]", ja: "[動画]", en: "[Video]", ko: "[동영상]" },
+  voice: { zh: "[语音]", "zh-Hant": "[語音]", ja: "[音声]", en: "[Voice]", ko: "[음성]" },
+  file: { zh: "[文件]", "zh-Hant": "[檔案]", ja: "[ファイル]", en: "[File]", ko: "[파일]" },
+  location: { zh: "[位置]", "zh-Hant": "[位置]", ja: "[位置]", en: "[Location]", ko: "[위치]" },
+  "contact-card": { zh: "[名片]", "zh-Hant": "[名片]", ja: "[連絡先]", en: "[Contact]", ko: "[연락처]" },
+  "service-card": { zh: "[服务]", "zh-Hant": "[服務]", ja: "[サービス]", en: "[Service]", ko: "[서비스]" },
+  "schedule-invite": { zh: "[日程邀请]", "zh-Hant": "[日程邀請]", ja: "[予定への招待]", en: "[Schedule invite]", ko: "[일정 초대]" },
+};
+
+export function formatLocalizedImChatRecordPreview(
+  preview: string,
+  language: import("../../i18n/translations").Language,
+): string {
+  if (!preview.startsWith(typedPreviewPrefix)) return preview;
+  try {
+    const parsed = JSON.parse(preview.slice(typedPreviewPrefix.length)) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return preview;
+    const lines = (parsed as { lines?: unknown }).lines;
+    if (!Array.isArray(lines) || lines.length > 2) return preview;
+    return lines.map((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid");
+      const { sender, text, type } = raw as Record<string, unknown>;
+      if (
+        typeof sender !== "string" || sender.length > 60 ||
+        typeof type !== "string" ||
+        !IM_CHAT_RECORD_SNAPSHOT_TYPES.includes(type as ImChatRecordSnapshotType) ||
+        (text !== undefined && (typeof text !== "string" || text.length > 100))
+      ) throw new Error("invalid");
+      const snapshotType = type as ImChatRecordSnapshotType;
+      const exactText = typeof text === "string" ? text : "";
+      const body = snapshotType === "text" || snapshotType === "emoji"
+        ? exactText || previewPlaceholders[snapshotType][language]
+        : `${previewPlaceholders[snapshotType][language]}${exactText ? ` ${exactText}` : ""}`;
+      return `${sender}: ${body}`;
+    }).join("\n");
+  } catch {
+    return preview;
+  }
 }
 
 export type ImChatRecordItemPage = {

@@ -1444,6 +1444,16 @@ describe("formal IM adapter", () => {
     expect(translate).toHaveBeenCalledWith(41, { messageIds: [501], targetLanguage: "zh" });
   });
 
+  it("rejects chat-record item page sizes above the formal 50-item contract before transport", async () => {
+    const listItems = vi.spyOn(realtimeApi, "listChatRecordItems");
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+
+    await expect(
+      api.listChatRecordItems("22222222-2222-4222-8222-222222222222", { pageSize: 51 }),
+    ).rejects.toThrow();
+    expect(listItems).not.toHaveBeenCalled();
+  });
+
   it("rejects a lossy chat-record summary without sender snapshot names", async () => {
     vi.spyOn(realtimeApi, "getChatRecord").mockResolvedValue({
       publicId: "22222222-2222-4222-8222-222222222222",

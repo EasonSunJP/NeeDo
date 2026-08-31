@@ -45,7 +45,7 @@ export const chatRecordPublicIdParamSchema = z.object({
 
 export const chatRecordItemsQuerySchema = z.object({
   beforePosition: safePositiveIntegerSchema.optional(),
-  pageSize: safePositiveInteger(100).optional()
+  pageSize: safePositiveInteger(50).optional()
 });
 
 export const chatRecordMediaParamSchema = chatRecordPublicIdParamSchema.extend({

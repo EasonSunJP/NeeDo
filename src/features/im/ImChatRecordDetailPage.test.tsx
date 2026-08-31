@@ -367,6 +367,74 @@ describe("ImChatRecordDetailPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renders protected video and file snapshots with their immutable typed display metadata", async () => {
+    const createObjectURL = vi.fn((blob: Blob) => blob.type === "video/mp4" ? "blob:video" : "blob:file");
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    const videoChecksum = "1".repeat(64);
+    const fileChecksum = "2".repeat(64);
+    const recordApi = api({
+      getChatRecordMedia: vi.fn(async (_id, checksum) => checksum === videoChecksum
+        ? { blob: new Blob(["video"], { type: "video/mp4" }), contentType: "video/mp4", contentLength: 5, etag: `"${videoChecksum}"`, cacheControl: "private" }
+        : { blob: new Blob(["file"], { type: "application/pdf" }), contentType: "application/pdf", contentLength: 4, etag: `"${fileChecksum}"`, cacheControl: "private" }),
+      listChatRecordItems: vi.fn(async () => ({
+        ...firstPage,
+        total: 2,
+        nextCursor: null,
+        list: [
+          {
+            ...firstPage.list[0],
+            id: "video-item",
+            position: 1,
+            messageType: "video",
+            content: null,
+            metadata: { snapshotVersion: 1, type: "video", display: { caption: "原始视频说明", duration: 12 }, media: { checksumSha256: videoChecksum, mimeType: "video/mp4", size: 5 } },
+          },
+          {
+            ...firstPage.list[0],
+            id: "file-item",
+            position: 2,
+            messageType: "file",
+            content: null,
+            metadata: { snapshotVersion: 1, type: "file", display: { fileName: "契約書.pdf" }, media: { checksumSha256: fileChecksum, mimeType: "application/pdf", size: 4 } },
+          },
+        ],
+      })),
+    });
+
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="ja" />} /></Routes></MemoryRouter>)));
+    await flush();
+
+    expect(document.querySelector('video[src="blob:video"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("原始视频说明");
+    expect(document.body.textContent).toContain("契約書.pdf");
+    expect(document.body.textContent).not.toContain("[文件]");
+    vi.unstubAllGlobals();
+  });
+
+  it("reconstructs structured immutable snapshots without translating sender or authored fields", async () => {
+    const recordApi = api({
+      listChatRecordItems: vi.fn(async () => ({
+        ...firstPage,
+        total: 4,
+        nextCursor: null,
+        list: [
+          { ...firstPage.list[0], id: "location", position: 1, messageType: "location", content: "不要显示这个回退", metadata: { snapshotVersion: 1, type: "location", display: { location: { title: "東京駅", address: "東京都千代田区", latitude: 35.681, longitude: 139.767 } } } },
+          { ...firstPage.list[0], id: "contact", position: 2, messageType: "contact-card", content: "不要显示这个回退", metadata: { snapshotVersion: 1, type: "contact-card", display: { contactCard: { userId: "u1", displayName: "山田太郎", avatar: "/avatar.png", profileKind: "person", headline: "本人说明" } } } },
+          { ...firstPage.list[0], id: "service", position: 3, messageType: "service-card", content: "不要显示这个回退", metadata: { snapshotVersion: 1, type: "service-card", display: { serviceCard: { serviceId: "s1", name: "整体コース", cover: "/cover.png", summary: "作者写的介绍", priceLabel: "¥5,000" } } } },
+          { ...firstPage.list[0], id: "schedule", position: 4, messageType: "schedule-invite", content: "不要显示这个回退", metadata: { snapshotVersion: 1, type: "schedule-invite", display: { scheduleInvite: { scheduleId: "sc1", title: "面談", date: "2026-09-01", timeRange: "10:00–11:00", note: "原始备注" } } } },
+        ],
+      })),
+    });
+
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="en" />} /></Routes></MemoryRouter>)));
+    await flush();
+
+    for (const authoredText of ["東京駅", "東京都千代田区", "山田太郎", "本人说明", "整体コース", "作者写的介绍", "面談", "原始备注"]) {
+      expect(document.body.textContent).toContain(authoredText);
+    }
+    expect(document.body.textContent).not.toContain("不要显示这个回退");
+  });
+
   it("rejects malformed public ids without calling the API", async () => {
     const recordApi = api();
     await act(async () => {

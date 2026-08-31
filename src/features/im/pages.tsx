@@ -116,6 +116,7 @@ import {
 } from "./ImMessageMultiSelectOverlay";
 import {
   buildImMessageMultiSelectCopyText,
+  isImMessageChatRecordSnapshotEligible,
   isImMessageMultiSelectEligible,
   useImMessageMultiSelect,
 } from "./useImMessageMultiSelect";
@@ -4826,6 +4827,7 @@ export function ImConversationRoomPage({
   const multiSelect = useImMessageMultiSelect({ messages, messageRefs, scrollRoot: listRef });
   const [multiSelectPendingAction, setMultiSelectPendingAction] = useState<ImMultiSelectAction | null>(null);
   const multiSelectPendingRef = useRef<ImMultiSelectAction | null>(null);
+  const multiSelectMutationKeyRef = useRef<{ key: string; signature: string } | null>(null);
   const suppressNextMultiSelectClickRef = useRef(false);
   const suppressNextMultiSelectClickTimerRef = useRef<number | null>(null);
   const [multiSelectNotice, setMultiSelectNotice] = useState<string | null>(null);
@@ -4898,6 +4900,7 @@ export function ImConversationRoomPage({
 
   useEffect(() => {
     multiSelect.exit();
+    multiSelectMutationKeyRef.current = null;
     setMultiSelectNotice(null);
     setMultiSelectDeleteConfirmationOpen(false);
     multiSelectPendingRef.current = null;
@@ -5910,6 +5913,7 @@ export function ImConversationRoomPage({
   };
 
   const exitMultiSelect = () => {
+    multiSelectMutationKeyRef.current = null;
     multiSelect.exit();
     setMultiSelectNotice(null);
     setMultiSelectDeleteConfirmationOpen(false);
@@ -5943,7 +5947,22 @@ export function ImConversationRoomPage({
     setMultiSelectPendingAction(null);
   };
 
+  const getMultiSelectMutationKey = (action: "delete" | "favorite", messageIds: string[]) => {
+    const canonicalIds = [...new Set(messageIds)].sort((left, right) => Number(left) - Number(right));
+    const signature = `${conversationId}:${action}:${canonicalIds.join(",")}`;
+    if (multiSelectMutationKeyRef.current?.signature === signature) {
+      return multiSelectMutationKeyRef.current.key;
+    }
+    const key = crypto.randomUUID();
+    multiSelectMutationKeyRef.current = { key, signature };
+    return key;
+  };
+
   const forwardMultiSelectedMessages = () => {
+    if (!multiSelect.selectedMessages.every(isImMessageChatRecordSnapshotEligible)) {
+      setMultiSelectNotice("所选信息包含暂不支持转发或收藏的类型");
+      return;
+    }
     if (!beginMultiSelectAction("forward")) return;
     const messageIds = multiSelect.selectedMessages.map((message) => message.id);
     store.setPendingChatRecordForward({ sourceConversationId: conversationId, messageIds });
@@ -5973,13 +5992,19 @@ export function ImConversationRoomPage({
   };
 
   const favoriteMultiSelectedMessages = async () => {
+    if (!multiSelect.selectedMessages.every(isImMessageChatRecordSnapshotEligible)) {
+      setMultiSelectNotice("所选信息包含暂不支持转发或收藏的类型");
+      return;
+    }
     if (!beginMultiSelectAction("favorite")) return;
+    const selectedIds = multiSelect.selectedMessages.map((message) => message.id);
     try {
       await store.favoriteSelectedMessages(
         conversationId,
-        multiSelect.selectedMessages.map((message) => message.id),
-        crypto.randomUUID(),
+        selectedIds,
+        getMultiSelectMutationKey("favorite", selectedIds),
       );
+      multiSelectMutationKeyRef.current = null;
       finishMultiSelectAction();
       exitMultiSelect();
       setActionNotice("已收藏");
@@ -5993,7 +6018,12 @@ export function ImConversationRoomPage({
     if (!beginMultiSelectAction("delete")) return;
     const selectedIds = multiSelect.selectedMessages.map((message) => message.id);
     try {
-      await store.batchDeleteMessages(conversationId, selectedIds, crypto.randomUUID());
+      await store.batchDeleteMessages(
+        conversationId,
+        selectedIds,
+        getMultiSelectMutationKey("delete", selectedIds),
+      );
+      multiSelectMutationKeyRef.current = null;
       setPinnedMessageIds((current) => current.filter((messageId) => !selectedIds.includes(messageId)));
       if (mediaPreview && selectedIds.includes(mediaPreview.id)) closeMediaPreview();
       finishMultiSelectAction();
@@ -6125,19 +6155,23 @@ export function ImConversationRoomPage({
         ) {
           return;
         }
-        const translated = results.find((result) =>
-          result.messageId === message.id
-          && result.status === "translated"
-          && typeof result.translatedContent === "string"
-          && result.translatedContent.trim()
-        );
-        if (!translated?.translatedContent) {
+        const result = results.find((candidate) => candidate.messageId === message.id);
+        if (result?.status === "same_language") {
+          setActionNotice("当前内容无需翻译");
+          return;
+        }
+        if (result?.status === "ineligible") {
+          setActionNotice("此消息不支持翻译");
+          return;
+        }
+        const translatedContent = result?.status === "translated" ? result.translatedContent : undefined;
+        if (typeof translatedContent !== "string" || !translatedContent.trim()) {
           setActionNotice("翻译失败，请稍后重试");
           return;
         }
         setManualTranslations((current) => ({
           ...current,
-          [message.id]: { content: translated.translatedContent!, visible: true },
+          [message.id]: { content: translatedContent, visible: true },
         }));
       })
       .catch((error: unknown) => {
@@ -6277,6 +6311,7 @@ export function ImConversationRoomPage({
         key: "forward",
         label: "转发",
         icon: "forward",
+        disabled: !isImMessageChatRecordSnapshotEligible(message),
         onClick: () => {
           closeMessageMenu();
           store.setPendingChatRecordForward({
@@ -6786,6 +6821,7 @@ export function ImConversationRoomPage({
               onForward={forwardMultiSelectedMessages}
               onSelectToPoint={(pointY) => showMultiSelectResult(multiSelect.selectToPoint(pointY))}
               pendingAction={multiSelectPendingAction}
+              recordActionsSupported={multiSelect.selectedMessages.every(isImMessageChatRecordSnapshotEligible)}
               selectedCount={multiSelect.selectedMessages.length}
             />
           ) : null}

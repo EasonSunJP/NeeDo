@@ -5,6 +5,7 @@ import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import {
   formatLocalizedImChatRecordCount,
+  formatLocalizedImChatRecordPreview,
   formatLocalizedImChatRecordTitle,
   deriveImChatRecordTitleKind,
   type ImChatRecordFavorite,
@@ -38,6 +39,7 @@ export function ImChatRecordCard({
   const language = requestedLanguage ?? contextLanguage;
   const publicId = "bundlePublicId" in record ? record.bundlePublicId : record.publicId;
   const title = formatLocalizedImChatRecordTitle(record.senderNames, record.titleKind ?? deriveImChatRecordTitleKind(record.senderNames, record.senderCount), language);
+  const preview = formatLocalizedImChatRecordPreview(record.preview, language);
   const viewLabel = translateText("查看聊天记录", language);
   const ariaLabel = language === "en" || language === "ko" ? `${viewLabel}: ${title}` : `${viewLabel}：${title}`;
   const stableOpenerId = openerId
@@ -68,7 +70,7 @@ export function ImChatRecordCard({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-black leading-5">{title}</span>
           <span className="mt-1 block line-clamp-2 whitespace-pre-line text-[12px] font-medium leading-[18px] text-[color:var(--client-muted)]">
-            {record.preview}
+            {preview}
           </span>
           <span className="mt-2 flex items-center justify-between gap-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] pt-2 text-[10px] font-black text-[color:var(--client-muted)]">
             <span>{translateText("聊天记录", language)}</span>

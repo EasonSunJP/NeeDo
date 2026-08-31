@@ -1553,7 +1553,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           list: { type: "array", items: { $ref: "#/components/schemas/ImChatRecordItem" } },
           total: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           page: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
-          page_size: { type: "integer", minimum: 1, maximum: 100 },
+          page_size: { type: "integer", minimum: 1, maximum: 50 },
           nextCursor: { type: ["integer", "null"], minimum: 1, maximum: safeIntegerMaximum }
         }
       },
@@ -13959,7 +13959,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
           { name: "beforePosition", in: "query", schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 50 } }
         ],
         responses: {
           "200": jsonDataResponse("Authorized chat-record item page", { $ref: "#/components/schemas/ImChatRecordItemPage" }),
@@ -13993,7 +13993,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "image/webp": { schema: { type: "string", format: "binary" } },
               "audio/webm": { schema: { type: "string", format: "binary" } },
               "audio/mp4": { schema: { type: "string", format: "binary" } },
-              "audio/ogg": { schema: { type: "string", format: "binary" } }
+              "audio/ogg": { schema: { type: "string", format: "binary" } },
+              "video/mp4": { schema: { type: "string", format: "binary" } },
+              "video/webm": { schema: { type: "string", format: "binary" } },
+              "application/pdf": { schema: { type: "string", format: "binary" } }
             }
           },
           "400": { description: "Invalid chat-record public UUID or SHA-256 checksum" },

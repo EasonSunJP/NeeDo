@@ -397,7 +397,7 @@ describe("ImChatRecordService", () => {
     expect(fixture.repository.createFavorite).toHaveBeenCalledWith(
       expect.objectContaining({
         senderNamesSnapshot: ["A", "B"],
-        previewSnapshot: "A: message 10\nA: message 20",
+        previewSnapshot: expect.stringContaining('"text":"message 10"'),
         items: [
           expect.objectContaining({ position: 1, sourceMessageId: 10 }),
           expect.objectContaining({ position: 2, sourceMessageId: 20 }),
@@ -408,8 +408,8 @@ describe("ImChatRecordService", () => {
   });
 
   it.each([
-    ["image", "[图片]", "image/png"],
-    ["voice", "[语音]", "audio/webm"]
+    ["image", "image", "image/png"],
+    ["voice", "voice", "audio/webm"]
   ])(
     "never copies a %s source locator into favorite or delivery previews",
     async (needoMessageType, placeholder, mimeType) => {
@@ -446,8 +446,8 @@ describe("ImChatRecordService", () => {
 
       const favoriteInput = fixture.repository.createFavorite.mock.calls[0]?.[0];
       const deliveryInput = fixture.repository.createDelivery.mock.calls[0]?.[0];
-      expect(favoriteInput?.previewSnapshot).toBe(`A: ${placeholder}`);
-      expect(deliveryInput?.previewSnapshot).toBe(`A: ${placeholder}`);
+      expect(favoriteInput?.previewSnapshot).toContain(`"type":"${placeholder}"`);
+      expect(deliveryInput?.previewSnapshot).toContain(`"type":"${placeholder}"`);
       fixture.repository.getBundle.mockResolvedValue({
         id: 501,
         publicId: favoriteResult.favorite.bundlePublicId,
@@ -519,9 +519,87 @@ describe("ImChatRecordService", () => {
       sourceConversationId: 91
     });
 
+    const preview = fixture.repository.createFavorite.mock.calls[0]?.[0].previewSnapshot;
+    expect(preview).toContain('"type":"text"');
+    expect(preview).toContain(textUrl);
+    expect(preview).not.toContain("[文本]");
+  });
+
+  it("uses a typed server-owned preview instead of persisting locale-specific placeholders", async () => {
+    const fixture = createFixture();
+    fixture.repository.readSourceMessages.mockResolvedValue([
+      sourceMessage(1, "A", {
+        content: "/media/im/private.png",
+        metadata: {
+          needoMessageType: "image",
+          needoMessageExt: {
+            caption: "用户说明",
+            fileSize: 16,
+            mimeType: "image/png",
+            url: "/media/im/private.png"
+          }
+        }
+      })
+    ]);
+
+    await fixture.service.createFavorite(auth, context, {
+      idempotencyKey: "typed-preview",
+      messageIds: [1],
+      sourceConversationId: 91
+    });
+
+    const input = fixture.repository.createFavorite.mock.calls[0]?.[0];
+    expect(input?.previewSnapshot).toMatch(/^needo-chat-record-preview:v1:/u);
+    expect(input?.previewSnapshot).toContain('"type":"image"');
+    expect(input?.previewSnapshot).toContain("用户说明");
+    expect(input?.previewSnapshot).not.toContain("[图片]");
+    expect(input?.previewSnapshot).not.toContain("/media/im/private.png");
+  });
+
+  const richSnapshotCases: Array<[string, unknown]> = [
+    ["emoji", { needoMessageType: "emoji" }],
+    ["location", { needoMessageType: "location", needoMessageExt: { location: { title: "駅", address: "東京", latitude: 35, longitude: 139 } } }],
+    ["contact-card", { needoMessageType: "contact-card", needoMessageExt: { contactCard: { userId: "u1", displayName: "A", avatar: "/a", profileKind: "person" } } }],
+    ["service-card", { needoMessageType: "service-card", needoMessageExt: { serviceCard: { serviceId: "s1", name: "护理", cover: "/c", summary: "介绍", priceLabel: "¥1" } } }],
+    ["schedule-invite", { needoMessageType: "schedule-invite", needoMessageExt: { scheduleInvite: { scheduleId: "sc1", title: "会面", date: "2026-09-01", timeRange: "10:00" } } }]
+  ];
+
+  it.each(richSnapshotCases)("persists safe %s display metadata for the read-only renderer", async (messageType, metadata) => {
+    const fixture = createFixture();
+    fixture.repository.readSourceMessages.mockResolvedValue([
+      sourceMessage(1, "A", { content: "显示文本", metadata })
+    ]);
+
+    await fixture.service.createFavorite(auth, context, {
+      idempotencyKey: `rich-${messageType}`,
+      messageIds: [1],
+      sourceConversationId: 91
+    });
+
     expect(fixture.repository.createFavorite).toHaveBeenCalledWith(
-      expect.objectContaining({ previewSnapshot: `A: ${textUrl}` })
+      expect.objectContaining({
+        items: [expect.objectContaining({ messageType, metadataSnapshot: expect.objectContaining({ snapshotVersion: 1, type: messageType }) })]
+      })
     );
+  });
+
+  it("caps item pagination at 50 while retaining the 100-item favorites page cap", async () => {
+    const fixture = createFixture();
+    fixture.repository.getBundle.mockResolvedValue({
+      id: 501,
+      publicId: "11111111-1111-4111-8111-111111111111",
+      title: "A",
+      preview: "legacy",
+      senderNames: ["A"],
+      senderCount: 1,
+      itemCount: 1,
+      createdAt: now
+    });
+    await expect(
+      fixture.service.listItems(auth, "11111111-1111-4111-8111-111111111111", { pageSize: 51 })
+    ).rejects.toThrow("error.validation_failed");
+    await expect(fixture.service.listFavorites(auth, { pageSize: 100 })).resolves.toBeDefined();
+    expect(fixture.repository.listFavorites).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 100 }));
   });
 
   it("rejects unsafe integer IDs at the service boundary", async () => {
@@ -772,13 +850,15 @@ describe("ImChatRecordService", () => {
 
     expect(fixture.mediaStorage.clone).toHaveBeenCalledWith("/media/im/source.png", "image/png");
     const persistenceInput = fixture.repository.createFavorite.mock.calls[0]?.[0];
-    expect(persistenceInput?.items[0]?.metadataSnapshot).toEqual({
+    expect(persistenceInput?.items[0]?.metadataSnapshot).toEqual(expect.objectContaining({
       media: {
         checksumSha256: "a".repeat(64),
         mimeType: "image/png",
         size: 16
-      }
-    });
+      },
+      snapshotVersion: 1,
+      type: "image"
+    }));
     expect(JSON.stringify(persistenceInput)).not.toContain("must-not-leak.png");
     expect(JSON.stringify(persistenceInput)).not.toContain(`${"a".repeat(64)}.png`);
     expect(fixture.mediaStorage.delete).toHaveBeenCalledWith(

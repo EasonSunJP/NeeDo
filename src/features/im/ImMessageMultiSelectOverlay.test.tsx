@@ -29,6 +29,7 @@ async function renderOverlay(overrides: Partial<Parameters<typeof ImMessageMulti
     onForward: vi.fn(),
     onSelectToPoint: vi.fn(),
     pendingAction: null,
+    recordActionsSupported: true,
     selectedCount: 0,
     ...overrides,
   };
@@ -65,6 +66,16 @@ describe("ImMessageMultiSelectOverlay", () => {
     const pending = await renderOverlay({ pendingAction: "copy", selectedCount: 3 });
     expect([...pending.container.querySelectorAll<HTMLButtonElement>('[data-im-multiselect-action-bar] button')].every((button) => button.disabled)).toBe(true);
     await act(async () => pending.root.unmount());
+  });
+
+  it("disables only record actions for a partially unsupported selection and localizes the reason", async () => {
+    const { container, root } = await renderOverlay({ language: "en", recordActionsSupported: false, selectedCount: 2 });
+    expect(container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="forward"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="favorite"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="copy"]')?.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="delete"]')?.disabled).toBe(false);
+    expect(container.textContent).toContain("Some selected messages can't be forwarded or favorited");
+    await act(async () => root.unmount());
   });
 
   it("shows the 100-message overflow notice without hiding the selected count", async () => {

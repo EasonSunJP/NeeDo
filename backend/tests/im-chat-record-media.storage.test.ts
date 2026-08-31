@@ -5,8 +5,33 @@ import { describe, expect, it } from "@jest/globals";
 import { ImChatRecordMediaFileStorage } from "../src/services/im-chat-record-media.storage";
 
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
+const mp4 = Buffer.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+const pdf = Buffer.from("%PDF-1.7\nprotected");
 
 describe("ImChatRecordMediaFileStorage", () => {
+  const richMediaCases: Array<[string, string, Buffer]> = [
+    ["video.mp4", "video/mp4", mp4],
+    ["document.pdf", "application/pdf", pdf]
+  ];
+
+  it.each(richMediaCases)("clones and reads protected formal %s media with MIME magic validation", async (name, mimeType, bytes) => {
+    const parent = await mkdtemp(join(tmpdir(), "needo-chat-record-rich-media-"));
+    const source = join(parent, "im");
+    const target = join(parent, "records");
+    await mkdir(source);
+    await writeFile(join(source, name), bytes);
+    const storage = new ImChatRecordMediaFileStorage({
+      directory: target,
+      sourceRoots: [{ directory: source, publicBaseUrl: "/media/im" }]
+    });
+    try {
+      const clone = await storage.clone(`/media/im/${name}`, mimeType);
+      await expect(storage.read(clone.checksumSha256, mimeType)).resolves.toMatchObject({ bytes, mimeType });
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
   it("clones only a configured NeeDo media URL into attempt-private protected storage", async () => {
     const parent = await mkdtemp(join(tmpdir(), "needo-chat-record-media-"));
     const source = join(parent, "im");

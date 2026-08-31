@@ -61,6 +61,7 @@ export function ImMessageMultiSelectOverlay({
   onForward,
   onSelectToPoint,
   pendingAction,
+  recordActionsSupported,
   selectedCount,
 }: {
   deleteConfirmationOpen: boolean;
@@ -75,12 +76,16 @@ export function ImMessageMultiSelectOverlay({
   onForward: () => void;
   onSelectToPoint: (pointY: number) => void;
   pendingAction: ImMultiSelectAction | null;
+  recordActionsSupported: boolean;
   selectedCount: number;
 }) {
   const hereLabel = translateImUiText("选择到这里", language);
   const selectedCountLabel = translateImUiText("已选择 {count} 条信息", language).replace("{count}", String(selectedCount));
   const deleteConfirmation = translateImUiText("将从你的聊天记录中删除 {count} 条信息，不影响对方。", language).replace("{count}", String(selectedCount));
   const disabled = selectedCount === 0 || pendingAction !== null;
+  const unsupportedRecordNotice = !recordActionsSupported && selectedCount > 0
+    ? translateImUiText("所选信息包含暂不支持转发或收藏的类型", language)
+    : null;
   const actions = [
     { icon: "forward" as const, key: "forward", label: "转发", onClick: onForward },
     { icon: "copy" as const, key: "copy", label: "复制", onClick: onCopy },
@@ -140,7 +145,7 @@ export function ImMessageMultiSelectOverlay({
             className="focus-ring flex min-h-11 min-w-0 flex-col items-center justify-center rounded-[18px] px-1 py-1 text-[11px] font-black text-[color:var(--client-text)] disabled:cursor-not-allowed disabled:opacity-35"
             data-im-multiselect-control="true"
             data-im-multiselect-action={action.key}
-            disabled={disabled}
+            disabled={disabled || (!recordActionsSupported && (action.key === "forward" || action.key === "favorite"))}
             key={action.key}
             onClick={action.onClick}
             type="button"
@@ -150,6 +155,12 @@ export function ImMessageMultiSelectOverlay({
           </button>
         ))}
       </div>
+
+      {unsupportedRecordNotice ? (
+        <p className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+84px)] z-[73] mx-auto max-w-sm text-center text-xs font-bold text-[color:var(--client-muted)]" role="status">
+          {unsupportedRecordNotice}
+        </p>
+      ) : null}
 
       {notice ? (
         <p

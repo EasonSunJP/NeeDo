@@ -9,6 +9,7 @@ import {
   POINTER_SCROLL_THRESHOLD_PX,
   buildImMessageMultiSelectCopyText,
   classifyPointerRelease,
+  isImMessageChatRecordSnapshotEligible,
   isImMessageMultiSelectEligible,
   selectRangeToViewportPoint,
   useImMessageMultiSelect,
@@ -77,6 +78,19 @@ describe("IM message multiselect eligibility", () => {
     expect(isImMessageMultiSelectEligible(message({ serverState: "recalled" }))).toBe(false);
     expect(isImMessageMultiSelectEligible(message({ contentPurgedAt: "2026-08-31T00:01:00.000Z" }))).toBe(false);
     expect(isImMessageMultiSelectEligible(message({ ext: { disappearing: { countdown: { days: 0, hours: 1, minutes: 0, months: 0 }, mode: "sent" } } }))).toBe(false);
+  });
+
+  it("separates ordinary selection eligibility from immutable chat-record snapshot support", () => {
+    expect(isImMessageChatRecordSnapshotEligible(message())).toBe(true);
+    expect(isImMessageChatRecordSnapshotEligible(message({ type: "emoji" }))).toBe(true);
+    expect(isImMessageChatRecordSnapshotEligible(message({
+      type: "image",
+      content: "/media/im/a.png",
+      ext: { fileSize: 16, mimeType: "image/png", url: "/media/im/a.png" },
+    }))).toBe(true);
+    expect(isImMessageChatRecordSnapshotEligible(message({ type: "image", ext: {} }))).toBe(false);
+    expect(isImMessageMultiSelectEligible(message({ type: "image", ext: {} }))).toBe(true);
+    expect(isImMessageChatRecordSnapshotEligible(message({ type: "chat-record" }))).toBe(false);
   });
 
   it("defines the product selection and gesture limits", () => {
