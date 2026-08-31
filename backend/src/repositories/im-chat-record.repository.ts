@@ -202,6 +202,24 @@ export interface ImChatRecordRepositoryPort {
 
 type TransactionClient = Prisma.TransactionClient;
 
+const commandReplayInclude = {
+  deliveries: {
+    where: { deletedAt: null },
+    include: {
+      message: true,
+      conversation: {
+        select: {
+          participants: {
+            where: { deletedAt: null },
+            select: { userId: true, identityId: true }
+          }
+        }
+      }
+    }
+  },
+  favorites: { where: { deletedAt: null } }
+} satisfies Prisma.ImChatRecordBundleInclude;
+
 const activeBundleAccessWhere = (input: { publicId: string; userId: number; identityId: number }) =>
   ({
     publicId: input.publicId,
@@ -642,14 +660,14 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     };
   }
 
-  private findCommandReplay(
+  private async findCommandReplay(
     transaction: TransactionClient | PrismaClient,
     input: Pick<
       ChatRecordCommandPreflightInput,
       "commandType" | "createdByIdentityId" | "idempotencyKey"
     >
   ) {
-    return transaction.imChatRecordBundle.findUnique({
+    const activeReplay = await transaction.imChatRecordBundle.findUnique({
       where: {
         createdByIdentityId_commandType_idempotencyKey: {
           createdByIdentityId: input.createdByIdentityId,
@@ -658,24 +676,23 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
         },
         deletedAt: null
       },
-      include: {
-        deliveries: {
-          where: { deletedAt: null },
-          include: {
-            message: true,
-            conversation: {
-              select: {
-                participants: {
-                  where: { deletedAt: null },
-                  select: { userId: true, identityId: true }
-                }
-              }
-            }
-          }
-        },
-        favorites: { where: { deletedAt: null } }
-      }
+      include: commandReplayInclude
     });
+    if (activeReplay) return activeReplay;
+
+    const reservation = await transaction.imChatRecordBundle.findUnique({
+      where: {
+        createdByIdentityId_commandType_idempotencyKey: {
+          createdByIdentityId: input.createdByIdentityId,
+          commandType: input.commandType,
+          idempotencyKey: input.idempotencyKey
+        }
+      },
+      include: commandReplayInclude
+    });
+    if (!reservation) return null;
+    if (reservation.deletedAt !== null) throw this.idempotencyConflict();
+    return reservation;
   }
 
   private recoverUniqueReplay(error: unknown, input: CreateChatRecordPersistenceBase) {

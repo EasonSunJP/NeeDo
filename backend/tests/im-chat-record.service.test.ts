@@ -240,23 +240,30 @@ describe("ImChatRecordService", () => {
     expect(fixture.eventGateway.publish).not.toHaveBeenCalled();
   });
 
-  it("returns changed-payload idempotency conflict before unavailable source state", async () => {
-    const fixture = createFixture();
-    fixture.repository.preflightCommand.mockRejectedValue(
-      Object.assign(new Error("error.idempotency_key_reused"), { statusCode: 409 })
-    );
-    fixture.repository.readSourceMessages.mockRejectedValue(new Error("source unavailable"));
+  it.each([
+    ["exact", [1]],
+    ["changed", [2]]
+  ])(
+    "returns an %s-payload soft-deleted reservation conflict before unavailable source state",
+    async (_payloadKind, messageIds) => {
+      const fixture = createFixture();
+      fixture.repository.preflightCommand.mockRejectedValue(
+        Object.assign(new Error("error.idempotency_key_reused"), { statusCode: 409 })
+      );
+      fixture.repository.readSourceMessages.mockRejectedValue(new Error("source unavailable"));
 
-    await expect(
-      fixture.service.createFavorite(auth, context, {
-        idempotencyKey: "reused-key",
-        messageIds: [2],
-        sourceConversationId: 91
-      })
-    ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
-    expect(fixture.repository.readSourceMessages).not.toHaveBeenCalled();
-    expect(fixture.mediaStorage.clone).not.toHaveBeenCalled();
-  });
+      await expect(
+        fixture.service.createFavorite(auth, context, {
+          idempotencyKey: "soft-deleted-key",
+          messageIds,
+          sourceConversationId: 91
+        })
+      ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
+      expect(fixture.repository.readSourceMessages).not.toHaveBeenCalled();
+      expect(fixture.mediaStorage.clone).not.toHaveBeenCalled();
+      expect(fixture.repository.createFavorite).not.toHaveBeenCalled();
+    }
+  );
 
   it("compensates every private clone when a concurrent P2002 winner returns a replay", async () => {
     const fixture = createFixture();

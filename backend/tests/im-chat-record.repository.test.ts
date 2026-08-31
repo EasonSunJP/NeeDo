@@ -280,6 +280,38 @@ describe("ImChatRecordRepository", () => {
     ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
   });
 
+  it.each([
+    ["exact", "a".repeat(64)],
+    ["changed", "b".repeat(64)]
+  ])(
+    "rejects an inactive reservation for the %s payload",
+    async (_payloadKind, requestFingerprint) => {
+      const inactiveReservation = {
+        ...bundle,
+        createdByIdentityId: 71,
+        deletedAt: now,
+        deliveries: [],
+        favorites: []
+      };
+      const findUnique = jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
+        Object.hasOwn(where, "deletedAt") ? null : inactiveReservation
+      );
+      const repository = new ImChatRecordRepository({
+        imChatRecordBundle: { findUnique }
+      } as never);
+
+      await expect(
+        repository.preflightCommand({
+          commandType: "favorite",
+          createdByIdentityId: 71,
+          idempotencyKey: "soft-deleted-key",
+          requestFingerprint
+        })
+      ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
+      expect(findUnique).toHaveBeenCalledTimes(2);
+    }
+  );
+
   it("recovers the winning exact replay after a concurrent unique-key race", async () => {
     const replay = {
       ...bundle,
@@ -307,6 +339,33 @@ describe("ImChatRecordRepository", () => {
       message: { id: 801 }
     });
     expect(client.imChatRecordBundle.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps P2002 to an idempotency conflict when the reservation was deleted before recovery", async () => {
+    const inactiveReservation = {
+      ...bundle,
+      createdByIdentityId: 71,
+      deletedAt: now,
+      deliveries: [],
+      favorites: []
+    };
+    const uniqueConflict = Object.assign(new Error("unique conflict"), { code: "P2002" });
+    const findUnique = jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
+      Object.hasOwn(where, "deletedAt") ? null : inactiveReservation
+    );
+    const client = {
+      $transaction: jest.fn(async () => {
+        throw uniqueConflict;
+      }),
+      imChatRecordBundle: { findUnique }
+    };
+    const repository = new ImChatRecordRepository(client as never);
+
+    await expect(repository.createDelivery(deliveryInput())).rejects.toMatchObject({
+      message: "error.idempotency_key_reused",
+      statusCode: 409
+    });
+    expect(findUnique).toHaveBeenCalledTimes(2);
   });
 
   it("rolls back staged bundle and item writes when a later transaction write fails", async () => {
