@@ -352,7 +352,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const committed = await commitRotatedAuthOperation(operation, {
         expectedUserId: nextSession.id,
         persistClient: async () =>
-          await writePersistedAuthEnvelope(nextEnvelope, { expectedRaw })
+          await writePersistedAuthEnvelope(nextEnvelope, {
+            canWrite: () => isAuthOperationCurrent(operation),
+            expectedRaw
+          })
       });
       if (!committed) {
         publishAnonymous();
@@ -379,7 +382,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const committed = await commitExistingAuthOperation(
         operation,
         nextSession.id,
-        async () => await writePersistedAuthEnvelope(nextEnvelope, { expectedRaw })
+        async () =>
+          await writePersistedAuthEnvelope(nextEnvelope, {
+            canWrite: () => isAuthOperationCurrent(operation),
+            expectedRaw
+          })
       );
       if (!committed) return "storage_failed" as const;
       envelopeRef.current = nextEnvelope;

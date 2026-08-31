@@ -90,7 +90,15 @@ function throwIfCredentialTransitionIsActive(snapshot: AuthCredentialSnapshot) {
 function isSameCredentialState(left: AuthCredentialSnapshot, right: AuthCredentialSnapshot) {
   return left.credentialVersion === right.credentialVersion && left.generation === right.generation;
 }
-let authExpiredHandler: (() => void) | null = null;
+let authExpiredHandler: (() => void | Promise<void>) | null = null;
+
+async function awaitAuthExpired() {
+  try {
+    await authExpiredHandler?.();
+  } catch {
+    // Expiration is terminal even when its durable-cleanup follow-up fails.
+  }
+}
 
 function readAccessTokenSubject(token: string | null) {
   if (!token) {
@@ -419,7 +427,7 @@ async function alignAccessTokenWithExpectedUser(options: HttpClientRequestOption
   } catch (error) {
     if (isSameCredentialState(getCoordinatorSnapshot(), alignmentSnapshot)) {
       terminateAuthImmediately();
-      authExpiredHandler?.();
+      await awaitAuthExpired();
     }
     throw error;
   }
@@ -471,7 +479,7 @@ async function sendRequest<TData>(
     } catch (error) {
       if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
         terminateAuthImmediately();
-        authExpiredHandler?.();
+        await awaitAuthExpired();
       }
       throw error;
     }
@@ -484,7 +492,7 @@ async function sendRequest<TData>(
     isSameCredentialState(getCoordinatorSnapshot(), captured)
   ) {
     terminateAuthImmediately();
-    authExpiredHandler?.();
+    await awaitAuthExpired();
   }
 
   const envelope = await parseEnvelope<TData>(response);
@@ -571,7 +579,7 @@ async function sendCsvExportRequest(
       } catch (error) {
         if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
           terminateAuthImmediately();
-          authExpiredHandler?.();
+          await awaitAuthExpired();
         }
         throw error;
       }
@@ -585,7 +593,7 @@ async function sendCsvExportRequest(
     isSameCredentialState(getCoordinatorSnapshot(), captured)
   ) {
     terminateAuthImmediately();
-    authExpiredHandler?.();
+    await awaitAuthExpired();
   }
 
   if (!response.ok || isJsonContentType(contentType)) {
@@ -670,7 +678,7 @@ async function sendDataUrlRequest(
       } catch (error) {
         if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
           terminateAuthImmediately();
-          authExpiredHandler?.();
+          await awaitAuthExpired();
         }
         throw error;
       }
@@ -684,7 +692,7 @@ async function sendDataUrlRequest(
     isSameCredentialState(getCoordinatorSnapshot(), captured)
   ) {
     terminateAuthImmediately();
-    authExpiredHandler?.();
+    await awaitAuthExpired();
   }
 
   if (!response.ok || isJsonContentType(contentType)) {
@@ -758,7 +766,7 @@ export function restoreAuthCredentialSnapshot(snapshot: AuthCredentialSnapshot) 
   );
 }
 
-export function setAuthExpiredHandler(handler: (() => void) | null) {
+export function setAuthExpiredHandler(handler: (() => void | Promise<void>) | null) {
   authExpiredHandler = handler;
 }
 

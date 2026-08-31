@@ -52,6 +52,14 @@ function createStorage() {
   } satisfies Storage;
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function createFingerprintAgent(visitorId: string) {
   const result = {
     visitorId,
@@ -256,6 +264,28 @@ describe("httpClient auth tokens", () => {
 
     expect(getAccessToken()).toBeNull();
     expect(onAuthExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the terminal tombstone lock attempt before settling a 401", async () => {
+    const tombstoneLock = createDeferred<void>();
+    const tombstoneAttempted = vi.fn(() => tombstoneLock.promise);
+    setAuthTokens({ accessToken: "stale-access-token" });
+    setAuthExpiredHandler(tombstoneAttempted);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    const request = httpClient.request("/affiliate/profile");
+    await vi.waitFor(() => expect(tombstoneAttempted).toHaveBeenCalledTimes(1));
+    let settled = false;
+    void request.catch(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    tombstoneLock.resolve();
+    await expect(request).rejects.toMatchObject({ status: 401 });
   });
 
   it.each([

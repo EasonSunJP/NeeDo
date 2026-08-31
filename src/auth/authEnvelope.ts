@@ -403,7 +403,11 @@ export function readPersistedAuthEnvelope(): PersistedAuthEnvelopeV8 | null {
 }
 
 type PersistedAuthEnvelopeWriteOptions =
-  | { expectedRaw: string | null; terminalAuthInstanceId?: never }
+  | {
+      canWrite?: () => boolean;
+      expectedRaw: string | null;
+      terminalAuthInstanceId?: never;
+    }
   | { expectedRaw?: never; terminalAuthInstanceId: string };
 
 export async function writePersistedAuthEnvelope(
@@ -441,6 +445,7 @@ export async function writePersistedAuthEnvelope(
         } else if (currentRaw !== options.expectedRaw) {
           return false;
         }
+        if ("canWrite" in options && options.canWrite && !options.canWrite()) return false;
         return writeBrowserStorage(
           persistedAuthEnvelopeStorageKey,
           JSON.stringify(nextEnvelope),

@@ -167,26 +167,27 @@ vi.mock("./authCredentialCoordinator", () => ({
     },
     input: { expectedUserId: number; persistClient: () => boolean | Promise<boolean> }
   ) => {
-    if (
-      operation.generation !== mocked.coordinatorState.generation ||
-      (operation.id !== mocked.coordinatorState.activeLatest &&
-        operation.id !== mocked.coordinatorState.activeRotation) ||
-      !operation.serverCredentials
-    )
-      return false;
+    const isCurrent = () =>
+      operation.generation === mocked.coordinatorState.generation &&
+      (operation.id === mocked.coordinatorState.activeLatest ||
+        operation.id === mocked.coordinatorState.activeRotation);
+    if (!isCurrent() || !operation.serverCredentials) return false;
     const credentials = operation.serverCredentials;
     const clientPersisted = await input.persistClient();
     if (!clientPersisted) {
       if (mocked.coordinatorState.revoker) {
         void mocked.coordinatorState.revoker(credentials);
       }
-      mocked.coordinatorState.generation += 1;
-      mocked.tokenState.epoch += 1;
-      mocked.tokenState.accessToken = null;
-      mocked.tokenState.refreshToken = null;
-      mocked.tokenState.expectedUserId = null;
+      if (isCurrent()) {
+        mocked.coordinatorState.generation += 1;
+        mocked.tokenState.epoch += 1;
+        mocked.tokenState.accessToken = null;
+        mocked.tokenState.refreshToken = null;
+        mocked.tokenState.expectedUserId = null;
+      }
       return false;
     }
+    if (!isCurrent()) return false;
     mocked.tokenState.epoch += 1;
     mocked.tokenState.accessToken = credentials.accessToken;
     mocked.tokenState.refreshToken = credentials.refreshToken;
@@ -1869,6 +1870,65 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
     expect(auth.session).toBeNull();
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+  });
+
+  it("does not write a queued stale login after a newer login owns the operation", async () => {
+    const pending: Array<() => Promise<void>> = [];
+    setAuthEnvelopeLockAdapter({
+      request: (_name, _options, callback) =>
+        new Promise((resolve, reject) => {
+          pending.push(async () => {
+            try {
+              resolve(await callback());
+            } catch (error) {
+              reject(error);
+            }
+          });
+        })
+    });
+    mocked.authApi.loginFormal
+      .mockResolvedValueOnce({
+        accessToken: "login-a-access",
+        refreshToken: "login-a-refresh",
+        expiresIn: 900
+      })
+      .mockResolvedValueOnce({
+        accessToken: "login-b-access",
+        refreshToken: "login-b-refresh",
+        expiresIn: 900
+      });
+    mocked.authApi.me.mockResolvedValue(customerMe);
+    await renderProvider();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    let first!: ReturnType<Task10AuthContext["loginWithFormalPassword"]>;
+    let second!: ReturnType<Task10AuthContext["loginWithFormalPassword"]>;
+    act(() => {
+      first = auth.loginWithFormalPassword("user", "login-a@example.com", "secret");
+    });
+    await waitFor(() => expect(pending).toHaveLength(1));
+    act(() => {
+      second = auth.loginWithFormalPassword("user", "login-b@example.com", "secret");
+    });
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    await act(async () => {
+      await pending[0]?.();
+    });
+    expect(setItem).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await pending[1]?.();
+      await Promise.all([first, second]);
+    });
+    setItem.mockRestore();
+
+    expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).toContain(
+      "login-b-refresh"
+    );
+    expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).not.toContain(
+      "login-a-refresh"
+    );
   });
 
   it("serializes logout after a shop switch and logs out with the rotated refresh token", async () => {
