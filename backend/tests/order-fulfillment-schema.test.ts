@@ -187,101 +187,153 @@ const ensureTableDefinition = (source: string, table: string, definition: string
   return source.replace(block, augmented);
 };
 
+const checkExpression = (source: string, name: string): string => {
+  const constraint = checkConstraint(source, name);
+  const prefix = `CONSTRAINT \`${name}\` CHECK (`;
+  return normalize(constraint.slice(prefix.length, -1));
+};
+
+const replaceCheckExpression = (source: string, name: string, expression: string): string => {
+  const constraint = checkConstraint(source, name);
+  return source.replace(constraint, `CONSTRAINT \`${name}\` CHECK (${expression})`);
+};
+
+const expectedCheckExpressions: Record<string, string> = {
+  ndp_exchange_rate_rules_ndp_units_chk: "`ndp_units` > 0",
+  ndp_exchange_rate_rules_jpy_units_chk: "`jpy_units` > 0",
+  ndp_exchange_rate_rules_version_chk: "`version` > 0",
+  ndp_exchange_rate_rules_window_chk:
+    "`effective_to` IS NULL OR `effective_to` > `effective_from`",
+  ndp_exchange_rate_rules_active_sentinel_chk:
+    "(`status` = 'active' AND `active_key` IS NOT NULL AND `active_key` = 'ndp_exchange_rate') OR (`status` = 'superseded' AND `active_key` IS NULL)",
+  order_service_sessions_ended_chronology_chk:
+    "`ended_at` IS NULL OR (`started_at` IS NOT NULL AND `ended_at` >= `started_at`)",
+  order_service_sessions_expected_chronology_chk:
+    "`expected_ends_at` IS NULL OR `started_at` IS NULL OR `expected_ends_at` >= `started_at`",
+  order_add_ons_price_chk: "`price_amount_jpy` >= 0",
+  order_add_ons_currency_chk: "BINARY `currency` = 'JPY'",
+  order_add_ons_duration_chk: "`duration_minutes` > 0",
+  order_add_ons_resolution_chk:
+    "(`status` = 'proposed' AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL) OR (`status` = 'accepted' AND `accepted_by_user_id` IS NOT NULL AND `accepted_at` IS NOT NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL) OR (`status` = 'rejected' AND `rejected_by_user_id` IS NOT NULL AND `rejected_at` IS NOT NULL AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL)",
+  order_checkouts_base_amount_chk: "`base_amount_jpy` >= 0",
+  order_checkouts_add_on_amount_chk: "`add_on_amount_jpy` >= 0",
+  order_checkouts_discount_amount_chk: "`discount_amount_jpy` >= 0",
+  order_checkouts_amount_chk: "`checkout_amount_jpy` >= 0 AND `payable_ndp` >= 0",
+  order_checkouts_total_chk:
+    "`checkout_amount_jpy` = `base_amount_jpy` + `add_on_amount_jpy` - `discount_amount_jpy`",
+  order_checkouts_other_method_chk:
+    "`payment_method` <> 'other' OR (`other_method_code` IS NOT NULL AND `other_method_label` IS NOT NULL)",
+  order_checkouts_ledger_method_chk:
+    "`ledger_transaction_id` IS NULL OR (`payment_method` IS NOT NULL AND `payment_method` = 'ndp' AND `receipt_confirmed_by_id` IS NULL AND `receipt_confirmed_at` IS NULL AND `receipt_confirmation_reason` IS NULL)",
+  order_checkouts_receipt_evidence_chk:
+    "(`receipt_confirmed_by_id` IS NULL AND `receipt_confirmed_at` IS NULL AND `receipt_confirmation_reason` IS NULL) OR (`payment_method` IS NOT NULL AND `payment_method` IN ('cash', 'other') AND `ledger_transaction_id` IS NULL AND `receipt_confirmed_by_id` IS NOT NULL AND `receipt_confirmed_at` IS NOT NULL AND `receipt_confirmation_reason` IS NOT NULL)",
+  order_service_events_shape_chk:
+    "(`event_type` IN ('service_started', 'service_ended') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NULL) OR (`event_type` IN ('add_on_proposed', 'add_on_accepted', 'add_on_rejected') AND `order_add_on_id` IS NOT NULL AND `order_checkout_id` IS NULL) OR (`event_type` IN ('checkout_created', 'payment_method_selected', 'ndp_payment_applied', 'receipt_confirmed') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NOT NULL)"
+};
+
+const assertExactCheck = (source: string, name: string): void => {
+  const expected = expectedCheckExpressions[name];
+  if (!expected) throw new Error(`missing expected CHECK contract ${name}`);
+  if (checkExpression(source, name) !== normalize(expected)) {
+    throw new Error(`${name} drift`);
+  }
+};
+
 const assertAddOnCurrencyCheck = (source: string): void => {
-  requireSql(
-    checkConstraint(source, "order_add_ons_currency_chk"),
-    "`currency` = 'JPY'",
-    "add-on currency CHECK drift"
-  );
+  assertExactCheck(source, "order_add_ons_currency_chk");
 };
 
 const assertEventShapeCheck = (source: string): void => {
-  requireSql(
-    checkConstraint(source, "order_service_events_shape_chk"),
-    "`event_type` IN ('service_started', 'service_ended') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NULL",
-    "service event shape drift"
-  );
-  requireSql(
-    checkConstraint(source, "order_service_events_shape_chk"),
-    "`event_type` IN ('add_on_proposed', 'add_on_accepted', 'add_on_rejected') AND `order_add_on_id` IS NOT NULL AND `order_checkout_id` IS NULL",
-    "add-on event shape drift"
-  );
-  requireSql(
-    checkConstraint(source, "order_service_events_shape_chk"),
-    "`event_type` IN ('checkout_created', 'payment_method_selected', 'ndp_payment_applied', 'receipt_confirmed') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NOT NULL",
-    "checkout event shape drift"
-  );
+  assertExactCheck(source, "order_service_events_shape_chk");
 };
 
 const assertEvidenceChecks = (source: string): void => {
-  for (const name of [
-    "ndp_exchange_rate_rules_ndp_units_chk",
-    "ndp_exchange_rate_rules_jpy_units_chk",
-    "order_service_sessions_ended_chronology_chk",
-    "order_service_sessions_expected_chronology_chk",
-    "order_add_ons_price_chk",
-    "order_add_ons_currency_chk",
-    "order_add_ons_duration_chk",
-    "order_add_ons_resolution_chk",
-    "order_checkouts_base_amount_chk",
-    "order_checkouts_add_on_amount_chk",
-    "order_checkouts_discount_amount_chk",
-    "order_checkouts_amount_chk",
-    "order_checkouts_total_chk",
-    "order_checkouts_other_method_chk",
-    "order_checkouts_ledger_method_chk",
-    "order_checkouts_receipt_evidence_chk",
-    "order_service_events_shape_chk",
-    "ndp_exchange_rate_rules_version_chk",
-    "ndp_exchange_rate_rules_window_chk",
-    "ndp_exchange_rate_rules_active_sentinel_chk"
-  ]) {
-    checkConstraint(source, name);
-  }
+  for (const name of Object.keys(expectedCheckExpressions)) assertExactCheck(source, name);
+};
 
-  requireSql(
-    checkConstraint(source, "order_service_sessions_ended_chronology_chk"),
-    "`ended_at` IS NULL OR (`started_at` IS NOT NULL AND `ended_at` >= `started_at`)",
-    "ended chronology drift"
-  );
-  requireSql(
-    checkConstraint(source, "order_service_sessions_expected_chronology_chk"),
-    "`expected_ends_at` IS NULL OR `started_at` IS NULL OR `expected_ends_at` >= `started_at`",
-    "expected-end chronology drift"
-  );
-  const exactChecks: Record<string, string> = {
-    ndp_exchange_rate_rules_ndp_units_chk: "`ndp_units` > 0",
-    ndp_exchange_rate_rules_jpy_units_chk: "`jpy_units` > 0",
-    ndp_exchange_rate_rules_version_chk: "`version` > 0",
-    ndp_exchange_rate_rules_window_chk:
-      "`effective_to` IS NULL OR `effective_to` > `effective_from`",
-    order_add_ons_price_chk: "`price_amount_jpy` >= 0",
-    order_add_ons_currency_chk: "`currency` = 'JPY'",
-    order_add_ons_duration_chk: "`duration_minutes` > 0",
-    order_add_ons_resolution_chk:
-      "(`status` = 'proposed' AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL) OR (`status` = 'accepted' AND `accepted_by_user_id` IS NOT NULL AND `accepted_at` IS NOT NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL) OR (`status` = 'rejected' AND `rejected_by_user_id` IS NOT NULL AND `rejected_at` IS NOT NULL AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL)",
-    order_checkouts_base_amount_chk: "`base_amount_jpy` >= 0",
-    order_checkouts_add_on_amount_chk: "`add_on_amount_jpy` >= 0",
-    order_checkouts_discount_amount_chk: "`discount_amount_jpy` >= 0",
-    order_checkouts_amount_chk: "`checkout_amount_jpy` >= 0 AND `payable_ndp` >= 0",
-    order_checkouts_total_chk:
-      "`checkout_amount_jpy` = `base_amount_jpy` + `add_on_amount_jpy` - `discount_amount_jpy`",
-    order_checkouts_other_method_chk:
-      "`payment_method` <> 'other' OR (`other_method_code` IS NOT NULL AND `other_method_label` IS NOT NULL)",
-    order_checkouts_ledger_method_chk:
-      "`ledger_transaction_id` IS NULL OR `payment_method` = 'ndp'",
-    order_checkouts_receipt_evidence_chk:
-      "(`receipt_confirmed_by_id` IS NULL AND `receipt_confirmed_at` IS NULL AND `receipt_confirmation_reason` IS NULL) OR (`receipt_confirmed_by_id` IS NOT NULL AND `receipt_confirmed_at` IS NOT NULL AND `receipt_confirmation_reason` IS NOT NULL AND `payment_method` IN ('cash', 'other'))"
-  };
-  for (const [name, expression] of Object.entries(exactChecks)) {
-    requireSql(checkConstraint(source, name), expression, `${name} drift`);
+const splitSqlList = (source: string): string[] => {
+  const values: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote: "'" | '"' | null = null;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (character === quote && source[index + 1] === quote) index += 1;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === "'" || character === '"') quote = character;
+    else if (character === "(") depth += 1;
+    else if (character === ")") depth -= 1;
+    else if (character === "," && depth === 0) {
+      values.push(normalize(source.slice(start, index)));
+      start = index + 1;
+    }
   }
-  assertEventShapeCheck(source);
-  requireSql(
-    checkConstraint(source, "ndp_exchange_rate_rules_active_sentinel_chk"),
-    "(`status` = 'active' AND `active_key` = 'ndp_exchange_rate') OR (`status` = 'superseded' AND `active_key` IS NULL)",
-    "active rate sentinel drift"
+  values.push(normalize(source.slice(start)));
+  return values;
+};
+
+const rateSeedDefinition = (
+  source: string
+): { columns: string[]; values: string[]; guard: string } => {
+  const match = source.match(
+    /INSERT INTO `ndp_exchange_rate_rules`\s*\(([\s\S]*?)\)\s*SELECT\s+([\s\S]*?)\s+WHERE NOT EXISTS\s*\(\s*SELECT 1\s+FROM `ndp_exchange_rate_rules`\s+WHERE\s+([\s\S]*?)\s*\);/
   );
+  if (!match) throw new Error("missing formal NDP rate seed");
+  return {
+    columns: Array.from(match[1].matchAll(/`([^`]+)`/g), (column) => column[1]),
+    values: splitSqlList(match[2]),
+    guard: normalize(match[3])
+  };
+};
+
+const expectedRateSeed = {
+  columns: [
+    "public_id",
+    "version",
+    "ndp_units",
+    "jpy_units",
+    "status",
+    "effective_from",
+    "effective_to",
+    "active_key",
+    "idempotency_key",
+    "reason",
+    "created_by_id",
+    "created_at",
+    "updated_at",
+    "deleted_at"
+  ],
+  values: [
+    "UUID()",
+    "1",
+    "1",
+    "1",
+    "'active'",
+    "UTC_TIMESTAMP(3)",
+    "NULL",
+    "'ndp_exchange_rate'",
+    "'ndp-rate-bootstrap-1-to-1'",
+    "'Initial formal 1 NDP = 1 JPY rate'",
+    "NULL",
+    "UTC_TIMESTAMP(3)",
+    "UTC_TIMESTAMP(3)",
+    "NULL"
+  ],
+  guard: "`version` = 1 OR `active_key` = 'ndp_exchange_rate'"
+};
+
+const assertRateSeed = (source: string): void => {
+  const actual = rateSeedDefinition(source);
+  if (JSON.stringify(actual.columns) !== JSON.stringify(expectedRateSeed.columns)) {
+    throw new Error("rate seed column order drift");
+  }
+  if (JSON.stringify(actual.values) !== JSON.stringify(expectedRateSeed.values)) {
+    throw new Error("rate seed value order drift");
+  }
+  if (actual.guard !== expectedRateSeed.guard) throw new Error("rate seed guard drift");
 };
 
 const expectedColumns: Record<string, Record<string, string>> = {
@@ -810,9 +862,7 @@ describe("order fulfillment persistence schema", () => {
   });
 
   it("keeps exact unique and active-query indexes plus the guarded 1:1 seed", () => {
-    expect(migration).toContain("SELECT UUID(), 1, 1, 1, 'active'");
-    expect(migration).toContain("'ndp-rate-bootstrap-1-to-1'");
-    expect(migration).toContain("WHERE NOT EXISTS");
+    expect(() => assertRateSeed(migration)).not.toThrow();
     expect(migration).not.toMatch(/^\s*(DROP|TRUNCATE|DELETE)\b/im);
 
     const identifiers = Array.from(
@@ -879,15 +929,89 @@ describe("order fulfillment persistence schema", () => {
   });
 
   it("detects a missing immutable JPY currency CHECK independently", () => {
-    const fixture = ensureTableDefinition(
+    const fixture = replaceCheckExpression(
       migration,
-      "order_add_ons",
-      "CONSTRAINT `order_add_ons_currency_chk` CHECK (`currency` = 'JPY')"
+      "order_add_ons_currency_chk",
+      expectedCheckExpressions.order_add_ons_currency_chk
     );
     const currencyCheck = checkConstraint(fixture, "order_add_ons_currency_chk");
     const mutated = fixture.replace(currencyCheck, "");
     expect(() => assertAddOnCurrencyCheck(mutated)).toThrow(
       "missing CHECK order_add_ons_currency_chk"
     );
+  });
+
+  it("detects lowercase JPY currency drift independently", () => {
+    const fixture = replaceCheckExpression(
+      migration,
+      "order_add_ons_currency_chk",
+      expectedCheckExpressions.order_add_ons_currency_chk
+    );
+    const mutated = replaceCheckExpression(
+      fixture,
+      "order_add_ons_currency_chk",
+      "BINARY `currency` = 'jpy'"
+    );
+    expect(() => assertAddOnCurrencyCheck(mutated)).toThrow(
+      "order_add_ons_currency_chk drift"
+    );
+  });
+
+  it("detects the nullable active-rate sentinel regression independently", () => {
+    const fixture = replaceCheckExpression(
+      migration,
+      "ndp_exchange_rate_rules_active_sentinel_chk",
+      expectedCheckExpressions.ndp_exchange_rate_rules_active_sentinel_chk
+    );
+    const mutated = replaceCheckExpression(
+      fixture,
+      "ndp_exchange_rate_rules_active_sentinel_chk",
+      "(`status` = 'active' AND `active_key` = 'ndp_exchange_rate') OR (`status` = 'superseded' AND `active_key` IS NULL)"
+    );
+    expect(() =>
+      assertExactCheck(mutated, "ndp_exchange_rate_rules_active_sentinel_chk")
+    ).toThrow("ndp_exchange_rate_rules_active_sentinel_chk drift");
+  });
+
+  it("detects NULL payment method with ledger evidence independently", () => {
+    const name = "order_checkouts_ledger_method_chk";
+    const fixture = replaceCheckExpression(migration, name, expectedCheckExpressions[name]);
+    const weakened = expectedCheckExpressions[name].replace(
+      "`payment_method` IS NOT NULL AND ",
+      ""
+    );
+    const mutated = replaceCheckExpression(fixture, name, weakened);
+    expect(() => assertExactCheck(mutated, name)).toThrow(`${name} drift`);
+  });
+
+  it("detects NULL payment method with receipt evidence independently", () => {
+    const name = "order_checkouts_receipt_evidence_chk";
+    const fixture = replaceCheckExpression(migration, name, expectedCheckExpressions[name]);
+    const weakened = expectedCheckExpressions[name].replace(
+      "`payment_method` IS NOT NULL AND ",
+      ""
+    );
+    const mutated = replaceCheckExpression(fixture, name, weakened);
+    expect(() => assertExactCheck(mutated, name)).toThrow(`${name} drift`);
+  });
+
+  it("detects a weaker but still present CHECK independently", () => {
+    const name = "order_checkouts_total_chk";
+    const fixture = replaceCheckExpression(migration, name, expectedCheckExpressions[name]);
+    const mutated = replaceCheckExpression(
+      fixture,
+      name,
+      `(${expectedCheckExpressions[name]}) OR TRUE`
+    );
+    expect(() => assertExactCheck(mutated, name)).toThrow(`${name} drift`);
+  });
+
+  it("detects a weakened rate-seed guard independently", () => {
+    const mutated = migration.replace(
+      expectedRateSeed.guard,
+      `${expectedRateSeed.guard} OR 1 = 1`
+    );
+    expect(mutated).not.toBe(migration);
+    expect(() => assertRateSeed(mutated)).toThrow("rate seed guard drift");
   });
 });

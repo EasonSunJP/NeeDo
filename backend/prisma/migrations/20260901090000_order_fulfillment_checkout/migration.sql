@@ -26,7 +26,7 @@ CREATE TABLE `ndp_exchange_rate_rules` (
   CONSTRAINT `ndp_exchange_rate_rules_version_chk` CHECK (`version` > 0),
   CONSTRAINT `ndp_exchange_rate_rules_window_chk` CHECK (`effective_to` IS NULL OR `effective_to` > `effective_from`),
   CONSTRAINT `ndp_exchange_rate_rules_active_sentinel_chk` CHECK (
-    (`status` = 'active' AND `active_key` = 'ndp_exchange_rate')
+    (`status` = 'active' AND `active_key` IS NOT NULL AND `active_key` = 'ndp_exchange_rate')
     OR (`status` = 'superseded' AND `active_key` IS NULL)
   ),
   UNIQUE INDEX `ndp_exchange_rate_rules_public_id_key`(`public_id`),
@@ -90,7 +90,7 @@ CREATE TABLE `order_add_ons` (
   `deleted_at` DATETIME(3) NULL,
 
   CONSTRAINT `order_add_ons_price_chk` CHECK (`price_amount_jpy` >= 0),
-  CONSTRAINT `order_add_ons_currency_chk` CHECK (`currency` = 'JPY'),
+  CONSTRAINT `order_add_ons_currency_chk` CHECK (BINARY `currency` = 'JPY'),
   CONSTRAINT `order_add_ons_duration_chk` CHECK (`duration_minutes` > 0),
   CONSTRAINT `order_add_ons_resolution_chk` CHECK (
     (`status` = 'proposed' AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL)
@@ -139,10 +139,15 @@ CREATE TABLE `order_checkouts` (
   CONSTRAINT `order_checkouts_amount_chk` CHECK (`checkout_amount_jpy` >= 0 AND `payable_ndp` >= 0),
   CONSTRAINT `order_checkouts_total_chk` CHECK (`checkout_amount_jpy` = `base_amount_jpy` + `add_on_amount_jpy` - `discount_amount_jpy`),
   CONSTRAINT `order_checkouts_other_method_chk` CHECK (`payment_method` <> 'other' OR (`other_method_code` IS NOT NULL AND `other_method_label` IS NOT NULL)),
-  CONSTRAINT `order_checkouts_ledger_method_chk` CHECK (`ledger_transaction_id` IS NULL OR `payment_method` = 'ndp'),
+  CONSTRAINT `order_checkouts_ledger_method_chk` CHECK (
+    `ledger_transaction_id` IS NULL
+    OR (`payment_method` IS NOT NULL AND `payment_method` = 'ndp'
+      AND `receipt_confirmed_by_id` IS NULL AND `receipt_confirmed_at` IS NULL AND `receipt_confirmation_reason` IS NULL)
+  ),
   CONSTRAINT `order_checkouts_receipt_evidence_chk` CHECK (
     (`receipt_confirmed_by_id` IS NULL AND `receipt_confirmed_at` IS NULL AND `receipt_confirmation_reason` IS NULL)
-    OR (`receipt_confirmed_by_id` IS NOT NULL AND `receipt_confirmed_at` IS NOT NULL AND `receipt_confirmation_reason` IS NOT NULL AND `payment_method` IN ('cash', 'other'))
+    OR (`payment_method` IS NOT NULL AND `payment_method` IN ('cash', 'other') AND `ledger_transaction_id` IS NULL
+      AND `receipt_confirmed_by_id` IS NOT NULL AND `receipt_confirmed_at` IS NOT NULL AND `receipt_confirmation_reason` IS NOT NULL)
   ),
   UNIQUE INDEX `order_checkouts_booking_order_key`(`booking_order_id`),
   UNIQUE INDEX `order_checkouts_id_order_key`(`id`, `booking_order_id`),
