@@ -44,6 +44,18 @@ function formatJpy(value: number) {
   return new Intl.NumberFormat("ja-JP", { currency: "JPY", maximumFractionDigits: 0, style: "currency" }).format(value);
 }
 
+function issuanceSourceLabel(source: ShopMembershipCard["issuanceSource"]) {
+  if (source === "offline_paid") return "线下已付款";
+  if (source === "historical_replacement") return "历史补卡";
+  if (source === "manual_grant") return "人工发放";
+  return "历史会员卡";
+}
+
+function platformFeeRateLabel(rateBps: number | null) {
+  if (rateBps === null) return "未记录";
+  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(rateBps / 100)}%`;
+}
+
 function MembershipStatusChip({ status }: { status: ShopMembershipStatus }) {
   return <span className={cn("rounded-full border px-2.5 py-1 text-[11px] font-black", status === "active" ? "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]" : "border-[color:var(--client-line)] bg-[color:var(--client-bg)] text-[color:var(--client-muted)]")}>{status === "active" ? "有效" : "已结束"}</span>;
 }
@@ -63,11 +75,23 @@ function ShopMembershipCard({ membership }: { membership: CustomerShopMembership
 
 function CardFace({ card }: { card: ShopMembershipCard }) {
   const value = card.type === "stored_value" ? formatJpy((card.principalBalanceJpy ?? 0) + (card.bonusBalanceJpy ?? 0)) : card.type === "count" ? `剩余 ${card.remainingUses ?? 0} 次` : "权益会员卡";
-  return <article className="relative overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_30%,var(--client-line))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_20%,var(--client-elevated)),var(--client-surface))] p-5 shadow-[0_20px_52px_color-mix(in_srgb,var(--client-primary)_12%,transparent)]"><div aria-hidden="true" className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[22px] border-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)]" /><div className="relative flex items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.15em] text-[color:var(--client-primary)]">会员卡状态</p><h3 className="mt-1 text-lg font-black">{card.name}</h3></div><CardStatusChip status={card.status} /></div><strong className="relative mt-7 block text-2xl font-black tracking-tight">{value}</strong><div className="relative mt-5 flex items-end justify-between gap-3"><div><p className="font-mono text-xs font-black tracking-[0.16em] text-[color:var(--client-muted)]">{card.cardNoMasked}</p><p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">有效期至 {formatDate(card.expiresAt)}</p></div><span className="text-2xl text-[color:var(--client-primary)]">♡</span></div></article>;
+  const initialValue = card.type === "stored_value" && card.initialPrincipalJpy !== null
+    ? { label: "开卡初始金额", value: formatJpy(card.initialPrincipalJpy) }
+    : card.type === "count" && card.initialUses !== null
+      ? { label: "开卡初始次数", value: `${card.initialUses} 次` }
+      : null;
+  const details = [
+    { label: "方案版本", value: card.planVersion === null ? "历史会员卡" : `V${card.planVersion}` },
+    { label: "开卡时间", value: formatDate(card.issuedAt) },
+    { label: "开卡来源", value: issuanceSourceLabel(card.issuanceSource) },
+    { label: "平台费率快照", value: platformFeeRateLabel(card.platformFeeRateBpsSnapshot) },
+    ...(initialValue ? [initialValue] : [])
+  ];
+  return <article className="relative overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_30%,var(--client-line))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_20%,var(--client-elevated)),var(--client-surface))] p-5 shadow-[0_20px_52px_color-mix(in_srgb,var(--client-primary)_12%,transparent)]"><div aria-hidden="true" className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[22px] border-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)]" /><div className="relative flex items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.15em] text-[color:var(--client-primary)]">会员卡状态</p><h3 className="mt-1 text-lg font-black">{card.name}</h3></div><CardStatusChip status={card.status} /></div><strong className="relative mt-7 block text-2xl font-black tracking-tight">{value}</strong><div className="relative mt-5 flex items-end justify-between gap-3"><div><p className="font-mono text-xs font-black tracking-[0.16em] text-[color:var(--client-muted)]">{card.cardNoMasked}</p><p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">有效期至 {formatDate(card.expiresAt)}</p></div><span className="text-2xl text-[color:var(--client-primary)]">♡</span></div><dl className="relative mt-5 grid grid-cols-2 gap-2 border-t border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] pt-4">{details.map((item) => <div className={cn(insetClassName, "min-w-0 p-3")} key={item.label}><dt className="text-[10px] font-black text-[color:var(--client-muted)]">{item.label}</dt><dd className="mt-1 truncate text-xs font-black">{item.value}</dd></div>)}</dl><div className="relative mt-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,var(--client-line))] bg-[color:var(--client-primary-soft)] p-3"><strong className="block text-xs font-black text-[color:var(--client-primary-strong)]">开卡不会自动产生 NDP</strong><span className="mt-1 block text-[11px] font-semibold leading-5 text-[color:var(--client-muted)]">平台费只在以后实际发生返点时，从店铺钱包扣除。</span></div></article>;
 }
 
 function MembershipDetailView({ detail }: { detail: CustomerShopMembershipDetail }) {
-  return <div className="space-y-4"><section className={panelClassName}><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">店铺会员</p><h1 className="mt-1 text-2xl font-black">{detail.shop.name}</h1><p className="mt-1 text-sm font-semibold text-[color:var(--client-muted)]">{detail.shop.city} · {formatDate(detail.startedAt)} 加入</p></div><MembershipStatusChip status={detail.status} /></div><Link className="mt-5 inline-flex min-h-11 items-center rounded-full border border-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary)]" to={`/stores/${detail.shop.id}`}>查看店铺</Link></section><section><div className="mb-3 flex items-center justify-between px-1"><div><p className="text-xs font-black text-[color:var(--client-primary)]">CARD WALLET</p><h2 className="mt-0.5 text-lg font-black text-[color:var(--client-text)]">会员卡状态</h2></div><span className="text-xs font-bold text-[color:var(--client-muted)]">{detail.cards.length} 张</span></div>{detail.cards.length ? <div className="space-y-3">{detail.cards.map((card) => <CardFace card={card} key={card.publicId} />)}</div> : <StatusPanel message="店铺会员关系已生效；开卡会在后续独立步骤开放。" title="暂无会员卡" />}</section></div>;
+  return <div className="space-y-4"><section className={panelClassName}><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">店铺会员</p><h1 className="mt-1 text-2xl font-black">{detail.shop.name}</h1><p className="mt-1 text-sm font-semibold text-[color:var(--client-muted)]">{detail.shop.city} · {formatDate(detail.startedAt)} 加入</p></div><MembershipStatusChip status={detail.status} /></div><Link className="mt-5 inline-flex min-h-11 items-center rounded-full border border-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary)]" to={`/stores/${detail.shop.id}`}>查看店铺</Link></section><section><div className="mb-3 flex items-center justify-between px-1"><div><p className="text-xs font-black text-[color:var(--client-primary)]">CARD WALLET</p><h2 className="mt-0.5 text-lg font-black text-[color:var(--client-text)]">会员卡状态</h2></div><span className="text-xs font-bold text-[color:var(--client-muted)]">{detail.cards.length} 张</span></div>{detail.cards.length ? <div className="space-y-3">{detail.cards.map((card) => <CardFace card={card} key={card.publicId} />)}</div> : <StatusPanel message="当前店铺尚未向你发放会员卡。" title="暂无会员卡" />}</section></div>;
 }
 
 export function UserMembershipsPage() {

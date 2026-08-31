@@ -208,7 +208,9 @@ export type ShopMembershipCardIssuanceRequest = {
   idempotencyKey: string;
 };
 
-export type ShopMembershipCardIssuanceResult = MerchantShopMembershipCard & {
+export type ShopMembershipCardIssuanceResult = ShopMembershipCard & {
+  customerNeedoId: string;
+  customerDisplayName: string;
   initialPrincipalJpy: number | null;
   initialUses: number | null;
   issuanceSource: ShopMembershipCardIssuanceSource;
