@@ -103,6 +103,7 @@ import {
   type RealtimeRepositoryPort
 } from "./repositories/realtime.repository";
 import type { ImChatRecordRepositoryPort } from "./repositories/im-chat-record.repository";
+import type { ImMessageTranslationRepositoryPort } from "./repositories/im-message-translation.repository";
 import type { RoleRepositoryPort } from "./repositories/role.repository";
 import type { UserRepositoryPort } from "./repositories/user.repository";
 import type { TestAccountRepositoryPort } from "./repositories/test-account.repository";
@@ -128,6 +129,7 @@ import { createIdentityApplicationRoutes } from "./routes/identity-application.r
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
 import { createImMediaRoutes } from "./routes/im-media.routes";
 import { createImChatRecordRoutes } from "./routes/im-chat-record.routes";
+import { createImMessageTranslationRoutes } from "./routes/im-message-translation.routes";
 import { createImVoiceMessageRoutes } from "./routes/im-voice-message.routes";
 import { createContentMediaRoutes } from "./routes/content-media.routes";
 import { createSocialMediaRoutes } from "./routes/social-media.routes";
@@ -164,6 +166,8 @@ import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
 import type { ImChatRecordMediaStoragePort } from "./services/im-chat-record-media.storage";
 import type { ImChatRecordService } from "./services/im-chat-record.service";
+import type { ImMessageTranslationService } from "./services/im-message-translation.service";
+import type { TranslationProvider } from "./services/im-translation.provider";
 import type { ImVoiceDurationProbePort } from "./services/im-voice-duration-probe";
 import type { ImVoiceStoragePort } from "./services/im-voice.storage";
 import type { ImVoiceMessageService } from "./services/im-voice-message.service";
@@ -262,6 +266,9 @@ export interface AppDependencies {
   imChatRecordRepository?: ImChatRecordRepositoryPort;
   imChatRecordMediaStorage?: ImChatRecordMediaStoragePort;
   imChatRecordService?: ImChatRecordService;
+  imMessageTranslationRepository?: ImMessageTranslationRepositoryPort;
+  translationProvider?: TranslationProvider;
+  imMessageTranslationService?: Pick<ImMessageTranslationService, "translateVisibleMessages">;
   imVoiceDurationProbe?: ImVoiceDurationProbePort;
   imVoiceStorage?: ImVoiceStoragePort;
   imVoiceMessageService?: ImVoiceMessageService;
@@ -359,6 +366,7 @@ export const createApp = (
   apiRouter.use(createImVoiceMessageRoutes(config, resolvedDependencies));
   apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createImChatRecordRoutes(config, resolvedDependencies));
+  apiRouter.use(createImMessageTranslationRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));

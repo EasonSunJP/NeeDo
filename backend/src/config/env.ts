@@ -56,6 +56,14 @@ const optionalUrlSchema = z.preprocess((value) => {
   return value;
 }, z.string().url().optional());
 
+const optionalSecretSchema = z.preprocess((value) => {
+  if (typeof value === "string" && value.trim().length === 0) {
+    return undefined;
+  }
+
+  return value;
+}, z.string().trim().min(1).optional());
+
 const productionPlaceholderPattern = /(change-?me|example|placeholder|replace-?with)/i;
 const productionGoogleWebClientIdPattern =
   /^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?\.apps\.googleusercontent\.com$/;
@@ -138,6 +146,12 @@ const envSchema = z
     IM_MEDIA_PUBLIC_BASE_URL: optionalUrlSchema,
     IM_PRIVACY_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(100).default(1_000),
     IM_PRIVACY_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(50),
+    IM_TRANSLATION_PROVIDER: z.enum(["disabled", "deepl"]).default("disabled"),
+    IM_TRANSLATION_API_BASE_URL: optionalUrlSchema,
+    IM_TRANSLATION_API_KEY: optionalSecretSchema,
+    IM_TRANSLATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
+    IM_TRANSLATION_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(2),
+    IM_TRANSLATION_MONTHLY_CHARACTER_LIMIT: z.coerce.number().int().positive().default(500_000),
     CONTENT_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/content-media"),
     FRIEND_REQUEST_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
     FRIEND_REQUEST_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
@@ -186,6 +200,51 @@ const envSchema = z
         "CONTENT_MEDIA_STORAGE_DIR",
         error instanceof Error ? error.message : "Content media storage isolation is invalid"
       );
+    }
+
+    if (value.IM_TRANSLATION_PROVIDER === "deepl") {
+      if (!value.IM_TRANSLATION_API_BASE_URL) {
+        addProductionIssue(
+          context,
+          "IM_TRANSLATION_API_BASE_URL",
+          "IM_TRANSLATION_API_BASE_URL is required for the DeepL provider"
+        );
+      } else {
+        const translationApiUrl = new URL(value.IM_TRANSLATION_API_BASE_URL);
+        if (translationApiUrl.protocol !== "https:") {
+          addProductionIssue(
+            context,
+            "IM_TRANSLATION_API_BASE_URL",
+            "IM_TRANSLATION_API_BASE_URL must use HTTPS"
+          );
+        }
+        if (
+          value.NODE_ENV === "production" &&
+          (["localhost", "127.0.0.1", "::1"].includes(translationApiUrl.hostname) ||
+            translationApiUrl.hostname === "example" ||
+            translationApiUrl.hostname.endsWith(".example"))
+        ) {
+          addProductionIssue(
+            context,
+            "IM_TRANSLATION_API_BASE_URL",
+            "IM_TRANSLATION_API_BASE_URL must use a non-local production host"
+          );
+        }
+      }
+
+      if (!value.IM_TRANSLATION_API_KEY) {
+        addProductionIssue(
+          context,
+          "IM_TRANSLATION_API_KEY",
+          "IM_TRANSLATION_API_KEY is required for the DeepL provider"
+        );
+      } else if (productionPlaceholderPattern.test(value.IM_TRANSLATION_API_KEY)) {
+        addProductionIssue(
+          context,
+          "IM_TRANSLATION_API_KEY",
+          "IM_TRANSLATION_API_KEY must not use a placeholder value"
+        );
+      }
     }
 
     if (value.NODE_ENV !== "production") {
@@ -401,6 +460,10 @@ if (!parsedEnv.success) {
   throw new Error(`Invalid backend environment configuration: ${formatted}`);
 }
 
-export const env = parsedEnv.data;
+export const env = {
+  ...parsedEnv.data,
+  IM_TRANSLATION_API_BASE_URL: parsedEnv.data.IM_TRANSLATION_API_BASE_URL,
+  IM_TRANSLATION_API_KEY: parsedEnv.data.IM_TRANSLATION_API_KEY
+};
 
 export type AppConfig = typeof env;
