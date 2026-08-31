@@ -395,7 +395,13 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("message:recall", "撤回消息", "api", "im", "在正式时限内撤回本人发送的 IM 消息"),
   createPermission("message:react", "回应消息", "api", "im", "添加或移除 IM 消息表情回应"),
   createPermission("message:forward", "转发聊天记录", "api", "im", "创建并投递正式聊天记录包"),
-  createPermission("message:favorite", "收藏聊天记录", "api", "im", "创建、查看和移除自己的聊天记录收藏"),
+  createPermission(
+    "message:favorite",
+    "收藏聊天记录",
+    "api",
+    "im",
+    "创建、查看和移除自己的聊天记录收藏"
+  ),
   createPermission("message:translate", "翻译消息", "api", "im", "翻译当前身份可见的 IM 消息"),
   createPermission("message:read", "已读消息", "api", "im", "标记会话消息已读"),
   createPermission("contact:list", "联系人列表", "api", "im", "分页查看联系人"),
@@ -406,7 +412,13 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("friend-request:respond", "处理好友申请", "api", "im", "接受或拒绝好友申请"),
   createPermission("social-post:list", "动态列表", "api", "social", "分页查看社交动态"),
   createPermission("social-post:create", "发布动态", "api", "social", "发布基础社交动态"),
-  createPermission("social-post:interact", "动态互动", "api", "social", "点赞、收藏、记录浏览并向好友转发动态"),
+  createPermission(
+    "social-post:interact",
+    "动态互动",
+    "api",
+    "social",
+    "点赞、收藏、记录浏览并向好友转发动态"
+  ),
   createPermission("follow:write", "关注操作", "api", "social", "关注或取消关注用户"),
   createPermission("notification:list", "通知列表", "api", "notification", "分页查看通知"),
   createPermission("notification:read", "通知已读", "api", "notification", "标记通知已读"),
@@ -563,6 +575,48 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "backoffice",
     "发放、续费、升级、降级或终止用户平台会员资格"
+  ),
+  createPermission(
+    "backoffice:user-group:read",
+    "用户分组读取",
+    "api",
+    "backoffice",
+    "分页读取系统派生分组与自定义用户分组"
+  ),
+  createPermission(
+    "backoffice:user-group:write",
+    "用户分组管理",
+    "api",
+    "backoffice",
+    "创建、编辑、归档自定义分组并维护成员"
+  ),
+  createPermission(
+    "backoffice:user-policy:read",
+    "用户全局策略读取",
+    "api",
+    "backoffice",
+    "读取账号绑定与服务 eKYC 全局策略"
+  ),
+  createPermission(
+    "backoffice:user-policy:publish",
+    "用户全局策略发布",
+    "api",
+    "backoffice",
+    "保存并发布用户全局策略版本"
+  ),
+  createPermission(
+    "backoffice:ndp-experience-campaign:read",
+    "NDP经验活动读取",
+    "api",
+    "backoffice",
+    "分页读取 NDP 经验倍率活动"
+  ),
+  createPermission(
+    "backoffice:ndp-experience-campaign:publish",
+    "NDP经验活动发布",
+    "api",
+    "backoffice",
+    "保存、发布或归档 NDP 经验倍率活动"
   ),
   createPermission(
     "backoffice:order-acceptance-pause:read",
@@ -1534,7 +1588,10 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "page:permission-management",
   "permission:list",
   "backoffice:membership-tier:read",
-  "backoffice:membership-benefit:read"
+  "backoffice:membership-benefit:read",
+  "backoffice:user-group:read",
+  "backoffice:user-policy:read",
+  "backoffice:ndp-experience-campaign:read"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -1646,6 +1703,9 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:membership-tier:publish",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
+  "backoffice:user-group:write",
+  "backoffice:user-policy:publish",
+  "backoffice:ndp-experience-campaign:publish",
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
   "backoffice:orders:list",

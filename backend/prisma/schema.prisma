@@ -568,6 +568,27 @@ enum PlatformMembershipEntitlementChangeKind {
   @@map("platform_membership_entitlement_change_kind")
 }
 
+enum BackofficeUserGroupKind {
+  CUSTOM @map("custom")
+
+  @@map("backoffice_user_group_kind")
+}
+
+enum BackofficeUserGroupStatus {
+  ACTIVE   @map("active")
+  ARCHIVED @map("archived")
+
+  @@map("backoffice_user_group_status")
+}
+
+enum UserPolicyPublicationStatus {
+  DRAFT     @map("draft")
+  PUBLISHED @map("published")
+  ARCHIVED  @map("archived")
+
+  @@map("user_policy_publication_status")
+}
+
 enum ShopCustomerMembershipStatus {
   ACTIVE @map("active")
   ENDED  @map("ended")
@@ -860,6 +881,14 @@ model User {
   createdPlatformMembershipEntitlements   PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementCreator")
   createdPlatformMembershipTierVersions   PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionCreator")
   publishedPlatformMembershipTierVersions PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionPublisher")
+  createdBackofficeUserGroups             BackofficeUserGroup[]                 @relation("BackofficeUserGroupCreator")
+  updatedBackofficeUserGroups             BackofficeUserGroup[]                 @relation("BackofficeUserGroupUpdater")
+  assignedBackofficeUserGroupMemberships  BackofficeUserGroupMembership[]       @relation("BackofficeUserGroupMembershipAssigner")
+  backofficeUserGroupMemberships          BackofficeUserGroupMembership[]       @relation("BackofficeUserGroupMembershipUser")
+  createdUserGlobalPolicies               UserGlobalPolicyVersion[]             @relation("UserGlobalPolicyCreator")
+  publishedUserGlobalPolicies             UserGlobalPolicyVersion[]             @relation("UserGlobalPolicyPublisher")
+  createdNdpExperienceCampaigns           NdpExperienceCampaign[]               @relation("NdpExperienceCampaignCreator")
+  publishedNdpExperienceCampaigns         NdpExperienceCampaign[]               @relation("NdpExperienceCampaignPublisher")
   sentImContactCardCommands               ImContactCardSendCommand[]            @relation("ImContactCardSendActor")
   targetedImContactCardCommands           ImContactCardSendCommand[]            @relation("ImContactCardSendTarget")
   messageReactions                        MessageReaction[]
@@ -1493,6 +1522,112 @@ model PlatformMembershipEntitlement {
   @@index([createdById])
   @@index([deletedAt])
   @@map("platform_membership_entitlements")
+}
+
+model BackofficeUserGroup {
+  id            Int                       @id @default(autoincrement())
+  publicId      String                    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  code          String                    @unique @db.VarChar(80)
+  kind          BackofficeUserGroupKind   @default(CUSTOM)
+  name          String                    @db.VarChar(100)
+  activeNameKey String?                   @unique(map: "backoffice_user_group_active_name_key") @map("active_name_key") @db.VarChar(191)
+  description   String?                   @db.VarChar(500)
+  status        BackofficeUserGroupStatus @default(ACTIVE)
+  createdById   Int                       @map("created_by_id")
+  updatedById   Int                       @map("updated_by_id")
+  archivedAt    DateTime?                 @map("archived_at")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+  deletedAt     DateTime?                 @map("deleted_at")
+
+  createdBy   User                            @relation("BackofficeUserGroupCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy   User                            @relation("BackofficeUserGroupUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
+  memberships BackofficeUserGroupMembership[]
+
+  @@index([status, name, deletedAt], map: "backoffice_user_group_list_idx")
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([deletedAt])
+  @@map("backoffice_user_groups")
+}
+
+model BackofficeUserGroupMembership {
+  id           Int       @id @default(autoincrement())
+  groupId      Int       @map("group_id")
+  userId       Int       @map("user_id")
+  assignedById Int       @map("assigned_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  group      BackofficeUserGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  user       User                @relation("BackofficeUserGroupMembershipUser", fields: [userId], references: [id], onDelete: Restrict)
+  assignedBy User                @relation("BackofficeUserGroupMembershipAssigner", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, userId], map: "backoffice_user_group_membership_key")
+  @@index([userId, deletedAt], map: "backoffice_user_group_membership_user_idx")
+  @@index([assignedById])
+  @@index([deletedAt])
+  @@map("backoffice_user_group_memberships")
+}
+
+model UserGlobalPolicyVersion {
+  id                       Int                         @id @default(autoincrement())
+  publicId                 String                      @unique @default(uuid()) @map("public_id") @db.Char(36)
+  version                  Int                         @unique(map: "user_global_policy_version_key")
+  status                   UserPolicyPublicationStatus @default(DRAFT)
+  requirePhone             Boolean                     @default(false) @map("require_phone")
+  requireEmail             Boolean                     @default(false) @map("require_email")
+  requireHomeServiceEkyc   Boolean                     @default(false) @map("require_home_service_ekyc")
+  requireStoreServiceEkyc  Boolean                     @default(false) @map("require_store_service_ekyc")
+  ndpPerBaseExp            Int                         @default(100) @map("ndp_per_base_exp")
+  baseExpUnitsPerThreshold Int                         @default(10000) @map("base_exp_units_per_threshold")
+  effectiveFrom            DateTime                    @map("effective_from")
+  effectiveTo              DateTime?                   @map("effective_to")
+  publishedAt              DateTime?                   @map("published_at")
+  createdById              Int?                        @map("created_by_id")
+  publishedById            Int?                        @map("published_by_id")
+  lockVersion              Int                         @default(1) @map("lock_version")
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  updatedAt                DateTime                    @updatedAt @map("updated_at")
+  deletedAt                DateTime?                   @map("deleted_at")
+
+  createdBy   User? @relation("UserGlobalPolicyCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  publishedBy User? @relation("UserGlobalPolicyPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+
+  @@index([status, effectiveFrom, effectiveTo, deletedAt], map: "user_global_policy_resolution_idx")
+  @@index([createdById])
+  @@index([publishedById])
+  @@index([deletedAt])
+  @@map("user_global_policy_versions")
+}
+
+model NdpExperienceCampaign {
+  id            Int                         @id @default(autoincrement())
+  publicId      String                      @unique @default(uuid()) @map("public_id") @db.Char(36)
+  version       Int                         @unique(map: "ndp_experience_campaign_version_key")
+  name          String                      @db.VarChar(120)
+  description   String?                     @db.VarChar(500)
+  status        UserPolicyPublicationStatus @default(DRAFT)
+  factorBps     Int                         @default(10000) @map("factor_bps")
+  effectiveFrom DateTime                    @map("effective_from")
+  effectiveTo   DateTime                    @map("effective_to")
+  publishedAt   DateTime?                   @map("published_at")
+  createdById   Int?                        @map("created_by_id")
+  publishedById Int?                        @map("published_by_id")
+  lockVersion   Int                         @default(1) @map("lock_version")
+  createdAt     DateTime                    @default(now()) @map("created_at")
+  updatedAt     DateTime                    @updatedAt @map("updated_at")
+  deletedAt     DateTime?                   @map("deleted_at")
+
+  createdBy   User? @relation("NdpExperienceCampaignCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  publishedBy User? @relation("NdpExperienceCampaignPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+
+  @@index([status, effectiveFrom, effectiveTo, deletedAt], map: "ndp_experience_campaign_resolution_idx")
+  @@index([createdById])
+  @@index([publishedById])
+  @@index([deletedAt])
+  @@map("ndp_experience_campaigns")
 }
 
 model ShopCustomerMembership {

@@ -39,6 +39,9 @@ import type { CompensationProfileRepositoryPort } from "./services/compensation-
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
+import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
+import type { NdpExperienceCampaignRepositoryPort } from "./domain/ndp-experience-campaign";
 import type { ShopMembershipRepositoryPort } from "./repositories/shop-membership.repository";
 import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-membership-card-plan.repository";
 import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
@@ -132,6 +135,8 @@ import { createTechnicianProfileRoutes } from "./routes/technician-profile.route
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
+import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
+import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
 import { createHealthRoutes } from "./routes/health.routes";
@@ -170,6 +175,9 @@ import type { VerificationChallengeStore } from "./services/auth-verification-ch
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import type { PlatformMembershipService } from "./services/platform-membership.service";
+import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
+import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
+import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
 import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
@@ -285,6 +293,26 @@ export interface AppDependencies {
     | "changeEntitlement"
   >;
   platformMembershipRepository?: PlatformMembershipRepositoryPort;
+  backofficeUserGroupService?: Pick<
+    BackofficeUserGroupService,
+    | "listGroups"
+    | "listGroupMembers"
+    | "createCustomGroup"
+    | "updateCustomGroup"
+    | "archiveCustomGroup"
+    | "setCustomGroupMembers"
+  >;
+  backofficeUserGroupRepository?: BackofficeUserGroupRepositoryPort;
+  userGlobalPolicyService?: Pick<
+    UserGlobalPolicyService,
+    "getCurrentAndDraft" | "saveDraft" | "publishDraft"
+  >;
+  userGlobalPolicyRepository?: UserGlobalPolicyRepositoryPort;
+  ndpExperienceCampaignService?: Pick<
+    NdpExperienceCampaignService,
+    "listCampaigns" | "saveDraft" | "publishDraft" | "archiveCampaign"
+  >;
+  ndpExperienceCampaignRepository?: NdpExperienceCampaignRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
   affiliateMarketplaceRepository?: AffiliateMarketplaceRepositoryPort;
@@ -379,6 +407,8 @@ export const createApp = (
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformMembershipRoutes(config, resolvedDependencies));
+  apiRouter.use(createBackofficeUserGroupRoutes(config, resolvedDependencies));
+  apiRouter.use(createUserGlobalPolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderAcceptancePauseRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
