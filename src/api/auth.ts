@@ -16,9 +16,7 @@ export type TokenPairPayload = {
   expiresIn: number;
 };
 
-export type AuthLoginPayload = TokenPairPayload & {
-  me?: AuthMePayload;
-};
+export type AuthLoginPayload = TokenPairPayload;
 
 export type RefreshPayload = {
   accessToken: string;
@@ -115,11 +113,14 @@ export class AuthRotatedResponseError extends Error {
 function readRotatedCredentials(value: unknown): AuthTransitionCredentials | null {
   if (!value || typeof value !== "object") return null;
   const payload = value as { accessToken?: unknown; refreshToken?: unknown };
-  return typeof payload.accessToken === "string" &&
-    payload.accessToken.length > 0 &&
-    typeof payload.refreshToken === "string" &&
-    payload.refreshToken.length > 0
-    ? { accessToken: payload.accessToken, refreshToken: payload.refreshToken }
+  return typeof payload.refreshToken === "string" && payload.refreshToken.length > 0
+    ? {
+        accessToken:
+          typeof payload.accessToken === "string" && payload.accessToken.length > 0
+            ? payload.accessToken
+            : null,
+        refreshToken: payload.refreshToken
+      }
     : null;
 }
 
@@ -276,7 +277,12 @@ export const authApi = {
       }
     );
     return validateRotatedResponse(tokens, (payload) => {
-      const validated = requireFormalTokenPair<VerifiedRegistrationPayload>(payload);
+      const validated = requireFormalTokenPair<VerifiedRegistrationPayload>(payload, [
+        "accessToken",
+        "refreshToken",
+        "expiresIn",
+        "needoId"
+      ]);
       if (!/^u\d{10}$/.test(validated.needoId)) {
         throw new Error("error.api");
       }
@@ -312,7 +318,8 @@ export const authApi = {
     if (result.status === "authenticated") {
       const validated = validateRotatedResponse(result, (payload) =>
         requireFormalTokenPair<Extract<GoogleCredentialResult, { status: "authenticated" }>>(
-          payload
+          payload,
+          ["status", "accessToken", "refreshToken", "expiresIn"]
         )
       );
       return validated;
@@ -332,7 +339,14 @@ export const authApi = {
       }
     );
     return validateRotatedResponse(tokens, (payload) => {
-      const validated = requireFormalTokenPair<VerifiedGoogleRegistrationPayload>(payload);
+      const exactKeys =
+        payload && typeof payload === "object" && "needoId" in payload
+          ? ["accessToken", "refreshToken", "expiresIn", "needoId"]
+          : ["accessToken", "refreshToken", "expiresIn"];
+      const validated = requireFormalTokenPair<VerifiedGoogleRegistrationPayload>(
+        payload,
+        exactKeys
+      );
       if (validated.needoId !== undefined && !/^u\d{10}$/.test(validated.needoId)) {
         throw new Error("error.api");
       }

@@ -1,12 +1,4 @@
-import {
-  readBrowserStorage,
-  removeBrowserStorage,
-  writeBrowserStorage
-} from "../lib/browserStorage";
 import { clearMerchantAdminPreview } from "./merchantAdminPreview";
-
-const refreshTokenStorageKey = "needo.auth.refresh-token";
-const legacyAccessTokenStorageKey = "needo.auth.access-token";
 
 export type AuthTransitionCredentials = {
   accessToken: string | null;
@@ -56,43 +48,8 @@ let phase: AuthTransitionPhase = "client_committed";
 let rotationTail = Promise.resolve();
 let revoker: Revoker | null = null;
 
-function readRefreshToken() {
-  const token = readBrowserStorage(refreshTokenStorageKey, {
-    kind: "session",
-    silent: true
-  });
-  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
-  return token;
-}
-
-refreshToken = readRefreshToken();
-
 function publish() {
   listeners.forEach((listener) => listener());
-}
-
-function removeCredentialStorage() {
-  const results = [
-    removeBrowserStorage(refreshTokenStorageKey, { silent: true }),
-    removeBrowserStorage(refreshTokenStorageKey, {
-      kind: "session",
-      silent: true
-    }),
-    removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true })
-  ];
-  return results.every(Boolean);
-}
-
-function persistCredentials(credentials: AuthTransitionCredentials) {
-  const results = [
-    removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true }),
-    removeBrowserStorage(refreshTokenStorageKey, { silent: true }),
-    writeBrowserStorage(refreshTokenStorageKey, credentials.refreshToken, {
-      kind: "session",
-      silent: true
-    })
-  ];
-  return results.every(Boolean);
 }
 
 function revoke(credentials: AuthTransitionCredentials | null) {
@@ -122,7 +79,27 @@ function failClosed() {
   expectedAuthUserId = null;
   phase = "client_committed";
   clearMerchantAdminPreview();
-  removeCredentialStorage();
+  publish();
+}
+
+export function hydrateAuthCredentialCoordinator(input: {
+  credentialVersion: number;
+  expectedUserId: number | null;
+  refreshToken: string | null;
+}) {
+  generation += 1;
+  operationSequence += 1;
+  activeLatestOperationId = null;
+  activeRotationOperationId = null;
+  activeServerCredentials = null;
+  rotationTail = Promise.resolve();
+  accessToken = null;
+  refreshToken = input.refreshToken;
+  expectedAuthUserId = input.expectedUserId;
+  credentialVersion = Number.isSafeInteger(input.credentialVersion)
+    ? Math.max(credentialVersion, input.credentialVersion)
+    : credentialVersion;
+  phase = "client_committed";
   publish();
 }
 
@@ -197,7 +174,7 @@ export function commitRotatedAuthOperation(operation: AuthOperation, input: Rota
     return false;
   }
 
-  const persisted = persistCredentials(credentials) && input.persistClient();
+  const persisted = input.persistClient();
   if (!persisted) {
     revoke(credentials);
     activeServerCredentials = null;
@@ -246,6 +223,7 @@ export function commitExistingAuthOperation(
 ) {
   if (!operationIsCurrent(operation) || !persistClient()) return false;
   expectedAuthUserId = expectedUserIdValue;
+  credentialVersion += 1;
   operation.phase = "client_committed";
   phase = "client_committed";
   if (operation.mode === "latest") activeLatestOperationId = null;
@@ -330,30 +308,15 @@ export function installServerAuthCredentials(
 export function setCoordinatorAccessToken(nextAccessToken: string | null) {
   accessToken = nextAccessToken;
   credentialVersion += 1;
-  const removed = removeBrowserStorage(legacyAccessTokenStorageKey, {
-    silent: true
-  });
   publish();
-  return removed;
+  return true;
 }
 
 export function setCoordinatorRefreshToken(nextRefreshToken: string | null) {
   credentialVersion += 1;
-  const removedLegacy = removeBrowserStorage(refreshTokenStorageKey, {
-    silent: true
-  });
-  const persisted = nextRefreshToken
-    ? writeBrowserStorage(refreshTokenStorageKey, nextRefreshToken, {
-        kind: "session",
-        silent: true
-      })
-    : removeBrowserStorage(refreshTokenStorageKey, {
-        kind: "session",
-        silent: true
-      });
-  refreshToken = persisted ? nextRefreshToken : null;
+  refreshToken = nextRefreshToken;
   publish();
-  return removedLegacy && persisted;
+  return true;
 }
 
 export function setCoordinatorExpectedUserId(userId: number | null) {

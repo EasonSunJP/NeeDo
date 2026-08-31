@@ -117,6 +117,12 @@ describe("formal auth API", () => {
     }
   );
 
+  it("rejects a login payload that tries to inject an inline privileged me", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({ ...tokenPair, me: merchantMe });
+
+    await expect(authApi.login("u0000000042", "Password.2026!")).rejects.toThrow("error.api");
+  });
+
   it("starts registration with only email and password without persisting tokens", async () => {
     vi.mocked(httpClient.request).mockResolvedValueOnce(challenge);
 
@@ -198,6 +204,21 @@ describe("formal auth API", () => {
       retryOnUnauthorized: false
     });
     expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("rejects an authenticated Google payload that includes inline me", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      status: "authenticated",
+      ...tokenPair,
+      me: merchantMe
+    });
+
+    await expect(
+      authApi.submitGoogleCredential({
+        credential: "opaque-google-credential",
+        nonceChallengeId: googleInitialization.nonceChallengeId
+      })
+    ).rejects.toThrow("error.api");
   });
 
   it("does not persist tokens for a Google verification-required result", async () => {
@@ -528,6 +549,30 @@ describe("formal auth API", () => {
       rotatedCredentials: {
         accessToken: "access-token",
         refreshToken: "refresh-token"
+      }
+    });
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("captures a refresh-only malformed rotation for revocation without accepting it", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      refreshToken: "partial-refresh",
+      expiresIn: 900,
+      me: merchantMe,
+      shopPublicId: "shop0000000012"
+    });
+
+    await expect(
+      authApi.switchMerchantShop(
+        "shop0000000012",
+        { accessToken: "stored-access-token", refreshToken: "stored-refresh-token" },
+        { expectedUserId: 7, expectedIdentityId: 51 }
+      )
+    ).rejects.toMatchObject({
+      message: "error.api",
+      rotatedCredentials: {
+        accessToken: null,
+        refreshToken: "partial-refresh"
       }
     });
     expect(setAuthTokens).not.toHaveBeenCalled();

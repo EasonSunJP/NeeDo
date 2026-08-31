@@ -684,13 +684,14 @@ function serializeDashboardQuery(scope: BackofficeScope, query: DashboardQuery):
   return serialized;
 }
 
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function requireManageableMerchantShopsPage(
   value: unknown,
-  expectedPage: number
+  expectedPage: number,
+  expectedPageSize: number
 ): PaginatedApiPayload<ManageableMerchantShopPayload> {
   if (!value || typeof value !== "object") {
     throw new Error("error.api");
@@ -699,13 +700,13 @@ function requireManageableMerchantShopsPage(
   const page = value as Partial<PaginatedApiPayload<ManageableMerchantShopPayload>>;
   if (
     !Array.isArray(page.list) ||
-    !isNonNegativeInteger(page.total) ||
-    !isNonNegativeInteger(page.page) ||
+    !isNonNegativeSafeInteger(page.total) ||
+    !isNonNegativeSafeInteger(page.page) ||
     page.page !== expectedPage ||
-    !isNonNegativeInteger(page.page_size) ||
-    page.page_size < 1 ||
-    page.page_size > 100 ||
+    !isNonNegativeSafeInteger(page.page_size) ||
+    page.page_size !== expectedPageSize ||
     page.list.length > page.page_size ||
+    page.total < page.list.length ||
     !page.list.every((shop) =>
       Boolean(
         shop &&
@@ -748,9 +749,9 @@ export const backofficeRealDataApi = {
   },
   async manageableMerchantShops(page = 1, pageSize = 20, options?: { signal?: AbortSignal }) {
     if (
-      !Number.isInteger(page) ||
+      !Number.isSafeInteger(page) ||
       page < 1 ||
-      !Number.isInteger(pageSize) ||
+      !Number.isSafeInteger(pageSize) ||
       pageSize < 1 ||
       pageSize > 100
     ) {
@@ -764,7 +765,7 @@ export const backofficeRealDataApi = {
         ...(options?.signal ? { signal: options.signal } : {})
       }
     );
-    return requireManageableMerchantShopsPage(payload, page);
+    return requireManageableMerchantShopsPage(payload, page, pageSize);
   },
   orders(scope: BackofficeScope, query?: ListQuery) {
     return httpClient.request<PaginatedApiPayload<BackofficeOrderPayload>>(

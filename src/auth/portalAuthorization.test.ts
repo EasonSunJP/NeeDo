@@ -70,7 +70,12 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
     ],
     identityAvailability: [
       {
-        kind: portal === "business" ? "affiliate" : portal === "merchant" || portal === "technician" ? portal : "customer",
+        kind:
+          portal === "business"
+            ? "affiliate"
+            : portal === "merchant" || portal === "technician"
+              ? portal
+              : "customer",
         state: "active",
         identityId: 90,
         applicationId: null,
@@ -109,7 +114,7 @@ describe("remembered portal authorization", () => {
   it("does not treat a session without a refresh token as restorable authorization", () => {
     rememberPortalAuthorization(createSession("merchant"), null);
 
-    expect(readRememberedPortalSession("merchant")?.portal).toBe("merchant");
+    expect(readRememberedPortalSession("merchant")).toBeNull();
     expect(readRememberedPortalRefreshToken("merchant")).toBeNull();
     expect(hasRememberedPortalAuthorization("merchant")).toBe(false);
   });

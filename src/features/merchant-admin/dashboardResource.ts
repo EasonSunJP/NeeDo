@@ -39,9 +39,9 @@ function sweepDashboardCache() {
     }
   });
   while (dashboardCache.size > maximumDashboardCacheEntries) {
-    const oldest = [...dashboardCache.entries()]
-      .filter(([, candidate]) => !candidate.request)
-      .sort((left, right) => left[1].touchedAt - right[1].touchedAt)[0];
+    const oldest = [...dashboardCache.entries()].sort(
+      (left, right) => left[1].touchedAt - right[1].touchedAt
+    )[0];
     if (!oldest) break;
     oldest[1].controller.abort();
     dashboardCache.delete(oldest[0]);

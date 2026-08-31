@@ -442,7 +442,6 @@ async function sendRequest<TData>(
     method,
     signal: options.signal
   });
-  const envelope = await parseEnvelope<TData>(response);
 
   if (
     response.status === 401 &&
@@ -455,7 +454,6 @@ async function sendRequest<TData>(
       if (canRetry && current.accessToken) {
         return sendRequest(path, options, false);
       }
-      return assertSuccess(envelope, response.status);
     }
   }
 
@@ -489,6 +487,7 @@ async function sendRequest<TData>(
     authExpiredHandler?.();
   }
 
+  const envelope = await parseEnvelope<TData>(response);
   return assertSuccess(envelope, response.status);
 }
 

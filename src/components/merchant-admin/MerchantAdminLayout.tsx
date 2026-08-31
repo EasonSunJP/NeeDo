@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode
+} from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { BackofficeDashboardPayload, DashboardQuery } from "../../api/backofficeRealData";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
@@ -71,6 +78,41 @@ export type MerchantAdminDashboardResource = {
 type MerchantAdminLayoutProps = {
   children: ReactNode | ((resource: MerchantAdminDashboardResource) => ReactNode);
 };
+
+type OwnedDashboardPayload = {
+  ownerKey: string;
+  payload: BackofficeDashboardPayload;
+};
+
+type ManageableShopsLoader = typeof backofficeRealDataApi.manageableMerchantShops;
+
+export function readOwnedDashboardPayload(
+  owned: OwnedDashboardPayload | null,
+  currentOwnerKey: string | null
+) {
+  return owned?.ownerKey === currentOwnerKey ? owned.payload : null;
+}
+
+export async function resolveSelectedManageableShop(
+  signal: AbortSignal,
+  loadPage: ManageableShopsLoader = backofficeRealDataApi.manageableMerchantShops
+) {
+  const pageSize = 100;
+  let page = 1;
+
+  while (!signal.aborted && page <= maximumManageableShopPages) {
+    const manageable = await loadPage(page, pageSize, { signal });
+    if (signal.aborted) throw new DOMException("Shop owner was superseded", "AbortError");
+    const selectedShop = manageable.list.find((shop) => shop.selected);
+    if (selectedShop) return selectedShop;
+    const totalPages = Math.ceil(manageable.total / manageable.page_size);
+    if (page >= totalPages) break;
+    page += 1;
+  }
+
+  if (signal.aborted) throw new DOMException("Shop owner was superseded", "AbortError");
+  throw new Error("error.auth.merchant_shop_required");
+}
 
 const merchantAdminSections: MerchantAdminNavSection[] = [
   {
@@ -336,7 +378,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
     useState<AdminThemeState>(getInitialThemeState);
   const [preview, setPreview] = useState(getMerchantAdminPreview);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
+  const [ownedDashboard, setOwnedDashboard] = useState<OwnedDashboardPayload | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<"loading" | "success" | "error">("loading");
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
@@ -374,6 +416,15 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
         : null,
     [credentialEpoch, resolvedShopPublicId, session]
   );
+  const dashboardOwnerKey = dashboardOwner
+    ? JSON.stringify([
+        dashboardOwner.userId,
+        dashboardOwner.identityId,
+        dashboardOwner.shopPublicId,
+        dashboardOwner.credentialEpoch
+      ])
+    : null;
+  const dashboard = readOwnedDashboardPayload(ownedDashboard, dashboardOwnerKey);
   const visibleSections = useMemo(
     () =>
       merchantAdminSections
@@ -428,7 +479,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
     setActiveSectionKey(routeSectionKey);
   }, [routeSectionKey]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     let activeRequest = true;
     const controller = new AbortController();
     if (confirmedSessionShopPublicId && /^shop\d{10}$/.test(confirmedSessionShopPublicId)) {
@@ -445,42 +496,21 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
       };
     }
 
-    const resolveSelectedShop = async () => {
-      const pageSize = 100;
-      let page = 1;
-
-      while (activeRequest) {
-        const manageable = await backofficeRealDataApi.manageableMerchantShops(page, pageSize, {
-          signal: controller.signal
-        });
-        if (!activeRequest || controller.signal.aborted) return;
-        const selectedShop = manageable.list.find((shop) => shop.selected);
-        if (selectedShop) {
-          setResolvedShop({
-            ownerKey: shopResolutionOwnerKey,
-            shopPublicId: selectedShop.publicId
-          });
-          return;
-        }
-
-        const totalPages = Math.ceil(manageable.total / manageable.page_size);
-        if (page >= totalPages) {
-          throw new Error("error.auth.merchant_shop_required");
-        }
-        if (page >= maximumManageableShopPages) {
-          throw new Error("error.auth.merchant_shop_required");
-        }
-        page += 1;
-      }
-    };
-
     setSummaryStatus("loading");
     setSummaryError(null);
-    void resolveSelectedShop().catch((error: unknown) => {
-      if (!activeRequest) return;
-      setSummaryError(error);
-      setSummaryStatus("error");
-    });
+    void resolveSelectedManageableShop(controller.signal)
+      .then((selectedShop) => {
+        if (!activeRequest) return;
+        setResolvedShop({
+          ownerKey: shopResolutionOwnerKey,
+          shopPublicId: selectedShop.publicId
+        });
+      })
+      .catch((error: unknown) => {
+        if (!activeRequest) return;
+        setSummaryError(error);
+        setSummaryStatus("error");
+      });
 
     return () => {
       activeRequest = false;
@@ -488,9 +518,9 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
     };
   }, [confirmedSessionShopPublicId, session, shopResolutionOwnerKey]);
 
-  useEffect(() => {
-    if (!dashboardOwner) {
-      setDashboard(null);
+  useLayoutEffect(() => {
+    if (!dashboardOwner || !dashboardOwnerKey) {
+      setOwnedDashboard(null);
       return;
     }
 
@@ -501,12 +531,12 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
     loadMerchantAdminDashboard(dashboardOwner, dashboardQuery)
       .then((payload) => {
         if (!activeRequest) return;
-        setDashboard(payload);
+        setOwnedDashboard({ ownerKey: dashboardOwnerKey, payload });
         setSummaryStatus("success");
       })
       .catch((error: unknown) => {
         if (!activeRequest) return;
-        setDashboard(null);
+        setOwnedDashboard(null);
         setSummaryError(error);
         setSummaryStatus("error");
       });
@@ -515,7 +545,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
       activeRequest = false;
       invalidateMerchantAdminDashboardOwner(dashboardOwner);
     };
-  }, [dashboardOwner, summaryRevision]);
+  }, [dashboardOwner, dashboardOwnerKey, summaryRevision]);
 
   const reloadDashboard = () => {
     if (!dashboardOwner) return;

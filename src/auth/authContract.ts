@@ -26,6 +26,40 @@ const identityAvailabilityStates = new Set<IdentityAvailability["state"]>([
   "pending",
   "rejected"
 ]);
+const authMeKeys = [
+  "id",
+  "needoId",
+  "primaryPublicId",
+  "activeIdentityId",
+  "activePublicId",
+  "email",
+  "emailVerifiedAt",
+  "hasPassword",
+  "username",
+  "avatarUrl",
+  "isActive",
+  "isTestAccount",
+  "currentIdentity",
+  "identities",
+  "roles",
+  "permissions",
+  "menus",
+  "identityAvailability"
+] as const;
+const identityKeys = ["id", "publicId", "scopeId", "scopeType", "type"] as const;
+const identityAvailabilityKeys = [
+  "kind",
+  "state",
+  "identityId",
+  "applicationId",
+  "rejectionReason"
+] as const;
+const tokenPairKeys = ["accessToken", "refreshToken", "expiresIn"] as const;
+
+function hasExactKeys(value: object, keys: readonly string[]) {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
 
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
@@ -86,7 +120,7 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 export function isFormalAuthIdentityPayload(value: unknown): value is AuthIdentityPayload {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, identityKeys)) {
     return false;
   }
 
@@ -105,7 +139,7 @@ export function isFormalAuthIdentityPayload(value: unknown): value is AuthIdenti
 }
 
 function isFormalIdentityAvailability(value: unknown): value is IdentityAvailability {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, identityAvailabilityKeys)) {
     return false;
   }
 
@@ -121,7 +155,7 @@ function isFormalIdentityAvailability(value: unknown): value is IdentityAvailabi
 }
 
 export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, authMeKeys)) {
     return false;
   }
 
@@ -178,7 +212,7 @@ export function requireFormalAuthMePayload(value: unknown, errorKey = "error.api
 }
 
 export function isFormalTokenPair(value: unknown): value is TokenPairPayload {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, tokenPairKeys)) {
     return false;
   }
 
@@ -194,9 +228,20 @@ export function isFormalTokenPair(value: unknown): value is TokenPairPayload {
 }
 
 export function requireFormalTokenPair<TPayload extends TokenPairPayload>(
-  value: unknown
+  value: unknown,
+  exactKeys: readonly string[] = tokenPairKeys
 ): TPayload {
-  if (!isFormalTokenPair(value)) {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, exactKeys)) {
+    throw new Error("error.api");
+  }
+  const tokens = value as Partial<TokenPairPayload>;
+  if (
+    typeof tokens.accessToken !== "string" ||
+    tokens.accessToken.length === 0 ||
+    typeof tokens.refreshToken !== "string" ||
+    tokens.refreshToken.length === 0 ||
+    tokens.expiresIn !== formalAccessTokenTtlSeconds
+  ) {
     throw new Error("error.api");
   }
 
@@ -207,7 +252,7 @@ export function requireFormalRefreshPayload(value: unknown): {
   accessToken: string;
   expiresIn: number;
 } {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, ["accessToken", "expiresIn"])) {
     throw new Error("error.api");
   }
 
@@ -231,11 +276,12 @@ export type AuthTransitionValidationContext = {
 export function requireFormalSwitchIdentityPayload<
   TPayload extends TokenPairPayload & { me: AuthMePayload }
 >(value: unknown, context: AuthTransitionValidationContext): TPayload {
-  if (!isFormalTokenPair(value) || !("me" in value)) {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, [...tokenPairKeys, "me"])) {
     throw new Error("error.api");
   }
 
   const payload = value as Partial<TPayload>;
+  requireFormalTokenPair(value, [...tokenPairKeys, "me"]);
   const me = requireFormalAuthMePayload(payload.me);
   if (me.id !== context.expectedUserId || me.currentIdentity.id !== context.expectedIdentityId) {
     throw new Error("error.api");
@@ -254,15 +300,28 @@ export function requireFormalSwitchMerchantShopPayload<
   requestedShopPublicId: string,
   context: AuthTransitionValidationContext
 ): TPayload {
-  const payload = requireFormalSwitchIdentityPayload<TPayload>(value, context);
   if (
-    !/^shop\d{10}$/.test(payload.shopPublicId) ||
-    payload.shopPublicId !== requestedShopPublicId ||
+    !value ||
+    typeof value !== "object" ||
+    !hasExactKeys(value, [...tokenPairKeys, "me", "shopPublicId"])
+  ) {
+    throw new Error("error.api");
+  }
+  const candidate = value as Record<string, unknown>;
+  const payload = requireFormalSwitchIdentityPayload<TPayload>(
+    Object.fromEntries(Object.entries(candidate).filter(([key]) => key !== "shopPublicId")),
+    context
+  );
+  const shopPublicId = candidate.shopPublicId;
+  if (
+    typeof shopPublicId !== "string" ||
+    !/^shop\d{10}$/.test(shopPublicId) ||
+    shopPublicId !== requestedShopPublicId ||
     payload.me.currentIdentity.scopeType !== "merchant_account" ||
     !merchantAccountIdentityTypes.has(payload.me.currentIdentity.type)
   ) {
     throw new Error("error.api");
   }
 
-  return payload;
+  return value as TPayload;
 }

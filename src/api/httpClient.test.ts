@@ -94,7 +94,7 @@ describe("httpClient auth tokens", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the access token in memory and persists only the refresh token", () => {
+  it("keeps direct http client credentials in memory without writing legacy token keys", () => {
     setAuthTokens({
       accessToken: "access-token",
       refreshToken: "refresh-token"
@@ -103,7 +103,7 @@ describe("httpClient auth tokens", () => {
     expect(getAccessToken()).toBe("access-token");
     expect(getStoredRefreshToken()).toBe("refresh-token");
     expect(window.localStorage.getItem("needo.auth.access-token")).toBeNull();
-    expect(window.sessionStorage.getItem("needo.auth.refresh-token")).toBe("refresh-token");
+    expect(window.sessionStorage.getItem("needo.auth.refresh-token")).toBeNull();
     expect(window.localStorage.getItem("needo.auth.refresh-token")).toBeNull();
   });
 
@@ -257,6 +257,46 @@ describe("httpClient auth tokens", () => {
     expect(getAccessToken()).toBeNull();
     expect(onAuthExpired).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    [
+      "JSON",
+      "request",
+      new Response("not-json", { status: 401, headers: { "content-type": "application/json" } })
+    ],
+    [
+      "CSV",
+      "csv",
+      new Response("denied", { status: 401, headers: { "content-type": "text/csv" } })
+    ],
+    [
+      "binary",
+      "data",
+      new Response(new Uint8Array([1, 2]), {
+        status: 401,
+        headers: { "content-type": "application/octet-stream" }
+      })
+    ]
+  ])(
+    "processes %s 401 ownership before parsing the response body",
+    async (_label, kind, response) => {
+      const onAuthExpired = vi.fn();
+      setAuthTokens({ accessToken: "stale-access-token" });
+      setAuthExpiredHandler(onAuthExpired);
+      vi.mocked(fetch).mockResolvedValueOnce(response);
+
+      const request =
+        kind === "csv"
+          ? httpClient.requestCsvExport("/exports")
+          : kind === "data"
+            ? httpClient.requestDataUrl("/media")
+            : httpClient.request("/profile");
+      await expect(request).rejects.toBeInstanceOf(Error);
+
+      expect(getAccessToken()).toBeNull();
+      expect(onAuthExpired).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it("returns transition 401 responses to the caller without clearing newer credentials", async () => {
     const onAuthExpired = vi.fn();

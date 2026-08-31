@@ -182,6 +182,9 @@ describe("formal dashboard frontend API contract", () => {
     [{ list: [], total: 0, page: 0, page_size: 20 }],
     [{ list: [], total: 0, page: 1, page_size: 0 }],
     [{ list: [], total: 0, page: 2, page_size: 20 }],
+    [{ list: [], total: Number.MAX_SAFE_INTEGER + 1, page: 1, page_size: 20 }],
+    [{ list: [], total: 0, page: Number.MAX_SAFE_INTEGER + 1, page_size: 20 }],
+    [{ list: [], total: 0, page: 1, page_size: 50 }],
     [{ list: [], total: 0, page: 1, page_size: 101 }],
     [
       {
@@ -254,7 +257,9 @@ describe("formal dashboard frontend API contract", () => {
     [0, 20],
     [1, 0],
     [1, 101],
-    [1.5, 20]
+    [1.5, 20],
+    [Number.MAX_SAFE_INTEGER + 1, 20],
+    [1, Number.MAX_SAFE_INTEGER + 1]
   ])(
     "rejects invalid manageable-shop pagination before the request (%s, %s)",
     async (page, pageSize) => {

@@ -19,17 +19,13 @@ import {
 } from "../api/auth";
 import { ApiClientError, setAuthExpiredHandler } from "../api/httpClient";
 import {
-  readBrowserStorage,
-  removeBrowserStorage,
-  writeBrowserStorage
-} from "../lib/browserStorage";
-import {
   abandonAuthOperation,
   beginLatestAuthOperation,
   commitExistingAuthOperation,
   commitRotatedAuthOperation,
   enqueueAuthRotation,
   getAuthCredentialSnapshot,
+  hydrateAuthCredentialCoordinator,
   isAuthOperationCurrent,
   markAuthOperationServerRotated,
   rejectAuthOperationAfterServerRotation,
@@ -40,8 +36,17 @@ import {
   type AuthTransitionCredentials
 } from "./authCredentialCoordinator";
 import {
-  isFormalTokenPair,
+  createAnonymousAuthEnvelope,
+  createAuthInstanceId,
+  createCommittedAuthEnvelope,
+  readPersistedAuthEnvelope,
+  writePersistedAuthEnvelope,
+  type CommittedAuthEnvelopeV8,
+  type PersistedAuthEnvelopeV8
+} from "./authEnvelope";
+import {
   requireFormalAuthMePayload,
+  requireFormalTokenPair,
   requireFormalSwitchIdentityPayload,
   requireFormalSwitchMerchantShopPayload
 } from "./authContract";
@@ -49,16 +54,11 @@ import type { FeaturePermission } from "./featurePermissions";
 import { hasPortalFeaturePermission } from "./featurePermissions";
 import type { PortalScope } from "./portal";
 import {
-  captureRememberedPortalAuthorizations,
-  forgetAllRememberedPortalAuthorizations,
+  buildRememberedByPortal,
   hasRememberedPortalAuthorization,
-  readRememberedPortalRefreshToken,
-  readRememberedPortalSession,
-  rememberPortalAuthorization,
-  restoreRememberedPortalAuthorizations
+  readRememberedPortalAuthorization
 } from "./portalAuthorization";
 import {
-  authSessionVersion,
   buildAuthSessionFromMe,
   canAccessFeatureFromSession,
   canAccessMenuFromSession,
@@ -67,10 +67,7 @@ import {
   findIdentityForPortal,
   hasAnyPermissionInSession,
   hasPermissionInSession,
-  isLoginMethod,
   isSessionAlignedWithPortal,
-  normalizeAuthSessionEntityIds,
-  type AuthMePayload,
   type AuthSession,
   type LoginMethod
 } from "./rbac";
@@ -127,7 +124,7 @@ type AuthContextValue = {
     code: string
   ) => Promise<AuthActionResult>;
   loginWithQr: (portal: PortalScope, token: string) => Promise<AuthActionResult>;
-  logout: () => Promise<void>;
+  logout: () => Promise<{ message?: string; ok: boolean }>;
   switchPortal: (portal: PortalScope) => Promise<AuthActionResult>;
   switchMerchantShop: (
     shopPublicId: string
@@ -142,102 +139,16 @@ type AuthContextValue = {
   canAccessMenu: (permission: string) => boolean;
 };
 
-const portalStorageKey = "needo.auth.portal";
-const legacySessionStorageKey = "needo.auth.session";
-const allPortals: PortalScope[] = ["user", "merchant", "technician", "business", "admin"];
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-type BrowserAuthStorageSnapshot = {
-  legacySessionLocal: string | null;
-  legacySessionTab: string | null;
-  portalLocal: string | null;
-  portalTab: string | null;
-};
-
-function captureBrowserAuthStorage(): BrowserAuthStorageSnapshot {
-  return {
-    legacySessionLocal: readBrowserStorage(legacySessionStorageKey, { silent: true }),
-    legacySessionTab: readBrowserStorage(legacySessionStorageKey, {
-      kind: "session",
-      silent: true
-    }),
-    portalLocal: readBrowserStorage(portalStorageKey, { silent: true }),
-    portalTab: readBrowserStorage(portalStorageKey, { kind: "session", silent: true })
-  };
-}
-
-function restoreBrowserValue(key: string, value: string | null, kind: "local" | "session") {
-  return value === null
-    ? removeBrowserStorage(key, { kind, silent: true })
-    : writeBrowserStorage(key, value, { kind, silent: true });
-}
-
-function restoreBrowserAuthStorage(snapshot: BrowserAuthStorageSnapshot) {
-  return [
-    restoreBrowserValue(portalStorageKey, snapshot.portalLocal, "local"),
-    restoreBrowserValue(portalStorageKey, snapshot.portalTab, "session"),
-    restoreBrowserValue(legacySessionStorageKey, snapshot.legacySessionLocal, "local"),
-    restoreBrowserValue(legacySessionStorageKey, snapshot.legacySessionTab, "session")
-  ].every(Boolean);
-}
-
-function clearClientAuthStorage() {
-  return [
-    removeBrowserStorage(portalStorageKey, { silent: true }),
-    removeBrowserStorage(portalStorageKey, { kind: "session", silent: true }),
-    removeBrowserStorage(legacySessionStorageKey, { silent: true }),
-    removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true }),
-    forgetAllRememberedPortalAuthorizations()
-  ].every(Boolean);
-}
-
-function persistClientSession(nextSession: AuthSession, refreshToken: string | null) {
-  return [
-    removeBrowserStorage(portalStorageKey, { silent: true }),
-    removeBrowserStorage(legacySessionStorageKey, { silent: true }),
-    writeBrowserStorage(portalStorageKey, nextSession.portal, { kind: "session", silent: true }),
-    writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), {
-      kind: "session",
-      silent: true
-    }),
-    rememberPortalAuthorization(nextSession, refreshToken)
-  ].every(Boolean);
-}
-
-function isStoredAuthSession(value: unknown): value is AuthSession {
-  if (!value || typeof value !== "object") return false;
-  const session = value as Partial<AuthSession>;
-  return (
-    session.authVersion === authSessionVersion &&
-    typeof session.id === "number" &&
-    typeof session.needoId === "string" &&
-    typeof session.primaryPublicId === "string" &&
-    typeof session.activeIdentityId === "number" &&
-    (session.activePublicId === null || typeof session.activePublicId === "string") &&
-    typeof session.username === "string" &&
-    typeof session.email === "string" &&
-    (session.emailVerifiedAt === null || typeof session.emailVerifiedAt === "string") &&
-    typeof session.hasPassword === "boolean" &&
-    isLoginMethod(session.loginMethod) &&
-    allPortals.includes(session.portal as PortalScope) &&
-    Array.isArray(session.allowedPortals) &&
-    Array.isArray(session.roles) &&
-    Array.isArray(session.permissions) &&
-    Array.isArray(session.menus) &&
-    Array.isArray(session.identityAvailability)
-  );
-}
-
-function readStoredAuthSession() {
-  const raw = readBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true });
-  removeBrowserStorage(legacySessionStorageKey, { silent: true });
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return isStoredAuthSession(parsed) ? normalizeAuthSessionEntityIds(parsed) : null;
-  } catch {
-    return null;
-  }
+function readInitialAuthEnvelope() {
+  const envelope = readPersistedAuthEnvelope();
+  hydrateAuthCredentialCoordinator({
+    credentialVersion: envelope?.credentialVersion ?? 0,
+    expectedUserId: envelope?.state === "committed" ? envelope.session.id : null,
+    refreshToken: envelope?.state === "committed" ? envelope.refreshToken : null
+  });
+  return envelope;
 }
 
 function normalizeApiError(error: unknown, fallback = "error.api") {
@@ -255,7 +166,7 @@ function normalizeApiError(error: unknown, fallback = "error.api") {
 function isTransientAuthRestoreError(error: unknown) {
   if (error instanceof TypeError) return true;
   if (error instanceof ApiClientError) return ![400, 401, 403, 422].includes(error.status);
-  return error instanceof Error;
+  return error instanceof Error && !error.message.startsWith("error.");
 }
 
 function isVerificationChallenge(value: unknown): value is VerificationChallengePayload {
@@ -274,10 +185,13 @@ function isVerificationChallenge(value: unknown): value is VerificationChallenge
 }
 
 function requireAuthenticatedGoogleResult(result: GoogleCredentialResult) {
-  if (result.status !== "authenticated" || !isFormalTokenPair(result)) {
+  if (result.status !== "authenticated") {
     throw new Error("error.auth.google_api_unavailable");
   }
-  return result;
+  return requireFormalTokenPair<Extract<GoogleCredentialResult, { status: "authenticated" }>>(
+    result,
+    ["status", "accessToken", "refreshToken", "expiresIn"]
+  );
 }
 
 function readRotatedResponseErrorCredentials(error: unknown) {
@@ -295,8 +209,8 @@ function readRotatedResponseErrorCredentials(error: unknown) {
     candidate &&
     typeof candidate === "object" &&
     "accessToken" in candidate &&
-    typeof candidate.accessToken === "string" &&
-    candidate.accessToken.length > 0 &&
+    (candidate.accessToken === null ||
+      (typeof candidate.accessToken === "string" && candidate.accessToken.length > 0)) &&
     "refreshToken" in candidate &&
     typeof candidate.refreshToken === "string" &&
     candidate.refreshToken.length > 0
@@ -306,7 +220,9 @@ function readRotatedResponseErrorCredentials(error: unknown) {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [storedSessionForInitialRestore] = useState(readStoredAuthSession);
+  const [initialEnvelope] = useState(readInitialAuthEnvelope);
+  const storedSessionForInitialRestore =
+    initialEnvelope?.state === "committed" ? initialEnvelope.session : null;
   const initialCredentials = getAuthCredentialSnapshot();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isRestoring, setIsRestoring] = useState(
@@ -316,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [restoreRevision, setRestoreRevision] = useState(0);
   const restoreInFlightRef = useRef<Promise<void> | null>(null);
   const sessionRef = useRef<AuthSession | null>(null);
+  const envelopeRef = useRef<PersistedAuthEnvelopeV8 | null>(initialEnvelope);
 
   const publishSession = useCallback((nextSession: AuthSession | null) => {
     sessionRef.current = nextSession;
@@ -329,11 +246,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const terminateLocalSession = useCallback(() => {
     const credentials = terminateAuthImmediately();
-    clearClientAuthStorage();
     publishAnonymous();
     setIsRestoring(false);
     return credentials;
   }, [publishAnonymous]);
+
+  const persistAnonymousTombstone = useCallback(() => {
+    const currentEnvelope = envelopeRef.current;
+    const tombstone = createAnonymousAuthEnvelope({
+      authInstanceId: currentEnvelope?.authInstanceId ?? createAuthInstanceId(),
+      credentialVersion: getAuthCredentialSnapshot().credentialVersion
+    });
+    const written = writePersistedAuthEnvelope(tombstone);
+    if (written) envelopeRef.current = tombstone;
+    return written;
+  }, []);
+
+  const terminateAndTombstone = useCallback(() => {
+    const credentials = terminateLocalSession();
+    const durable = persistAnonymousTombstone();
+    return { credentials, durable };
+  }, [persistAnonymousTombstone, terminateLocalSession]);
+
+  const createCommittedEnvelope = useCallback(
+    (nextSession: AuthSession, refreshToken: string): CommittedAuthEnvelopeV8 => {
+      const existing = envelopeRef.current;
+      const sameUser = existing?.state === "committed" && existing.session.id === nextSession.id;
+      const previousRemembered = sameUser ? existing.rememberedByPortal : {};
+      return createCommittedAuthEnvelope({
+        authInstanceId: sameUser ? existing.authInstanceId : createAuthInstanceId(),
+        credentialVersion: getAuthCredentialSnapshot().credentialVersion + 1,
+        refreshToken,
+        session: nextSession,
+        rememberedByPortal: buildRememberedByPortal(previousRemembered, nextSession, refreshToken)
+      });
+    },
+    []
+  );
 
   const rejectInvalidRotatedResponse = useCallback(
     (operation: AuthOperation, error: unknown) => {
@@ -347,7 +296,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
       if (!rejectAuthOperationAfterServerRotation(operation)) return false;
-      clearClientAuthStorage();
       publishAnonymous();
       setIsRestoring(false);
       return true;
@@ -366,44 +314,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         !markAuthOperationServerRotated(operation, credentials)
       )
         return "superseded" as const;
+      const nextEnvelope = createCommittedEnvelope(nextSession, credentials.refreshToken);
       const committed = commitRotatedAuthOperation(operation, {
         expectedUserId: nextSession.id,
-        persistClient: () => persistClientSession(nextSession, credentials.refreshToken)
+        persistClient: () => writePersistedAuthEnvelope(nextEnvelope)
       });
       if (!committed) {
-        clearClientAuthStorage();
         publishAnonymous();
         return "storage_failed" as const;
       }
+      envelopeRef.current = nextEnvelope;
       publishSession(nextSession);
       setRestoreError(null);
       return "committed" as const;
     },
-    [publishAnonymous, publishSession]
+    [createCommittedEnvelope, publishAnonymous, publishSession]
   );
 
   const commitExistingSession = useCallback(
     (operation: AuthOperation, nextSession: AuthSession) => {
-      const browserSnapshot = captureBrowserAuthStorage();
-      const rememberedSnapshot = captureRememberedPortalAuthorizations();
+      const refreshToken = getAuthCredentialSnapshot().refreshToken;
+      if (!refreshToken) return "storage_failed" as const;
+      const nextEnvelope = createCommittedEnvelope(nextSession, refreshToken);
       const committed = commitExistingAuthOperation(operation, nextSession.id, () =>
-        persistClientSession(nextSession, getAuthCredentialSnapshot().refreshToken)
+        writePersistedAuthEnvelope(nextEnvelope)
       );
-      if (!committed) {
-        const browserRestored = restoreBrowserAuthStorage(browserSnapshot);
-        const rememberedRestored = restoreRememberedPortalAuthorizations(rememberedSnapshot);
-        if (!browserRestored || !rememberedRestored) {
-          const credentials = terminateLocalSession();
-          if (credentials) void authApi.logout(credentials).catch(() => undefined);
-          return "rollback_failed" as const;
-        }
-        return "storage_failed" as const;
-      }
+      if (!committed) return "storage_failed" as const;
+      envelopeRef.current = nextEnvelope;
       publishSession(nextSession);
       setRestoreError(null);
       return "committed" as const;
     },
-    [publishSession, terminateLocalSession]
+    [createCommittedEnvelope, publishSession]
   );
 
   const completeLatestAuthentication = useCallback(
@@ -412,9 +354,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tokens: TokenPairPayload,
       requestedPortal: PortalScope,
       loginMethod: LoginMethod,
-      providedMe?: AuthMePayload,
       fallback = "error.api",
-      initialResponseRotated = true
+      initialResponseRotated = true,
+      expectedUserId?: number
     ): Promise<AuthActionResult> => {
       let credentials: AuthTransitionCredentials = {
         accessToken: tokens.accessToken,
@@ -424,10 +366,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (initialResponseRotated && !markAuthOperationServerRotated(operation, credentials)) {
           return { ok: false, message: "error.auth.operation_superseded" };
         }
-        let me = requireFormalAuthMePayload(
-          providedMe ?? (await authApi.me(credentials)),
-          fallback
-        );
+        let me = requireFormalAuthMePayload(await authApi.me(credentials), fallback);
+        if (expectedUserId !== undefined && me.id !== expectedUserId) {
+          throw new Error("error.auth.reauth_required");
+        }
         if (!isAuthOperationCurrent(operation)) {
           markAuthOperationServerRotated(operation, credentials);
           return { ok: false, message: "error.auth.operation_superseded" };
@@ -472,23 +414,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               : "error.auth.operation_superseded"
         };
       } catch (error) {
+        if (!initialResponseRotated && isTransientAuthRestoreError(error)) throw error;
         if (!rejectInvalidRotatedResponse(operation, error)) {
           const wasCurrent = isAuthOperationCurrent(operation);
           abandonAuthOperation(operation);
-          if (wasCurrent) terminateLocalSession();
+          if (wasCurrent) {
+            if (initialResponseRotated) terminateLocalSession();
+            else terminateAndTombstone();
+          }
         }
         return { ok: false, message: normalizeApiError(error, fallback) };
       }
     },
-    [commitRotatedSession, rejectInvalidRotatedResponse, terminateLocalSession]
+    [
+      commitRotatedSession,
+      rejectInvalidRotatedResponse,
+      terminateAndTombstone,
+      terminateLocalSession
+    ]
   );
 
   const restoreRememberedPortalSession = useCallback(
     async (portal: PortalScope): Promise<AuthActionResult> => {
-      const refreshToken = readRememberedPortalRefreshToken(portal);
-      const rememberedSession = readRememberedPortalSession(portal);
-      if (!refreshToken || !rememberedSession)
-        return { ok: false, message: "error.auth.portal_forbidden" };
+      const remembered = readRememberedPortalAuthorization(portal);
+      if (!remembered) return { ok: false, message: "error.auth.portal_forbidden" };
+      const { refreshToken, session: rememberedSession } = remembered;
       const operation = beginLatestAuthOperation("remembered-portal-restore");
       try {
         const refreshed = await authApi.refreshWithCredentials(refreshToken);
@@ -546,14 +496,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await authApi.logout(credentials);
     });
     setAuthExpiredHandler(() => {
-      clearClientAuthStorage();
       publishAnonymous();
+      persistAnonymousTombstone();
     });
     return () => {
       setAuthExpiredHandler(null);
       setAuthCredentialRevoker(null);
     };
-  }, [publishAnonymous]);
+  }, [persistAnonymousTombstone, publishAnonymous]);
 
   useEffect(() => {
     let observedCredentialVersion = getAuthCredentialSnapshot().credentialVersion;
@@ -562,7 +512,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (credentials.credentialVersion === observedCredentialVersion) return;
       observedCredentialVersion = credentials.credentialVersion;
       if (!credentials.refreshToken && sessionRef.current) {
-        clearClientAuthStorage();
         publishAnonymous();
         setIsRestoring(false);
       }
@@ -585,33 +534,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           accessToken: refreshed.accessToken,
           refreshToken: credentials.refreshToken as string
         };
-        const me = requireFormalAuthMePayload(await authApi.me(nextCredentials));
-        const trustedStoredSession =
-          storedSessionForInitialRestore?.id === me.id ? storedSessionForInitialRestore : null;
-        const portal = trustedStoredSession?.portal ?? "user";
-        const method = trustedStoredSession?.loginMethod ?? "password";
+        const portal = storedSessionForInitialRestore?.portal ?? "user";
+        const method = storedSessionForInitialRestore?.loginMethod ?? "password";
         const restored = await completeLatestAuthentication(
           operation,
           { ...nextCredentials, expiresIn: refreshed.expiresIn },
           portal,
           method,
-          me,
           "error.api",
-          false
+          false,
+          storedSessionForInitialRestore?.id
         );
-        if (!restored.ok) setRestoreError(restored.message);
+        if (!restored.ok && operation.generation === getAuthCredentialSnapshot().generation) {
+          setRestoreError(restored.message);
+        }
       } catch (error) {
         if (isAuthOperationCurrent(operation) && isTransientAuthRestoreError(error)) {
           abandonAuthOperation(operation);
-          setRestoreError("error.auth.service_unavailable");
+          if (operation.generation === getAuthCredentialSnapshot().generation) {
+            setRestoreError("error.auth.service_unavailable");
+          }
         } else if (isAuthOperationCurrent(operation)) {
-          terminateLocalSession();
+          terminateAndTombstone();
         }
       }
     })();
     restoreInFlightRef.current = request;
     void request.finally(() => {
-      if (restoreInFlightRef.current === request) {
+      if (
+        restoreInFlightRef.current === request &&
+        operation.generation === getAuthCredentialSnapshot().generation
+      ) {
         restoreInFlightRef.current = null;
         setIsRestoring(false);
       }
@@ -620,7 +573,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     completeLatestAuthentication,
     restoreRevision,
     storedSessionForInitialRestore,
-    terminateLocalSession
+    terminateAndTombstone
   ]);
 
   const retrySessionRestore = useCallback(() => {
@@ -638,7 +591,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const operation = beginLatestAuthOperation("password-login");
       try {
         const payload = await authApi.login(email, password, captchaCode);
-        return completeLatestAuthentication(operation, payload, portal, "password", payload.me);
+        return completeLatestAuthentication(operation, payload, portal, "password");
       } catch (error) {
         if (!rejectInvalidRotatedResponse(operation, error) && isAuthOperationCurrent(operation))
           terminateLocalSession();
@@ -653,7 +606,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const operation = beginLatestAuthOperation("formal-password-login");
       try {
         const payload = await authApi.loginFormal(username, password);
-        return completeLatestAuthentication(operation, payload, portal, "password", payload.me);
+        return completeLatestAuthentication(operation, payload, portal, "password");
       } catch (error) {
         if (!rejectInvalidRotatedResponse(operation, error) && isAuthOperationCurrent(operation))
           terminateLocalSession();
@@ -665,7 +618,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const startRegistration = useCallback(
     async (input: RegistrationStartInput): Promise<AuthChallengeActionResult> => {
-      terminateLocalSession();
+      terminateAndTombstone();
       try {
         const challenge = await authApi.startRegistration(input);
         if (!isVerificationChallenge(challenge)) throw new Error("error.api");
@@ -674,7 +627,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [terminateLocalSession]
+    [terminateAndTombstone]
   );
 
   const verifyRegistration = useCallback(
@@ -711,10 +664,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ): Promise<GoogleAuthActionResult> => {
       if (result.status === "verification_required") {
         if (!isVerificationChallenge(result)) {
-          if (isAuthOperationCurrent(operation)) terminateLocalSession();
+          if (isAuthOperationCurrent(operation)) terminateAndTombstone();
           return { ok: false, message: "error.auth.google_api_unavailable" };
         }
-        if (isAuthOperationCurrent(operation)) terminateLocalSession();
+        if (isAuthOperationCurrent(operation)) terminateAndTombstone();
         return {
           ok: true,
           status: "verification_required",
@@ -733,7 +686,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           authenticated,
           requestedPortal,
           "google",
-          authenticated.me,
           "error.auth.google_api_unavailable"
         );
         return completed.ok ? { ...completed, status: "authenticated" } : completed;
@@ -746,7 +698,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    [completeLatestAuthentication, rejectInvalidRotatedResponse, terminateLocalSession]
+    [
+      completeLatestAuthentication,
+      rejectInvalidRotatedResponse,
+      terminateAndTombstone,
+      terminateLocalSession
+    ]
   );
 
   const authenticateWithGoogleCredential = useCallback(
@@ -783,7 +740,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           verified,
           requestedPortal,
           "google",
-          undefined,
           "error.auth.google_api_unavailable"
         );
         return completed.ok
@@ -801,11 +757,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [completeLatestAuthentication, rejectInvalidRotatedResponse, terminateLocalSession]
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     const credentials = terminateLocalSession();
-    if (credentials) void authApi.logout(credentials).catch(() => undefined);
-    return Promise.resolve();
-  }, [terminateLocalSession]);
+    const tombstoneWritten = persistAnonymousTombstone();
+    let revoked = false;
+    if (credentials) {
+      try {
+        await authApi.logout(credentials);
+        revoked = true;
+      } catch {
+        revoked = false;
+      }
+    }
+    return tombstoneWritten || revoked
+      ? { ok: true }
+      : { ok: false, message: "error.auth.durable_logout_unconfirmed" };
+  }, [persistAnonymousTombstone, terminateLocalSession]);
 
   const switchPortal = useCallback(
     async (portal: PortalScope): Promise<AuthActionResult> => {
@@ -832,10 +799,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ? { ok: true, session: nextSession }
                 : {
                     ok: false,
-                    message:
-                      outcome === "rollback_failed"
-                        ? "error.auth.reauth_required"
-                        : "error.auth.storage_unavailable"
+                    message: "error.auth.storage_unavailable"
                   };
             }
             const context = { expectedIdentityId: identity.id, expectedUserId: current.id };
@@ -1016,10 +980,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ? { ok: true, session: nextSession }
               : {
                   ok: false,
-                  message:
-                    outcome === "rollback_failed"
-                      ? "error.auth.reauth_required"
-                      : "error.auth.storage_unavailable"
+                  message: "error.auth.storage_unavailable"
                 };
           } catch (error) {
             const wasCurrent = isAuthOperationCurrent(operation);

@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { BackofficeDashboardPayload } from "../../api/backofficeRealData";
+import { readOwnedDashboardPayload, resolveSelectedManageableShop } from "./MerchantAdminLayout";
 import source from "./MerchantAdminLayout.tsx?raw";
 
 describe("MerchantAdminLayout formal shop summary", () => {
@@ -17,7 +19,7 @@ describe("MerchantAdminLayout formal shop summary", () => {
   it("loads shop identity and operating totals from the scoped dashboard", () => {
     expect(source).toContain("loadMerchantAdminDashboard");
     expect(source).not.toContain('backofficeRealDataApi.dashboard("merchant-admin")');
-    expect(source).toContain("dashboard?.shop ?? null");
+    expect(source).toContain("readOwnedDashboardPayload(ownedDashboard, dashboardOwnerKey)");
     expect(source).toContain("dashboard.summary.pendingOrders");
     expect(source).toContain("dashboard.summary.serviceGmvJpy");
     expect(source).not.toContain("dashboard.orders");
@@ -46,8 +48,7 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain("resolvedShop?.ownerKey === shopResolutionOwnerKey");
     expect(source).toContain("subscribeAuthCredentialSnapshot");
     expect(source).toContain("useSyncExternalStore");
-    expect(source).toContain("backofficeRealDataApi.manageableMerchantShops(page, pageSize, {");
-    expect(source).toContain("signal: controller.signal");
+    expect(source).toContain("resolveSelectedManageableShop(controller.signal)");
     expect(source).toContain("controller.abort()");
     expect(source).toContain(
       "const totalPages = Math.ceil(manageable.total / manageable.page_size)"
@@ -58,6 +59,57 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source.indexOf("manageableMerchantShops")).toBeLessThan(
       source.indexOf("loadMerchantAdminDashboard(dashboardOwner")
     );
+  });
+
+  it("hides owner A's resolved payload synchronously while owner B is pending", () => {
+    const payload = { shop: { name: "Shop A" } } as BackofficeDashboardPayload;
+    const owned = { ownerKey: "owner-a", payload };
+
+    expect(readOwnedDashboardPayload(owned, "owner-a")).toBe(payload);
+    expect(readOwnedDashboardPayload(owned, "owner-b")).toBeNull();
+  });
+
+  it("scans bounded manageable pages and finds a server-selected shop on page two", async () => {
+    const loadPage = vi.fn(async (page: number) => ({
+      list:
+        page === 2
+          ? [
+              {
+                publicId: "shop0000000012",
+                name: "Shop B",
+                city: "Tokyo",
+                status: "active",
+                selected: true
+              }
+            ]
+          : [],
+      total: 101,
+      page,
+      page_size: 100
+    }));
+
+    await expect(
+      resolveSelectedManageableShop(new AbortController().signal, loadPage)
+    ).resolves.toMatchObject({ publicId: "shop0000000012", selected: true });
+    expect(loadPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts manageable scanning when the layout owner changes", async () => {
+    const controller = new AbortController();
+    const loadPage = vi.fn(
+      (_page: number, _pageSize: number, options?: { signal?: AbortSignal }) =>
+        new Promise<never>((_resolve, reject) => {
+          options?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        })
+    );
+
+    const resolving = resolveSelectedManageableShop(controller.signal, loadPage);
+    controller.abort();
+
+    await expect(resolving).rejects.toMatchObject({ name: "AbortError" });
+    expect(loadPage.mock.calls[0]?.[2]?.signal).toBe(controller.signal);
   });
 
   it("keeps loading and retryable failure evidence visible", () => {

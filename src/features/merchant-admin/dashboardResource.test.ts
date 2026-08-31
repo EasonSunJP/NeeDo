@@ -245,7 +245,7 @@ describe("merchant admin dashboard resource", () => {
     expect(mocked.dashboard).toHaveBeenCalledTimes(41);
   });
 
-  it("sweeps back to the cache bound after concurrent requests resolve", async () => {
+  it("sweeps concurrent requests to the cache bound by aborting the oldest entries", async () => {
     mocked.dashboard.mockResolvedValue(payload(ownerA.shopPublicId));
     const queries = Array.from({ length: 40 }, (_, index) => ({
       from: `2026-05-${String(index + 1).padStart(2, "0")}`,
@@ -253,9 +253,38 @@ describe("merchant admin dashboard resource", () => {
       to: `2026-06-${String(index + 1).padStart(2, "0")}`
     }));
 
-    await Promise.all(queries.map((query) => loadMerchantAdminDashboard(ownerA, query)));
+    const results = await Promise.allSettled(
+      queries.map((query) => loadMerchantAdminDashboard(ownerA, query))
+    );
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(8);
     await loadMerchantAdminDashboard(ownerA, queries[0]);
 
     expect(mocked.dashboard).toHaveBeenCalledTimes(41);
+  });
+
+  it("counts in-flight entries toward the LRU bound and aborts the oldest request", async () => {
+    const signals: AbortSignal[] = [];
+    mocked.dashboard.mockImplementation(
+      (_scope: string, _query: unknown, options?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const signal = options?.signal as AbortSignal;
+          signals.push(signal);
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("evicted", "AbortError"));
+          });
+        })
+    );
+    const queries = Array.from({ length: 33 }, (_, index) => ({
+      from: `2026-03-${String(index + 1).padStart(2, "0")}`,
+      period: "custom" as const,
+      to: `2026-04-${String(index + 1).padStart(2, "0")}`
+    }));
+
+    const requests = queries.map((query) => loadMerchantAdminDashboard(ownerA, query));
+    requests.forEach((request) => void request.catch(() => undefined));
+
+    await expect(requests[0]).rejects.toMatchObject({ name: "AbortError" });
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[32]?.aborted).toBe(false);
   });
 });
