@@ -3,6 +3,7 @@ import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import type { ShopMembershipRepositoryPort } from "../src/repositories/shop-membership.repository";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-31T03:00:00.000Z");
 const shop = { id: 71, shopNo: "s000000071", name: "青山护理店", city: "东京", address: "港区青山 1-1" };
@@ -92,6 +93,7 @@ function fixture(user: ReturnType<typeof makeUser>) {
     authRepository: { findUserById: jest.fn(async (id: number) => id === user.id ? user : null) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 71 }),
     shopMembershipRepository: memberRepository
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({

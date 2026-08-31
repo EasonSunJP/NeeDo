@@ -3,6 +3,7 @@ import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import type { ShopMembershipCardPlanRepositoryPort } from "../src/repositories/shop-membership-card-plan.repository";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-31T03:00:00.000Z");
 const planPublicId = "00000000-0000-4000-8000-000000000301";
@@ -131,6 +132,7 @@ function fixture(user: ReturnType<typeof makeUser>, repositoryOverrides: Partial
     authRepository: { findUserById: jest.fn(async (id: number) => id === user.id ? user : null) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 71 }),
     shopMembershipCardPlanRepository: cardPlanRepository
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
