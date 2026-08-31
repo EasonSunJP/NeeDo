@@ -94,25 +94,71 @@ function assertChecksum(value: string) { if (!checksumPattern.test(value)) throw
 function toStringId(value: number) { if (!Number.isSafeInteger(value) || value <= 0) throw new Error("error.response.invalid_id"); return String(value); }
 function positive(value: number, max?: number) { if (!Number.isSafeInteger(value) || value <= 0 || (max !== undefined && value > max)) throw new Error("error.validation.invalid_id"); return value; }
 
+const invalidChatRecord = (): never => { throw new Error("error.response.invalid_chat_record"); };
+function exactRecord(value: unknown, keys: string[]): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalidChatRecord();
+  const record = value as Record<string, unknown>;
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) invalidChatRecord();
+  return record;
+}
+function boundedString(value: unknown, minimum: number, maximum: number): string {
+  if (typeof value !== "string" || value.length < minimum || value.length > maximum) invalidChatRecord();
+  return value as string;
+}
+function responseInteger(value: unknown, minimum: number, maximum = Number.MAX_SAFE_INTEGER): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum || value > maximum) invalidChatRecord();
+  return value as number;
+}
+function isoDate(value: unknown): string {
+  const text = boundedString(value, 1, 64);
+  if (!Number.isFinite(Date.parse(text))) invalidChatRecord();
+  return text;
+}
+
 function readMetadata(metadata: unknown) {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>)
     : {};
 }
 
-function toChatRecordSummary(summary: import("../realtime/api").RealtimeChatRecordSummary): import("./chat-records").ImChatRecordSummary {
-  if (!Array.isArray(summary.senderNames) || summary.senderNames.length < 1 || summary.senderNames.some((name) => typeof name !== "string" || !name.trim()) || summary.senderCount !== summary.senderNames.length || !Number.isSafeInteger(summary.itemCount) || summary.itemCount < 1) throw new Error("error.response.invalid_chat_record");
-  return { ...summary, publicId: assertUuid(summary.publicId), senderNames: [...summary.senderNames] };
+function toChatRecordSummary(value: import("../realtime/api").RealtimeChatRecordSummary): import("./chat-records").ImChatRecordSummary {
+  const summary = exactRecord(value, ["publicId", "title", "preview", "senderNames", "senderCount", "itemCount", "createdAt"]);
+  if (typeof summary.publicId !== "string" || !uuidPattern.test(summary.publicId)) invalidChatRecord();
+  if (!Array.isArray(summary.senderNames) || summary.senderNames.length < 1 || summary.senderNames.length > 100) invalidChatRecord();
+  const senderNames = (summary.senderNames as unknown[]).map((name) => boundedString(name, 1, 120));
+  const senderCount = responseInteger(summary.senderCount, 1, 100);
+  if (senderCount !== senderNames.length) invalidChatRecord();
+  return { publicId: summary.publicId as string, title: boundedString(summary.title, 1, 255), preview: boundedString(summary.preview, 0, 500), senderNames, senderCount, itemCount: responseInteger(summary.itemCount, 1, 100), createdAt: isoDate(summary.createdAt) };
 }
 
 function toChatRecordFavorite(favorite: import("../realtime/api").RealtimeChatRecordFavorite): import("./chat-records").ImChatRecordFavorite {
-  const summary = toChatRecordSummary({ ...favorite, publicId: favorite.bundlePublicId });
-  return { id: toStringId(favorite.id), bundlePublicId: summary.publicId, title: summary.title, preview: summary.preview, senderNames: summary.senderNames, senderCount: summary.senderCount, itemCount: summary.itemCount, createdAt: summary.createdAt };
+  const exact = exactRecord(favorite, ["id", "bundlePublicId", "title", "preview", "senderNames", "senderCount", "itemCount", "createdAt"]);
+  const summary = toChatRecordSummary({ publicId: exact.bundlePublicId, title: exact.title, preview: exact.preview, senderNames: exact.senderNames, senderCount: exact.senderCount, itemCount: exact.itemCount, createdAt: exact.createdAt } as never);
+  return { id: String(responseInteger(exact.id, 1)), bundlePublicId: summary.publicId, title: summary.title, preview: summary.preview, senderNames: summary.senderNames, senderCount: summary.senderCount, itemCount: summary.itemCount, createdAt: summary.createdAt };
 }
 
-function toChatRecordItem(item: import("../realtime/api").RealtimeChatRecordItem): import("./chat-records").ImChatRecordItem {
-  positive(item.position);
-  return { ...item, id: toStringId(item.id) };
+function toChatRecordItem(value: import("../realtime/api").RealtimeChatRecordItem): import("./chat-records").ImChatRecordItem {
+  const item = exactRecord(value, ["id", "position", "senderDisplayName", "senderAvatarUrl", "messageType", "content", "metadata", "sentAt"]);
+  if (item.senderAvatarUrl !== null && (typeof item.senderAvatarUrl !== "string" || item.senderAvatarUrl.length > 2048)) invalidChatRecord();
+  if (item.content !== null && (typeof item.content !== "string" || item.content.length > 4000)) invalidChatRecord();
+  if (item.metadata !== null && (typeof item.metadata !== "object" || Array.isArray(item.metadata))) invalidChatRecord();
+  return { id: String(responseInteger(item.id, 1)), position: responseInteger(item.position, 1, 100), senderDisplayName: boundedString(item.senderDisplayName, 1, 120), senderAvatarUrl: item.senderAvatarUrl as string | null, messageType: boundedString(item.messageType, 1, 64), content: item.content as string | null, metadata: item.metadata, sentAt: isoDate(item.sentAt) };
+}
+
+function chatRecordPage(value: unknown, withCursor: boolean) {
+  const keys = ["list", "total", "page", "page_size", ...(withCursor ? ["nextCursor"] : [])];
+  const page = exactRecord(value, keys);
+  if (!Array.isArray(page.list)) invalidChatRecord();
+  const list = page.list as unknown[];
+  const pageSize = responseInteger(page.page_size, 1, 100);
+  const total = responseInteger(page.total, 0);
+  const pageNumber = responseInteger(page.page, 1);
+  if (list.length > pageSize || list.length > total || pageNumber > Math.max(1, Math.ceil(total / pageSize))) invalidChatRecord();
+  const nextCursor = withCursor ? page.nextCursor : undefined;
+  if (withCursor && nextCursor !== null) responseInteger(nextCursor, 1, 100);
+  return { list, total, page: pageNumber, page_size: pageSize, ...(withCursor ? { nextCursor: nextCursor as number | null } : {}) };
 }
 
 function toRealtimeChatRecordCommand(command: import("./chat-records").ImChatRecordCommand) {
@@ -122,10 +168,28 @@ function toRealtimeChatRecordCommand(command: import("./chat-records").ImChatRec
   return { idempotencyKey: command.idempotencyKey, messageIds, sourceConversationId: toNumericId(command.sourceConversationId) };
 }
 
-function toChatRecordMessageExt(value: unknown): MessageExt | undefined {
-  const ext = readMetadata(value);
-  if (typeof ext.bundlePublicId !== "string" || !uuidPattern.test(ext.bundlePublicId) || !Number.isSafeInteger(ext.itemCount) || (ext.itemCount as number) < 1 || typeof ext.preview !== "string" || !Array.isArray(ext.senderNames) || ext.senderNames.length < 1 || ext.senderNames.some((name) => typeof name !== "string" || !name.trim()) || !["single", "pair", "group"].includes(String(ext.titleKind))) return undefined;
-  return { chatRecord: { publicId: ext.bundlePublicId, itemCount: ext.itemCount as number, preview: ext.preview, senderNames: [...ext.senderNames] as string[], titleKind: ext.titleKind as "single" | "pair" | "group" } };
+function parseChatRecordMessageMetadata(value: unknown) {
+  const metadata = exactRecord(value, ["needoMessageType", "needoMessageExt"]);
+  if (metadata.needoMessageType !== "chat-record") invalidChatRecord();
+  const ext = exactRecord(metadata.needoMessageExt, ["bundlePublicId", "itemCount", "preview", "senderNames", "senderCount", "title", "titleKind"]);
+  if (typeof ext.bundlePublicId !== "string" || !uuidPattern.test(ext.bundlePublicId)) invalidChatRecord();
+  if (!Array.isArray(ext.senderNames) || ext.senderNames.length < 1 || ext.senderNames.length > 100) invalidChatRecord();
+  const senderNames = (ext.senderNames as unknown[]).map((name) => boundedString(name, 1, 120));
+  const senderCount = responseInteger(ext.senderCount, 1, 100);
+  if (senderCount !== senderNames.length) invalidChatRecord();
+  const titleKind = ext.titleKind as "single" | "pair" | "group";
+  if (titleKind !== "single" && titleKind !== "pair" && titleKind !== "group") invalidChatRecord();
+  return { chatRecord: { publicId: ext.bundlePublicId as string, itemCount: responseInteger(ext.itemCount, 1, 100), preview: boundedString(ext.preview, 0, 500), senderNames, titleKind }, senderCount, title: boundedString(ext.title, 1, 255) };
+}
+
+function toChatRecordMessageExt(value: unknown): MessageExt {
+  return { chatRecord: parseChatRecordMessageMetadata(value).chatRecord };
+}
+
+function assertChatRecordDeliveryConsistency(bundle: import("./chat-records").ImChatRecordSummary, message: import("../realtime/api").RealtimeMessage) {
+  const metadata = parseChatRecordMessageMetadata(message.metadata);
+  const expectedTitleKind = bundle.senderCount === 1 ? "single" : bundle.senderCount === 2 ? "pair" : "group";
+  if (metadata.chatRecord.publicId !== bundle.publicId || metadata.chatRecord.itemCount !== bundle.itemCount || metadata.chatRecord.preview !== bundle.preview || metadata.senderCount !== bundle.senderCount || metadata.title !== bundle.title || metadata.chatRecord.titleKind !== expectedTitleKind || metadata.chatRecord.senderNames.length !== bundle.senderNames.length || metadata.chatRecord.senderNames.some((name: string, index: number) => name !== bundle.senderNames[index]) || message.content !== bundle.title) invalidChatRecord();
 }
 
 const secondsPerMinute = 60;
@@ -324,7 +388,7 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
       ? (ext as MessageExt)
       : undefined;
   const { disappearing: _untrustedDisappearing, ...safeRawExt } = rawExt ?? {};
-  const safeExt = type === "chat-record" ? (toChatRecordMessageExt(ext) ?? {}) : safeRawExt;
+  const safeExt = type === "chat-record" ? toChatRecordMessageExt(metadata) : safeRawExt;
   const privacyPolicyVersionAtSend = message.privacyPolicyVersionAtSend;
   const createdAtMs = Date.parse(message.createdAt);
   const expiresAtMs = message.expiresAt ? Date.parse(message.expiresAt) : Number.NaN;
@@ -1001,20 +1065,32 @@ export function createFormalImApi({
       return results.map((result) => ({ messageId: toStringId(result.messageId), status: result.status, ...(result.status === "translated" && typeof result.translatedContent === "string" ? { translatedContent: result.translatedContent } : {}) }));
     },
     async createChatRecordDelivery(targetConversationId, command) {
-      const result = await realtimeApi.createChatRecordDelivery(toNumericId(targetConversationId), toRealtimeChatRecordCommand(command));
-      return { replayed: result.replayed, bundle: toChatRecordSummary(result.bundle), message: toConversationMessage(result.message) };
+      const rawResult = await realtimeApi.createChatRecordDelivery(toNumericId(targetConversationId), toRealtimeChatRecordCommand(command));
+      const result = exactRecord(rawResult, ["replayed", "bundle", "message"]);
+      if (typeof result.replayed !== "boolean") invalidChatRecord();
+      const bundle = toChatRecordSummary(result.bundle as import("../realtime/api").RealtimeChatRecordSummary);
+      const rawMessage = result.message as import("../realtime/api").RealtimeMessage;
+      assertChatRecordDeliveryConsistency(bundle, rawMessage);
+      return { replayed: result.replayed as boolean, bundle, message: toConversationMessage(rawMessage) };
     },
     async getChatRecord(publicId) { return toChatRecordSummary(await realtimeApi.getChatRecord(assertUuid(publicId))); },
     async listChatRecordItems(publicId, query = {}) {
       const safeQuery = { ...(query.beforePosition === undefined ? {} : { beforePosition: positive(query.beforePosition) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) };
       const result = await realtimeApi.listChatRecordItems(assertUuid(publicId), safeQuery);
-      return { ...result, list: result.list.map(toChatRecordItem) };
+      const page = chatRecordPage(result, true);
+      return { ...page, list: page.list.map((item) => toChatRecordItem(item as import("../realtime/api").RealtimeChatRecordItem)), nextCursor: page.nextCursor! };
     },
     getChatRecordMedia(publicId, checksumSha256) { return realtimeApi.getChatRecordMedia(assertUuid(publicId), assertChecksum(checksumSha256)); },
-    async createChatRecordFavorite(command) { const result = await realtimeApi.createChatRecordFavorite(toRealtimeChatRecordCommand(command)); return { replayed: result.replayed, favorite: toChatRecordFavorite(result.favorite) }; },
+    async createChatRecordFavorite(command) {
+      const rawResult = await realtimeApi.createChatRecordFavorite(toRealtimeChatRecordCommand(command));
+      const result = exactRecord(rawResult, ["replayed", "favorite"]);
+      if (typeof result.replayed !== "boolean") invalidChatRecord();
+      return { replayed: result.replayed as boolean, favorite: toChatRecordFavorite(result.favorite as import("../realtime/api").RealtimeChatRecordFavorite) };
+    },
     async listChatRecordFavorites(query = {}) {
       const result = await realtimeApi.listChatRecordFavorites({ ...(query.page === undefined ? {} : { page: positive(query.page) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) });
-      return { ...result, list: result.list.map(toChatRecordFavorite) };
+      const page = chatRecordPage(result, false);
+      return { ...page, list: page.list.map((item) => toChatRecordFavorite(item as import("../realtime/api").RealtimeChatRecordFavorite)) };
     },
     removeChatRecordFavorite(favoriteId) { return realtimeApi.removeChatRecordFavorite(toNumericId(favoriteId)); },
     async sendMessage(

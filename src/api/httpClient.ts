@@ -545,7 +545,7 @@ async function sendBinaryRequest(path: string, options: HttpClientRequestOptions
     const envelope = await parseEnvelope<unknown>(response); assertSuccess(envelope, response.status);
   }
   const header = response.headers.get("content-length");
-  const length = header === null ? Number.NaN : Number.parseInt(header, 10);
+  const length = header !== null && /^\d+$/.test(header) ? Number(header) : Number.NaN;
   return {
     blob: await response.blob(), cacheControl: response.headers.get("cache-control"),
     contentLength: Number.isSafeInteger(length) && length >= 0 ? length : null,

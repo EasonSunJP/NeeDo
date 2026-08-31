@@ -1163,4 +1163,27 @@ describe("RealtimeService group privacy and membership", () => {
     });
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
+
+  it("rejects unsafe batch-delete conversation and message IDs before repository access", async () => {
+    const repository = { deleteMessagesForUser: jest.fn() };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+    const unsafe = Number.MAX_SAFE_INTEGER + 1;
+
+    await expect(
+      service.deleteMessagesForUser(
+        { userId: 41, currentIdentityId: 71, currentIdentityType: "customer" } as never,
+        { conversationId: unsafe, messageIds: [11], idempotencyKey: "key" }
+      )
+    ).rejects.toThrow("error.validation_failed");
+    await expect(
+      service.deleteMessagesForUser(
+        { userId: 41, currentIdentityId: 71, currentIdentityType: "customer" } as never,
+        { conversationId: 91, messageIds: [unsafe], idempotencyKey: "key" }
+      )
+    ).rejects.toThrow("error.validation_failed");
+    expect(repository.deleteMessagesForUser).not.toHaveBeenCalled();
+  });
 });

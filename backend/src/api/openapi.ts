@@ -8,6 +8,7 @@ import {
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 
 type OpenApiDocument = Record<string, unknown>;
+const safeIntegerMaximum = Number.MAX_SAFE_INTEGER;
 
 const payrollCsvResponse = (description: string) => ({
   description,
@@ -1533,7 +1534,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "messageType", "content", "metadata", "sentAt"
         ],
         properties: {
-          id: { type: "integer", minimum: 1 },
+          id: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           position: { type: "integer", minimum: 1, maximum: 100 },
           senderDisplayName: { type: "string", maxLength: 100 },
           senderAvatarUrl: { type: ["string", "null"] },
@@ -1549,10 +1550,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["list", "total", "page", "page_size", "nextCursor"],
         properties: {
           list: { type: "array", items: { $ref: "#/components/schemas/ImChatRecordItem" } },
-          total: { type: "integer", minimum: 0 },
-          page: { type: "integer", minimum: 1 },
+          total: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          page: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           page_size: { type: "integer", minimum: 1, maximum: 100 },
-          nextCursor: { type: ["integer", "null"], minimum: 1 }
+          nextCursor: { type: ["integer", "null"], minimum: 1, maximum: safeIntegerMaximum }
         }
       },
       ImChatRecordFavorite: {
@@ -1569,7 +1570,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "createdAt"
         ],
         properties: {
-          id: { type: "integer", minimum: 1 },
+          id: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           bundlePublicId: { type: "string", format: "uuid" },
           title: { type: "string", maxLength: 255 },
           preview: { type: "string", maxLength: 500 },
@@ -1590,8 +1591,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["list", "total", "page", "page_size"],
         properties: {
           list: { type: "array", items: { $ref: "#/components/schemas/ImChatRecordFavorite" } },
-          total: { type: "integer", minimum: 0 },
-          page: { type: "integer", minimum: 1 },
+          total: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          page: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
@@ -1603,9 +1604,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotencyKey: { type: "string", format: "uuid" },
           messageIds: {
             type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
-            items: { type: "integer", minimum: 1 }
+            items: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
           },
-          sourceConversationId: { type: "integer", minimum: 1 }
+          sourceConversationId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
         }
       },
       ImBatchDeleteRequest: {
@@ -1615,7 +1616,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           messageIds: {
             type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
-            items: { type: "integer", minimum: 1 }
+            items: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
           },
           idempotencyKey: { type: "string", format: "uuid" }
         }
@@ -1650,10 +1651,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["conversationId", "messageIds", "count", "deleted", "replayed"],
         properties: {
-          conversationId: { type: "integer", minimum: 1 },
+          conversationId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           messageIds: {
             type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
-            items: { type: "integer", minimum: 1 }
+            items: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
           },
           count: { type: "integer", minimum: 1, maximum: 100 },
           deleted: { type: "boolean", enum: [true] },
@@ -13915,7 +13916,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Create an immutable chat-record delivery",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "targetConversationId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [{ name: "targetConversationId", in: "path", required: true, schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum } }],
         requestBody: {
           required: true,
           content: { "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } } }
@@ -13952,7 +13953,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
-          { name: "beforePosition", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "beforePosition", in: "query", schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
@@ -14019,7 +14020,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated favorites for the active identity",
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
@@ -14035,7 +14036,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Remove one favorite owned by the active identity",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "favoriteId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [{ name: "favoriteId", in: "path", required: true, schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum } }],
         responses: {
           "200": jsonDataResponse("Favorite removed", { $ref: "#/components/schemas/ImChatRecordFavoriteDeleteResult" }),
           "400": { description: "Invalid favorite ID" },
@@ -14050,7 +14051,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Atomically delete up to 100 messages for the active identity",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "conversationId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [{ name: "conversationId", in: "path", required: true, schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum } }],
         requestBody: {
           required: true,
           content: { "application/json": { schema: { $ref: "#/components/schemas/ImBatchDeleteRequest" } } }

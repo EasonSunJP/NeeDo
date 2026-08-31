@@ -324,7 +324,7 @@ describe("formal realtime API", () => {
       .mockResolvedValueOnce(jsonResponse({ list: [], total: 0, page: 1, page_size: 20, nextCursor: null }))
       .mockResolvedValueOnce(jsonResponse({ list: [], total: 0, page: 2, page_size: 20 }))
       .mockResolvedValueOnce(jsonResponse({ deleted: true }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "cache-control": "private", "content-length": "4", "content-type": "image/png", etag: '"etag"' } }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "image/png", etag: `"${"a".repeat(64)}"` } }));
     await realtimeApi.createChatRecordDelivery(91, command);
     await realtimeApi.createChatRecordFavorite(command);
     await realtimeApi.batchDeleteMessagesForMe(41, { idempotencyKey: key, messageIds: [501, 502] });
@@ -339,7 +339,7 @@ describe("formal realtime API", () => {
     expect(fetch).toHaveBeenNthCalledWith(3, "/api/v1/im/conversations/41/messages/delete-for-me", expect.objectContaining({ method: "POST" }));
     expect(fetch).toHaveBeenNthCalledWith(4, "/api/v1/im/conversations/41/messages/translations", expect.objectContaining({ method: "POST" }));
     expect(fetch).toHaveBeenNthCalledWith(8, "/api/v1/im/chat-record-favorites/71", expect.objectContaining({ method: "DELETE" }));
-    expect(media).toMatchObject({ blob: expect.any(Blob), contentLength: 4, contentType: "image/png", etag: '"etag"' });
+    expect(media).toMatchObject({ blob: expect.any(Blob), contentLength: 4, contentType: "image/png", etag: `"${"a".repeat(64)}"` });
     expect(JSON.stringify(media)).not.toContain("runtime/");
   });
 
@@ -350,6 +350,19 @@ describe("formal realtime API", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 40301, message: "error.permission.denied", data: null }), { headers: { "content-type": "application/json" }, status: 403 }));
     await expect(realtimeApi.getChatRecord(publicId)).rejects.toMatchObject({ code: 40401, status: 404 });
     await expect(realtimeApi.getChatRecordMedia(publicId, "a".repeat(64))).rejects.toMatchObject({ code: 40301, status: 403 });
+  });
+
+  it.each([
+    ["unsupported MIME", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "application/pdf", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["missing length", { "cache-control": "private, max-age=31536000, immutable", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["non-digit length", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4x", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["length mismatch", { "cache-control": "private, max-age=31536000, immutable", "content-length": "3", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["weak ETag", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "image/png", etag: `W/"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["wrong ETag", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "image/png", etag: `"${"b".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["wrong cache", { "cache-control": "public", "content-length": "4", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]]
+  ])("rejects a 200 chat-record media response with %s", async (_case, headers, bytes) => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(new Uint8Array(bytes), { headers }));
+    await expect(realtimeApi.getChatRecordMedia("22222222-2222-4222-8222-222222222222", "a".repeat(64))).rejects.toMatchObject({ name: "ApiClientError", message: "error.response.invalid_chat_record_media" });
   });
 
   it("parses authenticated SSE events and sends the last event id on reconnect", async () => {

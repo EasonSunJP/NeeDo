@@ -407,6 +407,162 @@ describe("ImChatRecordService", () => {
     );
   });
 
+  it.each([
+    ["image", "[图片]", "image/png"],
+    ["voice", "[语音]", "audio/webm"]
+  ])(
+    "never copies a %s source locator into favorite or delivery previews",
+    async (needoMessageType, placeholder, mimeType) => {
+      const fixture = createFixture();
+      const sourceUrl = `https://private.example/internal/${needoMessageType}/source-file`;
+      fixture.mediaStorage.clone.mockResolvedValue({
+        created: true,
+        fileKey: `${"a".repeat(64)}/11111111-1111-4111-8111-111111111111/${"a".repeat(64)}`,
+        mimeType,
+        size: 16,
+        checksumSha256: "a".repeat(64)
+      });
+      fixture.repository.readSourceMessages.mockResolvedValue([
+        sourceMessage(1, "A", {
+          content: sourceUrl,
+          metadata: {
+            needoMessageType,
+            needoMessageExt: { fileSize: 16, mimeType, url: sourceUrl }
+          }
+        })
+      ]);
+
+      const favoriteResult = await fixture.service.createFavorite(auth, context, {
+        idempotencyKey: `favorite-${needoMessageType}`,
+        messageIds: [1],
+        sourceConversationId: 91
+      });
+      const deliveryResult = await fixture.service.createDelivery(auth, context, {
+        idempotencyKey: `delivery-${needoMessageType}`,
+        messageIds: [1],
+        sourceConversationId: 91,
+        targetConversationId: 99
+      });
+
+      const favoriteInput = fixture.repository.createFavorite.mock.calls[0]?.[0];
+      const deliveryInput = fixture.repository.createDelivery.mock.calls[0]?.[0];
+      expect(favoriteInput?.previewSnapshot).toBe(`A: ${placeholder}`);
+      expect(deliveryInput?.previewSnapshot).toBe(`A: ${placeholder}`);
+      fixture.repository.getBundle.mockResolvedValue({
+        id: 501,
+        publicId: favoriteResult.favorite.bundlePublicId,
+        title: favoriteResult.favorite.title,
+        preview: favoriteResult.favorite.preview,
+        senderNames: favoriteResult.favorite.senderNames,
+        senderCount: favoriteResult.favorite.senderCount,
+        itemCount: favoriteResult.favorite.itemCount,
+        createdAt: now
+      });
+      fixture.repository.listItems.mockResolvedValue({
+        list: [
+          {
+            id: 701,
+            position: 1,
+            senderDisplayName: "A",
+            senderAvatarUrl: null,
+            messageType: needoMessageType,
+            content: null,
+            metadata: deliveryInput?.items[0]?.metadataSnapshot ?? null,
+            sentAt: now
+          }
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        nextCursor: null
+      });
+      fixture.repository.listFavorites.mockResolvedValue({
+        list: [favoriteResult.favorite],
+        total: 1,
+        page: 1,
+        page_size: 20
+      });
+      const getResult = await fixture.service.getBundle(
+        auth,
+        favoriteResult.favorite.bundlePublicId
+      );
+      const listResult = await fixture.service.listItems(
+        auth,
+        favoriteResult.favorite.bundlePublicId,
+        {}
+      );
+      const favoritesResult = await fixture.service.listFavorites(auth, {});
+      expect(
+        JSON.stringify({
+          favoriteInput,
+          deliveryInput,
+          favoriteResult,
+          deliveryResult,
+          getResult,
+          listResult,
+          favoritesResult
+        })
+      ).not.toContain(sourceUrl);
+    }
+  );
+
+  it("keeps an authoritative TEXT URL in the bounded preview", async () => {
+    const fixture = createFixture();
+    const textUrl = "https://example.test/user-shared-page";
+    fixture.repository.readSourceMessages.mockResolvedValue([
+      sourceMessage(1, "A", { content: textUrl, metadata: null })
+    ]);
+
+    await fixture.service.createFavorite(auth, context, {
+      idempotencyKey: "text-url",
+      messageIds: [1],
+      sourceConversationId: 91
+    });
+
+    expect(fixture.repository.createFavorite).toHaveBeenCalledWith(
+      expect.objectContaining({ previewSnapshot: `A: ${textUrl}` })
+    );
+  });
+
+  it("rejects unsafe integer IDs at the service boundary", async () => {
+    const fixture = createFixture();
+    const unsafe = Number.MAX_SAFE_INTEGER + 1;
+
+    await expect(
+      fixture.service.createDelivery(auth, context, {
+        idempotencyKey: "unsafe-target",
+        messageIds: [1],
+        sourceConversationId: 91,
+        targetConversationId: unsafe
+      })
+    ).rejects.toThrow("error.im.chat_record_target_invalid");
+    await expect(
+      fixture.service.createFavorite(auth, context, {
+        idempotencyKey: "unsafe-source",
+        messageIds: [1],
+        sourceConversationId: unsafe
+      })
+    ).rejects.toThrow("error.validation_failed");
+    await expect(
+      fixture.service.createFavorite(auth, context, {
+        idempotencyKey: "unsafe-message",
+        messageIds: [unsafe],
+        sourceConversationId: 91
+      })
+    ).rejects.toThrow("error.im.chat_record_item_count_invalid");
+    await expect(
+      fixture.service.listItems(auth, "11111111-1111-4111-8111-111111111111", {
+        beforePosition: unsafe
+      })
+    ).rejects.toThrow("error.validation_failed");
+    await expect(fixture.service.listFavorites(auth, { page: unsafe })).rejects.toThrow(
+      "error.validation_failed"
+    );
+    await expect(fixture.service.removeFavorite(auth, context, unsafe)).rejects.toThrow(
+      "error.validation_failed"
+    );
+  });
+
   it("deduplicates senders by identity instead of display name and preserves the first name snapshot", async () => {
     const fixture = createFixture();
     fixture.repository.readSourceMessages.mockResolvedValue([

@@ -345,6 +345,13 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<DeleteMessagesForUserInput, "userId" | "identityId">
   ) {
+    if (
+      !Number.isSafeInteger(input.conversationId) ||
+      input.conversationId <= 0 ||
+      input.messageIds.some((messageId) => !Number.isSafeInteger(messageId) || messageId <= 0)
+    ) {
+      throw this.validationError("error.validation_failed");
+    }
     const scope = await this.resolvePersonalIdentityScope(auth);
     const deleted = await this.repository.deleteMessagesForUser({
       ...input,

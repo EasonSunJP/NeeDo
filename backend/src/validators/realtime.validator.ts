@@ -4,7 +4,7 @@ import {
   IM_PRIVACY_TTL_MIN_SECONDS
 } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
-import { messageIdsSchema } from "./im-chat-record.validator";
+import { messageIdsSchema, safePositiveIntegerSchema } from "./im-chat-record.validator";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -28,7 +28,7 @@ const booleanQuerySchema = z.preprocess((value) => {
 }, z.boolean());
 
 export const conversationIdParamSchema = z.object({
-  conversationId: z.coerce.number().int().positive()
+  conversationId: safePositiveIntegerSchema
 });
 
 export const messageReactionParamSchema = conversationIdParamSchema.extend({

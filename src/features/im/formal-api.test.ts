@@ -1363,7 +1363,7 @@ describe("formal IM adapter", () => {
   it("maps formal chat-record snapshots without accepting raw source content", async () => {
     const publicId = "22222222-2222-4222-8222-222222222222";
     const summary = { publicId, title: "A、B", preview: "A: one\nB: two", senderNames: ["A", "B"], senderCount: 2, itemCount: 2, createdAt: now };
-    const create = vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValue({ replayed: false, bundle: summary, message: { id: 801, conversationId: 91, senderUserId: 100, type: "text", content: summary.title, metadata: { needoMessageType: "chat-record", needoMessageExt: { bundlePublicId: publicId, itemCount: 2, preview: summary.preview, senderNames: summary.senderNames, senderCount: 2, title: summary.title, titleKind: "pair", sourceContent: "/media/private/raw.png" } }, createdAt: now } });
+    const create = vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValue({ replayed: false, bundle: summary, message: { id: 801, conversationId: 91, senderUserId: 100, type: "text", content: summary.title, metadata: { needoMessageType: "chat-record", needoMessageExt: { bundlePublicId: publicId, itemCount: 2, preview: summary.preview, senderNames: summary.senderNames, senderCount: 2, title: summary.title, titleKind: "pair" } }, createdAt: now } });
     const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
     const command = { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501", "502"], sourceConversationId: "41" };
     const result = await api.createChatRecordDelivery("91", command);
@@ -1419,6 +1419,53 @@ describe("formal IM adapter", () => {
     });
     const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
     await expect(api.getChatRecord("22222222-2222-4222-8222-222222222222")).rejects.toThrow("error.response.invalid_chat_record");
+  });
+
+  it("rejects malformed, oversized, unsafe, and inconsistent summary or favorite fields", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const valid = { publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    const malformed = [
+      { ...valid, title: "x".repeat(256) }, { ...valid, preview: "x".repeat(501) },
+      { ...valid, senderNames: ["A", "B"], senderCount: 1 }, { ...valid, senderNames: ["x".repeat(121)] },
+      { ...valid, itemCount: Number.MAX_SAFE_INTEGER + 1 }, { ...valid, createdAt: "not-a-date" }, { ...valid, extra: "unexpected" }
+    ];
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    for (const value of malformed) {
+      vi.spyOn(realtimeApi, "getChatRecord").mockResolvedValueOnce(value as never);
+      await expect(api.getChatRecord(publicId)).rejects.toThrow("error.response.invalid_chat_record");
+    }
+    vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValueOnce({ list: [{ id: Number.MAX_SAFE_INTEGER + 1, bundlePublicId: publicId, ...valid } as never], total: 1, page: 1, page_size: 20 });
+    await expect(api.listChatRecordFavorites()).rejects.toThrow("error.response.invalid_chat_record");
+  });
+
+  it("rejects malformed item pages and chat-record message metadata instead of returning a partial ext", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const summary = { publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [{ id: 901, position: Number.MAX_SAFE_INTEGER + 1, senderDisplayName: "A", senderAvatarUrl: null, messageType: "text", content: "one", metadata: null, sentAt: now }], total: 1, page: 1, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId)).rejects.toThrow("error.response.invalid_chat_record");
+    for (const needoMessageExt of [
+      { bundlePublicId: publicId, itemCount: 1, preview: "A: one", senderNames: ["A"], senderCount: 2, title: "A", titleKind: "single" },
+      { bundlePublicId: publicId, itemCount: 1, preview: "different", senderNames: ["A"], senderCount: 1, title: "A", titleKind: "single" }
+    ]) {
+      vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValueOnce({ replayed: false, bundle: summary, message: { id: 801, conversationId: 91, senderUserId: 100, type: "text", content: "A", metadata: { needoMessageType: "chat-record", needoMessageExt }, createdAt: now } });
+      await expect(api.createChatRecordDelivery("91", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+  });
+
+  it("rejects inconsistent or unsafe chat-record pagination", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const malformedPages = [
+      { list: [], total: 0, page: 2, page_size: 20, nextCursor: null },
+      { list: [], total: 0, page: 1, page_size: Number.MAX_SAFE_INTEGER + 1, nextCursor: null },
+      { list: [], total: 0, page: 1, page_size: 20, nextCursor: Number.MAX_SAFE_INTEGER + 1 },
+      { list: [], total: 0, page: 1, page_size: 20, nextCursor: null, extra: true }
+    ];
+    for (const page of malformedPages) {
+      vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce(page as never);
+      await expect(api.listChatRecordItems(publicId)).rejects.toThrow("error.response.invalid_chat_record");
+    }
   });
 
   it("rejects unsafe chat-record IDs and malformed UUIDs before requests", async () => {

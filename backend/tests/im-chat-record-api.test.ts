@@ -172,6 +172,20 @@ describe("chat-record validators", () => {
     ).toThrow();
     expect(() => chatRecordCommandBodySchema.parse({ ...command, actorUserId: 999 })).toThrow();
   });
+
+  it("accepts safe coerced IDs and rejects unsafe integers in every numeric schema", () => {
+    expect(messageIdsSchema.parse(["993"])).toEqual([993]);
+    for (const value of [9007199254740992, "9007199254740992"]) {
+      expect(() => messageIdsSchema.parse([value])).toThrow();
+      expect(() =>
+        chatRecordCommandBodySchema.parse({
+          ...command,
+          messageIds: [11],
+          sourceConversationId: value
+        })
+      ).toThrow();
+    }
+  });
 });
 
 describe("chat-record HTTP API", () => {
@@ -212,6 +226,74 @@ describe("chat-record HTTP API", () => {
         .expect(400);
     }
     expect(fixture.service.createDelivery).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsafe numeric path, body, query, cursor, favorite, conversation, and message IDs", async () => {
+    const fixture = createFixture();
+    const unsafe = "9007199254740992";
+    const authorization = { Authorization: `Bearer ${fixture.token}` };
+    const calls = [
+      request(fixture.app)
+        .post(`/api/v1/im/conversations/${unsafe}/chat-records`)
+        .set(authorization)
+        .send(command),
+      request(fixture.app)
+        .post("/api/v1/im/conversations/99/chat-records")
+        .set(authorization)
+        .send({ ...command, sourceConversationId: unsafe }),
+      request(fixture.app)
+        .post("/api/v1/im/conversations/99/chat-records")
+        .set(authorization)
+        .send({ ...command, messageIds: [unsafe] }),
+      request(fixture.app)
+        .get(`/api/v1/im/chat-records/${publicId}/items?beforePosition=${unsafe}`)
+        .set(authorization),
+      request(fixture.app)
+        .get(`/api/v1/im/chat-record-favorites?page=${unsafe}`)
+        .set(authorization),
+      request(fixture.app).delete(`/api/v1/im/chat-record-favorites/${unsafe}`).set(authorization),
+      request(fixture.app)
+        .post(`/api/v1/im/conversations/${unsafe}/messages/delete-for-me`)
+        .set(authorization)
+        .send({ messageIds: [11], idempotencyKey: command.idempotencyKey }),
+      request(fixture.app)
+        .post("/api/v1/im/conversations/91/messages/delete-for-me")
+        .set(authorization)
+        .send({ messageIds: [unsafe], idempotencyKey: command.idempotencyKey })
+    ];
+    for (const call of calls) await call.expect(400);
+    expect(fixture.service.createDelivery).not.toHaveBeenCalled();
+    expect(fixture.service.listItems).not.toHaveBeenCalled();
+    expect(fixture.service.listFavorites).not.toHaveBeenCalled();
+    expect(fixture.service.removeFavorite).not.toHaveBeenCalled();
+    expect(fixture.realtimeService.deleteMessagesForUser).not.toHaveBeenCalled();
+  });
+
+  it("coerces safe string IDs through delivery and batch routes", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/993/chat-records")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ ...command, sourceConversationId: "993", messageIds: ["993"] })
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/993/messages/delete-for-me")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ messageIds: ["993"], idempotencyKey: command.idempotencyKey })
+      .expect(200);
+    expect(fixture.service.createDelivery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        targetConversationId: 993,
+        sourceConversationId: 993,
+        messageIds: [993]
+      })
+    );
+    expect(fixture.realtimeService.deleteMessagesForUser).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ conversationId: 993, messageIds: [993] })
+    );
   });
 
   it("creates a delivery without serializing recipient or internal bundle IDs", async () => {

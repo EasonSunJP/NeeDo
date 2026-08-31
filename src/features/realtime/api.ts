@@ -1,4 +1,4 @@
-import { buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
+import { ApiClientError, buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
 import type { ImMessageRichText } from "../im/reaction-policy";
 
 export type PaginatedRealtimeData<TItem> = {
@@ -389,7 +389,20 @@ export const realtimeApi = {
   listChatRecordItems(publicId: string, query: { beforePosition?: number; pageSize?: number } = {}) {
     return httpClient.request<RealtimeChatRecordItemPage>(`/im/chat-records/${publicId}/items`, { query });
   },
-  getChatRecordMedia(publicId: string, checksumSha256: string) { return httpClient.requestBinary(`/im/chat-records/${publicId}/media/${checksumSha256}`); },
+  async getChatRecordMedia(publicId: string, checksumSha256: string) {
+    const media = await httpClient.requestBinary(`/im/chat-records/${publicId}/media/${checksumSha256}`);
+    const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "audio/webm", "audio/mp4", "audio/ogg"]);
+    if (
+      !allowedMimeTypes.has(media.contentType) ||
+      media.contentLength === null ||
+      media.contentLength !== media.blob.size ||
+      media.etag !== `"${checksumSha256}"` ||
+      media.cacheControl !== "private, max-age=31536000, immutable"
+    ) {
+      throw new ApiClientError("error.response.invalid_chat_record_media", 502, 502);
+    }
+    return media;
+  },
   createChatRecordFavorite(input: RealtimeChatRecordCommand) { return httpClient.request<RealtimeChatRecordFavoriteMutation>("/im/chat-record-favorites", { body: input, method: "POST" }); },
   listChatRecordFavorites(query: PageQuery = {}) { return httpClient.request<PaginatedRealtimeData<RealtimeChatRecordFavorite>>("/im/chat-record-favorites", { query }); },
   removeChatRecordFavorite(favoriteId: number) { return httpClient.request<{ deleted: true }>(`/im/chat-record-favorites/${favoriteId}`, { method: "DELETE" }); },

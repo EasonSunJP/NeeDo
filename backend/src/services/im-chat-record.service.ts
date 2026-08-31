@@ -115,7 +115,7 @@ export class ImChatRecordService {
   ) {
     const scope = await this.personalIdentityScope.resolve(auth);
     const normalizedIds = this.normalizeCommand(command);
-    if (!Number.isInteger(command.targetConversationId) || command.targetConversationId <= 0) {
+    if (!this.isSafePositiveInteger(command.targetConversationId)) {
       throw this.validation("error.im.chat_record_target_invalid");
     }
     const requestFingerprint = this.fingerprint({
@@ -211,14 +211,11 @@ export class ImChatRecordService {
     publicId: string,
     input: { beforePosition?: number; pageSize?: number }
   ) {
-    const bundle = await this.getBundle(auth, publicId);
-    const pageSize = this.pageSize(input.pageSize);
-    if (
-      input.beforePosition !== undefined &&
-      (!Number.isInteger(input.beforePosition) || input.beforePosition <= 0)
-    ) {
+    if (input.beforePosition !== undefined && !this.isSafePositiveInteger(input.beforePosition)) {
       throw this.validation("error.validation_failed");
     }
+    const pageSize = this.pageSize(input.pageSize);
+    const bundle = await this.getBundle(auth, publicId);
     return this.repository.listItems({
       bundleId: bundle.id,
       beforePosition: input.beforePosition,
@@ -232,7 +229,7 @@ export class ImChatRecordService {
   ) {
     const scope = await this.personalIdentityScope.resolve(auth);
     const page = input.page ?? 1;
-    if (!Number.isInteger(page) || page <= 0) throw this.validation("error.validation_failed");
+    if (!this.isSafePositiveInteger(page)) throw this.validation("error.validation_failed");
     return this.repository.listFavorites({
       identityId: scope.identityId,
       page,
@@ -245,7 +242,7 @@ export class ImChatRecordService {
     context: AuthRequestContext,
     favoriteId: number
   ) {
-    if (!Number.isInteger(favoriteId) || favoriteId <= 0) {
+    if (!this.isSafePositiveInteger(favoriteId)) {
       throw this.validation("error.validation_failed");
     }
     const scope = await this.personalIdentityScope.resolve(auth);
@@ -284,8 +281,7 @@ export class ImChatRecordService {
 
   private normalizeCommand(command: ChatRecordCommand): number[] {
     if (
-      !Number.isInteger(command.sourceConversationId) ||
-      command.sourceConversationId <= 0 ||
+      !this.isSafePositiveInteger(command.sourceConversationId) ||
       typeof command.idempotencyKey !== "string" ||
       command.idempotencyKey.trim().length === 0
     ) {
@@ -295,7 +291,7 @@ export class ImChatRecordService {
     if (
       ids.length < 1 ||
       ids.length > MAX_ITEMS ||
-      ids.some((id) => !Number.isInteger(id) || id <= 0)
+      ids.some((id) => !this.isSafePositiveInteger(id))
     ) {
       throw this.validation("error.im.chat_record_item_count_invalid");
     }
@@ -368,7 +364,7 @@ export class ImChatRecordService {
           senderDisplayNameSnapshot: message.senderDisplayName,
           senderAvatarSnapshot: message.senderAvatarUrl,
           messageType: message.messageType,
-          contentSnapshot: message.content,
+          contentSnapshot: mediaSource ? null : message.content,
           metadataSnapshot: media ? { media } : null,
           sentAtSnapshot: message.sentAt,
           media
@@ -423,8 +419,21 @@ export class ImChatRecordService {
   }
 
   private previewLine(message: ChatRecordSourceMessage): string {
-    const content = message.content?.replace(/\s+/gu, " ").trim() || `[${message.messageType}]`;
+    const sourcePolicy = parseChatRecordSourcePolicy(message.messageType, message.metadata);
+    if (!sourcePolicy) throw this.sourceUnavailable();
+    const content =
+      sourcePolicy.kind === "media"
+        ? sourcePolicy.media.mimeType.startsWith("image/")
+          ? "[图片]"
+          : "[语音]"
+        : this.safeTextPreview(message.content);
     return `${message.senderDisplayName}: ${content}`.slice(0, 245);
+  }
+
+  private safeTextPreview(content: string | null): string {
+    const compact = content?.replace(/\s+/gu, " ").trim();
+    if (!compact) return "[文本]";
+    return compact;
   }
 
   private title(senderNames: string[], kind: ChatRecordTitleKind): string {
@@ -456,10 +465,14 @@ export class ImChatRecordService {
 
   private pageSize(value?: number): number {
     const pageSize = value ?? DEFAULT_PAGE_SIZE;
-    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+    if (!this.isSafePositiveInteger(pageSize) || pageSize > MAX_PAGE_SIZE) {
       throw this.validation("error.validation_failed");
     }
     return pageSize;
+  }
+
+  private isSafePositiveInteger(value: number): boolean {
+    return Number.isSafeInteger(value) && value > 0;
   }
 
   private sourceUnavailable(): AppError {

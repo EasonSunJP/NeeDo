@@ -174,11 +174,15 @@ function buildConversationRoomStore() {
 
 function buildForwardPageStore({
   conversationId = "existing-conversation",
+  conversations = [],
+  ensureDirectConversation,
   messageIds = ["700", "701"],
   pending = true,
   forwardSelectedMessages = vi.fn().mockResolvedValue(undefined),
 }: {
   conversationId?: string;
+  conversations?: Record<string, unknown>[];
+  ensureDirectConversation?: ReturnType<typeof vi.fn>;
   messageIds?: string[];
   pending?: boolean;
   forwardSelectedMessages?: ReturnType<typeof vi.fn>;
@@ -207,12 +211,14 @@ function buildForwardPageStore({
     createdAt: "2026-08-31T00:00:00.000Z",
     updatedAt: "2026-08-31T00:00:00.000Z",
   };
+  const secondUser = { ...user, accountId: "second-account", id: "second-user", nickname: "第二好友", searchableFields: ["第二好友"], userIdLabel: "NeeDo ID: second-user" };
+  const secondContact = { ...contact, id: "contact-2", targetUserId: secondUser.id };
   return {
     api: {},
-    contacts: [contact],
-    conversations: [],
+    contacts: [contact, secondContact],
+    conversations,
     currentUserId: "current-user",
-    ensureDirectConversation: vi.fn().mockResolvedValue({ id: conversationId }),
+    ensureDirectConversation: ensureDirectConversation ?? vi.fn().mockImplementation((userId: string) => Promise.resolve({ id: userId === secondUser.id ? "second-conversation" : conversationId })),
     forwardSelectedMessages,
     members: [],
     pendingChatRecordForward: pending
@@ -220,9 +226,13 @@ function buildForwardPageStore({
       : null,
     searchDirectory: vi.fn().mockResolvedValue({ users: [] }),
     setPendingChatRecordForward: vi.fn(),
-    users: [user],
-    usersById: { [user.id]: user },
+    users: [user, secondUser],
+    usersById: { [user.id]: user, [secondUser.id]: secondUser },
   };
+}
+
+function buildForwardConversation(id: string, type: "single" | "group", contactUserId?: string) {
+  return { avatar: "", autoTranslateMessages: false, contactUserId, id, isMuted: false, isPinned: false, lastMessagePreview: "最近消息", lastMessageTime: "2026-08-31T00:00:00.000Z", memberIds: type === "group" ? ["current-user", "partner-user"] : ["current-user", contactUserId], title: type === "group" ? "项目群" : "测试好友", type, unreadCount: 0, updatedAt: "2026-08-31T00:00:00.000Z" };
 }
 
 function LocationProbe() {
@@ -300,26 +310,35 @@ describe("ImNewConversationPage chat-record forwarding", () => {
   });
 
   it.each([
-    ["a single-message existing", "existing-conversation", ["700"]],
-    ["a multi-message newly created", "new-conversation", ["700", "701"]],
-  ])("submits to %s target through the same chat-record endpoint", async (_label, conversationId, messageIds) => {
-    const store = buildForwardPageStore({ conversationId, messageIds });
+    ["existing direct", buildForwardConversation("direct-conversation", "single", "partner-user"), "测试好友"],
+    ["existing group", buildForwardConversation("group-conversation", "group"), "项目群"],
+  ])("forwards directly to an %s target without ensuring a new direct conversation", async (_label, conversation, targetLabel) => {
+    const store = buildForwardPageStore({ conversations: [conversation] });
     const view = await renderForwardPage(store);
 
     await act(async () => {
-      Array.from(view.container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("测试好友"))
-        ?.click();
+      const target = view.container.querySelector<HTMLButtonElement>(`[data-forward-conversation-id="${conversation.id}"] button`);
+      expect(target?.textContent).toContain(targetLabel);
+      target?.click();
       await Promise.resolve();
       await Promise.resolve();
     });
 
+    expect(store.ensureDirectConversation).not.toHaveBeenCalled();
+    expect(store.forwardSelectedMessages).toHaveBeenCalledWith(conversation.id, expect.any(String));
+    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe(`/messages/${conversation.id}`);
+    await act(async () => view.root.unmount());
+  });
+
+  it("uses contacts only to create a new direct target", async () => {
+    const store = buildForwardPageStore({ conversationId: "new-conversation" });
+    const view = await renderForwardPage(store);
+    await act(async () => {
+      Array.from(view.container.querySelectorAll("button")).find((button) => button.textContent?.includes("测试好友"))?.click();
+      await Promise.resolve(); await Promise.resolve();
+    });
     expect(store.ensureDirectConversation).toHaveBeenCalledWith("partner-user");
-    expect(store.forwardSelectedMessages).toHaveBeenCalledWith(
-      conversationId,
-      expect.any(String),
-    );
-    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe(`/messages/${conversationId}`);
+    expect(store.forwardSelectedMessages).toHaveBeenCalledWith("new-conversation", expect.any(String));
     await act(async () => view.root.unmount());
   });
 
@@ -348,10 +367,57 @@ describe("ImNewConversationPage chat-record forwarding", () => {
       await Promise.resolve();
     });
     expect(forwardSelectedMessages).toHaveBeenCalledTimes(2);
+    expect(store.ensureDirectConversation).toHaveBeenCalledTimes(1);
     expect(forwardSelectedMessages.mock.calls[0]?.[1]).toBe(
       forwardSelectedMessages.mock.calls[1]?.[1],
     );
     expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe("/messages/existing-conversation");
+    await act(async () => view.root.unmount());
+  });
+
+  it("uses a new idempotency key when the user switches targets after failure", async () => {
+    const forwardSelectedMessages = vi.fn().mockRejectedValue(new Error("error.im.delivery_failed"));
+    const store = buildForwardPageStore({ forwardSelectedMessages });
+    const view = await renderForwardPage(store);
+    for (const label of ["测试好友", "第二好友"]) {
+      await act(async () => {
+        Array.from(view.container.querySelectorAll("button")).find((button) => button.textContent?.includes(label))?.click();
+        await Promise.resolve(); await Promise.resolve();
+      });
+    }
+    expect(forwardSelectedMessages).toHaveBeenCalledTimes(2);
+    expect(forwardSelectedMessages.mock.calls[0]?.[0]).toBe("existing-conversation");
+    expect(forwardSelectedMessages.mock.calls[1]?.[0]).toBe("second-conversation");
+    expect(forwardSelectedMessages.mock.calls[0]?.[1]).not.toBe(forwardSelectedMessages.mock.calls[1]?.[1]);
+    await act(async () => view.root.unmount());
+  });
+
+  it("suppresses same-tick double submission", async () => {
+    let resolveForward!: () => void;
+    const forwardSelectedMessages = vi.fn().mockImplementation(() => new Promise<void>((resolve) => { resolveForward = resolve; }));
+    const store = buildForwardPageStore({ forwardSelectedMessages });
+    const view = await renderForwardPage(store);
+    const target = Array.from(view.container.querySelectorAll("button")).find((button) => button.textContent?.includes("测试好友"));
+    await act(async () => { target?.click(); target?.click(); await Promise.resolve(); });
+    expect(store.ensureDirectConversation).toHaveBeenCalledTimes(1);
+    expect(forwardSelectedMessages).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveForward(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => view.root.unmount());
+  });
+
+  it("ignores cancel while a forward target is resolving", async () => {
+    let resolveConversation!: (conversation: { id: string }) => void;
+    const ensureDirectConversation = vi.fn().mockImplementation(() => new Promise<{ id: string }>((resolve) => { resolveConversation = resolve; }));
+    const store = buildForwardPageStore({ ensureDirectConversation });
+    const view = await renderForwardPage(store, ["/messages", "/messages/new?mode=forward"]);
+    await act(async () => {
+      Array.from(view.container.querySelectorAll("button")).find((button) => button.textContent?.includes("测试好友"))?.click();
+      view.container.querySelector<HTMLButtonElement>('button[aria-label="返回"]')?.click();
+      await Promise.resolve();
+    });
+    expect(store.setPendingChatRecordForward).not.toHaveBeenCalled();
+    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBeUndefined();
+    await act(async () => { resolveConversation({ id: "existing-conversation" }); await Promise.resolve(); await Promise.resolve(); });
     await act(async () => view.root.unmount());
   });
 });

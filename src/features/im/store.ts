@@ -445,6 +445,23 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
   }
 
+  function rebuildConversationMessageSummary(conversationId: string, authoritativeLastMessage?: ConversationMessage) {
+    const remainingMessages = snapshot.messagesByConversation[conversationId] ?? [];
+    const lastMessage = authoritativeLastMessage ?? remainingMessages.at(-1);
+    snapshot = {
+      ...snapshot,
+      conversations: sortConversations(snapshot.conversations.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              ...buildConversationLastMessageSummary(lastMessage, snapshot.currentUserId ?? "", snapshot.usersById, conversation.updatedAt),
+              ...(lastMessage ? {} : { unreadCount: 0, mentionMe: false, mentionAll: false })
+            }
+          : conversation
+      ))
+    };
+  }
+
   function removeDraft(conversationId: string) {
     const nextDrafts = { ...snapshot.ui.drafts };
     delete nextDrafts[conversationId];
@@ -916,21 +933,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       messagesByConversation: {
         ...snapshot.messagesByConversation,
         [conversationId]: remainingMessages,
-      },
-      conversations: snapshot.conversations.map((conversation) =>
-        conversation.id === conversationId
-          ? {
-              ...conversation,
-              ...buildConversationLastMessageSummary(
-                latestMessage,
-                snapshot.currentUserId ?? "",
-                snapshot.usersById,
-                conversation.updatedAt,
-              ),
-            }
-          : conversation,
-      ),
+      }
     };
+    rebuildConversationMessageSummary(conversationId, latestMessage);
     emit();
     return response;
   }
@@ -973,7 +978,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       sourceConversationId: pending.sourceConversationId,
     });
     upsertMessage(response.message);
-    recomputeCurrentLastMessageSummary(response.message);
+    rebuildConversationMessageSummary(conversationId, response.message);
     snapshot = { ...snapshot, pendingChatRecordForward: null };
     emit();
     return response.message;
@@ -1013,10 +1018,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         [conversationId]: remaining,
       },
     };
-    const latest = remaining.at(-1);
-    if (latest) {
-      recomputeCurrentLastMessageSummary(latest);
-    }
+    rebuildConversationMessageSummary(conversationId);
     emit();
   }
 

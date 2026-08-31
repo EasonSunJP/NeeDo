@@ -101,6 +101,49 @@ describe("chat-record OpenAPI contract", () => {
         senderNames: api.components.schemas.ImChatRecordSummary.properties?.senderNames
       }
     });
+    const safeMaximum = Number.MAX_SAFE_INTEGER;
+    expect(commandSchema).toMatchObject({
+      properties: {
+        messageIds: { items: { maximum: safeMaximum } },
+        sourceConversationId: { type: "integer", minimum: 1, maximum: safeMaximum }
+      }
+    });
+    expect(api.components.schemas.ImBatchDeleteRequest).toMatchObject({
+      properties: { messageIds: { items: { maximum: safeMaximum } } }
+    });
+    expect(api.components.schemas.ImChatRecordItem).toMatchObject({
+      properties: { id: { maximum: safeMaximum } }
+    });
+    expect(api.components.schemas.ImChatRecordFavorite).toMatchObject({
+      properties: { id: { maximum: safeMaximum } }
+    });
+    expect(api.components.schemas.ImChatRecordItemPage).toMatchObject({
+      properties: { nextCursor: { maximum: safeMaximum } }
+    });
+    for (const [path, method, parameterName] of [
+      [
+        "/api/v1/im/conversations/{targetConversationId}/chat-records",
+        "post",
+        "targetConversationId"
+      ],
+      ["/api/v1/im/chat-records/{publicId}/items", "get", "beforePosition"],
+      ["/api/v1/im/chat-record-favorites", "get", "page"],
+      ["/api/v1/im/chat-record-favorites/{favoriteId}", "delete", "favoriteId"],
+      ["/api/v1/im/conversations/{conversationId}/messages/delete-for-me", "post", "conversationId"]
+    ] as const) {
+      const parameters = (
+        api.paths[path][method] as unknown as {
+          parameters: Array<{ name: string; schema: unknown }>;
+        }
+      ).parameters;
+      expect(
+        parameters.find((parameter) => parameter.name === parameterName)?.schema
+      ).toMatchObject({
+        type: "integer",
+        minimum: 1,
+        maximum: safeMaximum
+      });
+    }
     const media =
       api.paths["/api/v1/im/chat-records/{publicId}/media/{checksumSha256}"].get.responses["200"];
     expect(Object.keys(media.content).sort()).toEqual(

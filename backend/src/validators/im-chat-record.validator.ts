@@ -1,7 +1,17 @@
 import { z } from "zod";
 
+const safePositiveInteger = (max = Number.MAX_SAFE_INTEGER) =>
+  z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(max)
+    .refine(Number.isSafeInteger, "error.validation.safe_integer_required");
+
+export const safePositiveIntegerSchema = safePositiveInteger();
+
 export const messageIdsSchema = z
-  .array(z.coerce.number().int().positive())
+  .array(safePositiveIntegerSchema)
   .min(1)
   .max(100)
   .refine((ids) => new Set(ids).size === ids.length, "error.im.message_ids_duplicate");
@@ -10,12 +20,12 @@ export const chatRecordCommandBodySchema = z
   .object({
     idempotencyKey: z.string().uuid(),
     messageIds: messageIdsSchema,
-    sourceConversationId: z.coerce.number().int().positive()
+    sourceConversationId: safePositiveIntegerSchema
   })
   .strict();
 
 export const targetConversationParamSchema = z.object({
-  targetConversationId: z.coerce.number().int().positive()
+  targetConversationId: safePositiveIntegerSchema
 });
 
 export const chatRecordPublicIdParamSchema = z.object({
@@ -23,8 +33,8 @@ export const chatRecordPublicIdParamSchema = z.object({
 });
 
 export const chatRecordItemsQuerySchema = z.object({
-  beforePosition: z.coerce.number().int().positive().optional(),
-  pageSize: z.coerce.number().int().positive().max(100).optional()
+  beforePosition: safePositiveIntegerSchema.optional(),
+  pageSize: safePositiveInteger(100).optional()
 });
 
 export const chatRecordMediaParamSchema = chatRecordPublicIdParamSchema.extend({
@@ -32,10 +42,10 @@ export const chatRecordMediaParamSchema = chatRecordPublicIdParamSchema.extend({
 });
 
 export const favoriteListQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
-  pageSize: z.coerce.number().int().positive().max(100).optional()
+  page: safePositiveIntegerSchema.optional(),
+  pageSize: safePositiveInteger(100).optional()
 });
 
 export const favoriteIdParamSchema = z.object({
-  favoriteId: z.coerce.number().int().positive()
+  favoriteId: safePositiveIntegerSchema
 });

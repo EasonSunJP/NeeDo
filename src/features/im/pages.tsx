@@ -7912,16 +7912,6 @@ export function ImMediaRecordsPage() {
   );
 }
 
-export async function submitImNewConversationForward(
-  store: Pick<ImStoreHook, "ensureDirectConversation" | "forwardSelectedMessages">,
-  userId: string,
-  idempotencyKey: string
-) {
-  const conversation = await store.ensureDirectConversation(userId);
-  await store.forwardSelectedMessages(conversation.id, idempotencyKey);
-  return conversation;
-}
-
 export function ImNewConversationPage() {
   const { scope, store, config } = useImRuntime();
   const { actions: dineInActions } = useDineInStore();
@@ -7962,7 +7952,10 @@ export function ImNewConversationPage() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [forwardError, setForwardError] = useState<string | null>(null);
   const [forwardPending, setForwardPending] = useState(false);
-  const forwardIdempotencyKeyRef = useRef<string | null>(null);
+  const forwardInFlightRef = useRef(false);
+  const forwardOperationGenerationRef = useRef(0);
+  const forwardKeysByConversationRef = useRef(new Map<string, string>());
+  const resolvedForwardConversationsByUserRef = useRef(new Map<string, string>());
   const [myQrPurpose, setMyQrPurpose] = useState<MyQrCodePurpose>("friend");
   const contacts = useMemo(() => {
     const keyword = deferredQuery.trim().toLowerCase();
@@ -7984,6 +7977,22 @@ export function ImNewConversationPage() {
       return [getDisplayName(user, contact), user.userIdLabel, ...user.searchableFields].some((field) => field.toLowerCase().includes(keyword));
     });
   }, [deferredQuery, store.contacts, store.usersById]);
+  const forwardConversations = useMemo(() => {
+    if (mode !== "forward" || !store.pendingChatRecordForward) return [];
+    const keyword = deferredQuery.trim().toLowerCase();
+    return store.conversations.filter((conversation) => {
+      if (conversation.isDeleted || conversation.id === store.pendingChatRecordForward?.sourceConversationId || (conversation.type !== "single" && conversation.type !== "group")) return false;
+      return !keyword || getConversationDisplayName(store, conversation).toLowerCase().includes(keyword);
+    });
+  }, [deferredQuery, mode, store, store.conversations, store.pendingChatRecordForward]);
+  const existingForwardContactUserIds = useMemo(() => new Set(
+    forwardConversations
+      .filter((conversation) => conversation.type === "single" && conversation.contactUserId)
+      .map((conversation) => conversation.contactUserId as string)
+  ), [forwardConversations]);
+  const newDirectForwardContacts = useMemo(() => mode === "forward"
+    ? contacts.filter((contact) => !existingForwardContactUserIds.has(contact.targetUserId))
+    : contacts, [contacts, existingForwardContactUserIds, mode]);
   const groupedContacts = useMemo(
     () => buildContactSections({ users: store.users, contacts }),
     [contacts, store.users]
@@ -8084,6 +8093,10 @@ export function ImNewConversationPage() {
     if (indexClearTimerRef.current !== null) {
       window.clearTimeout(indexClearTimerRef.current);
     }
+  }, []);
+
+  useEffect(() => () => {
+    forwardOperationGenerationRef.current += 1;
   }, []);
 
   useEffect(() => {
@@ -8239,27 +8252,43 @@ export function ImNewConversationPage() {
     }
   };
 
-  const createOrForward = async (userId: string) => {
-    if (mode === "forward") {
-      if (!store.pendingChatRecordForward || forwardPending) {
-        return;
+  const forwardToResolvedConversation = async (conversationTarget: string | (() => Promise<string> | string)) => {
+    if (!store.pendingChatRecordForward || forwardInFlightRef.current) return;
+    forwardInFlightRef.current = true;
+    const operationGeneration = ++forwardOperationGenerationRef.current;
+    setForwardPending(true);
+    setForwardError(null);
+    try {
+      const conversationId = typeof conversationTarget === "string" ? conversationTarget : await conversationTarget();
+      if (operationGeneration !== forwardOperationGenerationRef.current) return;
+      let idempotencyKey = forwardKeysByConversationRef.current.get(conversationId);
+      if (!idempotencyKey) {
+        idempotencyKey = crypto.randomUUID();
+        forwardKeysByConversationRef.current.set(conversationId, idempotencyKey);
       }
-
-      forwardIdempotencyKeyRef.current ??= crypto.randomUUID();
-      setForwardPending(true);
-      setForwardError(null);
-      try {
-        const conversation = await submitImNewConversationForward(
-          store,
-          userId,
-          forwardIdempotencyKeyRef.current
-        );
-        navigate(config.routes.conversation(conversation.id));
-      } catch (error) {
-        setForwardError(error instanceof Error ? error.message : "转发失败，请重试");
-      } finally {
+      await store.forwardSelectedMessages(conversationId, idempotencyKey);
+      if (operationGeneration === forwardOperationGenerationRef.current) navigate(config.routes.conversation(conversationId));
+    } catch (error) {
+      if (operationGeneration === forwardOperationGenerationRef.current) setForwardError(error instanceof Error ? error.message : "转发失败，请重试");
+    } finally {
+      if (operationGeneration === forwardOperationGenerationRef.current) {
+        forwardInFlightRef.current = false;
         setForwardPending(false);
       }
+    }
+  };
+
+  const forwardToNewDirectConversation = (userId: string) => forwardToResolvedConversation(async () => {
+    const cachedConversationId = resolvedForwardConversationsByUserRef.current.get(userId);
+    if (cachedConversationId) return cachedConversationId;
+    const conversation = await store.ensureDirectConversation(userId);
+    resolvedForwardConversationsByUserRef.current.set(userId, conversation.id);
+    return conversation.id;
+  });
+
+  const createOrForward = async (userId: string) => {
+    if (mode === "forward") {
+      await forwardToNewDirectConversation(userId);
       return;
     }
 
@@ -8346,6 +8375,8 @@ export function ImNewConversationPage() {
         <ImTopBar
           onBack={() => {
             if (mode === "forward") {
+              if (forwardInFlightRef.current) return;
+              forwardOperationGenerationRef.current += 1;
               store.setPendingChatRecordForward(null);
             }
             navigate(-1);
@@ -8508,7 +8539,7 @@ export function ImNewConversationPage() {
           />
         </div>
       ) : (
-        <div className="space-y-4 px-4 py-4">
+        <div aria-busy={mode === "forward" && forwardPending} className="space-y-4 px-4 py-4">
           {mode === "forward" && !store.pendingChatRecordForward ? (
             <div className="rounded-[24px] bg-white px-4 py-10 text-center text-sm text-ink/55 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
               转发内容已失效，请重新选择
@@ -8526,9 +8557,30 @@ export function ImNewConversationPage() {
             value={query}
           />
 
+          {mode === "forward" && store.pendingChatRecordForward && forwardConversations.length > 0 ? (
+            <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+              <SectionTag>已有会话</SectionTag>
+              {forwardConversations.map((conversation) => (
+                <div data-forward-conversation-id={conversation.id} key={conversation.id}>
+                  <ConversationRow
+                    avatar={getConversationAvatar(store, conversation)}
+                    group={conversation.type === "group"}
+                    onClick={() => { void forwardToResolvedConversation(conversation.id); }}
+                    preview={buildConversationRowPreview(conversation)}
+                    privacyMode={conversation.privacyModeEnabled}
+                    time={formatConversationTime(conversation.lastMessageTime)}
+                    title={getConversationDisplayName(store, conversation)}
+                    unreadCount={conversation.unreadCount}
+                  />
+                </div>
+              ))}
+            </section>
+          ) : null}
+
           {mode !== "forward" || store.pendingChatRecordForward ? (
             <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-              {contacts.map((contact) => {
+              {mode === "forward" ? <SectionTag>新建单聊</SectionTag> : null}
+              {newDirectForwardContacts.map((contact) => {
               const user = store.usersById[contact.targetUserId];
 
               if (!user) {
