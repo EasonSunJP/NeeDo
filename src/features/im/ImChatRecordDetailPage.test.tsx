@@ -483,12 +483,74 @@ describe("ImChatRecordDetailPage", () => {
     await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 5)); });
 
     const snapshot = document.querySelector<HTMLElement>(".im-chat-record-timeline > li");
-    expect.soft(snapshot?.getAttribute("data-no-i18n")).toBe("true");
+    expect.soft(snapshot?.getAttribute("data-no-i18n")).toBeNull();
+    expect(snapshot?.querySelectorAll("[data-no-i18n]").length).toBeGreaterThanOrEqual(3);
     expect(snapshot?.textContent).toContain("東京駅");
     expect(snapshot?.textContent).toContain("东京站");
     expect(snapshot?.textContent).not.toContain("Tokyo Station");
     expect(document.querySelector("h1")?.textContent).toBe(expectedTitle);
     expect(document.querySelector(`button[aria-label="${expectedInfoLabel}"]`)).not.toBeNull();
+  });
+
+  it.each([
+    ["zh-Hant", ["店鋪服務", "服務", "待確認", "邀請對象：", "提醒："]],
+    ["ja", ["店舗サービス", "サービス", "確認待ち", "邀请対象：", "リマインド："]],
+    ["en", ["Store service", "Service", "Pending Confirmation", "Invitee:", "Remind:"]],
+    ["ko", ["매장 서비스", "서비스", "확인 대기", "초대 대상:", "Ti Xing:"]],
+  ] as const)("localizes static service and schedule labels in %s without changing authored snapshot fields", async (language, expectedStaticLabels) => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 1));
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
+    localStorage.setItem("needo.language", language);
+    localStorage.setItem("needo.language.mode", "manual");
+    const recordApi = api({
+      listChatRecordItems: vi.fn(async () => ({
+        ...firstPage,
+        total: 2,
+        nextCursor: null,
+        list: [
+          {
+            ...firstPage.list[0],
+            id: "runtime-service",
+            position: 1,
+            senderDisplayName: "東京駅",
+            messageType: "service-card",
+            content: "",
+            metadata: { snapshotVersion: 1, type: "service-card", display: { serviceCard: { serviceId: "s1", name: "東京駅", cover: "/cover.png", summary: "东京站", priceLabel: "東京駅", tags: ["东京站"] } } },
+          },
+          {
+            ...firstPage.list[0],
+            id: "runtime-schedule",
+            position: 2,
+            senderDisplayName: "東京駅",
+            messageType: "schedule-invite",
+            content: "",
+            metadata: { snapshotVersion: 1, type: "schedule-invite", display: { scheduleInvite: { scheduleId: "sc1", title: "東京駅", date: "2026-09-01", timeRange: "10:00", hostName: "东京站", attendeeLabel: "東京駅", location: "东京站", reminderLabel: "東京駅", note: "东京站" } } },
+          },
+        ],
+      })),
+    });
+
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}>
+        <I18nProvider>
+          <I18nRuntime>
+            {themed(<Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language={language} />} /></Routes>)}
+          </I18nRuntime>
+        </I18nProvider>
+      </MemoryRouter>,
+    ));
+    await flush();
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 5)); });
+
+    const snapshots = Array.from(document.querySelectorAll<HTMLElement>(".im-chat-record-timeline > li"));
+    expect(snapshots).toHaveLength(2);
+    expect.soft(snapshots.every((snapshot) => !snapshot.hasAttribute("data-no-i18n"))).toBe(true);
+    expectedStaticLabels.forEach((label) => expect(document.body.textContent).toContain(label));
+    snapshots.forEach((snapshot) => {
+      expect(snapshot.textContent).toContain("東京駅");
+      expect(snapshot.textContent).toContain("东京站");
+      expect(snapshot.textContent).not.toContain("Tokyo Station");
+    });
   });
 
   it("rejects malformed public ids without calling the API", async () => {

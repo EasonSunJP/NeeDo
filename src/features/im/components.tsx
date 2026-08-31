@@ -2950,6 +2950,7 @@ export function MessageBubble({
   renderContactCard,
   renderContactCardAction,
   readOnly = false,
+  protectAuthoredContent = false,
   translation = defaultImMessageTranslation
 }: {
   message: ConversationMessage;
@@ -2969,6 +2970,7 @@ export function MessageBubble({
   renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   readOnly?: boolean;
+  protectAuthoredContent?: boolean;
   translation?: ImMessageTranslationOptions;
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
@@ -3023,8 +3025,8 @@ export function MessageBubble({
 
     if (message.type === "image" || message.type === "video") {
       const image = message.type === "video" && readOnly
-        ? <video aria-label={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls preload="metadata" src={message.ext?.url ?? message.content} />
-        : <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />;
+        ? <video aria-label={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls data-no-i18n={protectAuthoredContent ? "true" : undefined} preload="metadata" src={message.ext?.url ?? message.content} />
+        : <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" data-no-i18n={protectAuthoredContent ? "true" : undefined} src={message.ext?.thumbnailUrl ?? message.content} />;
       return (
         <div className="space-y-2">
           {readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
@@ -3092,8 +3094,8 @@ export function MessageBubble({
         <div className={cn("w-[220px] overflow-hidden rounded-2xl", isMine ? "bg-[color:color-mix(in_srgb,var(--client-primary-contrast)_12%,transparent)]" : "bg-black/[0.04]")}>
           <div className="h-24 bg-[linear-gradient(135deg,#b6e3cf_0%,#dff2ea_55%,#f9fbf7_100%)]" />
           <div className="px-3 py-3">
-            <p className="text-[14px] font-medium">{message.ext?.location?.title ?? "位置"}</p>
-            <p className={cn("mt-1 text-xs leading-5", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{message.ext?.location?.address}</p>
+            <p className="text-[14px] font-medium" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{message.ext?.location?.title ?? "位置"}</p>
+            <p className={cn("mt-1 text-xs leading-5", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")} data-no-i18n={protectAuthoredContent ? "true" : undefined}>{message.ext?.location?.address}</p>
           </div>
         </div>
       );
@@ -3102,7 +3104,8 @@ export function MessageBubble({
     if (message.type === "contact-card" && message.ext?.contactCard) {
       const card = message.ext.contactCard;
       const customCard = renderContactCard?.(card, message);
-      const caption = card.headline ?? card.userIdLabel ?? contactCardKindLabel(card.profileKind);
+      const authoredCaption = card.headline ?? card.userIdLabel;
+      const caption = authoredCaption ?? contactCardKindLabel(card.profileKind);
       const action = renderContactCardAction?.(card, message);
 
       if (customCard) {
@@ -3113,10 +3116,10 @@ export function MessageBubble({
         <div className="w-[248px] overflow-hidden rounded-2xl bg-white/72 text-[color:var(--client-text)] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
           <button className="block w-full p-3 text-left" onClick={() => onOpenContact?.(card.userId)} type="button">
             <div className="flex items-center gap-3">
-              <AvatarImage alt={card.displayName} className="h-12 w-12" src={card.avatar} />
+              <AvatarImage alt={card.displayName} className="h-12 w-12" data-no-i18n={protectAuthoredContent ? "true" : undefined} src={card.avatar} />
               <div className="min-w-0">
-                <p className="truncate text-[14px] font-black">{card.displayName}</p>
-                <p className={cn("mt-1 line-clamp-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/52")}>{caption}</p>
+                <p className="truncate text-[14px] font-black" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{card.displayName}</p>
+                <p className={cn("mt-1 line-clamp-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/52")} data-no-i18n={protectAuthoredContent && authoredCaption ? "true" : undefined}>{caption}</p>
               </div>
             </div>
           </button>
@@ -3134,13 +3137,13 @@ export function MessageBubble({
       const cardBody = (
         <div className="w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]">
           <div className="flex gap-3 p-3">
-            <img alt={card.name} className="h-20 w-20 shrink-0 rounded-[18px] object-cover" src={card.cover} />
+            <img alt={card.name} className="h-20 w-20 shrink-0 rounded-[18px] object-cover" data-no-i18n={protectAuthoredContent ? "true" : undefined} src={card.cover} />
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-[14px] font-black leading-5">{card.name}</p>
-              <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">{card.summary}</p>
+              <p className="line-clamp-2 text-[14px] font-black leading-5" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{card.name}</p>
+              <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{card.summary}</p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {tags.map((tag) => (
-                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]" key={tag}>
+                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]" data-no-i18n={protectAuthoredContent ? "true" : undefined} key={tag}>
                     {tag}
                   </span>
                 ))}
@@ -3149,8 +3152,8 @@ export function MessageBubble({
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2.5">
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-black text-[color:var(--client-muted)]">{card.providerName ?? "店铺服务"}</p>
-              <p className="mt-0.5 text-[13px] font-black text-[color:var(--client-text)]">{card.priceLabel}{card.durationLabel ? ` · ${card.durationLabel}` : ""}</p>
+              <p className="truncate text-[11px] font-black text-[color:var(--client-muted)]" data-no-i18n={protectAuthoredContent && card.providerName ? "true" : undefined}>{card.providerName ?? "店铺服务"}</p>
+              <p className="mt-0.5 text-[13px] font-black text-[color:var(--client-text)]" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{card.priceLabel}{card.durationLabel ? ` · ${card.durationLabel}` : ""}</p>
             </div>
             <span className="shrink-0 rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)]">服务</span>
           </div>
@@ -3170,19 +3173,19 @@ export function MessageBubble({
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]">
+                <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]" data-no-i18n={protectAuthoredContent && invite.statusLabel ? "true" : undefined}>
                   {invite.statusLabel ?? "待确认"}
                 </span>
-                {invite.hostName ? <span className="min-w-0 truncate text-[10px] font-black text-[color:var(--client-muted)]">{invite.hostName}</span> : null}
+                {invite.hostName ? <span className="min-w-0 truncate text-[10px] font-black text-[color:var(--client-muted)]" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{invite.hostName}</span> : null}
               </div>
-              <p className="mt-2 line-clamp-2 text-[14px] font-black leading-5">{invite.title}</p>
-              <p className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]">{invite.date} · {invite.timeRange}</p>
-              {invite.attendeeLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">邀请对象：{invite.attendeeLabel}</p> : null}
-              {invite.location ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">{invite.location}</p> : null}
-              {invite.reminderLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">提醒：{invite.reminderLabel}</p> : null}
+              <p className="mt-2 line-clamp-2 text-[14px] font-black leading-5" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{invite.title}</p>
+              <p className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{invite.date} · {invite.timeRange}</p>
+              {invite.attendeeLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">邀请对象：<span data-no-i18n={protectAuthoredContent ? "true" : undefined}>{invite.attendeeLabel}</span></p> : null}
+              {invite.location ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{invite.location}</p> : null}
+              {invite.reminderLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">提醒：<span data-no-i18n={protectAuthoredContent ? "true" : undefined}>{invite.reminderLabel}</span></p> : null}
             </div>
           </div>
-          {invite.note ? <p className="border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2 text-[11px] font-bold leading-5 text-[color:var(--client-muted)]">{invite.note}</p> : null}
+          {invite.note ? <p className="border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2 text-[11px] font-bold leading-5 text-[color:var(--client-muted)]" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{invite.note}</p> : null}
         </div>
       );
 
@@ -3204,7 +3207,7 @@ export function MessageBubble({
         : undefined
     : undefined;
 
-  const avatarNode = (
+  const avatarElement = (
     <InteractiveAvatar
       alt={isMine ? "我的头像" : senderName ?? "联系人"}
       className="h-9 w-9"
@@ -3213,6 +3216,9 @@ export function MessageBubble({
       to={avatarTo}
     />
   );
+  const avatarNode = protectAuthoredContent
+    ? <span className="contents" data-no-i18n="true">{avatarElement}</span>
+    : avatarElement;
   const quoteNode = quotedMessage ? (
     <div className={cn("mb-2 w-full border-b pb-2", isMine ? "border-[color:color-mix(in_srgb,var(--client-primary-contrast)_18%,transparent)] text-[color:var(--client-primary-contrast-muted)]" : "border-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] text-[color:var(--client-muted)]")}>
       <div className="flex min-w-0 items-center gap-2">
@@ -3279,7 +3285,7 @@ export function MessageBubble({
     <div className={cn("flex items-end gap-2 px-3 py-1", isMine ? "justify-end" : "justify-start")}>
       {!isMine ? avatarNode : null}
       <div className={cn("flex flex-col", message.type === "contact-card" ? "max-w-[calc(100%-3.25rem)]" : "max-w-[78%]", isMine ? "items-end" : "items-start")}>
-        {showSender && !isMine ? <p className="mb-1 px-1 text-[11px] font-bold text-[color:var(--client-muted)]">{senderName}</p> : null}
+        {showSender && !isMine ? <p className="mb-1 px-1 text-[11px] font-bold text-[color:var(--client-muted)]" data-no-i18n={protectAuthoredContent ? "true" : undefined}>{senderName}</p> : null}
         <div className={cn("inline-flex min-w-0 max-w-full overflow-hidden", bubbleShellClass)} data-im-message-bubble="true">{contentNode}</div>
         {visibleTranslation ? (
           <p

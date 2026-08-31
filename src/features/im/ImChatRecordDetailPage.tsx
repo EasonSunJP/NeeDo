@@ -285,18 +285,18 @@ function ProtectedSnapshotMedia({
     </div>
   );
   if (!url) return <p className="px-3 text-xs font-bold text-[color:var(--client-muted)]">{translateText("正在读取媒体", language)}</p>;
-  return <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item, language, url)} readOnly senderName={item.senderDisplayName} showSender />;
+  return <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item, language, url)} protectAuthoredContent readOnly senderName={item.senderDisplayName} showSender />;
 }
 
 function SnapshotTimelineItem({ api, item, publicId, language }: { api: ImChatRecordReadApi; item: ImChatRecordItem; publicId: string; language: Language }) {
   const media = snapshotMedia(item);
   return (
-    <li className="relative pb-5 last:pb-0" data-no-i18n="true">
+    <li className="relative pb-5 last:pb-0">
       <span aria-hidden="true" className="absolute -left-[17px] top-4 h-2.5 w-2.5 rounded-full bg-[color:var(--client-primary)] ring-4 ring-[color:var(--client-bg)]" />
       <time className="mb-1 block px-3 text-[10px] font-bold text-[color:var(--client-muted)]" dateTime={item.sentAt}>
         {new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.sentAt))}
       </time>
-      {media ? <ProtectedSnapshotMedia api={api} item={item} language={language} publicId={publicId} /> : <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item, language)} readOnly senderName={item.senderDisplayName} showSender />}
+      {media ? <ProtectedSnapshotMedia api={api} item={item} language={language} publicId={publicId} /> : <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item, language)} protectAuthoredContent readOnly senderName={item.senderDisplayName} showSender />}
     </li>
   );
 }
