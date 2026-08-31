@@ -123,6 +123,19 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain("MerchantAdminDashboardResource");
     expect(source).toContain('typeof children === "function"');
     expect(source).toContain("children(dashboardResource)");
+    expect(source).toContain("query: dashboardQuery");
+    expect(source).toContain("setQuery: setDashboardQuery");
+  });
+
+  it("keeps exactly one merchant data dashboard navigation item", () => {
+    const oldAnalyticsPath = ["/merchant-admin", "analytics"].join("/");
+    const oldAnalyticsLabel = ["数据", "经营驾驶舱"].join(" / ");
+    const oldOverviewLabel = ["门店", "总览"].join("");
+    expect(source).toContain('label: "数据大盘"');
+    expect(source.match(/label: "数据大盘"/g)).toHaveLength(1);
+    expect(source).not.toContain(`to: "${oldAnalyticsPath}"`);
+    expect(source).not.toContain(oldAnalyticsLabel);
+    expect(source).not.toContain(oldOverviewLabel);
   });
 
   it("shows the operations preview banner, shop selector, and explicit return action", () => {

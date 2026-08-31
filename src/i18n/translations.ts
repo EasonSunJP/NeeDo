@@ -838,7 +838,23 @@ const dashboardTranslations: TranslationMap = {
   "登录状态已失效，请重新登录": { "zh-Hant": "登入狀態已失效，請重新登入", ja: "ログインの有効期限が切れました。再度ログインしてください", en: "Your session expired. Sign in again", ko: "로그인 세션이 만료되었습니다. 다시 로그인해 주세요" },
   "当前身份无权查看数据大盘": { "zh-Hant": "目前身份無權查看數據大盤", ja: "現在の権限ではダッシュボードを表示できません", en: "This identity cannot view the dashboard", ko: "현재 권한으로 대시보드를 볼 수 없습니다" },
   "数据大盘服务暂时不可用，请稍后重试": { "zh-Hant": "數據大盤服務暫時不可用，請稍後重試", ja: "ダッシュボードは一時的に利用できません。後でもう一度お試しください", en: "The dashboard is temporarily unavailable. Try again later", ko: "대시보드를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요" },
-  "重新加载数据大盘": { "zh-Hant": "重新載入數據大盤", ja: "ダッシュボードを再読み込み", en: "Reload dashboard", ko: "대시보드 다시 불러오기" }
+  "重新加载数据大盘": { "zh-Hant": "重新載入數據大盤", ja: "ダッシュボードを再読み込み", en: "Reload dashboard", ko: "대시보드 다시 불러오기" },
+  "NeeDo 店铺经营": { "zh-Hant": "NeeDo 店鋪經營", ja: "NeeDo 店舗運営", en: "NeeDo shop operations", ko: "NeeDo 매장 운영" },
+  "订单、排班、技师、钱包与财务指标均来自当前签名店铺范围。": { "zh-Hant": "訂單、排班、技師、錢包與財務指標均來自目前已簽署的店鋪範圍。", ja: "注文、シフト、スタッフ、ウォレット、財務指標は、署名済みの現在の店舗範囲から取得しています。", en: "Orders, schedules, technicians, wallet, and finance metrics come from the current signed shop scope.", ko: "주문, 근무 일정, 기사, 지갑 및 재무 지표는 현재 서명된 매장 범위에서 제공됩니다." },
+  "财务中心": { "zh-Hant": "財務中心", ja: "財務センター", en: "Finance center", ko: "재무 센터" },
+  "选择店铺": { "zh-Hant": "選擇店鋪", ja: "店舗を選択", en: "Choose a shop", ko: "매장 선택" },
+  "切换后所有商户数据将按新店铺重新加载": { "zh-Hant": "切換後，所有商戶資料將按新店鋪重新載入", ja: "切り替え後、すべての店舗管理データを新しい店舗範囲で再読み込みします", en: "After switching, all merchant data reloads for the new shop", ko: "전환 후 모든 가맹점 데이터를 새 매장 범위로 다시 불러옵니다" },
+  "关闭店铺列表": { "zh-Hant": "關閉店鋪列表", ja: "店舗一覧を閉じる", en: "Close shop list", ko: "매장 목록 닫기" },
+  "切换中…": { "zh-Hant": "切換中…", ja: "切り替え中…", en: "Switching…", ko: "전환 중…" },
+  "店铺切换失败，当前店铺和数据保持不变": { "zh-Hant": "店鋪切換失敗，目前店鋪與資料保持不變", ja: "店舗を切り替えられませんでした。現在の店舗とデータは変更されていません", en: "Shop switch failed. The current shop and data are unchanged", ko: "매장 전환에 실패했습니다. 현재 매장과 데이터는 변경되지 않았습니다" },
+  "加载中…": { "zh-Hant": "載入中…", ja: "読み込み中…", en: "Loading…", ko: "불러오는 중…" },
+  "加载更多": { "zh-Hant": "載入更多", ja: "さらに読み込む", en: "Load more", ko: "더 불러오기" },
+  "数据暂不可用": { "zh-Hant": "資料暫不可用", ja: "データは現在利用できません", en: "Data is currently unavailable", ko: "현재 데이터를 사용할 수 없습니다" },
+  "店铺经营趋势": { "zh-Hant": "店鋪經營趨勢", ja: "店舗運営の推移", en: "Shop operating trends", ko: "매장 운영 추이" },
+  "已完成服务的店铺预估毛利润": { "zh-Hant": "已完成服務的店鋪預估毛利潤", ja: "完了済みサービスの店舗推定粗利益", en: "Estimated shop gross profit from completed services", ko: "완료된 서비스의 매장 예상 총이익" },
+  "总排班、空闲可预约与已预约时长": { "zh-Hant": "總排班、空閒可預約與已預約時長", ja: "総シフト時間、予約可能時間、予約済み時間", en: "Total scheduled, available, and booked hours", ko: "총 근무, 예약 가능 및 예약된 시간" },
+  "正在切换店铺并重新加载数据": { "zh-Hant": "正在切換店鋪並重新載入資料", ja: "店舗を切り替えてデータを再読み込みしています", en: "Switching shops and reloading data", ko: "매장을 전환하고 데이터를 다시 불러오는 중" },
+  "新店铺数据确认前，当前数据已冻结": { "zh-Hant": "新店鋪資料確認前，目前資料已凍結", ja: "新しい店舗データを確認するまで、現在のデータは固定されています", en: "Current data is frozen until the new shop data is confirmed", ko: "새 매장 데이터가 확인될 때까지 현재 데이터가 고정됩니다" }
 };
 
 export const translations: TranslationMap = {
@@ -9534,7 +9550,6 @@ export const translations: TranslationMap = {
   "商户端日程、通讯录、信息、我的页面去掉重复页头，PC 后台入口已归位到更合理的位置。": { "zh-Hant": "店鋪 App行程、通訊錄、資訊、我的頁面去掉重複頁頭，PC 後台入口已歸位到更合理的位置。", ja: "店舗のカレンダー、連絡先、メッセージ、およびマイページに関する重複したヘッダーが削除され、PC管理のエントリがより論理的…", en: "The duplicate headers for the merchant's calendar, contacts, messages, and my page have been removed, and the PC admin entry has been moved to a more logical location.", ko: "매장 캘린더, 연락처, 메시지 및 내 페이지의 중복된 헤더가 제거되었으며, PC 관리자 항목이 보다 논리적인 위치로 이동되었습니다." },
   "商户端日程与后台调度中心共用同一套排班数据和步骤状态，手机端只改布局，不砍能力。": { "zh-Hant": "店鋪 App行程與後台調度中心共用同一套排班資料與步驟狀態，手機端只改佈局，不砍能力。", ja: "店舗は、管理画面の管理センターとスケジュールデータおよび配送状況を共有します。モバイルアプリでは、レイアウトのみが変更され、機能は一切低下しません。", en: "Merchants share the same scheduling data and step status with the back-end management center. On the mobile app, only the layout is changed, without any reduction in capabilities.", ko: "매장는 관리자 관리 센터와 동일한 일정 데이터 및 단계 상태를 공유합니다. 모바일 앱에서는 레이아웃만 변경될 뿐 기능은 전혀 줄어들지 않습니다." },
   "商户端数据中心的财务详情页在手机全屏查看时，相关订单区域的异常黑色背景已清理，标题和信息按钮恢复与其它页面一致的组件尺寸。": { "zh-Hant": "店鋪 App數據中心的財務详情頁在手機全屏查看時，相關訂單區域的異常黑色背景已清理，標題和信息按鈕恢複與其它頁面一致的組件尺寸。", ja: "データセンター・店舗側・店舗・確認は完了しました。", en: "Data center Store App merchant view details has been completed.", ko: "데이터 센터 가맹점 앱 가맹점 보기 상세이(가) 완료되었습니다." },
-  "商户端头像入口不再只是简单收入卡片，已改为可筛选、可钻取、可导出的经营驾驶舱，并新增商户后台 /merchant-admin/analytics 路由。": { "zh-Hant": "店鋪 App頭像入口不再只是簡單收入卡片，已改為可篩選、可钻取、可導出的經營驾驶舱，並新增店鋪管理後台 /merchant-admin/analytics 路由。", ja: "店舗側・店舗・絞り込み・入口は完了しました。／関連項目／輸出可能の運営驾驶舱、して新規店舗管理画面／merchant-admin／関連項目に関する説明です。", en: "Merchant app merchant filter entry card has been completed. / Other / Store Admin New merchants Exportable Merchant Add. / merchant-admin / Other.", ko: "가맹점 앱 가맹점 필터 입구 카드이(가) 완료되었습니다. / 기타 / 매장 관리 화면 신규 매장 수출 가능 가맹점 추가 / merchant-admin" },
   "商户端行程": { "zh-Hant": "店鋪 App行程", ja: "店舗側スケジュール", en: "Store AppJourney", ko: "가맹점 앱여행" },
   "商户端也保留客户端基础设置，UI 风格和语言会同步到全端。": { "zh-Hant": "店鋪 App也保留客戶端基礎設置，UI 風格和語言會同步到全端。", ja: "店舗側も基本的なクライアント設定を保持し、UIのスタイルと言語はすべてのプラットフォームで同期されます。", en: "The merchant side also retains the basic client settings, and the UI style and language will be synchronized across all platforms.", ko: "매장 앱에서는 기본적인 고객 설정이 유지되며, UI 스타일과 언어는 모든 플랫폼에서 동기화됩니다." },
   "商户端原有的经营开关保留，但页面结构、样式和交互统一复用了设置子页模块。": { "zh-Hant": "店鋪 App原有的經營開關保留，但頁面結構、樣式和互動統一重複使用了設定子頁模組。", ja: "店舗向けの元のビジネス切り替え機能は維持されますが、ページ構造、スタイル、および操作性は、設定サブページモジュールから…", en: "The original merchant switch for merchants is retained, but the page structure, style and interaction are uniformly reused from the settings subpage module.", ko: "매장용 기존 비즈니스 전환 기능은 유지되지만, 페이지 구조, 스타일 및 상호 작용 방식은 설정 하위 페이지 모듈에서 그대로 재사용…" },
@@ -10351,7 +10366,6 @@ export const translations: TranslationMap = {
   "熟练等级": { "zh-Hant": "熟練等級", ja: "熟练学年", en: "Grade", ko: "등급" },
   "属性": { "zh-Hant": "屬性", ja: "財産", en: "Property", ko: "재산" },
   "数据": { "zh-Hant": "資料", ja: "データ", en: "Data", ko: "데이터" },
-  "数据 / 经营驾驶舱": { "zh-Hant": "數據 / 經營驾驶舱", ja: "データ／運営驾驶舱", en: "Data / Operations", ko: "데이터 / 운영" },
   "数据表横向滚动区域": { "zh-Hant": "數據表橫向滾動區域", ja: "データ表横向滚动エリア", en: "Data Area", ko: "데이터 지역" },
   "数据大盘": { "zh-Hant": "資料大磁碟", ja: "データダッシュボード", en: "Data dashboard", ko: "데이터 대시보드" },
   "数据大盘菜单": { "zh-Hant": "數據大盤選單", ja: "データダッシュボードメニュー", en: "Data dashboardMenu", ko: "데이터 대시보드메뉴" },

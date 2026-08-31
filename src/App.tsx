@@ -56,7 +56,6 @@ import { NeedoExchangePage } from "./pages/mobile/NeedoExchangePage";
 import { NeedoPostDetailRoutePage } from "./pages/mobile/NeedoRoutePages";
 import { TechnicianPayrollPage } from "./pages/mobile/TechnicianPayrollPage";
 import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";
-import { MerchantAdminAnalyticsPage } from "./pages/merchant-admin/MerchantAdminAnalyticsPage";
 import {
   MerchantAdminDispatchCenterAutomationPage,
   MerchantAdminDispatchCenterAppointmentsPage,
@@ -1272,7 +1271,6 @@ export default function App() {
               <Route path="/merchant/settings/delete-account" element={protect("merchant", <UnifiedSettingsDeleteAccountPage portal="merchant" />)} />
               <Route path="/merchant/:view" element={protect("merchant", <MerchantPortalPage />)} />
               <Route path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)} />
-              <Route path="/merchant-admin/analytics" element={protect("merchant", <MerchantAdminAnalyticsPage />)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
               <Route path="/merchant-admin/dine" element={protectFeature("merchant", "store.dine-in.order.view", <Navigate replace to="/merchant-admin/dine/orders" />, "/merchant-admin")} />

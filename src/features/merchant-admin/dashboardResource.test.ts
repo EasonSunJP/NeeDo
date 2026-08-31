@@ -173,6 +173,32 @@ describe("merchant admin dashboard resource", () => {
     await expect(shopA).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("never commits a late Shop A payload after Shop B has become the signed owner", async () => {
+    let resolveShopA!: (value: ReturnType<typeof payload>) => void;
+    const shopARequest = new Promise<ReturnType<typeof payload>>((resolve) => {
+      resolveShopA = resolve;
+    });
+    mocked.dashboard
+      .mockReturnValueOnce(shopARequest)
+      .mockResolvedValueOnce(payload(ownerB.shopPublicId, 2));
+
+    const shopA = loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    const shopARejection = expect(shopA).rejects.toMatchObject({
+      name: "AbortError"
+    });
+    invalidateMerchantAdminDashboardOwner(ownerA);
+    mocked.credentialEpoch = 2;
+
+    await expect(loadMerchantAdminDashboard(ownerB, last7daysQuery)).resolves.toEqual(
+      payload(ownerB.shopPublicId, 2)
+    );
+    resolveShopA(payload(ownerA.shopPublicId, 99));
+    await shopARejection;
+    await expect(loadMerchantAdminDashboard(ownerB, last7daysQuery)).resolves.toEqual(
+      payload(ownerB.shopPublicId, 2)
+    );
+  });
+
   it("stops Shop A transient retry after Shop B changes the credential epoch", async () => {
     vi.useFakeTimers();
     mocked.dashboard

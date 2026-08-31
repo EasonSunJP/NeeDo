@@ -58,7 +58,7 @@ type MerchantAdminNavSection = {
 
 const themeStorageKey = "needo.merchant-admin.theme";
 const themePreferenceModeStorageKey = "needo.merchant-admin.theme.mode";
-const dashboardQuery: DashboardQuery = { period: "last7days" };
+const defaultDashboardQuery: DashboardQuery = { period: "last7days" };
 const maximumManageableShopPages = 100;
 
 type AdminThemePreferenceMode = "auto" | "manual";
@@ -71,7 +71,9 @@ type AdminThemeState = {
 export type MerchantAdminDashboardResource = {
   dashboard: BackofficeDashboardPayload | null;
   error: unknown;
+  query: DashboardQuery;
   reload: () => void;
+  setQuery: (query: DashboardQuery) => void;
   status: "loading" | "success" | "error";
 };
 
@@ -120,16 +122,10 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     title: "门店经营",
     items: [
       {
-        label: "门店总览",
+        label: "数据大盘",
         to: "/merchant-admin",
         icon: "总",
-        children: ["门店表现", "快捷入口", "经营提醒"]
-      },
-      {
-        label: "数据 / 经营驾驶舱",
-        to: "/merchant-admin/analytics",
-        icon: "数",
-        children: ["KPI", "订单漏斗", "NDP", "异常预警"]
+        children: ["经营指标", "趋势", "NDP"]
       },
       {
         label: "订单中心",
@@ -382,6 +378,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
   const [summaryStatus, setSummaryStatus] = useState<"loading" | "success" | "error">("loading");
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
+  const [dashboardQuery, setDashboardQuery] = useState<DashboardQuery>(defaultDashboardQuery);
   const [resolvedShop, setResolvedShop] = useState<{
     ownerKey: string;
     shopPublicId: string;
@@ -545,7 +542,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
       activeRequest = false;
       invalidateMerchantAdminDashboardOwner(dashboardOwner);
     };
-  }, [dashboardOwner, dashboardOwnerKey, summaryRevision]);
+  }, [dashboardOwner, dashboardOwnerKey, dashboardQuery, summaryRevision]);
 
   const reloadDashboard = () => {
     if (!dashboardOwner) return;
@@ -556,7 +553,9 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
   const dashboardResource: MerchantAdminDashboardResource = {
     dashboard,
     error: summaryError,
+    query: dashboardQuery,
     reload: reloadDashboard,
+    setQuery: setDashboardQuery,
     status: summaryStatus
   };
 
