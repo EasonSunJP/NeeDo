@@ -198,7 +198,7 @@ describe("BackofficeService named dashboard contract", () => {
       userRewardNdp: 100
     };
     facts.merchant = {
-      publicId: "s0000000011",
+      publicId: "shop0000000011",
       name: "Aoyama Care Studio",
       city: "Tokyo",
       address: "Aoyama 1-1",
@@ -237,7 +237,7 @@ describe("BackofficeService named dashboard contract", () => {
     });
     expect(result.shop).toEqual(
       expect.objectContaining({
-        publicId: "s0000000011",
+        publicId: "shop0000000011",
         wallet: {
           status: "not_opened",
           currency: "NDP",
@@ -246,7 +246,7 @@ describe("BackofficeService named dashboard contract", () => {
         }
       })
     );
-    expect(result.scope).toEqual({ kind: "shop", shopPublicId: "s0000000011" });
+    expect(result.scope).toEqual({ kind: "shop", shopPublicId: "shop0000000011" });
     expect(getDashboard).toHaveBeenCalledTimes(1);
     expect(getDashboard).toHaveBeenCalledWith(
       expect.objectContaining({ scope: { kind: "shop", shopId: 11 }, city: null })

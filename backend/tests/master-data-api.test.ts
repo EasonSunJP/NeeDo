@@ -2,24 +2,53 @@ import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 class InMemorySessionStore {
   private readonly values = new Map<string, string>();
 
-  public async getLoginLock(): Promise<boolean> { return false; }
-  public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> { return { count: 1, locked: false }; }
-  public async clearFailedLogin(): Promise<void> { return undefined; }
-  public async storeOtp(email: string, otp: string): Promise<void> { this.values.set(`otp:${email}`, otp); }
-  public async getOtp(email: string): Promise<string | null> { return this.values.get(`otp:${email}`) ?? null; }
-  public async deleteOtp(email: string): Promise<void> { this.values.delete(`otp:${email}`); }
-  public async hasOtpCooldown(): Promise<boolean> { return false; }
-  public async storeOtpCooldown(): Promise<void> { return undefined; }
-  public async clearOtpCooldown(): Promise<void> { return undefined; }
-  public async storeRefreshToken(userId: number, jti: string): Promise<void> { this.values.set(`refresh:${userId}:${jti}`, "1"); }
-  public async hasRefreshToken(userId: number, jti: string): Promise<boolean> { return this.values.has(`refresh:${userId}:${jti}`); }
-  public async revokeRefreshToken(userId: number, jti: string): Promise<void> { this.values.delete(`refresh:${userId}:${jti}`); }
-  public async blacklistAccessToken(jti: string): Promise<void> { this.values.set(`blacklist:${jti}`, "1"); }
-  public async isAccessTokenBlacklisted(jti: string): Promise<boolean> { return this.values.has(`blacklist:${jti}`); }
+  public async getLoginLock(): Promise<boolean> {
+    return false;
+  }
+  public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> {
+    return { count: 1, locked: false };
+  }
+  public async clearFailedLogin(): Promise<void> {
+    return undefined;
+  }
+  public async storeOtp(email: string, otp: string): Promise<void> {
+    this.values.set(`otp:${email}`, otp);
+  }
+  public async getOtp(email: string): Promise<string | null> {
+    return this.values.get(`otp:${email}`) ?? null;
+  }
+  public async deleteOtp(email: string): Promise<void> {
+    this.values.delete(`otp:${email}`);
+  }
+  public async hasOtpCooldown(): Promise<boolean> {
+    return false;
+  }
+  public async storeOtpCooldown(): Promise<void> {
+    return undefined;
+  }
+  public async clearOtpCooldown(): Promise<void> {
+    return undefined;
+  }
+  public async storeRefreshToken(userId: number, jti: string): Promise<void> {
+    this.values.set(`refresh:${userId}:${jti}`, "1");
+  }
+  public async hasRefreshToken(userId: number, jti: string): Promise<boolean> {
+    return this.values.has(`refresh:${userId}:${jti}`);
+  }
+  public async revokeRefreshToken(userId: number, jti: string): Promise<void> {
+    this.values.delete(`refresh:${userId}:${jti}`);
+  }
+  public async blacklistAccessToken(jti: string): Promise<void> {
+    this.values.set(`blacklist:${jti}`, "1");
+  }
+  public async isAccessTokenBlacklisted(jti: string): Promise<boolean> {
+    return this.values.has(`blacklist:${jti}`);
+  }
 }
 
 const now = new Date("2026-08-25T00:00:00.000Z");
@@ -68,7 +97,19 @@ const createFixture = async () => {
       isActive: true,
       lastLoginAt: null,
       deletedAt: null,
-      identities: [{ id: 1, userId: 1, type: "platform_admin", scopeType: "global", scopeId: null, displayName: "Admin", isDefault: true, isActive: true, deletedAt: null }],
+      identities: [
+        {
+          id: 1,
+          userId: 1,
+          type: "platform_admin",
+          scopeType: "global",
+          scopeId: null,
+          displayName: "Admin",
+          isDefault: true,
+          isActive: true,
+          deletedAt: null
+        }
+      ],
       userRoles: [{ deletedAt: null, role: makeRole("admin", adminPermissions) }]
     },
     {
@@ -81,13 +122,29 @@ const createFixture = async () => {
       isActive: true,
       lastLoginAt: null,
       deletedAt: null,
-      identities: [{ id: 2, userId: 2, type: "merchant_owner", scopeType: "shop", scopeId: 11, displayName: "Merchant", isDefault: true, isActive: true, deletedAt: null }],
+      identities: [
+        {
+          id: 2,
+          userId: 2,
+          type: "merchant_owner",
+          scopeType: "shop",
+          scopeId: 11,
+          displayName: "Merchant",
+          isDefault: true,
+          isActive: true,
+          deletedAt: null
+        }
+      ],
       userRoles: [{ deletedAt: null, role: makeRole("merchant_owner", merchantPermissions) }]
     }
   ];
   const authRepository = {
-    findUserByEmail: jest.fn(async (email: string) => users.find((user) => user.email === email) ?? null),
-    findUserByLoginIdentifier: jest.fn(async (identifier: string) => users.find((user) => user.email === identifier) ?? null),
+    findUserByEmail: jest.fn(
+      async (email: string) => users.find((user) => user.email === email) ?? null
+    ),
+    findUserByLoginIdentifier: jest.fn(
+      async (identifier: string) => users.find((user) => user.email === identifier) ?? null
+    ),
     findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
@@ -204,14 +261,45 @@ const createFixture = async () => {
   };
   const page = <T>(row: T) => ({ list: [row], total: 1, page: 1, page_size: 20 });
   const backofficeRepository = {
-    getDashboard: jest.fn(), listOrders: jest.fn(), listSchedule: jest.fn(), listFinanceSettlements: jest.fn(), exportFinanceSettlements: jest.fn(),
-    listTechnicians: jest.fn(async () => page(technician)), listShops: jest.fn(async () => page(shop)),
-    findUserByEmail: jest.fn(async (email: string) => email === "existing@example.com" ? { id: 99 } : null),
-    createShop: jest.fn(async () => shop), updateShop: jest.fn(async () => ({ ...shop, name: "Updated Studio" })), approveShop: jest.fn(async () => ({ ...shop, status: "published" })), softDeleteShop: jest.fn(async () => ({ ...shop, status: "archived" })),
-    updateTechnician: jest.fn(async (input: { technicianId: number }) => input.technicianId === 32 ? null : technician), approveTechnician: jest.fn(async () => ({ ...technician, status: "published", verifiedAt: now.toISOString() })), softDeleteTechnician: jest.fn(async () => ({ ...technician, status: "archived" })),
-    getTechnicianDetail: jest.fn(async (input: { id: number }) => input.id === 999 ? null : technicianDetail),
-    listCustomers: jest.fn(async () => page(customer)), getCustomer: jest.fn(async () => customer), getCustomerDetail: jest.fn(async (input: { id: number }) => input.id === 999 ? null : customerDetail), updateCustomer: jest.fn(async () => ({ ...customer, city: "Osaka" })), softDeleteCustomer: jest.fn(async () => customer),
-    listServices: jest.fn(async () => page(service)), createService: jest.fn(async () => service), updateService: jest.fn(async (input: { serviceId: number }) => input.serviceId === 72 ? null : { ...service, priceAmount: 13000 }), softDeleteService: jest.fn(async () => ({ ...service, status: "archived" }))
+    getDashboard: jest.fn(),
+    listOrders: jest.fn(),
+    listSchedule: jest.fn(),
+    listFinanceSettlements: jest.fn(),
+    exportFinanceSettlements: jest.fn(),
+    listTechnicians: jest.fn(async () => page(technician)),
+    listShops: jest.fn(async () => page(shop)),
+    findUserByEmail: jest.fn(async (email: string) =>
+      email === "existing@example.com" ? { id: 99 } : null
+    ),
+    createShop: jest.fn(async () => shop),
+    updateShop: jest.fn(async () => ({ ...shop, name: "Updated Studio" })),
+    approveShop: jest.fn(async () => ({ ...shop, status: "published" })),
+    softDeleteShop: jest.fn(async () => ({ ...shop, status: "archived" })),
+    updateTechnician: jest.fn(async (input: { technicianId: number }) =>
+      input.technicianId === 32 ? null : technician
+    ),
+    approveTechnician: jest.fn(async () => ({
+      ...technician,
+      status: "published",
+      verifiedAt: now.toISOString()
+    })),
+    softDeleteTechnician: jest.fn(async () => ({ ...technician, status: "archived" })),
+    getTechnicianDetail: jest.fn(async (input: { id: number }) =>
+      input.id === 999 ? null : technicianDetail
+    ),
+    listCustomers: jest.fn(async () => page(customer)),
+    getCustomer: jest.fn(async () => customer),
+    getCustomerDetail: jest.fn(async (input: { id: number }) =>
+      input.id === 999 ? null : customerDetail
+    ),
+    updateCustomer: jest.fn(async () => ({ ...customer, city: "Osaka" })),
+    softDeleteCustomer: jest.fn(async () => customer),
+    listServices: jest.fn(async () => page(service)),
+    createService: jest.fn(async () => service),
+    updateService: jest.fn(async (input: { serviceId: number }) =>
+      input.serviceId === 72 ? null : { ...service, priceAmount: 13000 }
+    ),
+    softDeleteService: jest.fn(async () => ({ ...service, status: "archived" }))
   };
   const auditLogRepository = {
     create: jest.fn(async (entry: Record<string, unknown>) => {
@@ -226,14 +314,26 @@ const createFixture = async () => {
     authSessionStore: new InMemorySessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 11 }),
     backofficeRepository
   } as never);
   const login = async (email: string) => {
-    const response = await request(app).post("/api/v1/auth/login").send({ loginIdentifier: email, password: "Abcd@1234" }).expect(200);
+    const response = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: email, password: "Abcd@1234" })
+      .expect(200);
     return response.body.data.accessToken as string;
   };
 
-  return { app, auditLogs, backofficeRepository, login, setAuditFailure: (value: boolean) => { auditFailure = value; } };
+  return {
+    app,
+    auditLogs,
+    backofficeRepository,
+    login,
+    setAuditFailure: (value: boolean) => {
+      auditFailure = value;
+    }
+  };
 };
 
 describe("master data write APIs", () => {
@@ -246,7 +346,9 @@ describe("master data write APIs", () => {
       .get("/api/v1/backoffice/technicians/31")
       .set("Authorization", `Bearer ${adminToken}`)
       .expect(200)
-      .expect((response) => expect(response.body.data.account.email).toBe("technician@example.com"));
+      .expect((response) =>
+        expect(response.body.data.account.email).toBe("technician@example.com")
+      );
 
     await request(fixture.app)
       .get("/api/v1/merchant-admin/technicians/31")
@@ -282,28 +384,30 @@ describe("master data write APIs", () => {
       shopId: 11,
       id: 41
     });
-    expect(fixture.auditLogs).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        action: "backoffice.technician.read",
-        targetType: "TechnicianProfile",
-        metadata: { technicianProfileId: 31 }
-      }),
-      expect.objectContaining({
-        action: "merchant_admin.technician.read",
-        targetType: "TechnicianProfile",
-        metadata: { technicianProfileId: 31, shopId: 11 }
-      }),
-      expect.objectContaining({
-        action: "backoffice.customer.read",
-        targetType: "CustomerProfile",
-        metadata: { customerProfileId: 41 }
-      }),
-      expect.objectContaining({
-        action: "merchant_admin.customer.read",
-        targetType: "CustomerProfile",
-        metadata: { customerProfileId: 41, shopId: 11 }
-      })
-    ]));
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "backoffice.technician.read",
+          targetType: "TechnicianProfile",
+          metadata: { technicianProfileId: 31 }
+        }),
+        expect.objectContaining({
+          action: "merchant_admin.technician.read",
+          targetType: "TechnicianProfile",
+          metadata: { technicianProfileId: 31, shopId: 11 }
+        }),
+        expect.objectContaining({
+          action: "backoffice.customer.read",
+          targetType: "CustomerProfile",
+          metadata: { customerProfileId: 41 }
+        }),
+        expect.objectContaining({
+          action: "merchant_admin.customer.read",
+          targetType: "CustomerProfile",
+          metadata: { customerProfileId: 41, shopId: 11 }
+        })
+      ])
+    );
   });
 
   it("returns uniform not-found responses for missing profile details", async () => {
@@ -315,21 +419,25 @@ describe("master data write APIs", () => {
       .get("/api/v1/backoffice/technicians/999")
       .set("Authorization", `Bearer ${adminToken}`)
       .expect(404)
-      .expect((response) => expect(response.body).toEqual({
-        code: ERROR_CODES.NOT_FOUND,
-        message: "error.technician.not_found",
-        data: null
-      }));
+      .expect((response) =>
+        expect(response.body).toEqual({
+          code: ERROR_CODES.NOT_FOUND,
+          message: "error.technician.not_found",
+          data: null
+        })
+      );
 
     await request(fixture.app)
       .get("/api/v1/merchant-admin/customers/999")
       .set("Authorization", `Bearer ${merchantToken}`)
       .expect(404)
-      .expect((response) => expect(response.body).toEqual({
-        code: ERROR_CODES.NOT_FOUND,
-        message: "error.customer.not_found",
-        data: null
-      }));
+      .expect((response) =>
+        expect(response.body).toEqual({
+          code: ERROR_CODES.NOT_FOUND,
+          message: "error.customer.not_found",
+          data: null
+        })
+      );
   });
 
   it("rejects detail reads without permission before repository access", async () => {
@@ -362,10 +470,12 @@ describe("master data write APIs", () => {
       description: "Updated profile",
       city: "Yokohama"
     });
-    expect(fixture.auditLogs).toContainEqual(expect.objectContaining({
-      action: "merchant_admin.shop.update",
-      targetType: "Shop"
-    }));
+    expect(fixture.auditLogs).toContainEqual(
+      expect.objectContaining({
+        action: "merchant_admin.shop.update",
+        targetType: "Shop"
+      })
+    );
 
     await request(fixture.app)
       .patch("/api/v1/merchant-admin/shop")
@@ -377,18 +487,60 @@ describe("master data write APIs", () => {
   it("creates, updates, approves, and soft-deletes a shop with validation and audit logs", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");
-    const body = { ownerEmail: "owner@example.com", ownerUsername: "Owner", ownerPassword: "Owner.2026!", name: "Aoyama Studio", city: "Tokyo", address: "Aoyama 1-1" };
+    const body = {
+      ownerEmail: "owner@example.com",
+      ownerUsername: "Owner",
+      ownerPassword: "Owner.2026!",
+      name: "Aoyama Studio",
+      city: "Tokyo",
+      address: "Aoyama 1-1"
+    };
 
-    await request(fixture.app).post("/api/v1/backoffice/shops").set("Authorization", `Bearer ${token}`).send(body).expect(201);
-    await request(fixture.app).patch("/api/v1/backoffice/shops/11").set("Authorization", `Bearer ${token}`).send({ name: "Updated Studio" }).expect(200);
-    await request(fixture.app).post("/api/v1/backoffice/shops/11/approve").set("Authorization", `Bearer ${token}`).expect(200);
-    await request(fixture.app).delete("/api/v1/backoffice/shops/11").set("Authorization", `Bearer ${token}`).expect(200);
+    await request(fixture.app)
+      .post("/api/v1/backoffice/shops")
+      .set("Authorization", `Bearer ${token}`)
+      .send(body)
+      .expect(201);
+    await request(fixture.app)
+      .patch("/api/v1/backoffice/shops/11")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Updated Studio" })
+      .expect(200);
+    await request(fixture.app)
+      .post("/api/v1/backoffice/shops/11/approve")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    await request(fixture.app)
+      .delete("/api/v1/backoffice/shops/11")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
 
-    expect(fixture.backofficeRepository.createShop).toHaveBeenCalledWith(expect.objectContaining({ ownerEmail: "owner@example.com", ownerPasswordHash: expect.any(String) }));
-    expect(fixture.auditLogs.map((entry) => entry.action)).toEqual(expect.arrayContaining(["backoffice.shop.create", "backoffice.shop.update", "backoffice.shop.approve", "backoffice.shop.delete"]));
+    expect(fixture.backofficeRepository.createShop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerEmail: "owner@example.com",
+        ownerPasswordHash: expect.any(String)
+      })
+    );
+    expect(fixture.auditLogs.map((entry) => entry.action)).toEqual(
+      expect.arrayContaining([
+        "backoffice.shop.create",
+        "backoffice.shop.update",
+        "backoffice.shop.approve",
+        "backoffice.shop.delete"
+      ])
+    );
 
-    await request(fixture.app).post("/api/v1/backoffice/shops").set("Authorization", `Bearer ${token}`).send({ ...body, ownerEmail: "existing@example.com" }).expect(409).expect((response) => expect(response.body.code).toBe(ERROR_CODES.EMAIL_ALREADY_EXISTS));
-    await request(fixture.app).post("/api/v1/backoffice/shops").set("Authorization", `Bearer ${token}`).send({ ...body, ownerPassword: "weak" }).expect(400);
+    await request(fixture.app)
+      .post("/api/v1/backoffice/shops")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...body, ownerEmail: "existing@example.com" })
+      .expect(409)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.EMAIL_ALREADY_EXISTS));
+    await request(fixture.app)
+      .post("/api/v1/backoffice/shops")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...body, ownerPassword: "weak" })
+      .expect(400);
   });
 
   it("approves and updates technicians while deriving merchant shop scope from auth", async () => {
@@ -396,31 +548,88 @@ describe("master data write APIs", () => {
     const adminToken = await fixture.login("admin@example.com");
     const merchantToken = await fixture.login("merchant@example.com");
 
-    await request(fixture.app).post("/api/v1/backoffice/technicians/31/approve").set("Authorization", `Bearer ${adminToken}`).send({ shopId: 11 }).expect(200);
-    await request(fixture.app).patch("/api/v1/merchant-admin/technicians/31").set("Authorization", `Bearer ${merchantToken}`).send({ displayName: "Store Tech", shopId: 999 }).expect(200);
+    await request(fixture.app)
+      .post("/api/v1/backoffice/technicians/31/approve")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ shopId: 11 })
+      .expect(200);
+    await request(fixture.app)
+      .patch("/api/v1/merchant-admin/technicians/31")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .send({ displayName: "Store Tech", shopId: 999 })
+      .expect(200);
 
-    expect(fixture.backofficeRepository.approveTechnician).toHaveBeenCalledWith(expect.objectContaining({ scope: "platform", technicianId: 31, shopId: 11 }));
-    expect(fixture.backofficeRepository.updateTechnician).toHaveBeenCalledWith(expect.objectContaining({ scope: "merchant", shopId: 11, technicianId: 31, displayName: "Store Tech" }));
-    expect(fixture.backofficeRepository.updateTechnician).not.toHaveBeenCalledWith(expect.objectContaining({ shopId: 999 }));
+    expect(fixture.backofficeRepository.approveTechnician).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "platform", technicianId: 31, shopId: 11 })
+    );
+    expect(fixture.backofficeRepository.updateTechnician).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "merchant",
+        shopId: 11,
+        technicianId: 31,
+        displayName: "Store Tech"
+      })
+    );
+    expect(fixture.backofficeRepository.updateTechnician).not.toHaveBeenCalledWith(
+      expect.objectContaining({ shopId: 999 })
+    );
 
-    await request(fixture.app).patch("/api/v1/merchant-admin/technicians/32").set("Authorization", `Bearer ${merchantToken}`).send({ displayName: "Other Store Tech" }).expect(404).expect((response) => expect(response.body.code).toBe(ERROR_CODES.NOT_FOUND));
+    await request(fixture.app)
+      .patch("/api/v1/merchant-admin/technicians/32")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .send({ displayName: "Other Store Tech" })
+      .expect(404)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.NOT_FOUND));
   });
 
   it("lists scoped customers and performs service CRUD without trusting a body shop id", async () => {
     const fixture = await createFixture();
     const merchantToken = await fixture.login("merchant@example.com");
-    const serviceBody = { shopId: 999, categoryId: 81, name: "Aroma 60", city: "Tokyo", serviceMode: "store", priceAmount: 12000, durationMinutes: 60 };
+    const serviceBody = {
+      shopId: 999,
+      categoryId: 81,
+      name: "Aroma 60",
+      city: "Tokyo",
+      serviceMode: "store",
+      priceAmount: 12000,
+      durationMinutes: 60
+    };
 
-    await request(fixture.app).get("/api/v1/merchant-admin/customers?page=1&pageSize=20").set("Authorization", `Bearer ${merchantToken}`).expect(200);
-    await request(fixture.app).post("/api/v1/merchant-admin/services").set("Authorization", `Bearer ${merchantToken}`).send(serviceBody).expect(201);
-    await request(fixture.app).patch("/api/v1/merchant-admin/services/71").set("Authorization", `Bearer ${merchantToken}`).send({ priceAmount: 13000, shopId: 999 }).expect(200);
-    await request(fixture.app).delete("/api/v1/merchant-admin/services/71").set("Authorization", `Bearer ${merchantToken}`).expect(200);
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/customers?page=1&pageSize=20")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/services")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .send(serviceBody)
+      .expect(201);
+    await request(fixture.app)
+      .patch("/api/v1/merchant-admin/services/71")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .send({ priceAmount: 13000, shopId: 999 })
+      .expect(200);
+    await request(fixture.app)
+      .delete("/api/v1/merchant-admin/services/71")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
 
-    expect(fixture.backofficeRepository.listCustomers).toHaveBeenCalledWith(expect.objectContaining({ scope: "merchant", shopId: 11 }));
-    expect(fixture.backofficeRepository.createService).toHaveBeenCalledWith(expect.objectContaining({ scope: "merchant", shopId: 11, categoryId: 81 }));
-    expect(fixture.backofficeRepository.updateService).toHaveBeenCalledWith(expect.objectContaining({ scope: "merchant", shopId: 11, serviceId: 71, priceAmount: 13000 }));
+    expect(fixture.backofficeRepository.listCustomers).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "merchant", shopId: 11 })
+    );
+    expect(fixture.backofficeRepository.createService).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "merchant", shopId: 11, categoryId: 81 })
+    );
+    expect(fixture.backofficeRepository.updateService).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "merchant", shopId: 11, serviceId: 71, priceAmount: 13000 })
+    );
 
-    await request(fixture.app).patch("/api/v1/merchant-admin/services/72").set("Authorization", `Bearer ${merchantToken}`).send({ priceAmount: 14000 }).expect(404).expect((response) => expect(response.body.code).toBe(ERROR_CODES.NOT_FOUND));
+    await request(fixture.app)
+      .patch("/api/v1/merchant-admin/services/72")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .send({ priceAmount: 14000 })
+      .expect(404)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.NOT_FOUND));
   });
 
   it("fails closed when audit logging fails", async () => {
@@ -428,6 +637,10 @@ describe("master data write APIs", () => {
     const token = await fixture.login("admin@example.com");
     fixture.setAuditFailure(true);
 
-    await request(fixture.app).patch("/api/v1/backoffice/shops/11").set("Authorization", `Bearer ${token}`).send({ name: "Updated Studio" }).expect(500);
+    await request(fixture.app)
+      .patch("/api/v1/backoffice/shops/11")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Updated Studio" })
+      .expect(500);
   });
 });

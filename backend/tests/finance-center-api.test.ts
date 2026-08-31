@@ -6,6 +6,7 @@ import type {
   OrderFinanceRecord,
   OrderFinanceRepositoryPort
 } from "../src/services/order-finance.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 interface StoredValue {
   value: string;
@@ -324,6 +325,7 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 11 }),
     orderFinanceRepository,
     compensationProfileRepository
   } as never);

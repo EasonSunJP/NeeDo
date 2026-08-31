@@ -504,6 +504,10 @@ describe("GET /api/v1/openapi.json", () => {
         completedCustomerCount: { type: "integer", minimum: 0 }
       }
     });
+    expect(dashboardSchemas.DashboardShopSnapshot.properties.publicId).toEqual({
+      type: "string",
+      pattern: "^shop[0-9]{10}$"
+    });
     expect(dashboardSchemas.Dashboard).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -514,6 +518,10 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(dashboardSchemas.Dashboard.properties.finance.properties.withdrawn).toEqual({
       oneOf: [{ $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" }, { type: "null" }]
+    });
+    expect(dashboardSchemas.Dashboard.properties.scope.oneOf[1].properties.shopPublicId).toEqual({
+      type: "string",
+      pattern: "^shop[0-9]{10}$"
     });
     const operationsDashboard = response.body.paths["/api/v1/backoffice/dashboard"].get;
     expect(

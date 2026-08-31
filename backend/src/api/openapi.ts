@@ -1105,7 +1105,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["publicId", "name", "city", "address", "status", "billing", "wallet"],
         properties: {
-          publicId: { type: "string", minLength: 1 },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
           name: { type: "string" },
           city: { type: "string" },
           address: { type: "string" },
@@ -1316,7 +1316,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 required: ["kind", "shopPublicId"],
                 properties: {
                   kind: { type: "string", const: "shop" },
-                  shopPublicId: { type: "string", minLength: 1 }
+                  shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" }
                 }
               }
             ]

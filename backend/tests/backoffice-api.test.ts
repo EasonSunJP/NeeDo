@@ -402,7 +402,7 @@ const createFixture = async () => {
         merchant:
           input.scope.kind === "shop"
             ? {
-                publicId: "s0000000011",
+                publicId: "shop0000000011",
                 name: "Aoyama Care Studio",
                 city: "Tokyo",
                 address: "Aoyama 1-1",
@@ -1261,13 +1261,13 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         withdrawn: null,
         shopNdpCost: { totalNdp: 500, platformNdp: 400, userRewardNdp: 100 }
       },
-      shop: { publicId: "s0000000011" },
+      shop: { publicId: "shop0000000011" },
       membership: {
         memberCount: null,
         memberDataStatus: "not_available",
         completedCustomerCount: 2
       },
-      scope: { kind: "shop", shopPublicId: "s0000000011" }
+      scope: { kind: "shop", shopPublicId: "shop0000000011" }
     });
     expect(fixture.backofficeRepository.getDashboard).toHaveBeenLastCalledWith(
       expect.objectContaining({ scope: { kind: "shop", shopId: 11 }, city: null })
