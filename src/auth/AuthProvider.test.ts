@@ -4,7 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GoogleCredentialResult, RegistrationStartInput, VerificationChallengeInput, VerificationChallengePayload } from "../api/auth";
 import { AuthProvider, useAuth, type AuthSession, type PortalScope } from "./AuthProvider";
-import { hasRememberedPortalAuthorization, rememberPortalAuthorization } from "./portalAuthorization";
+import {
+  hasRememberedPortalAuthorization,
+  readRememberedPortalRefreshToken,
+  readRememberedPortalSession,
+  rememberPortalAuthorization
+} from "./portalAuthorization";
 import type { AuthMePayload } from "./rbac";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -39,6 +44,7 @@ const mocked = vi.hoisted(() => {
       startRegistration: vi.fn(),
       submitGoogleCredential: vi.fn(),
       switchIdentity: vi.fn(),
+      switchMerchantShop: vi.fn(),
       verifyGoogleRegistrationOrLink: vi.fn(),
       verifyOtp: vi.fn(),
       verifyRegistration: vi.fn()
@@ -93,6 +99,12 @@ type Task10AuthContext = ReturnType<typeof useAuth> & {
   verifyRegistration: (
     input: VerificationChallengeInput
   ) => Promise<(SessionSuccess & { needoId: string }) | { message: string; ok: false }>;
+  switchMerchantShop: (
+    shopPublicId: string
+  ) => Promise<
+    | { ok: true; session: AuthSession; shopPublicId?: string }
+    | { message: string; ok: false }
+  >;
 };
 
 const challenge: VerificationChallengePayload = {
@@ -169,6 +181,17 @@ const multiPortalMe: AuthMePayload = {
   menus: ["menu:client-app", "menu:technician-app"]
 };
 
+const merchantOrganizationMe: AuthMePayload = {
+  ...customerMe,
+  activeIdentityId: merchantOrganizationIdentity.id,
+  activePublicId: merchantOrganizationIdentity.publicId,
+  currentIdentity: merchantOrganizationIdentity,
+  identities: [merchantOrganizationIdentity, technicianIdentity],
+  roles: ["merchant_owner", "technician"],
+  permissions: ["merchant-admin:dashboard:read", "page:technician-app"],
+  menus: ["menu:merchant-app", "menu:technician-app"]
+};
+
 const inconsistentAdminMe: AuthMePayload = {
   ...customerMe,
   activeIdentityId: platformIdentity.id,
@@ -217,6 +240,17 @@ async function invoke<TResult>(callback: () => Promise<TResult>) {
   });
 
   return result as TResult;
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
 }
 
 async function waitFor(assertion: () => void) {
@@ -861,5 +895,300 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(refreshed).toEqual({ ok: false, message: "error.api" });
     expect(mocked.tokenState).toEqual({ accessToken: null, refreshToken: null });
     expect(auth.session).toBeNull();
+  });
+
+  it("atomically persists a server-confirmed merchant shop selection and remembered authorization", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.switchMerchantShop.mockImplementation(async (shopPublicId: string) => {
+      persistTokens("shop-b-access", "shop-b-refresh");
+      return {
+        accessToken: "shop-b-access",
+        refreshToken: "shop-b-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId
+      };
+    });
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+    await invoke(() =>
+      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
+    );
+
+    const switched = await invoke(() =>
+      auth.switchMerchantShop("shop0000000012")
+    );
+
+    expect(switched).toMatchObject({
+      ok: true,
+      shopPublicId: "shop0000000012",
+      session: { merchantShopPublicId: "shop0000000012", portal: "merchant" }
+    });
+    expect(auth.session?.merchantShopPublicId).toBe("shop0000000012");
+    expect(mocked.tokenState).toEqual({
+      accessToken: "shop-b-access",
+      refreshToken: "shop-b-refresh"
+    });
+    expect(readRememberedPortalRefreshToken("merchant")).toBe("shop-b-refresh");
+    expect(readRememberedPortalSession("merchant")?.merchantShopPublicId).toBe(
+      "shop0000000012"
+    );
+  });
+
+  it("does not trust a remembered merchant shop public ID without a switch response", async () => {
+    rememberPortalAuthorization(
+      storedCustomerSession({
+        activeIdentityId: merchantOrganizationIdentity.id,
+        activePublicId: merchantOrganizationIdentity.publicId,
+        allowedPortals: ["merchant", "technician"],
+        currentIdentity: merchantOrganizationIdentity,
+        identities: [merchantOrganizationIdentity, technicianIdentity],
+        linkedStoreId: "",
+        merchantShopPublicId: "shop9999999999",
+        menus: merchantOrganizationMe.menus,
+        permissions: merchantOrganizationMe.permissions,
+        portal: "merchant",
+        roles: merchantOrganizationMe.roles
+      }),
+      "remembered-merchant-refresh"
+    );
+    mocked.authApi.me.mockResolvedValue(merchantOrganizationMe);
+    await renderProvider();
+
+    const restored = await invoke(() => auth.switchPortal("merchant"));
+
+    expect(restored).toMatchObject({
+      ok: true,
+      session: { portal: "merchant" }
+    });
+    expect(auth.session?.merchantShopPublicId).toBeUndefined();
+    expect(readRememberedPortalSession("merchant")?.merchantShopPublicId).toBeUndefined();
+  });
+
+  it("leaves tokens, session, and selected shop unchanged when a merchant shop switch fails", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.switchMerchantShop.mockRejectedValue(
+      new Error("error.auth.merchant_shop_forbidden")
+    );
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+    await invoke(() =>
+      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
+    );
+    const previousSession = auth.session;
+
+    const switched = await invoke(() =>
+      auth.switchMerchantShop("shop0000000012")
+    );
+
+    expect(switched).toEqual({
+      ok: false,
+      message: "error.auth.merchant_shop_forbidden"
+    });
+    expect(auth.session).toBe(previousSession);
+    expect(mocked.tokenState).toEqual({
+      accessToken: "organization-access",
+      refreshToken: "organization-refresh"
+    });
+    expect(readRememberedPortalRefreshToken("merchant")).toBe(
+      "organization-refresh"
+    );
+    expect(readRememberedPortalSession("merchant")?.merchantShopPublicId).toBeUndefined();
+  });
+
+  it("rolls back rotated tokens when a merchant shop switch response is invalid", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.switchMerchantShop.mockImplementation(async () => {
+      persistTokens("invalid-access", "invalid-refresh");
+      return {
+        accessToken: "invalid-access",
+        refreshToken: "invalid-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId: "12"
+      };
+    });
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+    await invoke(() =>
+      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
+    );
+    const previousSession = auth.session;
+
+    const switched = await invoke(() => auth.switchMerchantShop("shop0000000012"));
+
+    expect(switched).toEqual({ ok: false, message: "error.api" });
+    expect(auth.session).toBe(previousSession);
+    expect(mocked.tokenState).toEqual({
+      accessToken: "organization-access",
+      refreshToken: "organization-refresh"
+    });
+    expect(readRememberedPortalRefreshToken("merchant")).toBe(
+      "organization-refresh"
+    );
+  });
+
+  it("prevents an older concurrent shop switch from overwriting the latest shop session", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    const shopA = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+      shopPublicId: string;
+    }>();
+    const shopB = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+      shopPublicId: string;
+    }>();
+    mocked.authApi.switchMerchantShop.mockImplementation((shopPublicId: string) => {
+      const deferred = shopPublicId === "shop0000000011" ? shopA : shopB;
+      return deferred.promise.then((payload) => {
+        persistTokens(payload.accessToken, payload.refreshToken);
+        return payload;
+      });
+    });
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+    await invoke(() =>
+      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
+    );
+
+    let first!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
+    let second!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
+    act(() => {
+      first = auth.switchMerchantShop("shop0000000011");
+      second = auth.switchMerchantShop("shop0000000012");
+    });
+
+    await act(async () => {
+      shopB.resolve({
+        accessToken: "shop-b-access",
+        refreshToken: "shop-b-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId: "shop0000000012"
+      });
+      await second;
+    });
+    await act(async () => {
+      shopA.resolve({
+        accessToken: "shop-a-access",
+        refreshToken: "shop-a-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId: "shop0000000011"
+      });
+      await first;
+    });
+
+    expect(auth.session?.merchantShopPublicId).toBe("shop0000000012");
+    expect(mocked.tokenState).toEqual({
+      accessToken: "shop-b-access",
+      refreshToken: "shop-b-refresh"
+    });
+    expect(readRememberedPortalRefreshToken("merchant")).toBe("shop-b-refresh");
+  });
+
+  it("prevents a late shop switch from restoring a session after logout", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    const pendingSwitch = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+      shopPublicId: string;
+    }>();
+    mocked.authApi.switchMerchantShop.mockImplementation(() =>
+      pendingSwitch.promise.then((payload) => {
+        persistTokens(payload.accessToken, payload.refreshToken);
+        return payload;
+      })
+    );
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+    await invoke(() =>
+      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
+    );
+
+    let switching!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
+    act(() => {
+      switching = auth.switchMerchantShop("shop0000000012");
+    });
+    await invoke(() => auth.logout());
+    await act(async () => {
+      pendingSwitch.resolve({
+        accessToken: "stale-access",
+        refreshToken: "stale-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId: "shop0000000012"
+      });
+      await switching;
+    });
+
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toEqual({ accessToken: null, refreshToken: null });
+    expect(hasRememberedPortalAuthorization("merchant")).toBe(false);
+  });
+
+  it("prevents a late shop switch from replacing a newer identity switch", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    const pendingSwitch = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+      shopPublicId: string;
+    }>();
+    mocked.authApi.switchMerchantShop.mockImplementation(() =>
+      pendingSwitch.promise.then((payload) => {
+        persistTokens(payload.accessToken, payload.refreshToken);
+        return payload;
+      })
+    );
+    mocked.authApi.switchIdentity.mockImplementation(async () => {
+      persistTokens("technician-access", "technician-refresh");
+      return {
+        accessToken: "technician-access",
+        refreshToken: "technician-refresh",
+        expiresIn: 900,
+        me: withCurrentIdentity(merchantOrganizationMe, technicianIdentity)
+      };
+    });
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+    await invoke(() =>
+      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
+    );
+
+    let switching!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
+    act(() => {
+      switching = auth.switchMerchantShop("shop0000000012");
+    });
+    await invoke(() => auth.switchPortal("technician"));
+    await act(async () => {
+      pendingSwitch.resolve({
+        accessToken: "stale-access",
+        refreshToken: "stale-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId: "shop0000000012"
+      });
+      await switching;
+    });
+
+    expect(auth.session).toMatchObject({
+      portal: "technician",
+      currentIdentity: technicianIdentity
+    });
+    expect(auth.session?.merchantShopPublicId).toBeUndefined();
+    expect(mocked.tokenState).toEqual({
+      accessToken: "technician-access",
+      refreshToken: "technician-refresh"
+    });
   });
 });

@@ -97,6 +97,9 @@ type AuthContextValue = {
   loginWithQr: (portal: PortalScope, token: string) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
   switchPortal: (portal: PortalScope) => Promise<AuthActionResult>;
+  switchMerchantShop: (
+    shopPublicId: string
+  ) => Promise<AuthActionResult & { shopPublicId?: string }>;
   refreshSession: (requestedPortal?: PortalScope) => Promise<AuthActionResult>;
   canAccess: (portal: PortalScope) => boolean;
   canEnterPortal: (portal: PortalScope) => boolean;
@@ -303,9 +306,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreRevision, setRestoreRevision] = useState(0);
   const sessionRestoreInFlightRef = useRef<Promise<void> | null>(null);
+  const sessionRef = useRef<AuthSession | null>(null);
+  const authOperationRevisionRef = useRef(0);
+  const committedAuthStateRef = useRef<{
+    accessToken: string | null;
+    refreshToken: string | null;
+    session: AuthSession | null;
+  }>({
+    accessToken: getAccessToken(),
+    refreshToken: getStoredRefreshToken(),
+    session: null
+  });
 
   const clearSession = useCallback(() => {
+    authOperationRevisionRef.current += 1;
     clearAuthTokens();
+    sessionRef.current = null;
+    committedAuthStateRef.current = {
+      accessToken: null,
+      refreshToken: null,
+      session: null
+    };
     setSession(null);
     setRestoreError(null);
     removeBrowserStorage(portalStorageKey, { silent: true });
@@ -316,6 +337,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const persistSession = useCallback((nextSession: AuthSession) => {
     setExpectedAuthUserId(nextSession.id);
+    sessionRef.current = nextSession;
     setSession(nextSession);
     removeBrowserStorage(portalStorageKey, { silent: true });
     removeBrowserStorage(legacySessionStorageKey, { silent: true });
@@ -328,7 +350,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       silent: true
     });
     rememberPortalAuthorization(nextSession, getStoredRefreshToken());
+    committedAuthStateRef.current = {
+      accessToken: getAccessToken(),
+      refreshToken: getStoredRefreshToken(),
+      session: nextSession
+    };
   }, []);
+
+  const restoreCommittedAuthState = useCallback(() => {
+    const committed = committedAuthStateRef.current;
+
+    setAccessToken(committed.accessToken);
+    setStoredRefreshToken(committed.refreshToken);
+
+    if (committed.session) {
+      persistSession(committed.session);
+      return;
+    }
+
+    clearAuthTokens();
+    sessionRef.current = null;
+    setSession(null);
+    removeBrowserStorage(portalStorageKey, { silent: true });
+    removeBrowserStorage(portalStorageKey, { kind: "session", silent: true });
+    removeBrowserStorage(legacySessionStorageKey, { silent: true });
+    removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true });
+  }, [persistSession]);
 
   const restoreRememberedPortalSession = useCallback(
     async (portal: PortalScope): Promise<AuthActionResult> => {
@@ -673,9 +720,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await authApi.logout().catch(() => undefined);
+    const logoutRequest = authApi.logout().catch(() => undefined);
     forgetAllRememberedPortalAuthorizations();
     clearSession();
+    await logoutRequest;
   }, [clearSession]);
 
   const switchPortal = useCallback(
@@ -713,16 +761,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "error.auth.service_unavailable" };
       }
 
+      const operationRevision = ++authOperationRevisionRef.current;
       let identitySwitchCompleted = false;
 
       try {
         const switched = await authApi.switchIdentity(portalIdentity.id);
         identitySwitchCompleted = true;
+
+        if (operationRevision !== authOperationRevisionRef.current) {
+          restoreCommittedAuthState();
+          return { ok: false, message: "error.auth.operation_superseded" };
+        }
+
         const nextSession = buildAuthSessionFromMe(requireFormalAuthMePayload(switched.me), portal, session.loginMethod);
         persistSession(nextSession);
 
         return { ok: true, session: nextSession };
       } catch (error) {
+        if (operationRevision !== authOperationRevisionRef.current) {
+          restoreCommittedAuthState();
+          return { ok: false, message: "error.auth.operation_superseded" };
+        }
+
         if (identitySwitchCompleted) {
           clearSession();
         }
@@ -730,7 +790,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession, persistSession, restoreRememberedPortalSession, session]
+    [clearSession, persistSession, restoreCommittedAuthState, restoreRememberedPortalSession, session]
+  );
+
+  const switchMerchantShop = useCallback(
+    async (
+      shopPublicId: string
+    ): Promise<AuthActionResult & { shopPublicId?: string }> => {
+      const currentSession = sessionRef.current;
+
+      if (!currentSession || currentSession.portal !== "merchant") {
+        return { ok: false, message: "error.auth.portal_forbidden" };
+      }
+
+      if (!getAccessToken() || !getStoredRefreshToken()) {
+        return { ok: false, message: "error.auth.service_unavailable" };
+      }
+
+      const operationRevision = ++authOperationRevisionRef.current;
+
+      try {
+        const switched = await authApi.switchMerchantShop(shopPublicId);
+
+        if (operationRevision !== authOperationRevisionRef.current) {
+          restoreCommittedAuthState();
+          return { ok: false, message: "error.auth.operation_superseded" };
+        }
+
+        if (
+          typeof switched.shopPublicId !== "string" ||
+          !/^shop\d{10}$/.test(switched.shopPublicId) ||
+          switched.shopPublicId !== shopPublicId
+        ) {
+          throw new Error("error.api");
+        }
+
+        const nextSession = {
+          ...buildAuthSessionFromMe(
+            requireFormalAuthMePayload(switched.me),
+            "merchant",
+            currentSession.loginMethod
+          ),
+          merchantShopPublicId: switched.shopPublicId
+        };
+        persistSession(nextSession);
+
+        return {
+          ok: true,
+          session: nextSession,
+          shopPublicId: switched.shopPublicId
+        };
+      } catch (error) {
+        restoreCommittedAuthState();
+
+        if (operationRevision !== authOperationRevisionRef.current) {
+          return { ok: false, message: "error.auth.operation_superseded" };
+        }
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [persistSession, restoreCommittedAuthState]
   );
 
   const refreshSession = useCallback(
@@ -740,6 +860,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       let identitySwitchCompleted = false;
+      const operationRevision = ++authOperationRevisionRef.current;
 
       try {
         let me = requireFormalAuthMePayload(await authApi.me());
@@ -753,10 +874,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           identitySwitchCompleted = true;
           me = requireFormalAuthMePayload(switched.me);
         }
+
+        if (operationRevision !== authOperationRevisionRef.current) {
+          restoreCommittedAuthState();
+          return { ok: false, message: "error.auth.operation_superseded" };
+        }
+
         const nextSession = buildAuthSessionFromMe(me, targetPortal, session.loginMethod);
         persistSession(nextSession);
         return { ok: true, session: nextSession };
       } catch (error) {
+        if (operationRevision !== authOperationRevisionRef.current) {
+          restoreCommittedAuthState();
+          return { ok: false, message: "error.auth.operation_superseded" };
+        }
+
         if (identitySwitchCompleted) {
           clearSession();
         }
@@ -764,7 +896,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession, persistSession, session]
+    [clearSession, persistSession, restoreCommittedAuthState, session]
   );
 
   const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);
@@ -805,6 +937,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithQr,
       logout,
       switchPortal,
+      switchMerchantShop,
       refreshSession,
       canAccess,
       canEnterPortal,
@@ -835,6 +968,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sendVerificationCode,
       session,
       startRegistration,
+      switchMerchantShop,
       switchPortal,
       verifyGoogleRegistrationOrLink,
       verifyRegistration

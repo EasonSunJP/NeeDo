@@ -91,6 +91,10 @@ type SwitchIdentityPayload = TokenPairPayload & {
   me: AuthMePayload;
 };
 
+export type SwitchMerchantShopPayload = SwitchIdentityPayload & {
+  shopPublicId: string;
+};
+
 // Transitional types used only by the untouched pre-verification registration page.
 // Tasks 10 and 11 remove these consumers; the compatibility calls below fail closed.
 export type RegistrationAccountType = "customer" | "technician";
@@ -135,6 +139,7 @@ export const authEndpointPaths = {
   passwordSetupVerify: "/auth/password/setup/verify",
   refresh: "/auth/refresh",
   switchIdentity: "/auth/switch-identity",
+  switchMerchantShop: "/auth/merchant-shop/switch",
   logout: "/auth/logout",
   me: "/auth/me",
 } as const;
@@ -175,6 +180,88 @@ function persistTokenPair(tokens: TokenPairPayload) {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
   });
+}
+
+function isAuthIdentityPayload(value: unknown): value is AuthMePayload["currentIdentity"] {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const identity = value as Partial<AuthMePayload["currentIdentity"]>;
+
+  return (
+    typeof identity.id === "number" &&
+    Number.isInteger(identity.id) &&
+    (identity.publicId === null || typeof identity.publicId === "string") &&
+    typeof identity.type === "string" &&
+    identity.type.length > 0 &&
+    (identity.scopeId === null ||
+      (typeof identity.scopeId === "number" && Number.isInteger(identity.scopeId))) &&
+    (identity.scopeType === null || typeof identity.scopeType === "string")
+  );
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isAuthMePayload(value: unknown): value is AuthMePayload {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const me = value as Partial<AuthMePayload>;
+
+  return (
+    typeof me.id === "number" &&
+    typeof me.needoId === "string" &&
+    me.needoId.length > 0 &&
+    typeof me.primaryPublicId === "string" &&
+    me.primaryPublicId.length > 0 &&
+    typeof me.activeIdentityId === "number" &&
+    (me.activePublicId === null || typeof me.activePublicId === "string") &&
+    typeof me.email === "string" &&
+    (me.emailVerifiedAt === null || typeof me.emailVerifiedAt === "string") &&
+    typeof me.hasPassword === "boolean" &&
+    typeof me.username === "string" &&
+    (me.avatarUrl === null || typeof me.avatarUrl === "string") &&
+    typeof me.isActive === "boolean" &&
+    isAuthIdentityPayload(me.currentIdentity) &&
+    Array.isArray(me.identities) &&
+    me.identities.length > 0 &&
+    me.identities.every(isAuthIdentityPayload) &&
+    me.identities.some((identity) => identity.id === me.currentIdentity?.id) &&
+    me.activeIdentityId === me.currentIdentity?.id &&
+    me.activePublicId === me.currentIdentity?.publicId &&
+    isStringArray(me.roles) &&
+    isStringArray(me.permissions) &&
+    isStringArray(me.menus) &&
+    (me.identityAvailability === undefined || Array.isArray(me.identityAvailability))
+  );
+}
+
+function isSwitchMerchantShopPayload(
+  value: unknown,
+  requestedShopPublicId: string,
+): value is SwitchMerchantShopPayload {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const payload = value as Partial<SwitchMerchantShopPayload>;
+
+  return (
+    typeof payload.accessToken === "string" &&
+    payload.accessToken.length > 0 &&
+    typeof payload.refreshToken === "string" &&
+    payload.refreshToken.length > 0 &&
+    typeof payload.expiresIn === "number" &&
+    payload.expiresIn > 0 &&
+    typeof payload.shopPublicId === "string" &&
+    /^shop\d{10}$/.test(payload.shopPublicId) &&
+    payload.shopPublicId === requestedShopPublicId &&
+    isAuthMePayload(payload.me)
+  );
 }
 
 function rejectLegacyOtp(): Promise<never> {
@@ -456,6 +543,31 @@ export const authApi = {
     persistTokenPair(tokens);
 
     return tokens;
+  },
+
+  async switchMerchantShop(shopPublicId: string) {
+    const refreshToken = getStoredRefreshToken();
+    if (!refreshToken) {
+      throw new Error("error.auth.refresh_missing");
+    }
+
+    const switched = await httpClient.request<SwitchMerchantShopPayload>(
+      authEndpointPaths.switchMerchantShop,
+      {
+        auth: true,
+        body: { refreshToken, shopPublicId },
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+
+    if (!isSwitchMerchantShopPayload(switched, shopPublicId)) {
+      throw new Error("error.api");
+    }
+
+    persistTokenPair(switched);
+
+    return switched;
   },
 
   async logout() {

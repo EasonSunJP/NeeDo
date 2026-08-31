@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import type { BackofficeDashboardPayload } from "../../api/backofficeRealData";
+import type {
+  BackofficeDashboardPayload,
+  DashboardQuery
+} from "../../api/backofficeRealData";
 import { useAuth } from "../../auth/AuthProvider";
 import type { FeaturePermission } from "../../auth/featurePermissions";
 import {
@@ -38,6 +41,7 @@ type MerchantAdminNavSection = {
 
 const themeStorageKey = "needo.merchant-admin.theme";
 const themePreferenceModeStorageKey = "needo.merchant-admin.theme.mode";
+const dashboardQuery: DashboardQuery = { period: "last7days" };
 
 type AdminThemePreferenceMode = "auto" | "manual";
 
@@ -205,11 +209,10 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
   const navigate = useNavigate();
   const readOnlyPreview = preview && session?.allowedPortals.includes("admin") ? preview : null;
   const dashboardScopeKey = [
-    session?.id ?? "anonymous",
-    session?.currentIdentity.id ?? "no-identity",
-    readOnlyPreview?.selectedShopId ?? "current-shop",
-    session?.loggedInAt ?? "no-session"
-  ].join(":");
+    `user:${session?.id ?? "anonymous"}`,
+    `identity:${session?.currentIdentity.id ?? "no-identity"}`,
+    `shop:${session?.merchantShopPublicId ?? "unselected"}`
+  ].join("|");
   const visibleSections = useMemo(
     () =>
       merchantAdminSections
@@ -223,11 +226,9 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
   const routeSectionKey = getSectionForRoute(location.pathname, location.search, visibleSections);
   const [activeSectionKey, setActiveSectionKey] = useState(routeSectionKey);
   const activeSection = visibleSections.find((section) => section.key === activeSectionKey) ?? visibleSections[0] ?? merchantAdminSections[0];
-  const currentShop = dashboard?.shops[0] ?? null;
+  const currentShop = dashboard?.shop ?? null;
   const accountName = currentShop?.name ?? session?.username ?? "当前店铺";
-  const pendingOrders = dashboard
-    ? dashboard.orders.filter((order) => ["pending", "confirmed", "scheduled"].includes(order.status)).length
-    : null;
+  const pendingOrders = dashboard ? dashboard.summary.pendingOrders : null;
   const shopStatus = currentShop
     ? `${currentShop.city} · ${currentShop.status}`
     : summaryStatus === "loading"
@@ -262,7 +263,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
     setSummaryStatus("loading");
     setSummaryError(null);
 
-    loadMerchantAdminDashboard(dashboardScopeKey)
+    loadMerchantAdminDashboard(dashboardScopeKey, dashboardQuery)
       .then((payload) => {
         if (!activeRequest) return;
         setDashboard(payload);
@@ -281,7 +282,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
   }, [dashboardScopeKey, summaryRevision]);
 
   const reloadDashboard = () => {
-    invalidateMerchantAdminDashboard(dashboardScopeKey);
+    invalidateMerchantAdminDashboard(dashboardScopeKey, dashboardQuery);
     setSummaryRevision((current) => current + 1);
   };
 
@@ -341,7 +342,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
               </div>
               <div className="rounded-md bg-white px-2 py-2">
                 <p className="text-[11px] text-ink/45">服务 GMV</p>
-                <strong className="text-sm">{dashboard ? yen(dashboard.finance.estimatedServiceGmvJpy) : "—"}</strong>
+                <strong className="text-sm">{dashboard ? yen(dashboard.summary.serviceGmvJpy) : "—"}</strong>
               </div>
             </div>
             {summaryStatus === "error" ? (

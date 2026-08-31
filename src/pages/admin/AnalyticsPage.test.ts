@@ -3,7 +3,7 @@ import source from "./AnalyticsPage.tsx?raw";
 
 describe("operations analytics formal snapshot", () => {
   it("uses the protected aggregate without mock trends or entity overlays", () => {
-    expect(source).toContain('backofficeRealDataApi.dashboard("backoffice")');
+    expect(source).toContain('backofficeRealDataApi.dashboard("backoffice", { period: "last7days" })');
     expect(source).toContain("dashboard.finance");
     expect(source).toContain("dashboard.schedule");
     expect(source).not.toContain("../../data/mock");

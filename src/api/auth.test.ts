@@ -10,6 +10,7 @@ import {
 import {
   authApi,
   authEndpointPaths,
+  type SwitchMerchantShopPayload,
   type VerifiedGoogleRegistrationPayload,
 } from "./auth";
 import {
@@ -54,6 +55,33 @@ const googleInitialization = {
   nonce: "opaque-backend-nonce",
   nonceChallengeId: "8b097684-4705-4d8e-bdbc-8c6e2970b4b1",
   expiresIn: 600,
+};
+
+const merchantIdentity = {
+  id: 51,
+  publicId: "o0000000051",
+  scopeId: 41,
+  scopeType: "merchant_account",
+  type: "merchant_organization",
+};
+
+const merchantMe = {
+  id: 7,
+  needoId: "u0000000007",
+  primaryPublicId: "u0000000007",
+  activeIdentityId: merchantIdentity.id,
+  activePublicId: merchantIdentity.publicId,
+  email: "merchant@example.com",
+  emailVerifiedAt: "2026-08-27T00:00:00.000Z",
+  hasPassword: true,
+  username: "Merchant",
+  avatarUrl: null,
+  isActive: true,
+  currentIdentity: merchantIdentity,
+  identities: [merchantIdentity],
+  roles: ["merchant_owner"],
+  permissions: ["merchant-admin:dashboard:read"],
+  menus: ["menu:merchant-app"],
 };
 
 describe("formal auth API", () => {
@@ -426,5 +454,56 @@ describe("formal auth API", () => {
       retryOnUnauthorized: true,
     });
     expect(clearAuthTokens).toHaveBeenCalledTimes(1);
+  });
+
+  it("switches merchant shop with the current refresh token and persists only a valid rotated pair", async () => {
+    const switched: SwitchMerchantShopPayload = {
+      ...tokenPair,
+      accessToken: "shop-b-access",
+      refreshToken: "shop-b-refresh",
+      me: merchantMe,
+      shopPublicId: "shop0000000012",
+    };
+    vi.mocked(getStoredRefreshToken).mockReturnValue("stored-refresh-token");
+    vi.mocked(httpClient.request).mockResolvedValueOnce(switched);
+
+    await expect(authApi.switchMerchantShop("shop0000000012")).resolves.toEqual(switched);
+
+    expect(httpClient.request).toHaveBeenCalledWith("/auth/merchant-shop/switch", {
+      auth: true,
+      body: {
+        refreshToken: "stored-refresh-token",
+        shopPublicId: "shop0000000012",
+      },
+      method: "POST",
+      retryOnUnauthorized: false,
+    });
+    expect(setAuthTokens).toHaveBeenCalledWith({
+      accessToken: "shop-b-access",
+      refreshToken: "shop-b-refresh",
+    });
+  });
+
+  it("does not persist tokens for a malformed merchant shop switch response", async () => {
+    vi.mocked(getStoredRefreshToken).mockReturnValue("stored-refresh-token");
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      ...tokenPair,
+      me: merchantMe,
+      shopPublicId: "12",
+    });
+
+    await expect(authApi.switchMerchantShop("shop0000000012")).rejects.toThrow("error.api");
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not request or mutate tokens when merchant shop switching has no refresh token", async () => {
+    vi.mocked(getStoredRefreshToken).mockReturnValue(null);
+
+    await expect(authApi.switchMerchantShop("shop0000000012")).rejects.toThrow(
+      "error.auth.refresh_missing",
+    );
+
+    expect(httpClient.request).not.toHaveBeenCalled();
+    expect(setAuthTokens).not.toHaveBeenCalled();
   });
 });

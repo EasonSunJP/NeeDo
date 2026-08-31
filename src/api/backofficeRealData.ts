@@ -1,8 +1,91 @@
 import { httpClient } from "./httpClient";
-import type { Metric, Merchant, Order, OrderStatus, Settlement, Store, Technician } from "../types/domain";
+import type { Merchant, Order, OrderStatus, Settlement, Store, Technician } from "../types/domain";
 import { formatSystemId } from "../lib/systemIds";
 
 export type BackofficeScope = "backoffice" | "merchant-admin";
+
+export type DashboardPeriod =
+  | "today"
+  | "last7days"
+  | "last30days"
+  | "week"
+  | "month"
+  | "year"
+  | "custom";
+
+export type DashboardGranularity = "hour" | "day" | "month";
+
+export interface DashboardQuery extends Record<string, string | undefined> {
+  period: DashboardPeriod;
+  from?: string;
+  to?: string;
+  city?: string;
+}
+
+export interface DashboardMetricComparison {
+  current: number;
+  previous: number;
+  changeRatePercent: number | null;
+}
+
+export interface DashboardNdpPair {
+  ndp: number;
+  testNdp: number;
+}
+
+export interface DashboardPlatformGlobalNdpPair extends DashboardNdpPair {
+  cityFilterApplied: false;
+  scopeLabel: "platform_global";
+}
+
+export interface DashboardShopNdpCost {
+  totalNdp: number;
+  platformNdp: number;
+  userRewardNdp: number;
+}
+
+export interface DashboardBucketPayload {
+  key: string;
+  label: string;
+  orderCount: number;
+  serviceGmvJpy: number;
+  platformNetRevenueNdp: number;
+  frozenNdp: number;
+  shopCount: number;
+  registeredTechnicianCount: number;
+  shopEstimatedGrossProfitJpy: number;
+  scheduleTotalHours: number;
+  scheduleAvailableHours: number;
+  scheduleBookedHours: number;
+}
+
+export interface DashboardMerchantSnapshot {
+  publicId: string;
+  name: string;
+  city: string;
+  address: string;
+  status: string;
+  billing: {
+    cadence: "monthly" | "annual" | "free";
+    state: "trial" | "paid" | "free" | "overdue";
+    trialEndsAt: string | null;
+    paidThrough: string | null;
+  } | null;
+  wallet: {
+    status: "available" | "not_opened";
+    currency: "NDP";
+    availableBalance: number | null;
+    frozenBalance: number | null;
+  };
+}
+
+export interface ManageableMerchantShopPayload {
+  publicId: string;
+  name: string;
+  city: string;
+  status: string;
+  selected: boolean;
+}
 
 export interface BackofficeOrderPayload {
   id: number;
@@ -384,24 +467,44 @@ export type BackofficeServiceCreateInput = Pick<BackofficeServicePayload, "categ
 export type BackofficeServiceUpdateInput = Partial<BackofficeServiceCreateInput>;
 
 export interface BackofficeDashboardPayload {
-  metrics: Metric[];
-  orders: BackofficeOrderPayload[];
-  schedule: {
-    total: number;
-    available: number;
-    booked: number;
+  filter: {
+    period: DashboardPeriod;
+    from: string;
+    to: string;
+    previousFrom: string;
+    previousTo: string;
+    timeZone: "Asia/Tokyo";
+    granularity: DashboardGranularity;
+    city: string | null;
+    availableCities: string[];
   };
+  summary: {
+    availableScheduleSlots: DashboardMetricComparison;
+    activeTechnicians: DashboardMetricComparison;
+    registeredTechnicians: DashboardMetricComparison;
+    shopCount: DashboardMetricComparison | null;
+    newCustomers: DashboardMetricComparison | null;
+    pendingOrders: number;
+    serviceGmvJpy: number;
+  };
+  series: { buckets: DashboardBucketPayload[] };
   finance: {
-    estimatedServiceGmvJpy: number;
-    platformNdpRevenue: number;
-    requestFeeNdpRevenue: number;
-    userRewardNdpCost: number;
-    pendingHoldNdp: number;
-    campaignDiscountNdp: number;
-    unknownOrUnreportedServiceAmountJpy: number;
+    platformNetRevenue: DashboardNdpPair;
+    frozen: DashboardNdpPair;
+    userReward: DashboardNdpPair;
+    walletStock: DashboardPlatformGlobalNdpPair | null;
+    withdrawn: DashboardPlatformGlobalNdpPair | null;
+    shopNdpCost: DashboardShopNdpCost | null;
   };
-  technicians: BackofficeTechnicianPayload[];
-  shops: BackofficeShopPayload[];
+  shop: DashboardMerchantSnapshot | null;
+  membership: null | {
+    memberCount: null;
+    memberDataStatus: "not_available";
+    completedCustomerCount: number;
+  };
+  scope:
+    | { kind: "platform"; shopPublicId: null }
+    | { kind: "shop"; shopPublicId: string };
 }
 
 export interface PaginatedApiPayload<TItem> {
@@ -527,9 +630,29 @@ type ListQuery = {
 
 const scopePrefix = (scope: BackofficeScope) => (scope === "merchant-admin" ? "/merchant-admin" : "/backoffice");
 
+function serializeDashboardQuery(scope: BackofficeScope, query: DashboardQuery): DashboardQuery {
+  if (scope === "backoffice") {
+    return query;
+  }
+
+  return {
+    period: query.period,
+    ...(query.from ? { from: query.from } : {}),
+    ...(query.to ? { to: query.to } : {})
+  };
+}
+
 export const backofficeRealDataApi = {
-  dashboard(scope: BackofficeScope) {
-    return httpClient.request<BackofficeDashboardPayload>(`${scopePrefix(scope)}/dashboard`);
+  dashboard(scope: BackofficeScope, query: DashboardQuery) {
+    return httpClient.request<BackofficeDashboardPayload>(`${scopePrefix(scope)}/dashboard`, {
+      query: serializeDashboardQuery(scope, query)
+    });
+  },
+  manageableMerchantShops(page = 1, pageSize = 20) {
+    return httpClient.request<PaginatedApiPayload<ManageableMerchantShopPayload>>(
+      "/merchant-admin/manageable-shops",
+      { query: { page, page_size: pageSize } }
+    );
   },
   orders(scope: BackofficeScope, query?: ListQuery) {
     return httpClient.request<PaginatedApiPayload<BackofficeOrderPayload>>(`${scopePrefix(scope)}/orders`, {

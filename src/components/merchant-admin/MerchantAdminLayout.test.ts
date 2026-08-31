@@ -17,10 +17,25 @@ describe("MerchantAdminLayout formal shop summary", () => {
   it("loads shop identity and operating totals from the scoped dashboard", () => {
     expect(source).toContain("loadMerchantAdminDashboard");
     expect(source).not.toContain('backofficeRealDataApi.dashboard("merchant-admin")');
-    expect(source).toContain("dashboard.orders.filter");
-    expect(source).toContain("dashboard.finance.estimatedServiceGmvJpy");
+    expect(source).toContain("dashboard?.shop ?? null");
+    expect(source).toContain("dashboard.summary.pendingOrders");
+    expect(source).toContain("dashboard.summary.serviceGmvJpy");
+    expect(source).not.toContain("dashboard.orders");
+    expect(source).not.toContain("dashboard.shops");
+    expect(source).not.toContain("dashboard.finance.estimatedServiceGmvJpy");
     expect(source).toContain("session?.avatarUrl");
     expect(source).toContain("服务 GMV");
+  });
+
+  it("keys and loads the resource from authenticated merchant scope with an explicit query", () => {
+    expect(source).toContain('`user:${session?.id ?? "anonymous"}`');
+    expect(source).toContain('`identity:${session?.currentIdentity.id ?? "no-identity"}`');
+    expect(source).toContain('`shop:${session?.merchantShopPublicId ?? "unselected"}`');
+    expect(source).not.toContain("readOnlyPreview?.selectedShopId ?? \"current-shop\"");
+    expect(source).not.toContain("session?.loggedInAt ?? \"no-session\"");
+    expect(source).toContain('period: "last7days"');
+    expect(source).toContain("loadMerchantAdminDashboard(dashboardScopeKey, dashboardQuery)");
+    expect(source).toContain("invalidateMerchantAdminDashboard(dashboardScopeKey, dashboardQuery)");
   });
 
   it("keeps loading and retryable failure evidence visible", () => {

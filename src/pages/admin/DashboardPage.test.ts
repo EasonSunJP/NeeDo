@@ -3,7 +3,7 @@ import source from "./DashboardPage.tsx?raw";
 
 describe("operations dashboard real data", () => {
   it("uses only the scoped dashboard aggregate for core metrics and tables", () => {
-    expect(source).toContain('backofficeRealDataApi.dashboard("backoffice")');
+    expect(source).toContain('backofficeRealDataApi.dashboard("backoffice", { period: "last7days" })');
     expect(source).toContain("dashboard.schedule");
     expect(source).toContain("dashboard.finance");
     expect(source).toContain("dashboard.orders.map(mapBackofficeOrder)");

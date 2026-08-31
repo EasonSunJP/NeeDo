@@ -46,6 +46,7 @@ export type AuthSession = {
   primaryPublicId: string;
   activeIdentityId: number;
   activePublicId: string | null;
+  merchantShopPublicId?: string;
   username: string;
   email: string;
   emailVerifiedAt: string | null;

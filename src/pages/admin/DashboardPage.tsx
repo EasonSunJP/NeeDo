@@ -51,7 +51,7 @@ export function DashboardPage() {
     let activeRequest = true;
     setLoadStatus("loading");
     setLoadError("");
-    backofficeRealDataApi.dashboard("backoffice")
+    backofficeRealDataApi.dashboard("backoffice", { period: "last7days" })
       .then((payload) => {
         if (!activeRequest) return;
         setDashboard(payload);

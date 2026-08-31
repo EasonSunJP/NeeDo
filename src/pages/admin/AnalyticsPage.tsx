@@ -39,7 +39,7 @@ export function AnalyticsPage() {
     let active = true;
     setLoadStatus("loading");
     setLoadError("");
-    backofficeRealDataApi.dashboard("backoffice")
+    backofficeRealDataApi.dashboard("backoffice", { period: "last7days" })
       .then((payload) => {
         if (!active) return;
         setDashboard(payload);
