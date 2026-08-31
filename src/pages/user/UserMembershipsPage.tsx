@@ -94,9 +94,8 @@ function MembershipDetailView({ detail }: { detail: CustomerShopMembershipDetail
   return <div className="space-y-4"><section className={panelClassName}><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">店铺会员</p><h1 className="mt-1 text-2xl font-black">{detail.shop.name}</h1><p className="mt-1 text-sm font-semibold text-[color:var(--client-muted)]">{detail.shop.city} · {formatDate(detail.startedAt)} 加入</p></div><MembershipStatusChip status={detail.status} /></div><Link className="mt-5 inline-flex min-h-11 items-center rounded-full border border-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary)]" to={`/stores/${detail.shop.id}`}>查看店铺</Link></section><section><div className="mb-3 flex items-center justify-between px-1"><div><p className="text-xs font-black text-[color:var(--client-primary)]">CARD WALLET</p><h2 className="mt-0.5 text-lg font-black text-[color:var(--client-text)]">会员卡状态</h2></div><span className="text-xs font-bold text-[color:var(--client-muted)]">{detail.cards.length} 张</span></div>{detail.cards.length ? <div className="space-y-3">{detail.cards.map((card) => <CardFace card={card} key={card.publicId} />)}</div> : <StatusPanel message="当前店铺尚未向你发放会员卡。" title="暂无会员卡" />}</section></div>;
 }
 
-export function UserMembershipsPage() {
+function UserMembershipsPageContent({ membershipPublicId }: { membershipPublicId?: string }) {
   const navigate = useNavigate();
-  const { membershipPublicId } = useParams();
   const [status, setStatus] = useState<ShopMembershipStatus>("active");
   const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
@@ -120,4 +119,9 @@ export function UserMembershipsPage() {
   }
 
   return <MobileShell showBottomNav={false}><MobileFullscreenHeader action={<TestFeatureBadge />} onBack={() => navigate(membershipPublicId ? "/me/memberships" : "/me")} subtitle="已加入店铺与会员卡状态" title="我的会员" /><main className="mx-auto w-full max-w-[760px] px-4 pb-28 pt-4">{!membershipPublicId ? <div className="mb-4 flex rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-1"><button className={cn("min-h-10 flex-1 rounded-full text-sm font-black", status === "active" ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "text-[color:var(--client-muted)]")} onClick={() => { setStatus("active"); setPage(1); }} type="button">有效会员</button><button className={cn("min-h-10 flex-1 rounded-full text-sm font-black", status === "ended" ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "text-[color:var(--client-muted)]")} onClick={() => { setStatus("ended"); setPage(1); }} type="button">已结束</button></div> : null}{content}</main></MobileShell>;
+}
+
+export function UserMembershipsPage() {
+  const { membershipPublicId } = useParams();
+  return <UserMembershipsPageContent key={membershipPublicId ?? "list"} membershipPublicId={membershipPublicId} />;
 }

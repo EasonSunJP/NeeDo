@@ -29,4 +29,9 @@ describe("UserMembershipsPage formal UI", () => {
     expect(source).toContain("会员数据读取失败");
     expect(source).toContain("重新加载");
   });
+
+  it("remounts when navigation changes between the list and a detail response shape", () => {
+    expect(source).toContain("function UserMembershipsPageContent");
+    expect(source).toContain('key={membershipPublicId ?? "list"}');
+  });
 });
