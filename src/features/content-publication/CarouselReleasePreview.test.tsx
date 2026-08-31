@@ -95,6 +95,28 @@ const publishedRelease: CarouselRelease = {
   updatedAt: "2026-09-01T00:00:00.000Z",
 };
 
+const releaseWithDisabledSlide: CarouselRelease = {
+  ...publishedRelease,
+  slides: [
+    ...publishedRelease.slides,
+    {
+      ...publishedRelease.slides[0],
+      id: "disabled-slide",
+      defaultImageUrl: "https://media.example.test/disabled.webp",
+      isEnabled: false,
+      translations: {
+        ...publishedRelease.slides[0].translations,
+        "zh-CN": {
+          ...publishedRelease.slides[0].translations["zh-CN"],
+          imageAltText: "已停用轮播图片",
+          imageUrl: "https://media.example.test/disabled-localized.webp",
+          title: "已停用轮播",
+        },
+      },
+    },
+  ],
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -123,5 +145,23 @@ describe("CarouselReleasePreview", () => {
       publishedRelease.slides[0].defaultImageUrl,
     );
     expect(container.querySelector("input, textarea, select")).toBeNull();
+  });
+
+  it("omits disabled slides from the published projection", async () => {
+    await act(async () => {
+      root.render(
+        <CarouselReleasePreview
+          locale="zh-CN"
+          release={releaseWithDisabledSlide}
+        />,
+      );
+    });
+
+    expect(container.textContent).not.toContain("已停用轮播");
+    expect(
+      container.querySelector(
+        'img[src="https://media.example.test/disabled-localized.webp"]',
+      ),
+    ).toBeNull();
   });
 });

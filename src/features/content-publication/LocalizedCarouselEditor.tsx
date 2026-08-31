@@ -360,7 +360,11 @@ export function LocalizedCarouselEditor({
       setDisableReleaseId(active ? String(active.releaseId) : "");
       const source = history.list.find((release) => release.status !== "draft");
       setRollbackReleaseId(source ? String(source.releaseId) : "");
-      setDraftSourceReleaseId(source ? String(source.releaseId) : "");
+      setDraftSourceReleaseId(
+        sceneState.published
+          ? String(sceneState.published.releaseId)
+          : (source ? String(source.releaseId) : ""),
+      );
     } catch {
       dispatch({ type: "load-error", message: t("loadError") });
     }
@@ -833,7 +837,8 @@ export function LocalizedCarouselEditor({
   );
 
   async function cloneDraftFromHistory() {
-    const sourceReleaseId = Number(draftSourceReleaseId);
+    const sourceReleaseId =
+      state.sceneState?.published?.releaseId ?? Number(draftSourceReleaseId);
     if (!sourceReleaseId || !cloneReason.trim()) return;
     await performLifecycle(() =>
       contentPublicationApi.rollbackCarousel(scene, sourceReleaseId, {
@@ -1122,7 +1127,7 @@ export function LocalizedCarouselEditor({
           ) : null}
           <section className="rounded-lg border border-line bg-white p-5 shadow-panel">
             <h2 className="text-lg font-black text-ink">
-              {state.history.length > 0
+              {state.sceneState?.published || state.history.length > 0
                 ? t("cloneFromHistory")
                 : t("createFirstDraft")}
             </h2>
@@ -1143,28 +1148,34 @@ export function LocalizedCarouselEditor({
                 </button>
               ))}
             </div>
-            {state.history.length > 0 ? (
+            {state.sceneState?.published || state.history.length > 0 ? (
               <PermissionGate permission={editPermission}>
                 <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                  <select
-                    className={inputClass}
-                    name="draftSourceReleaseId"
-                    onChange={(event) =>
-                      setDraftSourceReleaseId(event.target.value)
-                    }
-                    value={draftSourceReleaseId}
-                  >
-                    {state.history
-                      .filter((release) => release.status !== "draft")
-                      .map((release) => (
-                        <option
-                          key={release.releaseId}
-                          value={release.releaseId}
-                        >
-                          {release.status} · v{release.version}
-                        </option>
-                      ))}
-                  </select>
+                  {state.sceneState?.published ? (
+                    <p className="self-center text-sm font-bold text-ink/60">
+                      {t("published")} · v{state.sceneState.published.version}
+                    </p>
+                  ) : (
+                    <select
+                      className={inputClass}
+                      name="draftSourceReleaseId"
+                      onChange={(event) =>
+                        setDraftSourceReleaseId(event.target.value)
+                      }
+                      value={draftSourceReleaseId}
+                    >
+                      {state.history
+                        .filter((release) => release.status !== "draft")
+                        .map((release) => (
+                          <option
+                            key={release.releaseId}
+                            value={release.releaseId}
+                          >
+                            {release.status} · v{release.version}
+                          </option>
+                        ))}
+                    </select>
+                  )}
                   <input
                     className={inputClass}
                     name="cloneReason"
@@ -1173,7 +1184,10 @@ export function LocalizedCarouselEditor({
                     value={cloneReason}
                   />
                   <Button
-                    disabled={!draftSourceReleaseId || !cloneReason.trim()}
+                    disabled={
+                      (!state.sceneState?.published && !draftSourceReleaseId) ||
+                      !cloneReason.trim()
+                    }
                     onClick={() => void cloneDraftFromHistory()}
                   >
                     {t("createNewDraft")}

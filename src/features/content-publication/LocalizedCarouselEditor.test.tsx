@@ -810,7 +810,49 @@ describe("LocalizedCarouselEditor", () => {
     expect(container.querySelector('input[name="title"]')).toBeNull();
   });
 
-  it("bootstraps a published-only scene by cloning an explicitly selected historical release", async () => {
+  it("requires a reason to clone the published release when history is empty", async () => {
+    const publishedOnly = { ...scene, draft: null };
+    const clonedDraft = { ...draft, lockVersion: 1 };
+    apiMocks.getBackofficeCarouselScene
+      .mockResolvedValueOnce(publishedOnly)
+      .mockResolvedValueOnce({ ...publishedOnly, draft: clonedDraft });
+    apiMocks.getCarouselHistory.mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    apiMocks.rollbackCarousel.mockResolvedValue(clonedDraft);
+
+    await renderEditor();
+
+    await waitFor(() =>
+      expect(
+        container.querySelector<HTMLInputElement>('input[name="cloneReason"]'),
+      ).not.toBeNull(),
+    );
+    expect((button("创建新草稿") as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      container.querySelector<HTMLInputElement>('input[name="bootstrapTitle"]'),
+    ).toBeNull();
+
+    await setValue(
+      container.querySelector<HTMLInputElement>('input[name="cloneReason"]')!,
+      "继续编辑已发布版本",
+    );
+    await click(button("创建新草稿"));
+
+    await waitFor(() =>
+      expect(apiMocks.rollbackCarousel).toHaveBeenCalledWith(
+        "user-home",
+        scene.published!.releaseId,
+        expect.objectContaining({ reason: "继续编辑已发布版本" }),
+      ),
+    );
+    expect(apiMocks.createCarouselDraft).not.toHaveBeenCalled();
+  });
+
+  it("clones a published-only scene through its current published release", async () => {
     const publishedOnly = { ...scene, draft: null };
     const clonedDraft = { ...draft, lockVersion: 1 };
     apiMocks.getBackofficeCarouselScene
@@ -827,12 +869,6 @@ describe("LocalizedCarouselEditor", () => {
     await renderEditor();
     await waitFor(() =>
       expect(container.textContent).toContain("从历史版本创建草稿"),
-    );
-    await setValue(
-      container.querySelector<HTMLSelectElement>(
-        'select[name="draftSourceReleaseId"]',
-      )!,
-      "80",
     );
     await setValue(
       container.querySelector<HTMLInputElement>('input[name="cloneReason"]')!,
