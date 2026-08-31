@@ -54,7 +54,7 @@ const record = (overrides: Partial<ShopMembershipCardAdjustmentRecord> = {}): Sh
     totalUses: null,
     lockVersion: 1
   },
-  shop: { publicId: "00000000-0000-4000-8000-000000000671", shopNo: "s000000071", name: "青山护理店" },
+  shop: { shopNo: "s000000071", name: "青山护理店" },
   customer: { userId: 41, needoId: "u0000000041", displayName: "王小美" },
   ...overrides
 });

@@ -49,7 +49,7 @@ export interface ShopMembershipCardAdjustmentRecord {
   createdAt: Date;
   updatedAt: Date;
   card: ShopMembershipCardAdjustmentCardContext;
-  shop: { publicId: string; shopNo: string | null; name: string };
+  shop: { shopNo: string | null; name: string };
   customer: { userId: number; needoId: string; displayName: string };
 }
 
