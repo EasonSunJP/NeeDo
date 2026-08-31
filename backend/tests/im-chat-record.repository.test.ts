@@ -231,6 +231,32 @@ describe("ImChatRecordRepository", () => {
       })
     ).resolves.toMatchObject({ commandType: "favorite", result: { replayed: true } });
     expect(findUnique).toHaveBeenCalledTimes(2);
+    expect(findUnique).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          createdByIdentityId_commandType_idempotencyKey: {
+            createdByIdentityId: 71,
+            commandType: "delivery",
+            idempotencyKey: "delivery-key"
+          },
+          deletedAt: null
+        }
+      })
+    );
+    expect(findUnique).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          createdByIdentityId_commandType_idempotencyKey: {
+            createdByIdentityId: 71,
+            commandType: "favorite",
+            idempotencyKey: "favorite-key"
+          },
+          deletedAt: null
+        }
+      })
+    );
   });
 
   it("preflight rejects changed idempotency reuse without reading mutable source state", async () => {

@@ -655,7 +655,8 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
           createdByIdentityId: input.createdByIdentityId,
           commandType: input.commandType,
           idempotencyKey: input.idempotencyKey
-        }
+        },
+        deletedAt: null
       },
       include: {
         deliveries: {
