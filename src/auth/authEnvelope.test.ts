@@ -6,8 +6,15 @@ import {
   createCommittedAuthEnvelope,
   persistedAuthEnvelopeStorageKey,
   readPersistedAuthEnvelope,
+  readPersistedAuthEnvelopeSnapshot,
+  setAuthEnvelopeLockAdapter,
+  type AuthEnvelopeLockAdapter,
   writePersistedAuthEnvelope
 } from "./authEnvelope";
+
+const immediateLockAdapter: AuthEnvelopeLockAdapter = {
+  request: async (_name, _options, callback) => callback()
+};
 
 function session(portal: AuthSession["portal"] = "user"): AuthSession {
   const identity = {
@@ -57,9 +64,10 @@ describe("PersistedAuthEnvelopeV8", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    setAuthEnvelopeLockAdapter(immediateLockAdapter);
   });
 
-  it("ignores every distributed legacy auth key and reads only a strict V8 envelope", () => {
+  it("ignores every distributed legacy auth key and reads only a strict V8 envelope", async () => {
     window.localStorage.setItem("needo.auth.refresh-token", "legacy-refresh");
     window.sessionStorage.setItem("needo.auth.session", JSON.stringify(session("merchant")));
     window.localStorage.setItem(
@@ -75,18 +83,18 @@ describe("PersistedAuthEnvelopeV8", () => {
       refreshToken: "v8-refresh",
       session: session()
     });
-    expect(writePersistedAuthEnvelope(envelope)).toBe(true);
+    expect(await writePersistedAuthEnvelope(envelope, { expectedRaw: null })).toBe(true);
     expect(readPersistedAuthEnvelope()).toEqual(envelope);
   });
 
-  it("performs one atomic setItem and leaves the previous committed envelope byte-identical on failure", () => {
+  it("performs one atomic setItem and leaves the previous committed envelope byte-identical on failure", async () => {
     const previous = createCommittedAuthEnvelope({
       authInstanceId: "00000000-0000-4000-8000-000000000008",
       credentialVersion: 8,
       refreshToken: "refresh-r1",
       session: session()
     });
-    expect(writePersistedAuthEnvelope(previous)).toBe(true);
+    expect(await writePersistedAuthEnvelope(previous, { expectedRaw: null })).toBe(true);
     const previousRaw = window.localStorage.getItem(persistedAuthEnvelopeStorageKey);
     const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
       throw new DOMException("quota", "QuotaExceededError");
@@ -98,26 +106,31 @@ describe("PersistedAuthEnvelopeV8", () => {
       session: { ...session("merchant"), merchantShopPublicId: "shop0000000012" }
     });
 
-    expect(writePersistedAuthEnvelope(next)).toBe(false);
+    expect(await writePersistedAuthEnvelope(next, { expectedRaw: previousRaw })).toBe(false);
 
     expect(setItem).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).toBe(previousRaw);
     expect(readPersistedAuthEnvelope()).toEqual(previous);
   });
 
-  it("refuses to replace a durable tombstone from a stale committed authority", () => {
+  it("refuses to replace a durable tombstone from a stale committed authority", async () => {
     const previous = createCommittedAuthEnvelope({
       authInstanceId: "00000000-0000-4000-8000-000000000008",
       credentialVersion: 8,
       refreshToken: "refresh-r1",
       session: session()
     });
-    expect(writePersistedAuthEnvelope(previous)).toBe(true);
+    expect(await writePersistedAuthEnvelope(previous, { expectedRaw: null })).toBe(true);
+    const previousRaw = readPersistedAuthEnvelopeSnapshot()?.raw ?? null;
     const tombstone = createAnonymousAuthEnvelope({
       authInstanceId: previous.authInstanceId,
       credentialVersion: 9
     });
-    expect(writePersistedAuthEnvelope(tombstone)).toBe(true);
+    expect(
+      await writePersistedAuthEnvelope(tombstone, {
+        terminalAuthInstanceId: previous.authInstanceId
+      })
+    ).toBe(true);
 
     const staleCommit = createCommittedAuthEnvelope({
       authInstanceId: previous.authInstanceId,
@@ -125,18 +138,18 @@ describe("PersistedAuthEnvelopeV8", () => {
       refreshToken: "stale-refresh-r2",
       session: session()
     });
-    expect(writePersistedAuthEnvelope(staleCommit, { expectedCurrent: previous })).toBe(false);
+    expect(await writePersistedAuthEnvelope(staleCommit, { expectedRaw: previousRaw })).toBe(false);
     expect(readPersistedAuthEnvelope()).toEqual(tombstone);
   });
 
-  it("never persists an access token and rejects unknown envelope fields", () => {
+  it("never persists an access token and rejects unknown envelope fields", async () => {
     const envelope = createCommittedAuthEnvelope({
       authInstanceId: "00000000-0000-4000-8000-000000000008",
       credentialVersion: 8,
       refreshToken: "refresh",
       session: session()
     });
-    expect(writePersistedAuthEnvelope(envelope)).toBe(true);
+    expect(await writePersistedAuthEnvelope(envelope, { expectedRaw: null })).toBe(true);
     expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).not.toContain(
       "accessToken"
     );
@@ -148,12 +161,12 @@ describe("PersistedAuthEnvelopeV8", () => {
     expect(readPersistedAuthEnvelope()).toBeNull();
   });
 
-  it("accepts only a complete anonymous tombstone and rejects malformed committed sessions", () => {
+  it("accepts only a complete anonymous tombstone and rejects malformed committed sessions", async () => {
     const tombstone = createAnonymousAuthEnvelope({
       authInstanceId: "00000000-0000-4000-8000-000000000008",
       credentialVersion: 9
     });
-    expect(writePersistedAuthEnvelope(tombstone)).toBe(true);
+    expect(await writePersistedAuthEnvelope(tombstone, { expectedRaw: null })).toBe(true);
     expect(readPersistedAuthEnvelope()).toEqual(tombstone);
 
     const malformed = createCommittedAuthEnvelope({
@@ -170,5 +183,91 @@ describe("PersistedAuthEnvelopeV8", () => {
       })
     );
     expect(readPersistedAuthEnvelope()).toBeNull();
+  });
+
+  it("fails closed when no Web Locks adapter is available", async () => {
+    setAuthEnvelopeLockAdapter(null);
+    const envelope = createCommittedAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000008",
+      credentialVersion: 8,
+      refreshToken: "refresh",
+      session: session()
+    });
+
+    await expect(
+      writePersistedAuthEnvelope(envelope, { expectedRaw: null })
+    ).resolves.toBe(false);
+    expect(readPersistedAuthEnvelope()).toBeNull();
+  });
+
+  it.each(["commit-first", "logout-first"] as const)(
+    "serializes same-instance commit/logout interleaving with terminal state winning (%s)",
+    async (order) => {
+      const base = createCommittedAuthEnvelope({
+        authInstanceId: "00000000-0000-4000-8000-000000000008",
+        credentialVersion: 8,
+        refreshToken: "refresh-r1",
+        session: session()
+      });
+      expect(await writePersistedAuthEnvelope(base, { expectedRaw: null })).toBe(true);
+      const baseRaw = readPersistedAuthEnvelopeSnapshot()?.raw ?? null;
+      const pending: Array<() => Promise<void>> = [];
+      setAuthEnvelopeLockAdapter({
+        request: (_name, _options, callback) =>
+          new Promise((resolve, reject) => {
+            pending.push(async () => {
+              try {
+                resolve(await callback());
+              } catch (error) {
+                reject(error);
+              }
+            });
+          })
+      });
+      const next = createCommittedAuthEnvelope({
+        ...base,
+        credentialVersion: 9,
+        refreshToken: "refresh-r2"
+      });
+      const tombstone = createAnonymousAuthEnvelope({
+        authInstanceId: base.authInstanceId,
+        credentialVersion: 9
+      });
+      const committed = writePersistedAuthEnvelope(next, { expectedRaw: baseRaw });
+      const loggedOut = writePersistedAuthEnvelope(tombstone, {
+        terminalAuthInstanceId: base.authInstanceId
+      });
+
+      const indices = order === "commit-first" ? [0, 1] : [1, 0];
+      await pending[indices[0]]?.();
+      await pending[indices[1]]?.();
+      await Promise.all([committed, loggedOut]);
+
+      expect(readPersistedAuthEnvelope()).toMatchObject({
+        state: "anonymous",
+        authInstanceId: base.authInstanceId
+      });
+    }
+  );
+
+  it("does not let an old logout overwrite a different auth instance", async () => {
+    const newer = createCommittedAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000009",
+      credentialVersion: 9,
+      refreshToken: "new-login-refresh",
+      session: session()
+    });
+    expect(await writePersistedAuthEnvelope(newer, { expectedRaw: null })).toBe(true);
+    const oldTombstone = createAnonymousAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000008",
+      credentialVersion: 10
+    });
+
+    expect(
+      await writePersistedAuthEnvelope(oldTombstone, {
+        terminalAuthInstanceId: oldTombstone.authInstanceId
+      })
+    ).toBe(false);
+    expect(readPersistedAuthEnvelope()).toEqual(newer);
   });
 });

@@ -14,6 +14,8 @@ import {
   createCommittedAuthEnvelope,
   persistedAuthEnvelopeStorageKey,
   readPersistedAuthEnvelope,
+  setAuthEnvelopeLockAdapter,
+  type AuthEnvelopeLockAdapter,
   writePersistedAuthEnvelope
 } from "./authEnvelope";
 import {
@@ -27,6 +29,10 @@ import type { AuthMePayload } from "./rbac";
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+const immediateLockAdapter: AuthEnvelopeLockAdapter = {
+  request: async (_name, _options, callback) => callback()
+};
 
 const mocked = vi.hoisted(() => {
   class MockApiClientError extends Error {
@@ -133,28 +139,33 @@ vi.mock("./authCredentialCoordinator", () => ({
       serverCredentials: null
     };
   },
-  commitExistingAuthOperation: (
+  commitExistingAuthOperation: async (
     operation: { generation: number; id: number },
     expectedUserId: number,
-    persistClient: () => boolean
+    persistClient: () => boolean | Promise<boolean>
   ) => {
     if (
       operation.generation !== mocked.coordinatorState.generation ||
-      operation.id !== mocked.coordinatorState.activeRotation ||
-      !persistClient()
+      operation.id !== mocked.coordinatorState.activeRotation
+    )
+      return false;
+    if (!(await persistClient())) return false;
+    if (
+      operation.generation !== mocked.coordinatorState.generation ||
+      operation.id !== mocked.coordinatorState.activeRotation
     )
       return false;
     mocked.setExpectedAuthUserId(expectedUserId);
     mocked.coordinatorState.activeRotation = null;
     return true;
   },
-  commitRotatedAuthOperation: (
+  commitRotatedAuthOperation: async (
     operation: {
       generation: number;
       id: number;
       serverCredentials: { accessToken: string | null; refreshToken: string } | null;
     },
-    input: { expectedUserId: number; persistClient: () => boolean }
+    input: { expectedUserId: number; persistClient: () => boolean | Promise<boolean> }
   ) => {
     if (
       operation.generation !== mocked.coordinatorState.generation ||
@@ -164,7 +175,7 @@ vi.mock("./authCredentialCoordinator", () => ({
     )
       return false;
     const credentials = operation.serverCredentials;
-    const clientPersisted = input.persistClient();
+    const clientPersisted = await input.persistClient();
     if (!clientPersisted) {
       if (mocked.coordinatorState.revoker) {
         void mocked.coordinatorState.revoker(credentials);
@@ -646,7 +657,7 @@ function storedCustomerSession(overrides: Partial<AuthSession> = {}): AuthSessio
   };
 }
 
-function persistStartupEnvelope(session: AuthSession, refreshToken: string) {
+async function persistStartupEnvelope(session: AuthSession, refreshToken: string) {
   const envelope = createCommittedAuthEnvelope({
     authInstanceId: "00000000-0000-4000-8000-000000000008",
     credentialVersion: 8,
@@ -656,7 +667,7 @@ function persistStartupEnvelope(session: AuthSession, refreshToken: string) {
       [session.portal]: { refreshToken, session }
     }
   });
-  expect(writePersistedAuthEnvelope(envelope)).toBe(true);
+  expect(await writePersistedAuthEnvelope(envelope, { expectedRaw: null })).toBe(true);
 }
 
 describe("AuthProvider formal registration and Google sessions", () => {
@@ -666,6 +677,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     root = createRoot(container);
     window.localStorage.clear();
     window.sessionStorage.clear();
+    setAuthEnvelopeLockAdapter(immediateLockAdapter);
     vi.clearAllMocks();
     observedAuthenticatedStates.length = 0;
     mocked.tokenState.accessToken = null;
@@ -840,7 +852,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("rejects invalid remembered portal restoration and tombstones its authorization", async () => {
-    rememberPortalAuthorization(
+    await rememberPortalAuthorization(
       storedCustomerSession({
         activeIdentityId: platformIdentity.id,
         activePublicId: platformIdentity.publicId,
@@ -864,7 +876,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("serializes a remembered portal identity rotation with the remembered refresh credentials", async () => {
-    rememberPortalAuthorization(
+    await rememberPortalAuthorization(
       storedCustomerSession({
         activeIdentityId: technicianIdentity.id,
         activePublicId: technicianIdentity.publicId,
@@ -981,7 +993,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("clears remembered account tokens when Google requires first-use verification", async () => {
-    rememberPortalAuthorization(storedCustomerSession(), "remembered-refresh");
+    await rememberPortalAuthorization(storedCustomerSession(), "remembered-refresh");
     await renderProvider();
 
     await invoke(() => authenticateGoogle({ status: "verification_required", ...challenge }));
@@ -1068,7 +1080,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("clears remembered account tokens before starting a new registration", async () => {
-    rememberPortalAuthorization(storedCustomerSession(), "remembered-refresh");
+    await rememberPortalAuthorization(storedCustomerSession(), "remembered-refresh");
     mocked.authApi.startRegistration.mockResolvedValue(challenge);
     await renderProvider();
 
@@ -1201,7 +1213,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("keeps a refresh-backed session private and retryable during a transient restore outage", async () => {
-    persistStartupEnvelope(storedCustomerSession(), "stored-retry-refresh");
+    await persistStartupEnvelope(storedCustomerSession(), "stored-retry-refresh");
     mocked.authApi.refreshWithCredentials.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
     await renderProvider();
@@ -1225,7 +1237,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("treats a missing refresh route during deployment recovery as retryable instead of expiring the session", async () => {
-    persistStartupEnvelope(storedCustomerSession(), "stored-deployment-refresh");
+    await persistStartupEnvelope(storedCustomerSession(), "stored-deployment-refresh");
     mocked.authApi.refreshWithCredentials.mockRejectedValueOnce(
       new mocked.ApiClientError("error.resource_not_found", 404, 404)
     );
@@ -1239,7 +1251,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("fails closed with retry for an unclassified restore error", async () => {
-    persistStartupEnvelope(storedCustomerSession(), "stored-unknown-error-refresh");
+    await persistStartupEnvelope(storedCustomerSession(), "stored-unknown-error-refresh");
     mocked.authApi.refreshWithCredentials.mockRejectedValueOnce(
       new Error("proxy response unavailable")
     );
@@ -1255,7 +1267,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
   it("preserves Google as the login method while restoring a refresh-backed session", async () => {
     const storedSession = storedCustomerSession();
-    persistStartupEnvelope(storedSession, "stored-google-refresh");
+    await persistStartupEnvelope(storedSession, "stored-google-refresh");
     mocked.authApi.me.mockResolvedValue(customerMe);
 
     await renderProvider();
@@ -1266,7 +1278,10 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("fails closed when the V8 envelope user differs from /auth/me", async () => {
-    persistStartupEnvelope(storedCustomerSession({ id: 999 }), "stored-other-user-refresh");
+    await persistStartupEnvelope(
+      storedCustomerSession({ id: 999 }),
+      "stored-other-user-refresh"
+    );
     mocked.authApi.me.mockResolvedValue(customerMe);
 
     await renderProvider();
@@ -1295,7 +1310,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("deduplicates refresh-backed restoration during StrictMode effect replay", async () => {
-    persistStartupEnvelope(storedCustomerSession(), "stored-strict-mode-refresh");
+    await persistStartupEnvelope(storedCustomerSession(), "stored-strict-mode-refresh");
     mocked.authApi.me.mockResolvedValue(customerMe);
 
     await renderProviderInStrictMode();
@@ -1466,7 +1481,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("does not trust a remembered merchant shop public ID without a switch response", async () => {
-    rememberPortalAuthorization(
+    await rememberPortalAuthorization(
       storedCustomerSession({
         activeIdentityId: merchantOrganizationIdentity.id,
         activePublicId: merchantOrganizationIdentity.publicId,
@@ -1575,6 +1590,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(switched).toEqual({ ok: false, message: "error.api" });
     expect(auth.session).toBeNull();
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    await waitFor(() => expect(mocked.authApi.logout).toHaveBeenCalledTimes(1));
     expect(mocked.authApi.logout).toHaveBeenCalledWith({
       accessToken: "invalid-identity-access",
       refreshToken: "invalid-identity-refresh"
@@ -1732,6 +1748,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
     expect(auth.session).toBeNull();
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    await waitFor(() => expect(mocked.authApi.logout).toHaveBeenCalledTimes(1));
     expect(mocked.authApi.logout).toHaveBeenCalledWith({
       accessToken: "organization-access",
       refreshToken: "organization-refresh"
@@ -2178,8 +2195,10 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).toBe(previousRaw);
   });
 
-  it("terminates this tab when another tab replaces its committed envelope with a tombstone", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(customerMe));
+  it("uses a remote tombstone event as authority, revokes R2, and does not reread storage", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(
+      formalLoginPayload(customerMe, "access-r2", "refresh-r2")
+    );
     await renderProvider();
     await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
     const committed = readPersistedAuthEnvelope();
@@ -2189,7 +2208,6 @@ describe("AuthProvider formal registration and Google sessions", () => {
       authInstanceId: committed.authInstanceId,
       credentialVersion: committed.credentialVersion + 1
     });
-    window.localStorage.setItem(persistedAuthEnvelopeStorageKey, JSON.stringify(tombstone));
 
     await act(async () => {
       window.dispatchEvent(
@@ -2203,7 +2221,13 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
     expect(auth.session).toBeNull();
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
-    expect(readPersistedAuthEnvelope()).toEqual(tombstone);
+    await waitFor(() =>
+      expect(mocked.authApi.logout).toHaveBeenCalledWith({
+        accessToken: "access-r2",
+        refreshToken: "refresh-r2"
+      })
+    );
+    expect(readPersistedAuthEnvelope()).toEqual(committed);
   });
 
   it("fails safe on reload when only the revoked pre-rotation envelope remains", async () => {

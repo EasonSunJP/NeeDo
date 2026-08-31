@@ -39,8 +39,9 @@ import {
   createAnonymousAuthEnvelope,
   createAuthInstanceId,
   createCommittedAuthEnvelope,
+  parsePersistedAuthEnvelopeRaw,
   persistedAuthEnvelopeStorageKey,
-  readPersistedAuthEnvelope,
+  readPersistedAuthEnvelopeSnapshot,
   writePersistedAuthEnvelope,
   type CommittedAuthEnvelopeV8,
   type PersistedAuthEnvelopeV8
@@ -143,13 +144,14 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function readInitialAuthEnvelope() {
-  const envelope = readPersistedAuthEnvelope();
+  const snapshot = readPersistedAuthEnvelopeSnapshot();
+  const envelope = snapshot?.envelope ?? null;
   hydrateAuthCredentialCoordinator({
     credentialVersion: envelope?.credentialVersion ?? 0,
     expectedUserId: envelope?.state === "committed" ? envelope.session.id : null,
     refreshToken: envelope?.state === "committed" ? envelope.refreshToken : null
   });
-  return envelope;
+  return snapshot;
 }
 
 function normalizeApiError(error: unknown, fallback = "error.api") {
@@ -221,7 +223,8 @@ function readRotatedResponseErrorCredentials(error: unknown) {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [initialEnvelope] = useState(readInitialAuthEnvelope);
+  const [initialEnvelopeSnapshot] = useState(readInitialAuthEnvelope);
+  const initialEnvelope = initialEnvelopeSnapshot?.envelope ?? null;
   const storedSessionForInitialRestore =
     initialEnvelope?.state === "committed" ? initialEnvelope.session : null;
   const initialCredentials = getAuthCredentialSnapshot();
@@ -234,6 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const restoreInFlightRef = useRef<Promise<void> | null>(null);
   const sessionRef = useRef<AuthSession | null>(null);
   const envelopeRef = useRef<PersistedAuthEnvelopeV8 | null>(initialEnvelope);
+  const envelopeRawRef = useRef<string | null>(initialEnvelopeSnapshot?.raw ?? null);
 
   const publishSession = useCallback((nextSession: AuthSession | null) => {
     sessionRef.current = nextSession;
@@ -252,22 +256,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return credentials;
   }, [publishAnonymous]);
 
-  const persistAnonymousTombstone = useCallback(() => {
+  const persistAnonymousTombstone = useCallback(async () => {
     const currentEnvelope = envelopeRef.current;
     const tombstone = createAnonymousAuthEnvelope({
       authInstanceId: currentEnvelope?.authInstanceId ?? createAuthInstanceId(),
       credentialVersion: getAuthCredentialSnapshot().credentialVersion
     });
-    const written = writePersistedAuthEnvelope(tombstone, {
-      expectedCurrent: currentEnvelope
-    });
-    if (written) envelopeRef.current = tombstone;
+    const written = currentEnvelope
+      ? await writePersistedAuthEnvelope(tombstone, {
+          terminalAuthInstanceId: currentEnvelope.authInstanceId
+        })
+      : await writePersistedAuthEnvelope(tombstone, {
+          expectedRaw: envelopeRawRef.current
+        });
+    if (written) {
+      const snapshot = readPersistedAuthEnvelopeSnapshot();
+      envelopeRef.current = snapshot?.envelope ?? null;
+      envelopeRawRef.current = snapshot?.raw ?? null;
+    }
     return written;
   }, []);
 
-  const terminateAndTombstone = useCallback(() => {
+  const terminateAndTombstone = useCallback(async () => {
     const credentials = terminateLocalSession();
-    const durable = persistAnonymousTombstone();
+    const durable = await persistAnonymousTombstone();
     return { credentials, durable };
   }, [persistAnonymousTombstone, terminateLocalSession]);
 
@@ -278,7 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       preserveAuthInstance: boolean
     ): {
       envelope: CommittedAuthEnvelopeV8;
-      expectedCurrent: PersistedAuthEnvelopeV8 | null;
+      expectedRaw: string | null;
     } => {
       const existing = envelopeRef.current;
       const sameUser =
@@ -287,7 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         existing.session.id === nextSession.id;
       const previousRemembered = sameUser ? existing.rememberedByPortal : {};
       return {
-        expectedCurrent: existing,
+        expectedRaw: envelopeRawRef.current,
         envelope: createCommittedAuthEnvelope({
           authInstanceId: sameUser ? existing.authInstanceId : createAuthInstanceId(),
           credentialVersion: getAuthCredentialSnapshot().credentialVersion + 1,
@@ -320,7 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const commitRotatedSession = useCallback(
-    (
+    async (
       operation: AuthOperation,
       credentials: AuthTransitionCredentials,
       nextSession: AuthSession
@@ -330,22 +342,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         !markAuthOperationServerRotated(operation, credentials)
       )
         return "superseded" as const;
-      const { envelope: nextEnvelope, expectedCurrent } = createCommittedEnvelope(
+      const { envelope: nextEnvelope, expectedRaw } = createCommittedEnvelope(
         nextSession,
         credentials.refreshToken,
         operation.mode === "rotation" ||
           operation.kind === "startup-restore" ||
           operation.kind === "remembered-portal-restore"
       );
-      const committed = commitRotatedAuthOperation(operation, {
+      const committed = await commitRotatedAuthOperation(operation, {
         expectedUserId: nextSession.id,
-        persistClient: () => writePersistedAuthEnvelope(nextEnvelope, { expectedCurrent })
+        persistClient: async () =>
+          await writePersistedAuthEnvelope(nextEnvelope, { expectedRaw })
       });
       if (!committed) {
         publishAnonymous();
         return "storage_failed" as const;
       }
       envelopeRef.current = nextEnvelope;
+      envelopeRawRef.current = JSON.stringify(nextEnvelope);
       publishSession(nextSession);
       setRestoreError(null);
       return "committed" as const;
@@ -354,19 +368,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const commitExistingSession = useCallback(
-    (operation: AuthOperation, nextSession: AuthSession) => {
+    async (operation: AuthOperation, nextSession: AuthSession) => {
       const refreshToken = getAuthCredentialSnapshot().refreshToken;
       if (!refreshToken) return "storage_failed" as const;
-      const { envelope: nextEnvelope, expectedCurrent } = createCommittedEnvelope(
+      const { envelope: nextEnvelope, expectedRaw } = createCommittedEnvelope(
         nextSession,
         refreshToken,
         true
       );
-      const committed = commitExistingAuthOperation(operation, nextSession.id, () =>
-        writePersistedAuthEnvelope(nextEnvelope, { expectedCurrent })
+      const committed = await commitExistingAuthOperation(
+        operation,
+        nextSession.id,
+        async () => await writePersistedAuthEnvelope(nextEnvelope, { expectedRaw })
       );
       if (!committed) return "storage_failed" as const;
       envelopeRef.current = nextEnvelope;
+      envelopeRawRef.current = JSON.stringify(nextEnvelope);
       publishSession(nextSession);
       setRestoreError(null);
       return "committed" as const;
@@ -430,7 +447,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           throw new Error("error.auth.portal_forbidden");
         }
-        const outcome = commitRotatedSession(operation, credentials, nextSession);
+        const outcome = await commitRotatedSession(operation, credentials, nextSession);
         if (outcome === "committed") return { ok: true, session: nextSession };
         return {
           ok: false,
@@ -446,7 +463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           abandonAuthOperation(operation);
           if (wasCurrent) {
             if (initialResponseRotated) terminateLocalSession();
-            else terminateAndTombstone();
+            else await terminateAndTombstone();
           }
         }
         return { ok: false, message: normalizeApiError(error, fallback) };
@@ -499,7 +516,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           me = switched.me;
         }
         const nextSession = buildAuthSessionFromMe(me, portal, rememberedSession.loginMethod);
-        const outcome = commitRotatedSession(operation, credentials, nextSession);
+        const outcome = await commitRotatedSession(operation, credentials, nextSession);
         if (outcome === "committed") return { ok: true, session: nextSession };
         return {
           ok: false,
@@ -521,9 +538,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthCredentialRevoker(async (credentials) => {
       await authApi.logout(credentials);
     });
-    setAuthExpiredHandler(() => {
+    setAuthExpiredHandler(async () => {
       publishAnonymous();
-      persistAnonymousTombstone();
+      await persistAnonymousTombstone();
     });
     return () => {
       setAuthExpiredHandler(null);
@@ -539,16 +556,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ) {
         return;
       }
-      const durableEnvelope = readPersistedAuthEnvelope();
+      if (event.newValue === envelopeRawRef.current) return;
+      const durableEnvelope = parsePersistedAuthEnvelopeRaw(event.newValue);
       const localEnvelope = envelopeRef.current;
+      const credentials = getAuthCredentialSnapshot();
       if (
-        durableEnvelope?.state === localEnvelope?.state &&
-        durableEnvelope?.authInstanceId === localEnvelope?.authInstanceId &&
-        durableEnvelope?.credentialVersion === localEnvelope?.credentialVersion
+        durableEnvelope?.state === "anonymous" &&
+        localEnvelope?.authInstanceId === durableEnvelope.authInstanceId &&
+        credentials.refreshToken
       ) {
-        return;
+        void authApi
+          .logout({
+            accessToken: credentials.accessToken,
+            refreshToken: credentials.refreshToken
+          })
+          .catch(() => undefined);
       }
       envelopeRef.current = durableEnvelope;
+      envelopeRawRef.current = durableEnvelope ? event.newValue : null;
       terminateLocalSession();
     };
     window.addEventListener("storage", handleAuthEnvelopeStorage);
@@ -605,7 +630,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRestoreError("error.auth.service_unavailable");
           }
         } else if (isAuthOperationCurrent(operation)) {
-          terminateAndTombstone();
+          await terminateAndTombstone();
         }
       }
     })();
@@ -668,7 +693,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const startRegistration = useCallback(
     async (input: RegistrationStartInput): Promise<AuthChallengeActionResult> => {
-      terminateAndTombstone();
+      await terminateAndTombstone();
       try {
         const challenge = await authApi.startRegistration(input);
         if (!isVerificationChallenge(challenge)) throw new Error("error.api");
@@ -714,10 +739,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ): Promise<GoogleAuthActionResult> => {
       if (result.status === "verification_required") {
         if (!isVerificationChallenge(result)) {
-          if (isAuthOperationCurrent(operation)) terminateAndTombstone();
+          if (isAuthOperationCurrent(operation)) await terminateAndTombstone();
           return { ok: false, message: "error.auth.google_api_unavailable" };
         }
-        if (isAuthOperationCurrent(operation)) terminateAndTombstone();
+        if (isAuthOperationCurrent(operation)) await terminateAndTombstone();
         return {
           ok: true,
           status: "verification_required",
@@ -809,7 +834,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     const credentials = terminateLocalSession();
-    const tombstoneWritten = persistAnonymousTombstone();
+    const tombstoneWritten = await persistAnonymousTombstone();
     let revoked = false;
     if (credentials) {
       try {
@@ -845,7 +870,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               return { ok: false, message: "error.auth.operation_superseded" };
             if (identity.id === current.currentIdentity.id) {
               const nextSession = { ...current, portal };
-              const outcome = commitExistingSession(operation, nextSession);
+              const outcome = await commitExistingSession(operation, nextSession);
               return outcome === "committed"
                 ? { ok: true, session: nextSession }
                 : {
@@ -868,7 +893,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             const switched = requireFormalSwitchIdentityPayload(switchedResponse, context);
             const nextSession = buildAuthSessionFromMe(switched.me, portal, current.loginMethod);
-            const outcome = commitRotatedSession(operation, switchedCredentials, nextSession);
+            const outcome = await commitRotatedSession(
+              operation,
+              switchedCredentials,
+              nextSession
+            );
             return outcome === "committed"
               ? { ok: true, session: nextSession }
               : {
@@ -940,7 +969,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ...buildAuthSessionFromMe(switched.me, "merchant", current.loginMethod),
               merchantShopPublicId: switched.shopPublicId
             };
-            const outcome = commitRotatedSession(operation, switchedCredentials, nextSession);
+            const outcome = await commitRotatedSession(
+              operation,
+              switchedCredentials,
+              nextSession
+            );
             return outcome === "committed"
               ? { ok: true as const, session: nextSession, shopPublicId: switched.shopPublicId }
               : {
@@ -1006,7 +1039,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const switched = requireFormalSwitchIdentityPayload(switchedResponse, context);
               me = switched.me;
               const nextSession = buildAuthSessionFromMe(me, targetPortal, current.loginMethod);
-              const outcome = commitRotatedSession(operation, switchedCredentials, nextSession);
+              const outcome = await commitRotatedSession(
+                operation,
+                switchedCredentials,
+                nextSession
+              );
               return outcome === "committed"
                 ? { ok: true, session: nextSession }
                 : {
@@ -1026,7 +1063,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ? { merchantShopPublicId: current.merchantShopPublicId }
                 : {})
             };
-            const outcome = commitExistingSession(operation, nextSession);
+            const outcome = await commitExistingSession(operation, nextSession);
             return outcome === "committed"
               ? { ok: true, session: nextSession }
               : {

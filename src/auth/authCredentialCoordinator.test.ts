@@ -51,9 +51,9 @@ describe("AuthCredentialCoordinator", () => {
         accessToken: "access-a",
         refreshToken: "refresh-a"
       });
-      expect(
+      await expect(
         commitRotatedAuthOperation(operation, { expectedUserId: 7, persistClient: () => true })
-      ).toBe(true);
+      ).resolves.toBe(true);
     });
     const second = enqueueAuthRotation("shop-b", async (operation, credentials) => {
       seenRefreshTokens.push(credentials.refreshToken);
@@ -61,9 +61,9 @@ describe("AuthCredentialCoordinator", () => {
         accessToken: "access-b",
         refreshToken: "refresh-b"
       });
-      expect(
+      await expect(
         commitRotatedAuthOperation(operation, { expectedUserId: 7, persistClient: () => true })
-      ).toBe(true);
+      ).resolves.toBe(true);
     });
 
     await Promise.resolve();
@@ -152,7 +152,7 @@ describe("AuthCredentialCoordinator", () => {
     ).resolves.toBe("refresh");
   });
 
-  it("fails closed after server rotation when any client persistence stage fails", () => {
+  it("fails closed after server rotation when any client persistence stage fails", async () => {
     const revoke = vi.fn();
     setAuthCredentialRevoker(revoke);
     installServerAuthCredentials({ accessToken: "old-access", refreshToken: "old-refresh" }, 7);
@@ -160,12 +160,12 @@ describe("AuthCredentialCoordinator", () => {
     const rotated = { accessToken: "new-access", refreshToken: "new-refresh" };
     expect(markAuthOperationServerRotated(operation, rotated)).toBe(true);
 
-    expect(
+    await expect(
       commitRotatedAuthOperation(operation, {
         expectedUserId: 7,
         persistClient: () => false
       })
-    ).toBe(false);
+    ).resolves.toBe(false);
 
     expect(revoke).toHaveBeenCalledWith(rotated);
     expect(getAuthCredentialSnapshot()).toMatchObject({

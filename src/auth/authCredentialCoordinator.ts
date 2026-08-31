@@ -29,7 +29,7 @@ export type AuthOperation = {
 
 type RotatedCommitInput = {
   expectedUserId: number | null;
-  persistClient: () => boolean;
+  persistClient: () => boolean | Promise<boolean>;
 };
 
 type Revoker = (credentials: AuthTransitionCredentials) => void | Promise<void>;
@@ -167,18 +167,27 @@ export function markAuthOperationServerRotated(
   return true;
 }
 
-export function commitRotatedAuthOperation(operation: AuthOperation, input: RotatedCommitInput) {
+export async function commitRotatedAuthOperation(
+  operation: AuthOperation,
+  input: RotatedCommitInput
+) {
   const credentials = operation.serverCredentials;
   if (!credentials || !operationIsCurrent(operation)) {
     revoke(credentials);
     return false;
   }
 
-  const persisted = input.persistClient();
+  const persisted = await input.persistClient();
   if (!persisted) {
     revoke(credentials);
-    activeServerCredentials = null;
-    failClosed();
+    if (operationIsCurrent(operation)) {
+      activeServerCredentials = null;
+      failClosed();
+    }
+    return false;
+  }
+  if (!operationIsCurrent(operation)) {
+    revoke(credentials);
     return false;
   }
 
@@ -216,12 +225,13 @@ export function abandonAuthOperation(operation: AuthOperation) {
   return true;
 }
 
-export function commitExistingAuthOperation(
+export async function commitExistingAuthOperation(
   operation: AuthOperation,
   expectedUserIdValue: number,
-  persistClient: () => boolean
+  persistClient: () => boolean | Promise<boolean>
 ) {
-  if (!operationIsCurrent(operation) || !persistClient()) return false;
+  if (!operationIsCurrent(operation) || !(await persistClient())) return false;
+  if (!operationIsCurrent(operation)) return false;
   expectedAuthUserId = expectedUserIdValue;
   credentialVersion += 1;
   operation.phase = "client_committed";
@@ -298,11 +308,17 @@ export function installServerAuthCredentials(
   expectedUserIdValue: number | null = expectedAuthUserId
 ) {
   const operation = beginLatestAuthOperation("direct-server-credentials");
-  markAuthOperationServerRotated(operation, credentials);
-  return commitRotatedAuthOperation(operation, {
-    expectedUserId: expectedUserIdValue,
-    persistClient: () => true
-  });
+  if (!markAuthOperationServerRotated(operation, credentials)) return false;
+  accessToken = credentials.accessToken;
+  refreshToken = credentials.refreshToken;
+  expectedAuthUserId = expectedUserIdValue;
+  activeServerCredentials = null;
+  credentialVersion += 1;
+  activeLatestOperationId = null;
+  operation.phase = "client_committed";
+  phase = "client_committed";
+  publish();
+  return true;
 }
 
 export function setCoordinatorAccessToken(nextAccessToken: string | null) {

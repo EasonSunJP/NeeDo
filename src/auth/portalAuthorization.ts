@@ -2,6 +2,7 @@ import {
   createAuthInstanceId,
   createCommittedAuthEnvelope,
   readPersistedAuthEnvelope,
+  readPersistedAuthEnvelopeSnapshot,
   writePersistedAuthEnvelope,
   type RememberedByPortalV8
 } from "./authEnvelope";
@@ -37,15 +38,16 @@ export function hasRememberedPortalAuthorization(portal: PortalScope) {
   return Boolean(envelope?.state === "committed" && envelope.rememberedByPortal[portal]);
 }
 
-export function rememberPortalAuthorization(
+export async function rememberPortalAuthorization(
   session: AuthSession,
   refreshToken: string | null | undefined
 ) {
   if (!refreshToken) return false;
-  const existing = readPersistedAuthEnvelope();
+  const snapshot = readPersistedAuthEnvelopeSnapshot();
+  const existing = snapshot?.envelope ?? null;
   const sameUser = existing?.state === "committed" && existing.session.id === session.id;
   const previous = sameUser ? existing.rememberedByPortal : {};
-  return writePersistedAuthEnvelope(
+  return await writePersistedAuthEnvelope(
     createCommittedAuthEnvelope({
       authInstanceId: sameUser ? existing.authInstanceId : createAuthInstanceId(),
       credentialVersion: (existing?.credentialVersion ?? 0) + 1,
@@ -53,34 +55,36 @@ export function rememberPortalAuthorization(
       session,
       rememberedByPortal: buildRememberedByPortal(previous, session, refreshToken)
     }),
-    { expectedCurrent: existing }
+    { expectedRaw: snapshot?.raw ?? null }
   );
 }
 
-export function forgetRememberedPortalAuthorization(portal: PortalScope) {
-  const existing = readPersistedAuthEnvelope();
+export async function forgetRememberedPortalAuthorization(portal: PortalScope) {
+  const snapshot = readPersistedAuthEnvelopeSnapshot();
+  const existing = snapshot?.envelope ?? null;
   if (!existing || existing.state !== "committed") return true;
   const rememberedByPortal = { ...existing.rememberedByPortal };
   delete rememberedByPortal[portal];
-  return writePersistedAuthEnvelope(
+  return await writePersistedAuthEnvelope(
     {
       ...existing,
       credentialVersion: existing.credentialVersion + 1,
       rememberedByPortal
     },
-    { expectedCurrent: existing }
+    { expectedRaw: snapshot?.raw ?? null }
   );
 }
 
-export function forgetAllRememberedPortalAuthorizations() {
-  const existing = readPersistedAuthEnvelope();
+export async function forgetAllRememberedPortalAuthorizations() {
+  const snapshot = readPersistedAuthEnvelopeSnapshot();
+  const existing = snapshot?.envelope ?? null;
   if (!existing || existing.state !== "committed") return true;
-  return writePersistedAuthEnvelope(
+  return await writePersistedAuthEnvelope(
     {
       ...existing,
       credentialVersion: existing.credentialVersion + 1,
       rememberedByPortal: {}
     },
-    { expectedCurrent: existing }
+    { expectedRaw: snapshot?.raw ?? null }
   );
 }

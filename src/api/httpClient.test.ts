@@ -561,9 +561,9 @@ describe("httpClient auth tokens", () => {
       await rotationGate;
       const rotated = { accessToken: "session-b-access", refreshToken: "session-b-refresh" };
       expect(markAuthOperationServerRotated(operation, rotated)).toBe(true);
-      expect(
+      await expect(
         commitRotatedAuthOperation(operation, { expectedUserId: 2, persistClient: () => true })
-      ).toBe(true);
+      ).resolves.toBe(true);
     });
     await rotationStarted;
 

@@ -8,6 +8,34 @@ import {
 } from "./rbac";
 
 export const persistedAuthEnvelopeStorageKey = "needo.auth.envelope.v8";
+const persistedAuthEnvelopeLockName = "needo-auth-envelope-v8";
+
+export type AuthEnvelopeLockAdapter = {
+  request<TResult>(
+    name: string,
+    options: { mode: "exclusive" },
+    callback: () => Promise<TResult> | TResult
+  ): Promise<TResult>;
+};
+
+let authEnvelopeLockAdapterOverride: AuthEnvelopeLockAdapter | null | undefined;
+
+export function setAuthEnvelopeLockAdapter(
+  adapter: AuthEnvelopeLockAdapter | null | undefined
+) {
+  authEnvelopeLockAdapterOverride = adapter;
+}
+
+function getAuthEnvelopeLockAdapter(): AuthEnvelopeLockAdapter | null {
+  if (authEnvelopeLockAdapterOverride !== undefined) {
+    return authEnvelopeLockAdapterOverride;
+  }
+  if (typeof navigator === "undefined" || !navigator.locks) return null;
+  return {
+    request: async (name, options, callback) =>
+      await navigator.locks.request(name, options, async () => await callback())
+  };
+}
 
 export function createAuthInstanceId() {
   if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -354,8 +382,7 @@ export function createAnonymousAuthEnvelope(input: {
   };
 }
 
-export function readPersistedAuthEnvelope(): PersistedAuthEnvelopeV8 | null {
-  const raw = readBrowserStorage(persistedAuthEnvelopeStorageKey, { silent: true });
+export function parsePersistedAuthEnvelopeRaw(raw: string | null) {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -365,27 +392,63 @@ export function readPersistedAuthEnvelope(): PersistedAuthEnvelopeV8 | null {
   }
 }
 
-function hasSameDurableAuthority(
-  actual: PersistedAuthEnvelopeV8 | null,
-  expected: PersistedAuthEnvelopeV8 | null
-) {
-  if (!actual || !expected) return actual === expected;
-  return (
-    actual.state === expected.state &&
-    actual.authInstanceId === expected.authInstanceId &&
-    actual.credentialVersion === expected.credentialVersion
-  );
+export function readPersistedAuthEnvelopeSnapshot() {
+  const raw = readBrowserStorage(persistedAuthEnvelopeStorageKey, { silent: true });
+  const envelope = parsePersistedAuthEnvelopeRaw(raw);
+  return envelope ? { envelope, raw: raw as string } : null;
 }
 
-export function writePersistedAuthEnvelope(
+export function readPersistedAuthEnvelope(): PersistedAuthEnvelopeV8 | null {
+  return readPersistedAuthEnvelopeSnapshot()?.envelope ?? null;
+}
+
+type PersistedAuthEnvelopeWriteOptions =
+  | { expectedRaw: string | null; terminalAuthInstanceId?: never }
+  | { expectedRaw?: never; terminalAuthInstanceId: string };
+
+export async function writePersistedAuthEnvelope(
   envelope: PersistedAuthEnvelopeV8,
-  options?: { expectedCurrent: PersistedAuthEnvelopeV8 | null }
+  options: PersistedAuthEnvelopeWriteOptions
 ) {
   if (!isPersistedAuthEnvelopeV8(envelope)) return false;
-  if (options && !hasSameDurableAuthority(readPersistedAuthEnvelope(), options.expectedCurrent)) {
+  const lockAdapter = getAuthEnvelopeLockAdapter();
+  if (!lockAdapter) return false;
+  try {
+    return await lockAdapter.request(
+      persistedAuthEnvelopeLockName,
+      { mode: "exclusive" },
+      async () => {
+        const currentRaw = readBrowserStorage(persistedAuthEnvelopeStorageKey, {
+          silent: true
+        });
+        let nextEnvelope = envelope;
+        if ("terminalAuthInstanceId" in options) {
+          const currentEnvelope = parsePersistedAuthEnvelopeRaw(currentRaw);
+          if (
+            !currentEnvelope ||
+            currentEnvelope.authInstanceId !== options.terminalAuthInstanceId
+          ) {
+            return false;
+          }
+          nextEnvelope = createAnonymousAuthEnvelope({
+            authInstanceId: options.terminalAuthInstanceId,
+            credentialVersion: Math.max(
+              envelope.credentialVersion,
+              currentEnvelope.credentialVersion +
+                (currentEnvelope.state === "committed" ? 1 : 0)
+            )
+          });
+        } else if (currentRaw !== options.expectedRaw) {
+          return false;
+        }
+        return writeBrowserStorage(
+          persistedAuthEnvelopeStorageKey,
+          JSON.stringify(nextEnvelope),
+          { silent: true }
+        );
+      }
+    );
+  } catch {
     return false;
   }
-  return writeBrowserStorage(persistedAuthEnvelopeStorageKey, JSON.stringify(envelope), {
-    silent: true
-  });
 }
