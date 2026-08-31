@@ -220,7 +220,7 @@ const createFixture = async () => {
       capacitySource: "customer_membership",
       membershipLevel: "gold",
       maxTargetProviderCount: 5,
-      publicationFee: { amountNdp: 1000, currency: "NDP", ruleSetVersion: 3 }
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
     })),
     getPost: jest.fn(async () => post),
     publish: jest.fn(async () => post),
@@ -387,7 +387,7 @@ describe("formal Exchange routes", () => {
       capacitySource: "customer_membership",
       membershipLevel: "gold",
       maxTargetProviderCount: 5,
-      publicationFee: { amountNdp: 1000, currency: "NDP", ruleSetVersion: 3 }
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
     });
     expect(JSON.stringify(response.body.data)).not.toMatch(/ruleSetId|ruleId|walletBalance/);
     expect(service.getRequestPublicationContext).toHaveBeenCalledWith(
@@ -398,10 +398,17 @@ describe("formal Exchange routes", () => {
       .get("/api/v1/exchange/request-publication-context")
       .set("Authorization", `Bearer ${merchantStaffToken}`)
       .expect(403);
-    await request(app)
+    const scopedMerchantStaffResponse = await request(app)
       .get("/api/v1/exchange/request-publication-context")
       .set("Authorization", `Bearer ${scopedMerchantStaffToken}`)
       .expect(200);
+    expect(scopedMerchantStaffResponse.body.data).toEqual({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel: "gold",
+      maxTargetProviderCount: 5,
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
+    });
   });
 
   it("exposes comments, like, unlike, share, and withdrawal without deferred routes", async () => {

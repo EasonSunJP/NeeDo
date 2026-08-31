@@ -1,7 +1,9 @@
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
+import { ERROR_CODES } from "../src/constants/error-codes";
 import type { ExchangeRequestFeeService } from "../src/services/exchange-request-fee.service";
+import { AppError } from "../src/utils/app-error";
 
 class InMemoryAuthSessionStore {
   private readonly values = new Map<string, string>();
@@ -238,5 +240,51 @@ describe("Exchange Request fee administration APIs", () => {
         audit: expect.objectContaining({ actorId: 8 })
       })
     );
+  });
+
+  it("preserves conflict and unavailable AppError envelopes over HTTP", async () => {
+    const fixture = await createFixture();
+    const financeToken = await fixture.login("finance@example.test");
+    const operatorToken = await fixture.login("operator@example.test");
+    const body = {
+      amountNdp: 1200,
+      effectiveFrom: "2026-09-01T00:00:00+09:00",
+      expectedCurrentVersion: 3
+    };
+
+    fixture.feeService.createVersion.mockRejectedValueOnce(
+      new AppError({
+        code: ERROR_CODES.EXCHANGE_REQUEST_FEE_VERSION_CONFLICT,
+        message: "error.exchange.request_fee_version_conflict",
+        statusCode: 409
+      })
+    );
+    const conflict = await request(fixture.app)
+      .post("/api/v1/backoffice/exchange-request-fee/versions")
+      .set("Authorization", `Bearer ${financeToken}`)
+      .send(body)
+      .expect(409);
+    expect(conflict.body).toEqual({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FEE_VERSION_CONFLICT,
+      message: "error.exchange.request_fee_version_conflict",
+      data: null
+    });
+
+    fixture.feeService.resolveCurrent.mockRejectedValueOnce(
+      new AppError({
+        code: ERROR_CODES.EXCHANGE_REQUEST_FEE_UNAVAILABLE,
+        message: "error.exchange.request_fee_unavailable",
+        statusCode: 503
+      })
+    );
+    const unavailable = await request(fixture.app)
+      .get("/api/v1/backoffice/exchange-request-fee/current")
+      .set("Authorization", `Bearer ${operatorToken}`)
+      .expect(503);
+    expect(unavailable.body).toEqual({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FEE_UNAVAILABLE,
+      message: "error.exchange.request_fee_unavailable",
+      data: null
+    });
   });
 });

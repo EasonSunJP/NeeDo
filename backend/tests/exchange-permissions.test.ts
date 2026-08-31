@@ -30,6 +30,9 @@ const EXCHANGE_COMMON_PERMISSIONS = [
   "exchange:shares:create"
 ] as const;
 
+const EXCHANGE_REQUEST_FEE_READ_ROLES = new Set(["admin", "operator", "finance", "viewer"]);
+const EXCHANGE_REQUEST_FEE_WRITE_ROLES = new Set(["admin", "finance"]);
+
 describe("formal NeeDo Exchange RBAC contract", () => {
   const assignments = buildRolePermissionAssignments();
 
@@ -78,16 +81,21 @@ describe("formal NeeDo Exchange RBAC contract", () => {
     );
   });
 
-  it("grants Request fee read only to backoffice readers and write only to admin and finance", () => {
-    for (const role of ["admin", "operator", "finance", "viewer"] as const) {
-      expect(assignments[role]).toContain("backoffice:exchange-request-fee:read");
+  it("grants Request fee permissions to their exact system-role allowlists", () => {
+    for (const role of SYSTEM_ROLE_CODES) {
+      if (EXCHANGE_REQUEST_FEE_READ_ROLES.has(role)) {
+        expect(assignments[role]).toContain("backoffice:exchange-request-fee:read");
+      } else {
+        expect(assignments[role]).not.toContain("backoffice:exchange-request-fee:read");
+      }
+
+      if (EXCHANGE_REQUEST_FEE_WRITE_ROLES.has(role)) {
+        expect(assignments[role]).toContain("backoffice:exchange-request-fee:write");
+      } else {
+        expect(assignments[role]).not.toContain("backoffice:exchange-request-fee:write");
+      }
     }
-    for (const role of ["admin", "finance"] as const) {
-      expect(assignments[role]).toContain("backoffice:exchange-request-fee:write");
-    }
-    for (const role of ["operator", "viewer", "merchant_owner", "merchant_staff"] as const) {
-      expect(assignments[role]).not.toContain("backoffice:exchange-request-fee:write");
-    }
+
     expect(assignments.merchant_staff).not.toContain("exchange:posts:create-demand");
   });
 
