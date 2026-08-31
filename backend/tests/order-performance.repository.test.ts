@@ -135,7 +135,23 @@ describe("OrderPerformanceRepository", () => {
         })
       })
     );
-    expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: 9,
+        targetType: "booking_order",
+        targetId: 71,
+        metadata: expect.objectContaining({
+          source: "test",
+          assessmentId: 41,
+          bookingOrderId: 71,
+          technicianProfileId: 31,
+          outcome: "technician_uncompleted",
+          previousTreatment: null,
+          nextTreatment: "counted",
+          assessmentVersion: 1
+        })
+      })
+    });
   });
 
   it("replays the same idempotency key and fingerprint without another write", async () => {
@@ -168,6 +184,28 @@ describe("OrderPerformanceRepository", () => {
       outcome: "idempotency_conflict"
     });
     expect(transaction.orderPerformanceAssessment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("resolves a concurrent unique-key race as an idempotent replay", async () => {
+    const uniqueConflict = Object.assign(new Error("Unique constraint failed"), {
+      code: "P2002"
+    });
+    const client = {
+      $transaction: jest.fn().mockRejectedValue(uniqueConflict),
+      orderPerformanceAssessmentRevision: {
+        findFirst: jest.fn().mockResolvedValue({
+          requestFingerprint: baseCommand.requestFingerprint,
+          assessment: baseAssessment
+        })
+      }
+    };
+    const repository = new OrderPerformanceRepository(client as never);
+
+    await expect(repository.applySpecialExclusion(baseCommand)).resolves.toMatchObject({
+      outcome: "ok",
+      replayed: true,
+      assessment: { id: 41 }
+    });
   });
 
   it("rejects stale expected revisions before mutating", async () => {

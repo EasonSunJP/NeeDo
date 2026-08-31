@@ -116,13 +116,26 @@ const mapAssessment = (assessment: AssessmentRecord): OrderPerformanceAssessment
   updatedAt: assessment.updatedAt
 });
 
+const enrichedAuditData = (auditLog: AuditLogCreateInput, metadata: Record<string, unknown>) =>
+  toAuditLogCreateData({
+    ...auditLog,
+    metadata: {
+      ...(auditLog.metadata &&
+      typeof auditLog.metadata === "object" &&
+      !Array.isArray(auditLog.metadata)
+        ? auditLog.metadata
+        : {}),
+      ...metadata
+    }
+  });
+
 const classificationAction = (outcome: OrderPerformanceOutcome): OrderPerformanceRevisionAction =>
   outcome === OrderPerformanceOutcome.TECHNICIAN_CANCELLED
     ? OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_CANCELLED
     : OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_UNCOMPLETED;
 
-const resolveReplayInTransaction = async (
-  transaction: Prisma.TransactionClient,
+const resolveReplay = async (
+  transaction: Pick<PrismaClient, "orderPerformanceAssessmentRevision">,
   input: Pick<AdverseOutcomeClassificationInput, "idempotencyKey" | "requestFingerprint">
 ): Promise<OrderPerformanceMutationOutcome | null> => {
   const replay = await transaction.orderPerformanceAssessmentRevision.findFirst({
@@ -214,7 +227,7 @@ export const classifyAdverseOutcomeInTransaction = async (
   transaction: Prisma.TransactionClient,
   input: AdverseOutcomeClassificationInput
 ): Promise<OrderPerformanceMutationOutcome> => {
-  const replay = await resolveReplayInTransaction(transaction, input);
+  const replay = await resolveReplay(transaction, input);
   if (replay) {
     return replay;
   }
@@ -286,38 +299,48 @@ export class OrderPerformanceRepository implements OrderPerformanceRepositoryPor
   public classifyTechnicianUncompleted(
     input: OrderPerformanceCommand
   ): Promise<OrderPerformanceMutationOutcome> {
-    return runWithTransactionConflictRetry(() =>
-      this.client.$transaction(async (transaction) => {
-        const replay = await resolveReplayInTransaction(transaction, input);
-        if (replay) {
-          return replay;
-        }
-        const order = await transaction.bookingOrder.findFirst({
-          where: { id: input.bookingOrderId, deletedAt: null },
-          select: { id: true, status: true, technicianProfileId: true }
-        });
-        if (!order) {
-          return { outcome: "not_found" as const };
-        }
-        if (order.status !== "CANCELLED" || order.technicianProfileId === null) {
-          return { outcome: "ineligible" as const };
-        }
-
-        const result = await classifyAdverseOutcomeInTransaction(transaction, {
-          ...input,
-          technicianProfileId: order.technicianProfileId,
-          outcome: OrderPerformanceOutcome.TECHNICIAN_UNCOMPLETED,
-          publicReason: input.publicReason.trim(),
-          internalNote: input.internalNote?.trim() || null,
-          calculatedAt: new Date()
-        });
-        if (result.outcome === "ok" && !result.replayed) {
-          await transaction.auditLog.create({
-            data: toAuditLogCreateData(input.auditLog)
+    return this.runCommand(input, () =>
+      runWithTransactionConflictRetry(() =>
+        this.client.$transaction(async (transaction) => {
+          const replay = await resolveReplay(transaction, input);
+          if (replay) {
+            return replay;
+          }
+          const order = await transaction.bookingOrder.findFirst({
+            where: { id: input.bookingOrderId, deletedAt: null },
+            select: { id: true, status: true, technicianProfileId: true }
           });
-        }
-        return result;
-      })
+          if (!order) {
+            return { outcome: "not_found" as const };
+          }
+          if (order.status !== "CANCELLED" || order.technicianProfileId === null) {
+            return { outcome: "ineligible" as const };
+          }
+
+          const result = await classifyAdverseOutcomeInTransaction(transaction, {
+            ...input,
+            technicianProfileId: order.technicianProfileId,
+            outcome: OrderPerformanceOutcome.TECHNICIAN_UNCOMPLETED,
+            publicReason: input.publicReason.trim(),
+            internalNote: input.internalNote?.trim() || null,
+            calculatedAt: new Date()
+          });
+          if (result.outcome === "ok" && !result.replayed) {
+            await transaction.auditLog.create({
+              data: enrichedAuditData(input.auditLog, {
+                assessmentId: result.assessment.id,
+                bookingOrderId: result.assessment.bookingOrderId,
+                technicianProfileId: result.assessment.technicianProfileId,
+                outcome: result.assessment.outcome,
+                previousTreatment: null,
+                nextTreatment: result.assessment.treatment,
+                assessmentVersion: result.assessment.version
+              })
+            });
+          }
+          return result;
+        })
+      )
     );
   }
 
@@ -357,84 +380,121 @@ export class OrderPerformanceRepository implements OrderPerformanceRepositoryPor
     nextTreatment: OrderPerformanceTreatment,
     action: OrderPerformanceRevisionAction
   ): Promise<OrderPerformanceMutationOutcome> {
-    return runWithTransactionConflictRetry(() =>
-      this.client.$transaction(async (transaction) => {
-        const replay = await resolveReplayInTransaction(transaction, input);
-        if (replay) {
-          return replay;
-        }
-        const assessment = await transaction.orderPerformanceAssessment.findFirst({
-          where: { bookingOrderId: input.bookingOrderId, deletedAt: null }
-        });
-        if (!assessment) {
-          return { outcome: "not_found" as const };
-        }
-        if (assessment.version !== input.expectedRevision) {
-          return { outcome: "version_conflict" as const };
-        }
-        if (assessment.treatment !== previousTreatment) {
-          return { outcome: "ineligible" as const };
-        }
+    return this.runCommand(input, () =>
+      runWithTransactionConflictRetry(() =>
+        this.client.$transaction(async (transaction) => {
+          const replay = await resolveReplay(transaction, input);
+          if (replay) {
+            return replay;
+          }
+          const assessment = await transaction.orderPerformanceAssessment.findFirst({
+            where: { bookingOrderId: input.bookingOrderId, deletedAt: null }
+          });
+          if (!assessment) {
+            return { outcome: "not_found" as const };
+          }
+          if (assessment.version !== input.expectedRevision) {
+            return { outcome: "version_conflict" as const };
+          }
+          if (assessment.treatment !== previousTreatment) {
+            return { outcome: "ineligible" as const };
+          }
 
-        const nextVersion = assessment.version + 1;
-        const updated = await transaction.orderPerformanceAssessment.updateMany({
-          where: {
-            id: assessment.id,
-            version: input.expectedRevision,
-            treatment: previousTreatment,
-            deletedAt: null
-          },
-          data: { treatment: nextTreatment, version: { increment: 1 } }
-        });
-        if (updated.count !== 1) {
-          return { outcome: "version_conflict" as const };
-        }
+          const nextVersion = assessment.version + 1;
+          const updated = await transaction.orderPerformanceAssessment.updateMany({
+            where: {
+              id: assessment.id,
+              version: input.expectedRevision,
+              treatment: previousTreatment,
+              deletedAt: null
+            },
+            data: { treatment: nextTreatment, version: { increment: 1 } }
+          });
+          if (updated.count !== 1) {
+            return { outcome: "version_conflict" as const };
+          }
 
-        const revision = await transaction.orderPerformanceAssessmentRevision.create({
-          data: {
-            assessmentId: assessment.id,
-            bookingOrderId: assessment.bookingOrderId,
-            technicianProfileId: assessment.technicianProfileId,
-            action,
-            previousTreatment,
-            nextTreatment,
-            publicReason: input.publicReason.trim(),
-            internalNote: input.internalNote?.trim() || null,
-            actorUserId: input.actorUserId,
-            idempotencyKey: input.idempotencyKey,
-            requestFingerprint: input.requestFingerprint,
-            assessmentVersion: nextVersion
-          },
-          select: { id: true }
-        });
-        const linked = await transaction.orderPerformanceAssessment.updateMany({
-          where: { id: assessment.id, version: nextVersion, deletedAt: null },
-          data: { currentRevisionId: revision.id }
-        });
-        if (linked.count !== 1) {
-          throw new Error("error.order_performance.transaction_conflict");
-        }
+          const revision = await transaction.orderPerformanceAssessmentRevision.create({
+            data: {
+              assessmentId: assessment.id,
+              bookingOrderId: assessment.bookingOrderId,
+              technicianProfileId: assessment.technicianProfileId,
+              action,
+              previousTreatment,
+              nextTreatment,
+              publicReason: input.publicReason.trim(),
+              internalNote: input.internalNote?.trim() || null,
+              actorUserId: input.actorUserId,
+              idempotencyKey: input.idempotencyKey,
+              requestFingerprint: input.requestFingerprint,
+              assessmentVersion: nextVersion
+            },
+            select: { id: true }
+          });
+          const linked = await transaction.orderPerformanceAssessment.updateMany({
+            where: { id: assessment.id, version: nextVersion, deletedAt: null },
+            data: { currentRevisionId: revision.id }
+          });
+          if (linked.count !== 1) {
+            throw new Error("error.order_performance.transaction_conflict");
+          }
 
-        await recalculateTechnicianSummaryInTransaction(
-          transaction,
-          assessment.technicianProfileId,
-          new Date()
-        );
-        await transaction.auditLog.create({
-          data: toAuditLogCreateData(input.auditLog)
-        });
+          await recalculateTechnicianSummaryInTransaction(
+            transaction,
+            assessment.technicianProfileId,
+            new Date()
+          );
+          await transaction.auditLog.create({
+            data: enrichedAuditData(input.auditLog, {
+              assessmentId: assessment.id,
+              bookingOrderId: assessment.bookingOrderId,
+              technicianProfileId: assessment.technicianProfileId,
+              outcome: outcomeToPayload(assessment.outcome),
+              previousTreatment: treatmentToPayload(previousTreatment),
+              nextTreatment: treatmentToPayload(nextTreatment),
+              assessmentVersion: nextVersion
+            })
+          });
 
-        return {
-          outcome: "ok" as const,
-          assessment: mapAssessment({
-            ...assessment,
-            treatment: nextTreatment,
-            version: nextVersion,
-            currentRevisionId: revision.id
-          }),
-          replayed: false
-        };
-      })
+          return {
+            outcome: "ok" as const,
+            assessment: mapAssessment({
+              ...assessment,
+              treatment: nextTreatment,
+              version: nextVersion,
+              currentRevisionId: revision.id
+            }),
+            replayed: false
+          };
+        })
+      )
+    );
+  }
+
+  private async runCommand(
+    input: Pick<OrderPerformanceCommand, "idempotencyKey" | "requestFingerprint">,
+    operation: () => Promise<OrderPerformanceMutationOutcome>
+  ): Promise<OrderPerformanceMutationOutcome> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!this.isUniqueConflict(error)) {
+        throw error;
+      }
+      const replay = await resolveReplay(this.client, input);
+      if (replay) {
+        return replay;
+      }
+      throw error;
+    }
+  }
+
+  private isUniqueConflict(error: unknown): boolean {
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002"
     );
   }
 }
