@@ -96,20 +96,41 @@ describe("IM translation environment configuration", () => {
     "https://127.0.0.2",
     "https://127.255.255.254",
     "https://0.0.0.0",
+    "https://api.localhost",
     "https://[::1]",
-    "https://[::]"
+    "https://[::]",
+    "https://[::ffff:127.0.0.1]",
+    "https://[0:0:0:0:0:ffff:7f00:1]",
+    "https://[::ffff:0.0.0.0]",
+    "https://[0:0:0:0:0:ffff:0:0]"
   ])("rejects unsafe production DeepL endpoint %s", async (apiBaseUrl) => {
     process.env = productionEnv({ IM_TRANSLATION_API_BASE_URL: apiBaseUrl });
     await expect(importEnv()).rejects.toThrow("IM_TRANSLATION_API_BASE_URL");
   });
 
-  it.each(["dummy", "test-key", "fake-secret", "sample", "changeme", "placeholder"])(
-    "rejects obvious production placeholder key %s",
-    async (apiKey) => {
-      process.env = productionEnv({ IM_TRANSLATION_API_KEY: apiKey });
-      await expect(importEnv()).rejects.toThrow("IM_TRANSLATION_API_KEY");
-    }
-  );
+  it.each([
+    "dummy",
+    "test-key",
+    "fake-secret",
+    "sample",
+    "changeme",
+    "placeholder",
+    "local",
+    "local-key",
+    "development",
+    "development-key",
+    "development-key:fx",
+    "dev-key",
+    "dev-key:fx",
+    "not-a-real-key",
+    "not-a-real-key:fx",
+    "local.secret",
+    "my-dummy-deepl-key",
+    "sample.translation.key"
+  ])("rejects obvious production placeholder key %s", async (apiKey) => {
+    process.env = productionEnv({ IM_TRANSLATION_API_KEY: apiKey });
+    await expect(importEnv()).rejects.toThrow("IM_TRANSLATION_API_KEY");
+  });
 
   it("allows a custom HTTPS DeepL-compatible endpoint in development", async () => {
     process.env.IM_TRANSLATION_PROVIDER = "deepl";
@@ -120,6 +141,16 @@ describe("IM translation environment configuration", () => {
       IM_TRANSLATION_PROVIDER: "deepl",
       IM_TRANSLATION_API_BASE_URL: "https://translator.internal.example.com"
     });
+  });
+
+  it("does not enforce DeepL production endpoint or key policy while the provider is disabled", async () => {
+    process.env = productionEnv({
+      IM_TRANSLATION_PROVIDER: "disabled",
+      IM_TRANSLATION_API_BASE_URL: "https://api.localhost",
+      IM_TRANSLATION_API_KEY: "local-key"
+    });
+
+    await expect(importEnv()).resolves.toMatchObject({ IM_TRANSLATION_PROVIDER: "disabled" });
   });
 
   it("selects disabled or DeepL implementations through the production route composition", async () => {

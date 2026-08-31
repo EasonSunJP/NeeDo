@@ -55,7 +55,11 @@ const createFixture = (
   const transactionCall = jest.fn(async (operation: (tx: typeof transaction) => unknown) =>
     operation(transaction)
   );
-  const client = { $transaction: transactionCall } as unknown as PrismaClient;
+  const client = {
+    $transaction: transactionCall,
+    conversationParticipant: { findFirst: participantFindFirst },
+    message: { findMany: messageFindMany }
+  } as unknown as PrismaClient;
   return {
     repository: new ImMessageTranslationRepository(client),
     participantFindFirst,
@@ -94,7 +98,17 @@ describe("ImMessageTranslationRepository final authoritative transaction", () =>
         userId: 41,
         identityId: 71,
         deletedAt: null,
-        conversation: { deletedAt: null }
+        conversation: { deletedAt: null },
+        identity: {
+          is: {
+            id: 71,
+            userId: 41,
+            isActive: true,
+            deletedAt: null,
+            user: { is: { id: 41, isActive: true, deletedAt: null } }
+          }
+        },
+        user: { is: { id: 41, isActive: true, deletedAt: null } }
       },
       select: { createdAt: true, clearedThroughMessageId: true }
     });
@@ -119,6 +133,11 @@ describe("ImMessageTranslationRepository final authoritative transaction", () =>
 
   it.each([
     ["participant removal", { participant: null }],
+    ["identity deactivation", { participant: null }],
+    ["identity soft deletion", { participant: null }],
+    ["identity reassignment to another user", { participant: null }],
+    ["user deactivation", { participant: null }],
+    ["user soft deletion", { participant: null }],
     [
       "clear-history cutoff",
       { participant: { createdAt, clearedThroughMessageId: 41 }, messages: [] }
@@ -130,6 +149,38 @@ describe("ImMessageTranslationRepository final authoritative transaction", () =>
 
     await expect(finalize(fixture.repository)).resolves.toBe("not_found");
     expect(fixture.translationCreate).not.toHaveBeenCalled();
+  });
+
+  it("applies the active user and identity binding to the initial authoritative load", async () => {
+    const fixture = createFixture({ participant: null });
+
+    await expect(
+      fixture.repository.loadVisibleMessages({
+        conversationId: 91,
+        userId: 41,
+        identityId: 71,
+        messageIds: [41],
+        now
+      })
+    ).resolves.toEqual([]);
+    expect(fixture.participantFindFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        userId: 41,
+        identityId: 71,
+        identity: {
+          is: expect.objectContaining({
+            id: 71,
+            userId: 41,
+            isActive: true,
+            deletedAt: null,
+            user: { is: { id: 41, isActive: true, deletedAt: null } }
+          })
+        },
+        user: { is: { id: 41, isActive: true, deletedAt: null } }
+      }),
+      select: { createdAt: true, clearedThroughMessageId: true }
+    });
+    expect(fixture.messageFindMany).not.toHaveBeenCalled();
   });
 
   it("does not revive a soft-deleted unique cache reservation", async () => {

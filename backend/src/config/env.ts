@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 import { assertContentMediaStorageIsolationSync } from "../services/content-media.storage";
@@ -65,8 +66,18 @@ const optionalSecretSchema = z.preprocess((value) => {
 }, z.string().trim().min(1).optional());
 
 const productionPlaceholderPattern = /(change-?me|example|placeholder|replace-?with)/i;
-const translationPlaceholderPattern =
-  /(change-?me|example|placeholder|replace-?with|dummy|test-key|fake|sample)/i;
+const translationPlaceholderTokenPattern =
+  /(?:^|[-_.:])(change-?me|example|placeholder|replace-?with|dummy|test|fake|sample)(?:$|[-_.:])/iu;
+const productionTranslationPlaceholderKeys = new Set([
+  "local",
+  "local-key",
+  "development",
+  "development-key",
+  "dev-key",
+  "not-a-real-key"
+]);
+const productionTranslationPlaceholderTokenPattern =
+  /(?:^|[-_.:])(local|development|dev)(?:$|[-_.:])/u;
 const productionGoogleWebClientIdPattern =
   /^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?\.apps\.googleusercontent\.com$/;
 const productionGoogleClientIdNonProductionValuePattern = /\b(local|dummy|test)\b/i;
@@ -85,17 +96,61 @@ const normalizeConfiguredHostname = (hostname: string): string =>
     .replace(/^\[|\]$/gu, "")
     .replace(/\.+$/u, "");
 
+const parseIpv6Words = (address: string): number[] | null => {
+  if (isIP(address) !== 6) return null;
+  const [head = "", tail = "", ...extra] = address.split("::");
+  if (extra.length > 0) return null;
+  const parseSide = (side: string): number[] =>
+    side.length === 0 ? [] : side.split(":").map((word) => Number.parseInt(word, 16));
+  const headWords = parseSide(head);
+  const tailWords = parseSide(tail);
+  const omittedWordCount = 8 - headWords.length - tailWords.length;
+  if (omittedWordCount < 0) return null;
+  return [...headWords, ...Array.from({ length: omittedWordCount }, () => 0), ...tailWords];
+};
+
+const isUnsafeTranslationIp = (hostname: string): boolean => {
+  const ipVersion = isIP(hostname);
+  if (ipVersion === 4) {
+    const octets = hostname.split(".").map(Number);
+    return octets[0] === 127 || octets.every((octet) => octet === 0);
+  }
+  if (ipVersion !== 6) return false;
+
+  const words = parseIpv6Words(hostname);
+  if (!words) return false;
+  const isUnspecified = words.every((word) => word === 0);
+  const isLoopback = words.slice(0, 7).every((word) => word === 0) && words[7] === 1;
+  const isIpv4Mapped = words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff;
+  const isIpv4Compatible = words.slice(0, 6).every((word) => word === 0);
+  const mappedIpv4IsUnsafe =
+    (isIpv4Mapped || isIpv4Compatible) &&
+    ((words[6] === 0 && words[7] === 0) || (words[6] ?? 0) >> 8 === 127);
+  return isUnspecified || isLoopback || mappedIpv4IsUnsafe;
+};
+
 const isUnsafeProductionTranslationHostname = (hostname: string): boolean => {
   const normalized = normalizeConfiguredHostname(hostname);
   return (
     normalized === "localhost" ||
-    normalized === "0.0.0.0" ||
-    normalized === "::" ||
-    normalized === "::1" ||
-    /^127(?:\.|$)/u.test(normalized) ||
+    normalized.endsWith(".localhost") ||
+    isUnsafeTranslationIp(normalized) ||
     /(?:^|\.)example\.(?:com|net|org)$/u.test(normalized) ||
     normalized === "example" ||
     normalized.endsWith(".example")
+  );
+};
+
+const isTranslationPlaceholderKey = (key: string, production: boolean): boolean => {
+  const normalized = key.trim().toLowerCase();
+  const productionExactOrProviderSuffix = Array.from(productionTranslationPlaceholderKeys).some(
+    (placeholder) => normalized === placeholder || normalized.startsWith(`${placeholder}:`)
+  );
+  return (
+    translationPlaceholderTokenPattern.test(normalized) ||
+    (production &&
+      (productionExactOrProviderSuffix ||
+        productionTranslationPlaceholderTokenPattern.test(normalized)))
   );
 };
 
@@ -259,7 +314,9 @@ const envSchema = z
           "IM_TRANSLATION_API_KEY",
           "IM_TRANSLATION_API_KEY is required for the DeepL provider"
         );
-      } else if (translationPlaceholderPattern.test(value.IM_TRANSLATION_API_KEY)) {
+      } else if (
+        isTranslationPlaceholderKey(value.IM_TRANSLATION_API_KEY, value.NODE_ENV === "production")
+      ) {
         addProductionIssue(
           context,
           "IM_TRANSLATION_API_KEY",

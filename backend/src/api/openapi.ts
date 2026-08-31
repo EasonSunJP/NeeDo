@@ -14446,7 +14446,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maxItems: 50,
             items: { $ref: "#/components/schemas/ImMessageTranslationItem" }
           }),
-          "400": jsonErrorResponse("error.validation — strict request validation failed"),
+          "400": jsonErrorResponse("error.validation or error.im.translation_request_too_large"),
           "401": jsonErrorResponse("error.auth.token_invalid — authentication required"),
           "403": jsonErrorResponse("error.forbidden or error.auth.identity_not_found"),
           "404": jsonErrorResponse("error.im.translation_message_not_found — batch rejected"),

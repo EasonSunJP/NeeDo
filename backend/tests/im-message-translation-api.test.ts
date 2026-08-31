@@ -152,7 +152,7 @@ describe("IM translation OpenAPI", () => {
         security: unknown;
         "x-permission": unknown;
         requestBody: { content: Record<string, { schema: unknown }> };
-        responses: Record<string, unknown>;
+        responses: Record<string, { description: string }>;
       };
     };
     expect(path.post.security).toEqual([{ bearerAuth: [] }]);
@@ -171,6 +171,9 @@ describe("IM translation OpenAPI", () => {
       "456",
       "503"
     ]);
+    expect(path.post.responses["400"]?.description).toContain(
+      "error.im.translation_request_too_large"
+    );
     expect(document.components.schemas.ImMessageTranslationRequest).toMatchObject({
       additionalProperties: false,
       required: ["messageIds", "targetLanguage"]

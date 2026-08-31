@@ -184,7 +184,17 @@ export class ImMessageTranslationRepository implements ImMessageTranslationRepos
         userId: input.userId,
         identityId: input.identityId,
         deletedAt: null,
-        conversation: { deletedAt: null }
+        conversation: { deletedAt: null },
+        identity: {
+          is: {
+            id: input.identityId,
+            userId: input.userId,
+            isActive: true,
+            deletedAt: null,
+            user: { is: { id: input.userId, isActive: true, deletedAt: null } }
+          }
+        },
+        user: { is: { id: input.userId, isActive: true, deletedAt: null } }
       },
       select: { createdAt: true, clearedThroughMessageId: true }
     });

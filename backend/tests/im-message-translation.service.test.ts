@@ -297,7 +297,12 @@ describe("ImMessageTranslationService", () => {
     "delete-for-me tombstone",
     "clear-history cutoff",
     "participant removal",
-    "exact source change"
+    "exact source change",
+    "provider-period identity deactivation",
+    "provider-period identity soft deletion",
+    "provider-period identity reassignment to another user",
+    "provider-period user deactivation",
+    "provider-period user soft deletion"
   ])("rejects the whole batch when final authoritative validation detects %s", async () => {
     const fixture = createFixture({ finalizationOutcome: "not_found" });
 
@@ -311,6 +316,7 @@ describe("ImMessageTranslationService", () => {
       message: "error.im.translation_message_not_found",
       statusCode: 404
     });
+    expect(fixture.provider.translate).toHaveBeenCalledTimes(1);
   });
 
   it("returns a typed conflict without writes for a soft-deleted cache reservation", async () => {

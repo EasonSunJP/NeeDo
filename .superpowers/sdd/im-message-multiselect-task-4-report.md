@@ -148,7 +148,7 @@ The formal runtime paths that clear or hard-delete shared message content are:
 - standard recall in `backend/src/repositories/realtime.repository.ts`, which clears the authoritative body and marks the message recalled;
 - privacy expiry in `backend/src/repositories/im-privacy-expiry.repository.ts`, which clears the body and then hard-deletes the message after sync/audit bookkeeping.
 
-Both paths now delete every `ImMessageTranslation` row for the message inside the same existing serializable transaction, before clearing content or deleting the message. The lifecycle claim, translation deletion, body transition, deletion sync, audit, unread/reaction cleanup, and final hard delete therefore commit or roll back atomically. The `Restrict` foreign key was intentionally retained and no applied migration was edited.
+Both paths now delete every `ImMessageTranslation` row for the message inside the same existing transaction, before clearing content or deleting the message. Privacy expiry explicitly requests `Serializable`; standard recall uses its existing transaction without an explicit isolation override. In each path, the lifecycle claim, translation deletion, body transition, deletion sync, audit, and applicable unread/reaction cleanup or final hard delete commit or roll back atomically. The `Restrict` foreign key was intentionally retained and no applied migration was edited.
 
 Delete-for-me only writes an identity-scoped tombstone, and clear-history only advances the participant cutoff; neither is a shared-content deletion path and neither should destroy cache rows needed by other identities. Both boundaries are rechecked during translation finalization. `backend/scripts/seed-three-month-simulation.ts` contains simulation-seed cleanup, not a formal runtime recall/privacy path, and was not changed.
 
@@ -213,3 +213,51 @@ git diff --check
 Results: **PASS**, **PASS**, and **PASS**. Targeted Prettier was run only over the changed TypeScript implementation/tests; legacy formatting in the large OpenAPI/realtime repositories was kept out of the final semantic diff where practical.
 
 No real DeepL credential was accessed, no real DeepL request was made, no migration was applied, no database was connected, and no shared data was written during remediation. Real DeepL and real MySQL foreign-key acceptance therefore remain explicitly unclaimed.
+
+## Second Review Remediation
+
+### RED
+
+The second review began by extending the repository, service-race, configuration, and OpenAPI tests, then running:
+
+```text
+npm test -- --runTestsByPath tests/im-message-translation.repository.test.ts tests/im-message-translation.service.test.ts tests/im-translation-config.test.ts tests/im-message-translation-api.test.ts
+```
+
+Observed RED: **3 suites failed and 14 tests failed**. The shared participant query did not constrain the active `UserIdentity`/`User` binding, production accepted a `.localhost` host and IPv4-mapped IPv6 loopback/unspecified forms, the new local/development placeholder keys were accepted, and the OpenAPI 400 description omitted `error.im.translation_request_too_large`. The existing service mapped a finalization rejection to the intended safe 404, so its new race cases were already green while exposing the missing repository boundary.
+
+An additional placeholder-combination micro-cycle produced **4 expected RED cases** for `development-key:fx`, `dev-key:fx`, `not-a-real-key:fx`, and `local.secret` before the production token/suffix policy was completed.
+
+### GREEN
+
+- The single participant lookup shared by both initial authoritative loading and final short-transaction validation now requires an active participant plus an exact active, non-deleted identity whose `id` and `userId` match the request. Both the participant's required `user` relation and the identity's required `user` relation must resolve to the same active, non-deleted user.
+- Repository tests cover provider-period identity deactivation, identity soft deletion, identity reassignment, user deactivation, and user soft deletion. Every case returns `not_found` before cache creation. Service race tests verify the provider may have completed but the full batch still receives the existing safe 404 mapping.
+- Production host validation now uses Node's `node:net` `isIP` plus normalized IPv6 words. It rejects localhost subdomains, IPv4-mapped/compatible IPv6 representations of `127/8` and `0.0.0.0`, and retains the earlier IPv4, IPv6, and IANA example-host protections.
+- Placeholder validation remains semantic rather than imposing a speculative DeepL key-format regex. Delimited obvious placeholder tokens are rejected, with production-specific exact rejection for `local`, `local-key`, `development`, `development-key`, `dev-key`, and `not-a-real-key`. Disabled-provider defaults and custom development HTTPS configuration remain covered.
+- The translation OpenAPI 400 description now documents both strict validation and `error.im.translation_request_too_large`.
+
+Focused GREEN:
+
+```text
+npm test -- --runTestsByPath tests/im-message-translation.repository.test.ts tests/im-message-translation.service.test.ts tests/im-translation-config.test.ts tests/im-message-translation-api.test.ts
+```
+
+Result: **4 suites passed, 87 tests passed**.
+
+Task 4 plus recall/privacy/realtime/chat-record/OpenAPI regression:
+
+```text
+npm test -- --runTestsByPath tests/deepl-translation.provider.test.ts tests/im-translation-config.test.ts tests/im-message-translation.repository.test.ts tests/im-message-translation.service.test.ts tests/im-message-translation-api.test.ts tests/im-standard-recall.repository.test.ts tests/im-privacy-expiry.repository.test.ts tests/im-privacy-expiry.service.test.ts tests/im-privacy-message-countdown.repository.test.ts tests/im-message-user-deletion.repository.test.ts tests/message-batch-delete.test.ts tests/im-chat-record-schema.test.ts tests/im-chat-record-migration.test.ts tests/im-chat-record-permissions-migration.test.ts tests/im-chat-record.repository.test.ts tests/im-chat-record.service.test.ts tests/im-chat-record-api.test.ts tests/im-chat-record-openapi.test.ts tests/realtime-service.test.ts tests/realtime-api.test.ts tests/realtime-repository-identity.test.ts tests/openapi.test.ts
+```
+
+Result: **22 suites passed, 295 tests passed**.
+
+Static verification:
+
+```text
+npm run lint
+npm run build
+git diff --check
+```
+
+Results: **PASS**, **PASS**, and **PASS**. Targeted Prettier reported every second-review TypeScript target unchanged. No database, migration, shared-data write, real credential, or real DeepL request was used; real MySQL relation/FK behavior and real DeepL acceptance remain unclaimed.
