@@ -10,7 +10,7 @@ const isoDateSchema = z.union([
   z.string().datetime({ offset: true })
 ]).transform((value) => value instanceof Date ? value : new Date(value));
 const boundedDateRange = <TSchema extends z.ZodTypeAny>(schema: TSchema) => schema;
-const hasVisibleCodePoint = (value: string): boolean => /[^\p{Z}\p{Cc}\p{Cf}]/u.test(value);
+const hasVisibleCodePoint = (value: string): boolean => /[\p{L}\p{N}\p{P}\p{S}]/u.test(value);
 const visibleTextSchema = (maximumLength: number) =>
   z
     .string()

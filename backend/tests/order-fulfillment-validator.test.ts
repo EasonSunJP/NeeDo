@@ -308,6 +308,67 @@ describe("order fulfillment validators", () => {
       }
     );
 
+    it.each(["\uFE0F".repeat(16), "\u034F".repeat(16), "\u0301".repeat(16)])(
+      "rejects variation selectors, grapheme joiners and standalone combining marks",
+      (invisibleValue) => {
+        expect(() =>
+          endServiceBodySchema.parse({ reason: invisibleValue, idempotencyKey })
+        ).toThrow();
+        expect(() =>
+          confirmReceiptBodySchema.parse({ reason: invisibleValue, idempotencyKey })
+        ).toThrow();
+        expect(() =>
+          selectPaymentMethodBodySchema.parse({
+            method: "other",
+            otherMethodCode: invisibleValue,
+            otherMethodLabel: "現地決済",
+            idempotencyKey
+          })
+        ).toThrow();
+        expect(() =>
+          selectPaymentMethodBodySchema.parse({
+            method: "other",
+            otherMethodCode: "local_qr",
+            otherMethodLabel: invisibleValue,
+            idempotencyKey
+          })
+        ).toThrow();
+        expect(() =>
+          payWithNdpBodySchema.parse({ idempotencyKey: invisibleValue })
+        ).toThrow();
+      }
+    );
+
+    it.each([
+      ["施術", "\uFE0F"],
+      ["中文", "\u034F"],
+      ["English", "\u0301"],
+      ["123", "\uFE0F"],
+      ["!", "\u034F"],
+      ["🙂", "\u0301"]
+    ] as const)("accepts visible base text %s with an invisible modifier", (base, modifier) => {
+      const visibleText = `${base}${modifier}`;
+      const visibleIdempotencyKey = `fulfillment-${base}-${modifier.repeat(16)}`;
+
+      expect(endServiceBodySchema.parse({ reason: visibleText, idempotencyKey })).toMatchObject({
+        reason: visibleText
+      });
+      expect(
+        confirmReceiptBodySchema.parse({ reason: visibleText, idempotencyKey })
+      ).toMatchObject({ reason: visibleText });
+      expect(
+        selectPaymentMethodBodySchema.parse({
+          method: "other",
+          otherMethodCode: visibleText,
+          otherMethodLabel: visibleText,
+          idempotencyKey
+        })
+      ).toMatchObject({ otherMethodCode: visibleText, otherMethodLabel: visibleText });
+      expect(payWithNdpBodySchema.parse({ idempotencyKey: visibleIdempotencyKey })).toEqual({
+        idempotencyKey: visibleIdempotencyKey
+      });
+    });
+
     it("allows visible multilingual text even when it contains format characters", () => {
       expect(
         endServiceBodySchema.parse({ reason: "施術\u200B完了", idempotencyKey })
