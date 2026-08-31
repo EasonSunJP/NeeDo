@@ -248,13 +248,13 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}</output>;
 }
 
-function useSimplifiedChineseTestLanguage() {
-  window.localStorage.setItem("needo.language", "zh");
+function useTestLanguage(language: Language = "zh") {
+  window.localStorage.setItem("needo.language", language);
   window.localStorage.setItem("needo.language.mode", "manual");
 }
 
 async function renderForwardPage(store: Record<string, unknown>, entries = ["/messages/new?mode=forward"]) {
-  useSimplifiedChineseTestLanguage();
+  useTestLanguage();
   roomHarness.store = store;
   const container = document.createElement("div");
   document.body.append(container);
@@ -336,6 +336,18 @@ describe("IM chat-record and multiselect five-language copy", () => {
 
   it.each<Language>(["zh", "zh-Hant", "ja", "en", "ko"])("uses exact complete %s phrases", (language) => {
     expect(sources.map((source) => translateImUiText(source, language))).toEqual(values[language]);
+  });
+
+  const fallbackSources = ["回复", "显示译文", "信息置顶", "取消信息置顶", "撤回", "已复制"] as const;
+  const fallbackValues: Record<Exclude<Language, "zh">, readonly string[]> = {
+    "zh-Hant": ["回覆", "顯示譯文", "信息置顶", "取消信息置顶", "撤回", "已複製"],
+    ja: ["返信", "翻訳を表示", "情報ピン留め", "キャンセル情報ピン留め", "撤回する", "コピーしました"],
+    en: ["Reply", "Show translation", "InformationPinned", "CancelInformationPinned", "Withdraw", "Copied"],
+    ko: ["답글", "번역 보기", "정보고정됨", "취소정보고정됨", "철회하다", "복사됨"],
+  };
+
+  it.each<Exclude<Language, "zh">>(["zh-Hant", "ja", "en", "ko"])("falls back to the shared dictionary for unmapped %s action copy", (language) => {
+    expect(fallbackSources.map((source) => translateImUiText(source, language))).toEqual(fallbackValues[language]);
   });
 
   it.each<Language>(["zh", "zh-Hant", "ja", "en", "ko"])("renders complete dynamic-count phrases in %s", async (language) => {
@@ -746,8 +758,8 @@ function installConversationRoomDomStubs() {
   Object.defineProperty(window, "cancelAnimationFrame", { configurable: true, value: cancelAnimationFrame });
 }
 
-async function renderConversationRoom(store: Record<string, unknown>, conversationId = "conversation-room") {
-  useSimplifiedChineseTestLanguage();
+async function renderConversationRoom(store: Record<string, unknown>, conversationId = "conversation-room", language: Language = "zh") {
+  useTestLanguage(language);
   roomHarness.store = store;
   const container = document.createElement("div");
   document.body.append(container);
@@ -771,7 +783,7 @@ async function renderConversationRoom(store: Record<string, unknown>, conversati
 }
 
 async function renderRoutedConversationRoom(store: Record<string, unknown>, conversationId = "conversation-room") {
-  useSimplifiedChineseTestLanguage();
+  useTestLanguage();
   roomHarness.store = store;
   const container = document.createElement("div");
   document.body.append(container);
@@ -1050,6 +1062,42 @@ describe("ImConversationRoomPage formal message multiselect", () => {
 });
 
 describe("ImConversationRoomPage translation actions", () => {
+  it.each([
+    ["zh-Hant", "回覆", "信息置顶", "撤回", "複製", "已複製"],
+    ["ja", "返信", "情報ピン留め", "撤回する", "コピー", "コピーしました"],
+    ["en", "Reply", "InformationPinned", "Withdraw", "Copy", "Copied"],
+    ["ko", "답글", "정보고정됨", "철회하다", "복사", "복사됨"],
+  ] as const)("renders shared-fallback menu actions and notices in %s", async (language, reply, pin, recall, copy, copied) => {
+    installConversationRoomDomStubs();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [{
+      conversationId: "conversation-room",
+      id: "fallback-message",
+      localId: "fallback-message",
+      senderId: "partner-user",
+      type: "text",
+      content: "fallback-message-content",
+      status: "sent",
+      sentAt: "2026-08-31T00:01:00.000Z",
+      clientSeq: 1,
+    }];
+    const view = await renderConversationRoom(store, "conversation-room", language);
+
+    const menu = await openActionMenuForText("fallback-message-content");
+    expect(menu?.textContent).toContain(reply);
+    expect(menu?.textContent).toContain(pin);
+    expect(menu?.textContent).toContain(recall);
+    await act(async () => {
+      clickMenuButton(copy);
+      await Promise.resolve();
+    });
+    expect(view.container.textContent).toContain(copied);
+    expect(writeText).toHaveBeenCalledWith("fallback-message-content");
+    await act(async () => view.root.unmount());
+  });
+
   it("manually translates the current message below the original, hides and re-shows the cached text, then copies the visible translation", async () => {
     installConversationRoomDomStubs();
     const writeText = vi.fn().mockResolvedValue(undefined);

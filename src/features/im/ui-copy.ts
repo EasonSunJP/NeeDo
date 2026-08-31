@@ -1,4 +1,4 @@
-import type { Language } from "../../i18n/translations";
+import { type Language, translateText } from "../../i18n/translations";
 
 type ImUiTranslation = Partial<Record<Exclude<Language, "zh">, string>>;
 
@@ -49,5 +49,5 @@ const imUiTranslations: Record<string, ImUiTranslation> = {
 
 export function translateImUiText(source: string, language: Language): string {
   if (language === "zh") return source;
-  return imUiTranslations[source]?.[language] ?? source;
+  return imUiTranslations[source]?.[language] ?? translateText(source, language);
 }
