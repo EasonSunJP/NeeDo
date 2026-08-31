@@ -837,7 +837,10 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             "200": jsonDataResponse("Withdrawn Exchange post", {
               $ref: "#/components/schemas/ExchangePost"
             }),
-            ...exchangeErrorResponses
+            ...exchangeErrorResponses,
+            "409": {
+              description: `${exchangeErrorResponses["409"].description}; error.exchange.request_financial_state_conflict — Request publication fee is no longer held`
+            }
           }
         }
       )

@@ -19,6 +19,7 @@ interface OpenApiOperation {
   description?: string;
   security: Array<{ bearerAuth: never[] }>;
   parameters: OpenApiParameter[];
+  responses: Record<string, { description: string }>;
   "x-required-permission"?: string;
   "x-required-permissions"?: string[];
 }
@@ -109,6 +110,22 @@ describe("formal Exchange OpenAPI contract", () => {
     expect(paths["/api/v1/exchange/posts/{id}"].get.description).toContain(
       "other customers receive 404"
     );
+  });
+
+  it("documents the Request terminal financial conflict on withdrawal", () => {
+    const description =
+      document().paths["/api/v1/exchange/posts/{id}/withdraw"].post.responses["409"]
+        .description;
+
+    expect(description).toContain("error.exchange.request_financial_state_conflict");
+    for (const existing of [
+      "error.exchange.post_unavailable",
+      "error.exchange.idempotency_conflict",
+      "error.exchange.request_target_limit",
+      "error.wallet.insufficient_available"
+    ]) {
+      expect(description).toContain(existing);
+    }
   });
 
   it("publishes lowercase public enums and never exposes internal actor ids", () => {
