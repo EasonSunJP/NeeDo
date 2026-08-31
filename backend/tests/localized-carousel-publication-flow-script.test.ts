@@ -1,9 +1,108 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  assertBackofficePublicCarouselParity,
   assertSafeLocalizedCarouselPublicationEnvironment,
   composeLocalizedPublicationCheckerError
 } from "../scripts/check-localized-carousel-publication-flow";
+
+describe("backoffice and public published carousel parity", () => {
+  const checkedAt = new Date("2026-09-01T00:00:00.000Z");
+
+  const backofficeScene = () => ({
+    scene: "USER_HOME" as const,
+    published: {
+      version: 12,
+      slides: [
+        {
+          sortOrder: 1,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "service" as const, serviceId: 28 },
+          translations: {
+            ja: {
+              title: "サービス",
+              caption: "説明",
+              imageAltText: "サービス画像",
+              imageUrl: "/media/service-ja.webp"
+            }
+          }
+        },
+        {
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "shop" as const, shopId: 14 },
+          translations: {
+            ja: {
+              title: "店舗",
+              caption: "店舗説明",
+              imageAltText: "店舗画像",
+              imageUrl: "/media/shop-ja.webp"
+            }
+          }
+        },
+        {
+          sortOrder: 2,
+          isEnabled: false,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "technician" as const, technicianProfileId: 9 },
+          translations: {
+            ja: {
+              title: "無効な技師",
+              caption: null,
+              imageAltText: "無効な画像",
+              imageUrl: "/media/disabled-ja.webp"
+            }
+          }
+        }
+      ]
+    }
+  });
+
+  const publicProjection = () => ({
+    scene: "USER_HOME" as const,
+    locale: "ja" as const,
+    releaseVersion: 12,
+    generatedAt: checkedAt.toISOString(),
+    slides: [
+      {
+        id: "shop-slide",
+        target: { type: "shop" as const, publicId: "shop0000000014" },
+        title: "店舗",
+        caption: "店舗説明",
+        imageAltText: "店舗画像",
+        imageUrl: "/media/shop-ja.webp"
+      },
+      {
+        id: "service-slide",
+        target: { type: "service" as const, publicId: "s0000000028" },
+        title: "サービス",
+        caption: "説明",
+        imageAltText: "サービス画像",
+        imageUrl: "/media/service-ja.webp"
+      }
+    ]
+  });
+
+  it("accepts the published version and visible localized slide projection in order", () => {
+    expect(() =>
+      assertBackofficePublicCarouselParity(backofficeScene(), publicProjection(), checkedAt)
+    ).not.toThrow();
+  });
+
+  it("identifies the locale and localized field when a public slide differs", () => {
+    const projection = publicProjection();
+    projection.slides[1]!.title = "別のサービス";
+
+    expect(() =>
+      assertBackofficePublicCarouselParity(backofficeScene(), projection, checkedAt)
+    ).toThrow("ja slide 1 title");
+  });
+});
 
 describe("localized publication checker final error composition", () => {
   it("returns the original operation failure when cleanup succeeds", () => {

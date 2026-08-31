@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import type { CarouselSceneCode } from "../src/services/carousel-publication.service";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const LOCAL_DATABASES = new Set(["needo_dev", "needo_test"]);
@@ -11,11 +12,101 @@ const AFFILIATE_SCENE = "AFFILIATE_HOME_NOTICE" as const;
 const TASK_BUDGET_NDP = 20_000;
 const TASK_REWARD_NDP = 1_000;
 
+type CarouselParityLocale = (typeof CONTENT_LOCALES)[number];
+
+interface BackofficeCarouselParityScene {
+  scene: CarouselSceneCode;
+  published: {
+    version: number;
+    slides: ReadonlyArray<{
+      sortOrder: number;
+      isEnabled: boolean;
+      visibleFrom: Date | null;
+      visibleUntil: Date | null;
+      target: { type: string };
+      translations: Partial<
+        Record<
+          CarouselParityLocale,
+          {
+            title: string;
+            caption: string | null;
+            imageAltText: string;
+            imageUrl: string;
+          }
+        >
+      >;
+    }>;
+  } | null;
+}
+
+interface PublicCarouselParityProjection {
+  scene: CarouselSceneCode;
+  locale: CarouselParityLocale;
+  releaseVersion: number | null;
+  slides: ReadonlyArray<{
+    target: { type: string };
+    title: string;
+    caption: string | null;
+    imageAltText: string;
+    imageUrl: string;
+  }>;
+}
+
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
   message
 ) => {
   if (!condition) throw new Error(message);
+};
+
+export const assertBackofficePublicCarouselParity = (
+  backofficeScene: BackofficeCarouselParityScene,
+  publicProjection: PublicCarouselParityProjection,
+  checkedAt: Date
+): void => {
+  const locale = publicProjection.locale;
+  assert(
+    backofficeScene.scene === publicProjection.scene,
+    `carousel parity mismatch for ${locale} scene`
+  );
+  const published = backofficeScene.published;
+  assert(published !== null, `carousel parity mismatch for ${locale} published release`);
+  assert(
+    publicProjection.releaseVersion === published.version,
+    `carousel parity mismatch for ${locale} releaseVersion`
+  );
+
+  const visibleSlides = published.slides
+    .filter(
+      (slide) =>
+        slide.isEnabled &&
+        (!slide.visibleFrom || slide.visibleFrom <= checkedAt) &&
+        (!slide.visibleUntil || slide.visibleUntil > checkedAt)
+    )
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+  assert(
+    publicProjection.slides.length === visibleSlides.length,
+    `carousel parity mismatch for ${locale} visible slide order`
+  );
+
+  visibleSlides.forEach((slide, index) => {
+    const projection = publicProjection.slides[index];
+    const translation = slide.translations[locale];
+    assert(projection, `carousel parity mismatch for ${locale} slide ${index} order`);
+    assert(translation, `carousel parity mismatch for ${locale} slide ${index} translation`);
+    for (const [field, expected, actual] of [
+      ["target", slide.target.type, projection.target.type],
+      ["title", translation.title, projection.title],
+      ["caption", translation.caption, projection.caption],
+      ["imageAltText", translation.imageAltText, projection.imageAltText],
+      ["imageUrl", translation.imageUrl, projection.imageUrl]
+    ] as const) {
+      assert(
+        expected === actual,
+        `carousel parity mismatch for ${locale} slide ${index} ${field}`
+      );
+    }
+  });
 };
 
 interface LocalizedCarouselPublicationSafetyInput {
@@ -824,6 +915,7 @@ const main = async (): Promise<void> => {
         reason: `${marker} publish rollback`
       }
     );
+    const backofficeUserScene = await carouselService.getBackofficeScene(USER_SCENE, operatorActor);
 
     for (const locale of CONTENT_LOCALES) {
       const userProjection = await carouselService.getPublishedScene(
@@ -832,6 +924,7 @@ const main = async (): Promise<void> => {
         affiliateActor,
         clock
       );
+      assertBackofficePublicCarouselParity(backofficeUserScene, userProjection, clock);
       const affiliateProjection = await carouselService.getPublishedScene(
         AFFILIATE_SCENE,
         locale,
