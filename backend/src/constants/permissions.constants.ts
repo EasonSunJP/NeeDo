@@ -1020,6 +1020,13 @@ export const SYSTEM_PERMISSIONS = [
     "为当前店铺会员卡提交需要客户确认的本金或次数调整申请"
   ),
   createPermission(
+    "shop.member.card.topup.create",
+    "店铺会员卡充值",
+    "api",
+    "shop-membership",
+    "为当前店铺有效储值会员卡登记已确认的线下充值"
+  ),
+  createPermission(
     "page:backoffice-membership-reward-fee",
     "会员返点平台费读取",
     "page",
@@ -1685,7 +1692,8 @@ const MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES = [
   "shop.member.card_plan.manage",
   "shop.member.card_plan.publish",
   "shop.member.card.issue",
-  "shop.member.card.adjust.request"
+  "shop.member.card.adjust.request",
+  "shop.member.card.topup.create"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const AFFILIATE_ENTRY_PERMISSION_CODES = [
