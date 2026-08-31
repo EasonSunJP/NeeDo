@@ -8,6 +8,7 @@ const translationsPath = path.join(workspaceRoot, "src", "i18n", "translations.t
 const identityApplicationTranslationsPath = path.join(workspaceRoot, "src", "features", "identity-applications", "i18n.ts");
 const affiliateProfileTranslationsPath = path.join(workspaceRoot, "src", "features", "affiliate-profile", "i18n.ts");
 const affiliateMarketplaceTranslationsPath = path.join(workspaceRoot, "src", "features", "affiliate-marketplace", "i18n.ts");
+const dashboardTranslationsPath = path.join(workspaceRoot, "src", "features", "dashboard", "dashboardTranslations.ts");
 const outputDir = path.join(workspaceRoot, "exports", "i18n");
 const jsonReportPath = path.join(outputDir, "i18n-quality-report.json");
 const markdownReportPath = path.join(outputDir, "i18n-quality-report.md");
@@ -114,6 +115,7 @@ async function loadTranslations() {
   const identityApplicationSource = await fs.readFile(identityApplicationTranslationsPath, "utf8");
   const affiliateProfileSource = await fs.readFile(affiliateProfileTranslationsPath, "utf8");
   const affiliateMarketplaceSource = await fs.readFile(affiliateMarketplaceTranslationsPath, "utf8");
+  const dashboardSource = await fs.readFile(dashboardTranslationsPath, "utf8");
   const compilerOptions = {
     module: ts.ModuleKind.ES2022,
     target: ts.ScriptTarget.ES2022
@@ -127,10 +129,14 @@ async function loadTranslations() {
   const transpiledAffiliateMarketplaceTranslations = ts.transpileModule(affiliateMarketplaceSource, {
     compilerOptions
   }).outputText;
+  const transpiledDashboardTranslations = ts.transpileModule(dashboardSource, {
+    compilerOptions
+  }).outputText;
   const tempToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const identityApplicationTempFileName = `identity-application-translations-quality-${tempToken}.mjs`;
   const affiliateProfileTempFileName = `affiliate-profile-translations-quality-${tempToken}.mjs`;
   const affiliateMarketplaceTempFileName = `affiliate-marketplace-translations-quality-${tempToken}.mjs`;
+  const dashboardTempFileName = `dashboard-translations-quality-${tempToken}.mjs`;
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       ...compilerOptions
@@ -138,16 +144,19 @@ async function loadTranslations() {
   }).outputText
     .replace("../features/identity-applications/i18n", `./${identityApplicationTempFileName}`)
     .replace("../features/affiliate-profile/i18n", `./${affiliateProfileTempFileName}`)
-    .replace("../features/affiliate-marketplace/i18n", `./${affiliateMarketplaceTempFileName}`);
+    .replace("../features/affiliate-marketplace/i18n", `./${affiliateMarketplaceTempFileName}`)
+    .replace("../features/dashboard/dashboardTranslations", `./${dashboardTempFileName}`);
   const tempFile = path.join(outputDir, `translations-quality-${tempToken}.mjs`);
   const identityApplicationTempFile = path.join(outputDir, identityApplicationTempFileName);
   const affiliateProfileTempFile = path.join(outputDir, affiliateProfileTempFileName);
   const affiliateMarketplaceTempFile = path.join(outputDir, affiliateMarketplaceTempFileName);
+  const dashboardTempFile = path.join(outputDir, dashboardTempFileName);
 
   await fs.mkdir(outputDir, { recursive: true });
   await fs.writeFile(identityApplicationTempFile, transpiledIdentityApplicationTranslations, "utf8");
   await fs.writeFile(affiliateProfileTempFile, transpiledAffiliateProfileTranslations, "utf8");
   await fs.writeFile(affiliateMarketplaceTempFile, transpiledAffiliateMarketplaceTranslations, "utf8");
+  await fs.writeFile(dashboardTempFile, transpiledDashboardTranslations, "utf8");
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
@@ -158,6 +167,7 @@ async function loadTranslations() {
     await fs.unlink(identityApplicationTempFile).catch(() => {});
     await fs.unlink(affiliateProfileTempFile).catch(() => {});
     await fs.unlink(affiliateMarketplaceTempFile).catch(() => {});
+    await fs.unlink(dashboardTempFile).catch(() => {});
   }
 }
 

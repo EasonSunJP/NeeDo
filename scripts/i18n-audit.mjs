@@ -21,13 +21,20 @@ const affiliateMarketplaceTranslationsPath = path.join(
   workspaceRoot,
   "src/features/affiliate-marketplace/i18n.ts",
 );
+const dashboardTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/dashboard/dashboardTranslations.ts",
+);
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
   path.join(workspaceRoot, "scripts"),
 ];
 
 const codeFileExtensions = new Set([".ts", ".tsx", ".mjs"]);
-const excludedFilePatterns = [/src\/i18n\/translations\.ts$/u];
+const excludedFilePatterns = [
+  /src\/i18n\/translations\.ts$/u,
+  /src\/features\/dashboard\/dashboardTranslations\.ts$/u,
+];
 
 function normalizeText(value) {
   return value.replace(/\s+/gu, " ").trim();
@@ -118,6 +125,7 @@ async function readCodeFiles(directory) {
 let identityTranslationsPromise;
 let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
+let dashboardTranslationsPromise;
 
 async function loadIdentityTranslations() {
   identityTranslationsPromise ??= (async () => {
@@ -173,11 +181,29 @@ async function loadAffiliateMarketplaceTranslations() {
   return affiliateMarketplaceTranslationsPromise;
 }
 
+async function loadDashboardTranslations() {
+  dashboardTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(dashboardTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.dashboardTranslations ?? {};
+  })();
+
+  return dashboardTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
   const identityTranslations = await loadIdentityTranslations();
   const affiliateProfileTranslations = await loadAffiliateProfileTranslations();
   const affiliateMarketplaceTranslations =
     await loadAffiliateMarketplaceTranslations();
+  const dashboardTranslations = await loadDashboardTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const identityApplicationTranslations = ${JSON.stringify(identityTranslations)};`,
@@ -187,6 +213,9 @@ async function loadTranslationsFromSource(sourceCode) {
   ).replace(
     /import\s+\{\s*affiliateMarketplaceTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const affiliateMarketplaceTranslations = ${JSON.stringify(affiliateMarketplaceTranslations)};`,
+  ).replace(
+    /import\s+\{\s*dashboardTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const dashboardTranslations = ${JSON.stringify(dashboardTranslations)};`,
   );
   const tempFile = path.join(
     workspaceRoot,
