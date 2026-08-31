@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText, type Language } from "../../i18n/translations";
+import type { Language } from "../../i18n/translations";
 import type {
   ImChatRecordItem,
   ImChatRecordItemPage,
@@ -15,6 +15,7 @@ import { MessageBubble } from "./components";
 import { restoreImChatRecordFocus } from "./chat-record-focus";
 import type { ConversationMessage, ImMessageType, ImRoleType } from "./model";
 import { getImRoleConfig } from "./role-config";
+import { translateImUiText as translateText } from "./ui-copy";
 
 export type ImChatRecordReadApi = {
   getChatRecord(publicId: string): Promise<ImChatRecordSummary>;

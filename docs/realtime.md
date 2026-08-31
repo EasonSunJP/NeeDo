@@ -45,10 +45,10 @@ IM:
 - `POST /im/friend-requests/:id/reject`
 - `POST /im/conversations/:targetConversationId/chat-records` (`message:forward`)
 - `GET /im/chat-records/:publicId`
-- `GET /im/chat-records/:publicId/items?beforePosition=&page_size=50`
+- `GET /im/chat-records/:publicId/items?beforePosition=&pageSize=50`
 - `GET /im/chat-records/:publicId/media/:checksumSha256`
 - `POST /im/chat-record-favorites` (`message:favorite`)
-- `GET /im/chat-record-favorites?page=1&page_size=20` (`message:favorite`)
+- `GET /im/chat-record-favorites?page=1&pageSize=20` (`message:favorite`)
 - `DELETE /im/chat-record-favorites/:favoriteId` (`message:favorite`)
 - `POST /im/conversations/:conversationId/messages/delete-for-me`
 - `POST /im/conversations/:conversationId/messages/translations` (`message:translate`)

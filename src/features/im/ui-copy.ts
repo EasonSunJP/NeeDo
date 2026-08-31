@@ -1,8 +1,32 @@
-import { type Language, translateText } from "../../i18n/translations";
+import type { Language } from "../../i18n/translations";
 
 type ImUiTranslation = Partial<Record<Exclude<Language, "zh">, string>>;
 
 const imUiTranslations: Record<string, ImUiTranslation> = {
+  "查看聊天记录": { "zh-Hant": "查看聊天記錄", ja: "チャット履歴を表示", en: "View chat record", ko: "채팅 기록 보기" },
+  "关闭聊天记录": { "zh-Hant": "關閉聊天記錄", ja: "チャット履歴を閉じる", en: "Close chat record", ko: "채팅 기록 닫기" },
+  "聊天记录说明": { "zh-Hant": "聊天記錄說明", ja: "チャット履歴の説明", en: "About this chat record", ko: "채팅 기록 안내" },
+  "此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。": { "zh-Hant": "此頁面顯示建立時儲存的唯讀訊息快照，不會隨原聊天資料變更。", ja: "このページには作成時に保存された読み取り専用のメッセージスナップショットが表示され、元のチャット情報が変わっても更新されません。", en: "This page shows a read-only message snapshot saved when the record was created. It does not change with the original chat.", ko: "이 페이지에는 기록 생성 시 저장된 읽기 전용 메시지 스냅샷이 표시되며 원본 채팅 정보가 바뀌어도 변경되지 않습니다." },
+  "聊天记录媒体": { "zh-Hant": "聊天記錄媒體", ja: "チャット履歴のメディア", en: "Chat record media", ko: "채팅 기록 미디어" },
+  "媒体不可用": { "zh-Hant": "媒體不可用", ja: "メディアを利用できません", en: "Media unavailable", ko: "미디어를 사용할 수 없습니다" },
+  "媒体读取失败": { "zh-Hant": "媒體讀取失敗", ja: "メディアを読み込めませんでした", en: "Couldn't load media", ko: "미디어를 불러오지 못했습니다" },
+  "正在读取媒体": { "zh-Hant": "正在讀取媒體", ja: "メディアを読み込んでいます", en: "Loading media", ko: "미디어를 불러오는 중" },
+  "正在读取聊天记录": { "zh-Hant": "正在讀取聊天記錄", ja: "チャット履歴を読み込んでいます", en: "Loading chat record", ko: "채팅 기록을 불러오는 중" },
+  "加载更早": { "zh-Hant": "載入更早訊息", ja: "以前のメッセージを読み込む", en: "Load earlier", ko: "이전 메시지 불러오기" },
+  "正在加载": { "zh-Hant": "正在載入", ja: "読み込み中", en: "Loading", ko: "불러오는 중" },
+  "返回个人中心": { "zh-Hant": "返回個人中心", ja: "マイページに戻る", en: "Back to profile", ko: "마이페이지로 돌아가기" },
+  "我的收藏": { "zh-Hant": "我的收藏", ja: "お気に入り", en: "My favorites", ko: "내 즐겨찾기" },
+  "保存的聊天记录": { "zh-Hant": "已儲存的聊天記錄", ja: "保存したチャット履歴", en: "Saved chat records", ko: "저장된 채팅 기록" },
+  "正在读取收藏": { "zh-Hant": "正在讀取收藏", ja: "お気に入りを読み込んでいます", en: "Loading favorites", ko: "즐겨찾기를 불러오는 중" },
+  "收藏读取失败": { "zh-Hant": "收藏讀取失敗", ja: "お気に入りを読み込めませんでした", en: "Couldn't load favorites", ko: "즐겨찾기를 불러오지 못했습니다" },
+  "暂无收藏的聊天记录": { "zh-Hant": "暫無收藏的聊天記錄", ja: "お気に入りのチャット履歴はありません", en: "No favorite chat records yet", ko: "즐겨찾기한 채팅 기록이 없습니다" },
+  "移除失败": { "zh-Hant": "移除失敗", ja: "削除できませんでした", en: "Couldn't remove favorite", ko: "즐겨찾기를 삭제하지 못했습니다" },
+  "正在移除": { "zh-Hant": "正在移除", ja: "削除中", en: "Removing", ko: "삭제 중" },
+  "移除收藏": { "zh-Hant": "移除收藏", ja: "お気に入りから削除", en: "Remove favorite", ko: "즐겨찾기에서 삭제" },
+  "收藏分页": { "zh-Hant": "收藏分頁", ja: "お気に入りのページ", en: "Favorites pages", ko: "즐겨찾기 페이지" },
+  "上一页": { "zh-Hant": "上一頁", ja: "前のページ", en: "Previous page", ko: "이전 페이지" },
+  "下一页": { "zh-Hant": "下一頁", ja: "次のページ", en: "Next page", ko: "다음 페이지" },
+  "重试": { "zh-Hant": "重試", ja: "再試行", en: "Retry", ko: "다시 시도" },
   "翻译": { "zh-Hant": "翻譯", ja: "翻訳", en: "Translate", ko: "번역" },
   "隐藏译文": { "zh-Hant": "隱藏譯文", ja: "翻訳を非表示", en: "Hide translation", ko: "번역 숨기기" },
   "多选": { "zh-Hant": "多選", ja: "複数選択", en: "Select multiple", ko: "여러 개 선택" },
@@ -25,5 +49,5 @@ const imUiTranslations: Record<string, ImUiTranslation> = {
 
 export function translateImUiText(source: string, language: Language): string {
   if (language === "zh") return source;
-  return imUiTranslations[source]?.[language] ?? translateText(source, language);
+  return imUiTranslations[source]?.[language] ?? source;
 }

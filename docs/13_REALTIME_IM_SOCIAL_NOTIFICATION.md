@@ -341,7 +341,7 @@
 
 ### 正式接口与前端行为
 
-- 新接口为 `POST /im/conversations/:targetConversationId/chat-records`、`GET /im/chat-records/:publicId`、分页 `GET /im/chat-records/:publicId/items`、鉴权媒体读取、聊天记录收藏的创建/分页/移除、`POST /im/conversations/:conversationId/messages/delete-for-me` 及 `POST /im/conversations/:conversationId/messages/translations`，统一位于 `/api/v1`，使用 Bearer、Zod、RBAC 与 OpenAPI。
+- 新接口为 `POST /im/conversations/:targetConversationId/chat-records`、`GET /im/chat-records/:publicId`、分页 `GET /im/chat-records/:publicId/items?beforePosition=&pageSize=50`、鉴权媒体读取、聊天记录收藏的创建/分页 `GET /im/chat-record-favorites?page=1&pageSize=20`/移除、`POST /im/conversations/:conversationId/messages/delete-for-me` 及 `POST /im/conversations/:conversationId/messages/translations`，统一位于 `/api/v1`，使用 Bearer、Zod、RBAC 与 OpenAPI；分页字段按实际契约使用 `pageSize`。
 - 长按菜单保持既有玻璃容器、箭头、表情区与仅半透明压暗的无滤镜下层；动作固定四列两行。常用表情在一次打开期间冻结，使用记录只影响下次打开。
 - 多选以长按消息为锚点，左侧圆圈是唯一逐条切换入口；上下“选择到这里”与底部转发/复制/收藏/删除栏固定悬浮。普通点按消息区取消，实际拖动或滚动后抬手不取消，文字选区手柄拖动不滚动并退出多选。一次最多 100 条。
 - 单条/多条转发都是一张不可变聊天记录卡；收藏整体保存为一项，二者复用带右侧关闭按钮和信息入口的只读全屏窗口。多选复制按权威顺序输出 `发送者:内容`，显示译文存在时复制显示译文，否则复制原文。

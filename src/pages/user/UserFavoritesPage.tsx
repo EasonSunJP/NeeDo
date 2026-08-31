@@ -5,8 +5,9 @@ import { MobileShell } from "../../components/mobile/MobileShell";
 import { ImChatRecordCard } from "../../features/im/ImChatRecordCard";
 import type { ImChatRecordFavorite, ImChatRecordFavoritePage } from "../../features/im/chat-records";
 import { useImStoreApi } from "../../features/im/store";
+import { translateImUiText as translateText } from "../../features/im/ui-copy";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText, type Language } from "../../i18n/translations";
+import type { Language } from "../../i18n/translations";
 
 export type UserFavoritesApi = {
   listChatRecordFavorites(query?: { page?: number; pageSize?: number }): Promise<ImChatRecordFavoritePage>;

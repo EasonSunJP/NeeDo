@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText, type Language } from "../../i18n/translations";
+import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import {
   formatLocalizedImChatRecordCount,
@@ -13,6 +13,7 @@ import {
 import type { ImRoleType } from "./model";
 import { getImRoleConfig } from "./role-config";
 import { useImScope } from "./scope";
+import { translateImUiText as translateText } from "./ui-copy";
 
 type CardRecord = ImChatRecordSummary | ImChatRecordFavorite;
 

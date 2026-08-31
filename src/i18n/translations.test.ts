@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i18n";
 import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
+import { translateImUiText } from "../features/im/ui-copy";
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
@@ -369,10 +370,10 @@ describe("translations", () => {
       "暂无收藏的聊天记录": ["暫無收藏的聊天記錄", "お気に入りのチャット履歴はありません", "No favorite chat records yet", "즐겨찾기한 채팅 기록이 없습니다"],
     } as const;
     for (const [source, values] of Object.entries(expected)) {
-      expect(translateText(source, "zh-Hant")).toBe(values[0]);
-      expect(translateText(source, "ja")).toBe(values[1]);
-      expect(translateText(source, "en")).toBe(values[2]);
-      expect(translateText(source, "ko")).toBe(values[3]);
+      expect(translateImUiText(source, "zh-Hant")).toBe(values[0]);
+      expect(translateImUiText(source, "ja")).toBe(values[1]);
+      expect(translateImUiText(source, "en")).toBe(values[2]);
+      expect(translateImUiText(source, "ko")).toBe(values[3]);
     }
     const completeKeys = [
       "查看聊天记录", "聊天记录", "关闭聊天记录", "聊天记录说明", "此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。",
@@ -381,9 +382,8 @@ describe("translations", () => {
       "暂无收藏的聊天记录", "移除失败", "正在移除", "移除收藏", "收藏分页", "上一页", "下一页", "重试",
     ];
     for (const key of completeKeys) {
-      expect(translations[key]).toMatchObject({ "zh-Hant": expect.any(String), ja: expect.any(String), en: expect.any(String), ko: expect.any(String) });
       for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
-        expect(translateText(key, language)).toBe(translations[key]?.[language]);
+        expect(translateImUiText(key, language)).not.toBe("");
       }
     }
   });

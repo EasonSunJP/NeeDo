@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import { I18nProvider } from "../../i18n/I18nProvider";
-import { type Language, translateText } from "../../i18n/translations";
+import { type Language } from "../../i18n/translations";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ImScopeProvider } from "./scope";
 import source from "./pages.tsx?raw";
@@ -248,7 +248,13 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}</output>;
 }
 
+function useSimplifiedChineseTestLanguage() {
+  window.localStorage.setItem("needo.language", "zh");
+  window.localStorage.setItem("needo.language.mode", "manual");
+}
+
 async function renderForwardPage(store: Record<string, unknown>, entries = ["/messages/new?mode=forward"]) {
+  useSimplifiedChineseTestLanguage();
   roomHarness.store = store;
   const container = document.createElement("div");
   document.body.append(container);
@@ -330,12 +336,6 @@ describe("IM chat-record and multiselect five-language copy", () => {
 
   it.each<Language>(["zh", "zh-Hant", "ja", "en", "ko"])("uses exact complete %s phrases", (language) => {
     expect(sources.map((source) => translateImUiText(source, language))).toEqual(values[language]);
-  });
-
-  it("keeps the required shared dictionary entries exact", () => {
-    expect(translateText("选择到这里", "ja")).toBe("ここまで");
-    expect(translateText("聊天记录", "en")).toBe("Chat history");
-    expect(translateText("翻译服务暂不可用，请稍后重试", "ko")).toBe("번역 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요");
   });
 
   it.each<Language>(["zh", "zh-Hant", "ja", "en", "ko"])("renders complete dynamic-count phrases in %s", async (language) => {
@@ -747,6 +747,7 @@ function installConversationRoomDomStubs() {
 }
 
 async function renderConversationRoom(store: Record<string, unknown>, conversationId = "conversation-room") {
+  useSimplifiedChineseTestLanguage();
   roomHarness.store = store;
   const container = document.createElement("div");
   document.body.append(container);
@@ -770,6 +771,7 @@ async function renderConversationRoom(store: Record<string, unknown>, conversati
 }
 
 async function renderRoutedConversationRoom(store: Record<string, unknown>, conversationId = "conversation-room") {
+  useSimplifiedChineseTestLanguage();
   roomHarness.store = store;
   const container = document.createElement("div");
   document.body.append(container);
@@ -1095,7 +1097,12 @@ describe("ImConversationRoomPage translation actions", () => {
     await act(async () => view.root.unmount());
   });
 
-  it("keeps the original visible and copied when manual translation fails", async () => {
+  it.each([
+    [new ApiClientError("error.im.translation_quota_exceeded", 45601, 456), "本月免费翻译额度已用完"],
+    [new ApiClientError("error.im.translation_rate_limited", 42905, 429), "翻译请求较多，请稍后重试"],
+    [new ApiClientError("error.im.translation_timeout", 503, 503), "翻译服务暂不可用，请稍后重试"],
+    [new ApiClientError("error.validation", 40001, 400), "翻译失败，请稍后重试"],
+  ])("keeps the original visible and copied while rendering the mapped manual translation error: %s", async (translationError, expectedNotice) => {
     installConversationRoomDomStubs();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
@@ -1111,7 +1118,7 @@ describe("ImConversationRoomPage translation actions", () => {
       sentAt: "2026-08-31T00:01:00.000Z",
       clientSeq: 1,
     }];
-    store.translateMessages = vi.fn().mockRejectedValue(new ApiClientError("error.network.timeout", 408, 408));
+    store.translateMessages = vi.fn().mockRejectedValue(translationError);
     const view = await renderConversationRoom(store);
 
     await openActionMenuForText("失败原文");
@@ -1119,7 +1126,7 @@ describe("ImConversationRoomPage translation actions", () => {
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(view.container.textContent).toContain("失败原文");
     expect(view.container.querySelector('[data-im-message-translation="true"]')).toBeNull();
-    expect(view.container.textContent).toContain("翻译失败，请稍后重试");
+    expect(view.container.textContent).toContain(expectedNotice);
 
     await openActionMenuForText("失败原文");
     clickMenuButton("复制");

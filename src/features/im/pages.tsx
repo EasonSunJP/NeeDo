@@ -14,6 +14,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ApiClientError } from "../../api/httpClient";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
@@ -4625,6 +4626,40 @@ export function isConversationNotFoundError(error: unknown) {
   );
 }
 
+function getManualTranslationErrorNotice(error: unknown) {
+  if (!(error instanceof ApiClientError)) {
+    return "翻译失败，请稍后重试";
+  }
+
+  if (
+    error.code === 45601
+    || error.status === 456
+    || error.message === "error.im.translation_quota_exceeded"
+  ) {
+    return "本月免费翻译额度已用完";
+  }
+
+  if (
+    error.code === 42905
+    || error.status === 429
+    || error.message === "error.im.translation_rate_limited"
+  ) {
+    return "翻译请求较多，请稍后重试";
+  }
+
+  if (
+    error.status === 408
+    || error.status === 503
+    || error.message === "error.network.timeout"
+    || error.message === "error.im.translation_timeout"
+    || error.message === "error.im.translation_provider_unavailable"
+  ) {
+    return "翻译服务暂不可用，请稍后重试";
+  }
+
+  return "翻译失败，请稍后重试";
+}
+
 export function ImConversationUnavailableState({
   onReturnHome
 }: {
@@ -6105,14 +6140,14 @@ export function ImConversationRoomPage({
           [message.id]: { content: translated.translatedContent!, visible: true },
         }));
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (
           translationScopeRef.current !== scopeKey
           || translationGenerationRef.current !== generation
         ) {
           return;
         }
-        setActionNotice("翻译失败，请稍后重试");
+        setActionNotice(getManualTranslationErrorNotice(error));
       })
       .finally(() => {
         if (

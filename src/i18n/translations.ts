@@ -43,37 +43,6 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 
 type TranslationMap = Record<string, TranslationEntry>;
 
-const chatRecordUiTranslations: TranslationMap = {
-  "选择到这里": fourLanguageTranslation("選擇到這裡", "ここまで", "Select to here", "여기까지 선택"),
-  "查看聊天记录": fourLanguageTranslation("查看聊天記錄", "チャット履歴を表示", "View chat record", "채팅 기록 보기"),
-  "聊天记录": fourLanguageTranslation("聊天記錄", "チャット履歴", "Chat history", "채팅 기록"),
-  "关闭聊天记录": fourLanguageTranslation("關閉聊天記錄", "チャット履歴を閉じる", "Close chat record", "채팅 기록 닫기"),
-  "聊天记录说明": fourLanguageTranslation("聊天記錄說明", "チャット履歴の説明", "About this chat record", "채팅 기록 안내"),
-  "此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。": fourLanguageTranslation("此頁面顯示建立時儲存的唯讀訊息快照，不會隨原聊天資料變更。", "このページには作成時に保存された読み取り専用のメッセージスナップショットが表示され、元のチャット情報が変わっても更新されません。", "This page shows a read-only message snapshot saved when the record was created. It does not change with the original chat.", "이 페이지에는 기록 생성 시 저장된 읽기 전용 메시지 스냅샷이 표시되며 원본 채팅 정보가 바뀌어도 변경되지 않습니다."),
-  "聊天记录媒体": fourLanguageTranslation("聊天記錄媒體", "チャット履歴のメディア", "Chat record media", "채팅 기록 미디어"),
-  "媒体不可用": fourLanguageTranslation("媒體不可用", "メディアを利用できません", "Media unavailable", "미디어를 사용할 수 없습니다"),
-  "媒体读取失败": fourLanguageTranslation("媒體讀取失敗", "メディアを読み込めませんでした", "Couldn't load media", "미디어를 불러오지 못했습니다"),
-  "正在读取媒体": fourLanguageTranslation("正在讀取媒體", "メディアを読み込んでいます", "Loading media", "미디어를 불러오는 중"),
-  "正在读取聊天记录": fourLanguageTranslation("正在讀取聊天記錄", "チャット履歴を読み込んでいます", "Loading chat record", "채팅 기록을 불러오는 중"),
-  "聊天记录不可用": fourLanguageTranslation("聊天記錄不可用", "チャット履歴を利用できません", "Chat record unavailable", "채팅 기록을 사용할 수 없습니다"),
-  "加载更早": fourLanguageTranslation("載入更早訊息", "以前のメッセージを読み込む", "Load earlier", "이전 메시지 불러오기"),
-  "正在加载": fourLanguageTranslation("正在載入", "読み込み中", "Loading", "불러오는 중"),
-  "返回个人中心": fourLanguageTranslation("返回個人中心", "マイページに戻る", "Back to profile", "마이페이지로 돌아가기"),
-  "我的收藏": fourLanguageTranslation("我的收藏", "お気に入り", "My favorites", "내 즐겨찾기"),
-  "保存的聊天记录": fourLanguageTranslation("已儲存的聊天記錄", "保存したチャット履歴", "Saved chat records", "저장된 채팅 기록"),
-  "正在读取收藏": fourLanguageTranslation("正在讀取收藏", "お気に入りを読み込んでいます", "Loading favorites", "즐겨찾기를 불러오는 중"),
-  "收藏读取失败": fourLanguageTranslation("收藏讀取失敗", "お気に入りを読み込めませんでした", "Couldn't load favorites", "즐겨찾기를 불러오지 못했습니다"),
-  "暂无收藏的聊天记录": fourLanguageTranslation("暫無收藏的聊天記錄", "お気に入りのチャット履歴はありません", "No favorite chat records yet", "즐겨찾기한 채팅 기록이 없습니다"),
-  "移除失败": fourLanguageTranslation("移除失敗", "削除できませんでした", "Couldn't remove favorite", "즐겨찾기를 삭제하지 못했습니다"),
-  "正在移除": fourLanguageTranslation("正在移除", "削除中", "Removing", "삭제 중"),
-  "移除收藏": fourLanguageTranslation("移除收藏", "お気に入りから削除", "Remove favorite", "즐겨찾기에서 삭제"),
-  "收藏分页": fourLanguageTranslation("收藏分頁", "お気に入りのページ", "Favorites pages", "즐겨찾기 페이지"),
-  "上一页": fourLanguageTranslation("上一頁", "前のページ", "Previous page", "이전 페이지"),
-  "下一页": fourLanguageTranslation("下一頁", "次のページ", "Next page", "다음 페이지"),
-  "重试": fourLanguageTranslation("重試", "再試行", "Retry", "다시 시도"),
-  "翻译服务暂不可用，请稍后重试": fourLanguageTranslation("翻譯服務暫不可用，請稍後再試", "翻訳サービスを一時的に利用できません。しばらくしてからもう一度お試しください", "Translation service is temporarily unavailable. Try again later.", "번역 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요"),
-};
-
 export const authTrustGatewayTranslations: TranslationMap = {
   保存密码: {
     "zh-Hant": "儲存密碼",
@@ -14969,7 +14938,6 @@ export const translations: TranslationMap = {
   ...authTrustGatewayTranslations,
   ...affiliateProfileTranslations,
   ...affiliateMarketplaceTranslations,
-  ...chatRecordUiTranslations,
 };
 
 export function getTranslationLookupCandidates(language: Language): TargetLanguage[] {

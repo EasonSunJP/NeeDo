@@ -63,8 +63,10 @@ it never receives the provider key and never calls DeepL directly.
 - `IM_TRANSLATION_TIMEOUT_MS`: per-request timeout, `500`–`30000` ms; examples
   use `5000`.
 - `IM_TRANSLATION_MAX_RETRIES`: bounded retry count, `0`–`3`; examples use `2`.
-- `IM_TRANSLATION_MONTHLY_CHARACTER_LIMIT`: positive operator-side protection
-  threshold; examples use `500000`.
+- `IM_TRANSLATION_MONTHLY_CHARACTER_LIMIT`: positive informational metadata
+  value; examples use `500000`. The current service does not enforce this as
+  an operator-side request threshold. DeepL and the configured DeepL account
+  remain authoritative for quota enforcement.
 
 With `IM_TRANSLATION_PROVIDER=disabled`, the backend can start without a key
 and eligible external-translation requests return the normal sanitized
