@@ -60,6 +60,9 @@ describe("ExchangeComposer identity boundary", () => {
       expect(exchangeText("title", language)).toBeTruthy();
       expect(exchangeText("serviceWindow", language)).toBeTruthy();
       expect(exchangeText("publishFailed", language)).toBeTruthy();
+      expect(exchangeText("next", language)).toBeTruthy();
+      expect(exchangeText("publish", language)).toBeTruthy();
+      expect(exchangeText("discardComposerTitle", language)).toBeTruthy();
     }
   });
 });
@@ -80,9 +83,12 @@ function fillDemandForm(container: ParentNode) {
     title: "正式发布的需求",
     detail: "持久化正文",
     areaLabel: "新宿区",
-    serviceStartAt: "2026-08-31T13:00",
-    serviceEndAt: "2026-08-31T14:00",
-    expiresAt: "2026-08-31T14:00",
+    serviceStartDate: "2026-08-31",
+    serviceStartTime: "13:00",
+    serviceEndDate: "2026-08-31",
+    serviceEndTime: "14:00",
+    expiresDate: "2026-08-31",
+    expiresTime: "14:00",
     budgetMinJpy: "5000",
     budgetMaxJpy: "8000"
   };
@@ -127,7 +133,7 @@ describe("ExchangeComposer publication", () => {
     vi.unstubAllGlobals();
   });
 
-  it("submits a customer demand with a fresh key and no actor selector", async () => {
+  it("validates on Next, then submits a customer demand with a fresh key and no actor selector", async () => {
     const onPublished = vi.fn();
     vi.mocked(publishExchangePost).mockResolvedValue(publishedPost);
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={onPublished} />));
@@ -135,7 +141,10 @@ describe("ExchangeComposer publication", () => {
 
     fillDemandForm(document.body);
 
-    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-composer"]')?.click());
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
+    expect(publishExchangePost).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
     await waitFor(() => expect(onPublished).toHaveBeenCalledWith(publishedPost));
 
     expect(publishExchangePost).toHaveBeenCalledWith(
@@ -151,28 +160,34 @@ describe("ExchangeComposer publication", () => {
     expect(document.body.querySelector('[name="identityId"]')).toBeNull();
   });
 
-  it("keeps the form open and shows a formal error when publication fails", async () => {
-    vi.mocked(publishExchangePost).mockRejectedValue(new Error("error.network"));
+  it("keeps the review open and reuses the same idempotency key when an identical publication is retried", async () => {
+    vi.mocked(publishExchangePost)
+      .mockRejectedValueOnce(new Error("error.network"))
+      .mockResolvedValueOnce(publishedPost);
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
     fillDemandForm(document.body);
-    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-composer"]')?.click());
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
     await waitFor(() => expect(document.body.textContent).toContain("发布失败，请保留表单并重试"));
-    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
+    await waitFor(() => expect(publishExchangePost).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(publishExchangePost).mock.calls[0]?.[1]).toBe("123e4567-e89b-42d3-a456-426614174000");
+    expect(vi.mocked(publishExchangePost).mock.calls[1]?.[1]).toBe("123e4567-e89b-42d3-a456-426614174000");
   });
 
-  it("restores the approved full-screen send-demand composition without fake media persistence", async () => {
+  it("restores the approved full-screen send-demand composition without unavailable media controls", async () => {
     await act(async () => root.render(<ExchangeComposer context="user" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
 
     expect(document.body.textContent).toContain("发送需求");
     expect(document.body.textContent).toContain("告诉平台你想要什么");
-    expect(document.body.textContent).toContain("上传参考图");
-    expect(document.body.textContent).toContain("发布前确认");
-    expect(document.body.textContent).toContain("发送到 NeeDo");
-    expect(document.body.querySelectorAll('[data-action="reference-upload-deferred"]')).toHaveLength(3);
-    expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-action="reference-upload-deferred"]')).every((button) => button.disabled)).toBe(true);
-    expect(document.body.querySelector('[data-testid="exchange-demand-composer-page"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("下一步");
+    expect(document.body.textContent).not.toContain("上传参考图");
+    expect(document.body.querySelectorAll('[data-action="reference-upload-deferred"]')).toHaveLength(0);
+    expect(document.body.querySelector('[data-testid="exchange-composer-shell"]')).not.toBeNull();
+    expect(document.body.querySelector('[type="datetime-local"]')).toBeNull();
     expect(document.body.innerHTML).not.toMatch(/localStorage|needoExchangeBridge|findNeedoPost/u);
   });
 });
