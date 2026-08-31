@@ -5121,13 +5121,13 @@ export function UnifiedUserCalendar({
   }, [currentImUserId, ensureCreatorConversation, imConfig.routes, navigate]);
 
   useEffect(() => {
-    if (!normalizedSearchQuery || view === "agenda") {
+    if (formalOnly || !normalizedSearchQuery || view === "agenda") {
       return;
     }
 
     setView("agenda");
     setAgendaDateWindow(createAgendaDateWindow(anchorDate));
-  }, [anchorDate, normalizedSearchQuery, view]);
+  }, [anchorDate, formalOnly, normalizedSearchQuery, view]);
 
   const extendAgendaDateWindow = (direction: -1 | 1) => {
     setAgendaDateWindow((current) => (
