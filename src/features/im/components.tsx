@@ -31,6 +31,7 @@ import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
 import { getJudgementReactionIconUrl, ImReactionValue } from "./JudgementReactionIcon";
+import { ImChatRecordCard } from "./ImChatRecordCard";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
@@ -2946,6 +2947,7 @@ export function MessageBubble({
   onOpenContact,
   renderContactCard,
   renderContactCardAction,
+  readOnly = false,
   translation = defaultImMessageTranslation
 }: {
   message: ConversationMessage;
@@ -2964,6 +2966,7 @@ export function MessageBubble({
   onOpenContact?: (userId: string) => void;
   renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
+  readOnly?: boolean;
   translation?: ImMessageTranslationOptions;
 }) {
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
@@ -2977,6 +2980,25 @@ export function MessageBubble({
   }
 
   const bubbleContent = (() => {
+    if (message.type === "chat-record" && message.ext?.chatRecord) {
+      const record = message.ext.chatRecord;
+      return (
+        <ImChatRecordCard
+          language={translation.language}
+          record={{
+            publicId: record.publicId,
+            title: message.content,
+            titleKind: record.titleKind,
+            preview: record.preview,
+            senderNames: record.senderNames,
+            senderCount: record.senderNames.length,
+            itemCount: record.itemCount,
+            createdAt: message.sentAt,
+          }}
+        />
+      );
+    }
+
     if (message.type === "text" || message.type === "emoji") {
       return (
         <ImRichMessageText
@@ -2993,16 +3015,17 @@ export function MessageBubble({
     }
 
     if (message.type === "image" || message.type === "video") {
+      const image = <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />;
       return (
         <div className="space-y-2">
-          <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
-            <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />
+          {readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
+            {image}
             {message.type === "video" ? (
               <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
                 <ImIcon className="h-9 w-9" name="video" />
               </span>
             ) : null}
-          </button>
+          </button>}
           {message.ext?.caption ? (
             <ImRichMessageText
               className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"

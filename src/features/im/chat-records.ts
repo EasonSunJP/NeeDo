@@ -14,6 +14,7 @@ export type ImChatRecordItem = {
 export type ImChatRecordSummary = {
   publicId: string;
   title: string;
+  titleKind?: ImChatRecordTitleKind;
   preview: string;
   senderNames: string[];
   senderCount: number;
@@ -25,12 +26,68 @@ export type ImChatRecordFavorite = {
   id: string;
   bundlePublicId: string;
   title: string;
+  titleKind?: ImChatRecordTitleKind;
   preview: string;
   senderNames: string[];
   senderCount: number;
   itemCount: number;
   createdAt: string;
 };
+
+export function deriveImChatRecordTitleKind(
+  senderNames: string[],
+  senderCount = senderNames.length,
+): ImChatRecordTitleKind {
+  if (senderCount <= 1) return "single";
+  if (senderCount === 2) return "pair";
+  return "group";
+}
+
+export function formatLocalizedImChatRecordTitle(
+  senderNames: string[],
+  kind: ImChatRecordTitleKind,
+  language: import("../../i18n/translations").Language,
+) {
+  const names = senderNames.map(compact).filter(Boolean);
+  const first = names[0] ?? "NeeDo";
+  const second = names[1] ?? "NeeDo";
+  const count = Math.max(names.length, kind === "group" ? 3 : kind === "pair" ? 2 : 1);
+
+  if (language === "en") {
+    if (kind === "single") return `Chat record with ${first}`;
+    if (kind === "pair") return `Chat record with ${first} and ${second}`;
+    return `Chat record with ${first}, ${second} and ${count - 2} others`;
+  }
+  if (language === "ja") {
+    if (kind === "single") return `${first}とのチャット履歴`;
+    if (kind === "pair") return `${first}と${second}のチャット履歴`;
+    return `${first}、${second}など${count}人のチャット履歴`;
+  }
+  if (language === "ko") {
+    if (kind === "single") return `${first}님과의 채팅 기록`;
+    if (kind === "pair") return `${first}, ${second}님의 채팅 기록`;
+    return `${first}, ${second} 외 ${count - 2}명의 채팅 기록`;
+  }
+  if (language === "zh-Hant") {
+    if (kind === "single") return `${first}的聊天記錄`;
+    if (kind === "pair") return `${first}和${second}的聊天記錄`;
+    return `${first}、${second}等${count}人的聊天記錄`;
+  }
+  if (kind === "single") return `${first}的聊天记录`;
+  if (kind === "pair") return `${first}和${second}的聊天记录`;
+  return `${first}、${second}等${count}人的聊天记录`;
+}
+
+export function formatLocalizedImChatRecordCount(
+  itemCount: number,
+  language: import("../../i18n/translations").Language,
+) {
+  if (language === "en") return `${itemCount} ${itemCount === 1 ? "message" : "messages"}`;
+  if (language === "ja") return `${itemCount}件のメッセージ`;
+  if (language === "ko") return `메시지 ${itemCount}개`;
+  if (language === "zh-Hant") return `${itemCount}則訊息`;
+  return `${itemCount}条信息`;
+}
 
 export type ImChatRecordItemPage = {
   list: ImChatRecordItem[];

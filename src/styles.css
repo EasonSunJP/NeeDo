@@ -8620,3 +8620,13 @@ html.im-conversation-scroll-lock #root {
     animation: none;
   }
 }
+/* Immutable chat-records use one restrained spine; surfaces remain on shared client tokens. */
+.im-chat-record-timeline {
+  border-left-color: color-mix(in srgb, var(--client-primary) 28%, var(--client-line));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-im-chat-record-opener] {
+    scroll-behavior: auto;
+  }
+}

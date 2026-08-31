@@ -22,7 +22,9 @@ describe("UserCenterPage", () => {
   });
 
   it("moves shortcut helper copy behind title info triggers", () => {
-    expect(source).toContain('info: "店铺、技师、服务"');
+    expect(source).toContain('info: "聊天记录"');
+    expect(source).toContain('to: "/me/favorites"');
+    expect(source).not.toContain('to: "/categories?type=store"');
     expect(source).toContain('info: "家庭、公司、常用地址"');
     expect(source).toContain('info: "已评价与待回复"');
     expect(source).toContain('info: "保洁、护理、家电维护"');

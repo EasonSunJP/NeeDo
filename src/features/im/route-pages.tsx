@@ -14,12 +14,20 @@ import {
   ImSearchPage as RichImSearchPage,
   ImServiceAccountsPage as RichImServiceAccountsPage,
 } from "./pages";
+import { ImChatRecordDetailPage as RichImChatRecordDetailPage } from "./ImChatRecordDetailPage";
+import { useImScope } from "./scope";
+import { useImStore } from "./store";
 
 export function ImMessagesEntryPage() {
   return <RichImMessagesEntryPage />;
 }
 export function ImConversationRoomRoutePage() {
   return <RichImConversationRoomRoutePage />;
+}
+export function ImChatRecordDetailRoutePage() {
+  const scope = useImScope();
+  const store = useImStore(scope);
+  return <RichImChatRecordDetailPage api={store} scope={scope} />;
 }
 export function ImContactsListPage() {
   return <RichImContactsListPage />;

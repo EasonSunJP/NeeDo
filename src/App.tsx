@@ -95,6 +95,7 @@ import { StoreDetailPage } from "./pages/user/StoreDetailPage";
 import { TechnicianServicesPage } from "./pages/user/TechnicianServicesPage";
 import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
+import { UserFavoritesRoutePage } from "./pages/user/UserFavoritesPage";
 import { UserMembershipsPage } from "./pages/user/UserMembershipsPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
@@ -177,6 +178,7 @@ import {
   ImContactTagsPage,
   ImConversationInfoPage,
   ImConversationRoomRoutePage,
+  ImChatRecordDetailRoutePage,
   ImDirectoryProfilePage,
   ImFriendRequestsPage,
   ImMediaRecordsPage,
@@ -1111,6 +1113,7 @@ export default function App() {
               <Route path="/reviews/new" element={protect("user", <DineInReviewPage />)} />
               <Route path="/messages" element={protect("user", <MessagesPage />)} />
               <Route path="/messages/new" element={protect("user", <ImScopeProvider scope="user"><ImNewConversationPage /></ImScopeProvider>)} />
+              <Route path="/messages/chat-records/:publicId" element={protect("user", <ImScopeProvider scope="user"><ImChatRecordDetailRoutePage /></ImScopeProvider>)} />
               <Route path="/messages/:conversationId/info" element={protect("user", <ImScopeProvider scope="user"><ImConversationInfoPage /></ImScopeProvider>)} />
               <Route path="/messages/:conversationId/media" element={protect("user", <ImScopeProvider scope="user"><ImMediaRecordsPage /></ImScopeProvider>)} />
               <Route path="/messages/:conversationId" element={protect("user", <ImScopeProvider scope="user"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
@@ -1175,6 +1178,7 @@ export default function App() {
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
+              <Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />
               <Route path="/me/memberships" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/memberships/:membershipPublicId" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/settings" element={protect("user", <UserSettingsPage />)} />
@@ -1203,6 +1207,7 @@ export default function App() {
               <Route path="/merchant/technician-applications" element={protectPermission("merchant", "merchant:technician-application:read", <TechnicianApplicationsReviewPage />)} />
               <Route path="/merchant/messages" element={protect("merchant", <ImScopeProvider scope="merchant"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/new" element={protect("merchant", <ImScopeProvider scope="merchant"><ImNewConversationPage /></ImScopeProvider>)} />
+              <Route path="/merchant/messages/chat-records/:publicId" element={protect("merchant", <ImScopeProvider scope="merchant"><ImChatRecordDetailRoutePage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/:conversationId/info" element={protect("merchant", <ImScopeProvider scope="merchant"><ImConversationInfoPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/:conversationId/media" element={protect("merchant", <ImScopeProvider scope="merchant"><ImMediaRecordsPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/:conversationId" element={protect("merchant", <ImScopeProvider scope="merchant"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
@@ -1332,6 +1337,7 @@ export default function App() {
               <Route path="/technician/payroll" element={protect("technician", <TechnicianPayrollPage />)} />
               <Route path="/technician/messages" element={protect("technician", <ImScopeProvider scope="technician"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/new" element={protect("technician", <ImScopeProvider scope="technician"><ImNewConversationPage /></ImScopeProvider>)} />
+              <Route path="/technician/messages/chat-records/:publicId" element={protect("technician", <ImScopeProvider scope="technician"><ImChatRecordDetailRoutePage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId/info" element={protect("technician", <ImScopeProvider scope="technician"><ImConversationInfoPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId/media" element={protect("technician", <ImScopeProvider scope="technician"><ImMediaRecordsPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId" element={protect("technician", <ImScopeProvider scope="technician"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
