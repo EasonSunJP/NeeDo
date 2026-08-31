@@ -108,6 +108,16 @@ import {
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
+import {
+  ImMessageMultiSelectCircle,
+  ImMessageMultiSelectOverlay,
+  type ImMultiSelectAction,
+} from "./ImMessageMultiSelectOverlay";
+import {
+  buildImMessageMultiSelectCopyText,
+  isImMessageMultiSelectEligible,
+  useImMessageMultiSelect,
+} from "./useImMessageMultiSelect";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
 import {
   buildImMessageTranslationBatches,
@@ -4777,6 +4787,11 @@ export function ImConversationRoomPage({
   const listWasNearBottomRef = useRef(true);
   const listStateRef = useRef({ conversationId: "", messageCount: 0 });
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const multiSelect = useImMessageMultiSelect({ messages, messageRefs, scrollRoot: listRef });
+  const [multiSelectPendingAction, setMultiSelectPendingAction] = useState<ImMultiSelectAction | null>(null);
+  const multiSelectPendingRef = useRef<ImMultiSelectAction | null>(null);
+  const [multiSelectNotice, setMultiSelectNotice] = useState<string | null>(null);
+  const [multiSelectDeleteConfirmationOpen, setMultiSelectDeleteConfirmationOpen] = useState(false);
   const reactionPendingKeysRef = useRef(new Set<string>());
   const translationInflightIdsRef = useRef(new Set<string>());
   const translationCompletedIdsRef = useRef(new Set<string>());
@@ -4836,6 +4851,14 @@ export function ImConversationRoomPage({
     setAutomaticTranslations({});
     setManualTranslationPendingIds(new Set());
   }, [conversationId, language]);
+
+  useEffect(() => {
+    multiSelect.exit();
+    setMultiSelectNotice(null);
+    setMultiSelectDeleteConfirmationOpen(false);
+    multiSelectPendingRef.current = null;
+    setMultiSelectPendingAction(null);
+  }, [conversationId]);
 
   useEffect(() => {
     let disposed = false;
@@ -5773,6 +5796,9 @@ export function ImConversationRoomPage({
   };
 
   const handleConversationPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (multiSelect.active) {
+      return;
+    }
     const interactiveSelector = "[data-im-composer-root='true'], [data-im-message-action-sheet='true']";
     const pathContainsInteractiveSurface = event.nativeEvent.composedPath().some((target) => (
       target instanceof Element && Boolean(target.closest(interactiveSelector))
@@ -5815,6 +5841,101 @@ export function ImConversationRoomPage({
     setMessageMenuExpanded(false);
     setMenuState({ message });
     selectMessageText(message);
+  };
+
+  const exitMultiSelect = () => {
+    multiSelect.exit();
+    setMultiSelectNotice(null);
+    setMultiSelectDeleteConfirmationOpen(false);
+  };
+
+  const enterMultiSelect = (message: ConversationMessage) => {
+    closeMessageMenu();
+    setMultiSelectNotice(null);
+    setMultiSelectDeleteConfirmationOpen(false);
+    multiSelect.enter(message.id);
+  };
+
+  const showMultiSelectResult = (result: ReturnType<typeof multiSelect.selectToPoint>) => {
+    if (result.status === "overflow") {
+      setMultiSelectNotice("最多选择100条信息");
+      return;
+    }
+    setMultiSelectNotice(null);
+  };
+
+  const beginMultiSelectAction = (action: ImMultiSelectAction) => {
+    if (multiSelectPendingRef.current || multiSelect.selectedMessages.length === 0) return false;
+    multiSelectPendingRef.current = action;
+    setMultiSelectPendingAction(action);
+    setMultiSelectNotice(null);
+    return true;
+  };
+
+  const finishMultiSelectAction = () => {
+    multiSelectPendingRef.current = null;
+    setMultiSelectPendingAction(null);
+  };
+
+  const forwardMultiSelectedMessages = () => {
+    if (!beginMultiSelectAction("forward")) return;
+    const messageIds = multiSelect.selectedMessages.map((message) => message.id);
+    store.setPendingChatRecordForward({ sourceConversationId: conversationId, messageIds });
+    finishMultiSelectAction();
+    exitMultiSelect();
+    navigate(appendQuery(config.routes.newConversation, { mode: "forward" }));
+  };
+
+  const copyMultiSelectedMessages = async () => {
+    if (!beginMultiSelectAction("copy")) return;
+    const content = buildImMessageMultiSelectCopyText({
+      messages: multiSelect.selectedMessages,
+      resolveDisplayedText: (message) => getVisibleMessageTranslation(message)?.content,
+      resolveSenderName: (message) => getConversationMemberDisplayName(store.usersById[message.senderId]) ?? "NeeDo",
+      translate: (value) => translateText(value, language),
+    });
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("error.clipboard_unavailable");
+      await navigator.clipboard.writeText(content);
+      finishMultiSelectAction();
+      exitMultiSelect();
+      setActionNotice("已复制");
+    } catch {
+      finishMultiSelectAction();
+      setMultiSelectNotice("复制失败，请重试");
+    }
+  };
+
+  const favoriteMultiSelectedMessages = async () => {
+    if (!beginMultiSelectAction("favorite")) return;
+    try {
+      await store.favoriteSelectedMessages(
+        conversationId,
+        multiSelect.selectedMessages.map((message) => message.id),
+        crypto.randomUUID(),
+      );
+      finishMultiSelectAction();
+      exitMultiSelect();
+      setActionNotice("已收藏");
+    } catch {
+      finishMultiSelectAction();
+      setMultiSelectNotice("收藏失败，请稍后重试");
+    }
+  };
+
+  const deleteMultiSelectedMessages = async () => {
+    if (!beginMultiSelectAction("delete")) return;
+    const selectedIds = multiSelect.selectedMessages.map((message) => message.id);
+    try {
+      await store.batchDeleteMessages(conversationId, selectedIds, crypto.randomUUID());
+      setPinnedMessageIds((current) => current.filter((messageId) => !selectedIds.includes(messageId)));
+      if (mediaPreview && selectedIds.includes(mediaPreview.id)) closeMediaPreview();
+      finishMultiSelectAction();
+      exitMultiSelect();
+    } catch {
+      finishMultiSelectAction();
+      setMultiSelectNotice("删除失败，请稍后重试");
+    }
   };
 
   const toggleMessageReaction = (message: ConversationMessage, reaction: string, closeAfter = true) => {
@@ -6156,8 +6277,8 @@ export function ImConversationRoomPage({
       key: "multiselect",
       label: "多选",
       icon: "select",
-      disabled: true,
-      onClick: () => undefined
+      disabled: !isImMessageMultiSelectEligible(message),
+      onClick: () => enterMultiSelect(message)
     });
 
     return { primaryActions, listActions: [] };
@@ -6233,7 +6354,13 @@ export function ImConversationRoomPage({
         className="im-conversation-room-shell fixed inset-x-0 inset-y-0 z-20 mx-auto flex h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden overscroll-none [overflow-x:clip]"
         data-im-conversation-voice-underlay="true"
         inert={voiceRecording.phase !== "idle" || undefined}
-        onPointerDownCapture={handleConversationPointerDownCapture}
+        onPointerCancelCapture={() => multiSelect.onPointerCancelCapture()}
+        onPointerDownCapture={(event) => {
+          multiSelect.onPointerDownCapture(event);
+          handleConversationPointerDownCapture(event);
+        }}
+        onPointerMoveCapture={(event) => multiSelect.onPointerMoveCapture(event)}
+        onPointerUpCapture={(event) => multiSelect.onPointerUpCapture(event)}
         ref={conversationUnderlayRef}
         style={{ maxWidth: "min(880px, 100%)" }}
       >
@@ -6334,7 +6461,9 @@ export function ImConversationRoomPage({
             className={cn("im-conversation-scroll im-conversation-scroll--glass-underlay scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1", menuState && "im-conversation-scroll--text-selecting")}
             data-page-drag-ignore="true"
             data-scroll-drag-ignore="true"
+            data-im-multiselect-active={multiSelect.active ? "true" : undefined}
             onClick={() => {
+              if (multiSelect.active) return;
               if (menuState && hasActiveImMessageTextSelection(messageRefs.current[menuState.message.id])) {
                 return;
               }
@@ -6412,13 +6541,25 @@ export function ImConversationRoomPage({
                 <div
                   className={cn("relative rounded-3xl transition", menuState ? "z-20" : "z-10", flashMessageId === message.id && "bg-[#fff7d4]", menuState?.message.id === message.id && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]")}
                   data-im-message-selected={menuState?.message.id === message.id ? "true" : undefined}
+                  data-im-message-multiselect-eligible={isImMessageMultiSelectEligible(message) ? "true" : "false"}
                   data-im-message-side={isMine ? "right" : "left"}
                   key={message.id}
                   ref={(element) => {
                     messageRefs.current[message.id] = element;
                   }}
                 >
-                  {message.type === "chat-record" ? bubble : <MessagePressable onOpenMenu={() => openMessageMenu(message)}>{bubble}</MessagePressable>}
+                  <div className="flex min-w-0 items-center">
+                    {multiSelect.active && isImMessageMultiSelectEligible(message) ? (
+                      <ImMessageMultiSelectCircle
+                        checked={multiSelect.selectedIds.has(message.id)}
+                        label={`${multiSelect.selectedIds.has(message.id) ? "取消选择" : "选择"}${senderName ?? "消息"}`}
+                        onToggle={() => showMultiSelectResult(multiSelect.toggle(message.id))}
+                      />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      {message.type === "chat-record" ? bubble : <MessagePressable onOpenMenu={() => openMessageMenu(message)}>{bubble}</MessagePressable>}
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -6443,7 +6584,7 @@ export function ImConversationRoomPage({
                 top: list.scrollHeight
               });
             }}
-            visible={!latestPositionVisible && !menuState && !mediaPreview}
+            visible={!latestPositionVisible && !menuState && !mediaPreview && !multiSelect.active}
           />
 
           {actionNotice ? (
@@ -6473,7 +6614,14 @@ export function ImConversationRoomPage({
 
               return (
                 <>
-                  <ImMessageSelectionHandles active messageRoot={messageRefs.current[menuState.message.id]} />
+                  <ImMessageSelectionHandles
+                    active
+                    messageRoot={messageRefs.current[menuState.message.id]}
+                    onDragStart={() => {
+                      closeMessageMenu();
+                      exitMultiSelect();
+                    }}
+                  />
                   <ImMessageActionSheet
                     actions={primaryActions}
                     anchorElement={messageRefs.current[menuState.message.id]}
@@ -6492,7 +6640,7 @@ export function ImConversationRoomPage({
             })()
           ) : null}
 
-          {!mediaPreview ? (
+          {!mediaPreview && !multiSelect.active ? (
             <>
               {quotedMessage ? (
                 <div className={cn("relative z-10 px-4 py-2 text-xs", quotedBarClass)}>
@@ -6545,6 +6693,24 @@ export function ImConversationRoomPage({
                 type="file"
               />
             </>
+          ) : null}
+
+          {multiSelect.active ? (
+            <ImMessageMultiSelectOverlay
+              deleteConfirmationOpen={multiSelectDeleteConfirmationOpen}
+              language={language}
+              notice={multiSelectNotice}
+              onCancel={exitMultiSelect}
+              onConfirmDelete={() => void deleteMultiSelectedMessages()}
+              onCopy={() => void copyMultiSelectedMessages()}
+              onDelete={() => setMultiSelectDeleteConfirmationOpen(true)}
+              onDismissDeleteConfirmation={() => setMultiSelectDeleteConfirmationOpen(false)}
+              onFavorite={() => void favoriteMultiSelectedMessages()}
+              onForward={forwardMultiSelectedMessages}
+              onSelectToPoint={(pointY) => showMultiSelectResult(multiSelect.selectToPoint(pointY))}
+              pendingAction={multiSelectPendingAction}
+              selectedCount={multiSelect.selectedMessages.length}
+            />
           ) : null}
         </div>
       </div>

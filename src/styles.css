@@ -8174,6 +8174,16 @@ html.im-conversation-scroll-lock #root {
   transform: translate(-50%, -58%);
 }
 
+[data-im-multiselect-control="true"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.im-conversation-scroll[data-im-multiselect-active="true"] {
+  scroll-padding-top: calc(env(safe-area-inset-top) + 122px);
+  scroll-padding-bottom: calc(env(safe-area-inset-bottom) + 142px);
+}
+
 .client-shell.business-cps-shell {
   --business-cps-line-faint: color-mix(in srgb, var(--client-line) 34%, transparent);
   --business-cps-line-soft: color-mix(in srgb, var(--client-line) 24%, transparent);

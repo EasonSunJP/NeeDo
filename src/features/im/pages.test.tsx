@@ -152,7 +152,9 @@ function buildConversationRoomStore() {
     }],
     conversations: [conversation],
     currentUserId: currentUser.id,
+    batchDeleteMessages: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn(),
+    favoriteSelectedMessages: vi.fn().mockResolvedValue(undefined),
     friendRequests: [],
     loadConversation: vi.fn().mockResolvedValue(conversation),
     loadMessages: vi.fn().mockResolvedValue([]),
@@ -166,6 +168,7 @@ function buildConversationRoomStore() {
     sendVoiceMessage,
     setActiveConversation: vi.fn(),
     setDraft: vi.fn(),
+    setPendingChatRecordForward: vi.fn(),
     status: "ready",
     translateMessages: vi.fn().mockResolvedValue([]),
     ui: { drafts: {}, searchHistory: [] },
@@ -734,6 +737,179 @@ async function rerenderConversationRoom(
     await Promise.resolve();
   });
 }
+
+function dispatchRoomPointer(
+  target: Element,
+  type: "pointercancel" | "pointerdown" | "pointermove" | "pointerup",
+  clientX: number,
+  clientY: number,
+) {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY });
+  Object.defineProperty(event, "pointerId", { configurable: true, value: 1 });
+  target.dispatchEvent(event);
+}
+
+function roomMessage(overrides: Record<string, unknown>) {
+  return {
+    conversationId: "conversation-room",
+    id: "501",
+    localId: "501",
+    senderId: "partner-user",
+    type: "text",
+    content: "消息一",
+    status: "sent",
+    sentAt: "2026-08-31T00:01:00.000Z",
+    clientSeq: 1,
+    ...overrides,
+  };
+}
+
+describe("ImConversationRoomPage formal message multiselect", () => {
+  it("enters from the eligible menu action, anchors the pressed row, and uses only row circles as toggles", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [
+      roomMessage({}),
+      roomMessage({ id: "502", localId: "502", content: "消息二", clientSeq: 2, sentAt: "2026-08-31T00:02:00.000Z" }),
+    ];
+    const view = await renderConversationRoom(store);
+
+    await openActionMenuForText("消息一");
+    const multiselectButton = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-im-message-action-sheet] button"))
+      .find((button) => button.textContent?.includes("多选"));
+    expect(multiselectButton?.disabled).toBe(false);
+    await act(async () => multiselectButton?.click());
+
+    expect(view.container.querySelector('[data-im-multiselect-selected-count="1"]')).not.toBeNull();
+    const circles = view.container.querySelectorAll<HTMLButtonElement>('[role="checkbox"]');
+    expect(circles).toHaveLength(2);
+    expect(circles[0]?.getAttribute("aria-checked")).toBe("true");
+    expect(circles[1]?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => circles[1]?.click());
+    expect(view.container.querySelector('[data-im-multiselect-selected-count="2"]')).not.toBeNull();
+    expect(circles[1]?.getAttribute("aria-checked")).toBe("true");
+
+    const secondBubble = Array.from(view.container.querySelectorAll<HTMLElement>("[data-im-message-bubble]"))
+      .find((element) => element.textContent?.includes("消息二"))!;
+    await act(async () => {
+      dispatchRoomPointer(secondBubble, "pointerdown", 10, 10);
+      dispatchRoomPointer(secondBubble, "pointerup", 10, 10);
+    });
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).toBeNull();
+    await act(async () => view.root.unmount());
+  });
+
+  it("keeps selection after drag release and pointercancel, but exits on a later stationary message tap", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [roomMessage({ content: "手势消息" })];
+    const view = await renderConversationRoom(store);
+    await openActionMenuForText("手势消息");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    const bubble = view.container.querySelector<HTMLElement>("[data-im-message-bubble]")!;
+
+    await act(async () => {
+      dispatchRoomPointer(bubble, "pointerdown", 10, 10);
+      dispatchRoomPointer(bubble, "pointermove", 10, 24);
+      dispatchRoomPointer(bubble, "pointerup", 10, 24);
+    });
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).not.toBeNull();
+
+    await act(async () => {
+      dispatchRoomPointer(bubble, "pointerdown", 10, 10);
+      dispatchRoomPointer(bubble, "pointercancel", 10, 10);
+      dispatchRoomPointer(bubble, "pointerup", 10, 10);
+    });
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).not.toBeNull();
+
+    await act(async () => {
+      dispatchRoomPointer(bubble, "pointerdown", 10, 10);
+      dispatchRoomPointer(bubble, "pointerup", 10, 10);
+    });
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).toBeNull();
+    await act(async () => view.root.unmount());
+  });
+
+  it("copies visible translations in sender format and keeps selection when the clipboard rejects", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const store = buildConversationRoomStore();
+    store.conversations = [{ ...store.conversations[0], autoTranslateMessages: true }];
+    store.messagesByConversation["conversation-room"] = [
+      roomMessage({ content: "原文一" }),
+      roomMessage({ id: "502", localId: "502", senderId: "current-user", content: "原文二", clientSeq: 2, sentAt: "2026-08-31T00:02:00.000Z" }),
+    ];
+    store.translateMessages = vi.fn().mockResolvedValue([{ messageId: "501", status: "translated", translatedContent: "译文一" }]);
+    const view = await renderConversationRoom(store);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await openActionMenuForText("原文一");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    const circles = view.container.querySelectorAll<HTMLButtonElement>('[role="checkbox"]');
+    await act(async () => circles[1]?.click());
+    const copy = view.container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="copy"]')!;
+    await act(async () => { copy.click(); await Promise.resolve(); await Promise.resolve(); });
+    expect(writeText).toHaveBeenCalledWith("测试好友:译文一\n我:原文二");
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).not.toBeNull();
+    expect(view.container.textContent).toContain("复制失败，请重试");
+    await act(async () => view.root.unmount());
+  });
+
+  it("keeps all actions locked while favorite is pending and exits only after success", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    let resolveFavorite!: () => void;
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [roomMessage({ content: "收藏消息" })];
+    store.favoriteSelectedMessages = vi.fn().mockImplementation(() => new Promise<void>((resolve) => { resolveFavorite = resolve; }));
+    const view = await renderConversationRoom(store);
+    await openActionMenuForText("收藏消息");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    const favorite = view.container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="favorite"]')!;
+    await act(async () => favorite.click());
+    expect(store.favoriteSelectedMessages).toHaveBeenCalledTimes(1);
+    expect([...view.container.querySelectorAll<HTMLButtonElement>('[data-im-multiselect-action-bar] button')].every((button) => button.disabled)).toBe(true);
+    await act(async () => { favorite.click(); await Promise.resolve(); });
+    expect(store.favoriteSelectedMessages).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveFavorite(); await Promise.resolve(); await Promise.resolve(); });
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).toBeNull();
+    await act(async () => view.root.unmount());
+  });
+
+  it("confirms atomic local-only deletion and forwards single selections through chat-record state", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [roomMessage({ content: "操作消息" })];
+    const view = await renderConversationRoom(store);
+    await openActionMenuForText("操作消息");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    const deleteButton = view.container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="delete"]')!;
+    await act(async () => deleteButton.click());
+    expect(view.container.textContent).toContain("将从你的聊天记录中删除 1 条信息，不影响对方。");
+    const confirm = Array.from(view.container.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
+      .find((button) => button.textContent?.trim() === "删除")!;
+    await act(async () => { confirm.click(); await Promise.resolve(); await Promise.resolve(); });
+    expect(store.batchDeleteMessages).toHaveBeenCalledWith("conversation-room", ["501"], expect.any(String));
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).toBeNull();
+
+    await openActionMenuForText("操作消息");
+    clickMenuButton("多选");
+    await act(async () => { await Promise.resolve(); });
+    const forward = view.container.querySelector<HTMLButtonElement>('[data-im-multiselect-action="forward"]')!;
+    await act(async () => forward.click());
+    expect(store.setPendingChatRecordForward).toHaveBeenCalledWith({ sourceConversationId: "conversation-room", messageIds: ["501"] });
+    expect(view.container.querySelector('[data-im-multiselect-action-bar]')).toBeNull();
+    await act(async () => view.root.unmount());
+  });
+});
 
 describe("ImConversationRoomPage translation actions", () => {
   it("manually translates the current message below the original, hides and re-shows the cached text, then copies the visible translation", async () => {

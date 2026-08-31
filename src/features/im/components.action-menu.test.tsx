@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ImMessageActionSheet, ImQuotedMessagePreview, MessageBubble } from "./components";
+import { ImMessageActionSheet, ImMessageSelectionHandles, ImQuotedMessagePreview, MessageBubble } from "./components";
 import type { ImMessageActionSheetItem } from "./components";
 import type { ConversationMessage } from "./model";
 import { getRecentImReactionSnapshot, recordRecentImReaction } from "./reaction-catalog";
@@ -73,6 +73,58 @@ function dispatchPointerActivation(target: HTMLElement) {
 afterEach(() => {
   vi.restoreAllMocks();
   document.body.replaceChildren();
+});
+
+describe("ImMessageSelectionHandles", () => {
+  it("calls onDragStart before pointer capture and keeps preventing scroll during handle movement", async () => {
+    const messageRoot = document.createElement("div");
+    const textRoot = document.createElement("p");
+    textRoot.dataset.imMessageSelectableText = "true";
+    textRoot.append(document.createTextNode("hello"));
+    messageRoot.append(textRoot);
+    document.body.append(messageRoot);
+    const range = document.createRange();
+    range.selectNodeContents(textRoot);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      configurable: true,
+      value: () => [buildRect({ bottom: 40, height: 20, left: 10, top: 20, width: 60 })],
+    });
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => buildRect({ bottom: 40, height: 20, left: 10, top: 20, width: 60 }),
+    });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    const onDragStart = vi.fn();
+    const setPointerCapture = vi.fn(() => expect(onDragStart).toHaveBeenCalledOnce());
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: setPointerCapture });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ImMessageSelectionHandles active messageRoot={messageRoot} onDragStart={onDragStart} />);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    const handle = container.querySelector<HTMLButtonElement>(".im-message-selection-handle--start");
+    expect(handle).not.toBeNull();
+    const pointerDown = new MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientX: 10, clientY: 20 });
+    Object.defineProperty(pointerDown, "pointerId", { value: 1 });
+    await act(async () => handle?.dispatchEvent(pointerDown));
+    expect(onDragStart).toHaveBeenCalledOnce();
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
+
+    const pointerMove = new MouseEvent("pointermove", { bubbles: true, cancelable: true, clientX: 20, clientY: 25 });
+    Object.defineProperty(pointerMove, "pointerId", { value: 1 });
+    window.dispatchEvent(pointerMove);
+    expect(pointerMove.defaultPrevented).toBe(true);
+    await act(async () => root.unmount());
+  });
 });
 
 describe("ImMessageActionSheet", () => {

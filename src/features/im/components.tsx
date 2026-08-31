@@ -2130,10 +2130,12 @@ function getSelectionHandlePositions(root: HTMLElement): ImSelectionHandlePositi
 
 export function ImMessageSelectionHandles({
   active,
-  messageRoot
+  messageRoot,
+  onDragStart,
 }: {
   active: boolean;
   messageRoot: HTMLElement | null | undefined;
+  onDragStart?: () => void;
 }) {
   const [positions, setPositions] = useState<ImSelectionHandlePositions>({ end: null, start: null });
   const dragRef = useRef<ImSelectionHandleDrag | null>(null);
@@ -2208,7 +2210,7 @@ export function ImMessageSelectionHandles({
     };
     event.preventDefault();
     event.stopPropagation();
-
+    onDragStart?.();
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -2325,6 +2327,7 @@ function ImMessageActionButton({
         item.disabled && "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]"
       )}
       data-im-message-action-item="true"
+      data-im-multiselect-control="true"
       disabled={item.disabled}
       onClick={item.onClick}
       type="button"
@@ -2590,6 +2593,7 @@ export function ImMessageActionSheet({
         <section
           className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[20px] border backdrop-blur-xl", sheetClass)}
           data-im-message-action-sheet="true"
+          data-im-multiselect-control="true"
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => {
             event.preventDefault();
