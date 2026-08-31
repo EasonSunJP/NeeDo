@@ -100,6 +100,18 @@ const makeOrder = (
       reason: null,
       createdAt: now
     }
+  ],
+  performanceAssessment: null,
+  timelineEvents: [
+    {
+      type: "ORDER_STATUS_CHANGED",
+      id: "status:1",
+      createdAt: now,
+      actorUserId: 1,
+      fromStatus: null,
+      toStatus: status,
+      publicReason: null
+    }
   ]
 });
 
@@ -128,6 +140,18 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
             actorUserId: input.actorUserId,
             reason: input.reason ?? null,
             createdAt: now
+          }
+        ],
+        timelineEvents: [
+          ...order.timelineEvents,
+          {
+            type: "ORDER_STATUS_CHANGED" as const,
+            id: "status:2",
+            createdAt: now,
+            actorUserId: input.actorUserId,
+            fromStatus: input.fromStatus,
+            toStatus: input.toStatus,
+            publicReason: input.reason ?? null
           }
         ]
       };

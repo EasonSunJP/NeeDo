@@ -49,6 +49,37 @@ const jsonErrorResponse = (description: string) => ({
   }
 });
 
+const orderPerformanceCommandOperation = (summary: string) => ({
+  tags: ["Order Performance"],
+  summary,
+  security: [{ bearerAuth: [] }],
+  "x-permission": "backoffice:order-performance:write",
+  parameters: [
+    { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+  ],
+  requestBody: {
+    required: true,
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/OrderPerformanceCommandInput" }
+      }
+    }
+  },
+  responses: {
+    "200": jsonDataResponse("Order performance assessment updated", {
+      $ref: "#/components/schemas/OrderPerformanceCommandResult"
+    }),
+    "400": jsonErrorResponse("error.validation"),
+    "401": jsonErrorResponse("error.auth.unauthorized"),
+    "403": jsonErrorResponse("error.forbidden"),
+    "404": jsonErrorResponse("error.order_performance.not_found"),
+    "409": jsonErrorResponse(
+      "error.order_performance.version_conflict or error.order_performance.idempotency_conflict"
+    ),
+    "422": jsonErrorResponse("error.order_performance.ineligible")
+  }
+});
+
 const authJsonBody = (properties: Record<string, unknown>, required: string[] = []) => ({
   required: true,
   content: {
@@ -4499,6 +4530,141 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           createdAt: { type: "string", format: "date-time" }
         }
       },
+      OrderPerformanceAssessment: {
+        type: "object",
+        required: [
+          "id",
+          "bookingOrderId",
+          "technicianProfileId",
+          "outcome",
+          "treatment",
+          "version",
+          "currentRevisionId",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          bookingOrderId: { type: "integer" },
+          technicianProfileId: { type: "integer" },
+          outcome: {
+            type: "string",
+            enum: ["technician_cancelled", "technician_uncompleted"]
+          },
+          treatment: { type: "string", enum: ["counted", "special_excluded"] },
+          version: { type: "integer", minimum: 1 },
+          currentRevisionId: { type: ["integer", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      OrderTimelineStatusEvent: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "id",
+          "createdAt",
+          "actorUserId",
+          "fromStatus",
+          "toStatus",
+          "publicReason"
+        ],
+        properties: {
+          type: { type: "string", const: "ORDER_STATUS_CHANGED" },
+          id: { type: "string", pattern: "^status:[1-9][0-9]*$" },
+          createdAt: { type: "string", format: "date-time" },
+          actorUserId: { type: ["integer", "null"] },
+          fromStatus: {
+            type: ["string", "null"],
+            enum: ["pending", "confirmed", "inService", "completed", "cancelled", null]
+          },
+          toStatus: {
+            type: "string",
+            enum: ["pending", "confirmed", "inService", "completed", "cancelled"]
+          },
+          publicReason: { type: ["string", "null"] }
+        }
+      },
+      OrderTimelinePerformanceEvent: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "Participant-visible performance event. Operations-only internalNote is intentionally omitted.",
+        required: ["type", "id", "createdAt", "actorUserId", "publicReason"],
+        properties: {
+          type: {
+            type: "string",
+            enum: [
+              "TECHNICIAN_CANCEL_CLASSIFIED",
+              "TECHNICIAN_UNCOMPLETED_CLASSIFIED",
+              "SPECIAL_CANCELLATION_APPLIED",
+              "SPECIAL_CANCELLATION_REVOKED"
+            ]
+          },
+          id: { type: "string", pattern: "^performance:[1-9][0-9]*$" },
+          createdAt: { type: "string", format: "date-time" },
+          actorUserId: { type: ["integer", "null"] },
+          publicReason: { type: ["string", "null"] }
+        }
+      },
+      OperationsOrderTimelinePerformanceEvent: {
+        type: "object",
+        additionalProperties: false,
+        description: "Authorized operations view of a performance revision.",
+        required: ["type", "id", "createdAt", "actorUserId", "publicReason", "internalNote"],
+        properties: {
+          type: {
+            type: "string",
+            enum: [
+              "TECHNICIAN_CANCEL_CLASSIFIED",
+              "TECHNICIAN_UNCOMPLETED_CLASSIFIED",
+              "SPECIAL_CANCELLATION_APPLIED",
+              "SPECIAL_CANCELLATION_REVOKED"
+            ]
+          },
+          id: { type: "string", pattern: "^performance:[1-9][0-9]*$" },
+          createdAt: { type: "string", format: "date-time" },
+          actorUserId: { type: ["integer", "null"] },
+          publicReason: { type: ["string", "null"] },
+          internalNote: {
+            type: ["string", "null"],
+            maxLength: 1000,
+            "x-visibility": "operations-only"
+          }
+        }
+      },
+      OrderTimelineEvent: {
+        oneOf: [
+          { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+          { $ref: "#/components/schemas/OrderTimelinePerformanceEvent" }
+        ],
+        discriminator: { propertyName: "type" }
+      },
+      OrderPerformanceCommandInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicReason", "idempotencyKey", "expectedRevision"],
+        properties: {
+          publicReason: { type: "string", minLength: 1, maxLength: 500 },
+          internalNote: {
+            type: ["string", "null"],
+            minLength: 1,
+            maxLength: 1000,
+            "x-visibility": "operations-only"
+          },
+          idempotencyKey: { type: "string", minLength: 16, maxLength: 160 },
+          expectedRevision: { type: "integer", minimum: 0 }
+        }
+      },
+      OrderPerformanceCommandResult: {
+        type: "object",
+        required: ["assessment", "replayed"],
+        properties: {
+          assessment: { $ref: "#/components/schemas/OrderPerformanceAssessment" },
+          replayed: { type: "boolean" }
+        }
+      },
       BookingOrder: {
         type: "object",
         required: [
@@ -4535,7 +4701,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "affiliate",
           "createdAt",
           "updatedAt",
-          "statusHistory"
+          "statusHistory",
+          "performanceAssessment",
+          "timelineEvents"
         ],
         properties: {
           id: { type: "integer" },
@@ -4582,6 +4750,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           statusHistory: {
             type: "array",
             items: { $ref: "#/components/schemas/OrderStatusHistory" }
+          },
+          performanceAssessment: {
+            anyOf: [
+              { $ref: "#/components/schemas/OrderPerformanceAssessment" },
+              { type: "null" }
+            ]
+          },
+          timelineEvents: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrderTimelineEvent" }
           }
         }
       },
@@ -11842,6 +12020,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "409": { description: "Invalid state transition" }
         }
       }
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/technician-uncompleted`]: {
+      post: orderPerformanceCommandOperation(
+        "Classify an eligible order as technician-caused uncompleted"
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/special-cancellation`]: {
+      post: orderPerformanceCommandOperation(
+        "Exclude an accountable technician outcome as a special cancellation"
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/special-cancellation/revoke`]: {
+      post: orderPerformanceCommandOperation(
+        "Revoke a special-cancellation exclusion after operations review"
+      )
     },
     [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/confirm`]: {
       post: {

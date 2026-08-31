@@ -46,6 +46,8 @@ const makeTransitionOrderRecord = (
   shop: { name: "LifeDance" },
   technicianProfile: { id: 31, userId: 707, displayName: "Misaki" },
   statusHistory: [],
+  performanceAssessment: null,
+  performanceRevisions: [],
   affiliateAttributions: []
 });
 
@@ -542,5 +544,96 @@ describe("BookingRepository order list scope", () => {
     );
     expect(updateMany).not.toHaveBeenCalled();
     expect(settle).not.toHaveBeenCalled();
+  });
+
+  it("merges public performance revisions into a stable timeline without exposing internal notes", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("CANCELLED"),
+      statusHistory: [
+        {
+          id: 11,
+          bookingOrderId: 701,
+          fromStatus: null,
+          toStatus: "PENDING",
+          actorUserId: 101,
+          reason: null,
+          createdAt: new Date("2026-09-01T03:00:00.000Z")
+        },
+        {
+          id: 12,
+          bookingOrderId: 701,
+          fromStatus: "PENDING",
+          toStatus: "CANCELLED",
+          actorUserId: 707,
+          reason: "技师临时无法到达",
+          createdAt: new Date("2026-09-01T04:00:00.000Z")
+        }
+      ],
+      performanceAssessment: {
+        id: 81,
+        bookingOrderId: 701,
+        technicianProfileId: 31,
+        outcome: "TECHNICIAN_CANCELLED",
+        treatment: "COUNTED",
+        version: 3,
+        currentRevisionId: 93,
+        createdAt: new Date("2026-09-01T04:00:00.000Z"),
+        updatedAt: new Date("2026-09-01T06:00:00.000Z")
+      },
+      performanceRevisions: [
+        {
+          id: 91,
+          action: "CLASSIFY_TECHNICIAN_CANCELLED",
+          actorUserId: 707,
+          publicReason: "技师临时无法到达",
+          createdAt: new Date("2026-09-01T04:00:00.000Z")
+        },
+        {
+          id: 92,
+          action: "APPLY_SPECIAL_EXCLUSION",
+          actorUserId: 9,
+          publicReason: "已核实不可抗力",
+          createdAt: new Date("2026-09-01T05:00:00.000Z")
+        },
+        {
+          id: 93,
+          action: "REVOKE_SPECIAL_EXCLUSION",
+          actorUserId: 10,
+          publicReason: "用户投诉后复核恢复计入",
+          createdAt: new Date("2026-09-01T06:00:00.000Z")
+        }
+      ]
+    };
+    const findFirst = jest.fn().mockResolvedValue(order);
+    const repository = new BookingRepository({ bookingOrder: { findFirst } } as never);
+
+    const result = await repository.findOrderById(701);
+
+    expect(result?.statusHistory).toEqual([
+      expect.objectContaining({ id: 11, toStatus: "pending" }),
+      expect.objectContaining({ id: 12, toStatus: "cancelled" })
+    ]);
+    expect(result?.performanceAssessment).toMatchObject({
+      outcome: "technician_cancelled",
+      treatment: "counted",
+      version: 3
+    });
+    expect(result?.timelineEvents).toEqual([
+      expect.objectContaining({ id: "status:11", type: "ORDER_STATUS_CHANGED" }),
+      expect.objectContaining({ id: "performance:91", type: "TECHNICIAN_CANCEL_CLASSIFIED" }),
+      expect.objectContaining({ id: "status:12", type: "ORDER_STATUS_CHANGED" }),
+      expect.objectContaining({ id: "performance:92", type: "SPECIAL_CANCELLATION_APPLIED" }),
+      expect.objectContaining({ id: "performance:93", type: "SPECIAL_CANCELLATION_REVOKED" })
+    ]);
+    expect(JSON.stringify(result?.timelineEvents)).not.toContain("internalNote");
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          performanceRevisions: expect.objectContaining({
+            select: expect.not.objectContaining({ internalNote: expect.anything() })
+          })
+        })
+      })
+    );
   });
 });

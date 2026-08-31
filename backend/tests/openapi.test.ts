@@ -1212,9 +1212,68 @@ describe("GET /api/v1/openapi.json", () => {
       affiliatePublicToken: { type: "string", maxLength: 512 }
     });
     expect(response.body.components.schemas.BookingOrder.required).toContain("affiliate");
+    expect(response.body.components.schemas.BookingOrder.required).toEqual(
+      expect.arrayContaining(["statusHistory", "performanceAssessment", "timelineEvents"])
+    );
     expect(response.body.components.schemas.BookingOrder.properties.affiliate).toEqual({
       anyOf: [{ $ref: "#/components/schemas/AffiliateCheckoutSummary" }, { type: "null" }]
     });
+    expect(response.body.components.schemas.BookingOrder.properties.timelineEvents).toEqual({
+      type: "array",
+      items: { $ref: "#/components/schemas/OrderTimelineEvent" }
+    });
+    expect(response.body.components.schemas.OrderTimelineEvent.oneOf).toEqual([
+      { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+      { $ref: "#/components/schemas/OrderTimelinePerformanceEvent" }
+    ]);
+    expect(response.body.components.schemas.OrderTimelineStatusEvent.properties.type.const).toBe(
+      "ORDER_STATUS_CHANGED"
+    );
+    expect(
+      response.body.components.schemas.OrderTimelinePerformanceEvent.properties.type.enum
+    ).toEqual([
+      "TECHNICIAN_CANCEL_CLASSIFIED",
+      "TECHNICIAN_UNCOMPLETED_CLASSIFIED",
+      "SPECIAL_CANCELLATION_APPLIED",
+      "SPECIAL_CANCELLATION_REVOKED"
+    ]);
+    expect(
+      response.body.components.schemas.OrderTimelinePerformanceEvent.properties
+    ).not.toHaveProperty("internalNote");
+    expect(
+      response.body.components.schemas.OperationsOrderTimelinePerformanceEvent.properties
+        .internalNote
+    ).toMatchObject({ "x-visibility": "operations-only" });
+
+    for (const path of [
+      "/api/v1/backoffice/orders/{id}/technician-uncompleted",
+      "/api/v1/backoffice/orders/{id}/special-cancellation",
+      "/api/v1/backoffice/orders/{id}/special-cancellation/revoke"
+    ]) {
+      const operation = response.body.paths[path].post;
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation["x-permission"]).toBe("backoffice:order-performance:write");
+      expect(operation.requestBody.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/OrderPerformanceCommandInput"
+      });
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object),
+          "422": expect.any(Object)
+        })
+      );
+    }
+    expect(response.body.components.schemas.OrderPerformanceCommandInput).toMatchObject({
+      additionalProperties: false,
+      required: ["publicReason", "idempotencyKey", "expectedRevision"]
+    });
+    expect(
+      response.body.components.schemas.OrderPerformanceCommandInput.properties
+    ).not.toHaveProperty("acceptanceRate");
     expect(
       response.body.components.schemas.AffiliateCheckoutSummary.properties.attributionStatus.enum
     ).toEqual(["attributed", "qualified", "settled", "invalidated", "reversed"]);
