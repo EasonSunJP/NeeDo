@@ -1,48 +1,111 @@
 import {
   backofficeRealDataApi,
   type BackofficeDashboardPayload,
-  type DashboardQuery
+  type DashboardQuery,
 } from "../../api/backofficeRealData";
+import { getAuthCredentialEpoch } from "../../api/httpClient";
 import { loadCoreReadWithTransientRetry } from "../core-read/transientRetry";
 
+export type MerchantAdminDashboardOwner = {
+  credentialEpoch: number;
+  identityId: number;
+  shopPublicId: string;
+  userId: number;
+};
+
 type MerchantAdminDashboardCacheEntry = {
+  controller: AbortController;
   expiresAt: number;
+  ownerKey: string;
   payload?: BackofficeDashboardPayload;
   request?: Promise<BackofficeDashboardPayload>;
 };
 
 const resolvedPayloadMaxAgeMs = 5_000;
 const dashboardCache = new Map<string, MerchantAdminDashboardCacheEntry>();
-const dashboardRequestGenerations = new Map<string, number>();
 
-function getDashboardCacheKey(scopeKey: string, query: DashboardQuery) {
+function getDashboardOwnerKey(owner: MerchantAdminDashboardOwner) {
   return JSON.stringify([
-    scopeKey,
-    query.period,
-    query.from ?? null,
-    query.to ?? null,
-    query.city ?? null
+    owner.userId,
+    owner.identityId,
+    owner.shopPublicId,
+    owner.credentialEpoch,
   ]);
 }
 
-export function invalidateMerchantAdminDashboard(
-  scopeKey: string,
-  query: DashboardQuery
+function getDashboardCacheKey(
+  owner: MerchantAdminDashboardOwner,
+  query: DashboardQuery,
 ) {
-  const cacheKey = getDashboardCacheKey(scopeKey, query);
+  return JSON.stringify([
+    getDashboardOwnerKey(owner),
+    query.period,
+    query.from ?? null,
+    query.to ?? null,
+    query.city ?? null,
+  ]);
+}
+
+function createSupersededError() {
+  return new DOMException("Dashboard owner was superseded", "AbortError");
+}
+
+function assertDashboardOwnerCurrent(
+  owner: MerchantAdminDashboardOwner,
+  controller: AbortController,
+) {
+  if (
+    controller.signal.aborted ||
+    getAuthCredentialEpoch() !== owner.credentialEpoch
+  ) {
+    throw createSupersededError();
+  }
+}
+
+function assertMerchantDashboardScope(
+  payload: BackofficeDashboardPayload,
+  expectedShopPublicId: string,
+) {
+  if (
+    payload.scope?.kind !== "shop" ||
+    payload.scope.shopPublicId !== expectedShopPublicId
+  ) {
+    throw new Error("error.auth.dashboard_scope_mismatch");
+  }
+}
+
+export function invalidateMerchantAdminDashboard(
+  owner: MerchantAdminDashboardOwner,
+  query: DashboardQuery,
+) {
+  const cacheKey = getDashboardCacheKey(owner, query);
+  dashboardCache.get(cacheKey)?.controller.abort();
   dashboardCache.delete(cacheKey);
-  dashboardRequestGenerations.set(
-    cacheKey,
-    (dashboardRequestGenerations.get(cacheKey) ?? 0) + 1
-  );
+}
+
+export function invalidateMerchantAdminDashboardOwner(
+  owner: MerchantAdminDashboardOwner,
+) {
+  const ownerKey = getDashboardOwnerKey(owner);
+
+  dashboardCache.forEach((entry, cacheKey) => {
+    if (entry.ownerKey === ownerKey) {
+      entry.controller.abort();
+      dashboardCache.delete(cacheKey);
+    }
+  });
 }
 
 export function loadMerchantAdminDashboard(
-  scopeKey: string,
-  query: DashboardQuery
+  owner: MerchantAdminDashboardOwner,
+  query: DashboardQuery,
 ): Promise<BackofficeDashboardPayload> {
+  if (!/^shop\d{10}$/.test(owner.shopPublicId)) {
+    return Promise.reject(new Error("error.auth.merchant_shop_required"));
+  }
+
   const requestQuery = { ...query };
-  const cacheKey = getDashboardCacheKey(scopeKey, requestQuery);
+  const cacheKey = getDashboardCacheKey(owner, requestQuery);
   const cached = dashboardCache.get(cacheKey);
 
   if (cached?.request) {
@@ -53,38 +116,39 @@ export function loadMerchantAdminDashboard(
     return Promise.resolve(cached.payload);
   }
 
-  const requestGeneration = dashboardRequestGenerations.get(cacheKey) ?? 0;
-  const request = loadCoreReadWithTransientRetry(
-    () => backofficeRealDataApi.dashboard("merchant-admin", requestQuery)
-  )
+  const controller = new AbortController();
+  const ownerKey = getDashboardOwnerKey(owner);
+  const entry: MerchantAdminDashboardCacheEntry = {
+    controller,
+    expiresAt: 0,
+    ownerKey,
+  };
+  const request = loadCoreReadWithTransientRetry(async () => {
+    assertDashboardOwnerCurrent(owner, controller);
+    return backofficeRealDataApi.dashboard("merchant-admin", requestQuery, {
+      signal: controller.signal,
+    });
+  })
     .then((payload) => {
-      if (
-        dashboardCache.get(cacheKey)?.request === request &&
-        (dashboardRequestGenerations.get(cacheKey) ?? 0) === requestGeneration
-      ) {
-        dashboardCache.set(cacheKey, {
-          expiresAt: Date.now() + resolvedPayloadMaxAgeMs,
-          payload
-        });
+      assertDashboardOwnerCurrent(owner, controller);
+      assertMerchantDashboardScope(payload, owner.shopPublicId);
+
+      if (dashboardCache.get(cacheKey) === entry) {
+        entry.expiresAt = Date.now() + resolvedPayloadMaxAgeMs;
+        entry.payload = payload;
+        delete entry.request;
       }
 
       return payload;
     })
     .catch((error: unknown) => {
-      if (
-        dashboardCache.get(cacheKey)?.request === request &&
-        (dashboardRequestGenerations.get(cacheKey) ?? 0) === requestGeneration
-      ) {
+      if (dashboardCache.get(cacheKey) === entry) {
         dashboardCache.delete(cacheKey);
       }
-
       throw error;
     });
 
-  const entry: MerchantAdminDashboardCacheEntry = {
-    expiresAt: 0,
-    request
-  };
+  entry.request = request;
   dashboardCache.set(cacheKey, entry);
 
   return request;

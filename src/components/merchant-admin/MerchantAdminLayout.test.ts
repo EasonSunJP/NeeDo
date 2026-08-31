@@ -28,14 +28,28 @@ describe("MerchantAdminLayout formal shop summary", () => {
   });
 
   it("keys and loads the resource from authenticated merchant scope with an explicit query", () => {
-    expect(source).toContain('`user:${session?.id ?? "anonymous"}`');
-    expect(source).toContain('`identity:${session?.currentIdentity.id ?? "no-identity"}`');
-    expect(source).toContain('`shop:${session?.merchantShopPublicId ?? "unselected"}`');
+    expect(source).toContain("userId: session.id");
+    expect(source).toContain("identityId: session.currentIdentity.id");
+    expect(source).toContain("shopPublicId: resolvedShopPublicId");
+    expect(source).toContain("credentialEpoch");
+    expect(source).not.toContain("unselected");
     expect(source).not.toContain("readOnlyPreview?.selectedShopId ?? \"current-shop\"");
     expect(source).not.toContain("session?.loggedInAt ?? \"no-session\"");
     expect(source).toContain('period: "last7days"');
-    expect(source).toContain("loadMerchantAdminDashboard(dashboardScopeKey, dashboardQuery)");
-    expect(source).toContain("invalidateMerchantAdminDashboard(dashboardScopeKey, dashboardQuery)");
+    expect(source).toContain("loadMerchantAdminDashboard(dashboardOwner, dashboardQuery)");
+    expect(source).toContain("invalidateMerchantAdminDashboard(dashboardOwner, dashboardQuery)");
+    expect(source).toContain("invalidateMerchantAdminDashboardOwner(dashboardOwner)");
+  });
+
+  it("resolves a server-confirmed selected shop before requesting or caching dashboard data", () => {
+    expect(source).toContain("session?.merchantShopPublicId");
+    expect(source).toContain("resolvedShop?.ownerKey === shopResolutionOwnerKey");
+    expect(source).toContain("backofficeRealDataApi.manageableMerchantShops(page, pageSize)");
+    expect(source).toContain("manageable.list.find((shop) => shop.selected)");
+    expect(source).toContain("if (!dashboardOwner)");
+    expect(source.indexOf("manageableMerchantShops")).toBeLessThan(
+      source.indexOf("loadMerchantAdminDashboard(dashboardOwner")
+    );
   });
 
   it("keeps loading and retryable failure evidence visible", () => {

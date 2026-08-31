@@ -31,6 +31,7 @@ export type HttpClientRequestOptions = {
   query?: Record<string, boolean | number | string | null | undefined>;
   retryOnUnauthorized?: boolean;
   signal?: AbortSignal;
+  unauthorizedPolicy?: "caller" | "global";
 };
 
 export type HttpClientCsvExportPayload = {
@@ -61,12 +62,20 @@ const refreshTokenStorageKey = "needo.auth.refresh-token";
 const legacyAccessTokenStorageKey = "needo.auth.access-token";
 let accessToken: string | null = null;
 let expectedAuthUserId: number | null = null;
+let authCredentialEpoch = 0;
 type RefreshedAccessToken = {
   accessToken: string;
   expiresIn: number;
 };
 let refreshRequest: Promise<RefreshedAccessToken> | null = null;
 let authExpiredHandler: (() => void) | null = null;
+
+export type AuthCredentialSnapshot = {
+  accessToken: string | null;
+  authCredentialEpoch: number;
+  expectedAuthUserId: number | null;
+  refreshToken: string | null;
+};
 
 function readAccessTokenSubject(token: string | null) {
   if (!token) {
@@ -199,7 +208,7 @@ async function createRequestHeaders(options: HttpClientRequestOptions, previewSh
     headers["Content-Type"] = "application/json";
   }
 
-  if (options.auth !== false && accessToken) {
+  if (options.auth !== false && accessToken && !headers.Authorization) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
@@ -249,6 +258,10 @@ function expireAuthenticationOnUnauthorized(
   options: HttpClientRequestOptions
 ) {
   if (response.status !== 401 || options.auth === false) {
+    return;
+  }
+
+  if (options.unauthorizedPolicy === "caller") {
     return;
   }
 
@@ -308,8 +321,17 @@ export async function refreshStoredAccessToken(): Promise<RefreshedAccessToken> 
     });
     const envelope = await parseEnvelope<RefreshedAccessToken>(response);
     const data = assertSuccess(envelope, response.status);
+    if (
+      typeof data.accessToken !== "string" ||
+      data.accessToken.length === 0 ||
+      !Number.isInteger(data.expiresIn) ||
+      data.expiresIn <= 0 ||
+      data.expiresIn > 15 * 60
+    ) {
+      throw new ApiClientError("error.api", 502, 502);
+    }
 
-    accessToken = data.accessToken;
+    setAccessToken(data.accessToken);
     return data;
   })();
 
@@ -321,7 +343,12 @@ export async function refreshStoredAccessToken(): Promise<RefreshedAccessToken> 
 }
 
 async function alignAccessTokenWithExpectedUser(options: HttpClientRequestOptions) {
-  if (options.auth === false || !accessToken || expectedAuthUserId === null) {
+  if (
+    options.auth === false ||
+    options.unauthorizedPolicy === "caller" ||
+    !accessToken ||
+    expectedAuthUserId === null
+  ) {
     return;
   }
 
@@ -330,7 +357,7 @@ async function alignAccessTokenWithExpectedUser(options: HttpClientRequestOption
     return;
   }
 
-  accessToken = null;
+  setAccessToken(null);
 
   try {
     const refreshed = await refreshStoredAccessToken();
@@ -366,6 +393,7 @@ async function sendRequest<TData>(
     response.status === 401 &&
     canRetry &&
     options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
     options.retryOnUnauthorized !== false &&
     getStoredRefreshToken()
   ) {
@@ -432,6 +460,7 @@ async function sendCsvExportRequest(
     response.status === 401 &&
     canRetry &&
     options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
     options.retryOnUnauthorized !== false &&
     getStoredRefreshToken()
   ) {
@@ -497,6 +526,7 @@ async function sendDataUrlRequest(
     response.status === 401 &&
     canRetry &&
     options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
     options.retryOnUnauthorized !== false &&
     getStoredRefreshToken()
   ) {
@@ -540,25 +570,28 @@ export function getStoredRefreshToken() {
 }
 
 export function setStoredRefreshToken(nextRefreshToken: string | null) {
-  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
+  authCredentialEpoch += 1;
+  const removedLegacy = removeBrowserStorage(refreshTokenStorageKey, { silent: true });
 
   if (nextRefreshToken) {
-    writeBrowserStorage(refreshTokenStorageKey, nextRefreshToken, {
+    const wroteRefresh = writeBrowserStorage(refreshTokenStorageKey, nextRefreshToken, {
       kind: "session",
       silent: true
     });
-    return;
+    return removedLegacy && wroteRefresh;
   }
 
-  removeBrowserStorage(refreshTokenStorageKey, {
+  const removedRefresh = removeBrowserStorage(refreshTokenStorageKey, {
     kind: "session",
     silent: true
   });
+  return removedLegacy && removedRefresh;
 }
 
 export function setAccessToken(nextAccessToken: string | null) {
+  authCredentialEpoch += 1;
   accessToken = nextAccessToken;
-  removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
+  return removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
 }
 
 export function setExpectedAuthUserId(userId: number | null) {
@@ -566,23 +599,66 @@ export function setExpectedAuthUserId(userId: number | null) {
 }
 
 export function setAuthTokens(tokens: { accessToken: string; refreshToken?: string | null }) {
-  setAccessToken(tokens.accessToken);
+  const accessPersisted = setAccessToken(tokens.accessToken);
+  let refreshPersisted = true;
 
   if (tokens.refreshToken) {
-    setStoredRefreshToken(tokens.refreshToken);
+    refreshPersisted = setStoredRefreshToken(tokens.refreshToken);
   }
+
+  return accessPersisted && refreshPersisted;
 }
 
 export function clearAuthTokens() {
+  authCredentialEpoch += 1;
   accessToken = null;
   expectedAuthUserId = null;
   clearMerchantAdminPreview();
-  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
-  removeBrowserStorage(refreshTokenStorageKey, {
+  const removedLegacyRefresh = removeBrowserStorage(refreshTokenStorageKey, { silent: true });
+  const removedRefresh = removeBrowserStorage(refreshTokenStorageKey, {
     kind: "session",
     silent: true
   });
-  removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
+  const removedLegacyAccess = removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
+
+  return removedLegacyRefresh && removedRefresh && removedLegacyAccess;
+}
+
+export function getAuthCredentialEpoch() {
+  return authCredentialEpoch;
+}
+
+export function getAuthCredentialSnapshot(): AuthCredentialSnapshot {
+  return {
+    accessToken,
+    authCredentialEpoch,
+    expectedAuthUserId,
+    refreshToken: getStoredRefreshToken()
+  };
+}
+
+export function restoreAuthCredentialSnapshot(snapshot: AuthCredentialSnapshot) {
+  authCredentialEpoch += 1;
+  accessToken = snapshot.accessToken;
+  expectedAuthUserId = snapshot.expectedAuthUserId;
+
+  const removedLegacyAccess = removeBrowserStorage(legacyAccessTokenStorageKey, {
+    silent: true
+  });
+  const removedLegacyRefresh = removeBrowserStorage(refreshTokenStorageKey, {
+    silent: true
+  });
+  const restoredRefresh = snapshot.refreshToken
+    ? writeBrowserStorage(refreshTokenStorageKey, snapshot.refreshToken, {
+        kind: "session",
+        silent: true
+      })
+    : removeBrowserStorage(refreshTokenStorageKey, {
+        kind: "session",
+        silent: true
+      });
+
+  return removedLegacyAccess && removedLegacyRefresh && restoredRefresh;
 }
 
 export function setAuthExpiredHandler(handler: (() => void) | null) {

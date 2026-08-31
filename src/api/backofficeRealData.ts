@@ -631,28 +631,111 @@ type ListQuery = {
 const scopePrefix = (scope: BackofficeScope) => (scope === "merchant-admin" ? "/merchant-admin" : "/backoffice");
 
 function serializeDashboardQuery(scope: BackofficeScope, query: DashboardQuery): DashboardQuery {
-  if (scope === "backoffice") {
-    return query;
+  const periods = new Set<DashboardPeriod>([
+    "today",
+    "last7days",
+    "last30days",
+    "week",
+    "month",
+    "year",
+    "custom"
+  ]);
+  if (!periods.has(query.period)) {
+    throw new Error("error.dashboard.period_invalid");
+  }
+
+  if (query.period === "custom" && (!query.from || !query.to)) {
+    throw new Error("error.dashboard.custom_range_required");
+  }
+
+  const serialized: DashboardQuery = {
+    period: query.period,
+    ...(query.period === "custom" ? { from: query.from, to: query.to } : {})
+  };
+
+  if (scope === "backoffice" && query.city) {
+    serialized.city = query.city;
+  }
+
+  return serialized;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function requireManageableMerchantShopsPage(
+  value: unknown
+): PaginatedApiPayload<ManageableMerchantShopPayload> {
+  if (!value || typeof value !== "object") {
+    throw new Error("error.api");
+  }
+
+  const page = value as Partial<PaginatedApiPayload<ManageableMerchantShopPayload>>;
+  if (
+    !Array.isArray(page.list) ||
+    !isNonNegativeInteger(page.total) ||
+    !isNonNegativeInteger(page.page) ||
+    page.page < 1 ||
+    !isNonNegativeInteger(page.page_size) ||
+    page.page_size < 1 ||
+    !page.list.every((shop) =>
+      Boolean(
+        shop &&
+        typeof shop === "object" &&
+        typeof shop.publicId === "string" &&
+        /^shop\d{10}$/.test(shop.publicId) &&
+        typeof shop.name === "string" &&
+        typeof shop.city === "string" &&
+        typeof shop.status === "string" &&
+        typeof shop.selected === "boolean"
+      )
+    )
+  ) {
+    throw new Error("error.api");
   }
 
   return {
-    period: query.period,
-    ...(query.from ? { from: query.from } : {}),
-    ...(query.to ? { to: query.to } : {})
+    list: page.list.map((shop) => ({
+      publicId: shop.publicId,
+      name: shop.name,
+      city: shop.city,
+      status: shop.status,
+      selected: shop.selected
+    })),
+    total: page.total,
+    page: page.page,
+    page_size: page.page_size
   };
 }
 
 export const backofficeRealDataApi = {
-  dashboard(scope: BackofficeScope, query: DashboardQuery) {
+  dashboard(
+    scope: BackofficeScope,
+    query: DashboardQuery,
+    options?: { signal?: AbortSignal }
+  ) {
     return httpClient.request<BackofficeDashboardPayload>(`${scopePrefix(scope)}/dashboard`, {
-      query: serializeDashboardQuery(scope, query)
+      query: serializeDashboardQuery(scope, query),
+      ...(options?.signal ? { signal: options.signal } : {})
     });
   },
-  manageableMerchantShops(page = 1, pageSize = 20) {
-    return httpClient.request<PaginatedApiPayload<ManageableMerchantShopPayload>>(
+  async manageableMerchantShops(page = 1, pageSize = 20) {
+    if (
+      !Number.isInteger(page) ||
+      page < 1 ||
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 100
+    ) {
+      throw new Error("error.pagination.invalid");
+    }
+
+    const payload = await httpClient.request<PaginatedApiPayload<ManageableMerchantShopPayload>>(
       "/merchant-admin/manageable-shops",
       { query: { page, page_size: pageSize } }
     );
+    return requireManageableMerchantShopsPage(payload);
   },
   orders(scope: BackofficeScope, query?: ListQuery) {
     return httpClient.request<PaginatedApiPayload<BackofficeOrderPayload>>(`${scopePrefix(scope)}/orders`, {

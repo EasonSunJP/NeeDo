@@ -1,4 +1,12 @@
 import type { AuthMePayload } from "../auth/rbac";
+import {
+  requireFormalAuthMePayload,
+  requireFormalRefreshPayload,
+  requireFormalTokenPair,
+  requireFormalSwitchIdentityPayload,
+  requireFormalSwitchMerchantShopPayload,
+  type AuthTransitionValidationContext,
+} from "../auth/authContract";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 import {
   clearAuthTokens,
@@ -95,6 +103,11 @@ export type SwitchMerchantShopPayload = SwitchIdentityPayload & {
   shopPublicId: string;
 };
 
+export type AuthTransitionCredentials = {
+  accessToken: string | null;
+  refreshToken: string;
+};
+
 // Transitional types used only by the untouched pre-verification registration page.
 // Tasks 10 and 11 remove these consumers; the compatibility calls below fail closed.
 export type RegistrationAccountType = "customer" | "technician";
@@ -182,88 +195,6 @@ function persistTokenPair(tokens: TokenPairPayload) {
   });
 }
 
-function isAuthIdentityPayload(value: unknown): value is AuthMePayload["currentIdentity"] {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const identity = value as Partial<AuthMePayload["currentIdentity"]>;
-
-  return (
-    typeof identity.id === "number" &&
-    Number.isInteger(identity.id) &&
-    (identity.publicId === null || typeof identity.publicId === "string") &&
-    typeof identity.type === "string" &&
-    identity.type.length > 0 &&
-    (identity.scopeId === null ||
-      (typeof identity.scopeId === "number" && Number.isInteger(identity.scopeId))) &&
-    (identity.scopeType === null || typeof identity.scopeType === "string")
-  );
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function isAuthMePayload(value: unknown): value is AuthMePayload {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const me = value as Partial<AuthMePayload>;
-
-  return (
-    typeof me.id === "number" &&
-    typeof me.needoId === "string" &&
-    me.needoId.length > 0 &&
-    typeof me.primaryPublicId === "string" &&
-    me.primaryPublicId.length > 0 &&
-    typeof me.activeIdentityId === "number" &&
-    (me.activePublicId === null || typeof me.activePublicId === "string") &&
-    typeof me.email === "string" &&
-    (me.emailVerifiedAt === null || typeof me.emailVerifiedAt === "string") &&
-    typeof me.hasPassword === "boolean" &&
-    typeof me.username === "string" &&
-    (me.avatarUrl === null || typeof me.avatarUrl === "string") &&
-    typeof me.isActive === "boolean" &&
-    isAuthIdentityPayload(me.currentIdentity) &&
-    Array.isArray(me.identities) &&
-    me.identities.length > 0 &&
-    me.identities.every(isAuthIdentityPayload) &&
-    me.identities.some((identity) => identity.id === me.currentIdentity?.id) &&
-    me.activeIdentityId === me.currentIdentity?.id &&
-    me.activePublicId === me.currentIdentity?.publicId &&
-    isStringArray(me.roles) &&
-    isStringArray(me.permissions) &&
-    isStringArray(me.menus) &&
-    (me.identityAvailability === undefined || Array.isArray(me.identityAvailability))
-  );
-}
-
-function isSwitchMerchantShopPayload(
-  value: unknown,
-  requestedShopPublicId: string,
-): value is SwitchMerchantShopPayload {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const payload = value as Partial<SwitchMerchantShopPayload>;
-
-  return (
-    typeof payload.accessToken === "string" &&
-    payload.accessToken.length > 0 &&
-    typeof payload.refreshToken === "string" &&
-    payload.refreshToken.length > 0 &&
-    typeof payload.expiresIn === "number" &&
-    payload.expiresIn > 0 &&
-    typeof payload.shopPublicId === "string" &&
-    /^shop\d{10}$/.test(payload.shopPublicId) &&
-    payload.shopPublicId === requestedShopPublicId &&
-    isAuthMePayload(payload.me)
-  );
-}
-
 function rejectLegacyOtp(): Promise<never> {
   return Promise.reject(new Error("error.auth.legacy_otp_unavailable"));
 }
@@ -301,9 +232,10 @@ export const authApi = {
         retryOnUnauthorized: false,
       },
     );
-    persistTokenPair(tokens);
+    const validated = requireFormalTokenPair<AuthLoginPayload>(tokens);
+    persistTokenPair(validated);
 
-    return tokens;
+    return validated;
   },
 
   // Kept until Task 10 removes the duplicate consumer name. It is the same formal flow.
@@ -333,9 +265,13 @@ export const authApi = {
         retryOnUnauthorized: false,
       },
     );
-    persistTokenPair(tokens);
+    const validated = requireFormalTokenPair<VerifiedRegistrationPayload>(tokens);
+    if (!/^u\d{10}$/.test(validated.needoId)) {
+      throw new Error("error.api");
+    }
+    persistTokenPair(validated);
 
-    return tokens;
+    return validated;
   },
 
   async initializeGoogleLogin() {
@@ -364,7 +300,9 @@ export const authApi = {
     );
 
     if (result.status === "authenticated") {
-      persistTokenPair(result);
+      const validated = requireFormalTokenPair<Extract<GoogleCredentialResult, { status: "authenticated" }>>(result);
+      persistTokenPair(validated);
+      return validated;
     }
 
     return result;
@@ -380,9 +318,13 @@ export const authApi = {
         retryOnUnauthorized: false,
       },
     );
-    persistTokenPair(tokens);
+    const validated = requireFormalTokenPair<VerifiedGoogleRegistrationPayload>(tokens);
+    if (validated.needoId !== undefined && !/^u\d{10}$/.test(validated.needoId)) {
+      throw new Error("error.api");
+    }
+    persistTokenPair(validated);
 
-    return tokens;
+    return validated;
   },
 
   async getGoogleLinkStatus() {
@@ -525,28 +467,57 @@ export const authApi = {
     return refreshStoredAccessToken();
   },
 
-  async switchIdentity(identityId: number) {
-    const refreshToken = getStoredRefreshToken();
+  async refreshWithCredentials(refreshToken: string) {
+    const refreshed = await httpClient.request<RefreshPayload>(
+      authEndpointPaths.refresh,
+      {
+        auth: false,
+        body: { refreshToken },
+        method: "POST",
+        retryOnUnauthorized: false,
+        unauthorizedPolicy: "caller",
+      },
+    );
+
+    return requireFormalRefreshPayload(refreshed);
+  },
+
+  async switchIdentity(
+    identityId: number,
+    credentials?: AuthTransitionCredentials,
+    validation: AuthTransitionValidationContext = {},
+  ) {
+    const refreshToken = credentials?.refreshToken ?? getStoredRefreshToken();
     if (!refreshToken) {
       throw new Error("error.auth.refresh_missing");
     }
 
-    const tokens = await httpClient.request<SwitchIdentityPayload>(
+    const switched = await httpClient.request<SwitchIdentityPayload>(
       authEndpointPaths.switchIdentity,
       {
         auth: true,
         body: { refreshToken, identityId },
+        ...(credentials?.accessToken
+          ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
+          : {}),
         method: "POST",
         retryOnUnauthorized: false,
+        unauthorizedPolicy: "caller",
       },
     );
-    persistTokenPair(tokens);
 
-    return tokens;
+    return requireFormalSwitchIdentityPayload<SwitchIdentityPayload>(switched, {
+      ...validation,
+      expectedIdentityId: validation.expectedIdentityId ?? identityId,
+    });
   },
 
-  async switchMerchantShop(shopPublicId: string) {
-    const refreshToken = getStoredRefreshToken();
+  async switchMerchantShop(
+    shopPublicId: string,
+    credentials?: AuthTransitionCredentials,
+    validation?: Required<AuthTransitionValidationContext>,
+  ) {
+    const refreshToken = credentials?.refreshToken ?? getStoredRefreshToken();
     if (!refreshToken) {
       throw new Error("error.auth.refresh_missing");
     }
@@ -556,47 +527,62 @@ export const authApi = {
       {
         auth: true,
         body: { refreshToken, shopPublicId },
+        ...(credentials?.accessToken
+          ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
+          : {}),
         method: "POST",
         retryOnUnauthorized: false,
+        unauthorizedPolicy: "caller",
       },
     );
 
-    if (!isSwitchMerchantShopPayload(switched, shopPublicId)) {
-      throw new Error("error.api");
+    if (!validation) {
+      const me = requireFormalAuthMePayload(switched.me);
+      validation = {
+        expectedUserId: me.id,
+        expectedIdentityId: me.currentIdentity.id,
+      };
     }
 
-    persistTokenPair(switched);
-
-    return switched;
+    return requireFormalSwitchMerchantShopPayload<SwitchMerchantShopPayload>(
+      switched,
+      shopPublicId,
+      validation,
+    );
   },
 
-  async logout() {
-    const refreshToken = getStoredRefreshToken();
+  async logout(credentials?: AuthTransitionCredentials) {
+    const refreshToken = credentials?.refreshToken ?? getStoredRefreshToken();
     if (!refreshToken) {
-      clearAuthTokens();
       return {};
     }
 
-    try {
-      return await httpClient.request<Record<string, never>>(
-        authEndpointPaths.logout,
-        {
-          auth: true,
-          body: { refreshToken },
-          method: "POST",
-          retryOnUnauthorized: false,
-        },
-      );
-    } finally {
-      clearAuthTokens();
-    }
+    return httpClient.request<Record<string, never>>(
+      authEndpointPaths.logout,
+      {
+        auth: true,
+        body: { refreshToken },
+        ...(credentials?.accessToken
+          ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
+          : {}),
+        method: "POST",
+        retryOnUnauthorized: false,
+        unauthorizedPolicy: "caller",
+      },
+    );
   },
 
-  async me() {
-    return httpClient.request<AuthMePayload>(authEndpointPaths.me, {
+  async me(credentials?: AuthTransitionCredentials) {
+    const me = await httpClient.request<AuthMePayload>(authEndpointPaths.me, {
       auth: true,
+      ...(credentials?.accessToken
+        ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
+        : {}),
       method: "GET",
-      retryOnUnauthorized: true,
+      retryOnUnauthorized: credentials ? false : true,
+      ...(credentials ? { unauthorizedPolicy: "caller" as const } : {}),
     });
+
+    return requireFormalAuthMePayload(me);
   },
 };

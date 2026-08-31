@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   authApi,
+  type AuthTransitionCredentials,
   type GoogleCredentialResult,
   type RegistrationStartInput,
   type VerificationChallengeInput,
@@ -10,7 +11,10 @@ import {
   ApiClientError,
   clearAuthTokens,
   getAccessToken,
+  getAuthCredentialEpoch,
+  getAuthCredentialSnapshot,
   getStoredRefreshToken,
+  restoreAuthCredentialSnapshot,
   setAccessToken,
   setAuthExpiredHandler,
   setExpectedAuthUserId,
@@ -21,13 +25,20 @@ import type { PortalScope } from "./portal";
 import type { FeaturePermission } from "./featurePermissions";
 import { hasPortalFeaturePermission } from "./featurePermissions";
 import {
+  captureRememberedPortalAuthorizations,
   forgetAllRememberedPortalAuthorizations,
-  forgetRememberedPortalAuthorization,
   hasRememberedPortalAuthorization,
   readRememberedPortalRefreshToken,
   readRememberedPortalSession,
-  rememberPortalAuthorization
+  rememberPortalAuthorization,
+  restoreRememberedPortalAuthorizations
 } from "./portalAuthorization";
+import {
+  requireFormalAuthMePayload,
+  isFormalTokenPair,
+  requireFormalSwitchIdentityPayload,
+  requireFormalSwitchMerchantShopPayload
+} from "./authContract";
 import { purgeLegacyRememberedCredentials } from "./rememberCredentials";
 import {
   buildAuthSessionFromMe,
@@ -115,6 +126,49 @@ const legacySessionStorageKey = "needo.auth.session";
 const allPortals: PortalScope[] = ["user", "merchant", "technician", "business", "admin"];
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+type BrowserAuthStorageSnapshot = {
+  legacySessionLocal: string | null;
+  legacySessionTab: string | null;
+  portalLocal: string | null;
+  portalTab: string | null;
+};
+
+function captureBrowserAuthStorage(): BrowserAuthStorageSnapshot {
+  return {
+    legacySessionLocal: readBrowserStorage(legacySessionStorageKey, { silent: true }),
+    legacySessionTab: readBrowserStorage(legacySessionStorageKey, {
+      kind: "session",
+      silent: true
+    }),
+    portalLocal: readBrowserStorage(portalStorageKey, { silent: true }),
+    portalTab: readBrowserStorage(portalStorageKey, {
+      kind: "session",
+      silent: true
+    })
+  };
+}
+
+function restoreBrowserStorageValue(
+  key: string,
+  value: string | null,
+  kind: "local" | "session"
+) {
+  return value === null
+    ? removeBrowserStorage(key, { kind, silent: true })
+    : writeBrowserStorage(key, value, { kind, silent: true });
+}
+
+function restoreBrowserAuthStorage(snapshot: BrowserAuthStorageSnapshot) {
+  const results = [
+    restoreBrowserStorageValue(portalStorageKey, snapshot.portalLocal, "local"),
+    restoreBrowserStorageValue(portalStorageKey, snapshot.portalTab, "session"),
+    restoreBrowserStorageValue(legacySessionStorageKey, snapshot.legacySessionLocal, "local"),
+    restoreBrowserStorageValue(legacySessionStorageKey, snapshot.legacySessionTab, "session")
+  ];
+
+  return results.every(Boolean);
+}
 
 function normalizeStoredPortal(value: string | null | undefined): PortalScope {
   return allPortals.includes(value as PortalScope) ? (value as PortalScope) : "user";
@@ -220,82 +274,12 @@ function isVerificationChallenge(value: unknown): value is VerificationChallenge
   );
 }
 
-function isAuthIdentityPayload(value: unknown): value is AuthMePayload["currentIdentity"] {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const identity = value as Partial<AuthMePayload["currentIdentity"]>;
-
-  return (
-    typeof identity.id === "number" &&
-    Number.isInteger(identity.id) &&
-    (identity.publicId === null || typeof identity.publicId === "string") &&
-    typeof identity.type === "string" &&
-    identity.type.length > 0 &&
-    (identity.scopeId === null || (typeof identity.scopeId === "number" && Number.isInteger(identity.scopeId))) &&
-    (identity.scopeType === null || typeof identity.scopeType === "string")
-  );
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const me = value as Partial<AuthMePayload>;
-
-  return (
-    typeof me.id === "number" &&
-    typeof me.needoId === "string" &&
-    me.needoId.length > 0 &&
-    typeof me.primaryPublicId === "string" &&
-    me.primaryPublicId.length > 0 &&
-    typeof me.activeIdentityId === "number" &&
-    (me.activePublicId === null || typeof me.activePublicId === "string") &&
-    typeof me.email === "string" &&
-    (me.emailVerifiedAt === null || typeof me.emailVerifiedAt === "string") &&
-    typeof me.hasPassword === "boolean" &&
-    typeof me.username === "string" &&
-    (me.avatarUrl === null || typeof me.avatarUrl === "string") &&
-    typeof me.isActive === "boolean" &&
-    isAuthIdentityPayload(me.currentIdentity) &&
-    Array.isArray(me.identities) &&
-    me.identities.length > 0 &&
-    me.identities.every(isAuthIdentityPayload) &&
-    me.identities.some((identity) => identity.id === me.currentIdentity?.id) &&
-    me.activeIdentityId === me.currentIdentity?.id &&
-    me.activePublicId === me.currentIdentity?.publicId &&
-    isStringArray(me.roles) &&
-    isStringArray(me.permissions) &&
-    isStringArray(me.menus) &&
-    (me.identityAvailability === undefined || Array.isArray(me.identityAvailability))
-  );
-}
-
-function requireFormalAuthMePayload(value: unknown, errorKey = "error.api"): AuthMePayload {
-  if (!isFormalAuthMePayload(value)) {
-    throw new Error(errorKey);
-  }
-
-  return value;
-}
-
 function isAuthenticatedGoogleResult(
   result: GoogleCredentialResult
 ): result is Extract<GoogleCredentialResult, { status: "authenticated" }> {
   return (
     result.status === "authenticated" &&
-    typeof result.accessToken === "string" &&
-    result.accessToken.length > 0 &&
-    typeof result.refreshToken === "string" &&
-    result.refreshToken.length > 0 &&
-    typeof result.expiresIn === "number" &&
-    result.expiresIn > 0
+    isFormalTokenPair(result)
   );
 }
 
@@ -307,141 +291,370 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [restoreRevision, setRestoreRevision] = useState(0);
   const sessionRestoreInFlightRef = useRef<Promise<void> | null>(null);
   const sessionRef = useRef<AuthSession | null>(null);
+  const restoreErrorRef = useRef<string | null>(null);
   const authOperationRevisionRef = useRef(0);
-  const committedAuthStateRef = useRef<{
-    accessToken: string | null;
-    refreshToken: string | null;
-    session: AuthSession | null;
+  const activeAuthOperationRevisionRef = useRef<number | null>(null);
+  const authGenerationRef = useRef(0);
+  const transitionTailRef = useRef<Promise<void>>(Promise.resolve());
+  const [initialCredentialSnapshot] = useState(() => getAuthCredentialSnapshot());
+  const queuedCredentialsRef = useRef<{
+    credentials: AuthTransitionCredentials | null;
+    epoch: number;
   }>({
-    accessToken: getAccessToken(),
-    refreshToken: getStoredRefreshToken(),
-    session: null
+    credentials: initialCredentialSnapshot.refreshToken
+      ? {
+          accessToken: initialCredentialSnapshot.accessToken,
+          refreshToken: initialCredentialSnapshot.refreshToken
+        }
+      : null,
+    epoch: initialCredentialSnapshot.authCredentialEpoch
   });
 
-  const clearSession = useCallback(() => {
+  const updateRestoreError = useCallback((value: string | null) => {
+    restoreErrorRef.current = value;
+    setRestoreError(value);
+  }, []);
+
+  const synchronizeQueuedCredentials = useCallback(() => {
+    const credentials = getAuthCredentialSnapshot();
+    queuedCredentialsRef.current = {
+      credentials: credentials.refreshToken
+        ? {
+            accessToken: credentials.accessToken,
+            refreshToken: credentials.refreshToken
+          }
+        : null,
+      epoch: credentials.authCredentialEpoch
+    };
+  }, []);
+
+  const invalidateAuthTransitions = useCallback(() => {
+    authGenerationRef.current += 1;
     authOperationRevisionRef.current += 1;
+  }, []);
+
+  const clearSession = useCallback(() => {
+    invalidateAuthTransitions();
     clearAuthTokens();
     sessionRef.current = null;
-    committedAuthStateRef.current = {
-      accessToken: null,
-      refreshToken: null,
-      session: null
-    };
     setSession(null);
-    setRestoreError(null);
+    updateRestoreError(null);
     removeBrowserStorage(portalStorageKey, { silent: true });
     removeBrowserStorage(portalStorageKey, { kind: "session", silent: true });
     removeBrowserStorage(legacySessionStorageKey, { silent: true });
     removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true });
-  }, []);
+    synchronizeQueuedCredentials();
+  }, [invalidateAuthTransitions, synchronizeQueuedCredentials, updateRestoreError]);
 
   const persistSession = useCallback((nextSession: AuthSession) => {
+    const browserSnapshot = captureBrowserAuthStorage();
+    const rememberedSnapshot = captureRememberedPortalAuthorizations();
+    const storageResults = [
+      removeBrowserStorage(portalStorageKey, { silent: true }),
+      removeBrowserStorage(legacySessionStorageKey, { silent: true }),
+      writeBrowserStorage(portalStorageKey, nextSession.portal, {
+        kind: "session",
+        silent: true
+      }),
+      writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), {
+        kind: "session",
+        silent: true
+      }),
+      rememberPortalAuthorization(nextSession, getStoredRefreshToken())
+    ];
+
+    if (!storageResults.every(Boolean)) {
+      restoreBrowserAuthStorage(browserSnapshot);
+      restoreRememberedPortalAuthorizations(rememberedSnapshot);
+      return false;
+    }
+
     setExpectedAuthUserId(nextSession.id);
     sessionRef.current = nextSession;
     setSession(nextSession);
-    removeBrowserStorage(portalStorageKey, { silent: true });
-    removeBrowserStorage(legacySessionStorageKey, { silent: true });
-    writeBrowserStorage(portalStorageKey, nextSession.portal, {
-      kind: "session",
-      silent: true
+    synchronizeQueuedCredentials();
+    return true;
+  }, [synchronizeQueuedCredentials]);
+
+  const enqueueAuthTransition = useCallback(<TResult,>(
+    run: (context: {
+      credentials: AuthTransitionCredentials;
+      generation: number;
+      operationRevision: number;
+    }) => Promise<TResult>,
+    providedCredentials?: AuthTransitionCredentials
+  ) => {
+    const generation = authGenerationRef.current;
+    const operationRevision = ++authOperationRevisionRef.current;
+    const execute = transitionTailRef.current.then(async () => {
+      if (generation !== authGenerationRef.current) {
+        throw new Error("error.auth.operation_superseded");
+      }
+
+      if (getAuthCredentialEpoch() !== queuedCredentialsRef.current.epoch) {
+        invalidateAuthTransitions();
+        synchronizeQueuedCredentials();
+        throw new Error("error.auth.operation_superseded");
+      }
+
+      const credentials = providedCredentials ?? queuedCredentialsRef.current.credentials;
+      if (!credentials) {
+        throw new Error("error.auth.service_unavailable");
+      }
+
+      activeAuthOperationRevisionRef.current = operationRevision;
+      try {
+        return await run({ credentials, generation, operationRevision });
+      } catch (error) {
+        if (
+          generation !== authGenerationRef.current ||
+          getAuthCredentialEpoch() !== queuedCredentialsRef.current.epoch
+        ) {
+          if (generation === authGenerationRef.current) {
+            invalidateAuthTransitions();
+            synchronizeQueuedCredentials();
+          }
+          throw new Error("error.auth.operation_superseded");
+        }
+        throw error;
+      } finally {
+        if (activeAuthOperationRevisionRef.current === operationRevision) {
+          activeAuthOperationRevisionRef.current = null;
+        }
+      }
     });
-    writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), {
-      kind: "session",
-      silent: true
-    });
-    rememberPortalAuthorization(nextSession, getStoredRefreshToken());
-    committedAuthStateRef.current = {
-      accessToken: getAccessToken(),
-      refreshToken: getStoredRefreshToken(),
-      session: nextSession
+
+    transitionTailRef.current = execute.then(
+      () => undefined,
+      () => undefined
+    );
+
+    return execute;
+  }, [invalidateAuthTransitions, synchronizeQueuedCredentials]);
+
+  const commitAuthTransition = useCallback((input: {
+    accessToken: string;
+    generation: number;
+    nextSession: AuthSession;
+    operationRevision: number;
+    refreshToken: string;
+    snapshot: {
+      browser: BrowserAuthStorageSnapshot;
+      credentials: ReturnType<typeof getAuthCredentialSnapshot>;
+      remembered: ReturnType<typeof captureRememberedPortalAuthorizations>;
+      restoreError: string | null;
+      session: AuthSession | null;
     };
-  }, []);
-
-  const restoreCommittedAuthState = useCallback(() => {
-    const committed = committedAuthStateRef.current;
-
-    setAccessToken(committed.accessToken);
-    setStoredRefreshToken(committed.refreshToken);
-
-    if (committed.session) {
-      persistSession(committed.session);
-      return;
+  }) => {
+    if (
+      input.generation !== authGenerationRef.current ||
+      activeAuthOperationRevisionRef.current !== input.operationRevision ||
+      getAuthCredentialEpoch() !== queuedCredentialsRef.current.epoch
+    ) {
+      return false;
     }
 
-    clearAuthTokens();
+    const persisted = [
+      setAccessToken(input.accessToken),
+      setStoredRefreshToken(input.refreshToken),
+      removeBrowserStorage(portalStorageKey, { silent: true }),
+      removeBrowserStorage(legacySessionStorageKey, { silent: true }),
+      writeBrowserStorage(portalStorageKey, input.nextSession.portal, {
+        kind: "session",
+        silent: true
+      }),
+      writeBrowserStorage(legacySessionStorageKey, JSON.stringify(input.nextSession), {
+        kind: "session",
+        silent: true
+      }),
+      rememberPortalAuthorization(input.nextSession, input.refreshToken)
+    ].every(Boolean);
+
+    if (!persisted) {
+      if (
+        input.generation === authGenerationRef.current &&
+        activeAuthOperationRevisionRef.current === input.operationRevision
+      ) {
+        restoreAuthCredentialSnapshot(input.snapshot.credentials);
+        restoreBrowserAuthStorage(input.snapshot.browser);
+        restoreRememberedPortalAuthorizations(input.snapshot.remembered);
+        sessionRef.current = input.snapshot.session;
+        setSession(input.snapshot.session);
+        updateRestoreError(input.snapshot.restoreError);
+        synchronizeQueuedCredentials();
+      }
+      return false;
+    }
+
+    setExpectedAuthUserId(input.nextSession.id);
+    sessionRef.current = input.nextSession;
+    setSession(input.nextSession);
+    updateRestoreError(null);
+    synchronizeQueuedCredentials();
+    return true;
+  }, [synchronizeQueuedCredentials, updateRestoreError]);
+
+  const captureAuthTransitionSnapshot = useCallback(() => ({
+    browser: captureBrowserAuthStorage(),
+    credentials: getAuthCredentialSnapshot(),
+    remembered: captureRememberedPortalAuthorizations(),
+    restoreError: restoreErrorRef.current,
+    session: sessionRef.current
+  }), []);
+
+  const ensureAuthTransitionCurrent = useCallback((
+    generation: number,
+    operationRevision: number
+  ) => {
+    if (
+      generation === authGenerationRef.current &&
+      activeAuthOperationRevisionRef.current === operationRevision &&
+      getAuthCredentialEpoch() === queuedCredentialsRef.current.epoch
+    ) {
+      return true;
+    }
+
+    if (generation === authGenerationRef.current) {
+      invalidateAuthTransitions();
+      synchronizeQueuedCredentials();
+    }
+
+    return false;
+  }, [invalidateAuthTransitions, synchronizeQueuedCredentials]);
+
+  const commitLogoutTransition = useCallback((
+    generation: number,
+    operationRevision: number,
+    snapshot: ReturnType<typeof captureAuthTransitionSnapshot>
+  ) => {
+    if (!ensureAuthTransitionCurrent(generation, operationRevision)) {
+      return false;
+    }
+
+    const cleared = [
+      clearAuthTokens(),
+      removeBrowserStorage(portalStorageKey, { silent: true }),
+      removeBrowserStorage(portalStorageKey, { kind: "session", silent: true }),
+      removeBrowserStorage(legacySessionStorageKey, { silent: true }),
+      removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true }),
+      forgetAllRememberedPortalAuthorizations()
+    ].every(Boolean);
+
+    if (!cleared) {
+      if (
+        generation === authGenerationRef.current &&
+        activeAuthOperationRevisionRef.current === operationRevision
+      ) {
+        restoreAuthCredentialSnapshot(snapshot.credentials);
+        restoreBrowserAuthStorage(snapshot.browser);
+        restoreRememberedPortalAuthorizations(snapshot.remembered);
+        sessionRef.current = snapshot.session;
+        setSession(snapshot.session);
+        updateRestoreError(snapshot.restoreError);
+        synchronizeQueuedCredentials();
+      }
+      return false;
+    }
+
+    invalidateAuthTransitions();
     sessionRef.current = null;
     setSession(null);
-    removeBrowserStorage(portalStorageKey, { silent: true });
-    removeBrowserStorage(portalStorageKey, { kind: "session", silent: true });
-    removeBrowserStorage(legacySessionStorageKey, { silent: true });
-    removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true });
-  }, [persistSession]);
+    updateRestoreError(null);
+    synchronizeQueuedCredentials();
+    return true;
+  }, [ensureAuthTransitionCurrent, invalidateAuthTransitions, synchronizeQueuedCredentials, updateRestoreError]);
 
   const restoreRememberedPortalSession = useCallback(
     async (portal: PortalScope): Promise<AuthActionResult> => {
       const targetRefreshToken = readRememberedPortalRefreshToken(portal);
+      const rememberedSession = readRememberedPortalSession(portal);
 
-      if (!targetRefreshToken) {
+      if (!targetRefreshToken || !rememberedSession) {
         return { ok: false, message: "error.auth.portal_forbidden" };
       }
 
-      const previousSession = session;
-      const previousRefreshToken = getStoredRefreshToken();
-
-      setStoredRefreshToken(targetRefreshToken);
-      setAccessToken(null);
-
       try {
-        await authApi.refresh();
-        let me = requireFormalAuthMePayload(await authApi.me());
-        const rememberedSession = readRememberedPortalSession(portal);
-        const portalIdentity = findIdentityForPortal(
-          [me.currentIdentity, ...me.identities],
-          portal
-        );
-        if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
-          me = requireFormalAuthMePayload((await authApi.switchIdentity(portalIdentity.id)).me);
-        }
-        const nextSession = buildAuthSessionFromMe(
-          me,
-          portal,
-          rememberedSession?.loginMethod ?? previousSession?.loginMethod ?? "password"
-        );
+        return await enqueueAuthTransition(async ({ generation, operationRevision }) => {
+          const snapshot = captureAuthTransitionSnapshot();
+          const refreshed = await authApi.refreshWithCredentials(targetRefreshToken);
+          let nextCredentials: AuthTransitionCredentials = {
+            accessToken: refreshed.accessToken,
+            refreshToken: targetRefreshToken
+          };
+          let me = requireFormalAuthMePayload(await authApi.me(nextCredentials));
+          if (
+            !ensureAuthTransitionCurrent(generation, operationRevision) ||
+            me.id !== rememberedSession.id
+          ) {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
 
-        if (
-          !canAccessPortalFromSession(nextSession, portal) ||
-          !isSessionAlignedWithPortal(nextSession, portal)
-        ) {
-          throw new Error("error.auth.portal_forbidden");
-        }
+          const portalIdentity = findIdentityForPortal(
+            [me.currentIdentity, ...me.identities],
+            portal
+          );
+          if (!portalIdentity) {
+            throw new Error("error.auth.portal_forbidden");
+          }
 
-        persistSession(nextSession);
+          if (portalIdentity.id !== me.currentIdentity.id) {
+            const switchedResponse = await authApi.switchIdentity(
+              portalIdentity.id,
+              nextCredentials,
+              {
+                expectedIdentityId: portalIdentity.id,
+                expectedUserId: rememberedSession.id
+              }
+            );
+            const switched = requireFormalSwitchIdentityPayload(switchedResponse, {
+              expectedIdentityId: portalIdentity.id,
+              expectedUserId: rememberedSession.id
+            });
+            if (!ensureAuthTransitionCurrent(generation, operationRevision)) {
+              return { ok: false, message: "error.auth.operation_superseded" };
+            }
+            me = switched.me;
+            nextCredentials = {
+              accessToken: switched.accessToken,
+              refreshToken: switched.refreshToken
+            };
+          }
 
-        return { ok: true, session: nextSession };
+          const nextSession = buildAuthSessionFromMe(
+            me,
+            portal,
+            rememberedSession.loginMethod
+          );
+          if (
+            !canAccessPortalFromSession(nextSession, portal) ||
+            !isSessionAlignedWithPortal(nextSession, portal)
+          ) {
+            throw new Error("error.auth.portal_forbidden");
+          }
+
+          if (!commitAuthTransition({
+            accessToken: nextCredentials.accessToken ?? "",
+            generation,
+            nextSession,
+            operationRevision,
+            refreshToken: nextCredentials.refreshToken,
+            snapshot
+          })) {
+            return { ok: false, message: "error.auth.storage_unavailable" };
+          }
+
+          return { ok: true, session: nextSession };
+        }, { accessToken: null, refreshToken: targetRefreshToken });
       } catch (error) {
-        forgetRememberedPortalAuthorization(portal);
-
-        if (previousRefreshToken) {
-          setStoredRefreshToken(previousRefreshToken);
-          setAccessToken(null);
-        } else {
-          clearAuthTokens();
-        }
-
-        if (previousSession) {
-          persistSession(previousSession);
-        } else {
-          setSession(null);
-          removeBrowserStorage(portalStorageKey, { silent: true });
-          removeBrowserStorage(portalStorageKey, { kind: "session", silent: true });
-          removeBrowserStorage(legacySessionStorageKey, { silent: true });
-          removeBrowserStorage(legacySessionStorageKey, { kind: "session", silent: true });
-        }
-
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [persistSession, session]
+    [
+      captureAuthTransitionSnapshot,
+      commitAuthTransition,
+      enqueueAuthTransition,
+      ensureAuthTransitionCurrent
+    ]
   );
 
   const completeAuthenticatedSession = useCallback(
@@ -453,16 +666,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       preserveTransientFailure = false
     ): Promise<AuthActionResult> => {
       try {
-        let me = requireFormalAuthMePayload(providedMe ?? (await authApi.me()), errorFallback);
+        const me = requireFormalAuthMePayload(providedMe ?? (await authApi.me()), errorFallback);
         const portalIdentity = findIdentityForPortal(
           [me.currentIdentity, ...me.identities],
           requestedPortal
         );
-        if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
-          me = requireFormalAuthMePayload((await authApi.switchIdentity(portalIdentity.id)).me, errorFallback);
+        if (portalIdentity && portalIdentity.id !== me.currentIdentity.id) {
+          return await enqueueAuthTransition(async ({ credentials, generation, operationRevision }) => {
+            const snapshot = captureAuthTransitionSnapshot();
+            const switchedResponse = await authApi.switchIdentity(
+              portalIdentity.id,
+              credentials,
+              {
+                expectedIdentityId: portalIdentity.id,
+                expectedUserId: me.id
+              }
+            );
+            const switched = requireFormalSwitchIdentityPayload(switchedResponse, {
+              expectedIdentityId: portalIdentity.id,
+              expectedUserId: me.id
+            });
+            if (!ensureAuthTransitionCurrent(generation, operationRevision)) {
+              return { ok: false, message: "error.auth.operation_superseded" };
+            }
+
+            const nextSession = buildAuthSessionFromMe(
+              switched.me,
+              requestedPortal,
+              loginMethod
+            );
+            if (!commitAuthTransition({
+              accessToken: switched.accessToken,
+              generation,
+              nextSession,
+              operationRevision,
+              refreshToken: switched.refreshToken,
+              snapshot
+            })) {
+              return { ok: false, message: "error.auth.storage_unavailable" };
+            }
+
+            return { ok: true, session: nextSession };
+          });
         }
         const nextSession = buildAuthSessionFromMe(me, requestedPortal, loginMethod);
-        persistSession(nextSession);
+        if (!persistSession(nextSession)) {
+          throw new Error("error.auth.storage_unavailable");
+        }
 
         return { ok: true, session: nextSession };
       } catch (error) {
@@ -481,7 +731,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    [clearSession, persistSession]
+    [
+      captureAuthTransitionSnapshot,
+      clearSession,
+      commitAuthTransition,
+      enqueueAuthTransition,
+      ensureAuthTransitionCurrent,
+      persistSession
+    ]
   );
 
   useEffect(() => {
@@ -495,7 +752,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();
 
     if (session && !shouldRefreshAccessToken) {
-      setRestoreError(null);
+      updateRestoreError(null);
       setIsRestoring(false);
       return;
     }
@@ -504,7 +761,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session && !getAccessToken()) {
         clearSession();
       }
-      setRestoreError(null);
+      updateRestoreError(null);
       setIsRestoring(false);
       return;
     }
@@ -517,6 +774,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const restoreRequest = (async () => {
       try {
         await authApi.refresh();
+        synchronizeQueuedCredentials();
         const restorePortal = session?.portal ?? storedSessionForInitialRestore?.portal ?? readStoredPortal();
         const restoreLoginMethod = session?.loginMethod ?? storedSessionForInitialRestore?.loginMethod ?? "password";
         const restored = await completeAuthenticatedSession(
@@ -529,15 +787,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!restored.ok) {
           if (getStoredRefreshToken()) {
-            setRestoreError(restored.message);
+            updateRestoreError(restored.message);
           }
           return;
         }
 
-        setRestoreError(null);
+        updateRestoreError(null);
       } catch (error) {
         if (isTransientAuthRestoreError(error) && getStoredRefreshToken()) {
-          setRestoreError("error.auth.service_unavailable");
+          updateRestoreError("error.auth.service_unavailable");
         } else {
           clearSession();
         }
@@ -551,7 +809,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsRestoring(false);
       }
     });
-  }, [clearSession, completeAuthenticatedSession, restoreRevision, session, storedSessionForInitialRestore]);
+  }, [clearSession, completeAuthenticatedSession, restoreRevision, session, storedSessionForInitialRestore, synchronizeQueuedCredentials, updateRestoreError]);
 
   const retrySessionRestore = useCallback(() => {
     if (!getStoredRefreshToken()) {
@@ -559,16 +817,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setRestoreError(null);
+    updateRestoreError(null);
     setIsRestoring(true);
     setRestoreRevision((current) => current + 1);
-  }, [clearSession]);
+  }, [clearSession, updateRestoreError]);
 
   const login = useCallback(
     async (portal: PortalScope, email: string, password: string, captchaCode?: string): Promise<AuthActionResult> => {
+      invalidateAuthTransitions();
       setExpectedAuthUserId(null);
       try {
         const loginPayload = await authApi.login(email, password, captchaCode);
+        synchronizeQueuedCredentials();
 
         return completeAuthenticatedSession(portal, "password", loginPayload.me);
       } catch (error) {
@@ -577,14 +837,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession, completeAuthenticatedSession]
+    [clearSession, completeAuthenticatedSession, invalidateAuthTransitions, synchronizeQueuedCredentials]
   );
 
   const loginWithFormalPassword = useCallback(
     async (portal: PortalScope, username: string, password: string): Promise<AuthActionResult> => {
+      invalidateAuthTransitions();
       setExpectedAuthUserId(null);
       try {
         const loginPayload = await authApi.loginFormal(username, password);
+        synchronizeQueuedCredentials();
 
         return completeAuthenticatedSession(portal, "password", loginPayload.me);
       } catch (error) {
@@ -593,7 +855,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession, completeAuthenticatedSession]
+    [clearSession, completeAuthenticatedSession, invalidateAuthTransitions, synchronizeQueuedCredentials]
   );
 
   const startRegistration = useCallback(
@@ -622,8 +884,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyRegistration = useCallback(
     async (input: VerificationChallengeInput): Promise<VerifiedRegistrationActionResult> => {
+      invalidateAuthTransitions();
       try {
         const verified = await authApi.verifyRegistration(input);
+        synchronizeQueuedCredentials();
         if (typeof verified.needoId !== "string" || !verified.needoId) {
           throw new Error("error.api");
         }
@@ -640,7 +904,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession, completeAuthenticatedSession]
+    [clearSession, completeAuthenticatedSession, invalidateAuthTransitions, synchronizeQueuedCredentials]
   );
 
   const loginWithGoogle = useCallback(
@@ -672,18 +936,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "error.auth.google_api_unavailable" };
       }
 
+      invalidateAuthTransitions();
+      synchronizeQueuedCredentials();
       setExpectedAuthUserId(null);
       const completed = await completeAuthenticatedSession(requestedPortal, "google", undefined, "error.auth.google_api_unavailable");
 
       return completed.ok ? { ...completed, status: "authenticated" } : completed;
     },
-    [clearSession, completeAuthenticatedSession]
+    [clearSession, completeAuthenticatedSession, invalidateAuthTransitions, synchronizeQueuedCredentials]
   );
 
   const verifyGoogleRegistrationOrLink = useCallback(
     async (input: VerificationChallengeInput, requestedPortal: PortalScope = "user"): Promise<AuthenticatedAuthActionResult> => {
+      invalidateAuthTransitions();
       try {
         const verified = await authApi.verifyGoogleRegistrationOrLink(input);
+        synchronizeQueuedCredentials();
         const completed = await completeAuthenticatedSession(requestedPortal, "google", undefined, "error.auth.google_api_unavailable");
 
         if (completed.ok && verified.needoId && !findIdentityForPortal([completed.session.currentIdentity], "user")) {
@@ -700,7 +968,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    [clearSession, completeAuthenticatedSession]
+    [clearSession, completeAuthenticatedSession, invalidateAuthTransitions, synchronizeQueuedCredentials]
   );
 
   const sendVerificationCode = useCallback(async () => {
@@ -720,15 +988,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    const logoutRequest = authApi.logout().catch(() => undefined);
-    forgetAllRememberedPortalAuthorizations();
-    clearSession();
-    await logoutRequest;
-  }, [clearSession]);
+    try {
+      await enqueueAuthTransition(async ({ credentials, generation, operationRevision }) => {
+        const snapshot = captureAuthTransitionSnapshot();
+
+        await authApi.logout(credentials).catch(() => undefined);
+        commitLogoutTransition(generation, operationRevision, snapshot);
+      });
+    } catch {
+      // A newer login/logout generation owns the current session.
+    }
+  }, [captureAuthTransitionSnapshot, commitLogoutTransition, enqueueAuthTransition]);
 
   const switchPortal = useCallback(
     async (portal: PortalScope): Promise<AuthActionResult> => {
-      if (!session || !canAccessPortalFromSession(session, portal)) {
+      const requestedFromSession = sessionRef.current;
+      if (!requestedFromSession || !canAccessPortalFromSession(requestedFromSession, portal)) {
         const restored = await restoreRememberedPortalSession(portal);
 
         if (restored.ok) {
@@ -738,165 +1013,247 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: restored.message };
       }
 
-      if (isSessionAlignedWithPortal(session, portal)) {
-        return { ok: true, session };
+      if (isSessionAlignedWithPortal(requestedFromSession, portal)) {
+        return { ok: true, session: requestedFromSession };
       }
 
-      const portalIdentity = findIdentityForPortal(session.identities, portal);
+      const portalIdentity = findIdentityForPortal(requestedFromSession.identities, portal);
 
       if (!portalIdentity) {
         return { ok: false, message: "error.auth.portal_forbidden" };
       }
 
-      if (portalIdentity.id === session.currentIdentity.id) {
+      if (portalIdentity.id === requestedFromSession.currentIdentity.id) {
         const nextLocalSession = {
-          ...session,
+          ...requestedFromSession,
           portal
         };
-        persistSession(nextLocalSession);
+        if (!persistSession(nextLocalSession)) {
+          return { ok: false, message: "error.auth.storage_unavailable" };
+        }
         return { ok: true, session: nextLocalSession };
       }
 
-      if (!getAccessToken() || !getStoredRefreshToken()) {
-        return { ok: false, message: "error.auth.service_unavailable" };
-      }
-
-      const operationRevision = ++authOperationRevisionRef.current;
-      let identitySwitchCompleted = false;
-
       try {
-        const switched = await authApi.switchIdentity(portalIdentity.id);
-        identitySwitchCompleted = true;
+        return await enqueueAuthTransition(async ({ credentials, generation, operationRevision }) => {
+          const currentSession = sessionRef.current;
+          if (!currentSession || !canAccessPortalFromSession(currentSession, portal)) {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
 
-        if (operationRevision !== authOperationRevisionRef.current) {
-          restoreCommittedAuthState();
-          return { ok: false, message: "error.auth.operation_superseded" };
-        }
+          const currentPortalIdentity = findIdentityForPortal(currentSession.identities, portal);
+          if (!currentPortalIdentity || currentPortalIdentity.id !== portalIdentity.id) {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
 
-        const nextSession = buildAuthSessionFromMe(requireFormalAuthMePayload(switched.me), portal, session.loginMethod);
-        persistSession(nextSession);
+          const snapshot = captureAuthTransitionSnapshot();
+          const switchedResponse = await authApi.switchIdentity(
+            currentPortalIdentity.id,
+            credentials,
+            {
+              expectedIdentityId: currentPortalIdentity.id,
+              expectedUserId: currentSession.id
+            }
+          );
+          const switched = requireFormalSwitchIdentityPayload(switchedResponse, {
+            expectedIdentityId: currentPortalIdentity.id,
+            expectedUserId: currentSession.id
+          });
 
-        return { ok: true, session: nextSession };
+          if (!ensureAuthTransitionCurrent(generation, operationRevision)) {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
+
+          const nextSession = buildAuthSessionFromMe(
+            requireFormalAuthMePayload(switched.me),
+            portal,
+            currentSession.loginMethod
+          );
+          if (!commitAuthTransition({
+            accessToken: switched.accessToken,
+            generation,
+            nextSession,
+            operationRevision,
+            refreshToken: switched.refreshToken,
+            snapshot
+          })) {
+            return { ok: false, message: "error.auth.storage_unavailable" };
+          }
+
+          return { ok: true, session: nextSession };
+        });
       } catch (error) {
-        if (operationRevision !== authOperationRevisionRef.current) {
-          restoreCommittedAuthState();
-          return { ok: false, message: "error.auth.operation_superseded" };
-        }
-
-        if (identitySwitchCompleted) {
-          clearSession();
-        }
-
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession, persistSession, restoreCommittedAuthState, restoreRememberedPortalSession, session]
+    [
+      captureAuthTransitionSnapshot,
+      commitAuthTransition,
+      enqueueAuthTransition,
+      ensureAuthTransitionCurrent,
+      persistSession,
+      restoreRememberedPortalSession
+    ]
   );
 
   const switchMerchantShop = useCallback(
     async (
       shopPublicId: string
     ): Promise<AuthActionResult & { shopPublicId?: string }> => {
-      const currentSession = sessionRef.current;
-
-      if (!currentSession || currentSession.portal !== "merchant") {
+      if (!sessionRef.current || sessionRef.current.portal !== "merchant") {
         return { ok: false, message: "error.auth.portal_forbidden" };
       }
 
-      if (!getAccessToken() || !getStoredRefreshToken()) {
-        return { ok: false, message: "error.auth.service_unavailable" };
-      }
-
-      const operationRevision = ++authOperationRevisionRef.current;
-
       try {
-        const switched = await authApi.switchMerchantShop(shopPublicId);
+        return await enqueueAuthTransition(async ({ credentials, generation, operationRevision }) => {
+          const currentSession = sessionRef.current;
+          if (!currentSession || currentSession.portal !== "merchant") {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
 
-        if (operationRevision !== authOperationRevisionRef.current) {
-          restoreCommittedAuthState();
-          return { ok: false, message: "error.auth.operation_superseded" };
-        }
+          const snapshot = captureAuthTransitionSnapshot();
+          const switchedResponse = await authApi.switchMerchantShop(
+            shopPublicId,
+            credentials,
+            {
+              expectedIdentityId: currentSession.currentIdentity.id,
+              expectedUserId: currentSession.id
+            }
+          );
+          const switched = requireFormalSwitchMerchantShopPayload(
+            switchedResponse,
+            shopPublicId,
+            {
+              expectedIdentityId: currentSession.currentIdentity.id,
+              expectedUserId: currentSession.id
+            }
+          );
 
-        if (
-          typeof switched.shopPublicId !== "string" ||
-          !/^shop\d{10}$/.test(switched.shopPublicId) ||
-          switched.shopPublicId !== shopPublicId
-        ) {
-          throw new Error("error.api");
-        }
+          if (!ensureAuthTransitionCurrent(generation, operationRevision)) {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
 
-        const nextSession = {
-          ...buildAuthSessionFromMe(
-            requireFormalAuthMePayload(switched.me),
-            "merchant",
-            currentSession.loginMethod
-          ),
-          merchantShopPublicId: switched.shopPublicId
-        };
-        persistSession(nextSession);
+          const nextSession = {
+            ...buildAuthSessionFromMe(
+              requireFormalAuthMePayload(switched.me),
+              "merchant",
+              currentSession.loginMethod
+            ),
+            merchantShopPublicId: switched.shopPublicId
+          };
+          if (!commitAuthTransition({
+            accessToken: switched.accessToken,
+            generation,
+            nextSession,
+            operationRevision,
+            refreshToken: switched.refreshToken,
+            snapshot
+          })) {
+            return { ok: false, message: "error.auth.storage_unavailable" };
+          }
 
-        return {
-          ok: true,
-          session: nextSession,
-          shopPublicId: switched.shopPublicId
-        };
+          return {
+            ok: true,
+            session: nextSession,
+            shopPublicId: switched.shopPublicId
+          };
+        });
       } catch (error) {
-        restoreCommittedAuthState();
-
-        if (operationRevision !== authOperationRevisionRef.current) {
-          return { ok: false, message: "error.auth.operation_superseded" };
-        }
-
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [persistSession, restoreCommittedAuthState]
+    [
+      captureAuthTransitionSnapshot,
+      commitAuthTransition,
+      enqueueAuthTransition,
+      ensureAuthTransitionCurrent
+    ]
   );
 
   const refreshSession = useCallback(
     async (requestedPortal?: PortalScope): Promise<AuthActionResult> => {
-      if (!session) {
+      if (!sessionRef.current) {
         return { ok: false, message: "error.auth.unauthorized" };
       }
 
-      let identitySwitchCompleted = false;
-      const operationRevision = ++authOperationRevisionRef.current;
-
       try {
-        let me = requireFormalAuthMePayload(await authApi.me());
-        const targetPortal = requestedPortal ?? session.portal;
-        const portalIdentity = findIdentityForPortal(
-          [me.currentIdentity, ...me.identities],
-          targetPortal
-        );
-        if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
-          const switched = await authApi.switchIdentity(portalIdentity.id);
-          identitySwitchCompleted = true;
-          me = requireFormalAuthMePayload(switched.me);
-        }
+        return await enqueueAuthTransition(async ({ credentials, generation, operationRevision }) => {
+          const currentSession = sessionRef.current;
+          if (!currentSession) {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
 
-        if (operationRevision !== authOperationRevisionRef.current) {
-          restoreCommittedAuthState();
-          return { ok: false, message: "error.auth.operation_superseded" };
-        }
+          const snapshot = captureAuthTransitionSnapshot();
+          let me = requireFormalAuthMePayload(await authApi.me(credentials));
+          if (!ensureAuthTransitionCurrent(generation, operationRevision) || me.id !== currentSession.id) {
+            return { ok: false, message: "error.auth.operation_superseded" };
+          }
 
-        const nextSession = buildAuthSessionFromMe(me, targetPortal, session.loginMethod);
-        persistSession(nextSession);
-        return { ok: true, session: nextSession };
+          const targetPortal = requestedPortal ?? currentSession.portal;
+          const portalIdentity = findIdentityForPortal(
+            [me.currentIdentity, ...me.identities],
+            targetPortal
+          );
+          let nextCredentials = credentials;
+          let identityChanged = false;
+          if (portalIdentity && portalIdentity.id !== me.currentIdentity.id) {
+            const switchedResponse = await authApi.switchIdentity(
+              portalIdentity.id,
+              credentials,
+              {
+                expectedIdentityId: portalIdentity.id,
+                expectedUserId: currentSession.id
+              }
+            );
+            const switched = requireFormalSwitchIdentityPayload(switchedResponse, {
+              expectedIdentityId: portalIdentity.id,
+              expectedUserId: currentSession.id
+            });
+            if (!ensureAuthTransitionCurrent(generation, operationRevision)) {
+              return { ok: false, message: "error.auth.operation_superseded" };
+            }
+            me = requireFormalAuthMePayload(switched.me);
+            nextCredentials = {
+              accessToken: switched.accessToken,
+              refreshToken: switched.refreshToken
+            };
+            identityChanged = true;
+          }
+
+          const nextSession = {
+            ...buildAuthSessionFromMe(me, targetPortal, currentSession.loginMethod),
+            ...(!identityChanged &&
+            targetPortal === "merchant" &&
+            currentSession.portal === "merchant" &&
+            currentSession.id === me.id &&
+            currentSession.currentIdentity.id === me.currentIdentity.id &&
+            currentSession.merchantShopPublicId
+              ? { merchantShopPublicId: currentSession.merchantShopPublicId }
+              : {})
+          };
+          if (!commitAuthTransition({
+            accessToken: nextCredentials.accessToken ?? credentials.accessToken ?? "",
+            generation,
+            nextSession,
+            operationRevision,
+            refreshToken: nextCredentials.refreshToken,
+            snapshot
+          })) {
+            return { ok: false, message: "error.auth.storage_unavailable" };
+          }
+
+          return { ok: true, session: nextSession };
+        });
       } catch (error) {
-        if (operationRevision !== authOperationRevisionRef.current) {
-          restoreCommittedAuthState();
-          return { ok: false, message: "error.auth.operation_superseded" };
-        }
-
-        if (identitySwitchCompleted) {
-          clearSession();
-        }
-
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession, persistSession, restoreCommittedAuthState, session]
+    [
+      captureAuthTransitionSnapshot,
+      commitAuthTransition,
+      enqueueAuthTransition,
+      ensureAuthTransitionCurrent
+    ]
   );
 
   const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);

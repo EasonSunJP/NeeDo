@@ -7,6 +7,13 @@ const rememberedPortalRefreshTokenStoragePrefix = "needo.auth.portal-refresh-tok
 const rememberedPortalStorageVersion = "v1";
 const frontendPortals: PortalScope[] = ["user", "merchant", "technician", "business"];
 
+type RememberedStorageValue = {
+  local: string | null;
+  session: string | null;
+};
+
+export type RememberedPortalAuthorizationSnapshot = Record<string, RememberedStorageValue>;
+
 function getRememberedPortalSessionStorageKey(portal: PortalScope) {
   return `${rememberedPortalSessionStoragePrefix}.${portal}.${rememberedPortalStorageVersion}`;
 }
@@ -68,28 +75,78 @@ export function hasRememberedPortalAuthorization(portal: PortalScope) {
 
 export function rememberPortalAuthorization(session: AuthSession, refreshToken: string | null | undefined) {
   if (!frontendPortals.includes(session.portal)) {
-    return;
+    return true;
   }
 
-  writeBrowserStorage(getRememberedPortalSessionStorageKey(session.portal), JSON.stringify(session), { silent: true });
+  const wroteSession = writeBrowserStorage(
+    getRememberedPortalSessionStorageKey(session.portal),
+    JSON.stringify(session),
+    { silent: true }
+  );
 
   if (refreshToken) {
-    writeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(session.portal), refreshToken, { silent: true });
-    return;
+    const wroteRefresh = writeBrowserStorage(
+      getRememberedPortalRefreshTokenStorageKey(session.portal),
+      refreshToken,
+      { silent: true }
+    );
+    return wroteSession && wroteRefresh;
   }
 
-  removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(session.portal), { silent: true });
+  return (
+    wroteSession &&
+    removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(session.portal), {
+      silent: true
+    })
+  );
 }
 
 export function forgetRememberedPortalAuthorization(portal: PortalScope) {
-  removeBrowserStorage(getRememberedPortalSessionStorageKey(portal), {
+  const removedSession = removeBrowserStorage(getRememberedPortalSessionStorageKey(portal), {
     silent: true
   });
-  removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), {
+  const removedRefresh = removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), {
     silent: true
   });
+
+  return removedSession && removedRefresh;
 }
 
 export function forgetAllRememberedPortalAuthorizations() {
-  frontendPortals.forEach((portal) => forgetRememberedPortalAuthorization(portal));
+  return frontendPortals.reduce(
+    (removed, portal) => forgetRememberedPortalAuthorization(portal) && removed,
+    true
+  );
+}
+
+export function captureRememberedPortalAuthorizations(): RememberedPortalAuthorizationSnapshot {
+  const snapshot: RememberedPortalAuthorizationSnapshot = {};
+
+  frontendPortals.forEach((portal) => {
+    [getRememberedPortalSessionStorageKey(portal), getRememberedPortalRefreshTokenStorageKey(portal)].forEach(
+      (key) => {
+        snapshot[key] = {
+          local: readBrowserStorage(key, { silent: true }),
+          session: readBrowserStorage(key, { kind: "session", silent: true })
+        };
+      }
+    );
+  });
+
+  return snapshot;
+}
+
+export function restoreRememberedPortalAuthorizations(
+  snapshot: RememberedPortalAuthorizationSnapshot
+) {
+  return Object.entries(snapshot).reduce((restored, [key, value]) => {
+    const restoredLocal = value.local === null
+      ? removeBrowserStorage(key, { silent: true })
+      : writeBrowserStorage(key, value.local, { silent: true });
+    const restoredSession = value.session === null
+      ? removeBrowserStorage(key, { kind: "session", silent: true })
+      : writeBrowserStorage(key, value.session, { kind: "session", silent: true });
+
+    return restoredLocal && restoredSession && restored;
+  }, true);
 }

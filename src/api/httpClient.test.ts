@@ -10,9 +10,9 @@ import {
   refreshStoredAccessToken,
   setAuthExpiredHandler,
   setExpectedAuthUserId,
-  setAuthTokens
+  setAuthTokens,
+  setStoredRefreshToken
 } from "./httpClient";
-import type { AuthMePayload } from "../auth/rbac";
 import { clearCachedDeviceFingerprint } from "../lib/deviceFingerprint";
 
 vi.mock("@fingerprintjs/fingerprintjs", () => ({
@@ -234,6 +234,54 @@ describe("httpClient auth tokens", () => {
     expect(getAccessToken()).toBeNull();
     expect(onAuthExpired).toHaveBeenCalledTimes(1);
   });
+
+  it("returns transition 401 responses to the caller without clearing newer credentials", async () => {
+    const onAuthExpired = vi.fn();
+    setAuthTokens({
+      accessToken: "new-session-access",
+      refreshToken: "new-session-refresh"
+    });
+    setAuthExpiredHandler(onAuthExpired);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    await expect(httpClient.request("/auth/merchant-shop/switch", {
+      auth: true,
+      body: { refreshToken: "stale-refresh", shopPublicId: "shop0000000012" },
+      method: "POST",
+      unauthorizedPolicy: "caller"
+    })).rejects.toMatchObject({
+      code: 40105,
+      message: "error.auth.token_invalid",
+      status: 401
+    });
+
+    expect(getAccessToken()).toBe("new-session-access");
+    expect(getStoredRefreshToken()).toBe("new-session-refresh");
+    expect(onAuthExpired).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([0, 900.5, 901])(
+    "does not persist a refresh response with an invalid backend TTL (%s)",
+    async (expiresIn) => {
+      setStoredRefreshToken("refresh-token");
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: { accessToken: "invalid-access", expiresIn }
+        })
+      );
+
+      await expect(refreshStoredAccessToken()).rejects.toMatchObject({
+        message: "error.api",
+        status: 502
+      });
+      expect(getAccessToken()).toBeNull();
+    }
+  );
 
   it("coalesces explicit session restoration and unauthorized retries into one refresh request", async () => {
     setAuthTokens({

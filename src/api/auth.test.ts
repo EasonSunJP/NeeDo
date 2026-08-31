@@ -77,8 +77,18 @@ const merchantMe = {
   username: "Merchant",
   avatarUrl: null,
   isActive: true,
+  isTestAccount: false,
   currentIdentity: merchantIdentity,
   identities: [merchantIdentity],
+  identityAvailability: [
+    {
+      kind: "merchant" as const,
+      state: "active" as const,
+      identityId: merchantIdentity.id,
+      applicationId: null,
+      rejectionReason: null,
+    },
+  ],
   roles: ["merchant_owner"],
   permissions: ["merchant-admin:dashboard:read"],
   menus: ["menu:merchant-app"],
@@ -114,6 +124,18 @@ describe("formal auth API", () => {
       refreshToken: "refresh-token",
     });
   });
+
+  it.each([0, 900.5, 901])(
+    "rejects an invalid authenticated login TTL before persisting (%s)",
+    async (expiresIn) => {
+      vi.mocked(httpClient.request).mockResolvedValueOnce({ ...tokenPair, expiresIn });
+
+      await expect(authApi.login("u0000000042", "Password.2026!")).rejects.toThrow(
+        "error.api"
+      );
+      expect(setAuthTokens).not.toHaveBeenCalled();
+    }
+  );
 
   it("starts registration with only email and password without persisting tokens", async () => {
     vi.mocked(httpClient.request).mockResolvedValueOnce(challenge);
@@ -158,6 +180,16 @@ describe("formal auth API", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token",
     });
+  });
+
+  it("rejects a malformed verified registration ID before persisting tokens", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({ ...tokenPair, needoId: "42" });
+
+    await expect(authApi.verifyRegistration({
+      challengeId: challenge.challengeId,
+      otp: "123456"
+    })).rejects.toThrow("error.api");
+    expect(setAuthTokens).not.toHaveBeenCalled();
   });
 
   it("initializes and submits a public Google credential with exact nonce bodies", async () => {
@@ -412,7 +444,7 @@ describe("formal auth API", () => {
     expect(setAuthTokens).not.toHaveBeenCalled();
   });
 
-  it("preserves refresh, switch-identity, logout, and me behavior", async () => {
+  it("keeps refresh, transition, logout, and me requests caller-owned", async () => {
     vi.mocked(refreshStoredAccessToken).mockResolvedValueOnce({
       accessToken: "restored-access-token",
       expiresIn: 900,
@@ -424,12 +456,18 @@ describe("formal auth API", () => {
 
     vi.mocked(getStoredRefreshToken).mockReturnValue("stored-refresh-token");
     vi.mocked(httpClient.request)
-      .mockResolvedValueOnce({ ...tokenPair, me: { id: 7 } })
+      .mockResolvedValueOnce({ ...tokenPair, me: merchantMe })
       .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({ id: 7 });
+      .mockResolvedValueOnce(merchantMe);
 
-    await authApi.switchIdentity(51);
-    await authApi.logout();
+    await authApi.switchIdentity(51, {
+      accessToken: "stored-access-token",
+      refreshToken: "stored-refresh-token",
+    });
+    await authApi.logout({
+      accessToken: "stored-access-token",
+      refreshToken: "stored-refresh-token",
+    });
     await authApi.me();
 
     expect(httpClient.request).toHaveBeenNthCalledWith(
@@ -438,25 +476,60 @@ describe("formal auth API", () => {
       {
         auth: true,
         body: { refreshToken: "stored-refresh-token", identityId: 51 },
+        headers: { Authorization: "Bearer stored-access-token" },
         method: "POST",
         retryOnUnauthorized: false,
+        unauthorizedPolicy: "caller",
       },
     );
     expect(httpClient.request).toHaveBeenNthCalledWith(2, "/auth/logout", {
       auth: true,
       body: { refreshToken: "stored-refresh-token" },
+      headers: { Authorization: "Bearer stored-access-token" },
       method: "POST",
       retryOnUnauthorized: false,
+      unauthorizedPolicy: "caller",
     });
     expect(httpClient.request).toHaveBeenNthCalledWith(3, "/auth/me", {
       auth: true,
       method: "GET",
       retryOnUnauthorized: true,
     });
-    expect(clearAuthTokens).toHaveBeenCalledTimes(1);
+    expect(clearAuthTokens).not.toHaveBeenCalled();
+    expect(setAuthTokens).not.toHaveBeenCalled();
   });
 
-  it("switches merchant shop with the current refresh token and persists only a valid rotated pair", async () => {
+  it("validates remembered-session refresh and me without mutating global credentials", async () => {
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ accessToken: "remembered-access", expiresIn: 900 })
+      .mockResolvedValueOnce(merchantMe);
+
+    await expect(
+      authApi.refreshWithCredentials("remembered-refresh")
+    ).resolves.toEqual({ accessToken: "remembered-access", expiresIn: 900 });
+    await expect(authApi.me({
+      accessToken: "remembered-access",
+      refreshToken: "remembered-refresh"
+    })).resolves.toEqual(merchantMe);
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/auth/refresh", {
+      auth: false,
+      body: { refreshToken: "remembered-refresh" },
+      method: "POST",
+      retryOnUnauthorized: false,
+      unauthorizedPolicy: "caller"
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/auth/me", {
+      auth: true,
+      headers: { Authorization: "Bearer remembered-access" },
+      method: "GET",
+      retryOnUnauthorized: false,
+      unauthorizedPolicy: "caller"
+    });
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("validates a merchant switch without persisting the rotated pair", async () => {
     const switched: SwitchMerchantShopPayload = {
       ...tokenPair,
       accessToken: "shop-b-access",
@@ -464,10 +537,12 @@ describe("formal auth API", () => {
       me: merchantMe,
       shopPublicId: "shop0000000012",
     };
-    vi.mocked(getStoredRefreshToken).mockReturnValue("stored-refresh-token");
     vi.mocked(httpClient.request).mockResolvedValueOnce(switched);
 
-    await expect(authApi.switchMerchantShop("shop0000000012")).resolves.toEqual(switched);
+    await expect(authApi.switchMerchantShop("shop0000000012", {
+      accessToken: "stored-access-token",
+      refreshToken: "stored-refresh-token",
+    })).resolves.toEqual(switched);
 
     expect(httpClient.request).toHaveBeenCalledWith("/auth/merchant-shop/switch", {
       auth: true,
@@ -475,13 +550,12 @@ describe("formal auth API", () => {
         refreshToken: "stored-refresh-token",
         shopPublicId: "shop0000000012",
       },
+      headers: { Authorization: "Bearer stored-access-token" },
       method: "POST",
       retryOnUnauthorized: false,
+      unauthorizedPolicy: "caller",
     });
-    expect(setAuthTokens).toHaveBeenCalledWith({
-      accessToken: "shop-b-access",
-      refreshToken: "shop-b-refresh",
-    });
+    expect(setAuthTokens).not.toHaveBeenCalled();
   });
 
   it("does not persist tokens for a malformed merchant shop switch response", async () => {
@@ -493,6 +567,93 @@ describe("formal auth API", () => {
     });
 
     await expect(authApi.switchMerchantShop("shop0000000012")).rejects.toThrow("error.api");
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing isTestAccount", { ...merchantMe, isTestAccount: undefined }],
+    ["missing identityAvailability", { ...merchantMe, identityAvailability: undefined }],
+    ["invalid email", { ...merchantMe, email: "not-an-email" }],
+    ["invalid primary public ID", { ...merchantMe, primaryPublicId: "user-7" }],
+    [
+      "direct-shop identity in merchant-account scope",
+      {
+        ...merchantMe,
+        currentIdentity: { ...merchantMe.currentIdentity, type: "merchant_staff" },
+        identities: [
+          { ...merchantMe.currentIdentity, type: "merchant_staff" },
+          ...merchantMe.identities.filter(
+            (identity) => identity.id !== merchantMe.currentIdentity.id
+          )
+        ]
+      }
+    ],
+  ])("rejects a 200 switch response with %s", async (_label, me) => {
+    vi.mocked(getStoredRefreshToken).mockReturnValue("stored-refresh-token");
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      ...tokenPair,
+      me,
+      shopPublicId: "shop0000000012",
+    });
+
+    await expect(authApi.switchMerchantShop("shop0000000012")).rejects.toThrow("error.api");
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it.each([900.5, 901, 0])("rejects a 200 switch response with expiresIn %s", async (expiresIn) => {
+    vi.mocked(getStoredRefreshToken).mockReturnValue("stored-refresh-token");
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      ...tokenPair,
+      expiresIn,
+      me: merchantMe,
+      shopPublicId: "shop0000000012",
+    });
+
+    await expect(authApi.switchMerchantShop("shop0000000012")).rejects.toThrow("error.api");
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("rejects switched me for another user or merchant identity", async () => {
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({
+        ...tokenPair,
+        me: { ...merchantMe, id: 8 },
+        shopPublicId: "shop0000000012",
+      })
+      .mockResolvedValueOnce({
+        ...tokenPair,
+        me: {
+          ...merchantMe,
+          activeIdentityId: 52,
+          activePublicId: "o0000000052",
+          currentIdentity: {
+            ...merchantIdentity,
+            id: 52,
+            publicId: "o0000000052",
+          },
+          identities: [{
+            ...merchantIdentity,
+            id: 52,
+            publicId: "o0000000052",
+          }],
+        },
+        shopPublicId: "shop0000000012",
+      });
+    const credentials = {
+      accessToken: "stored-access-token",
+      refreshToken: "stored-refresh-token",
+    };
+
+    await expect(authApi.switchMerchantShop(
+      "shop0000000012",
+      credentials,
+      { expectedUserId: 7, expectedIdentityId: 51 },
+    )).rejects.toThrow("error.api");
+    await expect(authApi.switchMerchantShop(
+      "shop0000000012",
+      credentials,
+      { expectedUserId: 7, expectedIdentityId: 51 },
+    )).rejects.toThrow("error.api");
     expect(setAuthTokens).not.toHaveBeenCalled();
   });
 

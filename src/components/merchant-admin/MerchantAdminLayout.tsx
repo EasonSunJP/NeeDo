@@ -4,6 +4,8 @@ import type {
   BackofficeDashboardPayload,
   DashboardQuery
 } from "../../api/backofficeRealData";
+import { backofficeRealDataApi } from "../../api/backofficeRealData";
+import { getAuthCredentialEpoch } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import type { FeaturePermission } from "../../auth/featurePermissions";
 import {
@@ -14,6 +16,7 @@ import {
 import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
 import {
   invalidateMerchantAdminDashboard,
+  invalidateMerchantAdminDashboardOwner,
   loadMerchantAdminDashboard
 } from "../../features/merchant-admin/dashboardResource";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -205,14 +208,34 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
   const [summaryStatus, setSummaryStatus] = useState<"loading" | "success" | "error">("loading");
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
+  const [resolvedShop, setResolvedShop] = useState<{
+    ownerKey: string;
+    shopPublicId: string;
+  } | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const readOnlyPreview = preview && session?.allowedPortals.includes("admin") ? preview : null;
-  const dashboardScopeKey = [
-    `user:${session?.id ?? "anonymous"}`,
-    `identity:${session?.currentIdentity.id ?? "no-identity"}`,
-    `shop:${session?.merchantShopPublicId ?? "unselected"}`
-  ].join("|");
+  const credentialEpoch = getAuthCredentialEpoch();
+  const shopResolutionOwnerKey = session
+    ? JSON.stringify([session.id, session.currentIdentity.id, credentialEpoch])
+    : null;
+  const confirmedSessionShopPublicId = session?.merchantShopPublicId;
+  const resolvedShopPublicId = confirmedSessionShopPublicId && /^shop\d{10}$/.test(confirmedSessionShopPublicId)
+    ? confirmedSessionShopPublicId
+    : resolvedShop?.ownerKey === shopResolutionOwnerKey
+      ? resolvedShop.shopPublicId
+      : null;
+  const dashboardOwner = useMemo(
+    () => session && resolvedShopPublicId
+      ? {
+          credentialEpoch,
+          identityId: session.currentIdentity.id,
+          shopPublicId: resolvedShopPublicId,
+          userId: session.id
+        }
+      : null,
+    [credentialEpoch, resolvedShopPublicId, session]
+  );
   const visibleSections = useMemo(
     () =>
       merchantAdminSections
@@ -260,10 +283,66 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
 
   useEffect(() => {
     let activeRequest = true;
+    if (confirmedSessionShopPublicId && /^shop\d{10}$/.test(confirmedSessionShopPublicId)) {
+      setResolvedShop(null);
+      return () => {
+        activeRequest = false;
+      };
+    }
+
+    setResolvedShop(null);
+    if (!session || !shopResolutionOwnerKey) {
+      return () => {
+        activeRequest = false;
+      };
+    }
+
+    const resolveSelectedShop = async () => {
+      const pageSize = 100;
+      let page = 1;
+
+      while (activeRequest) {
+        const manageable = await backofficeRealDataApi.manageableMerchantShops(page, pageSize);
+        const selectedShop = manageable.list.find((shop) => shop.selected);
+        if (selectedShop) {
+          setResolvedShop({
+            ownerKey: shopResolutionOwnerKey,
+            shopPublicId: selectedShop.publicId
+          });
+          return;
+        }
+
+        if (page * manageable.page_size >= manageable.total) {
+          throw new Error("error.auth.merchant_shop_required");
+        }
+        page += 1;
+      }
+    };
+
+    setSummaryStatus("loading");
+    setSummaryError(null);
+    void resolveSelectedShop().catch((error: unknown) => {
+      if (!activeRequest) return;
+      setSummaryError(error);
+      setSummaryStatus("error");
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, [confirmedSessionShopPublicId, session, shopResolutionOwnerKey]);
+
+  useEffect(() => {
+    if (!dashboardOwner) {
+      setDashboard(null);
+      return;
+    }
+
+    let activeRequest = true;
     setSummaryStatus("loading");
     setSummaryError(null);
 
-    loadMerchantAdminDashboard(dashboardScopeKey, dashboardQuery)
+    loadMerchantAdminDashboard(dashboardOwner, dashboardQuery)
       .then((payload) => {
         if (!activeRequest) return;
         setDashboard(payload);
@@ -278,11 +357,13 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
 
     return () => {
       activeRequest = false;
+      invalidateMerchantAdminDashboardOwner(dashboardOwner);
     };
-  }, [dashboardScopeKey, summaryRevision]);
+  }, [dashboardOwner, summaryRevision]);
 
   const reloadDashboard = () => {
-    invalidateMerchantAdminDashboard(dashboardScopeKey, dashboardQuery);
+    if (!dashboardOwner) return;
+    invalidateMerchantAdminDashboard(dashboardOwner, dashboardQuery);
     setSummaryRevision((current) => current + 1);
   };
 

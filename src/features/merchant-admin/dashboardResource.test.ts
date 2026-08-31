@@ -2,89 +2,145 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 
 const mocked = vi.hoisted(() => ({
-  dashboard: vi.fn()
+  credentialEpoch: 1,
+  dashboard: vi.fn(),
 }));
 
 vi.mock("../../api/backofficeRealData", () => ({
   backofficeRealDataApi: {
-    dashboard: mocked.dashboard
-  }
+    dashboard: mocked.dashboard,
+  },
 }));
+
+vi.mock("../../api/httpClient", async (importOriginal) => {
+  const actual = await importOriginal();
+
+  return {
+    ...(actual as Record<string, unknown>),
+    getAuthCredentialEpoch: () => mocked.credentialEpoch,
+  };
+});
 
 import {
   invalidateMerchantAdminDashboard,
-  loadMerchantAdminDashboard
+  invalidateMerchantAdminDashboardOwner,
+  loadMerchantAdminDashboard,
+  type MerchantAdminDashboardOwner,
 } from "./dashboardResource";
 
 const last7daysQuery = { period: "last7days" as const };
 const monthQuery = { period: "month" as const };
+const ownerA: MerchantAdminDashboardOwner = {
+  credentialEpoch: 1,
+  identityId: 11,
+  shopPublicId: "shop0000000001",
+  userId: 1,
+};
+const ownerB: MerchantAdminDashboardOwner = {
+  credentialEpoch: 2,
+  identityId: 11,
+  shopPublicId: "shop0000000002",
+  userId: 1,
+};
+
+function payload(shopPublicId: string, revision = 1) {
+  return {
+    revision,
+    scope: { kind: "shop" as const, shopPublicId },
+  };
+}
 
 describe("merchant admin dashboard resource", () => {
   beforeEach(() => {
+    vi.useRealTimers();
+    mocked.credentialEpoch = 1;
     mocked.dashboard.mockReset();
-    invalidateMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery);
-    invalidateMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", monthQuery);
-    invalidateMerchantAdminDashboard("user:2:identity:22:shop:shop0000000002", last7daysQuery);
+    invalidateMerchantAdminDashboardOwner(ownerA);
+    invalidateMerchantAdminDashboardOwner(ownerB);
   });
 
-  it("shares one in-flight formal request for the same merchant scope", async () => {
-    let resolveRequest!: (value: { shops: Array<{ id: number }> }) => void;
-    const pending = new Promise<{ shops: Array<{ id: number }> }>((resolve) => {
+  it("shares one in-flight request only for the same signed owner, epoch, and exact query", async () => {
+    let resolveRequest!: (value: ReturnType<typeof payload>) => void;
+    const pending = new Promise<ReturnType<typeof payload>>((resolve) => {
       resolveRequest = resolve;
     });
     mocked.dashboard.mockReturnValue(pending);
 
-    const first = loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery);
-    const second = loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery);
+    const first = loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    const second = loadMerchantAdminDashboard(ownerA, last7daysQuery);
 
     expect(first).toBe(second);
     expect(mocked.dashboard).toHaveBeenCalledTimes(1);
-    expect(mocked.dashboard).toHaveBeenCalledWith("merchant-admin", last7daysQuery);
+    expect(mocked.dashboard).toHaveBeenCalledWith(
+      "merchant-admin",
+      last7daysQuery,
+      {
+        signal: expect.any(AbortSignal),
+      },
+    );
 
-    resolveRequest({ shops: [{ id: 1 }] });
+    resolveRequest(payload(ownerA.shopPublicId));
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { shops: [{ id: 1 }] },
-      { shops: [{ id: 1 }] }
+      payload(ownerA.shopPublicId),
+      payload(ownerA.shopPublicId),
     ]);
   });
 
-  it("reuses a recent resolved payload until that merchant scope is invalidated", async () => {
+  it("reuses a recent payload until that exact owner and query are invalidated", async () => {
     mocked.dashboard
-      .mockResolvedValueOnce({ shops: [{ id: 1 }] })
-      .mockResolvedValueOnce({ shops: [{ id: 2 }] });
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 1))
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 2));
 
-    await expect(loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery)).resolves.toEqual({ shops: [{ id: 1 }] });
-    await expect(loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery)).resolves.toEqual({ shops: [{ id: 1 }] });
-    expect(mocked.dashboard).toHaveBeenCalledTimes(1);
-
-    invalidateMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery);
-
-    await expect(loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery)).resolves.toEqual({ shops: [{ id: 2 }] });
+    await loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    await expect(
+      loadMerchantAdminDashboard(ownerA, last7daysQuery),
+    ).resolves.toEqual(payload(ownerA.shopPublicId, 1));
+    invalidateMerchantAdminDashboard(ownerA, last7daysQuery);
+    await expect(
+      loadMerchantAdminDashboard(ownerA, last7daysQuery),
+    ).resolves.toEqual(payload(ownerA.shopPublicId, 2));
     expect(mocked.dashboard).toHaveBeenCalledTimes(2);
   });
 
-  it("does not share a cached payload across merchant scopes", async () => {
+  it("keeps period, range, and city in the exact cache key", async () => {
+    const customQuery = {
+      city: "Tokyo",
+      from: "2026-08-01",
+      period: "custom" as const,
+      to: "2026-08-31",
+    };
     mocked.dashboard
-      .mockResolvedValueOnce({ shops: [{ id: 1 }] })
-      .mockResolvedValueOnce({ shops: [{ id: 2 }] });
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 1))
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 2))
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 3));
 
-    await expect(loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery)).resolves.toEqual({ shops: [{ id: 1 }] });
-    await expect(loadMerchantAdminDashboard("user:2:identity:22:shop:shop0000000002", last7daysQuery)).resolves.toEqual({ shops: [{ id: 2 }] });
-    expect(mocked.dashboard).toHaveBeenCalledTimes(2);
+    await loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    await loadMerchantAdminDashboard(ownerA, monthQuery);
+    await loadMerchantAdminDashboard(ownerA, customQuery);
+
+    expect(mocked.dashboard).toHaveBeenNthCalledWith(
+      3,
+      "merchant-admin",
+      customQuery,
+      {
+        signal: expect.any(AbortSignal),
+      },
+    );
   });
 
-  it("shares one bounded retry sequence after a transient timeout", async () => {
+  it("shares one bounded retry sequence for the exact owner key", async () => {
     mocked.dashboard
-      .mockRejectedValueOnce(new ApiClientError("error.network.timeout", 408, 408))
-      .mockResolvedValueOnce({ shops: [{ id: 1 }] });
+      .mockRejectedValueOnce(
+        new ApiClientError("error.network.timeout", 408, 408),
+      )
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId));
 
-    const first = loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery);
-    const second = loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery);
+    const first = loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    const second = loadMerchantAdminDashboard(ownerA, last7daysQuery);
 
-    expect(first).toBe(second);
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { shops: [{ id: 1 }] },
-      { shops: [{ id: 1 }] }
+      payload(ownerA.shopPublicId),
+      payload(ownerA.shopPublicId),
     ]);
     expect(mocked.dashboard).toHaveBeenCalledTimes(2);
   });
@@ -93,122 +149,89 @@ describe("merchant admin dashboard resource", () => {
     const error = new ApiClientError("error.forbidden", 403, 403);
     mocked.dashboard.mockRejectedValue(error);
 
-    await expect(loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery)).rejects.toBe(error);
+    await expect(
+      loadMerchantAdminDashboard(ownerA, last7daysQuery),
+    ).rejects.toBe(error);
     expect(mocked.dashboard).toHaveBeenCalledTimes(1);
   });
 
-  it("clears a failed request so an explicit retry can reach the formal API", async () => {
-    const error = new Error("temporary failure");
-    mocked.dashboard
-      .mockRejectedValueOnce(error)
-      .mockResolvedValueOnce({ shops: [{ id: 1 }] });
-
-    await expect(loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery)).rejects.toBe(error);
-    await expect(loadMerchantAdminDashboard("user:1:identity:11:shop:shop0000000001", last7daysQuery)).resolves.toEqual({ shops: [{ id: 1 }] });
-    expect(mocked.dashboard).toHaveBeenCalledTimes(2);
-  });
-
-  it("keeps period and range dimensions in the cache key", async () => {
-    mocked.dashboard
-      .mockResolvedValueOnce({ filter: { period: "last7days" } })
-      .mockResolvedValueOnce({ filter: { period: "month" } });
-    const scopeKey = "user:1:identity:11:shop:shop0000000001";
-
-    await expect(loadMerchantAdminDashboard(scopeKey, last7daysQuery)).resolves.toEqual({
-      filter: { period: "last7days" }
-    });
-    await expect(loadMerchantAdminDashboard(scopeKey, monthQuery)).resolves.toEqual({
-      filter: { period: "month" }
-    });
-
-    expect(mocked.dashboard).toHaveBeenNthCalledWith(1, "merchant-admin", last7daysQuery);
-    expect(mocked.dashboard).toHaveBeenNthCalledWith(2, "merchant-admin", monthQuery);
-  });
-
-  it("keeps from, to, and city dimensions in the exact cache key", async () => {
-    const scopeKey = "user:3:identity:33:shop:shop0000000003";
-    const tokyoQuery = {
-      period: "custom" as const,
-      from: "2026-08-01",
-      to: "2026-08-15",
-      city: "Tokyo"
-    };
-    const osakaQuery = {
-      period: "custom" as const,
-      from: "2026-08-16",
-      to: "2026-08-31",
-      city: "Osaka"
-    };
-    invalidateMerchantAdminDashboard(scopeKey, tokyoQuery);
-    invalidateMerchantAdminDashboard(scopeKey, osakaQuery);
-    mocked.dashboard
-      .mockResolvedValueOnce({ filter: { city: "Tokyo" } })
-      .mockResolvedValueOnce({ filter: { city: "Osaka" } });
-
-    await expect(loadMerchantAdminDashboard(scopeKey, tokyoQuery)).resolves.toEqual({
-      filter: { city: "Tokyo" }
-    });
-    await expect(loadMerchantAdminDashboard(scopeKey, osakaQuery)).resolves.toEqual({
-      filter: { city: "Osaka" }
-    });
-
-    expect(mocked.dashboard).toHaveBeenNthCalledWith(1, "merchant-admin", tokyoQuery);
-    expect(mocked.dashboard).toHaveBeenNthCalledWith(2, "merchant-admin", osakaQuery);
-  });
-
-  it("invalidates only the exact scope and query key for manual retry", async () => {
-    mocked.dashboard
-      .mockResolvedValueOnce({ filter: { period: "last7days" }, revision: 1 })
-      .mockResolvedValueOnce({ filter: { period: "month" }, revision: 1 })
-      .mockResolvedValueOnce({ filter: { period: "last7days" }, revision: 2 });
-    const scopeKey = "user:1:identity:11:shop:shop0000000001";
-
-    await loadMerchantAdminDashboard(scopeKey, last7daysQuery);
-    await loadMerchantAdminDashboard(scopeKey, monthQuery);
-    invalidateMerchantAdminDashboard(scopeKey, last7daysQuery);
-
-    await expect(loadMerchantAdminDashboard(scopeKey, monthQuery)).resolves.toEqual({
-      filter: { period: "month" },
-      revision: 1
-    });
-    await expect(loadMerchantAdminDashboard(scopeKey, last7daysQuery)).resolves.toEqual({
-      filter: { period: "last7days" },
-      revision: 2
-    });
-    expect(mocked.dashboard).toHaveBeenCalledTimes(3);
-  });
-
-  it("does not let a late Shop A response replace the Shop B cache", async () => {
-    let resolveShopA!: (value: { scope: { shopPublicId: string } }) => void;
-    const shopARequest = new Promise<{ scope: { shopPublicId: string } }>((resolve) => {
+  it("aborts and invalidates Shop A before a slow response can survive Shop B ownership", async () => {
+    let resolveShopA!: (value: ReturnType<typeof payload>) => void;
+    const shopARequest = new Promise<ReturnType<typeof payload>>((resolve) => {
       resolveShopA = resolve;
     });
     mocked.dashboard
       .mockReturnValueOnce(shopARequest)
-      .mockResolvedValueOnce({ scope: { shopPublicId: "shop0000000002" } });
+      .mockResolvedValueOnce(payload(ownerB.shopPublicId));
 
-    const shopA = loadMerchantAdminDashboard(
-      "user:1:identity:11:shop:shop0000000001",
-      last7daysQuery
-    );
-    const shopB = loadMerchantAdminDashboard(
-      "user:1:identity:11:shop:shop0000000002",
-      last7daysQuery
-    );
+    const shopA = loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    invalidateMerchantAdminDashboardOwner(ownerA);
+    mocked.credentialEpoch = 2;
+    const shopB = loadMerchantAdminDashboard(ownerB, last7daysQuery);
 
-    await expect(shopB).resolves.toEqual({
-      scope: { shopPublicId: "shop0000000002" }
+    await expect(shopB).resolves.toEqual(payload(ownerB.shopPublicId));
+    resolveShopA(payload(ownerA.shopPublicId));
+    await expect(shopA).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("stops Shop A transient retry after Shop B changes the credential epoch", async () => {
+    vi.useFakeTimers();
+    mocked.dashboard
+      .mockRejectedValueOnce(
+        new ApiClientError("error.network.timeout", 408, 408),
+      )
+      .mockResolvedValueOnce(payload(ownerB.shopPublicId));
+
+    const shopA = loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    const shopARejection = expect(shopA).rejects.toMatchObject({
+      name: "AbortError",
     });
-    resolveShopA({ scope: { shopPublicId: "shop0000000001" } });
-    await expect(shopA).resolves.toEqual({
-      scope: { shopPublicId: "shop0000000001" }
-    });
+    await Promise.resolve();
+    invalidateMerchantAdminDashboardOwner(ownerA);
+    mocked.credentialEpoch = 2;
+    const shopB = loadMerchantAdminDashboard(ownerB, last7daysQuery);
+    await vi.advanceTimersByTimeAsync(300);
+
+    await shopARejection;
+    await expect(shopB).resolves.toEqual(payload(ownerB.shopPublicId));
+    expect(mocked.dashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not reuse a prior login cache when the same IDs receive a new credential epoch", async () => {
+    const reloggedOwner = { ...ownerA, credentialEpoch: 2 };
+    mocked.dashboard
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 1))
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 2));
+
+    await loadMerchantAdminDashboard(ownerA, last7daysQuery);
+    mocked.credentialEpoch = 2;
+    await expect(
+      loadMerchantAdminDashboard(reloggedOwner, last7daysQuery),
+    ).resolves.toEqual(payload(ownerA.shopPublicId, 2));
+    expect(mocked.dashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a mismatched response scope and never caches it", async () => {
+    mocked.dashboard
+      .mockResolvedValueOnce(payload("shop0000000099"))
+      .mockResolvedValueOnce(payload(ownerA.shopPublicId, 2));
+
+    await expect(
+      loadMerchantAdminDashboard(ownerA, last7daysQuery),
+    ).rejects.toThrow("error.auth.dashboard_scope_mismatch");
+    await expect(
+      loadMerchantAdminDashboard(ownerA, last7daysQuery),
+    ).resolves.toEqual(payload(ownerA.shopPublicId, 2));
+    expect(mocked.dashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses to create an unselected merchant cache authority", async () => {
     await expect(
       loadMerchantAdminDashboard(
-        "user:1:identity:11:shop:shop0000000002",
-        last7daysQuery
-      )
-    ).resolves.toEqual({ scope: { shopPublicId: "shop0000000002" } });
-    expect(mocked.dashboard).toHaveBeenCalledTimes(2);
+        { ...ownerA, shopPublicId: "unselected" },
+        last7daysQuery,
+      ),
+    ).rejects.toThrow("error.auth.merchant_shop_required");
+    expect(mocked.dashboard).not.toHaveBeenCalled();
   });
 });
