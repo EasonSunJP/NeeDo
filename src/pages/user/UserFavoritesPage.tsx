@@ -53,25 +53,24 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
 
   const remove = (favorite: ImChatRecordFavorite) => {
     const originPage = page;
-    const generation = loadGeneration.current;
+    const originTotal = result?.total ?? 0;
+    const originPageSize = result?.page_size ?? 20;
     const operationKey = `${originPage}:${favorite.id}`;
     if (inflightRemovals.current.has(operationKey)) return;
     inflightRemovals.current.add(operationKey);
     setRemovingKey(operationKey);
     setRemoveErrorKey(null);
     void api.removeChatRecordFavorite(favorite.id).then(() => {
-      if (!alive.current || activePage.current !== originPage || loadGeneration.current !== generation) return;
-      setResult((current) => {
-        if (!current || current.page !== originPage) return current;
-        const list = current.list.filter((item) => item.id !== favorite.id);
-        if (list.length === 0 && originPage > 1) {
-          setPage(originPage - 1);
-          return null;
-        }
-        return { ...current, list, total: Math.max(0, current.total - 1) };
-      });
+      if (!alive.current || activePage.current !== originPage) return;
+      const newTotal = Math.max(0, originTotal - 1);
+      const offset = (originPage - 1) * originPageSize;
+      if (originPage > 1 && offset >= newTotal) {
+        setPage(originPage - 1);
+        return;
+      }
+      setLoadRevision((value) => value + 1);
     }).catch(() => {
-      if (alive.current && activePage.current === originPage && loadGeneration.current === generation) setRemoveErrorKey(operationKey);
+      if (alive.current && activePage.current === originPage) setRemoveErrorKey(operationKey);
     }).finally(() => {
       inflightRemovals.current.delete(operationKey);
       if (alive.current && activePage.current === originPage) setRemovingKey((current) => current === operationKey ? null : current);

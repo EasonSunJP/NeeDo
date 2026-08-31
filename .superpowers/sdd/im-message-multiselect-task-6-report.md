@@ -77,3 +77,27 @@ The review was completed without database or live-API writes and without changin
 
 - `needo-mobile-headers` made the shared fullscreen header contract non-negotiable: title truncation stays in the central slot, immutable-snapshot explanation is supplied through `info`, and the shared right close is driven only through `onClose`.
 - `frontend-design` kept the visual change subject-specific and restrained: the timeline spine conveys snapshot chronology while every palette, type scale, surface, radius, and bubble remains recognizably NeeDo rather than becoming a generic new design system.
+
+## Favorites offset deletion remediation (2026-08-31)
+
+### Scope and RED note
+
+- Scope stayed limited to `src/pages/user/UserFavoritesPage.tsx` and `src/pages/user/UserFavoritesPage.test.tsx`.
+- The worktree was already dirty in those two files when this remediation started. The checked HEAD implementation removed successful favorites by local `filter` plus `total - 1`, which loses the next offset row for exact pages such as page 1 `20 / total 21`.
+- Favorites tests now use formal exact offset pages: page 1 returns 20 rows with total 21 and page 2 returns one row. The regression assertions require a successful page 1 removal to reload page 1 with 20 rows and include the former page 2 row.
+
+### GREEN implementation
+
+- A removal is bound to its origin page and favorite id through the existing synchronous in-flight guard.
+- On API success, the page no longer mutates local rows or decrements `total`. If the user is still on, or has returned to, the origin page, the page either reloads that formal page to fill the offset gap or steps back from an emptied later page so the existing page effect performs the authoritative load.
+- If success completes while the user remains on another page, that page is left untouched; returning later loads the updated origin page through the normal page effect. Failures still keep the row and show the existing scoped error.
+
+### Verification
+
+- `npm test -- src/pages/user/UserFavoritesPage.test.tsx` - PASS, 1 file / 8 tests.
+- `npm test -- src/pages/user/UserFavoritesPage.test.tsx src/features/im/ImChatRecordDetailPage.test.tsx` - PASS, 2 files / 23 tests.
+- `npm run lint` - PASS.
+- `npm run build` - PASS; only the pre-existing SocialProfile mixed static/dynamic import notice and large-chunk warning remain.
+- `git diff --check` - PASS.
+
+No database, API, Task 7, Task 8, route, i18n, formatter, stash, or unrelated component changes were made.
