@@ -123,6 +123,11 @@ export const EXCHANGE_PERMISSIONS = {
   createDemand: "exchange:posts:create-demand",
   createIntelligence: "exchange:posts:create-intelligence",
   withdrawOwn: "exchange:posts:withdraw-own",
+  claimOptionList: "exchange:claim-options:list",
+  claimCreate: "exchange:claims:create",
+  claimReadOwn: "exchange:claims:read-own",
+  claimListOwnedRequest: "exchange:claims:list-owned-request",
+  claimWithdrawOwn: "exchange:claims:withdraw-own",
   commentList: "exchange:comments:list",
   commentCreate: "exchange:comments:create",
   likeWrite: "exchange:likes:write",
@@ -1382,6 +1387,41 @@ export const SYSTEM_PERMISSIONS = [
     "撤回当前账号发布的正式需求或情报"
   ),
   createPermission(
+    EXCHANGE_PERMISSIONS.claimOptionList,
+    "读取可抢单选项",
+    "api",
+    "exchange",
+    "分页读取当前服务者在正式需求下可用的店铺、技师、服务和排班组合"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.claimCreate,
+    "提交抢单",
+    "api",
+    "exchange",
+    "以当前商户或技师身份提交正式选配抢单"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.claimReadOwn,
+    "读取本人抢单",
+    "api",
+    "exchange",
+    "读取当前身份在正式需求下提交的抢单"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.claimListOwnedRequest,
+    "读取收到的抢单",
+    "api",
+    "exchange",
+    "分页读取当前身份所发布需求收到的正式抢单"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.claimWithdrawOwn,
+    "撤回本人抢单",
+    "api",
+    "exchange",
+    "撤回当前身份尚未匹配成立的正式抢单"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.commentList,
     "需求情报评论列表",
     "api",
@@ -1448,6 +1488,17 @@ const EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES = [
   ...EXCHANGE_COMMON_PERMISSION_CODES,
   EXCHANGE_PERMISSIONS.createIntelligence,
   EXCHANGE_PERMISSIONS.withdrawOwn
+] as const satisfies readonly SystemPermissionCode[];
+
+const EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES = [
+  EXCHANGE_PERMISSIONS.claimOptionList,
+  EXCHANGE_PERMISSIONS.claimCreate,
+  EXCHANGE_PERMISSIONS.claimReadOwn,
+  EXCHANGE_PERMISSIONS.claimWithdrawOwn
+] as const satisfies readonly SystemPermissionCode[];
+
+const EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES = [
+  EXCHANGE_PERMISSIONS.claimListOwnedRequest
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [
@@ -1821,6 +1872,8 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     EXCHANGE_PERMISSIONS.createDemand,
+    ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
+    ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
@@ -1832,6 +1885,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
+    ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
@@ -1846,6 +1900,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
+    ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",
@@ -1859,6 +1914,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...CUSTOMER_BOOKING_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES,
+    ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
   ],

@@ -693,6 +693,15 @@ enum ExchangeRequestFinancialState {
   @@map("exchange_request_financial_state")
 }
 
+enum ExchangeClaimStatus {
+  ACTIVE            @map("active")
+  WITHDRAWN         @map("withdrawn")
+  REQUEST_WITHDRAWN @map("request_withdrawn")
+  REQUEST_EXPIRED   @map("request_expired")
+
+  @@map("exchange_claim_status")
+}
+
 enum CarouselScene {
   USER_HOME             @map("user_home")
   AFFILIATE_HOME_NOTICE @map("affiliate_home_notice")
@@ -817,6 +826,7 @@ model User {
   following                              Follow[]                              @relation("FollowFollower")
   followers                              Follow[]                              @relation("FollowFollowing")
   exchangePosts                          ExchangePost[]                        @relation("ExchangePostAuthor")
+  exchangeClaims                         ExchangeClaim[]
   exchangeComments                       ExchangeComment[]                     @relation("ExchangeCommentAuthor")
   exchangeLikes                          ExchangeLike[]                        @relation("ExchangeLikeActor")
   exchangeShares                         ExchangeShare[]                       @relation("ExchangeShareActor")
@@ -981,6 +991,7 @@ model Shop {
   customerMemberships        ShopCustomerMembership[]
   membershipCardPlans        ShopMembershipCardPlan[]
   membershipCardAdjustments  ShopMembershipCardAdjustmentRequest[]
+  exchangeClaims             ExchangeClaim[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -1116,6 +1127,7 @@ model TechnicianProfile {
   receivedOrderReviews       OrderReview[]                   @relation("OrderReviewTechnician")
   backofficeProfileTags      BackofficeProfileTag[]          @relation("BackofficeProfileTagTechnician")
   technicianShopAffiliations TechnicianShopAffiliation[]
+  exchangeClaims             ExchangeClaim[]
   carouselSlides             CarouselSlide[]
 
   @@index([shopId])
@@ -1547,6 +1559,7 @@ model Service {
   affiliateTaskScopes   AffiliateTaskService[]
   affiliateTouches      AffiliateTouch[]
   affiliateAttributions AffiliateAttribution[]
+  exchangeClaims        ExchangeClaim[]
   carouselSlides        CarouselSlide[]
 
   @@index([categoryId])
@@ -1594,6 +1607,7 @@ model TechnicianService {
   updater           User?             @relation("TechnicianServiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   scheduleSlots     ScheduleSlot[]
   bookingOrders     BookingOrder[]
+  exchangeClaims    ExchangeClaim[]
 
   @@index([shopId, technicianId, isActive, deletedAt])
   @@index([shopId, isRecommended, isActive, deletedAt])
@@ -1961,6 +1975,7 @@ model ScheduleSlot {
   shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   bookingOrders     BookingOrder[]
+  exchangeClaims    ExchangeClaim[]
 
   @@index([availabilityId])
   @@index([serviceId])
@@ -2787,6 +2802,7 @@ model UserIdentity {
   exchangeComments           ExchangeComment[]             @relation("ExchangeCommentAuthorIdentity")
   exchangeLikes              ExchangeLike[]                @relation("ExchangeLikeActorIdentity")
   exchangeShares             ExchangeShare[]               @relation("ExchangeShareActorIdentity")
+  exchangeClaims             ExchangeClaim[]
   createdConversations       Conversation[]                @relation("ConversationCreatorIdentity")
   conversationParticipants   ConversationParticipant[]     @relation("ConversationParticipantIdentity")
   sentMessages               Message[]                     @relation("MessageSenderIdentity")
@@ -2856,6 +2872,7 @@ model ExchangePost {
   feeCalculationLogs FeeCalculationLog[]
   walletHolds        WalletHold[]
   requestFinancial   ExchangeRequestFinancial?
+  claims             ExchangeClaim[]
 
   @@index([type, status, expiresAt, createdAt])
   @@index([authorUserId, createdAt])
@@ -2891,6 +2908,48 @@ model ExchangeDemand {
 
   @@index([deletedAt])
   @@map("exchange_demands")
+}
+
+model ExchangeClaim {
+  id                  Int                 @id @default(autoincrement())
+  exchangePostId      Int                 @map("exchange_post_id")
+  claimantUserId      Int                 @map("claimant_user_id")
+  claimantIdentityId  Int                 @map("claimant_identity_id")
+  shopId              Int                 @map("shop_id")
+  technicianProfileId Int                 @map("technician_profile_id")
+  serviceId           Int?                @map("service_id")
+  technicianServiceId Int?                @map("technician_service_id")
+  scheduleSlotId      Int                 @map("schedule_slot_id")
+  quoteAmountJpy      Int                 @map("quote_amount_jpy")
+  currency            String              @default("JPY") @db.VarChar(3)
+  message             String?             @db.VarChar(1000)
+  status              ExchangeClaimStatus @default(ACTIVE)
+  activeKey           String?             @unique(map: "exchange_claims_active_key_key") @map("active_key") @db.VarChar(191)
+  idempotencyKey      String              @unique(map: "exchange_claims_idempotency_key_key") @map("idempotency_key") @db.VarChar(191)
+  payloadFingerprint  String              @map("payload_fingerprint") @db.Char(64)
+  withdrawnAt         DateTime?           @map("withdrawn_at")
+  terminalAt          DateTime?           @map("terminal_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  deletedAt           DateTime?           @map("deleted_at")
+
+  exchangePost      ExchangePost      @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  claimantUser      User              @relation(fields: [claimantUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  claimantIdentity  UserIdentity      @relation(fields: [claimantIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  service           Service?          @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  scheduleSlot      ScheduleSlot      @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([exchangePostId, status, createdAt], map: "exchange_claims_post_status_created_idx")
+  @@index([claimantIdentityId, createdAt], map: "exchange_claims_identity_created_idx")
+  @@index([technicianProfileId, status, deletedAt], map: "exchange_claims_technician_status_deleted_idx")
+  @@index([technicianProfileId, createdAt], map: "exchange_claims_technician_created_idx")
+  @@index([shopId, createdAt], map: "exchange_claims_shop_created_idx")
+  @@index([scheduleSlotId], map: "exchange_claims_schedule_slot_idx")
+  @@index([deletedAt], map: "exchange_claims_deleted_idx")
+  @@map("exchange_claims")
 }
 
 model ExchangeIntelligence {
