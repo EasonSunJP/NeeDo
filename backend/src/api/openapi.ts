@@ -323,6 +323,49 @@ const shopMembershipCardPlanOpenApiSchemas = {
     required: ["minInitialPrincipalJpy", "maxInitialPrincipalJpy", "minInitialUses", "maxInitialUses"],
     properties: { minInitialPrincipalJpy: nullableNonNegativeInteger, maxInitialPrincipalJpy: nullableNonNegativeInteger, minInitialUses: nullableNonNegativeInteger, maxInitialUses: nullableNonNegativeInteger }
   },
+  ShopMembershipCardIssuanceRequest: {
+    type: "object", additionalProperties: false,
+    required: ["planPublicId", "initialPrincipalJpy", "initialUses", "issuanceSource", "issuanceReference", "issuanceNote", "idempotencyKey"],
+    properties: {
+      planPublicId: { type: "string", format: "uuid" },
+      initialPrincipalJpy: nullableNonNegativeInteger,
+      initialUses: nullableNonNegativeInteger,
+      issuanceSource: { type: "string", enum: ["offline_paid", "historical_replacement", "manual_grant"] },
+      issuanceReference: { type: ["string", "null"], maxLength: 160 },
+      issuanceNote: { type: ["string", "null"], maxLength: 500 },
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+    }
+  },
+  ShopMembershipCardIssuanceResult: {
+    type: "object", additionalProperties: false,
+    required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "initialPrincipalJpy", "initialUses", "issuanceSource", "issuanceReference", "issuanceNote", "issuedAt", "expiresAt", "frozenAt", "platformFeeRateBpsSnapshot", "planPublicId", "planVersionPublicId", "planVersion", "customerNeedoId", "customerDisplayName", "replayed"],
+    properties: {
+      publicId: { type: "string", format: "uuid" },
+      cardNoMasked: { type: "string" },
+      name: { type: "string", minLength: 1, maxLength: 120 },
+      type: { type: "string", enum: ["stored_value", "count", "benefit"] },
+      status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
+      principalBalanceJpy: nullableNonNegativeInteger,
+      bonusBalanceJpy: nullableNonNegativeInteger,
+      remainingUses: nullableNonNegativeInteger,
+      totalUses: nullableNonNegativeInteger,
+      initialPrincipalJpy: nullableNonNegativeInteger,
+      initialUses: nullableNonNegativeInteger,
+      issuanceSource: { type: "string", enum: ["offline_paid", "historical_replacement", "manual_grant"] },
+      issuanceReference: { type: ["string", "null"], maxLength: 160 },
+      issuanceNote: { type: ["string", "null"], maxLength: 500 },
+      issuedAt: { type: "string", format: "date-time" },
+      expiresAt: { type: ["string", "null"], format: "date-time" },
+      frozenAt: { type: ["string", "null"], format: "date-time" },
+      platformFeeRateBpsSnapshot: { type: "integer", minimum: 0, maximum: 10_000 },
+      planPublicId: { type: "string", format: "uuid" },
+      planVersionPublicId: { type: "string", format: "uuid" },
+      planVersion: { type: "integer", minimum: 1 },
+      customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+      customerDisplayName: { type: "string", minLength: 1 },
+      replayed: { type: "boolean" }
+    }
+  },
   ShopMembershipCardPlanDraftRequest: {
     type: "object", additionalProperties: false,
     required: ["expectedLockVersion", "name", "description", "cardType", "validity", "issuance", "caps", "rules"],
@@ -374,6 +417,21 @@ const membershipCardPlanPublicIdParameter = {
 };
 
 const createShopMembershipCardPlanOpenApiPaths = (config: AppConfig): Record<string, unknown> => ({
+  [`${config.API_PREFIX}/merchant-admin/shop-memberships/{publicId}/cards`]: {
+    post: {
+      tags: ["Shop Membership"],
+      summary: "Issue a membership card from the current published plan version",
+      description: "Creates the card, audit record, and customer notification atomically. Initial issuance does not reward NDP or mutate wallets or ledgers.",
+      security: [{ bearerAuth: [] }],
+      parameters: [membershipCardPlanPublicIdParameter],
+      requestBody: membershipCardPlanRequestBody("ShopMembershipCardIssuanceRequest"),
+      responses: {
+        "200": jsonDataResponse("Idempotent replay of the existing issued card", { $ref: "#/components/schemas/ShopMembershipCardIssuanceResult" }),
+        "201": jsonDataResponse("Created membership card", { $ref: "#/components/schemas/ShopMembershipCardIssuanceResult" }),
+        ...shopMembershipCardPlanErrorResponses
+      }
+    }
+  },
   [`${config.API_PREFIX}/merchant-admin/shop-membership-card-plans`]: {
     get: {
       tags: ["Shop Membership Card Plan"], summary: "List membership card plans in the current shop", security: [{ bearerAuth: [] }],
@@ -6860,7 +6918,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopMembershipCard: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "issuedAt", "expiresAt", "frozenAt"],
+        required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "initialPrincipalJpy", "initialUses", "issuanceSource", "platformFeeRateBpsSnapshot", "planPublicId", "planVersionPublicId", "planVersion", "issuedAt", "expiresAt", "frozenAt"],
         properties: {
           publicId: { type: "string", format: "uuid" },
           cardNoMasked: { type: "string" },
@@ -6871,6 +6929,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           bonusBalanceJpy: { type: ["integer", "null"], minimum: 0 },
           remainingUses: { type: ["integer", "null"], minimum: 0 },
           totalUses: { type: ["integer", "null"], minimum: 0 },
+          initialPrincipalJpy: { type: ["integer", "null"], minimum: 0 },
+          initialUses: { type: ["integer", "null"], minimum: 0 },
+          issuanceSource: { type: ["string", "null"], enum: ["offline_paid", "historical_replacement", "manual_grant", null] },
+          platformFeeRateBpsSnapshot: { type: ["integer", "null"], minimum: 0, maximum: 10_000 },
+          planPublicId: { type: ["string", "null"], format: "uuid" },
+          planVersionPublicId: { type: ["string", "null"], format: "uuid" },
+          planVersion: { type: ["integer", "null"], minimum: 1 },
           issuedAt: { type: "string", format: "date-time" },
           expiresAt: { type: ["string", "null"], format: "date-time" },
           frozenAt: { type: ["string", "null"], format: "date-time" }

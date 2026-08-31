@@ -1,5 +1,6 @@
 import {
   ShopCustomerMembershipStatus,
+  ShopMembershipCardIssuanceSource,
   ShopMembershipCardStatus,
   ShopMembershipCardType,
   type Prisma,
@@ -13,6 +14,7 @@ import { buildPaginatedResponse, toPrismaPagination, type PaginatedResponse, typ
 export type ShopMembershipStatusPayload = "active" | "ended";
 export type ShopMembershipCardTypePayload = "stored_value" | "count" | "benefit";
 export type ShopMembershipCardStatusPayload = "active" | "frozen" | "expired" | "void";
+export type ShopMembershipCardIssuanceSourcePayload = "offline_paid" | "historical_replacement" | "manual_grant";
 export type ShopMembershipAnalyticsPeriod = "last7days" | "last30days" | "last90days";
 
 export interface ShopMembershipStorePayload {
@@ -33,6 +35,13 @@ export interface ShopMembershipCardPayload {
   bonusBalanceJpy: number | null;
   remainingUses: number | null;
   totalUses: number | null;
+  initialPrincipalJpy: number | null;
+  initialUses: number | null;
+  issuanceSource: ShopMembershipCardIssuanceSourcePayload | null;
+  platformFeeRateBpsSnapshot: number | null;
+  planPublicId: string | null;
+  planVersionPublicId: string | null;
+  planVersion: number | null;
   issuedAt: Date;
   expiresAt: Date | null;
   frozenAt: Date | null;
@@ -183,6 +192,12 @@ const cardSelect = {
   bonusBalanceJpy: true,
   remainingUses: true,
   totalUses: true,
+  initialPrincipalJpy: true,
+  initialUses: true,
+  issuanceSource: true,
+  platformFeeRateBpsSnapshot: true,
+  plan: { select: { publicId: true } },
+  planVersion: { select: { publicId: true, version: true } },
   issuedAt: true,
   expiresAt: true,
   frozenAt: true
@@ -204,6 +219,12 @@ interface MembershipCardRecord {
   bonusBalanceJpy: number | null;
   remainingUses: number | null;
   totalUses: number | null;
+  initialPrincipalJpy: number | null;
+  initialUses: number | null;
+  issuanceSource: ShopMembershipCardIssuanceSource | null;
+  platformFeeRateBpsSnapshot: number | null;
+  plan: { publicId: string } | null;
+  planVersion: { publicId: string; version: number } | null;
   issuedAt: Date;
   expiresAt: Date | null;
   frozenAt: Date | null;
@@ -669,6 +690,13 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       bonusBalanceJpy: record.bonusBalanceJpy,
       remainingUses: record.remainingUses,
       totalUses: record.totalUses,
+      initialPrincipalJpy: record.initialPrincipalJpy,
+      initialUses: record.initialUses,
+      issuanceSource: record.issuanceSource ? this.cardIssuanceSourceFromDb(record.issuanceSource) : null,
+      platformFeeRateBpsSnapshot: record.platformFeeRateBpsSnapshot,
+      planPublicId: record.plan?.publicId ?? null,
+      planVersionPublicId: record.planVersion?.publicId ?? null,
+      planVersion: record.planVersion?.version ?? null,
       issuedAt: record.issuedAt,
       expiresAt: record.expiresAt,
       frozenAt: record.frozenAt
@@ -704,6 +732,14 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       [ShopMembershipCardStatus.VOID]: "void"
     };
     return values[value];
+  }
+
+  private cardIssuanceSourceFromDb(value: ShopMembershipCardIssuanceSource): ShopMembershipCardIssuanceSourcePayload {
+    return value === ShopMembershipCardIssuanceSource.OFFLINE_PAID
+      ? "offline_paid"
+      : value === ShopMembershipCardIssuanceSource.HISTORICAL_REPLACEMENT
+        ? "historical_replacement"
+        : "manual_grant";
   }
 
   private maskCardNumber(cardNo: string): string {

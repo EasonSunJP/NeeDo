@@ -48,6 +48,23 @@ describe("shop membership OpenAPI", () => {
       ShopMembershipOverview: expect.any(Object),
       ShopMembershipAnalytics: expect.any(Object)
     }));
+
+    const issuance = document.paths["/api/v1/merchant-admin/shop-memberships/{publicId}/cards"].post;
+    expect(issuance.security).toEqual([{ bearerAuth: [] }]);
+    expect(issuance.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/ShopMembershipCardIssuanceRequest"
+    });
+    expect(issuance.responses).toEqual(expect.objectContaining({
+      "200": expect.any(Object),
+      "201": expect.any(Object),
+      "400": expect.any(Object),
+      "401": expect.any(Object),
+      "403": expect.any(Object),
+      "404": expect.any(Object),
+      "409": expect.any(Object)
+    }));
+    expect(document.components.schemas.ShopMembershipCardIssuanceRequest.additionalProperties).toBe(false);
+    expect(document.components.schemas.ShopMembershipCardIssuanceResult.additionalProperties).toBe(false);
   });
 
   it("documents strict membership card plan and reward fee contracts", () => {
