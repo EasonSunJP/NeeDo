@@ -101,3 +101,24 @@ The review was completed without database or live-API writes and without changin
 - `git diff --check` - PASS.
 
 No database, API, Task 7, Task 8, route, i18n, formatter, stash, or unrelated component changes were made.
+
+## Favorites removal serialization remediation (2026-08-31)
+
+### RED evidence
+
+- Added a page 3 exact-offset regression with `total=42` and two favorites. Under the previous implementation, clicking both different rows in the same tick sent two `removeChatRecordFavorite` calls because only the same favorite key was guarded.
+- Tightened the retry fixture on page 2 to return the formal exact one-row page for `total=21` instead of an impossible empty offset page.
+
+### GREEN implementation
+
+- Favorites removal is now page-serialized: when any removal is in flight, new remove clicks return immediately, regardless of favorite id.
+- All remove buttons are disabled while `removingKey` is set. The active row still shows `正在移除`; inactive rows keep their normal label but cannot start a concurrent deletion.
+- After the first page 3 deletion succeeds, the authoritative reload returns the remaining single row. A later deletion of that row uses the fresh `total=41` state and correctly steps back to page 2 after the backend total reaches 40.
+
+### Verification
+
+- RED: `npm test -- src/pages/user/UserFavoritesPage.test.tsx` failed as expected with `removeChatRecordFavorite` called 2 times instead of 1.
+- GREEN: `npm test -- src/pages/user/UserFavoritesPage.test.tsx` - PASS, 1 file / 9 tests.
+- `npm test -- src/pages/user/UserFavoritesPage.test.tsx src/features/im/ImChatRecordDetailPage.test.tsx` - PASS, 2 files / 24 tests.
+- `npm run lint` - PASS.
+- `npm run build` - PASS; only the pre-existing SocialProfile mixed static/dynamic import notice and large-chunk warning remain.

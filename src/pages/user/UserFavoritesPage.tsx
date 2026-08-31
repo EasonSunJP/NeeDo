@@ -56,7 +56,7 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
     const originTotal = result?.total ?? 0;
     const originPageSize = result?.page_size ?? 20;
     const operationKey = `${originPage}:${favorite.id}`;
-    if (inflightRemovals.current.has(operationKey)) return;
+    if (inflightRemovals.current.size > 0) return;
     inflightRemovals.current.add(operationKey);
     setRemovingKey(operationKey);
     setRemoveErrorKey(null);
@@ -99,7 +99,7 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
             <ImChatRecordCard language={language} openerId={`favorite-${favorite.id}`} record={favorite} />
             <div className="flex items-center justify-end gap-3 px-2 pb-1 pt-2">
               {removeErrorKey === `${page}:${favorite.id}` ? <span className="text-[11px] font-bold text-[color:var(--client-danger,#d84b4b)]" role="alert">{translateText("移除失败", language)}</span> : null}
-              <button className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--client-primary)]" disabled={removingKey === `${page}:${favorite.id}`} onClick={() => remove(favorite)} type="button">
+              <button className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--client-primary)]" disabled={removingKey !== null} onClick={() => remove(favorite)} type="button">
                 {removingKey === `${page}:${favorite.id}` ? translateText("正在移除", language) : translateText("移除收藏", language)}
               </button>
             </div>

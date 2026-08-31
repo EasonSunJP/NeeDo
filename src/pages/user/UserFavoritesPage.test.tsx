@@ -123,9 +123,43 @@ describe("UserFavoritesPage", () => {
     expect(document.body.textContent).toContain("收藏读取失败");
     const retry = Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.includes("重试"));
     expect(retry).not.toBeUndefined();
-    vi.mocked(api.listChatRecordFavorites).mockResolvedValueOnce({ list: [], total: 21, page: 2, page_size: 20 });
+    vi.mocked(api.listChatRecordFavorites).mockResolvedValueOnce(formalPage(Array.from({ length: 21 }, (_, index) => favoriteAt(index + 1)), 2));
     await act(async () => retry?.click());
     await flush();
+    expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({ page: 2, pageSize: 20 });
+  });
+
+  it("serializes page removals so exact offset reloads stay authoritative", async () => {
+    let rows = Array.from({ length: 42 }, (_, index) => favoriteAt(index + 1));
+    const api = makeApi();
+    vi.mocked(api.listChatRecordFavorites).mockImplementation(async ({ page = 1 } = {}) => formalPage(rows, page));
+    vi.mocked(api.removeChatRecordFavorite).mockImplementation(async (favoriteId) => {
+      rows = rows.filter((row) => row.id !== favoriteId);
+      return { deleted: true };
+    });
+    await act(async () => root.render(<MemoryRouter><UserFavoritesPage api={api} language="zh" /></MemoryRouter>));
+    await flush();
+    await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("下一页"))?.click());
+    await flush();
+    await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("下一页"))?.click());
+    await flush();
+    expect(document.body.textContent).toContain("A41的聊天记录");
+    expect(document.body.textContent).toContain("A42的聊天记录");
+
+    const [firstRemove, secondRemove] = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter((button) => button.textContent?.includes("移除收藏"));
+    await act(async () => { firstRemove?.click(); secondRemove?.click(); });
+    await flush();
+
+    expect(api.removeChatRecordFavorite).toHaveBeenCalledTimes(1);
+    expect(api.removeChatRecordFavorite).toHaveBeenLastCalledWith("41");
+    expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({ page: 3, pageSize: 20 });
+    expect(document.body.textContent).not.toContain("A41的聊天记录");
+    expect(document.body.textContent).toContain("A42的聊天记录");
+
+    await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("移除收藏"))?.click());
+    await flush();
+    expect(api.removeChatRecordFavorite).toHaveBeenCalledTimes(2);
+    expect(api.removeChatRecordFavorite).toHaveBeenLastCalledWith("42");
     expect(api.listChatRecordFavorites).toHaveBeenLastCalledWith({ page: 2, pageSize: 20 });
   });
 
