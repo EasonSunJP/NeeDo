@@ -53,6 +53,7 @@ export function ImChatRecordCard({
         className,
       )}
       data-im-chat-record-opener={stableOpenerId}
+      data-no-i18n="true"
       id={stableOpenerId}
       state={{
         imChatRecordFallbackPath: `${location.pathname}${location.search}`,

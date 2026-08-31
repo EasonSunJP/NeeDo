@@ -291,7 +291,7 @@ function ProtectedSnapshotMedia({
 function SnapshotTimelineItem({ api, item, publicId, language }: { api: ImChatRecordReadApi; item: ImChatRecordItem; publicId: string; language: Language }) {
   const media = snapshotMedia(item);
   return (
-    <li className="relative pb-5 last:pb-0">
+    <li className="relative pb-5 last:pb-0" data-no-i18n="true">
       <span aria-hidden="true" className="absolute -left-[17px] top-4 h-2.5 w-2.5 rounded-full bg-[color:var(--client-primary)] ring-4 ring-[color:var(--client-bg)]" />
       <time className="mb-1 block px-3 text-[10px] font-bold text-[color:var(--client-muted)]" dateTime={item.sentAt}>
         {new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.sentAt))}
@@ -390,7 +390,7 @@ export function ImChatRecordDetailPage({ api, scope = "user", language: requeste
         info={translateText("此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。", language)}
         infoLabel={translateText("聊天记录说明", language)}
         onClose={close}
-        title={title}
+        title={<span data-no-i18n="true">{title}</span>}
       />
       <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-3">
         {status === "loading" ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText("正在读取聊天记录", language)}</p> : null}

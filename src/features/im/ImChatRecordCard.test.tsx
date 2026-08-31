@@ -1,6 +1,11 @@
+// @vitest-environment jsdom
+
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { I18nProvider, I18nRuntime } from "../../i18n/I18nProvider";
 import { ImChatRecordCard } from "./ImChatRecordCard";
 
 const record = {
@@ -13,6 +18,14 @@ const record = {
   itemCount: 2,
   createdAt: "2026-08-31T10:00:00.000Z",
 };
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(() => {
+  document.body.replaceChildren();
+  document.documentElement.lang = "";
+  localStorage.clear();
+});
 
 describe("ImChatRecordCard", () => {
   it("renders the immutable localized title, two-line preview, count, and caption", () => {
@@ -58,5 +71,55 @@ describe("ImChatRecordCard", () => {
     expect(markup).toContain(count);
     expect(markup).toContain(caption);
     expect(markup).toContain(`aria-label="${ariaLabel}"`);
+  });
+
+  it.each([
+    ["zh", "[图片]", "聊天记录", "1条信息"],
+    ["zh-Hant", "[圖片]", "聊天記錄", "1則訊息"],
+    ["ja", "[画像]", "チャット履歴", "1件のメッセージ"],
+    ["en", "[Image]", "Chat history", "1 message"],
+    ["ko", "[이미지]", "채팅 기록", "메시지 1개"],
+  ] as const)("keeps authored card text immutable under the %s I18nRuntime while preserving pre-localized placeholders", async (language, placeholder, caption, count) => {
+    localStorage.setItem("needo.language", language);
+    localStorage.setItem("needo.language.mode", "manual");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const typedPreview = `needo-chat-record-preview:v1:${JSON.stringify({ lines: [{ sender: "東京駅", type: "image", text: "东京站" }] })}`;
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <I18nProvider>
+            <I18nRuntime>
+              <div>
+                <ImChatRecordCard
+                  language={language}
+                  openerId="typed-record"
+                  record={{ ...record, itemCount: 1, preview: typedPreview, senderCount: 1, senderNames: ["東京駅"], titleKind: "single" }}
+                />
+                <ImChatRecordCard
+                  language={language}
+                  openerId="legacy-record"
+                  record={{ ...record, itemCount: 1, preview: "東京駅", senderCount: 1, senderNames: ["A"], titleKind: "single" }}
+                />
+              </div>
+            </I18nRuntime>
+          </I18nProvider>
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => { await new Promise((resolve) => window.requestAnimationFrame(resolve)); });
+
+    const typed = container.querySelector<HTMLElement>('[data-im-chat-record-opener="typed-record"]');
+    const legacy = container.querySelector<HTMLElement>('[data-im-chat-record-opener="legacy-record"]');
+    expect.soft(typed?.getAttribute("data-no-i18n")).toBe("true");
+    expect(typed?.textContent).toContain(`東京駅: ${placeholder} 东京站`);
+    expect(typed?.textContent).toContain(caption);
+    expect(typed?.textContent).toContain(count);
+    expect(legacy?.textContent).toContain("東京駅");
+    expect(legacy?.textContent).not.toContain("Tokyo Station");
+
+    await act(async () => root.unmount());
   });
 });

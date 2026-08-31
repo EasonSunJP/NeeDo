@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { I18nProvider, I18nRuntime } from "../../i18n/I18nProvider";
 import { ImChatRecordCard } from "./ImChatRecordCard";
 import {
   ImChatRecordDetailPage,
@@ -14,6 +15,8 @@ import source from "./ImChatRecordDetailPage.tsx?raw";
 import appSource from "../../App.tsx?raw";
 import type { ImChatRecordMedia } from "./chat-records";
 import { restoreImChatRecordFocus } from "./chat-record-focus";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const publicId = "11111111-1111-4111-8111-111111111111";
 const summary = {
@@ -122,7 +125,10 @@ describe("ImChatRecordDetailPage", () => {
     await act(async () => root.unmount());
     container.remove();
     document.body.innerHTML = "";
+    document.documentElement.lang = "";
+    localStorage.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("uses the shared header contract and a mutation-free read-only timeline", () => {
@@ -433,6 +439,56 @@ describe("ImChatRecordDetailPage", () => {
       expect(document.body.textContent).toContain(authoredText);
     }
     expect(document.body.textContent).not.toContain("不要显示这个回退");
+  });
+
+  it.each([
+    ["zh", "東京駅的聊天记录", "聊天记录说明"],
+    ["zh-Hant", "東京駅的聊天記錄", "聊天記錄說明"],
+    ["ja", "東京駅のチャット履歴", "チャット履歴の説明"],
+    ["en", "東京駅's chat history", "About this chat record"],
+    ["ko", "東京駅의 채팅 기록", "채팅 기록 안내"],
+  ] as const)("keeps sender and authored detail fields immutable under the %s I18nRuntime while preserving localized chrome", async (language, expectedTitle, expectedInfoLabel) => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 1));
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
+    localStorage.setItem("needo.language", language);
+    localStorage.setItem("needo.language.mode", "manual");
+    const recordApi = api({
+      getChatRecord: vi.fn(async () => ({ ...summary, senderNames: ["東京駅"], senderCount: 1, titleKind: "single" as const })),
+      listChatRecordItems: vi.fn(async () => ({
+        ...firstPage,
+        total: 1,
+        nextCursor: null,
+        list: [{
+          ...firstPage.list[0],
+          id: "runtime-location",
+          position: 1,
+          senderDisplayName: "東京駅",
+          messageType: "location",
+          content: "",
+          metadata: { snapshotVersion: 1, type: "location", display: { location: { title: "東京駅", address: "东京站", latitude: 35.681, longitude: 139.767 } } },
+        }],
+      })),
+    });
+
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}>
+        <I18nProvider>
+          <I18nRuntime>
+            {themed(<Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language={language} />} /></Routes>)}
+          </I18nRuntime>
+        </I18nProvider>
+      </MemoryRouter>,
+    ));
+    await flush();
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 5)); });
+
+    const snapshot = document.querySelector<HTMLElement>(".im-chat-record-timeline > li");
+    expect.soft(snapshot?.getAttribute("data-no-i18n")).toBe("true");
+    expect(snapshot?.textContent).toContain("東京駅");
+    expect(snapshot?.textContent).toContain("东京站");
+    expect(snapshot?.textContent).not.toContain("Tokyo Station");
+    expect(document.querySelector("h1")?.textContent).toBe(expectedTitle);
+    expect(document.querySelector(`button[aria-label="${expectedInfoLabel}"]`)).not.toBeNull();
   });
 
   it("rejects malformed public ids without calling the API", async () => {
