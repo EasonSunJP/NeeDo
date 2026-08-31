@@ -1,8 +1,4 @@
-import {
-  Prisma,
-  UserPolicyPublicationStatus,
-  type PrismaClient
-} from "@prisma/client";
+import { Prisma, UserPolicyPublicationStatus, type PrismaClient } from "@prisma/client";
 import type {
   ResolvedUserGlobalPolicy,
   UserGlobalPolicyDraftInput,
@@ -225,8 +221,6 @@ export class UserGlobalPolicyRepository implements UserGlobalPolicyRepositoryPor
   }
 
   private isUniqueConflict(error: unknown): boolean {
-    return Boolean(
-      error && typeof error === "object" && "code" in error && error.code === "P2002"
-    );
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 }

@@ -149,7 +149,10 @@ export class UserGlobalPolicyService {
   }
 
   private assertOperationsIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform") {
+    if (
+      actor.currentIdentityScopeType === "global" ||
+      actor.currentIdentityScopeType === "platform"
+    ) {
       return;
     }
     throw new AppError({

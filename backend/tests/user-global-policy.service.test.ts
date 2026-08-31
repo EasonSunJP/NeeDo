@@ -22,33 +22,34 @@ const defaults = {
   baseExpUnitsPerThreshold: 10_000
 };
 
-const makeRepository = () => ({
-  resolvePolicyAt: jest.fn(async () => ({
-    versionPublicId: "policy-v1",
-    version: 1,
-    status: "published" as const,
-    lockVersion: 1,
-    ...defaults,
-    effectiveFrom: new Date("2026-01-01T00:00:00Z"),
-    effectiveTo: null,
-    publishedAt: new Date("2026-01-01T00:00:00Z")
-  })),
-  getCurrentAndDraft: jest.fn(async () => ({
-    current: null,
-    draft: {
-      versionPublicId: "policy-v2",
-      version: 2,
-      status: "draft" as const,
+const makeRepository = () =>
+  ({
+    resolvePolicyAt: jest.fn(async () => ({
+      versionPublicId: "policy-v1",
+      version: 1,
+      status: "published" as const,
       lockVersion: 1,
       ...defaults,
-      effectiveFrom: new Date("2026-09-02T00:00:00Z"),
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"),
       effectiveTo: null,
-      publishedAt: null
-    }
-  })),
-  saveDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const })),
-  publishDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const }))
-}) as unknown as jest.Mocked<UserGlobalPolicyRepositoryPort>;
+      publishedAt: new Date("2026-01-01T00:00:00Z")
+    })),
+    getCurrentAndDraft: jest.fn(async () => ({
+      current: null,
+      draft: {
+        versionPublicId: "policy-v2",
+        version: 2,
+        status: "draft" as const,
+        lockVersion: 1,
+        ...defaults,
+        effectiveFrom: new Date("2026-09-02T00:00:00Z"),
+        effectiveTo: null,
+        publishedAt: null
+      }
+    })),
+    saveDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const })),
+    publishDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const }))
+  }) as unknown as jest.Mocked<UserGlobalPolicyRepositoryPort>;
 
 describe("UserGlobalPolicyService", () => {
   it("resolves the published V1 default policy at an arbitrary timestamp", async () => {
@@ -82,9 +83,13 @@ describe("UserGlobalPolicyService", () => {
   });
 
   it("maps a stale draft publication to HTTP 409", async () => {
-    const service = new UserGlobalPolicyService(makeRepository(), {
-      createInput: jest.fn((input) => input)
-    } as never, () => new Date("2026-09-01T00:00:00Z"));
+    const service = new UserGlobalPolicyService(
+      makeRepository(),
+      {
+        createInput: jest.fn((input) => input)
+      } as never,
+      () => new Date("2026-09-01T00:00:00Z")
+    );
 
     await expect(
       service.publishDraft(actor, context, {

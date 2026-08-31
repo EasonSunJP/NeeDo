@@ -135,7 +135,8 @@ export class NdpExperienceCampaignService {
       !Number.isInteger(input.expectedPublishedVersion) ||
       input.expectedPublishedVersion < 0 ||
       (input.expectedDraftLockVersion !== null &&
-        (!Number.isInteger(input.expectedDraftLockVersion) || input.expectedDraftLockVersion < 1)) ||
+        (!Number.isInteger(input.expectedDraftLockVersion) ||
+          input.expectedDraftLockVersion < 1)) ||
       !name ||
       name.length > 120 ||
       (description?.length ?? 0) > 500 ||
@@ -188,7 +189,10 @@ export class NdpExperienceCampaignService {
   }
 
   private assertOperationsIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform") {
+    if (
+      actor.currentIdentityScopeType === "global" ||
+      actor.currentIdentityScopeType === "platform"
+    ) {
       return;
     }
     throw new AppError({

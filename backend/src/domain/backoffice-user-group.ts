@@ -77,10 +77,7 @@ export interface BackofficeUserGroupRepositoryPort {
   listCustomGroups: (
     query: PaginationInput & { offset?: number; limit?: number }
   ) => Promise<BackofficeUserGroupPayload[]>;
-  countSystemGroupMembers: (
-    groupCode: SystemUserGroupCode,
-    occurredAt: Date
-  ) => Promise<number>;
+  countSystemGroupMembers: (groupCode: SystemUserGroupCode, occurredAt: Date) => Promise<number>;
   listSystemGroupMembers: (
     groupCode: SystemUserGroupCode,
     occurredAt: Date,

@@ -395,7 +395,13 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("message:recall", "撤回消息", "api", "im", "在正式时限内撤回本人发送的 IM 消息"),
   createPermission("message:react", "回应消息", "api", "im", "添加或移除 IM 消息表情回应"),
   createPermission("message:forward", "转发聊天记录", "api", "im", "创建并投递正式聊天记录包"),
-  createPermission("message:favorite", "收藏聊天记录", "api", "im", "创建、查看和移除自己的聊天记录收藏"),
+  createPermission(
+    "message:favorite",
+    "收藏聊天记录",
+    "api",
+    "im",
+    "创建、查看和移除自己的聊天记录收藏"
+  ),
   createPermission("message:translate", "翻译消息", "api", "im", "翻译当前身份可见的 IM 消息"),
   createPermission("message:read", "已读消息", "api", "im", "标记会话消息已读"),
   createPermission("contact:list", "联系人列表", "api", "im", "分页查看联系人"),
@@ -406,7 +412,13 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("friend-request:respond", "处理好友申请", "api", "im", "接受或拒绝好友申请"),
   createPermission("social-post:list", "动态列表", "api", "social", "分页查看社交动态"),
   createPermission("social-post:create", "发布动态", "api", "social", "发布基础社交动态"),
-  createPermission("social-post:interact", "动态互动", "api", "social", "点赞、收藏、记录浏览并向好友转发动态"),
+  createPermission(
+    "social-post:interact",
+    "动态互动",
+    "api",
+    "social",
+    "点赞、收藏、记录浏览并向好友转发动态"
+  ),
   createPermission("follow:write", "关注操作", "api", "social", "关注或取消关注用户"),
   createPermission("notification:list", "通知列表", "api", "notification", "分页查看通知"),
   createPermission("notification:read", "通知已读", "api", "notification", "标记通知已读"),

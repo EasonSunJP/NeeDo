@@ -9,7 +9,11 @@ import {
   type BackofficeUserGroupRepositoryPort
 } from "../domain/backoffice-user-group";
 import { AppError } from "../utils/app-error";
-import { normalizePagination, type PaginatedResponse, type PaginationInput } from "../utils/pagination";
+import {
+  normalizePagination,
+  type PaginatedResponse,
+  type PaginationInput
+} from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
@@ -256,7 +260,9 @@ export class BackofficeUserGroupService {
     throw this.validationError();
   }
 
-  private unwrapGroupMutation(result: BackofficeUserGroupMutationResult): BackofficeUserGroupPayload {
+  private unwrapGroupMutation(
+    result: BackofficeUserGroupMutationResult
+  ): BackofficeUserGroupPayload {
     if ("value" in result) return result.value;
     if (result.kind === "not_found") throw this.notFound();
     if (result.kind === "name_conflict") {
@@ -276,7 +282,10 @@ export class BackofficeUserGroupService {
   }
 
   private assertOperationsIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform") {
+    if (
+      actor.currentIdentityScopeType === "global" ||
+      actor.currentIdentityScopeType === "platform"
+    ) {
       return;
     }
     throw new AppError({

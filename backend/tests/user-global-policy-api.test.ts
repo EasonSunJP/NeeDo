@@ -3,10 +3,7 @@ import { AppError } from "../src/utils/app-error";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { createStep06Fixture } from "./helpers/step06-fixture";
 
-const grant = (
-  fixture: Awaited<ReturnType<typeof createStep06Fixture>>,
-  codes: string[]
-) => {
+const grant = (fixture: Awaited<ReturnType<typeof createStep06Fixture>>, codes: string[]) => {
   fixture.roles[0].rolePermissions.push(
     ...codes.map((code, index) => ({
       id: 9_400 + index,
@@ -92,7 +89,9 @@ describe("user global policy and NDP campaign API", () => {
       }),
       archiveCampaign: jest.fn()
     };
-    const fixture = await createStep06Fixture({ ndpExperienceCampaignService: campaignService } as never);
+    const fixture = await createStep06Fixture({
+      ndpExperienceCampaignService: campaignService
+    } as never);
     grant(fixture, [
       "backoffice:ndp-experience-campaign:read",
       "backoffice:ndp-experience-campaign:publish"

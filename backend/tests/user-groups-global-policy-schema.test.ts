@@ -40,7 +40,9 @@ describe("user groups and global policy persistence", () => {
 
   it("seeds one disabled-by-default V1 policy with the approved base NDP ratio", () => {
     expect(migration).toContain("INSERT INTO `user_global_policy_versions`");
-    expect(migration).toMatch(/VALUES\s*\(UUID\(\), 1, 'published', FALSE, FALSE, FALSE, FALSE, 100, 10000/i);
+    expect(migration).toMatch(
+      /VALUES\s*\(UUID\(\), 1, 'published', FALSE, FALSE, FALSE, FALSE, 100, 10000/i
+    );
     expect(migration).not.toContain("INSERT INTO `ndp_experience_campaigns`");
   });
 

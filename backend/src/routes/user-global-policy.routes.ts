@@ -39,9 +39,7 @@ export const createUserGlobalPolicyRoutes = (
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
   );
-  const audit = new AuditLogService(
-    dependencies.auditLogRepository ?? new AuditLogRepository()
-  );
+  const audit = new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository());
   const policyService =
     dependencies.userGlobalPolicyService ??
     new UserGlobalPolicyService(
@@ -51,8 +49,7 @@ export const createUserGlobalPolicyRoutes = (
   const campaignService =
     dependencies.ndpExperienceCampaignService ??
     new NdpExperienceCampaignService(
-      dependencies.ndpExperienceCampaignRepository ??
-        new NdpExperienceCampaignRepository(),
+      dependencies.ndpExperienceCampaignRepository ?? new NdpExperienceCampaignRepository(),
       audit
     );
   const policyController = new UserGlobalPolicyController(policyService);

@@ -31,14 +31,10 @@ type CampaignRecord = Prisma.NdpExperienceCampaignGetPayload<{
   select: typeof campaignSelect;
 }>;
 
-export class NdpExperienceCampaignRepository
-  implements NdpExperienceCampaignRepositoryPort
-{
+export class NdpExperienceCampaignRepository implements NdpExperienceCampaignRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
-  public async resolveCampaignAt(
-    occurredAt: Date
-  ): Promise<NdpExperienceCampaignPayload | null> {
+  public async resolveCampaignAt(occurredAt: Date): Promise<NdpExperienceCampaignPayload | null> {
     const campaign = await this.client.ndpExperienceCampaign.findFirst({
       where: {
         status: UserPolicyPublicationStatus.PUBLISHED,
@@ -67,7 +63,11 @@ export class NdpExperienceCampaignRepository
       }),
       this.client.ndpExperienceCampaign.count({ where })
     ]);
-    return buildPaginatedResponse(list.map((campaign) => this.mapCampaign(campaign)), total, query);
+    return buildPaginatedResponse(
+      list.map((campaign) => this.mapCampaign(campaign)),
+      total,
+      query
+    );
   }
 
   public async saveDraftWithAudit(input: {
@@ -293,8 +293,6 @@ export class NdpExperienceCampaignRepository
   }
 
   private isUniqueConflict(error: unknown): boolean {
-    return Boolean(
-      error && typeof error === "object" && "code" in error && error.code === "P2002"
-    );
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 }

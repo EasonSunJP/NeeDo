@@ -17,64 +17,65 @@ const actor: AuthenticatedAccessContext = {
 
 const context = { ip: "127.0.0.1", userAgent: "jest" };
 
-const makeRepository = () => ({
-  countCustomGroups: jest.fn(async () => 1),
-  listCustomGroups: jest.fn(async () => [
-    {
-      code: "custom:group-1",
-      kind: "custom",
-      name: "常客",
-      description: "手动维护",
-      status: "active",
-      mutableName: true,
-      memberCount: 2
-    }
-  ]),
-  countSystemGroupMembers: jest.fn(async () => 0),
-  listSystemGroupMembers: jest.fn(async () => ({
-    list: [],
-    total: 0,
-    page: 1,
-    page_size: 20
-  })),
-  listCustomGroupMembers: jest.fn(async () => ({
-    list: [],
-    total: 0,
-    page: 1,
-    page_size: 20
-  })),
-  createCustomGroupWithAudit: jest.fn(async () => ({
-    kind: "created",
-    value: {
-      code: "custom:group-2",
-      kind: "custom",
-      name: "新分组",
-      description: null,
-      status: "active",
-      mutableName: true,
-      memberCount: 0
-    }
-  })),
-  updateCustomGroupWithAudit: jest.fn(async () => ({
-    kind: "updated",
-    value: {
-      code: "custom:group-1",
-      kind: "custom",
-      name: "重点用户",
-      description: null,
-      status: "active",
-      mutableName: true,
-      memberCount: 2
-    }
-  })),
-  archiveCustomGroupWithAudit: jest.fn(async () => ({ kind: "archived" })),
-  setCustomGroupMembersWithAudit: jest.fn(async () => ({
-    kind: "updated",
-    added: 1,
-    removed: 0,
-    unchanged: 1
-  }))
-}) as unknown as jest.Mocked<BackofficeUserGroupRepositoryPort>;
+const makeRepository = () =>
+  ({
+    countCustomGroups: jest.fn(async () => 1),
+    listCustomGroups: jest.fn(async () => [
+      {
+        code: "custom:group-1",
+        kind: "custom",
+        name: "常客",
+        description: "手动维护",
+        status: "active",
+        mutableName: true,
+        memberCount: 2
+      }
+    ]),
+    countSystemGroupMembers: jest.fn(async () => 0),
+    listSystemGroupMembers: jest.fn(async () => ({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    })),
+    listCustomGroupMembers: jest.fn(async () => ({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    })),
+    createCustomGroupWithAudit: jest.fn(async () => ({
+      kind: "created",
+      value: {
+        code: "custom:group-2",
+        kind: "custom",
+        name: "新分组",
+        description: null,
+        status: "active",
+        mutableName: true,
+        memberCount: 0
+      }
+    })),
+    updateCustomGroupWithAudit: jest.fn(async () => ({
+      kind: "updated",
+      value: {
+        code: "custom:group-1",
+        kind: "custom",
+        name: "重点用户",
+        description: null,
+        status: "active",
+        mutableName: true,
+        memberCount: 2
+      }
+    })),
+    archiveCustomGroupWithAudit: jest.fn(async () => ({ kind: "archived" })),
+    setCustomGroupMembersWithAudit: jest.fn(async () => ({
+      kind: "updated",
+      added: 1,
+      removed: 0,
+      unchanged: 1
+    }))
+  }) as unknown as jest.Mocked<BackofficeUserGroupRepositoryPort>;
 
 describe("BackofficeUserGroupService", () => {
   it("prepends the five immutable derived system groups to custom groups", async () => {
@@ -85,7 +86,11 @@ describe("BackofficeUserGroupService", () => {
       .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(4)
       .mockResolvedValueOnce(5);
-    const service = new BackofficeUserGroupService(repository, undefined, () => new Date("2026-09-01T00:00:00Z"));
+    const service = new BackofficeUserGroupService(
+      repository,
+      undefined,
+      () => new Date("2026-09-01T00:00:00Z")
+    );
 
     await expect(service.listGroups(actor, { page: 1, pageSize: 20 })).resolves.toMatchObject({
       list: expect.arrayContaining([
@@ -103,7 +108,11 @@ describe("BackofficeUserGroupService", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     expect(
       classifySystemUserGroups(
-        { tierCode: "black_diamond", expiresAt: new Date("2026-08-31T23:59:59Z"), operationsMember: true },
+        {
+          tierCode: "black_diamond",
+          expiresAt: new Date("2026-08-31T23:59:59Z"),
+          operationsMember: true
+        },
         now
       )
     ).toEqual(["system:free", "system:operations"]);

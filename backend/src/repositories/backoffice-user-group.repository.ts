@@ -265,7 +265,9 @@ export class BackofficeUserGroupRepository implements BackofficeUserGroupReposit
         where: { groupId: group.id },
         select: { id: true, userId: true, deletedAt: true }
       });
-      const existingByUserId = new Map(existing.map((membership) => [membership.userId, membership]));
+      const existingByUserId = new Map(
+        existing.map((membership) => [membership.userId, membership])
+      );
       const desiredUserIds = new Set(users.map((user) => user.id));
       let added = 0;
       let unchanged = 0;
@@ -289,7 +291,9 @@ export class BackofficeUserGroupRepository implements BackofficeUserGroupReposit
       }
 
       const removedIds = existing
-        .filter((membership) => membership.deletedAt === null && !desiredUserIds.has(membership.userId))
+        .filter(
+          (membership) => membership.deletedAt === null && !desiredUserIds.has(membership.userId)
+        )
         .map((membership) => membership.id);
       if (removedIds.length > 0) {
         await transaction.backofficeUserGroupMembership.updateMany({
@@ -355,9 +359,7 @@ export class BackofficeUserGroupRepository implements BackofficeUserGroupReposit
     };
   }
 
-  private activeEntitlementWhere(
-    occurredAt: Date
-  ): Prisma.PlatformMembershipEntitlementWhereInput {
+  private activeEntitlementWhere(occurredAt: Date): Prisma.PlatformMembershipEntitlementWhereInput {
     return {
       deletedAt: null,
       supersededAt: null,
@@ -403,8 +405,6 @@ export class BackofficeUserGroupRepository implements BackofficeUserGroupReposit
   }
 
   private isUniqueConflict(error: unknown): boolean {
-    return Boolean(
-      error && typeof error === "object" && "code" in error && error.code === "P2002"
-    );
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 }

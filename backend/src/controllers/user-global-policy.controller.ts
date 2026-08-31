@@ -27,31 +27,37 @@ export class UserGlobalPolicyController {
   public getSettings = this.handle(async (_request, response) => {
     response
       .status(200)
-      .json(successResponse(await this.service.getCurrentAndDraft(getAuthenticatedAccess(response))));
+      .json(
+        successResponse(await this.service.getCurrentAndDraft(getAuthenticatedAccess(response)))
+      );
   });
 
   public saveDraft = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.saveDraft(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          userGlobalPolicyDraftBodySchema.parse(request.body)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.saveDraft(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            userGlobalPolicyDraftBodySchema.parse(request.body)
+          )
         )
-      )
-    );
+      );
   });
 
   public publishDraft = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.publishDraft(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          versionPublishBodySchema.parse(request.body)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.publishDraft(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            versionPublishBodySchema.parse(request.body)
+          )
         )
-      )
-    );
+      );
   });
 
   private handle(
@@ -71,52 +77,60 @@ export class NdpExperienceCampaignController {
   public constructor(private readonly service: NdpExperienceCampaignControllerService) {}
 
   public listCampaigns = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.listCampaigns(
-          getAuthenticatedAccess(response),
-          ndpExperienceCampaignListQuerySchema.parse(request.query)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listCampaigns(
+            getAuthenticatedAccess(response),
+            ndpExperienceCampaignListQuerySchema.parse(request.query)
+          )
         )
-      )
-    );
+      );
   });
 
   public saveDraft = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.saveDraft(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          ndpExperienceCampaignDraftBodySchema.parse(request.body)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.saveDraft(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            ndpExperienceCampaignDraftBodySchema.parse(request.body)
+          )
         )
-      )
-    );
+      );
   });
 
   public publishDraft = this.handle(async (request, response) => {
     const { versionPublicId } = ndpExperienceCampaignParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.publishDraft(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          { versionPublicId, ...versionPublishBodySchema.parse(request.body) }
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.publishDraft(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            { versionPublicId, ...versionPublishBodySchema.parse(request.body) }
+          )
         )
-      )
-    );
+      );
   });
 
   public archiveCampaign = this.handle(async (request, response) => {
     const { versionPublicId } = ndpExperienceCampaignParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.archiveCampaign(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          { versionPublicId, ...ndpExperienceCampaignArchiveBodySchema.parse(request.body) }
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.archiveCampaign(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            { versionPublicId, ...ndpExperienceCampaignArchiveBodySchema.parse(request.body) }
+          )
         )
-      )
-    );
+      );
   });
 
   private handle(

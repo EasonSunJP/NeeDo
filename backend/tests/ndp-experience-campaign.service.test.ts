@@ -14,13 +14,14 @@ const actor: AuthenticatedAccessContext = {
 
 const context = { ip: "127.0.0.1", userAgent: "jest" };
 
-const makeRepository = () => ({
-  resolveCampaignAt: jest.fn(async () => null),
-  listCampaigns: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
-  saveDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const })),
-  publishDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const })),
-  archiveCampaignWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const }))
-}) as unknown as jest.Mocked<NdpExperienceCampaignRepositoryPort>;
+const makeRepository = () =>
+  ({
+    resolveCampaignAt: jest.fn(async () => null),
+    listCampaigns: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
+    saveDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const })),
+    publishDraftWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const })),
+    archiveCampaignWithAudit: jest.fn(async () => ({ kind: "version_conflict" as const }))
+  }) as unknown as jest.Mocked<NdpExperienceCampaignRepositoryPort>;
 
 describe("NdpExperienceCampaignService", () => {
   it("uses factor 1x when no published campaign covers the event", async () => {
@@ -47,9 +48,9 @@ describe("NdpExperienceCampaignService", () => {
     });
     const service = new NdpExperienceCampaignService(repository);
 
-    await expect(
-      service.resolveCampaignAt(new Date("2026-12-01T00:00:00+09:00"))
-    ).resolves.toEqual({ factorBps: 100_000, versionPublicId: "campaign-10x" });
+    await expect(service.resolveCampaignAt(new Date("2026-12-01T00:00:00+09:00"))).resolves.toEqual(
+      { factorBps: 100_000, versionPublicId: "campaign-10x" }
+    );
   });
 
   it("rejects zero-length windows before persistence", async () => {

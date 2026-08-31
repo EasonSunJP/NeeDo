@@ -54,7 +54,9 @@ describe("UserGlobalPolicyRepository", () => {
       auditLog: { create: jest.fn(async () => ({})) }
     };
     const client = {
-      $transaction: jest.fn(async (callback: (tx: typeof transaction) => unknown) => callback(transaction))
+      $transaction: jest.fn(async (callback: (tx: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
     };
     const repository = new UserGlobalPolicyRepository(client as unknown as PrismaClient);
 

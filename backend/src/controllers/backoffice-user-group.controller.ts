@@ -25,81 +25,93 @@ export class BackofficeUserGroupController {
   public constructor(private readonly service: BackofficeUserGroupControllerService) {}
 
   public listGroups = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.listGroups(
-          getAuthenticatedAccess(response),
-          backofficeUserGroupListQuerySchema.parse(request.query)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listGroups(
+            getAuthenticatedAccess(response),
+            backofficeUserGroupListQuerySchema.parse(request.query)
+          )
         )
-      )
-    );
+      );
   });
 
   public listMembers = this.handle(async (request, response) => {
     const { groupCode } = backofficeUserGroupParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.listGroupMembers(
-          getAuthenticatedAccess(response),
-          groupCode,
-          backofficeUserGroupListQuerySchema.parse(request.query)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listGroupMembers(
+            getAuthenticatedAccess(response),
+            groupCode,
+            backofficeUserGroupListQuerySchema.parse(request.query)
+          )
         )
-      )
-    );
+      );
   });
 
   public createGroup = this.handle(async (request, response) => {
-    response.status(201).json(
-      successResponse(
-        await this.service.createCustomGroup(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          backofficeUserGroupCreateBodySchema.parse(request.body)
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.createCustomGroup(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            backofficeUserGroupCreateBodySchema.parse(request.body)
+          )
         )
-      )
-    );
+      );
   });
 
   public updateGroup = this.handle(async (request, response) => {
     const { groupCode } = backofficeUserGroupParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.updateCustomGroup(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          groupCode,
-          backofficeUserGroupUpdateBodySchema.parse(request.body)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.updateCustomGroup(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            groupCode,
+            backofficeUserGroupUpdateBodySchema.parse(request.body)
+          )
         )
-      )
-    );
+      );
   });
 
   public archiveGroup = this.handle(async (request, response) => {
     const { groupCode } = backofficeUserGroupParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.archiveCustomGroup(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          groupCode,
-          backofficeUserGroupArchiveBodySchema.parse(request.body)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.archiveCustomGroup(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            groupCode,
+            backofficeUserGroupArchiveBodySchema.parse(request.body)
+          )
         )
-      )
-    );
+      );
   });
 
   public setMembers = this.handle(async (request, response) => {
     const { groupCode } = backofficeUserGroupParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.setCustomGroupMembers(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          groupCode,
-          backofficeUserGroupMembersBodySchema.parse(request.body)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.setCustomGroupMembers(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            groupCode,
+            backofficeUserGroupMembersBodySchema.parse(request.body)
+          )
         )
-      )
-    );
+      );
   });
 
   private handle(

@@ -32,9 +32,7 @@ export const createBackofficeUserGroupRoutes = (
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
   );
-  const audit = new AuditLogService(
-    dependencies.auditLogRepository ?? new AuditLogRepository()
-  );
+  const audit = new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository());
   const service =
     dependencies.backofficeUserGroupService ??
     new BackofficeUserGroupService(
