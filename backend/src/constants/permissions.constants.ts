@@ -544,6 +544,20 @@ export const SYSTEM_PERMISSIONS = [
     "修改全局平台费金额与店铺收费状态"
   ),
   createPermission(
+    "backoffice:ndp-exchange-rate:read",
+    "运营后台 NDP 汇率读取",
+    "api",
+    "backoffice",
+    "读取当前、未来生效及历史 NDP 对日元汇率"
+  ),
+  createPermission(
+    "backoffice:ndp-exchange-rate:write",
+    "运营后台 NDP 汇率管理",
+    "api",
+    "backoffice",
+    "发布经过版本与审计保护的 NDP 对日元汇率"
+  ),
+  createPermission(
     "backoffice:order-acceptance-pause:read",
     "运营接单暂停读取",
     "api",
@@ -1474,7 +1488,8 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "role:list",
   "menu:permission-management",
   "page:permission-management",
-  "permission:list"
+  "permission:list",
+  "backoffice:ndp-exchange-rate:read"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -1572,6 +1587,8 @@ const FINANCE_PERMISSION_CODES = [
   "finance:fee-rule:preview",
   "finance:calculation-log:list",
   "backoffice:platform-fee-policy:read",
+  "backoffice:ndp-exchange-rate:read",
+  "backoffice:ndp-exchange-rate:write",
   "page:backoffice-membership-reward-fee",
   "button:backoffice-membership-reward-fee-create",
   "menu:finance",
@@ -1584,6 +1601,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:dashboard:read",
   "backoffice:platform-fee-policy:read",
   "backoffice:platform-fee-policy:write",
+  "backoffice:ndp-exchange-rate:read",
+  "backoffice:ndp-exchange-rate:write",
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
   "backoffice:orders:list",

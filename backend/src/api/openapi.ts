@@ -535,6 +535,16 @@ const affiliatePlatformFeeErrorResponses = {
       "error.affiliate.platform_fee_version_conflict, error.affiliate.platform_fee_policy_conflict, or error.affiliate.platform_fee_rate_mismatch"
   }
 };
+const ndpExchangeRateErrorResponses = {
+  "400": jsonErrorResponse("error.validation — strict request validation failed"),
+  "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+  "403": jsonErrorResponse(
+    "error.forbidden or error.identity.forbidden — denied permission or platform scope"
+  ),
+  "409": jsonErrorResponse(
+    "error.ndp_exchange_rate.conflict or error.idempotency.key_reused — version, transaction, uniqueness, or idempotency conflict"
+  )
+};
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -6165,6 +6175,90 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           latestVersion: { type: "integer", minimum: 0 }
         }
       },
+      NdpExchangeRate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "ruleId",
+          "publicId",
+          "version",
+          "ndpUnits",
+          "jpyUnits",
+          "status",
+          "effectiveFrom",
+          "effectiveTo",
+          "reason",
+          "createdById",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          ruleId: { type: "integer", minimum: 1 },
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          ndpUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          jpyUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          status: { type: "string", enum: ["active", "superseded"] },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          createdById: { type: ["integer", "null"], minimum: 1 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      NdpExchangeRatePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/NdpExchangeRate" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      NdpExchangeRateOverview: {
+        type: "object",
+        additionalProperties: false,
+        required: ["current", "nextScheduled", "latestVersion", "evaluatedAt", "history"],
+        properties: {
+          current: {
+            oneOf: [{ $ref: "#/components/schemas/NdpExchangeRate" }, { type: "null" }]
+          },
+          nextScheduled: {
+            oneOf: [{ $ref: "#/components/schemas/NdpExchangeRate" }, { type: "null" }]
+          },
+          latestVersion: { type: "integer", minimum: 0 },
+          evaluatedAt: { type: "string", format: "date-time" },
+          history: { $ref: "#/components/schemas/NdpExchangeRatePage" }
+        }
+      },
+      NdpExchangeRatePublish: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "ndpUnits",
+          "jpyUnits",
+          "expectedVersion",
+          "effectiveFrom",
+          "reason",
+          "idempotencyKey"
+        ],
+        properties: {
+          ndpUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          jpyUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          expectedVersion: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          effectiveFrom: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+        },
+        description:
+          "Publishes the next global rate version with optimistic concurrency and a request-only idempotency key."
+      },
       AffiliatePlatformFeeShopOption: {
         type: "object",
         additionalProperties: false,
@@ -7824,6 +7918,53 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
+    [`${config.API_PREFIX}/backoffice/ndp-exchange-rates`]: {
+      get: {
+        tags: ["NDP Exchange Rate"],
+        summary: "Read current, scheduled, and historical NDP exchange rates",
+        description:
+          "Requires backoffice:ndp-exchange-rate:read and a global or platform identity. Effective intervals are evaluated as [effectiveFrom, effectiveTo).",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          { name: "at", in: "query", schema: { type: "string", format: "date-time" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Evaluated rate summary and paginated immutable history", {
+            $ref: "#/components/schemas/NdpExchangeRateOverview"
+          }),
+          "400": ndpExchangeRateErrorResponses["400"],
+          "401": ndpExchangeRateErrorResponses["401"],
+          "403": ndpExchangeRateErrorResponses["403"]
+        }
+      },
+      post: {
+        tags: ["NDP Exchange Rate"],
+        summary: "Publish the next NDP exchange-rate version",
+        description:
+          "Requires backoffice:ndp-exchange-rate:write and a global or platform identity. Publication closes the prior version and writes its audit record atomically.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/NdpExchangeRatePublish" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Published or safely replayed rate version", {
+            $ref: "#/components/schemas/NdpExchangeRate"
+          }),
+          ...ndpExchangeRateErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/affiliate/fee-rules/summary`]: {
       get: {
         tags: ["Affiliate Platform Fee"],
