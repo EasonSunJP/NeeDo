@@ -266,29 +266,13 @@ export const backofficeCustomerUpdateBodySchema = z
 
 export const backofficeCustomerMembershipGrantBodySchema = z
   .object({
-    membershipLevel: z.string().trim().min(1).max(50),
+    membershipLevel: z.enum(["silver", "gold", "black_diamond"]),
     grantMode: z.literal("operator_complimentary"),
-    durationUnit: z.enum(["forever", "day", "month"]),
-    durationValue: z.number().int().positive().max(1200).nullable(),
+    durationUnit: z.literal("month"),
+    durationValue: z.union([z.literal(1), z.literal(12)]),
     startsAt: z.string().datetime({ offset: true })
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.durationUnit === "forever" && value.durationValue !== null) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Forever membership must not define a duration value",
-        path: ["durationValue"]
-      });
-    }
-    if (value.durationUnit !== "forever" && value.durationValue === null) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Timed membership requires a duration value",
-        path: ["durationValue"]
-      });
-    }
-  });
+  .strict();
 
 const serviceFields = {
   categoryId: z.number().int().positive(),

@@ -526,23 +526,10 @@ const createFixture = async (
       page: input.page,
       page_size: input.pageSize
     })),
-    assignCustomerMembership: jest.fn(
-      async (input: {
-        membershipLevel: string;
-        durationUnit: "forever" | "day" | "month";
-        durationValue: number | null;
-        startsAt: Date;
-        expiresAt: Date | null;
-      }) => ({
-        membershipLevel: input.membershipLevel,
-        membershipGrantMode: "operator_complimentary",
-        membershipDurationUnit: input.durationUnit,
-        membershipDurationValue: input.durationValue,
-        membershipStartsAt: input.startsAt.toISOString(),
-        membershipExpiresAt: input.expiresAt?.toISOString() ?? null,
-        membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" }
-      })
-    ),
+    findCustomerMembershipGrantContext: jest.fn(async () => ({
+      customerUserId: 42,
+      membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" }
+    })),
     listTechnicianRankings: jest.fn(async () => ({
       list: [
         {
@@ -602,6 +589,26 @@ const createFixture = async (
       createdAt: now.toISOString()
     }))
   };
+  const platformMembershipService = {
+    changeEntitlement: jest.fn(async (
+      _actor: unknown,
+      _context: unknown,
+      _userId: number,
+      command: { targetTierCode: "silver" | "gold" | "black_diamond"; billingCycle: "monthly" | "annual" }
+    ) => ({
+      kind: "grant" as const,
+      tierCode: command.targetTierCode,
+      tierVersionPublicId: `tier-${command.targetTierCode}-v1`,
+      entitlementPublicId: `entitlement-${command.targetTierCode}-1`,
+      startsAt: now,
+      expiresAt:
+        command.billingCycle === "annual"
+          ? new Date("2027-05-25T00:00:00.000Z")
+          : new Date("2026-06-24T00:00:00.000Z"),
+      experienceValueNdp: command.targetTierCode === "gold" ? 1_999 : 0,
+      idempotent: false
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository,
@@ -610,6 +617,7 @@ const createFixture = async (
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
     backofficeRepository,
+    platformMembershipService,
     merchantShopContextRepository:
       options.merchantShopContextRepository ?? merchantShopContextRepository
   } as never);
@@ -622,7 +630,14 @@ const createFixture = async (
     return response.body.data.accessToken as string;
   };
 
-  return { app, auditLogs, backofficeRepository, merchantShopContextRepository, login };
+  return {
+    app,
+    auditLogs,
+    backofficeRepository,
+    merchantShopContextRepository,
+    platformMembershipService,
+    login
+  };
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
@@ -717,7 +732,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     );
   });
 
-  it("assigns an audited complimentary user membership through the write permission", async () => {
+  it("routes complimentary membership grants through the formal entitlement service", async () => {
     const fixture = await createFixture();
     const adminToken = await fixture.login("admin@example.com");
 
@@ -728,8 +743,8 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         membershipLevel: "gold",
         grantMode: "operator_complimentary",
         durationUnit: "month",
-        durationValue: 3,
-        startsAt: "2026-08-29T00:00:00.000Z"
+        durationValue: 1,
+        startsAt: now.toISOString()
       })
       .expect(200);
 
@@ -737,22 +752,24 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       membershipLevel: "gold",
       membershipGrantMode: "operator_complimentary",
       membershipDurationUnit: "month",
-      membershipDurationValue: 3,
-      membershipExpiresAt: "2026-11-29T00:00:00.000Z"
+      membershipDurationValue: 1,
+      membershipExpiresAt: "2026-06-24T00:00:00.000Z"
     });
-    expect(fixture.backofficeRepository.assignCustomerMembership).toHaveBeenCalledWith(
-      expect.objectContaining({
-        customerProfileId: 44,
-        membershipLevel: "gold",
-        durationUnit: "month",
-        durationValue: 3,
-        grantedById: expect.any(Number)
-      })
+    expect(fixture.backofficeRepository.findCustomerMembershipGrantContext).toHaveBeenCalledWith(
+      44,
+      expect.any(Number)
     );
-    expect(fixture.auditLogs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ action: "backoffice.customer.membership.assign" })
-      ])
+    expect(fixture.platformMembershipService.changeEntitlement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      42,
+      expect.objectContaining({
+        kind: "grant",
+        targetTierCode: "gold",
+        billingCycle: "monthly",
+        source: "operations",
+        expectedCurrentLockVersion: null
+      })
     );
 
     await request(fixture.app)
@@ -761,9 +778,9 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .send({
         membershipLevel: "gold",
         grantMode: "operator_complimentary",
-        durationUnit: "forever",
-        durationValue: 30,
-        startsAt: "2026-08-29T00:00:00.000Z"
+        durationUnit: "month",
+        durationValue: 3,
+        startsAt: now.toISOString()
       })
       .expect(400);
   });
