@@ -133,7 +133,6 @@ export class MerchantShopContextRepository implements MerchantShopContextReposit
 
   private async listDirectShop(input: {
     identityScopeId: number;
-    selectedShopPublicId: string | null;
     page: number;
     pageSize: number;
   }): Promise<MerchantShopContextPage> {
@@ -148,11 +147,17 @@ export class MerchantShopContextRepository implements MerchantShopContextReposit
     });
     const total = record ? 1 : 0;
     return {
-      list:
-        record && input.page === 1 ? [this.mapShop(record, record.publicIdentifier!.publicId)] : [],
+      list: record && input.page === 1 ? [this.mapDirectShop(record)] : [],
       total,
       page: input.page,
       page_size: input.pageSize
+    };
+  }
+
+  private mapDirectShop(record: ShopListRecord): MerchantShopContextRow {
+    return {
+      ...this.mapShop(record, null),
+      selected: true
     };
   }
 

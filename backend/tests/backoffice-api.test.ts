@@ -2,6 +2,10 @@ import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import {
+  MerchantShopContextRepository,
+  type MerchantShopContextRepositoryPort
+} from "../src/repositories/merchant-shop-context.repository";
 
 interface StoredValue {
   value: string;
@@ -119,7 +123,11 @@ const makePermission = (code: string, index: number) => ({
   deletedAt: null
 });
 
-const createFixture = async () => {
+const createFixture = async (
+  options: {
+    merchantShopContextRepository?: MerchantShopContextRepositoryPort;
+  } = {}
+) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const auditLogs: unknown[] = [];
   const backofficePermissions = [
@@ -602,7 +610,8 @@ const createFixture = async () => {
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
     backofficeRepository,
-    merchantShopContextRepository
+    merchantShopContextRepository:
+      options.merchantShopContextRepository ?? merchantShopContextRepository
   } as never);
   const login = async (email: string) => {
     const response = await request(app)
@@ -665,6 +674,47 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .get("/api/v1/merchant-admin/manageable-shops")
       .set("Authorization", `Bearer ${viewerToken}`)
       .expect(403);
+  });
+
+  it("returns the real direct-shop repository row as selected without a token selection", async () => {
+    const findFirst = jest.fn(async () => ({
+      name: "Aoyama Care Studio",
+      city: "Tokyo",
+      status: "published",
+      publicIdentifier: { publicId: "shop0000000011" }
+    }));
+    const contextRepository = new MerchantShopContextRepository({
+      shop: { findFirst }
+    } as never);
+    const fixture = await createFixture({ merchantShopContextRepository: contextRepository });
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops?page=1&page_size=10")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toEqual({
+          list: [
+            {
+              publicId: "shop0000000011",
+              name: "Aoyama Care Studio",
+              city: "Tokyo",
+              status: "published",
+              selected: true
+            }
+          ],
+          total: 1,
+          page: 1,
+          page_size: 10
+        });
+      });
+
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 11, deletedAt: null })
+      })
+    );
   });
 
   it("assigns an audited complimentary user membership through the write permission", async () => {

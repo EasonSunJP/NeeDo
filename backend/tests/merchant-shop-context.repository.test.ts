@@ -95,7 +95,7 @@ describe("MerchantShopContextRepository", () => {
     expect(JSON.stringify(result)).not.toMatch(/shopId|merchantAccountId|membershipId|numberPart/);
   });
 
-  it("limits a direct shop identity to its own active shop without a merchant-account relation", async () => {
+  it("always selects a direct identity's own active shop without a merchant-account relation", async () => {
     const findFirst = jest.fn(async () => ({
       name: "Own Shop",
       city: "Tokyo",
@@ -108,6 +108,14 @@ describe("MerchantShopContextRepository", () => {
       identityScopeType: "shop",
       identityScopeId: 7,
       selectedShopPublicId: null,
+      now: NOW,
+      page: 1,
+      pageSize: 20
+    });
+    const staleSelectionResult = await repository.listManageableShops({
+      identityScopeType: "shop",
+      identityScopeId: 7,
+      selectedShopPublicId: "shop0000000099",
       now: NOW,
       page: 1,
       pageSize: 20
@@ -141,6 +149,9 @@ describe("MerchantShopContextRepository", () => {
       page: 1,
       page_size: 20
     });
+    expect(staleSelectionResult.list).toEqual([
+      expect.objectContaining({ publicId: "shop0000000007", selected: true })
+    ]);
   });
 
   it("resolves a requested or deterministic default shop only through an active relation", async () => {
