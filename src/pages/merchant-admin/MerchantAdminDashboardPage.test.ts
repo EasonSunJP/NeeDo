@@ -3,7 +3,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
-import { MerchantShopSwitcher, type MerchantShopSwitcherProps } from "./MerchantAdminDashboardPage";
+import {
+  MerchantShopSwitcher,
+  shouldBlockMerchantDashboardForOwnerTransition,
+  type MerchantShopSwitcherProps
+} from "./MerchantAdminDashboardPage";
 import source from "./MerchantAdminDashboardPage.tsx?raw";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -66,6 +70,18 @@ describe("merchant unified data dashboard", () => {
     expect(source).toContain('statusMessage={t("会员功能尚未开放")}');
     expect(source).toContain('label: t("利用者数")');
     expect(source).not.toContain("memberCount ?? 0");
+  });
+
+  it("freezes stale owner data only while loading and exposes retry after a switch-load failure", () => {
+    expect(
+      shouldBlockMerchantDashboardForOwnerTransition("loading", null, true)
+    ).toBe(true);
+    expect(
+      shouldBlockMerchantDashboardForOwnerTransition("error", null, true)
+    ).toBe(false);
+    expect(source).toContain('t("以下仍显示上次成功结果")');
+    expect(source).toContain('t("重新加载数据大盘")');
+    expect(source).toContain("{ownerSwitchPending ? (");
   });
 
   it("keeps shop billing and wallet values server-authored", () => {

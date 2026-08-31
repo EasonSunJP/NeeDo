@@ -372,6 +372,14 @@ function NdpCostCard({
   );
 }
 
+export function shouldBlockMerchantDashboardForOwnerTransition(
+  status: MerchantAdminDashboardResource["status"],
+  dashboard: BackofficeDashboardPayload | null,
+  hasCommittedDashboard: boolean
+) {
+  return status === "loading" && !dashboard && hasCommittedDashboard;
+}
+
 function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDashboardResource }) {
   const { language } = useI18n();
   const { session, switchMerchantShop } = useAuth();
@@ -385,7 +393,11 @@ function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDa
   }, [resource.dashboard]);
 
   const dashboard = resource.dashboard ?? committedDashboard;
-  const ownerSwitchPending = !resource.dashboard && Boolean(committedDashboard);
+  const ownerSwitchPending = shouldBlockMerchantDashboardForOwnerTransition(
+    resource.status,
+    resource.dashboard,
+    Boolean(committedDashboard)
+  );
   const loadError = resource.error ? describeMerchantReadError(resource.error, language) : "";
   const completedCustomerCount = dashboard
     ? dashboard.membership?.completedCustomerCount
