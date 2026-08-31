@@ -225,5 +225,17 @@ describe("formal Exchange OpenAPI contract", () => {
       { $ref: "#/components/schemas/ExchangeActor" },
       { type: "null" }
     ]);
+    expect(schemas.ExchangeViewerState.required).toEqual([
+      "liked",
+      "canWithdraw",
+      "canClaim",
+      "canViewClaims"
+    ]);
+    expect(schemas.ExchangeViewerState.properties).toEqual(
+      expect.objectContaining({
+        canClaim: { type: "boolean" },
+        canViewClaims: { type: "boolean" }
+      })
+    );
   });
 });

@@ -26,6 +26,8 @@ export interface ExchangeInteractionCounts {
 export interface ExchangeViewerState {
   liked: boolean;
   canWithdraw: boolean;
+  canClaim: boolean;
+  canViewClaims: boolean;
 }
 
 export interface ExchangeDemandPayload {

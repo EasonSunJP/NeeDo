@@ -84,7 +84,7 @@ const post: ExchangePostPayload = {
     avatarUrl: null
   },
   counts: { comments: 4, likes: 21, shares: 5 },
-  viewer: { liked: false, canWithdraw: true },
+  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
   demand: {
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,

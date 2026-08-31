@@ -1,6 +1,7 @@
 import {
   ContentLocale,
   ExchangeBudgetMode as DatabaseExchangeBudgetMode,
+  ExchangeClaimStatus as DatabaseExchangeClaimStatus,
   ExchangeMatchMode as DatabaseExchangeMatchMode,
   ExchangePostStatus as DatabaseExchangePostStatus,
   ExchangePostType as DatabaseExchangePostType,
@@ -515,6 +516,30 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     return updated.count === 1;
   }
 
+  public async cancelActiveClaimsByPost(
+    postId: number,
+    status: "request_withdrawn" | "request_expired",
+    now: Date
+  ): Promise<number> {
+    const updated = await this.client.exchangeClaim.updateMany({
+      where: {
+        exchangePostId: postId,
+        status: DatabaseExchangeClaimStatus.ACTIVE,
+        deletedAt: null
+      },
+      data: {
+        status:
+          status === "request_withdrawn"
+            ? DatabaseExchangeClaimStatus.REQUEST_WITHDRAWN
+            : DatabaseExchangeClaimStatus.REQUEST_EXPIRED,
+        activeKey: null,
+        terminalAt: now,
+        updatedAt: now
+      }
+    });
+    return updated.count;
+  }
+
   public async createComment(
     input: ExchangeCommentRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeCommentPayload>> {
@@ -750,7 +775,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       },
       viewer: {
         liked: row.likes.length > 0,
-        canWithdraw: ownerView && status === "published"
+        canWithdraw: ownerView && status === "published",
+        canClaim: false,
+        canViewClaims: false
       },
       demand,
       intelligence
