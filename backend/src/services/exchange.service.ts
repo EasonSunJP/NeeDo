@@ -407,6 +407,9 @@ export class ExchangeService {
 
       const settlesRequestFinancial = locked.type === "demand" && locked.requestFinancial !== null;
       if (settlesRequestFinancial) {
+        if (locked.requestFinancial?.state !== "held") {
+          throw this.exchangeFinancialStateConflict();
+        }
         if (!this.ledgerService) throw this.requestFeeUnavailable();
         await this.ledgerService.captureExchangeRequestPublication(
           {
@@ -510,6 +513,9 @@ export class ExchangeService {
 
       const settlesRequestFinancial = locked.type === "demand" && locked.requestFinancial !== null;
       if (settlesRequestFinancial) {
+        if (locked.requestFinancial?.state !== "held") {
+          throw this.exchangeFinancialStateConflict();
+        }
         if (!this.ledgerService) throw this.requestFeeUnavailable();
         await this.ledgerService.releaseExchangeRequestPublication(
           {
@@ -550,7 +556,12 @@ export class ExchangeService {
           error instanceof AppError &&
           error.code === ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT
         ) {
-          continue;
+          const current = await this.repository.runInTransaction((repository) =>
+            repository.lockPostForMutation(postId)
+          );
+          if (!current || current.status === "withdrawn" || current.status === "expired") {
+            continue;
+          }
         }
         throw error;
       }

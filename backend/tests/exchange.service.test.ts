@@ -891,6 +891,30 @@ describe("ExchangeService", () => {
     expect(repository.createAudit).not.toHaveBeenCalled();
   });
 
+  it("rejects a published Request whose fee was already captured before withdrawal", async () => {
+    const repository = createRepository();
+    repository.lockPostForMutation.mockResolvedValue(
+      terminalPost({ status: "published", requestFinancial: { state: "captured" } })
+    );
+    const ledger = createLedgerService();
+    const service = new ExchangeService(
+      repository,
+      () => now,
+      undefined,
+      createFeeService(),
+      ledger
+    );
+
+    await expect(service.withdraw(access, 41, "withdraw-key-0001")).rejects.toMatchObject({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT,
+      message: "error.exchange.request_financial_state_conflict",
+      statusCode: 409
+    });
+    expect(ledger.captureExchangeRequestPublication).not.toHaveBeenCalled();
+    expect(repository.markWithdrawnIfPublished).not.toHaveBeenCalled();
+    expect(repository.createAudit).not.toHaveBeenCalled();
+  });
+
   it("releases the full held fee on natural expiry", async () => {
     const repository = createRepository();
     const transactionClient = { transaction: "request-terminal" };
@@ -924,6 +948,31 @@ describe("ExchangeService", () => {
         metadata: expect.objectContaining({ publicationFeeOutcome: "released" })
       })
     );
+  });
+
+  it("rejects a published Request whose fee was already released before expiry", async () => {
+    const repository = createRepository();
+    repository.lockPostForMutation.mockResolvedValue({
+      ...terminalPost({ status: "published", requestFinancial: { state: "released" } }),
+      expiresAt: now
+    });
+    const ledger = createLedgerService();
+    const service = new ExchangeService(
+      repository,
+      () => now,
+      undefined,
+      createFeeService(),
+      ledger
+    );
+
+    await expect(service.expirePost(41, now)).rejects.toMatchObject({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT,
+      message: "error.exchange.request_financial_state_conflict",
+      statusCode: 409
+    });
+    expect(ledger.releaseExchangeRequestPublication).not.toHaveBeenCalled();
+    expect(repository.markExpiredIfPublished).not.toHaveBeenCalled();
+    expect(repository.createAudit).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1078,6 +1127,9 @@ describe("ExchangeService", () => {
   it("continues a bounded expiry page after a concurrent withdrawal conflict", async () => {
     const repository = createRepository();
     repository.listDuePostIds.mockResolvedValueOnce([41, 42, 43]);
+    repository.lockPostForMutation.mockResolvedValueOnce(
+      terminalPost({ status: "withdrawn", requestFinancial: { state: "captured" } })
+    );
     const ledger = createLedgerService();
     const service = new ExchangeService(
       repository,
@@ -1105,6 +1157,25 @@ describe("ExchangeService", () => {
       [42, now],
       [43, now]
     ]);
+    expect(repository.lockPostForMutation).toHaveBeenCalledWith(42);
+  });
+
+  it("rethrows a financial state conflict when the post remains published", async () => {
+    const repository = createRepository();
+    repository.listDuePostIds.mockResolvedValueOnce([41]);
+    repository.lockPostForMutation.mockResolvedValueOnce(
+      terminalPost({ status: "published", requestFinancial: { state: "released" } })
+    );
+    const service = new ExchangeService(repository, () => now);
+    const conflict = new AppError({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT,
+      message: "error.exchange.request_financial_state_conflict",
+      statusCode: 409
+    });
+    jest.spyOn(service, "expirePost").mockRejectedValueOnce(conflict);
+
+    await expect(service.expireDue(now, 100)).rejects.toBe(conflict);
+    expect(repository.lockPostForMutation).toHaveBeenCalledWith(41);
   });
 
   it("does not swallow unknown expiry failures", async () => {
