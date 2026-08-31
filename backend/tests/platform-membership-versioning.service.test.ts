@@ -102,6 +102,7 @@ const repository = (
       }
     };
   }),
+  changeEntitlementWithAudit: jest.fn(),
   ...overrides
 });
 const audit = {

@@ -1,10 +1,19 @@
 import {
   PlatformMembershipBenefitCode,
+  PlatformMembershipEntitlementChangeKind,
+  PlatformMembershipEntitlementSource,
   PlatformMembershipTierCode,
   PlatformMembershipVersionStatus,
   Prisma,
   type PrismaClient
 } from "@prisma/client";
+import {
+  planPlatformMembershipEntitlementChange,
+  type PlatformMembershipEntitlementChangeResult,
+  type PlatformMembershipEntitlementCommand,
+  type PlatformMembershipEntitlementSourceValue,
+  type PlatformMembershipEntitlementStoredChangeKind
+} from "../domain/platform-membership-entitlement";
 import type {
   PlatformMembershipBenefitCodeValue,
   PlatformMembershipTheme,
@@ -73,6 +82,13 @@ export type PlatformMembershipTierMutationResult =
     }
   | { kind: "not_found" | "version_conflict" | "invalid_state" };
 
+export type PlatformMembershipEntitlementMutationResult =
+  | {
+      kind: "changed" | "idempotent";
+      value: PlatformMembershipEntitlementChangeResult;
+    }
+  | { kind: "not_found" | "version_conflict" | "invalid_state" };
+
 export interface PlatformMembershipRepositoryPort {
   hasActiveCustomerProfile: (userId: number) => Promise<boolean>;
   findActiveEntitlementAt: (
@@ -99,6 +115,13 @@ export interface PlatformMembershipRepositoryPort {
     expectedLockVersion: number;
     audit: AuditLogCreateInput;
   }) => Promise<PlatformMembershipTierMutationResult>;
+  changeEntitlementWithAudit: (input: {
+    actorId: number;
+    userId: number;
+    occurredAt: Date;
+    command: PlatformMembershipEntitlementCommand;
+    audit: AuditLogCreateInput;
+  }) => Promise<PlatformMembershipEntitlementMutationResult>;
 }
 
 const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionSelect>()({
@@ -170,6 +193,27 @@ type TierVersionAdministrationRecord =
     select: typeof tierVersionAdministrationSelect;
   }>;
 
+const entitlementResultSelect =
+  Prisma.validator<Prisma.PlatformMembershipEntitlementSelect>()({
+    id: true,
+    publicId: true,
+    changeKind: true,
+    startsAt: true,
+    expiresAt: true,
+    experienceValueNdp: true,
+    tierVersion: {
+      select: {
+        publicId: true,
+        tier: { select: { code: true } }
+      }
+    }
+  });
+
+type EntitlementResultRecord =
+  Prisma.PlatformMembershipEntitlementGetPayload<{
+    select: typeof entitlementResultSelect;
+  }>;
+
 const tierCodeToDb: Readonly<
   Record<PlatformMembershipTierCodeValue, PlatformMembershipTierCode>
 > = {
@@ -206,6 +250,34 @@ const versionStatusFromDb = {
   [PlatformMembershipVersionStatus.ARCHIVED]: "archived"
 } as const;
 
+const entitlementSourceToDb: Readonly<
+  Record<PlatformMembershipEntitlementSourceValue, PlatformMembershipEntitlementSource>
+> = {
+  purchase: PlatformMembershipEntitlementSource.PURCHASE,
+  operations: PlatformMembershipEntitlementSource.OPERATIONS,
+  offline_transfer: PlatformMembershipEntitlementSource.OFFLINE_TRANSFER,
+  internal: PlatformMembershipEntitlementSource.INTERNAL,
+  migration: PlatformMembershipEntitlementSource.MIGRATION
+};
+
+const entitlementChangeKindToDb: Readonly<
+  Record<PlatformMembershipEntitlementStoredChangeKind, PlatformMembershipEntitlementChangeKind>
+> = {
+  grant: PlatformMembershipEntitlementChangeKind.GRANT,
+  renew: PlatformMembershipEntitlementChangeKind.RENEW,
+  upgrade: PlatformMembershipEntitlementChangeKind.UPGRADE,
+  downgrade: PlatformMembershipEntitlementChangeKind.DOWNGRADE
+};
+
+const entitlementChangeKindFromDb = {
+  [PlatformMembershipEntitlementChangeKind.GRANT]: "grant",
+  [PlatformMembershipEntitlementChangeKind.RENEW]: "renew",
+  [PlatformMembershipEntitlementChangeKind.UPGRADE]: "upgrade",
+  [PlatformMembershipEntitlementChangeKind.DOWNGRADE]: "schedule_downgrade"
+} as const;
+
+const entitlementVersionConflict = Symbol("platform-membership-entitlement-version-conflict");
+
 export class PlatformMembershipRepository implements PlatformMembershipRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
@@ -230,10 +302,13 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
         supersededAt: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }],
         tierVersion: {
-          status: PlatformMembershipVersionStatus.PUBLISHED,
+          status: {
+            in: [
+              PlatformMembershipVersionStatus.PUBLISHED,
+              PlatformMembershipVersionStatus.ARCHIVED
+            ]
+          },
           deletedAt: null,
-          effectiveFrom: { lte: occurredAt },
-          OR: [{ effectiveTo: null }, { effectiveTo: { gt: occurredAt } }],
           tier: { deletedAt: null }
         }
       },
@@ -486,6 +561,245 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     return value ? { kind: "published", value } : { kind: "invalid_state" };
   }
 
+  public async changeEntitlementWithAudit(input: {
+    actorId: number;
+    userId: number;
+    occurredAt: Date;
+    command: PlatformMembershipEntitlementCommand;
+    audit: AuditLogCreateInput;
+  }): Promise<PlatformMembershipEntitlementMutationResult> {
+    const source = entitlementSourceToDb[input.command.source];
+    const execute = async () =>
+      this.client.$transaction(async (transaction) => {
+        const existing = await transaction.platformMembershipEntitlement.findFirst({
+          where: {
+            userId: input.userId,
+            source,
+            sourceReference: input.command.sourceReference,
+            deletedAt: null
+          },
+          select: entitlementResultSelect
+        });
+        if (existing) {
+          return {
+            kind: "idempotent" as const,
+            value: this.mapEntitlementResult(existing, true)
+          };
+        }
+
+        const customer = await transaction.customerProfile.findFirst({
+          where: { userId: input.userId, deletedAt: null },
+          select: { id: true, platformMembershipLockVersion: true }
+        });
+        if (!customer) return { kind: "not_found" as const };
+
+        const future = await transaction.platformMembershipEntitlement.findFirst({
+          where: {
+            userId: input.userId,
+            deletedAt: null,
+            supersededAt: null,
+            startsAt: { gt: input.occurredAt },
+            OR: [{ expiresAt: null }, { expiresAt: { gt: input.occurredAt } }]
+          },
+          select: { id: true }
+        });
+        if (future) return { kind: "invalid_state" as const };
+
+        const current = await transaction.platformMembershipEntitlement.findFirst({
+          where: {
+            userId: input.userId,
+            deletedAt: null,
+            supersededAt: null,
+            startsAt: { lte: input.occurredAt },
+            OR: [{ expiresAt: null }, { expiresAt: { gt: input.occurredAt } }],
+            tierVersion: {
+              status: {
+                in: [
+                  PlatformMembershipVersionStatus.PUBLISHED,
+                  PlatformMembershipVersionStatus.ARCHIVED
+                ]
+              },
+              deletedAt: null,
+              tier: { deletedAt: null }
+            }
+          },
+          orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            publicId: true,
+            startsAt: true,
+            expiresAt: true,
+            lockVersion: true,
+            tierVersion: {
+              select: {
+                monthlyValueNdp: true,
+                tier: { select: { code: true } }
+              }
+            }
+          }
+        });
+
+        const targetTierCode =
+          input.command.kind === "expire" ? "free" : input.command.targetTierCode;
+        const target = await transaction.platformMembershipTierVersion.findFirst({
+          where: {
+            status: PlatformMembershipVersionStatus.PUBLISHED,
+            deletedAt: null,
+            effectiveFrom: { lte: input.occurredAt },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gt: input.occurredAt } }],
+            tier: { code: tierCodeToDb[targetTierCode], deletedAt: null }
+          },
+          orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }],
+          select: {
+            id: true,
+            publicId: true,
+            monthlyValueNdp: true,
+            annualBillingMonths: true,
+            durationDays: true,
+            tier: { select: { code: true } }
+          }
+        });
+        if (!target) return { kind: "not_found" as const };
+
+        let plan;
+        try {
+          plan = planPlatformMembershipEntitlementChange({
+            occurredAt: input.occurredAt,
+            current: current
+              ? {
+                  entitlementId: current.id,
+                  entitlementPublicId: current.publicId,
+                  tierCode: tierCodeFromDb[current.tierVersion.tier.code],
+                  monthlyValueNdp: current.tierVersion.monthlyValueNdp,
+                  startsAt: current.startsAt,
+                  expiresAt: current.expiresAt,
+                  lockVersion: current.lockVersion
+                }
+              : null,
+            target: {
+              tierCode: tierCodeFromDb[target.tier.code],
+              tierVersionId: target.id,
+              tierVersionPublicId: target.publicId,
+              monthlyValueNdp: target.monthlyValueNdp,
+              annualBillingMonths: target.annualBillingMonths,
+              durationDays: target.durationDays
+            },
+            command:
+              input.command.kind === "expire"
+                ? {
+                    kind: "expire",
+                    expectedCurrentLockVersion:
+                      input.command.expectedCurrentLockVersion
+                  }
+                : {
+                    kind: input.command.kind,
+                    billingCycle: input.command.billingCycle,
+                    expectedCurrentLockVersion:
+                      input.command.expectedCurrentLockVersion
+                  }
+          });
+        } catch (error: unknown) {
+          if (error instanceof RangeError) return { kind: "invalid_state" as const };
+          throw error;
+        }
+
+        const customerLocked = await transaction.customerProfile.updateMany({
+          where: {
+            id: customer.id,
+            platformMembershipLockVersion: customer.platformMembershipLockVersion,
+            deletedAt: null
+          },
+          data: { platformMembershipLockVersion: { increment: 1 } }
+        });
+        if (customerLocked.count !== 1) throw entitlementVersionConflict;
+
+        if (plan.currentUpdate) {
+          const currentLocked = await transaction.platformMembershipEntitlement.updateMany({
+            where: {
+              id: plan.currentUpdate.entitlementId,
+              lockVersion: plan.currentUpdate.expectedLockVersion,
+              deletedAt: null
+            },
+            data: {
+              supersededAt: plan.currentUpdate.supersededAt,
+              expiresAt: plan.currentUpdate.expiresAt,
+              lockVersion: { increment: 1 }
+            }
+          });
+          if (currentLocked.count !== 1) throw entitlementVersionConflict;
+        }
+
+        const created = plan.create
+          ? await transaction.platformMembershipEntitlement.create({
+              data: {
+                userId: input.userId,
+                tierVersionId: plan.create.tierVersionId,
+                source,
+                sourceReference: input.command.sourceReference,
+                changeKind: entitlementChangeKindToDb[plan.create.changeKind],
+                billingMonths: plan.create.billingMonths,
+                experienceValueNdp: plan.create.experienceValueNdp,
+                startsAt: plan.create.startsAt,
+                expiresAt: plan.create.expiresAt,
+                createdById: input.actorId
+              },
+              select: entitlementResultSelect
+            })
+          : null;
+
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({
+            ...input.audit,
+            targetId: created?.id ?? current?.id ?? null,
+            metadata: {
+              ...this.metadataObject(input.audit.metadata),
+              userId: input.userId,
+              commandKind: input.command.kind,
+              source: input.command.source,
+              sourceReference: input.command.sourceReference,
+              tierCode: targetTierCode,
+              tierVersionPublicId: target.publicId,
+              entitlementPublicId: created?.publicId ?? current?.publicId ?? null,
+              startsAt: created?.startsAt.toISOString() ?? input.occurredAt.toISOString(),
+              expiresAt: created?.expiresAt?.toISOString() ?? null,
+              experienceValueNdp: plan.experienceValueNdp
+            }
+          })
+        });
+
+        const value = created
+          ? this.mapEntitlementResult(created, false)
+          : {
+              kind: "expire" as const,
+              tierCode: "free" as const,
+              tierVersionPublicId: target.publicId,
+              entitlementPublicId: null,
+              startsAt: input.occurredAt,
+              expiresAt: null,
+              experienceValueNdp: 0,
+              idempotent: false
+            };
+        return { kind: "changed" as const, value };
+      });
+
+    try {
+      return await execute();
+    } catch (error: unknown) {
+      if (error === entitlementVersionConflict) {
+        return { kind: "version_conflict" };
+      }
+      if (!this.isUniqueConstraintError(error)) throw error;
+      const existing = await this.findEntitlementBySource(
+        input.userId,
+        source,
+        input.command.sourceReference
+      );
+      return existing
+        ? { kind: "idempotent", value: this.mapEntitlementResult(existing, true) }
+        : { kind: "version_conflict" };
+    }
+  }
+
   private async findTierVersion(
     tierCode: PlatformMembershipTierCodeValue,
     version: number
@@ -499,6 +813,17 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       select: tierVersionAdministrationSelect
     });
     return record ? this.mapAdministrationVersion(record) : null;
+  }
+
+  private async findEntitlementBySource(
+    userId: number,
+    source: PlatformMembershipEntitlementSource,
+    sourceReference: string
+  ): Promise<EntitlementResultRecord | null> {
+    return this.client.platformMembershipEntitlement.findFirst({
+      where: { userId, source, sourceReference, deletedAt: null },
+      select: entitlementResultSelect
+    });
   }
 
   private versionMutableData(input: PlatformMembershipTierDraftPersistenceInput) {
@@ -551,6 +876,22 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
         isEnabled: item.isEnabled,
         configuration: this.configurationObject(item.configurationJson)
       }))
+    };
+  }
+
+  private mapEntitlementResult(
+    entitlement: EntitlementResultRecord,
+    idempotent: boolean
+  ): PlatformMembershipEntitlementChangeResult {
+    return {
+      kind: entitlementChangeKindFromDb[entitlement.changeKind],
+      tierCode: tierCodeFromDb[entitlement.tierVersion.tier.code],
+      tierVersionPublicId: entitlement.tierVersion.publicId,
+      entitlementPublicId: entitlement.publicId,
+      startsAt: entitlement.startsAt,
+      expiresAt: entitlement.expiresAt,
+      experienceValueNdp: entitlement.experienceValueNdp,
+      idempotent
     };
   }
 

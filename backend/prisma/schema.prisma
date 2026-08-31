@@ -559,6 +559,15 @@ enum PlatformMembershipEntitlementSource {
   @@map("platform_membership_entitlement_source")
 }
 
+enum PlatformMembershipEntitlementChangeKind {
+  GRANT     @map("grant")
+  RENEW     @map("renew")
+  UPGRADE   @map("upgrade")
+  DOWNGRADE @map("downgrade")
+
+  @@map("platform_membership_entitlement_change_kind")
+}
+
 enum ShopCustomerMembershipStatus {
   ACTIVE @map("active")
   ENDED  @map("ended")
@@ -1288,27 +1297,28 @@ model BusinessCalendarDate {
 }
 
 model CustomerProfile {
-  id                      Int                             @id @default(autoincrement())
-  userId                  Int                             @unique @map("user_id")
-  displayName             String                          @map("display_name") @db.VarChar(120)
-  bio                     String?                         @db.Text
-  city                    String?                         @db.VarChar(100)
-  membershipLevel         String                          @default("standard") @map("membership_level") @db.VarChar(50)
-  membershipGrantMode     CustomerMembershipGrantMode     @default(SELF_SERVICE) @map("membership_grant_mode")
-  membershipDurationUnit  CustomerMembershipDurationUnit? @map("membership_duration_unit")
-  membershipDurationValue Int?                            @map("membership_duration_value")
-  membershipStartsAt      DateTime?                       @map("membership_starts_at")
-  membershipExpiresAt     DateTime?                       @map("membership_expires_at")
-  membershipGrantedById   Int?                            @map("membership_granted_by_id")
-  isPublic                Boolean                         @default(true) @map("is_public")
-  gender                  String                          @default("private") @db.VarChar(20)
-  age                     Int?
-  heightCm                Decimal?                        @map("height_cm") @db.Decimal(5, 2)
-  languages               Json?
-  visibility              String                          @default("public") @db.VarChar(20)
-  createdAt               DateTime                        @default(now()) @map("created_at")
-  updatedAt               DateTime                        @updatedAt @map("updated_at")
-  deletedAt               DateTime?                       @map("deleted_at")
+  id                            Int                             @id @default(autoincrement())
+  userId                        Int                             @unique @map("user_id")
+  displayName                   String                          @map("display_name") @db.VarChar(120)
+  bio                           String?                         @db.Text
+  city                          String?                         @db.VarChar(100)
+  membershipLevel               String                          @default("standard") @map("membership_level") @db.VarChar(50)
+  membershipGrantMode           CustomerMembershipGrantMode     @default(SELF_SERVICE) @map("membership_grant_mode")
+  membershipDurationUnit        CustomerMembershipDurationUnit? @map("membership_duration_unit")
+  membershipDurationValue       Int?                            @map("membership_duration_value")
+  membershipStartsAt            DateTime?                       @map("membership_starts_at")
+  membershipExpiresAt           DateTime?                       @map("membership_expires_at")
+  membershipGrantedById         Int?                            @map("membership_granted_by_id")
+  platformMembershipLockVersion Int                             @default(1) @map("platform_membership_lock_version")
+  isPublic                      Boolean                         @default(true) @map("is_public")
+  gender                        String                          @default("private") @db.VarChar(20)
+  age                           Int?
+  heightCm                      Decimal?                        @map("height_cm") @db.Decimal(5, 2)
+  languages                     Json?
+  visibility                    String                          @default("public") @db.VarChar(20)
+  createdAt                     DateTime                        @default(now()) @map("created_at")
+  updatedAt                     DateTime                        @updatedAt @map("updated_at")
+  deletedAt                     DateTime?                       @map("deleted_at")
 
   user                  User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
   membershipGrantedBy   User?                    @relation("CustomerMembershipGrantedBy", fields: [membershipGrantedById], references: [id], onDelete: SetNull)
@@ -1443,19 +1453,23 @@ model PlatformMembershipTierBenefit {
 }
 
 model PlatformMembershipEntitlement {
-  id              Int                                 @id @default(autoincrement())
-  publicId        String                              @unique @default(uuid()) @map("public_id") @db.Char(36)
-  userId          Int                                 @map("user_id")
-  tierVersionId   Int                                 @map("tier_version_id")
-  source          PlatformMembershipEntitlementSource
-  sourceReference String                              @map("source_reference") @db.VarChar(160)
-  startsAt        DateTime                            @map("starts_at")
-  expiresAt       DateTime?                           @map("expires_at")
-  supersededAt    DateTime?                           @map("superseded_at")
-  createdById     Int?                                @map("created_by_id")
-  createdAt       DateTime                            @default(now()) @map("created_at")
-  updatedAt       DateTime                            @updatedAt @map("updated_at")
-  deletedAt       DateTime?                           @map("deleted_at")
+  id                 Int                                     @id @default(autoincrement())
+  publicId           String                                  @unique @default(uuid()) @map("public_id") @db.Char(36)
+  userId             Int                                     @map("user_id")
+  tierVersionId      Int                                     @map("tier_version_id")
+  source             PlatformMembershipEntitlementSource
+  sourceReference    String                                  @map("source_reference") @db.VarChar(160)
+  changeKind         PlatformMembershipEntitlementChangeKind @default(GRANT) @map("change_kind")
+  billingMonths      Int                                     @default(1) @map("billing_months")
+  experienceValueNdp Int                                     @default(0) @map("experience_value_ndp")
+  startsAt           DateTime                                @map("starts_at")
+  expiresAt          DateTime?                               @map("expires_at")
+  supersededAt       DateTime?                               @map("superseded_at")
+  createdById        Int?                                    @map("created_by_id")
+  lockVersion        Int                                     @default(1) @map("lock_version")
+  createdAt          DateTime                                @default(now()) @map("created_at")
+  updatedAt          DateTime                                @updatedAt @map("updated_at")
+  deletedAt          DateTime?                               @map("deleted_at")
 
   user        User                          @relation("PlatformMembershipEntitlementOwner", fields: [userId], references: [id], onDelete: Restrict)
   tierVersion PlatformMembershipTierVersion @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)

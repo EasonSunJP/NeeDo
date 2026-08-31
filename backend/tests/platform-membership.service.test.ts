@@ -54,6 +54,7 @@ const repository = (
   findTierDraft: jest.fn(),
   saveTierDraftWithAudit: jest.fn(),
   publishTierDraftWithAudit: jest.fn(),
+  changeEntitlementWithAudit: jest.fn(),
   ...overrides
 });
 

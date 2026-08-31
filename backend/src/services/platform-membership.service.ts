@@ -4,7 +4,13 @@ import {
   PLATFORM_MEMBERSHIP_TIER_CODES,
   type PlatformMembershipTierCodeValue
 } from "../domain/platform-membership";
+import {
+  PLATFORM_MEMBERSHIP_ENTITLEMENT_SOURCES,
+  type PlatformMembershipEntitlementChangeResult,
+  type PlatformMembershipEntitlementCommand
+} from "../domain/platform-membership-entitlement";
 import type {
+  PlatformMembershipEntitlementMutationResult,
   PlatformMembershipRepositoryPort,
   PlatformMembershipTierDraftPersistenceInput,
   PlatformMembershipTierMutationResult,
@@ -20,6 +26,7 @@ export type PlatformMembershipTierDraftInput =
   PlatformMembershipTierDraftPersistenceInput;
 
 const tierCodeSet = new Set<string>(PLATFORM_MEMBERSHIP_TIER_CODES);
+const entitlementSourceSet = new Set<string>(PLATFORM_MEMBERSHIP_ENTITLEMENT_SOURCES);
 const hexColorPattern = /^#[0-9A-Fa-f]{6}$/;
 const themeKeys = [
   "detailAccentColor",
@@ -67,6 +74,48 @@ export class PlatformMembershipService {
       message: "error.platform_membership.free_version_unavailable",
       statusCode: 500
     });
+  }
+
+  public async changeEntitlement(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    userId: number,
+    command: PlatformMembershipEntitlementCommand
+  ): Promise<PlatformMembershipEntitlementChangeResult> {
+    this.assertOperationsIdentity(actor);
+    if (!Number.isInteger(userId) || userId <= 0) throw this.validationError();
+    const normalized = this.normalizeEntitlementCommand(command);
+
+    if (!(await this.repository.hasActiveCustomerProfile(userId))) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.platform_membership.customer_required",
+        statusCode: 422
+      });
+    }
+
+    const occurredAt = this.now();
+    const result = await this.repository.changeEntitlementWithAudit({
+      actorId: actor.userId,
+      userId,
+      occurredAt,
+      command: normalized,
+      audit: this.requireAuditFactory().createInput({
+        actor,
+        context,
+        action: `platform.membership_entitlement.${normalized.kind}`,
+        targetType: "PlatformMembershipEntitlement",
+        metadata: {
+          userId,
+          kind: normalized.kind,
+          source: normalized.source,
+          sourceReference: normalized.sourceReference,
+          expectedCurrentLockVersion: normalized.expectedCurrentLockVersion,
+          occurredAt: occurredAt.toISOString()
+        }
+      })
+    });
+    return this.unwrapEntitlementMutation(result);
   }
 
   public async saveTierDraft(
@@ -216,6 +265,48 @@ export class PlatformMembershipService {
     return { ...input, description, theme, benefits };
   }
 
+  private normalizeEntitlementCommand(
+    command: PlatformMembershipEntitlementCommand
+  ): PlatformMembershipEntitlementCommand {
+    if (!command || typeof command !== "object") throw this.validationError();
+    const sourceReference = command.sourceReference?.trim();
+    if (
+      !entitlementSourceSet.has(command.source) ||
+      !sourceReference ||
+      sourceReference.length > 160
+    ) {
+      throw this.validationError();
+    }
+
+    if (command.kind === "expire") {
+      if (
+        !Number.isInteger(command.expectedCurrentLockVersion) ||
+        command.expectedCurrentLockVersion < 1
+      ) {
+        throw this.validationError();
+      }
+      return { ...command, sourceReference };
+    }
+
+    if (
+      !["grant", "renew", "upgrade", "schedule_downgrade"].includes(command.kind) ||
+      !tierCodeSet.has(command.targetTierCode) ||
+      command.targetTierCode === "free" ||
+      !["monthly", "annual"].includes(command.billingCycle) ||
+      (command.kind === "grant"
+        ? command.expectedCurrentLockVersion !== null
+        : !Number.isInteger(command.expectedCurrentLockVersion) ||
+          (command.expectedCurrentLockVersion ?? 0) < 1)
+    ) {
+      throw this.validationError();
+    }
+    return {
+      ...command,
+      targetTierCode: command.targetTierCode as PlatformMembershipTierCodeValue,
+      sourceReference
+    };
+  }
+
   private normalizeBenefitConfiguration(
     code: PlatformMembershipTierDraftPersistenceInput["benefits"][number]["code"],
     configuration: Record<string, unknown>
@@ -308,6 +399,21 @@ export class PlatformMembershipService {
       throw new AppError({
         code: ERROR_CODES.NOT_FOUND,
         message: "error.platform_membership.tier_not_found",
+        statusCode: 404
+      });
+    }
+    if (result.kind === "version_conflict") throw this.versionConflict();
+    throw this.invalidState();
+  }
+
+  private unwrapEntitlementMutation(
+    result: PlatformMembershipEntitlementMutationResult
+  ): PlatformMembershipEntitlementChangeResult {
+    if ("value" in result) return result.value;
+    if (result.kind === "not_found") {
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.platform_membership.entitlement_target_not_found",
         statusCode: 404
       });
     }
