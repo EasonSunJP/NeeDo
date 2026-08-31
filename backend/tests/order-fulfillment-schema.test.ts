@@ -18,14 +18,28 @@ const namedBlock = (source: string, kind: "model" | "enum", name: string): strin
   return match[1];
 };
 
-const modelBlock = (name: string): string => namedBlock(schema, "model", name);
+const modelBlock = (name: string, source = schema): string => namedBlock(source, "model", name);
 
-const prismaEnumValues = (name: string): string[] =>
-  namedBlock(schema, "enum", name)
+const prismaEnumMembers = (name: string, source = schema): string[] =>
+  namedBlock(source, "enum", name)
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("@@"))
-    .map((line) => line.split(/\s+/)[0]);
+    .map(normalize);
+
+const prismaEnumDirectives = (name: string, source = schema): string[] =>
+  namedBlock(source, "enum", name)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("@@"))
+    .map(normalize);
+
+const scalarFieldDefinitions = (name: string, source = schema): string[] =>
+  modelBlock(name, source)
+    .trim()
+    .split(/\n\s*\n/)[0]
+    .split("\n")
+    .map(normalize);
 
 const tableBlock = (source: string, name: string): string => {
   const match = source.match(
@@ -57,8 +71,8 @@ const indexDefinitions = (source: string, table: string): string[] =>
     .map((line) => line.trim().replace(/,$/, ""))
     .filter((line) => /^(?:UNIQUE )?INDEX /.test(line));
 
-const modelDirectives = (name: string): string[] =>
-  modelBlock(name)
+const modelDirectives = (name: string, source = schema): string[] =>
+  modelBlock(name, source)
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("@@"));
@@ -112,6 +126,93 @@ const assertCompositeOwnershipFks = (source: string): void => {
   }
 };
 
+const compositeChildIndexes = [
+  {
+    model: "OrderAddOn",
+    table: "order_add_ons",
+    prisma:
+      '@@index([serviceSessionId, bookingOrderId], map: "order_add_ons_session_order_idx")',
+    sql:
+      "INDEX `order_add_ons_session_order_idx`(`service_session_id`, `booking_order_id`)"
+  },
+  {
+    model: "OrderServiceEvent",
+    table: "order_service_events",
+    prisma:
+      '@@index([serviceSessionId, bookingOrderId], map: "order_service_events_session_order_idx")',
+    sql:
+      "INDEX `order_service_events_session_order_idx`(`service_session_id`, `booking_order_id`)"
+  },
+  {
+    model: "OrderServiceEvent",
+    table: "order_service_events",
+    prisma:
+      '@@index([orderAddOnId, bookingOrderId, serviceSessionId], map: "order_service_events_add_on_order_session_idx")',
+    sql:
+      "INDEX `order_service_events_add_on_order_session_idx`(`order_add_on_id`, `booking_order_id`, `service_session_id`)"
+  },
+  {
+    model: "OrderServiceEvent",
+    table: "order_service_events",
+    prisma:
+      '@@index([orderCheckoutId, bookingOrderId], map: "order_service_events_checkout_order_idx")',
+    sql:
+      "INDEX `order_service_events_checkout_order_idx`(`order_checkout_id`, `booking_order_id`)"
+  }
+] as const;
+
+const assertCompositeChildIndexes = (prismaSource: string, sqlSource: string): void => {
+  for (const index of compositeChildIndexes) {
+    if (!modelDirectives(index.model, prismaSource).includes(index.prisma)) {
+      throw new Error(`missing Prisma composite child index: ${index.prisma}`);
+    }
+    assertSqlCompositeChildIndex(sqlSource, index);
+  }
+};
+
+const assertSqlCompositeChildIndex = (
+  source: string,
+  index: (typeof compositeChildIndexes)[number]
+): void => {
+  if (!indexDefinitions(source, index.table).includes(index.sql)) {
+    throw new Error(`missing SQL composite child index: ${index.sql}`);
+  }
+};
+
+const ensureTableDefinition = (source: string, table: string, definition: string): string => {
+  if (normalize(tableBlock(source, table)).includes(normalize(definition))) return source;
+  const block = tableBlock(source, table);
+  const augmented = block.replace(/\n {2}PRIMARY KEY /, `\n  ${definition},\n  PRIMARY KEY `);
+  if (augmented === block) throw new Error(`cannot augment table ${table}`);
+  return source.replace(block, augmented);
+};
+
+const assertAddOnCurrencyCheck = (source: string): void => {
+  requireSql(
+    checkConstraint(source, "order_add_ons_currency_chk"),
+    "`currency` = 'JPY'",
+    "add-on currency CHECK drift"
+  );
+};
+
+const assertEventShapeCheck = (source: string): void => {
+  requireSql(
+    checkConstraint(source, "order_service_events_shape_chk"),
+    "`event_type` IN ('service_started', 'service_ended') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NULL",
+    "service event shape drift"
+  );
+  requireSql(
+    checkConstraint(source, "order_service_events_shape_chk"),
+    "`event_type` IN ('add_on_proposed', 'add_on_accepted', 'add_on_rejected') AND `order_add_on_id` IS NOT NULL AND `order_checkout_id` IS NULL",
+    "add-on event shape drift"
+  );
+  requireSql(
+    checkConstraint(source, "order_service_events_shape_chk"),
+    "`event_type` IN ('checkout_created', 'payment_method_selected', 'ndp_payment_applied', 'receipt_confirmed') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NOT NULL",
+    "checkout event shape drift"
+  );
+};
+
 const assertEvidenceChecks = (source: string): void => {
   for (const name of [
     "ndp_exchange_rate_rules_ndp_units_chk",
@@ -119,6 +220,7 @@ const assertEvidenceChecks = (source: string): void => {
     "order_service_sessions_ended_chronology_chk",
     "order_service_sessions_expected_chronology_chk",
     "order_add_ons_price_chk",
+    "order_add_ons_currency_chk",
     "order_add_ons_duration_chk",
     "order_add_ons_resolution_chk",
     "order_checkouts_base_amount_chk",
@@ -154,6 +256,7 @@ const assertEvidenceChecks = (source: string): void => {
     ndp_exchange_rate_rules_window_chk:
       "`effective_to` IS NULL OR `effective_to` > `effective_from`",
     order_add_ons_price_chk: "`price_amount_jpy` >= 0",
+    order_add_ons_currency_chk: "`currency` = 'JPY'",
     order_add_ons_duration_chk: "`duration_minutes` > 0",
     order_add_ons_resolution_chk:
       "(`status` = 'proposed' AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL) OR (`status` = 'accepted' AND `accepted_by_user_id` IS NOT NULL AND `accepted_at` IS NOT NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL) OR (`status` = 'rejected' AND `rejected_by_user_id` IS NOT NULL AND `rejected_at` IS NOT NULL AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL)",
@@ -173,21 +276,7 @@ const assertEvidenceChecks = (source: string): void => {
   for (const [name, expression] of Object.entries(exactChecks)) {
     requireSql(checkConstraint(source, name), expression, `${name} drift`);
   }
-  requireSql(
-    checkConstraint(source, "order_service_events_shape_chk"),
-    "`event_type` IN ('service_started', 'service_ended') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NULL",
-    "service event shape drift"
-  );
-  requireSql(
-    checkConstraint(source, "order_service_events_shape_chk"),
-    "`event_type` IN ('add_on_proposed', 'add_on_accepted', 'add_on_rejected') AND `order_add_on_id` IS NOT NULL AND `order_checkout_id` IS NULL",
-    "add-on event shape drift"
-  );
-  requireSql(
-    checkConstraint(source, "order_service_events_shape_chk"),
-    "`event_type` IN ('checkout_created', 'payment_method_selected', 'ndp_payment_applied', 'receipt_confirmed') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NOT NULL",
-    "checkout event shape drift"
-  );
+  assertEventShapeCheck(source);
   requireSql(
     checkConstraint(source, "ndp_exchange_rate_rules_active_sentinel_chk"),
     "(`status` = 'active' AND `active_key` = 'ndp_exchange_rate') OR (`status` = 'superseded' AND `active_key` IS NULL)",
@@ -311,6 +400,7 @@ const expectedIndexes: Record<string, string[]> = {
   ],
   order_add_ons: [
     "UNIQUE INDEX `order_add_ons_id_order_session_key`(`id`, `booking_order_id`, `service_session_id`)",
+    "INDEX `order_add_ons_session_order_idx`(`service_session_id`, `booking_order_id`)",
     "INDEX `order_add_ons_order_status_idx`(`booking_order_id`, `status`, `deleted_at`)",
     "INDEX `order_add_ons_session_status_idx`(`service_session_id`, `status`, `deleted_at`)",
     "INDEX `order_add_ons_service_idx`(`service_id`)",
@@ -333,8 +423,9 @@ const expectedIndexes: Record<string, string[]> = {
     "UNIQUE INDEX `order_service_events_idempotency_key`(`idempotency_key`)",
     "INDEX `order_service_events_order_time_idx`(`booking_order_id`, `occurred_at`, `deleted_at`)",
     "INDEX `order_service_events_session_time_idx`(`service_session_id`, `occurred_at`, `deleted_at`)",
-    "INDEX `order_service_events_add_on_idx`(`order_add_on_id`)",
-    "INDEX `order_service_events_checkout_idx`(`order_checkout_id`)",
+    "INDEX `order_service_events_session_order_idx`(`service_session_id`, `booking_order_id`)",
+    "INDEX `order_service_events_add_on_order_session_idx`(`order_add_on_id`, `booking_order_id`, `service_session_id`)",
+    "INDEX `order_service_events_checkout_order_idx`(`order_checkout_id`, `booking_order_id`)",
     "INDEX `order_service_events_type_time_idx`(`event_type`, `occurred_at`, `deleted_at`)",
     "INDEX `order_service_events_actor_idx`(`actor_user_id`)",
     "INDEX `order_service_events_deleted_idx`(`deleted_at`)"
@@ -363,6 +454,174 @@ const expectedForeignKeys = [
   "ADD CONSTRAINT `order_service_events_actor_fkey` FOREIGN KEY (`actor_user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT"
 ].map(normalize);
 
+const expectedPrismaEnums: Record<
+  string,
+  { members: string[]; directives: string[] }
+> = {
+  BookingOrderStatus: {
+    members: [
+      'PENDING @map("pending")',
+      'CONFIRMED @map("confirmed")',
+      'IN_SERVICE @map("in_service")',
+      'AWAITING_CHECKOUT @map("awaiting_checkout")',
+      'AWAITING_PAYMENT_CONFIRMATION @map("awaiting_payment_confirmation")',
+      'COMPLETED @map("completed")',
+      'CANCELLED @map("cancelled")'
+    ],
+    directives: ['@@map("booking_order_status")']
+  },
+  ServicePaymentMethod: {
+    members: [
+      'ONSITE @map("onsite")',
+      'BANK_TRANSFER @map("bank_transfer")',
+      'CASH @map("cash")',
+      'NDP @map("ndp")',
+      'OTHER @map("other")'
+    ],
+    directives: ['@@map("service_payment_method")']
+  },
+  OrderServiceEventType: {
+    members: [
+      'SERVICE_STARTED @map("service_started")',
+      'ADD_ON_PROPOSED @map("add_on_proposed")',
+      'ADD_ON_ACCEPTED @map("add_on_accepted")',
+      'ADD_ON_REJECTED @map("add_on_rejected")',
+      'SERVICE_ENDED @map("service_ended")',
+      'CHECKOUT_CREATED @map("checkout_created")',
+      'PAYMENT_METHOD_SELECTED @map("payment_method_selected")',
+      'NDP_PAYMENT_APPLIED @map("ndp_payment_applied")',
+      'RECEIPT_CONFIRMED @map("receipt_confirmed")'
+    ],
+    directives: ['@@map("order_service_event_type")']
+  },
+  OrderAddOnStatus: {
+    members: [
+      'PROPOSED @map("proposed")',
+      'ACCEPTED @map("accepted")',
+      'REJECTED @map("rejected")'
+    ],
+    directives: ['@@map("order_add_on_status")']
+  },
+  NdpExchangeRateRuleStatus: {
+    members: ['ACTIVE @map("active")', 'SUPERSEDED @map("superseded")'],
+    directives: ['@@map("ndp_exchange_rate_rule_status")']
+  }
+};
+
+const expectedPrismaScalarFields: Record<string, string[]> = {
+  OrderServiceSession: [
+    "id Int @id @default(autoincrement())",
+    'bookingOrderId Int @unique(map: "order_service_sessions_booking_order_key") @map("booking_order_id")',
+    'verificationHash String @map("verification_hash") @db.VarChar(255)',
+    'startedByUserId Int? @map("started_by_user_id")',
+    'startedAt DateTime? @map("started_at")',
+    'expectedEndsAt DateTime? @map("expected_ends_at")',
+    'endedByUserId Int? @map("ended_by_user_id")',
+    'endedAt DateTime? @map("ended_at")',
+    'createdAt DateTime @default(now()) @map("created_at")',
+    'updatedAt DateTime @updatedAt @map("updated_at")',
+    'deletedAt DateTime? @map("deleted_at")'
+  ],
+  OrderServiceEvent: [
+    "id Int @id @default(autoincrement())",
+    'bookingOrderId Int @map("booking_order_id")',
+    'serviceSessionId Int @map("service_session_id")',
+    'orderAddOnId Int? @map("order_add_on_id")',
+    'orderCheckoutId Int? @map("order_checkout_id")',
+    'eventType OrderServiceEventType @map("event_type")',
+    'actorUserId Int? @map("actor_user_id")',
+    'idempotencyKey String @unique(map: "order_service_events_idempotency_key") @map("idempotency_key") @db.VarChar(160)',
+    "reason String? @db.VarChar(500)",
+    "metadata Json?",
+    'occurredAt DateTime @default(now()) @map("occurred_at")',
+    'createdAt DateTime @default(now()) @map("created_at")',
+    'updatedAt DateTime @updatedAt @map("updated_at")',
+    'deletedAt DateTime? @map("deleted_at")'
+  ],
+  OrderAddOn: [
+    "id Int @id @default(autoincrement())",
+    'bookingOrderId Int @map("booking_order_id")',
+    'serviceSessionId Int @map("service_session_id")',
+    'serviceId Int @map("service_id")',
+    "status OrderAddOnStatus @default(PROPOSED)",
+    'serviceNameSnapshot String @map("service_name_snapshot") @db.VarChar(160)',
+    'priceAmountJpy Int @map("price_amount_jpy")',
+    'currency String @default("JPY") @db.VarChar(3)',
+    'durationMinutes Int @map("duration_minutes")',
+    'serviceSnapshotJson Json @map("service_snapshot_json")',
+    'proposedByUserId Int @map("proposed_by_user_id")',
+    'proposedAt DateTime @default(now()) @map("proposed_at")',
+    'acceptedByUserId Int? @map("accepted_by_user_id")',
+    'acceptedAt DateTime? @map("accepted_at")',
+    'rejectedByUserId Int? @map("rejected_by_user_id")',
+    'rejectedAt DateTime? @map("rejected_at")',
+    'resolutionReason String? @map("resolution_reason") @db.VarChar(500)',
+    'createdAt DateTime @default(now()) @map("created_at")',
+    'updatedAt DateTime @updatedAt @map("updated_at")',
+    'deletedAt DateTime? @map("deleted_at")'
+  ],
+  OrderCheckout: [
+    "id Int @id @default(autoincrement())",
+    'bookingOrderId Int @unique(map: "order_checkouts_booking_order_key") @map("booking_order_id")',
+    'baseAmountJpy Int @map("base_amount_jpy")',
+    'addOnAmountJpy Int @default(0) @map("add_on_amount_jpy")',
+    'discountAmountJpy Int @default(0) @map("discount_amount_jpy")',
+    'checkoutAmountJpy Int @map("checkout_amount_jpy")',
+    'payableNdp Int @map("payable_ndp")',
+    'ndpRateRuleId Int @map("ndp_rate_rule_id")',
+    'rateSnapshotJson Json @map("rate_snapshot_json")',
+    'calculationSnapshotJson Json @map("calculation_snapshot_json")',
+    'paymentMethod ServicePaymentMethod? @map("payment_method")',
+    'paymentSelectedAt DateTime? @map("payment_selected_at")',
+    'otherMethodCode String? @map("other_method_code") @db.VarChar(40)',
+    'otherMethodLabel String? @map("other_method_label") @db.VarChar(80)',
+    'otherPaymentReference String? @map("other_payment_reference") @db.VarChar(120)',
+    'ledgerTransactionId Int? @unique(map: "order_checkouts_ledger_transaction_key") @map("ledger_transaction_id")',
+    'receiptConfirmedById Int? @map("receipt_confirmed_by_id")',
+    'receiptConfirmedAt DateTime? @map("receipt_confirmed_at")',
+    'receiptConfirmationReason String? @map("receipt_confirmation_reason") @db.VarChar(500)',
+    'createdAt DateTime @default(now()) @map("created_at")',
+    'updatedAt DateTime @updatedAt @map("updated_at")',
+    'deletedAt DateTime? @map("deleted_at")'
+  ],
+  NdpExchangeRateRule: [
+    "id Int @id @default(autoincrement())",
+    'publicId String @unique(map: "ndp_exchange_rate_rules_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)',
+    'version Int @unique(map: "ndp_exchange_rate_rules_version_key")',
+    'ndpUnits Int @map("ndp_units")',
+    'jpyUnits Int @map("jpy_units")',
+    "status NdpExchangeRateRuleStatus",
+    'effectiveFrom DateTime @map("effective_from")',
+    'effectiveTo DateTime? @map("effective_to")',
+    'activeKey String? @unique(map: "ndp_exchange_rate_rules_active_key") @map("active_key") @db.VarChar(80)',
+    'idempotencyKey String @unique(map: "ndp_exchange_rate_rules_idempotency_key") @map("idempotency_key") @db.VarChar(160)',
+    "reason String @db.VarChar(500)",
+    'createdById Int? @map("created_by_id")',
+    'createdAt DateTime @default(now()) @map("created_at")',
+    'updatedAt DateTime @updatedAt @map("updated_at")',
+    'deletedAt DateTime? @map("deleted_at")'
+  ]
+};
+
+const assertPrismaContracts = (source: string): void => {
+  for (const [name, contract] of Object.entries(expectedPrismaEnums)) {
+    if (JSON.stringify(prismaEnumMembers(name, source)) !== JSON.stringify(contract.members)) {
+      throw new Error(`Prisma enum member contract drift: ${name}`);
+    }
+    if (
+      JSON.stringify(prismaEnumDirectives(name, source)) !==
+      JSON.stringify(contract.directives)
+    ) {
+      throw new Error(`Prisma enum directive contract drift: ${name}`);
+    }
+  }
+  for (const [name, fields] of Object.entries(expectedPrismaScalarFields)) {
+    if (JSON.stringify(scalarFieldDefinitions(name, source)) !== JSON.stringify(fields)) {
+      throw new Error(`Prisma scalar field contract drift: ${name}`);
+    }
+  }
+};
+
 const expectedModelDirectives: Record<string, string[]> = {
   OrderServiceSession: [
     '@@unique([id, bookingOrderId], map: "order_service_sessions_id_order_key")',
@@ -375,8 +634,9 @@ const expectedModelDirectives: Record<string, string[]> = {
   OrderServiceEvent: [
     '@@index([bookingOrderId, occurredAt, deletedAt], map: "order_service_events_order_time_idx")',
     '@@index([serviceSessionId, occurredAt, deletedAt], map: "order_service_events_session_time_idx")',
-    '@@index([orderAddOnId], map: "order_service_events_add_on_idx")',
-    '@@index([orderCheckoutId], map: "order_service_events_checkout_idx")',
+    '@@index([serviceSessionId, bookingOrderId], map: "order_service_events_session_order_idx")',
+    '@@index([orderAddOnId, bookingOrderId, serviceSessionId], map: "order_service_events_add_on_order_session_idx")',
+    '@@index([orderCheckoutId, bookingOrderId], map: "order_service_events_checkout_order_idx")',
     '@@index([eventType, occurredAt, deletedAt], map: "order_service_events_type_time_idx")',
     '@@index([actorUserId], map: "order_service_events_actor_idx")',
     '@@index([deletedAt], map: "order_service_events_deleted_idx")',
@@ -384,6 +644,7 @@ const expectedModelDirectives: Record<string, string[]> = {
   ],
   OrderAddOn: [
     '@@unique([id, bookingOrderId, serviceSessionId], map: "order_add_ons_id_order_session_key")',
+    '@@index([serviceSessionId, bookingOrderId], map: "order_add_ons_session_order_idx")',
     '@@index([bookingOrderId, status, deletedAt], map: "order_add_ons_order_status_idx")',
     '@@index([serviceSessionId, status, deletedAt], map: "order_add_ons_session_status_idx")',
     '@@index([serviceId], map: "order_add_ons_service_idx")',
@@ -412,25 +673,7 @@ const expectedModelDirectives: Record<string, string[]> = {
 
 describe("order fulfillment persistence schema", () => {
   it("defines exact Prisma enums, fields, composite ownership relations, and indexes", () => {
-    expect(prismaEnumValues("BookingOrderStatus")).toEqual([
-      "PENDING",
-      "CONFIRMED",
-      "IN_SERVICE",
-      "AWAITING_CHECKOUT",
-      "AWAITING_PAYMENT_CONFIRMATION",
-      "COMPLETED",
-      "CANCELLED"
-    ]);
-    expect(prismaEnumValues("ServicePaymentMethod")).toEqual([
-      "ONSITE",
-      "BANK_TRANSFER",
-      "CASH",
-      "NDP",
-      "OTHER"
-    ]);
-    expect(prismaEnumValues("OrderServiceEventType")).toHaveLength(9);
-    expect(prismaEnumValues("OrderAddOnStatus")).toEqual(["PROPOSED", "ACCEPTED", "REJECTED"]);
-    expect(prismaEnumValues("NdpExchangeRateRuleStatus")).toEqual(["ACTIVE", "SUPERSEDED"]);
+    expect(() => assertPrismaContracts(schema)).not.toThrow();
 
     const session = modelBlock("OrderServiceSession");
     const event = modelBlock("OrderServiceEvent");
@@ -448,6 +691,7 @@ describe("order fulfillment persistence schema", () => {
     for (const [modelName, directives] of Object.entries(expectedModelDirectives)) {
       expect(modelDirectives(modelName)).toEqual(directives);
     }
+    expect(() => assertCompositeChildIndexes(schema, migration)).not.toThrow();
 
     expect(session).toContain(
       '@@unique([id, bookingOrderId], map: "order_service_sessions_id_order_key")'
@@ -596,8 +840,54 @@ describe("order fulfillment persistence schema", () => {
   it("detects a missing event-shape CHECK independently", () => {
     const eventShape = checkConstraint(migration, "order_service_events_shape_chk");
     const mutated = migration.replace(eventShape, "");
-    expect(() => assertEvidenceChecks(mutated)).toThrow(
+    expect(() => assertEventShapeCheck(mutated)).toThrow(
       "missing CHECK order_service_events_shape_chk"
+    );
+  });
+
+  it("detects every missing composite child index independently", () => {
+    for (const target of compositeChildIndexes) {
+      const fixture = ensureTableDefinition(migration, target.table, target.sql);
+      const mutated = fixture.replace(target.sql, "");
+      expect(mutated).not.toBe(fixture);
+      expect(() => assertSqlCompositeChildIndex(mutated, target)).toThrow(
+        "missing SQL composite child index"
+      );
+    }
+  });
+
+  it("detects Prisma scalar type or nullability drift without SQL changes", () => {
+    const mutated = schema.replace(
+      /(\n\s*paymentMethod\s+)ServicePaymentMethod\?(\s+@map\("payment_method"\))/,
+      "$1ServicePaymentMethod$2"
+    );
+    expect(mutated).not.toBe(schema);
+    expect(() => assertPrismaContracts(mutated)).toThrow(
+      "Prisma scalar field contract drift: OrderCheckout"
+    );
+  });
+
+  it("detects Prisma enum database-map drift without SQL changes", () => {
+    const mutated = schema.replace(
+      /(\n\s*CASH\s+)@map\("cash"\)/,
+      '$1@map("currency_cash")'
+    );
+    expect(mutated).not.toBe(schema);
+    expect(() => assertPrismaContracts(mutated)).toThrow(
+      "Prisma enum member contract drift: ServicePaymentMethod"
+    );
+  });
+
+  it("detects a missing immutable JPY currency CHECK independently", () => {
+    const fixture = ensureTableDefinition(
+      migration,
+      "order_add_ons",
+      "CONSTRAINT `order_add_ons_currency_chk` CHECK (`currency` = 'JPY')"
+    );
+    const currencyCheck = checkConstraint(fixture, "order_add_ons_currency_chk");
+    const mutated = fixture.replace(currencyCheck, "");
+    expect(() => assertAddOnCurrencyCheck(mutated)).toThrow(
+      "missing CHECK order_add_ons_currency_chk"
     );
   });
 });

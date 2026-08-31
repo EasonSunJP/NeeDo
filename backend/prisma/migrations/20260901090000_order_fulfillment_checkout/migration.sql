@@ -90,6 +90,7 @@ CREATE TABLE `order_add_ons` (
   `deleted_at` DATETIME(3) NULL,
 
   CONSTRAINT `order_add_ons_price_chk` CHECK (`price_amount_jpy` >= 0),
+  CONSTRAINT `order_add_ons_currency_chk` CHECK (`currency` = 'JPY'),
   CONSTRAINT `order_add_ons_duration_chk` CHECK (`duration_minutes` > 0),
   CONSTRAINT `order_add_ons_resolution_chk` CHECK (
     (`status` = 'proposed' AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL)
@@ -97,6 +98,7 @@ CREATE TABLE `order_add_ons` (
     OR (`status` = 'rejected' AND `rejected_by_user_id` IS NOT NULL AND `rejected_at` IS NOT NULL AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL)
   ),
   UNIQUE INDEX `order_add_ons_id_order_session_key`(`id`, `booking_order_id`, `service_session_id`),
+  INDEX `order_add_ons_session_order_idx`(`service_session_id`, `booking_order_id`),
   INDEX `order_add_ons_order_status_idx`(`booking_order_id`, `status`, `deleted_at`),
   INDEX `order_add_ons_session_status_idx`(`service_session_id`, `status`, `deleted_at`),
   INDEX `order_add_ons_service_idx`(`service_id`),
@@ -177,8 +179,9 @@ CREATE TABLE `order_service_events` (
   UNIQUE INDEX `order_service_events_idempotency_key`(`idempotency_key`),
   INDEX `order_service_events_order_time_idx`(`booking_order_id`, `occurred_at`, `deleted_at`),
   INDEX `order_service_events_session_time_idx`(`service_session_id`, `occurred_at`, `deleted_at`),
-  INDEX `order_service_events_add_on_idx`(`order_add_on_id`),
-  INDEX `order_service_events_checkout_idx`(`order_checkout_id`),
+  INDEX `order_service_events_session_order_idx`(`service_session_id`, `booking_order_id`),
+  INDEX `order_service_events_add_on_order_session_idx`(`order_add_on_id`, `booking_order_id`, `service_session_id`),
+  INDEX `order_service_events_checkout_order_idx`(`order_checkout_id`, `booking_order_id`),
   INDEX `order_service_events_type_time_idx`(`event_type`, `occurred_at`, `deleted_at`),
   INDEX `order_service_events_actor_idx`(`actor_user_id`),
   INDEX `order_service_events_deleted_idx`(`deleted_at`),

@@ -2056,8 +2056,9 @@ model OrderServiceEvent {
 
   @@index([bookingOrderId, occurredAt, deletedAt], map: "order_service_events_order_time_idx")
   @@index([serviceSessionId, occurredAt, deletedAt], map: "order_service_events_session_time_idx")
-  @@index([orderAddOnId], map: "order_service_events_add_on_idx")
-  @@index([orderCheckoutId], map: "order_service_events_checkout_idx")
+  @@index([serviceSessionId, bookingOrderId], map: "order_service_events_session_order_idx")
+  @@index([orderAddOnId, bookingOrderId, serviceSessionId], map: "order_service_events_add_on_order_session_idx")
+  @@index([orderCheckoutId, bookingOrderId], map: "order_service_events_checkout_order_idx")
   @@index([eventType, occurredAt, deletedAt], map: "order_service_events_type_time_idx")
   @@index([actorUserId], map: "order_service_events_actor_idx")
   @@index([deletedAt], map: "order_service_events_deleted_idx")
@@ -2095,6 +2096,7 @@ model OrderAddOn {
   events         OrderServiceEvent[]
 
   @@unique([id, bookingOrderId, serviceSessionId], map: "order_add_ons_id_order_session_key")
+  @@index([serviceSessionId, bookingOrderId], map: "order_add_ons_session_order_idx")
   @@index([bookingOrderId, status, deletedAt], map: "order_add_ons_order_status_idx")
   @@index([serviceSessionId, status, deletedAt], map: "order_add_ons_session_status_idx")
   @@index([serviceId], map: "order_add_ons_service_idx")
