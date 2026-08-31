@@ -97,6 +97,20 @@ ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
 ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-issuance-flow
 ```
 
+### 4.4 会员卡客户确认调整（2026-08-31）
+
+- 店铺可为有效储值卡提交最终本金，为有效次数卡提交最终剩余次数。客户在 72 小时内明确同意后才更新；拒绝、撤回、到期或卡快照变化均不修改请求目标值到会员卡。
+- 储值卡调整只改 `principalBalanceJpy`，不改 `bonusBalanceJpy`。次数卡按剩余次数差额同步移动 `totalUses`，因此已消费次数保持不变。权益卡不支持本流程。
+- 此流程只是修正线下已付款或历史漏记的卡内业务值，不是充值、退款、核销或 NDP 返点节点；不得触发店铺钱包扣款、客户 NDP 入账、`LedgerTransaction` 或 `WalletLedger` 写入，也不收取返点平台费。
+- Migration `20260831170000_shop_membership_card_adjustment_approval` 新增请求状态机、待办唯一键、请求/决定幂等键、72 小时截止时间、卡 `lockVersion`、RBAC、审计和通知。worker 与读接口的惰性到期共用相同数据库时间事务。
+- 本地回滚式真实数据流已验证批准、拒绝、撤回、到期、快照失效、跨店/跨客户隔离和幂等；钱包全部余额快照、账本交易计数与账本明细计数前后完全一致，回滚后全库保护基线一致。
+
+本地验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-adjustment-flow
+```
+
 ---
 
 ## 5. 交付物

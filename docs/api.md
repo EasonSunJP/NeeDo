@@ -260,6 +260,22 @@ Stored-value plans require principal within the published issuance range and cre
 
 Issuance does not debit a store wallet, credit customer NDP, or create ledger entries. Platform fees are charged only at a later actual reward settlement node. Internal issuance references and notes are returned to the authorized merchant issuance response but are excluded from shared customer card reads.
 
+### Membership card adjustment approval
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `POST` | `/api/v1/merchant-admin/shop-membership-cards/:publicId/adjustment-requests` | Request one final principal or remaining-use target for a current-shop card | `shop.member.card.adjust.request` |
+| `GET` | `/api/v1/merchant-admin/shop-membership-card-adjustment-requests` | Paginated current-shop request history | `shop.member.card.adjust.request` |
+| `POST` | `/api/v1/merchant-admin/shop-membership-card-adjustment-requests/:publicId/cancel` | Cancel a still-pending current-shop request | `shop.member.card.adjust.request` |
+| `GET` | `/api/v1/customer-profile/me/shop-membership-card-adjustment-requests` | Paginated requests owned by the current customer | `customer-profile:read` |
+| `POST` | `/api/v1/customer-profile/me/shop-membership-card-adjustment-requests/:publicId/decision` | Explicitly approve or reject an owned pending request | `customer-profile:read` |
+
+Create accepts exactly one of `targetPrincipalBalanceJpy` or `targetRemainingUses`, plus a 1–500 character `reason` and `idempotencyKey`. The backend derives shop, customer, card type, current value and `lockVersion`; callers cannot submit a before-value or choose another identity. Stored-value changes affect principal only and preserve bonus. Count changes move `totalUses` by the same delta as `remainingUses`, preserving already-consumed uses. Benefit cards are not adjustable in this microstep.
+
+Requests are `pending`, `approved`, `rejected`, `cancelled`, `expired`, or `invalidated`. A customer may approve only while the database clock is strictly before `expiresAt`; at the exact deadline the request expires and the card remains unchanged. Approval uses a row lock plus card snapshot compare-and-swap. If the card changed after submission, the request becomes `invalidated` instead of overwriting newer data. Request, decision, audit and notification writes are transactional, and request/decision retries are idempotent.
+
+The adjustment path does not debit a store wallet, credit customer NDP, change bonus balance, or create a finance ledger row. Top-up, redemption, refund and actual rule-driven NDP settlement remain separate state-machine microsteps.
+
 ### Operations membership reward fee
 
 | Method | Path | Purpose | Permission |
@@ -269,6 +285,6 @@ Issuance does not debit a store wallet, credit customer NDP, or create ledger en
 
 The create body requires `feeRateBps` from 0 through 10,000, `expectedVersion`, ISO-8601 `effectiveFrom`, and a non-empty reason. The initial version is 1000 bps (10%). Creating a version writes an audit record; stale versions or overlapping policy boundaries return a conflict response.
 
-Customer approval for later balance/use-count changes, top-up, redemption, refund, and reward ledger settlement remain outside these configuration and issuance endpoints and must be implemented as separate state-machine microsteps.
+Top-up, redemption, refund, and reward ledger settlement remain outside these configuration, issuance, and adjustment endpoints and must be implemented as separate state-machine microsteps.
 
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
