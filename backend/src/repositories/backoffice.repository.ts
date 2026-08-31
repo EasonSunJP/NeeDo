@@ -1,6 +1,4 @@
 import {
-  CustomerMembershipDurationUnit,
-  CustomerMembershipGrantMode,
   Prisma,
   TechnicianEmploymentType,
   type PrismaClient
@@ -29,8 +27,7 @@ import {
   type BackofficeCompensationProfilePayload,
   type BackofficeCustomerPayload,
   type BackofficeCustomerDetailPayload,
-  type BackofficeCustomerMembershipGrantData,
-  type BackofficeCustomerMembershipGrantPayload,
+  type BackofficeCustomerMembershipGrantContext,
   type BackofficeFinanceSettlementPayload,
   type BackofficeNdpAggregate,
   type BackofficeOrderPayload,
@@ -1214,48 +1211,22 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     }));
   }
 
-  public async assignCustomerMembership(
-    input: BackofficeCustomerMembershipGrantData
-  ): Promise<BackofficeCustomerMembershipGrantPayload | null> {
-    const existing = await this.client.customerProfile.findFirst({
-      where: { id: input.customerProfileId, deletedAt: null },
-      select: { id: true }
+  public async findCustomerMembershipGrantContext(
+    customerProfileId: number,
+    grantedById: number
+  ): Promise<BackofficeCustomerMembershipGrantContext | null> {
+    const customer = await this.client.customerProfile.findFirst({
+      where: { id: customerProfileId, deletedAt: null },
+      select: { userId: true }
     });
-    if (!existing) return null;
-
-    const customer = await this.client.customerProfile.update({
-      where: { id: input.customerProfileId },
-      data: {
-        membershipLevel: input.membershipLevel,
-        membershipGrantMode: CustomerMembershipGrantMode.OPERATOR_COMPLIMENTARY,
-        membershipDurationUnit:
-          input.durationUnit === "forever"
-            ? CustomerMembershipDurationUnit.FOREVER
-            : input.durationUnit === "day"
-              ? CustomerMembershipDurationUnit.DAY
-              : CustomerMembershipDurationUnit.MONTH,
-        membershipDurationValue: input.durationValue,
-        membershipStartsAt: input.startsAt,
-        membershipExpiresAt: input.expiresAt,
-        membershipGrantedById: input.grantedById
-      },
-      include: {
-        membershipGrantedBy: { select: { needoId: true, username: true } }
-      }
+    if (!customer) return null;
+    const membershipGrantedBy = await this.client.user.findFirst({
+      where: { id: grantedById, deletedAt: null },
+      select: { needoId: true, username: true }
     });
-    const membershipGrantedBy = customer.membershipGrantedBy;
-    if (!membershipGrantedBy) {
-      throw new Error("Membership grant actor is missing");
-    }
-    return {
-      membershipLevel: customer.membershipLevel,
-      membershipGrantMode: "operator_complimentary",
-      membershipDurationUnit: input.durationUnit,
-      membershipDurationValue: customer.membershipDurationValue,
-      membershipStartsAt: customer.membershipStartsAt?.toISOString() ?? input.startsAt.toISOString(),
-      membershipExpiresAt: customer.membershipExpiresAt?.toISOString() ?? null,
-      membershipGrantedBy
-    };
+    return membershipGrantedBy
+      ? { customerUserId: customer.userId, membershipGrantedBy }
+      : null;
   }
 
   public softDeleteCustomer(id: number): Promise<BackofficeCustomerPayload | null> {
