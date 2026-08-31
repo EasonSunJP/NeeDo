@@ -19,9 +19,11 @@ import type {
   ShopMembershipCardAdjustmentDecisionResult,
   ShopMembershipCardAdjustmentRecord,
   ShopMembershipCardAdjustmentRepositoryPort,
+  ShopMembershipCardAdjustmentListInput,
   ShopMembershipCardAdjustmentStatusPayload
 } from "../services/shop-membership-card-adjustment.service";
 import { AppError } from "../utils/app-error";
+import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
@@ -112,6 +114,51 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
     if (!card) return { kind: "not_found" };
     if (!this.isCardAdjustable(card, databaseNow)) return { kind: "invalid_state" };
     return { kind: "ready", value: this.mapCard(card) };
+  }
+
+  public async listMerchantRequests(shopId: number, input: ShopMembershipCardAdjustmentListInput) {
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.ShopMembershipCardAdjustmentRequestWhereInput = {
+      shopId,
+      status: input.status ? this.statusToDb(input.status) : undefined,
+      card: input.cardPublicId ? { publicId: input.cardPublicId, deletedAt: null } : undefined,
+      deletedAt: null
+    };
+    const [records, total] = await Promise.all([
+      this.client.shopMembershipCardAdjustmentRequest.findMany({
+        where,
+        select: adjustmentSelect,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: pagination.skip,
+        take: pagination.take
+      }),
+      this.client.shopMembershipCardAdjustmentRequest.count({ where })
+    ]);
+    return buildPaginatedResponse(records.map((record) => this.mapAdjustment(record)), total, input);
+  }
+
+  public async listCustomerRequests(customerUserId: number, input: ShopMembershipCardAdjustmentListInput) {
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.ShopMembershipCardAdjustmentRequestWhereInput = {
+      status: input.status ? this.statusToDb(input.status) : undefined,
+      card: {
+        publicId: input.cardPublicId,
+        membership: { customerProfile: { userId: customerUserId }, deletedAt: null },
+        deletedAt: null
+      },
+      deletedAt: null
+    };
+    const [records, total] = await Promise.all([
+      this.client.shopMembershipCardAdjustmentRequest.findMany({
+        where,
+        select: adjustmentSelect,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: pagination.skip,
+        take: pagination.take
+      }),
+      this.client.shopMembershipCardAdjustmentRequest.count({ where })
+    ]);
+    return buildPaginatedResponse(records.map((record) => this.mapAdjustment(record)), total, input);
   }
 
   public async createRequestWithAuditAndNotification(input: CreateShopMembershipCardAdjustmentRepositoryInput): Promise<ShopMembershipCardAdjustmentCreateResult> {
@@ -564,6 +611,10 @@ export class ShopMembershipCardAdjustmentRepository implements ShopMembershipCar
 
   private statusFromDb(status: ShopMembershipCardAdjustmentStatus): ShopMembershipCardAdjustmentStatusPayload {
     return status.toLowerCase() as ShopMembershipCardAdjustmentStatusPayload;
+  }
+
+  private statusToDb(status: ShopMembershipCardAdjustmentStatusPayload): ShopMembershipCardAdjustmentStatus {
+    return status.toUpperCase() as ShopMembershipCardAdjustmentStatus;
   }
 
   private notificationPayload(request: AdjustmentRecord): Record<string, unknown> {

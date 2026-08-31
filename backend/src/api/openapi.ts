@@ -254,6 +254,14 @@ const shopMembershipCardPlanErrorResponses = {
   "409": { description: "error.shop_membership_card_plan.version_conflict, invalid_state, or membership reward fee policy conflict" }
 };
 
+const shopMembershipCardAdjustmentErrorResponses = {
+  "400": { description: "error.validation or error.shop_membership_card_adjustment.invalid_value" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
+  "404": { description: "error.shop_membership_card_adjustment.not_found — request or card is outside the active scope" },
+  "409": { description: "pending, expired, terminal, idempotency, or card snapshot conflict" }
+};
+
 const membershipRewardScopeOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -7565,6 +7573,91 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           address: { type: "string", minLength: 1, maxLength: 255 }
         }
       },
+      ShopMembershipCardAdjustmentCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["targetPrincipalBalanceJpy", "targetRemainingUses", "reason", "idempotencyKey"],
+        properties: {
+          targetPrincipalBalanceJpy: { type: ["integer", "null"], minimum: 0, maximum: 2_147_483_647 },
+          targetRemainingUses: { type: ["integer", "null"], minimum: 0, maximum: 2_147_483_647 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+        }
+      },
+      ShopMembershipCardAdjustmentDecisionRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["decision", "idempotencyKey"],
+        properties: {
+          decision: { type: "string", enum: ["approve", "reject"] },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+        }
+      },
+      ShopMembershipCardAdjustment: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "status", "reason", "dimension", "beforeValue", "targetValue", "difference",
+          "expiresAt", "remainingSeconds", "decidedAt", "cancelledAt", "invalidatedAt", "createdAt",
+          "updatedAt", "card", "shop", "customer", "replayed"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["pending", "approved", "rejected", "cancelled", "expired", "invalidated"] },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          dimension: { type: "string", enum: ["principal_balance", "remaining_uses"] },
+          beforeValue: { type: "integer", minimum: 0 },
+          targetValue: { type: "integer", minimum: 0 },
+          difference: { type: "integer" },
+          expiresAt: { type: "string", format: "date-time" },
+          remainingSeconds: { type: "integer", minimum: 0, maximum: 259_200 },
+          decidedAt: { type: ["string", "null"], format: "date-time" },
+          cancelledAt: { type: ["string", "null"], format: "date-time" },
+          invalidatedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          replayed: { type: "boolean" },
+          card: {
+            type: "object",
+            additionalProperties: false,
+            required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses"],
+            properties: {
+              publicId: { type: "string", format: "uuid" },
+              cardNoMasked: { type: "string" },
+              name: { type: "string" },
+              type: { type: "string", enum: ["stored_value", "count", "benefit"] },
+              status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
+              principalBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+              bonusBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+              remainingUses: { type: ["integer", "null"], minimum: 0 },
+              totalUses: { type: ["integer", "null"], minimum: 0 }
+            }
+          },
+          shop: {
+            type: "object",
+            additionalProperties: false,
+            required: ["shopNo", "name"],
+            properties: { shopNo: { type: ["string", "null"] }, name: { type: "string" } }
+          },
+          customer: {
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId", "displayName"],
+            properties: { needoId: { type: "string" }, displayName: { type: "string" } }
+          }
+        }
+      },
+      ShopMembershipCardAdjustmentPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCardAdjustment" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       ShopMembershipCard: {
         type: "object",
         additionalProperties: false,
@@ -8120,6 +8213,51 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/adjustment-requests`]: {
+      post: {
+        tags: ["Shop Membership Card Adjustment"],
+        summary: "Submit a 72-hour customer-approved card value correction",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardAdjustmentCreateRequest" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Idempotent replay of the existing request", { $ref: "#/components/schemas/ShopMembershipCardAdjustment" }),
+          "201": jsonDataResponse("Created pending adjustment request", { $ref: "#/components/schemas/ShopMembershipCardAdjustment" }),
+          ...shopMembershipCardAdjustmentErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-card-adjustment-requests`]: {
+      get: {
+        tags: ["Shop Membership Card Adjustment"],
+        summary: "List adjustment requests in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "rejected", "cancelled", "expired", "invalidated"] } },
+          { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated shop adjustment requests", { $ref: "#/components/schemas/ShopMembershipCardAdjustmentPage" }),
+          ...shopMembershipCardAdjustmentErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-card-adjustment-requests/{publicId}/cancel`]: {
+      post: {
+        tags: ["Shop Membership Card Adjustment"],
+        summary: "Cancel a pending adjustment before the customer decides",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Cancelled adjustment request", { $ref: "#/components/schemas/ShopMembershipCardAdjustment" }),
+          ...shopMembershipCardAdjustmentErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-activities`]: {
       get: {
         tags: ["Shop Membership"],
@@ -8165,6 +8303,38 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": jsonDataResponse("Customer shop membership detail", { $ref: "#/components/schemas/CustomerShopMembershipDetail" }),
           ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-membership-card-adjustment-requests`]: {
+      get: {
+        tags: ["Shop Membership Card Adjustment"],
+        summary: "List the authenticated customer's card adjustment requests",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "rejected", "cancelled", "expired", "invalidated"] } },
+          { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated customer adjustment requests", { $ref: "#/components/schemas/ShopMembershipCardAdjustmentPage" }),
+          ...shopMembershipCardAdjustmentErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-membership-card-adjustment-requests/{publicId}/decision`]: {
+      post: {
+        tags: ["Shop Membership Card Adjustment"],
+        summary: "Approve or reject an unexpired adjustment request",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardAdjustmentDecisionRequest" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Customer decision result", { $ref: "#/components/schemas/ShopMembershipCardAdjustment" }),
+          ...shopMembershipCardAdjustmentErrorResponses
         }
       }
     },
