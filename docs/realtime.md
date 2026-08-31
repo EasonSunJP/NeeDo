@@ -14,6 +14,10 @@ New tables:
 - `social_posts`: basic text/media social posts with `public` or `followers` visibility.
 - `follows`: user follow graph.
 - `notifications`: durable notification inbox with `read_at`.
+- `im_chat_record_bundles`, `im_chat_record_items`, and `im_chat_record_deliveries`: immutable, identity-owned chat-record snapshots and their formal message deliveries.
+- `im_chat_record_favorites`: current-identity favorite relations for one complete chat-record bundle.
+- `im_message_translations`: successful provider results keyed by message, source hash, target language, and provider.
+- `im_message_batch_delete_commands`: idempotent current-identity batch-delete command results. Shared `messages` rows are not removed.
 
 All tables include `id`, `created_at`, `updated_at`, and `deleted_at`. Reads filter soft-deleted rows.
 
@@ -39,6 +43,15 @@ IM:
 - `POST /im/friend-requests`
 - `POST /im/friend-requests/:id/accept`
 - `POST /im/friend-requests/:id/reject`
+- `POST /im/conversations/:targetConversationId/chat-records` (`message:forward`)
+- `GET /im/chat-records/:publicId`
+- `GET /im/chat-records/:publicId/items?beforePosition=&page_size=50`
+- `GET /im/chat-records/:publicId/media/:checksumSha256`
+- `POST /im/chat-record-favorites` (`message:favorite`)
+- `GET /im/chat-record-favorites?page=1&page_size=20` (`message:favorite`)
+- `DELETE /im/chat-record-favorites/:favoriteId` (`message:favorite`)
+- `POST /im/conversations/:conversationId/messages/delete-for-me`
+- `POST /im/conversations/:conversationId/messages/translations` (`message:translate`)
 
 Social:
 
@@ -59,6 +72,12 @@ Notifications and realtime:
 - `GET /realtime/events`
 
 Messages use cursor pagination through `beforeId`. The first page returns newest messages. If `nextCursor` is present, pass it as the next `beforeId`. Contact deletion is owner-scoped: it soft-deletes only the current account's contact row, writes an audit record in the same transaction, and leaves the other account's contacts and shared conversation history unchanged.
+
+Chat-record creation accepts only a source conversation and 1–100 message IDs. The server reloads and orders visible source messages under the active identity, snapshots eligible content and protected media, and never trusts client-supplied titles, senders, or bodies. One sender, two senders, and three-or-more senders render as the localized single, pair, and group-chat titles. Detail access is limited to the creator identity, an active favorite owner, or a still-authorized delivery-conversation participant whose delivery message is not deleted for that identity; inaccessible records return the same safe not-found response. Favorite removal soft-deletes only the relation.
+
+Batch delete accepts 1–100 message IDs and an idempotency key. It validates the whole batch before writing `message_user_deletions` for the active identity; the peer and shared `messages` rows remain unchanged. All record/favorite/delete writes are audited without message bodies.
+
+Message translation accepts 1–50 server-authoritative message IDs plus one of `zh`, `zh-Hant`, `ja`, `en`, or `ko`. Only user text and image/video captions are eligible. Successful translations are cached separately and do not modify message content or metadata. The menu supports one-message manual translation; automatic translation disables that action and batches visible eligible messages. The original stays visible above the translated block.
 
 ## Unread Counts
 

@@ -2,6 +2,7 @@ import type { Language } from "../../i18n/translations";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { ImIcon } from "./components";
+import { translateImUiText } from "./ui-copy";
 
 export type ImMultiSelectAction = "copy" | "delete" | "favorite" | "forward";
 
@@ -76,7 +77,9 @@ export function ImMessageMultiSelectOverlay({
   pendingAction: ImMultiSelectAction | null;
   selectedCount: number;
 }) {
-  const hereLabel = language === "ja" ? "ここまで" : translateText("选择到这里", language);
+  const hereLabel = translateImUiText("选择到这里", language);
+  const selectedCountLabel = translateImUiText("已选择 {count} 条信息", language).replace("{count}", String(selectedCount));
+  const deleteConfirmation = translateImUiText("将从你的聊天记录中删除 {count} 条信息，不影响对方。", language).replace("{count}", String(selectedCount));
   const disabled = selectedCount === 0 || pendingAction !== null;
   const actions = [
     { icon: "forward" as const, key: "forward", label: "转发", onClick: onForward },
@@ -104,7 +107,7 @@ export function ImMessageMultiSelectOverlay({
           {translateText("取消", language)}
         </button>
         <p aria-atomic="true" aria-live="polite" className="pb-3 text-[15px] font-black text-[color:var(--client-text)]" data-im-multiselect-selected-count={selectedCount}>
-          {translateText("已选择", language)} {selectedCount} {translateText("条信息", language)}
+          {selectedCountLabel}
         </p>
         <span aria-hidden="true" className="h-11 w-11" />
       </header>
@@ -143,7 +146,7 @@ export function ImMessageMultiSelectOverlay({
             type="button"
           >
             <ImIcon className="h-5 w-5" name={action.icon} />
-            <span className="mt-0.5">{translateText(action.label, language)}</span>
+            <span className="mt-0.5">{translateImUiText(action.label, language)}</span>
           </button>
         ))}
       </div>
@@ -153,7 +156,7 @@ export function ImMessageMultiSelectOverlay({
           className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+84px)] z-[74] mx-auto max-w-sm rounded-2xl bg-[#202124]/95 px-4 py-3 text-center text-sm font-black text-white"
           role="alert"
         >
-          {notice}
+          {translateImUiText(notice, language)}
         </p>
       ) : null}
 
@@ -165,14 +168,14 @@ export function ImMessageMultiSelectOverlay({
             role="dialog"
           >
             <p className="text-[15px] font-black leading-6 text-[color:var(--client-text)]">
-              将从你的聊天记录中删除 {selectedCount} 条信息，不影响对方。
+              {deleteConfirmation}
             </p>
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button className="focus-ring min-h-11 rounded-full text-sm font-black" data-im-multiselect-control="true" disabled={pendingAction !== null} onClick={onDismissDeleteConfirmation} type="button">
                 {translateText("取消", language)}
               </button>
               <button className="focus-ring min-h-11 rounded-full bg-[#ef4f3f] text-sm font-black text-white disabled:opacity-40" data-im-multiselect-control="true" disabled={pendingAction !== null} onClick={onConfirmDelete} type="button">
-                {translateText("删除", language)}
+                {translateImUiText("删除", language)}
               </button>
             </div>
           </section>

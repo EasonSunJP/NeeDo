@@ -50,8 +50,8 @@ describe("ImChatRecordCard", () => {
     ["zh", "A和B的聊天记录", "2条信息", "聊天记录", "查看聊天记录：A和B的聊天记录"],
     ["zh-Hant", "A和B的聊天記錄", "2則訊息", "聊天記錄", "查看聊天記錄：A和B的聊天記錄"],
     ["ja", "AとBのチャット履歴", "2件のメッセージ", "チャット履歴", "チャット履歴を表示：AとBのチャット履歴"],
-    ["en", "Chat record with A and B", "2 messages", "Chat history", "View chat record: Chat record with A and B"],
-    ["ko", "A, B님의 채팅 기록", "메시지 2개", "채팅 기록", "채팅 기록 보기: A, B님의 채팅 기록"],
+    ["en", "A and B&#x27;s chat history", "2 messages", "Chat history", "View chat record: A and B&#x27;s chat history"],
+    ["ko", "A와 B의 채팅 기록", "메시지 2개", "채팅 기록", "채팅 기록 보기: A와 B의 채팅 기록"],
   ] as const)("renders complete %s card copy without mixed-language fragments", (language, title, count, caption, ariaLabel) => {
     const markup = renderToStaticMarkup(<MemoryRouter><ImChatRecordCard language={language} record={record} /></MemoryRouter>);
     expect(markup).toContain(title);

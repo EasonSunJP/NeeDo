@@ -390,7 +390,7 @@ describe("ImChatRecordDetailPage", () => {
     });
     await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="en" />} /></Routes></MemoryRouter>)));
     await flush();
-    expect(document.body.textContent).toContain("Chat record with A");
+    expect(document.body.textContent).toContain("A's chat history");
     const infoButton = document.querySelector('button[aria-label="About this chat record"]') as HTMLButtonElement;
     expect(infoButton).not.toBeNull();
     await act(async () => infoButton.click());

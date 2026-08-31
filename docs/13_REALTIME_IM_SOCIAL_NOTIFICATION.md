@@ -330,6 +330,33 @@
 - A1 聚焦后端验证为 6 个套件、85 项测试全部通过；后端全量为 328 个套件、2228 项测试通过，另有 10 个套件、38 项按既有配置跳过。后端 lint、TypeScript build、正式前端 production build 与 bundle audit 均通过。独立代码审查关闭了 Worker 缓冲区复制与生命周期测试问题，最终 P0–P3 均为零。
 - B1 已在隔离正式本地运行中完成浏览器录音验收：单击语音入口、授权麦克风、停止后自动试听、手动重放，以及 X / 重放 / 纸飞机按钮均已验证；为避免产生业务数据，验收未点击发送。`npm audit --omit=dev` 仍报告现有其他依赖路径中的 12 项告警（1 low、4 moderate、7 high），新增 `music-metadata` 路径未出现在告警列表，本切片未执行自动升级。
 
+## 6.25 消息多选、不可变聊天记录与正式翻译（2026-08-31）
+
+### 数据、权限与身份边界
+
+- additive migration `20260831160000_im_chat_records_translation` 新增 `ImChatRecordBundle`、`ImChatRecordItem`、`ImChatRecordDelivery`、`ImChatRecordFavorite`、`ImMessageTranslation` 和 `ImMessageBatchDeleteCommand`，以及 `message:forward`、`message:favorite`、`message:translate` 三个正式权限；本轮只校验 migration/schema，没有应用到共享数据库。
+- 记录包由当前正式身份创建，服务端只接受来源会话和 1–100 个消息 ID，重新验证参与者、本人可见性、撤回/过期/隐私状态并按权威顺序生成不可变快照。媒体复制到受保护记录项存储，失败时整单回滚并补偿文件。卡片 metadata 只保存公开 UUID 与最小已验证摘要，不内嵌完整正文。
+- 详情读取要求当前身份是创建者、有效收藏所有者，或仍可读取对应投递消息的目标会话参与者；失败统一为安全未找到。收藏移除只软删除当前身份的收藏关系。三人及以上标题统一为五语言“群聊记录”，不再展示任意两个人名。
+- 批量删除在一个事务中为当前身份写 `MessageUserDeletion` 并保存幂等命令结果，1–100 条先全量验证再落库；共享 `Message` 和对方可见历史不变。写动作审计不含正文。
+
+### 正式接口与前端行为
+
+- 新接口为 `POST /im/conversations/:targetConversationId/chat-records`、`GET /im/chat-records/:publicId`、分页 `GET /im/chat-records/:publicId/items`、鉴权媒体读取、聊天记录收藏的创建/分页/移除、`POST /im/conversations/:conversationId/messages/delete-for-me` 及 `POST /im/conversations/:conversationId/messages/translations`，统一位于 `/api/v1`，使用 Bearer、Zod、RBAC 与 OpenAPI。
+- 长按菜单保持既有玻璃容器、箭头、表情区与仅半透明压暗的无滤镜下层；动作固定四列两行。常用表情在一次打开期间冻结，使用记录只影响下次打开。
+- 多选以长按消息为锚点，左侧圆圈是唯一逐条切换入口；上下“选择到这里”与底部转发/复制/收藏/删除栏固定悬浮。普通点按消息区取消，实际拖动或滚动后抬手不取消，文字选区手柄拖动不滚动并退出多选。一次最多 100 条。
+- 单条/多条转发都是一张不可变聊天记录卡；收藏整体保存为一项，二者复用带右侧关闭按钮和信息入口的只读全屏窗口。多选复制按权威顺序输出 `发送者:内容`，显示译文存在时复制显示译文，否则复制原文。
+
+### DeepL Free 与无密钥行为
+
+- 翻译业务依赖 `TranslationProvider`，首个实现为 DeepL；浏览器只调用 NeeDo 后端并且永远拿不到第三方 key。`IM_TRANSLATION_PROVIDER=disabled` 是无 key 默认值：后端仍可启动，符合条件的外部翻译请求返回脱敏的 provider-unavailable 错误，不伪造成功。选择 `deepl` 时缺少 HTTPS base URL 或非占位 key 会在启动配置校验失败。
+- DeepL 官方当前限制为 API Free 每月 500,000 字符、单请求总大小 128 KiB；实现按 128 KiB 上限分块。HTTP 429 使用有限次数、带延迟的指数退避，HTTP 456 映射为额度耗尽，超时/不可用不缓存原文。参考 [Usage and limits](https://developers.deepl.com/docs/resources/usage-limits) 与 [Error handling](https://developers.deepl.com/docs/best-practices/error-handling)。
+- 手动翻译只处理当前长按信息并在原文下方显示译文，再次长按切换为“隐藏译文”；会话自动翻译开启时手动按钮置灰，自动请求最多 50 个消息 ID。前端不提交原文，服务端只加载当前身份仍可见的用户文字或图片/视频说明。
+
+### 验证和仍待授权项
+
+- 五语言新增文案使用完整短语键处理动态选中数量和批量删除确认，不依赖片段拼接；日语“选择到这里”为 `ここまで`。自动化测试覆盖紧凑菜单、无滤镜遮罩、翻译显隐/复制、固定范围按钮、手势仲裁、不可变记录卡/详情、收藏分页、身份访问、媒体、幂等和仅本人删除。
+- 本轮未应用 migration、未读取或修改共享数据库、未创建测试消息/收藏、未调用真实 DeepL、未合并/推送/部署。390px/440px 双账号浏览器验收依赖正式 migration、临时消息/收藏和仅本人永久删除验证，必须另行取得这些数据写入与清理授权；在此之前不标记为通过。
+
 ---
 
 ## 7. 给 Codex 的命令

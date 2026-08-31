@@ -51,31 +51,29 @@ export function formatLocalizedImChatRecordTitle(
   const names = senderNames.map(compact).filter(Boolean);
   const first = names[0] ?? "NeeDo";
   const second = names[1] ?? "NeeDo";
-  const count = Math.max(names.length, kind === "group" ? 3 : kind === "pair" ? 2 : 1);
-
   if (language === "en") {
-    if (kind === "single") return `Chat record with ${first}`;
-    if (kind === "pair") return `Chat record with ${first} and ${second}`;
-    return `Chat record with ${first}, ${second} and ${count - 2} others`;
+    if (kind === "single") return `${first}'s chat history`;
+    if (kind === "pair") return `${first} and ${second}'s chat history`;
+    return "Group chat history";
   }
   if (language === "ja") {
-    if (kind === "single") return `${first}とのチャット履歴`;
+    if (kind === "single") return `${first}のチャット履歴`;
     if (kind === "pair") return `${first}と${second}のチャット履歴`;
-    return `${first}、${second}など${count}人のチャット履歴`;
+    return "グループチャット履歴";
   }
   if (language === "ko") {
-    if (kind === "single") return `${first}님과의 채팅 기록`;
-    if (kind === "pair") return `${first}, ${second}님의 채팅 기록`;
-    return `${first}, ${second} 외 ${count - 2}명의 채팅 기록`;
+    if (kind === "single") return `${first}의 채팅 기록`;
+    if (kind === "pair") return `${first}와 ${second}의 채팅 기록`;
+    return "그룹 채팅 기록";
   }
   if (language === "zh-Hant") {
     if (kind === "single") return `${first}的聊天記錄`;
     if (kind === "pair") return `${first}和${second}的聊天記錄`;
-    return `${first}、${second}等${count}人的聊天記錄`;
+    return "群組聊天記錄";
   }
   if (kind === "single") return `${first}的聊天记录`;
   if (kind === "pair") return `${first}和${second}的聊天记录`;
-  return `${first}、${second}等${count}人的聊天记录`;
+  return "群聊记录";
 }
 
 export function formatLocalizedImChatRecordCount(

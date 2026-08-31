@@ -44,6 +44,7 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 type TranslationMap = Record<string, TranslationEntry>;
 
 const chatRecordUiTranslations: TranslationMap = {
+  "选择到这里": fourLanguageTranslation("選擇到這裡", "ここまで", "Select to here", "여기까지 선택"),
   "查看聊天记录": fourLanguageTranslation("查看聊天記錄", "チャット履歴を表示", "View chat record", "채팅 기록 보기"),
   "聊天记录": fourLanguageTranslation("聊天記錄", "チャット履歴", "Chat history", "채팅 기록"),
   "关闭聊天记录": fourLanguageTranslation("關閉聊天記錄", "チャット履歴を閉じる", "Close chat record", "채팅 기록 닫기"),
@@ -70,6 +71,7 @@ const chatRecordUiTranslations: TranslationMap = {
   "上一页": fourLanguageTranslation("上一頁", "前のページ", "Previous page", "이전 페이지"),
   "下一页": fourLanguageTranslation("下一頁", "次のページ", "Next page", "다음 페이지"),
   "重试": fourLanguageTranslation("重試", "再試行", "Retry", "다시 시도"),
+  "翻译服务暂不可用，请稍后重试": fourLanguageTranslation("翻譯服務暫不可用，請稍後再試", "翻訳サービスを一時的に利用できません。しばらくしてからもう一度お試しください", "Translation service is temporarily unavailable. Try again later.", "번역 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요"),
 };
 
 export const authTrustGatewayTranslations: TranslationMap = {

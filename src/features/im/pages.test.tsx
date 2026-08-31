@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import { I18nProvider } from "../../i18n/I18nProvider";
+import { type Language, translateText } from "../../i18n/translations";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ImScopeProvider } from "./scope";
 import source from "./pages.tsx?raw";
@@ -50,6 +51,8 @@ vi.mock("../../state/entityStore", async (importOriginal) => {
 });
 
 import { ImConversationRoomPage, ImNewConversationPage } from "./pages";
+import { ImMessageMultiSelectOverlay } from "./ImMessageMultiSelectOverlay";
+import { translateImUiText } from "./ui-copy";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -283,6 +286,73 @@ afterEach(() => {
   delete (navigator as Navigator & { mediaDevices?: MediaDevices }).mediaDevices;
   delete (URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL;
   delete (URL as typeof URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL;
+});
+
+describe("IM chat-record and multiselect five-language copy", () => {
+  const sources = [
+    "翻译", "隐藏译文", "多选", "已选择 {count} 条信息", "选择到这里",
+    "转发", "复制", "收藏", "删除", "聊天记录", "最多选择100条信息",
+    "本月免费翻译额度已用完", "翻译请求较多，请稍后重试", "翻译服务暂不可用，请稍后重试",
+    "翻译失败，请稍后重试", "将从你的聊天记录中删除 {count} 条信息，不影响对方。",
+    "聊天记录不可用", "转发内容已失效，请重新选择",
+  ] as const;
+  const values: Record<Language, readonly string[]> = {
+    zh: sources,
+    "zh-Hant": [
+      "翻譯", "隱藏譯文", "多選", "已選擇 {count} 則訊息", "選擇到這裡",
+      "轉發", "複製", "收藏", "刪除", "聊天記錄", "最多選擇100則訊息",
+      "本月免費翻譯額度已用完", "翻譯請求較多，請稍後再試", "翻譯服務暫不可用，請稍後再試",
+      "翻譯失敗，請稍後再試", "將從你的聊天記錄中刪除 {count} 則訊息，不影響對方。",
+      "聊天記錄不可用", "轉發內容已失效，請重新選擇",
+    ],
+    ja: [
+      "翻訳", "翻訳を非表示", "複数選択", "{count}件のメッセージを選択済み", "ここまで",
+      "シェア", "コピー", "お気に入り", "削除", "チャット履歴", "メッセージは最大100件まで選択できます",
+      "今月の無料翻訳上限に達しました", "翻訳リクエストが多すぎます。しばらくしてからもう一度お試しください", "翻訳サービスを一時的に利用できません。しばらくしてからもう一度お試しください",
+      "翻訳に失敗しました。しばらくしてからもう一度お試しください", "チャット履歴から{count}件のメッセージを削除します。相手側には影響しません。",
+      "チャット履歴を利用できません", "シェアする内容の有効期限が切れました。もう一度選択してください",
+    ],
+    en: [
+      "Translate", "Hide translation", "Select multiple", "{count} messages selected", "Select to here",
+      "Forward", "Copy", "Favorite", "Delete", "Chat history", "You can select up to 100 messages",
+      "This month's free translation quota has been used up", "Too many translation requests. Try again later.", "Translation service is temporarily unavailable. Try again later.",
+      "Translation failed. Try again later.", "Delete {count} messages from your chat history. This won't affect the other person.",
+      "Chat record unavailable", "Forwarding selection expired. Select the messages again.",
+    ],
+    ko: [
+      "번역", "번역 숨기기", "여러 개 선택", "메시지 {count}개 선택됨", "여기까지 선택",
+      "전달", "복사", "즐겨찾기", "삭제", "채팅 기록", "메시지는 최대 100개까지 선택할 수 있습니다",
+      "이번 달 무료 번역 한도를 모두 사용했습니다", "번역 요청이 많습니다. 잠시 후 다시 시도해 주세요", "번역 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요",
+      "번역에 실패했습니다. 잠시 후 다시 시도해 주세요", "채팅 기록에서 메시지 {count}개를 삭제합니다. 상대방에게는 영향을 주지 않습니다.",
+      "채팅 기록을 사용할 수 없습니다", "전달할 내용이 만료되었습니다. 다시 선택해 주세요",
+    ],
+  };
+
+  it.each<Language>(["zh", "zh-Hant", "ja", "en", "ko"])("uses exact complete %s phrases", (language) => {
+    expect(sources.map((source) => translateImUiText(source, language))).toEqual(values[language]);
+  });
+
+  it("keeps the required shared dictionary entries exact", () => {
+    expect(translateText("选择到这里", "ja")).toBe("ここまで");
+    expect(translateText("聊天记录", "en")).toBe("Chat history");
+    expect(translateText("翻译服务暂不可用，请稍后重试", "ko")).toBe("번역 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요");
+  });
+
+  it.each<Language>(["zh", "zh-Hant", "ja", "en", "ko"])("renders complete dynamic-count phrases in %s", async (language) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<ImMessageMultiSelectOverlay
+      deleteConfirmationOpen language={language} notice="最多选择100条信息"
+      onCancel={vi.fn()} onConfirmDelete={vi.fn()} onCopy={vi.fn()} onDelete={vi.fn()}
+      onDismissDeleteConfirmation={vi.fn()} onFavorite={vi.fn()} onForward={vi.fn()}
+      onSelectToPoint={vi.fn()} pendingAction={null} selectedCount={3}
+    />));
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe(values[language][3]?.replace("{count}", "3"));
+    expect(container.querySelector('[role="dialog"] p')?.textContent).toBe(values[language][15]?.replace("{count}", "3"));
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(values[language][10]);
+    await act(async () => root.unmount());
+  });
 });
 
 describe("ImNewConversationPage chat-record forwarding", () => {

@@ -4,6 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatLocalizedImChatRecordTitle } from "../../features/im/chat-records";
+import type { Language } from "../../i18n/translations";
 import { UserFavoritesPage, type UserFavoritesApi } from "./UserFavoritesPage";
 
 function favoriteAt(index: number) {
@@ -70,6 +72,20 @@ describe("UserFavoritesPage", () => {
     await act(async () => root.unmount());
     container.remove();
     document.body.innerHTML = "";
+  });
+
+  it.each<[Language, [string, string, string]]>([
+    ["zh", ["A的聊天记录", "A和B的聊天记录", "群聊记录"]],
+    ["zh-Hant", ["A的聊天記錄", "A和B的聊天記錄", "群組聊天記錄"]],
+    ["ja", ["Aのチャット履歴", "AとBのチャット履歴", "グループチャット履歴"]],
+    ["en", ["A's chat history", "A and B's chat history", "Group chat history"]],
+    ["ko", ["A의 채팅 기록", "A와 B의 채팅 기록", "그룹 채팅 기록"]],
+  ])("formats single, pair, and group chat-record titles in %s", (language, expected) => {
+    expect([
+      formatLocalizedImChatRecordTitle(["A"], "single", language),
+      formatLocalizedImChatRecordTitle(["A", "B"], "pair", language),
+      formatLocalizedImChatRecordTitle(["A", "B", "C"], "group", language),
+    ]).toEqual(expected);
   });
 
   it("loads formal paginated favorites and treats one complete record as one row", async () => {
@@ -260,7 +276,7 @@ describe("UserFavoritesPage", () => {
     await flush();
     expect(document.body.textContent).toContain("My favorites");
     expect(document.body.textContent).toContain("Saved chat records");
-    expect(document.body.textContent).toContain("Chat record with A");
+    expect(document.body.textContent).toContain("A1's chat history");
     expect(document.body.textContent).toContain("Remove favorite");
     expect(document.body.textContent).toContain("Previous page");
     expect(document.body.textContent).toContain("Next page");

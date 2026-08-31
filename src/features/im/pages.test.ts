@@ -480,8 +480,9 @@ describe("IM pages", () => {
   });
 
   it("uses one shared recent-first reaction catalog in the composer and message actions", () => {
-    expect(componentsSource).toContain("useSyncExternalStore(");
-    expect(componentsSource).toContain("subscribeRecentImReactions");
+    expect(componentsSource).toContain("setVisibleRecentReactions(getRecentImReactionSnapshot())");
+    expect(componentsSource).toContain("setRecentReactions(getRecentImReactionSnapshot())");
+    expect(componentsSource).not.toContain("subscribeRecentImReactions");
     expect(componentsSource).toContain("getRecentImReactionSnapshot");
     expect(componentsSource).toContain("recordRecentImReaction(value)");
     expect(componentsSource.match(/<ReactionCatalog/g)).toHaveLength(2);
@@ -508,7 +509,7 @@ describe("IM pages", () => {
     expect(noticeSource).not.toContain("recordingHintClass");
   });
 
-  it("keeps the composer mounted while message actions are open and hides it only for fullscreen media", () => {
+  it("keeps the composer mounted while message actions are open and hides it for fullscreen media or multiselect", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
     const componentSource = pagesSource.slice(componentStart, componentEnd);
@@ -516,7 +517,7 @@ describe("IM pages", () => {
     const openMenuEnd = componentSource.indexOf("const toggleMessageReaction", openMenuStart);
     const openMenuSource = componentSource.slice(openMenuStart, openMenuEnd);
     const menuStart = componentSource.indexOf("{menuState ? (");
-    const composerGateStart = componentSource.indexOf("{!mediaPreview ? (", menuStart);
+    const composerGateStart = componentSource.indexOf("{!mediaPreview && !multiSelect.active ? (", menuStart);
     const mediaViewerStart = componentSource.indexOf("{mediaPreview && typeof document", composerGateStart);
     const composerSource = componentSource.slice(composerGateStart, mediaViewerStart);
 

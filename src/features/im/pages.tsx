@@ -194,6 +194,7 @@ import {
 } from "./privacy-countdown";
 import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImContactInformationPath, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
+import { translateImUiText } from "./ui-copy";
 import { MAX_VOICE_RECORDING_SECONDS, useImVoiceRecording } from "./useImVoiceRecording";
 import {
   getBlockedContacts,
@@ -6311,7 +6312,13 @@ export function ImConversationRoomPage({
       onClick: () => enterMultiSelect(message)
     });
 
-    return { primaryActions, listActions: [] };
+    return {
+      primaryActions: primaryActions.map((item) => ({
+        ...item,
+        label: translateImUiText(item.label, language),
+      })),
+      listActions: [],
+    };
   };
 
   const availableMoreActions = [
@@ -6631,7 +6638,7 @@ export function ImConversationRoomPage({
               role="alert"
             >
               <p className="max-w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#202124]/95 px-4 py-3 text-center text-sm font-black leading-5 text-white shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur-md">
-                {actionNotice}
+                {translateImUiText(actionNotice, language)}
               </p>
             </div>
           ) : null}
@@ -8319,6 +8326,7 @@ export function ImMediaRecordsPage() {
 
 export function ImNewConversationPage() {
   const { scope, store, config } = useImRuntime();
+  const { language } = useOptionalI18n();
   const { actions: dineInActions } = useDineInStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -8947,7 +8955,7 @@ export function ImNewConversationPage() {
         <div aria-busy={mode === "forward" && forwardPending} className="space-y-4 px-4 py-4">
           {mode === "forward" && !store.pendingChatRecordForward ? (
             <div className="rounded-[24px] bg-white px-4 py-10 text-center text-sm text-ink/55 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-              转发内容已失效，请重新选择
+              {translateImUiText("转发内容已失效，请重新选择", language)}
             </div>
           ) : null}
           {mode === "forward" && forwardError ? (
