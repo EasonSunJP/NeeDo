@@ -1,5 +1,9 @@
 import { httpClient } from "../../api/httpClient";
 import type {
+  CreateExchangeClaimInput,
+  ExchangeClaim,
+  ExchangeClaimOption,
+  ExchangeClaimOptionListInput,
   ExchangeComment,
   ExchangeInteractionCounts,
   ExchangeListInput,
@@ -25,6 +29,62 @@ export function listExchangePosts(input: ExchangeListInput): Promise<Paginated<E
 
 export function getExchangePost(postId: string, signal?: AbortSignal): Promise<ExchangePost> {
   return httpClient.request<ExchangePost>(`/exchange/posts/${postId}`, { signal });
+}
+
+export function listExchangeClaimOptions(
+  postId: string,
+  input: ExchangeClaimOptionListInput = {}
+): Promise<Paginated<ExchangeClaimOption>> {
+  return httpClient.request<Paginated<ExchangeClaimOption>>(
+    `/exchange/posts/${postId}/claim-options`,
+    {
+      query: {
+        page: input.page ?? 1,
+        page_size: input.pageSize ?? 20,
+        shop_id: input.shopId,
+        technician_profile_id: input.technicianProfileId,
+        service_ref: input.serviceRef
+      },
+      signal: input.signal
+    }
+  );
+}
+
+export function createExchangeClaim(
+  postId: string,
+  input: CreateExchangeClaimInput,
+  key: string
+): Promise<ExchangeClaim> {
+  return httpClient.request<ExchangeClaim>(`/exchange/posts/${postId}/claims`, {
+    body: input,
+    headers: idempotencyHeaders(key),
+    method: "POST"
+  });
+}
+
+export function listReceivedExchangeClaims(
+  postId: string,
+  input: PaginationInput = {}
+): Promise<Paginated<ExchangeClaim>> {
+  return httpClient.request<Paginated<ExchangeClaim>>(`/exchange/posts/${postId}/claims`, {
+    query: { page: input.page ?? 1, page_size: input.pageSize ?? 20 },
+    signal: input.signal
+  });
+}
+
+export function getMyExchangeClaim(
+  postId: string,
+  signal?: AbortSignal
+): Promise<ExchangeClaim | null> {
+  return httpClient.request<ExchangeClaim | null>(`/exchange/posts/${postId}/claims/mine`, {
+    signal
+  });
+}
+
+export function withdrawExchangeClaim(claimId: string): Promise<ExchangeClaim> {
+  return httpClient.request<ExchangeClaim>(`/exchange/claims/${claimId}/withdraw`, {
+    method: "POST"
+  });
 }
 
 export function getRequestPublicationContext(): Promise<ExchangeRequestPublicationContext> {

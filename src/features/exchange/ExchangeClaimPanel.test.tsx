@@ -1,0 +1,203 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createExchangeClaim,
+  getMyExchangeClaim,
+  listExchangeClaimOptions,
+  withdrawExchangeClaim
+} from "./api";
+import { ExchangeClaimPanel } from "./ExchangeClaimPanel";
+import type { ExchangeClaim, ExchangeClaimOption, ExchangePost } from "./types";
+
+vi.mock("./api", () => ({
+  createExchangeClaim: vi.fn(),
+  getMyExchangeClaim: vi.fn(),
+  listExchangeClaimOptions: vi.fn(),
+  withdrawExchangeClaim: vi.fn()
+}));
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const post: ExchangePost = {
+  id: 41,
+  type: "demand",
+  status: "published",
+  title: "选配正式需求",
+  detail: "需要一名服务者",
+  contentLocale: "zh-CN",
+  areaLabel: "東京都港区",
+  serviceStartAt: "2026-09-02T04:00:00.000Z",
+  serviceEndAt: "2026-09-02T06:00:00.000Z",
+  expiresAt: "2026-09-02T03:00:00.000Z",
+  publishedAt: "2026-09-01T01:00:00.000Z",
+  publisher: null,
+  counts: { comments: 0, likes: 0, shares: 0 },
+  viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "selective",
+    budgetMode: "total",
+    budgetMinJpy: 8_000,
+    budgetMaxJpy: 30_000,
+    address: {
+      line1: "東京都港区",
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "general"
+    }
+  },
+  intelligence: null
+};
+
+const option: ExchangeClaimOption = {
+  scheduleSlotId: 91,
+  shop: { id: 7, name: "GINZA Calm Body Lab" },
+  technician: { profileId: 12, publicId: "NT00000012", displayName: "山田 美咲" },
+  service: { ref: "technician:31", name: "肩颈深层护理", durationMinutes: 120 },
+  startsAt: "2026-09-02T04:00:00.000Z",
+  endsAt: "2026-09-02T06:00:00.000Z"
+};
+
+const activeClaim: ExchangeClaim = {
+  id: 73,
+  exchangePostId: 41,
+  status: "active",
+  provider: { publicId: "NT00000012", displayName: "山田 美咲", avatarUrl: null },
+  shop: option.shop,
+  technician: option.technician,
+  service: option.service,
+  scheduleSlotId: 91,
+  quoteAmountJpy: 15_000,
+  currency: "JPY",
+  message: "可以按时到达",
+  estimatedStartsAt: option.startsAt,
+  estimatedEndsAt: option.endsAt,
+  createdAt: "2026-09-01T02:00:00.000Z",
+  withdrawnAt: null,
+  terminalAt: null
+};
+
+async function waitFor(assertion: () => void) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+    }
+  }
+  throw lastError;
+}
+
+function changeInput(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+    "value"
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+let container: HTMLDivElement;
+let root: Root;
+
+describe("ExchangeClaimPanel", () => {
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    vi.clearAllMocks();
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "exchange-claim-ui-0001") });
+    vi.mocked(getMyExchangeClaim).mockResolvedValue(null);
+    vi.mocked(listExchangeClaimOptions).mockResolvedValue({
+      list: [option],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows persisted shop, technician, service and time options with required marks", async () => {
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("GINZA Calm Body Lab"));
+
+    expect(getMyExchangeClaim).toHaveBeenCalledWith("41", expect.any(AbortSignal));
+    expect(listExchangeClaimOptions).toHaveBeenCalledWith("41", expect.objectContaining({ page: 1, pageSize: 20 }));
+    expect(document.body.textContent).toContain("山田 美咲");
+    expect(document.body.textContent).toContain("肩颈深层护理");
+    expect(document.body.textContent).toContain("服务项目 *");
+    expect(document.body.textContent).toContain("报价 *");
+    expect(document.body.textContent).toContain("留言（可选）");
+  });
+
+  it("submits only the chosen server option and keeps inputs after a server error", async () => {
+    vi.mocked(createExchangeClaim)
+      .mockRejectedValueOnce(new Error("error.exchange.claim_time_conflict"))
+      .mockResolvedValueOnce(activeClaim);
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("GINZA Calm Body Lab"));
+
+    const optionButton = document.body.querySelector<HTMLButtonElement>('[data-option-id="91"]')!;
+    const quote = document.body.querySelector<HTMLInputElement>('input[name="claimQuoteAmountJpy"]')!;
+    const message = document.body.querySelector<HTMLTextAreaElement>('textarea[name="claimMessage"]')!;
+    await act(async () => optionButton.click());
+    await act(async () => {
+      changeInput(quote, "15000");
+      changeInput(message, "原文留言保持不变");
+    });
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!.click());
+    await waitFor(() => expect(document.body.textContent).toContain("所选时间已不可用"));
+
+    expect(quote.value).toBe("15000");
+    expect(message.value).toBe("原文留言保持不变");
+    expect(createExchangeClaim).toHaveBeenCalledWith(
+      "41",
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: "原文留言保持不变" },
+      "exchange-claim-ui-0001"
+    );
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!.click());
+    await waitFor(() => expect(document.body.textContent).toContain("抢单已提交"));
+    expect(createExchangeClaim).toHaveBeenLastCalledWith(
+      "41",
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: "原文留言保持不变" },
+      "exchange-claim-ui-0001"
+    );
+  });
+
+  it("loads the persisted own claim after refresh and withdraws with confirmation", async () => {
+    vi.mocked(getMyExchangeClaim).mockResolvedValue(activeClaim);
+    vi.mocked(withdrawExchangeClaim).mockResolvedValue({
+      ...activeClaim,
+      status: "withdrawn",
+      withdrawnAt: "2026-09-01T02:30:00.000Z",
+      terminalAt: "2026-09-01T02:30:00.000Z"
+    });
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("抢单已提交"));
+
+    expect(listExchangeClaimOptions).not.toHaveBeenCalled();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="withdraw-claim"]')!.click());
+    await waitFor(() => expect(document.body.textContent).toContain("已撤回"));
+
+    expect(globalThis.confirm).toHaveBeenCalled();
+    expect(withdrawExchangeClaim).toHaveBeenCalledWith("73");
+  });
+});
