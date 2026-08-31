@@ -470,6 +470,77 @@ describe("formal IM resend payload integrity", () => {
   });
 });
 
+describe("formal IM contact card send state", () => {
+  it("adds only the authoritative contact-card message and updates the conversation preview", async () => {
+    const authoritativeMessage = message({
+      id: "704",
+      localId: "704",
+      type: "contact-card",
+      content: "山田花子",
+      ext: {
+        contactCard: {
+          avatar: "/hanako.png",
+          displayName: "山田花子",
+          ekycVerified: true,
+          entityKind: "customer",
+          level: 12,
+          needoId: "u0000000201",
+          profileKind: "person",
+          snapshotVersion: 2,
+          userId: "u0000000201",
+          userIdLabel: "u0000000201",
+        },
+      },
+    });
+    const sendContactCard = vi.fn<ImApi["sendContactCard"]>().mockResolvedValue({
+      message: authoritativeMessage,
+      replayed: false,
+    });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {},
+        users: [],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [conversation({ lastMessagePreview: "原消息" })],
+        members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({ messages: [], nextCursor: null, hasMore: false }),
+      sendContactCard,
+    } as unknown as ImApi;
+    mocked.session = {
+      activePublicId: "u0000010401",
+      avatarUrl: null,
+      id: 10_401,
+      primaryPublicId: "u0000010401",
+      username: "contact-card-test",
+    };
+
+    await renderStore();
+    const result = await store!.sendContactCard(
+      "91",
+      "u0000000201",
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(sendContactCard).toHaveBeenCalledWith(
+      "91",
+      "u0000000201",
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(result).toBe(authoritativeMessage);
+    expect(store!.messagesByConversation["91"]).toEqual([authoritativeMessage]);
+    expect(store!.conversations[0]).toMatchObject({
+      lastMessageId: "704",
+      lastMessagePreview: "[名片] 山田花子",
+      lastMessageType: "contact-card",
+      updatedAt: authoritativeMessage.sentAt,
+    });
+  });
+});
+
 describe("formal IM voice send state", () => {
   function renderStore(
     userId: number,

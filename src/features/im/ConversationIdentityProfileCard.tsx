@@ -185,9 +185,9 @@ export function ConversationIdentityProfileCard({
           </p>
         )}
 
-        {languageLabels.length > 0 ? (
-          <div className="mt-4" data-im-language-section="true">
-            <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("语言能力")}</p>
+        <div className="mt-4" data-im-language-section="true">
+          <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("语言能力")}</p>
+          {languageLabels.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-2" data-im-language-pills="true" data-no-i18n="true">
               {languageLabels.map((item) => (
                 <span
@@ -198,17 +198,22 @@ export function ConversationIdentityProfileCard({
                 </span>
               ))}
             </div>
-          </div>
-        ) : null}
-
-        {identityCard.bio ? (
-          <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] px-4 py-4">
-            <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("自我介绍")}</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
-              {identityCard.bio}
+          ) : (
+            <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]" data-im-language-empty="true">
+              {t("未设置")}
             </p>
-          </div>
-        ) : null}
+          )}
+        </div>
+
+        <div
+          className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] px-4 py-4"
+          data-im-bio-section="true"
+        >
+          <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("自我介绍")}</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+            {identityCard.bio?.trim() || t("未设置")}
+          </p>
+        </div>
       </div>
     </section>
   );

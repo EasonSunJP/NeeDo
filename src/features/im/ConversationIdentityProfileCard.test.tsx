@@ -178,6 +178,31 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).not.toContain("东京");
   });
 
+  it("keeps empty language and bio sections visible instead of hiding the fields", () => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={{
+              ...identityCard,
+              bio: undefined,
+              languages: [],
+            }}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup).toContain('data-im-language-section="true"');
+    expect(markup).toContain('data-im-language-empty="true"');
+    expect(markup).toContain("语言能力");
+    expect(markup).toContain('data-im-bio-section="true"');
+    expect(markup).toContain("自我介绍");
+    expect(markup.match(/未设置/g)).toHaveLength(2);
+  });
+
   it.each([
     {
       entityType: "technician" as const,
