@@ -2018,12 +2018,13 @@ model OrderServiceSession {
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
 
-  bookingOrder BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  startedBy    User?               @relation("OrderServiceSessionStartedBy", fields: [startedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  endedBy      User?               @relation("OrderServiceSessionEndedBy", fields: [endedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingOrder BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_service_sessions_order_fkey")
+  startedBy    User?               @relation("OrderServiceSessionStartedBy", fields: [startedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_service_sessions_started_by_fkey")
+  endedBy      User?               @relation("OrderServiceSessionEndedBy", fields: [endedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_service_sessions_ended_by_fkey")
   events       OrderServiceEvent[]
   addOns       OrderAddOn[]
 
+  @@unique([id, bookingOrderId], map: "order_service_sessions_id_order_key")
   @@index([startedByUserId], map: "order_service_sessions_started_by_idx")
   @@index([endedByUserId], map: "order_service_sessions_ended_by_idx")
   @@index([expectedEndsAt, endedAt, deletedAt], map: "order_service_sessions_due_active_idx")
@@ -2047,11 +2048,11 @@ model OrderServiceEvent {
   updatedAt        DateTime              @updatedAt @map("updated_at")
   deletedAt        DateTime?             @map("deleted_at")
 
-  bookingOrder   BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  serviceSession OrderServiceSession @relation(fields: [serviceSessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  orderAddOn     OrderAddOn?         @relation(fields: [orderAddOnId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  orderCheckout  OrderCheckout?      @relation(fields: [orderCheckoutId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  actor          User?               @relation("OrderServiceEventActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingOrder   BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_service_events_order_fkey")
+  serviceSession OrderServiceSession @relation(fields: [serviceSessionId, bookingOrderId], references: [id, bookingOrderId], onDelete: Restrict, onUpdate: Restrict, map: "order_service_events_session_fkey")
+  orderAddOn     OrderAddOn?         @relation(fields: [orderAddOnId, bookingOrderId, serviceSessionId], references: [id, bookingOrderId, serviceSessionId], onDelete: Restrict, onUpdate: Restrict, map: "order_service_events_add_on_order_fkey")
+  orderCheckout  OrderCheckout?      @relation(fields: [orderCheckoutId, bookingOrderId], references: [id, bookingOrderId], onDelete: Restrict, onUpdate: Restrict, map: "order_service_events_checkout_order_fkey")
+  actor          User?               @relation("OrderServiceEventActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_service_events_actor_fkey")
 
   @@index([bookingOrderId, occurredAt, deletedAt], map: "order_service_events_order_time_idx")
   @@index([serviceSessionId, occurredAt, deletedAt], map: "order_service_events_session_time_idx")
@@ -2085,14 +2086,15 @@ model OrderAddOn {
   updatedAt           DateTime         @updatedAt @map("updated_at")
   deletedAt           DateTime?        @map("deleted_at")
 
-  bookingOrder   BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  serviceSession OrderServiceSession @relation(fields: [serviceSessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  service        Service             @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  proposedBy     User                @relation("OrderAddOnProposedBy", fields: [proposedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  acceptedBy     User?               @relation("OrderAddOnAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  rejectedBy     User?               @relation("OrderAddOnRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingOrder   BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_order_fkey")
+  serviceSession OrderServiceSession @relation(fields: [serviceSessionId, bookingOrderId], references: [id, bookingOrderId], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_session_fkey")
+  service        Service             @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_service_fkey")
+  proposedBy     User                @relation("OrderAddOnProposedBy", fields: [proposedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_proposed_by_fkey")
+  acceptedBy     User?               @relation("OrderAddOnAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_accepted_by_fkey")
+  rejectedBy     User?               @relation("OrderAddOnRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_add_ons_rejected_by_fkey")
   events         OrderServiceEvent[]
 
+  @@unique([id, bookingOrderId, serviceSessionId], map: "order_add_ons_id_order_session_key")
   @@index([bookingOrderId, status, deletedAt], map: "order_add_ons_order_status_idx")
   @@index([serviceSessionId, status, deletedAt], map: "order_add_ons_session_status_idx")
   @@index([serviceId], map: "order_add_ons_service_idx")
@@ -2127,12 +2129,13 @@ model OrderCheckout {
   updatedAt                 DateTime              @updatedAt @map("updated_at")
   deletedAt                 DateTime?             @map("deleted_at")
 
-  bookingOrder       BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  ndpRateRule        NdpExchangeRateRule @relation(fields: [ndpRateRuleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  ledgerTransaction  LedgerTransaction?  @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  receiptConfirmedBy User?               @relation("OrderCheckoutReceiptConfirmer", fields: [receiptConfirmedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingOrder       BookingOrder        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_checkouts_order_fkey")
+  ndpRateRule        NdpExchangeRateRule @relation(fields: [ndpRateRuleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_checkouts_rate_rule_fkey")
+  ledgerTransaction  LedgerTransaction?  @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_checkouts_ledger_fkey")
+  receiptConfirmedBy User?               @relation("OrderCheckoutReceiptConfirmer", fields: [receiptConfirmedById], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "order_checkouts_receipt_actor_fkey")
   events             OrderServiceEvent[]
 
+  @@unique([id, bookingOrderId], map: "order_checkouts_id_order_key")
   @@index([ndpRateRuleId], map: "order_checkouts_rate_rule_idx")
   @@index([receiptConfirmedById], map: "order_checkouts_receipt_actor_idx")
   @@index([paymentMethod, deletedAt], map: "order_checkouts_payment_active_idx")
@@ -2147,7 +2150,7 @@ model NdpExchangeRateRule {
   version        Int                       @unique(map: "ndp_exchange_rate_rules_version_key")
   ndpUnits       Int                       @map("ndp_units")
   jpyUnits       Int                       @map("jpy_units")
-  status         NdpExchangeRateRuleStatus @default(ACTIVE)
+  status         NdpExchangeRateRuleStatus
   effectiveFrom  DateTime                  @map("effective_from")
   effectiveTo    DateTime?                 @map("effective_to")
   activeKey      String?                   @unique(map: "ndp_exchange_rate_rules_active_key") @map("active_key") @db.VarChar(80)
@@ -2158,7 +2161,7 @@ model NdpExchangeRateRule {
   updatedAt      DateTime                  @updatedAt @map("updated_at")
   deletedAt      DateTime?                 @map("deleted_at")
 
-  createdBy User?           @relation("NdpExchangeRateRuleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy User?           @relation("NdpExchangeRateRuleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ndp_exchange_rate_rules_created_by_fkey")
   checkouts OrderCheckout[]
 
   @@index([status, effectiveFrom, effectiveTo, deletedAt], map: "ndp_exchange_rate_rules_effective_idx")

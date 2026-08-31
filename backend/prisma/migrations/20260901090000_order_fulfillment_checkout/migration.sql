@@ -10,7 +10,7 @@ CREATE TABLE `ndp_exchange_rate_rules` (
   `version` INTEGER NOT NULL,
   `ndp_units` INTEGER NOT NULL,
   `jpy_units` INTEGER NOT NULL,
-  `status` ENUM('active', 'superseded') NOT NULL DEFAULT 'active',
+  `status` ENUM('active', 'superseded') NOT NULL,
   `effective_from` DATETIME(3) NOT NULL,
   `effective_to` DATETIME(3) NULL,
   `active_key` VARCHAR(80) NULL,
@@ -23,7 +23,12 @@ CREATE TABLE `ndp_exchange_rate_rules` (
 
   CONSTRAINT `ndp_exchange_rate_rules_ndp_units_chk` CHECK (`ndp_units` > 0),
   CONSTRAINT `ndp_exchange_rate_rules_jpy_units_chk` CHECK (`jpy_units` > 0),
+  CONSTRAINT `ndp_exchange_rate_rules_version_chk` CHECK (`version` > 0),
   CONSTRAINT `ndp_exchange_rate_rules_window_chk` CHECK (`effective_to` IS NULL OR `effective_to` > `effective_from`),
+  CONSTRAINT `ndp_exchange_rate_rules_active_sentinel_chk` CHECK (
+    (`status` = 'active' AND `active_key` = 'ndp_exchange_rate')
+    OR (`status` = 'superseded' AND `active_key` IS NULL)
+  ),
   UNIQUE INDEX `ndp_exchange_rate_rules_public_id_key`(`public_id`),
   UNIQUE INDEX `ndp_exchange_rate_rules_version_key`(`version`),
   UNIQUE INDEX `ndp_exchange_rate_rules_active_key`(`active_key`),
@@ -47,8 +52,14 @@ CREATE TABLE `order_service_sessions` (
   `updated_at` DATETIME(3) NOT NULL,
   `deleted_at` DATETIME(3) NULL,
 
-  CONSTRAINT `order_service_sessions_time_order_chk` CHECK (`ended_at` IS NULL OR `started_at` IS NOT NULL),
+  CONSTRAINT `order_service_sessions_ended_chronology_chk` CHECK (
+    `ended_at` IS NULL OR (`started_at` IS NOT NULL AND `ended_at` >= `started_at`)
+  ),
+  CONSTRAINT `order_service_sessions_expected_chronology_chk` CHECK (
+    `expected_ends_at` IS NULL OR `started_at` IS NULL OR `expected_ends_at` >= `started_at`
+  ),
   UNIQUE INDEX `order_service_sessions_booking_order_key`(`booking_order_id`),
+  UNIQUE INDEX `order_service_sessions_id_order_key`(`id`, `booking_order_id`),
   INDEX `order_service_sessions_started_by_idx`(`started_by_user_id`),
   INDEX `order_service_sessions_ended_by_idx`(`ended_by_user_id`),
   INDEX `order_service_sessions_due_active_idx`(`expected_ends_at`, `ended_at`, `deleted_at`),
@@ -85,6 +96,7 @@ CREATE TABLE `order_add_ons` (
     OR (`status` = 'accepted' AND `accepted_by_user_id` IS NOT NULL AND `accepted_at` IS NOT NULL AND `rejected_by_user_id` IS NULL AND `rejected_at` IS NULL)
     OR (`status` = 'rejected' AND `rejected_by_user_id` IS NOT NULL AND `rejected_at` IS NOT NULL AND `accepted_by_user_id` IS NULL AND `accepted_at` IS NULL)
   ),
+  UNIQUE INDEX `order_add_ons_id_order_session_key`(`id`, `booking_order_id`, `service_session_id`),
   INDEX `order_add_ons_order_status_idx`(`booking_order_id`, `status`, `deleted_at`),
   INDEX `order_add_ons_session_status_idx`(`service_session_id`, `status`, `deleted_at`),
   INDEX `order_add_ons_service_idx`(`service_id`),
@@ -131,6 +143,7 @@ CREATE TABLE `order_checkouts` (
     OR (`receipt_confirmed_by_id` IS NOT NULL AND `receipt_confirmed_at` IS NOT NULL AND `receipt_confirmation_reason` IS NOT NULL AND `payment_method` IN ('cash', 'other'))
   ),
   UNIQUE INDEX `order_checkouts_booking_order_key`(`booking_order_id`),
+  UNIQUE INDEX `order_checkouts_id_order_key`(`id`, `booking_order_id`),
   UNIQUE INDEX `order_checkouts_ledger_transaction_key`(`ledger_transaction_id`),
   INDEX `order_checkouts_rate_rule_idx`(`ndp_rate_rule_id`),
   INDEX `order_checkouts_receipt_actor_idx`(`receipt_confirmed_by_id`),
@@ -156,6 +169,11 @@ CREATE TABLE `order_service_events` (
   `updated_at` DATETIME(3) NOT NULL,
   `deleted_at` DATETIME(3) NULL,
 
+  CONSTRAINT `order_service_events_shape_chk` CHECK (
+    (`event_type` IN ('service_started', 'service_ended') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NULL)
+    OR (`event_type` IN ('add_on_proposed', 'add_on_accepted', 'add_on_rejected') AND `order_add_on_id` IS NOT NULL AND `order_checkout_id` IS NULL)
+    OR (`event_type` IN ('checkout_created', 'payment_method_selected', 'ndp_payment_applied', 'receipt_confirmed') AND `order_add_on_id` IS NULL AND `order_checkout_id` IS NOT NULL)
+  ),
   UNIQUE INDEX `order_service_events_idempotency_key`(`idempotency_key`),
   INDEX `order_service_events_order_time_idx`(`booking_order_id`, `occurred_at`, `deleted_at`),
   INDEX `order_service_events_session_time_idx`(`service_session_id`, `occurred_at`, `deleted_at`),
@@ -183,7 +201,7 @@ ALTER TABLE `order_add_ons`
   ADD CONSTRAINT `order_add_ons_order_fkey`
     FOREIGN KEY (`booking_order_id`) REFERENCES `booking_orders`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `order_add_ons_session_fkey`
-    FOREIGN KEY (`service_session_id`) REFERENCES `order_service_sessions`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    FOREIGN KEY (`service_session_id`, `booking_order_id`) REFERENCES `order_service_sessions`(`id`, `booking_order_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `order_add_ons_service_fkey`
     FOREIGN KEY (`service_id`) REFERENCES `services`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `order_add_ons_proposed_by_fkey`
@@ -207,11 +225,11 @@ ALTER TABLE `order_service_events`
   ADD CONSTRAINT `order_service_events_order_fkey`
     FOREIGN KEY (`booking_order_id`) REFERENCES `booking_orders`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `order_service_events_session_fkey`
-    FOREIGN KEY (`service_session_id`) REFERENCES `order_service_sessions`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `order_service_events_add_on_fkey`
-    FOREIGN KEY (`order_add_on_id`) REFERENCES `order_add_ons`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `order_service_events_checkout_fkey`
-    FOREIGN KEY (`order_checkout_id`) REFERENCES `order_checkouts`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    FOREIGN KEY (`service_session_id`, `booking_order_id`) REFERENCES `order_service_sessions`(`id`, `booking_order_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `order_service_events_add_on_order_fkey`
+    FOREIGN KEY (`order_add_on_id`, `booking_order_id`, `service_session_id`) REFERENCES `order_add_ons`(`id`, `booking_order_id`, `service_session_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `order_service_events_checkout_order_fkey`
+    FOREIGN KEY (`order_checkout_id`, `booking_order_id`) REFERENCES `order_checkouts`(`id`, `booking_order_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `order_service_events_actor_fkey`
     FOREIGN KEY (`actor_user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
