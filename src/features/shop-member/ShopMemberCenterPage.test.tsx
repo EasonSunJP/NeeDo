@@ -17,6 +17,7 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).not.toContain("立即充值");
     expect(source).not.toContain("申请退款");
     expect(source).not.toContain("开卡演示");
+    expect(source).not.toContain("开卡将在后续");
     expect(source).toContain("开通会员");
     expect(source).toContain("后续独立开放");
   });
@@ -27,6 +28,9 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain("<CardPlanWorkspace");
     expect(source).toContain('hasPermission("shop.member.card_plan.manage")');
     expect(source).toContain('hasPermission("shop.member.card_plan.publish")');
+    expect(source).toContain('hasPermission("shop.member.card.issue")');
+    expect(source).toContain("<CardIssuanceDialog");
+    expect(source).toContain("开卡");
   });
 
   it("provides real loading, empty, error, retry, and permission states", () => {

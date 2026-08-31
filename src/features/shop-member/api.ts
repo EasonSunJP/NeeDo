@@ -4,6 +4,7 @@ import "./i18n";
 export type ShopMembershipStatus = "active" | "ended";
 export type ShopMembershipCardType = "stored_value" | "count" | "benefit";
 export type ShopMembershipCardStatus = "active" | "frozen" | "expired" | "void";
+export type ShopMembershipCardIssuanceSource = "offline_paid" | "historical_replacement" | "manual_grant";
 export type ShopMembershipAnalyticsPeriod = "last7days" | "last30days" | "last90days";
 export type ShopMembershipCardPlanStatus = "draft" | "active" | "retired";
 export type ShopMembershipCardPlanVersionStatus = "draft" | "published" | "retired";
@@ -142,6 +143,13 @@ export type ShopMembershipCard = {
   bonusBalanceJpy: number | null;
   remainingUses: number | null;
   totalUses: number | null;
+  initialPrincipalJpy: number | null;
+  initialUses: number | null;
+  issuanceSource: ShopMembershipCardIssuanceSource | null;
+  platformFeeRateBpsSnapshot: number | null;
+  planPublicId: string | null;
+  planVersionPublicId: string | null;
+  planVersion: number | null;
   issuedAt: string;
   expiresAt: string | null;
   frozenAt: string | null;
@@ -188,6 +196,29 @@ export type MerchantShopMembershipCard = ShopMembershipCard & {
   membershipPublicId: string;
   customerNeedoId: string;
   customerDisplayName: string;
+};
+
+export type ShopMembershipCardIssuanceRequest = {
+  planPublicId: string;
+  initialPrincipalJpy: number | null;
+  initialUses: number | null;
+  issuanceSource: ShopMembershipCardIssuanceSource;
+  issuanceReference: string | null;
+  issuanceNote: string | null;
+  idempotencyKey: string;
+};
+
+export type ShopMembershipCardIssuanceResult = MerchantShopMembershipCard & {
+  initialPrincipalJpy: number | null;
+  initialUses: number | null;
+  issuanceSource: ShopMembershipCardIssuanceSource;
+  issuanceReference: string | null;
+  issuanceNote: string | null;
+  platformFeeRateBpsSnapshot: number;
+  planPublicId: string;
+  planVersionPublicId: string;
+  planVersion: number;
+  replayed: boolean;
 };
 
 export type ShopMembershipActivity = {
@@ -275,6 +306,12 @@ export const merchantShopMembershipApi = {
   cards(query: MembershipCardQuery = {}) {
     return httpClient.request<PaginatedShopMemberships<MerchantShopMembershipCard>>("/merchant-admin/shop-membership-cards", {
       query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, status: query.status, type: query.type }
+    });
+  },
+  issueCard(membershipPublicId: string, body: ShopMembershipCardIssuanceRequest) {
+    return httpClient.request<ShopMembershipCardIssuanceResult>(`${publicPath("/merchant-admin/shop-memberships", membershipPublicId)}/cards`, {
+      method: "POST",
+      body
     });
   },
   activities(query: MembershipActivityQuery = {}) {

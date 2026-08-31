@@ -193,6 +193,49 @@ const shopMembershipCardPlanTranslations: Record<string, TranslationEntry> = {
   "操作未完成，请检查填写内容或网络后重试": { "zh-Hant": "操作未完成，請檢查填寫內容或網路後重試", ja: "操作を完了できませんでした。入力内容または通信環境を確認して再試行してください", en: "The action did not complete. Check the form or connection and try again.", ko: "작업이 완료되지 않았습니다. 입력 내용이나 네트워크를 확인한 후 다시 시도하세요." }
 };
 
+const shopMembershipCardIssuanceTranslations: Record<string, TranslationEntry> = {
+  "正式开卡": { "zh-Hant": "正式開卡", ja: "会員カードを発行", en: "Issue membership card", ko: "회원 카드 발급" },
+  "按已发布方案写入最终初始值；开卡不会自动发放 NDP。": { "zh-Hant": "依已發布方案寫入最終初始值；開卡不會自動發放 NDP。", ja: "公開済みプランに基づき初期値を確定します。発行時に NDP は自動付与されません。", en: "Write the final initial value from a published plan. Issuance does not automatically award NDP.", ko: "게시된 플랜에 따라 최종 초기값을 기록하며 발급 시 NDP가 자동 지급되지 않습니다." },
+  "开卡": { "zh-Hant": "開卡", ja: "カード発行", en: "Issue card", ko: "카드 발급" },
+  "选择有效会员和已发布卡方案即可正式开卡。": { "zh-Hant": "選擇有效會員和已發布卡方案即可正式開卡。", ja: "有効な会員と公開済みプランを選んでカードを発行できます。", en: "Select an active member and published plan to issue a card.", ko: "유효 회원과 게시된 플랜을 선택해 카드를 발급할 수 있습니다." },
+  "当前账号可查看会员卡，但没有开卡权限。": { "zh-Hant": "目前帳號可查看會員卡，但沒有開卡權限。", ja: "会員カードは閲覧できますが、発行権限がありません。", en: "This account can view cards but cannot issue them.", ko: "현재 계정은 카드를 볼 수 있지만 발급 권한은 없습니다." },
+  "历史会员卡": { "zh-Hant": "歷史會員卡", ja: "旧会員カード", en: "Legacy membership card", ko: "기존 회원 카드" },
+  "选择会员": { "zh-Hant": "選擇會員", ja: "会員を選択", en: "Select member", ko: "회원 선택" },
+  "当前店铺有效会员": { "zh-Hant": "目前店鋪有效會員", ja: "現在の店舗の有効会員", en: "Active members of this store", ko: "현재 매장 유효 회원" },
+  "搜索有效会员": { "zh-Hant": "搜尋有效會員", ja: "有効会員を検索", en: "Search active members", ko: "유효 회원 검색" },
+  "没有找到有效会员": { "zh-Hant": "沒有找到有效會員", ja: "有効会員が見つかりません", en: "No active members found", ko: "유효 회원을 찾지 못했습니다" },
+  "选择卡方案": { "zh-Hant": "選擇卡方案", ja: "カードプランを選択", en: "Select card plan", ko: "카드 플랜 선택" },
+  "已启用的发布版本": { "zh-Hant": "已啟用的發布版本", ja: "有効な公開バージョン", en: "Active published version", ko: "활성 게시 버전" },
+  "请先发布并启用至少一个卡方案": { "zh-Hant": "請先發布並啟用至少一個卡方案", ja: "先にカードプランを1件以上公開して有効化してください", en: "Publish and activate at least one card plan first", ko: "먼저 카드 플랜을 하나 이상 게시하고 활성화하세요" },
+  "开卡初始值与来源": { "zh-Hant": "開卡初始值與來源", ja: "発行時の初期値と理由", en: "Initial value and source", ko: "발급 초기값 및 출처" },
+  "确认最终写入内容": { "zh-Hant": "確認最終寫入內容", ja: "最終登録内容を確認", en: "Confirm final values", ko: "최종 기록 내용 확인" },
+  "初始金额（JPY）": { "zh-Hant": "初始金額（JPY）", ja: "初期金額（JPY）", en: "Initial amount (JPY)", ko: "초기 금액(JPY)" },
+  "初始次数": { "zh-Hant": "初始次數", ja: "初期回数", en: "Initial uses", ko: "초기 횟수" },
+  "权益卡无需录入初始金额或次数": { "zh-Hant": "權益卡無需錄入初始金額或次數", ja: "特典カードには初期金額や回数を入力しません", en: "Benefit cards do not need an initial amount or usage count", ko: "혜택 카드는 초기 금액이나 횟수를 입력하지 않습니다" },
+  "开卡来源": { "zh-Hant": "開卡來源", ja: "発行理由", en: "Issuance source", ko: "발급 출처" },
+  "线下已付款": { "zh-Hant": "線下已付款", ja: "店頭支払済み", en: "Paid offline", ko: "오프라인 결제 완료" },
+  "历史补卡": { "zh-Hant": "歷史補卡", ja: "過去カードの再発行", en: "Historical replacement", ko: "기존 카드 재발급" },
+  "人工发放": { "zh-Hant": "人工發放", ja: "手動付与", en: "Manual grant", ko: "수동 발급" },
+  "业务参考号": { "zh-Hant": "業務參考號", ja: "業務参照番号", en: "Business reference", ko: "업무 참조 번호" },
+  "开卡说明": { "zh-Hant": "開卡說明", ja: "発行メモ", en: "Issuance note", ko: "발급 설명" },
+  "NDP 返点规则": { "zh-Hant": "NDP 返點規則", ja: "NDP 還元ルール", en: "NDP reward rules", ko: "NDP 리워드 규칙" },
+  "平台费仅在以后实际发生返点时从店铺钱包扣除；本次开卡不扣款、不发 NDP。": { "zh-Hant": "平台費僅在日後實際發生返點時從店鋪錢包扣除；本次開卡不扣款、不發 NDP。", ja: "プラットフォーム料金は後日還元が実際に発生した時だけ店舗ウォレットから差し引かれます。今回の発行では課金も NDP 付与もありません。", en: "The platform fee is debited from the store wallet only when a later reward occurs. This issuance neither charges nor awards NDP.", ko: "플랫폼 수수료는 이후 실제 리워드 발생 시에만 매장 지갑에서 차감됩니다. 이번 발급은 차감도 NDP 지급도 없습니다." },
+  "正在读取有效会员与已发布方案": { "zh-Hant": "正在讀取有效會員與已發布方案", ja: "有効会員と公開済みプランを読み込んでいます", en: "Loading active members and published plans", ko: "유효 회원과 게시된 플랜을 불러오는 중" },
+  "确认开卡": { "zh-Hant": "確認開卡", ja: "カードを発行", en: "Confirm issuance", ko: "카드 발급 확인" },
+  "开卡中": { "zh-Hant": "開卡中", ja: "発行中", en: "Issuing", ko: "발급 중" },
+  "关闭开卡": { "zh-Hant": "關閉開卡", ja: "カード発行を閉じる", en: "Close issuance", ko: "카드 발급 닫기" },
+  "初始值或来源说明不符合已发布方案": { "zh-Hant": "初始值或來源說明不符合已發布方案", ja: "初期値または発行理由が公開済みプランに合いません", en: "The initial value or source does not match the published plan", ko: "초기값 또는 출처 설명이 게시된 플랜과 맞지 않습니다" },
+  "当前账号没有正式开卡权限": { "zh-Hant": "目前帳號沒有正式開卡權限", ja: "このアカウントにはカード発行権限がありません", en: "This account cannot issue membership cards", ko: "현재 계정에는 카드 발급 권한이 없습니다" },
+  "会员或卡方案不存在，或不属于当前店铺": { "zh-Hant": "會員或卡方案不存在，或不屬於目前店鋪", ja: "会員またはカードプランが存在しないか、現在の店舗に属していません", en: "The member or plan does not exist or belongs to another store", ko: "회원 또는 카드 플랜이 없거나 현재 매장에 속하지 않습니다" },
+  "会员、卡方案或本次开卡请求已发生变化，请重新检查": { "zh-Hant": "會員、卡方案或本次開卡請求已發生變化，請重新檢查", ja: "会員、プラン、または発行リクエストが変更されました。再確認してください", en: "The member, plan, or issuance request changed. Review it again.", ko: "회원, 플랜 또는 발급 요청이 변경되었습니다. 다시 확인하세요." },
+  "初始值不在此方案允许的范围内": { "zh-Hant": "初始值不在此方案允許的範圍內", ja: "初期値がプランの許容範囲外です", en: "The initial value is outside the plan range", ko: "초기값이 플랜 허용 범위를 벗어났습니다" },
+  "请补充本次开卡来源的参考号或说明": { "zh-Hant": "請補充本次開卡來源的參考號或說明", ja: "発行理由の参照番号または説明を入力してください", en: "Add a reference or note for this issuance", ko: "이번 발급 출처의 참조 번호나 설명을 입력하세요" },
+  "请选择仍在启用的已发布卡方案": { "zh-Hant": "請選擇仍在啟用的已發布卡方案", ja: "現在も有効な公開済みカードプランを選択してください", en: "Select an active published card plan", ko: "현재 활성화된 게시 카드 플랜을 선택하세요" },
+  "开卡未完成，请检查填写内容或网络后重试": { "zh-Hant": "開卡未完成，請檢查填寫內容或網路後重試", ja: "カードを発行できませんでした。入力内容または通信環境を確認して再試行してください", en: "Issuance did not complete. Check the form or connection and retry.", ko: "카드 발급이 완료되지 않았습니다. 입력 내용이나 네트워크를 확인한 후 다시 시도하세요." },
+  "充值、核销、退款以及开卡后的金额或次数调整会分别接入独立状态机与账本；本次正式开卡不会自动发放 NDP。": { "zh-Hant": "儲值、核銷、退款以及開卡後的金額或次數調整會分別接入獨立狀態機與帳本；本次正式開卡不會自動發放 NDP。", ja: "チャージ、利用処理、返金、発行後の金額・回数変更はそれぞれ独立した状態管理と台帳に接続します。今回の正式発行では NDP を自動付与しません。", en: "Top-up, redemption, refund, and later value or usage adjustments will use separate state machines and ledgers. Formal issuance does not automatically award NDP.", ko: "충전, 사용 처리, 환불 및 발급 후 금액·횟수 조정은 별도 상태 머신과 원장에 연결됩니다. 이번 정식 발급은 NDP를 자동 지급하지 않습니다." }
+};
+
 Object.assign(shopMembershipTranslations, shopMembershipCardPlanTranslations);
+Object.assign(shopMembershipTranslations, shopMembershipCardIssuanceTranslations);
 
 Object.assign(translations, shopMembershipTranslations);
