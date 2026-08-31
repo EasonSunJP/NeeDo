@@ -61,18 +61,18 @@ export function requireMerchantShopId(actor: AuthenticatedAccessContext): number
     throw merchantShopIdentityForbidden();
   }
 
-  if (actor.currentIdentityScopeType === "shop") {
+  const identityKind = resolveFormalMerchantIdentityKind({
+    type: actor.currentIdentityType ?? "",
+    scopeType: actor.currentIdentityScopeType ?? null,
+    scopeId: actor.currentIdentityScopeId ?? null
+  });
+  if (identityKind === "shop") {
     if (isValidShopId(actor.currentIdentityScopeId)) return actor.currentIdentityScopeId;
     throw merchantShopIdentityForbidden();
   }
 
-  if (isValidShopId(actor.selectedMerchantShopId)) {
-    const identityKind = resolveFormalMerchantIdentityKind({
-      type: actor.currentIdentityType ?? "",
-      scopeType: actor.currentIdentityScopeType ?? null,
-      scopeId: actor.currentIdentityScopeId ?? null
-    });
-    if (identityKind === "merchant_account") return actor.selectedMerchantShopId;
+  if (identityKind === "merchant_account" && isValidShopId(actor.selectedMerchantShopId)) {
+    return actor.selectedMerchantShopId;
   }
   throw merchantShopIdentityForbidden();
 }

@@ -7,6 +7,7 @@ import type {
   CompensationProfilePayload,
   CompensationProfileRepositoryPort
 } from "../src/services/compensation-profile.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-29T00:00:00.000Z");
 
@@ -137,7 +138,8 @@ function createFixture(
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
-    compensationProfileRepository: repository
+    compensationProfileRepository: repository,
+    merchantShopContextRepository: createDirectShopContextRepository()
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,

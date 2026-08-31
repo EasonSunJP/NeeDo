@@ -115,7 +115,7 @@ export class BookingService {
     actor: AuthenticatedAccessContext,
     input: Omit<ScheduleListInput, keyof ScheduleScope>
   ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
-    return this.repository.listScheduleSlots({ ...this.getScheduleScope(actor), ...input });
+    return this.repository.listScheduleSlots({ ...input, ...this.getScheduleScope(actor) });
   }
 
   public async getScheduleSlot(
@@ -175,7 +175,7 @@ export class BookingService {
     const scope = this.getScheduleScope(actor);
     await this.assertShopNotSuspended((await this.repository.findScheduleSlotShopId?.(id)) ?? null);
     const slot = this.requireScheduleMutation(
-      await this.repository.updateScheduleSlot({ ...scope, id, ...input })
+      await this.repository.updateScheduleSlot({ ...input, ...scope, id })
     );
     await this.recordScheduleMutation(actor, context, scope, "update", slot);
     return slot;

@@ -270,8 +270,7 @@ describe("GET /api/v1/openapi.json", () => {
       })
     );
     const socialPostCreate = response.body.paths["/api/v1/social/posts"].post;
-    const socialPostCreateSchema =
-      socialPostCreate.requestBody.content["application/json"].schema;
+    const socialPostCreateSchema = socialPostCreate.requestBody.content["application/json"].schema;
     expect(socialPostCreateSchema).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -511,16 +510,10 @@ describe("GET /api/v1/openapi.json", () => {
       required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"]
     });
     expect(dashboardSchemas.Dashboard.properties.finance.properties.walletStock).toEqual({
-      oneOf: [
-        { $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" },
-        { type: "null" }
-      ]
+      oneOf: [{ $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" }, { type: "null" }]
     });
     expect(dashboardSchemas.Dashboard.properties.finance.properties.withdrawn).toEqual({
-      oneOf: [
-        { $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" },
-        { type: "null" }
-      ]
+      oneOf: [{ $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" }, { type: "null" }]
     });
     const operationsDashboard = response.body.paths["/api/v1/backoffice/dashboard"].get;
     expect(
@@ -529,11 +522,14 @@ describe("GET /api/v1/openapi.json", () => {
         .map((parameter: { name: string }) => parameter.name)
         .sort()
     ).toEqual(["city", "from", "period", "to"]);
-    expect(operationsDashboard.responses["200"].content["application/json"].schema.properties.data)
-      .toEqual({ $ref: "#/components/schemas/Dashboard" });
+    expect(
+      operationsDashboard.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/Dashboard" });
     expect(operationsDashboard.responses).toEqual(
       expect.objectContaining({
-        "400": expect.objectContaining({ description: expect.stringContaining("error.validation") }),
+        "400": expect.objectContaining({
+          description: expect.stringContaining("error.validation")
+        }),
         "401": expect.objectContaining({ description: expect.stringContaining("error.auth") }),
         "403": expect.objectContaining({ description: expect.stringContaining("permission") })
       })
@@ -692,11 +688,14 @@ describe("GET /api/v1/openapi.json", () => {
         expect.objectContaining({ in: "query", name: "shopId" })
       ])
     );
-    expect(merchantDashboard.responses["200"].content["application/json"].schema.properties.data)
-      .toEqual({ $ref: "#/components/schemas/Dashboard" });
+    expect(
+      merchantDashboard.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/Dashboard" });
     expect(merchantDashboard.responses).toEqual(
       expect.objectContaining({
-        "400": expect.objectContaining({ description: expect.stringContaining("error.validation") }),
+        "400": expect.objectContaining({
+          description: expect.stringContaining("error.validation")
+        }),
         "401": expect.objectContaining({ description: expect.stringContaining("error.auth") }),
         "403": expect.objectContaining({ description: expect.stringContaining("scope") })
       })
@@ -713,11 +712,15 @@ describe("GET /api/v1/openapi.json", () => {
         "403": expect.any(Object)
       })
     );
-    expect(manageableShops.responses["200"].content["application/json"].schema.properties.data)
-      .toEqual({ $ref: "#/components/schemas/ManageableMerchantShopPage" });
+    expect(
+      manageableShops.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/ManageableMerchantShopPage" });
     expect(response.body.components.schemas.ManageableMerchantShop).toMatchObject({
       additionalProperties: false,
-      required: ["publicId", "name", "city", "status", "selected"]
+      required: ["publicId", "name", "city", "status", "selected"],
+      properties: {
+        publicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+      }
     });
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/shops/{shopId}/finance/rules"
@@ -890,9 +893,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(reactionPath.put.summary).toBe(
       "Set the current user's reaction in its IM reply category"
     );
-    expect(reactionPath.put.description).toContain(
-      "OK, NO, Pending, +1, Done, Cool, Good, Thanks"
-    );
+    expect(reactionPath.put.description).toContain("OK, NO, Pending, +1, Done, Cool, Good, Thanks");
     expect(reactionPath.put.description).toContain("one judgement and one emoji");
     expect(reactionPath.put.responses).toEqual(
       expect.objectContaining({
@@ -921,8 +922,9 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/accept");
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/reject");
     expect(
-      response.body.paths["/api/v1/im/conversations/{conversationId}/messages"].post.responses["403"]
-        .description
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages"].post.responses[
+        "403"
+      ].description
     ).toContain("error.im.not_friends");
     expect(response.body.paths).toHaveProperty("/api/v1/social/posts");
     expect(response.body.paths).toHaveProperty("/api/v1/social/posts/{id}");
@@ -1021,7 +1023,8 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("PayrollAdjustmentRequest");
     expect(response.body.components.schemas).toHaveProperty("RealtimeConversation");
     expect(
-      response.body.components.schemas.RealtimeConversation.properties.disappearingTtlSeconds.maximum
+      response.body.components.schemas.RealtimeConversation.properties.disappearingTtlSeconds
+        .maximum
     ).toBe(359_940);
     expect(
       response.body.paths["/api/v1/im/conversations"].post.requestBody.content["application/json"]
@@ -1037,12 +1040,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("RealtimeContact");
     expect(response.body.components.schemas).toHaveProperty("FriendRequest");
     expect(response.body.components.schemas.FriendRequest).toMatchObject({
-      required: expect.arrayContaining([
-        "requester",
-        "target",
-        "expiresAt",
-        "expiredAt"
-      ]),
+      required: expect.arrayContaining(["requester", "target", "expiresAt", "expiredAt"]),
       properties: {
         status: { enum: ["pending", "accepted", "rejected", "expired"] },
         requester: { $ref: "#/components/schemas/RealtimeParticipant" },
@@ -1272,7 +1270,9 @@ describe("GET /api/v1/openapi.json", () => {
       replyToPostId: { type: "integer", nullable: true, minimum: 1 },
       replyCount: { type: "integer", minimum: 0 }
     });
-    expect((document.paths["/api/v1/social/posts"] as { get: { parameters: unknown[] } }).get.parameters).toEqual(
+    expect(
+      (document.paths["/api/v1/social/posts"] as { get: { parameters: unknown[] } }).get.parameters
+    ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           name: "replyToPostId",
@@ -1283,14 +1283,22 @@ describe("GET /api/v1/openapi.json", () => {
     );
     const socialCreateMedia = (
       document.paths["/api/v1/social/posts"] as {
-        post: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } };
+        post: {
+          requestBody: {
+            content: Record<string, { schema: { properties: Record<string, unknown> } }>;
+          };
+        };
       }
     ).post.requestBody.content["application/json"].schema.properties.media as {
       properties: Record<string, unknown>;
     };
     const socialPatchMedia = (
       document.paths["/api/v1/social/posts/{id}"] as {
-        patch: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } };
+        patch: {
+          requestBody: {
+            content: Record<string, { schema: { properties: Record<string, unknown> } }>;
+          };
+        };
       }
     ).patch.requestBody.content["application/json"].schema.properties.media as {
       properties: Record<string, unknown>;

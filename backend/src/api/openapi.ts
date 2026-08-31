@@ -1,10 +1,7 @@
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
-import {
-  IM_PRIVACY_TTL_MAX_SECONDS,
-  IM_PRIVACY_TTL_MIN_SECONDS
-} from "../constants/im-privacy";
+import { IM_PRIVACY_TTL_MAX_SECONDS, IM_PRIVACY_TTL_MIN_SECONDS } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 
 type OpenApiDocument = Record<string, unknown>;
@@ -1157,7 +1154,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["publicId", "name", "city", "status", "selected"],
         properties: {
-          publicId: { type: "string", pattern: "^(?:s|shop)[0-9]{10}$" },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
           name: { type: "string", minLength: 1 },
           city: { type: "string", minLength: 1 },
           status: { type: "string", minLength: 1 },
@@ -1297,16 +1294,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           shop: {
-            oneOf: [
-              { $ref: "#/components/schemas/DashboardShopSnapshot" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/DashboardShopSnapshot" }, { type: "null" }]
           },
           membership: {
-            oneOf: [
-              { $ref: "#/components/schemas/DashboardMembership" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/DashboardMembership" }, { type: "null" }]
           },
           scope: {
             oneOf: [
@@ -1941,10 +1932,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
-            requesterUserId: { type: "integer" },
-            requesterIdentityId: { type: "integer" },
-            targetUserId: { type: "integer" },
-            targetIdentityId: { type: "integer" },
+          requesterUserId: { type: "integer" },
+          requesterIdentityId: { type: "integer" },
+          targetUserId: { type: "integer" },
+          targetIdentityId: { type: "integer" },
           requester: { $ref: "#/components/schemas/RealtimeParticipant" },
           target: { $ref: "#/components/schemas/RealtimeParticipant" },
           status: { type: "string", enum: ["pending", "accepted", "rejected", "expired"] },
@@ -2084,7 +2075,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       SocialProfileSummary: {
         type: "object",
         additionalProperties: false,
-        required: ["userId", "identityId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
+        required: [
+          "userId",
+          "identityId",
+          "username",
+          "displayName",
+          "avatarUrl",
+          "entityType",
+          "joinedAt"
+        ],
         properties: {
           userId: { type: "integer" },
           identityId: { type: "integer" },
@@ -3481,10 +3480,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       TechnicianSelfProfile: {
         type: "object",
         required: [
-          "id", "publicId", "userId", "shopId", "displayName", "avatarUrl", "bio", "city",
-          "age", "heightCm", "languages", "serviceAreas", "profileTags", "canServeForeigners",
-          "bidBudgetMinJpy", "bidBudgetMaxJpy", "paymentMethods", "visibility",
-          "employmentType", "yearsExperience", "createdAt", "updatedAt"
+          "id",
+          "publicId",
+          "userId",
+          "shopId",
+          "displayName",
+          "avatarUrl",
+          "bio",
+          "city",
+          "age",
+          "heightCm",
+          "languages",
+          "serviceAreas",
+          "profileTags",
+          "canServeForeigners",
+          "bidBudgetMinJpy",
+          "bidBudgetMaxJpy",
+          "paymentMethods",
+          "visibility",
+          "employmentType",
+          "yearsExperience",
+          "createdAt",
+          "updatedAt"
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
@@ -3505,7 +3522,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
           paymentMethods: {
             type: "array",
-            items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] }
+            items: {
+              type: "string",
+              enum: [
+                "platform",
+                "offline",
+                "prepay",
+                "cash",
+                "paypay",
+                "paypal",
+                "wechatpay",
+                "alipay"
+              ]
+            }
           },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
           employmentType: { type: "string", enum: ["independent", "full_time", "temporary"] },
@@ -3527,14 +3556,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
-          languages: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", maxLength: 40 } },
+          languages: {
+            type: "array",
+            minItems: 1,
+            maxItems: 10,
+            items: { type: "string", maxLength: 40 }
+          },
           bio: { type: ["string", "null"], maxLength: 2000 },
-          serviceAreas: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 80 } },
+          serviceAreas: {
+            type: "array",
+            minItems: 1,
+            maxItems: 20,
+            items: { type: "string", maxLength: 80 }
+          },
           profileTags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
-          paymentMethods: { type: "array", minItems: 1, maxItems: 8, items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] } },
+          paymentMethods: {
+            type: "array",
+            minItems: 1,
+            maxItems: 8,
+            items: {
+              type: "string",
+              enum: [
+                "platform",
+                "offline",
+                "prepay",
+                "cash",
+                "paypay",
+                "paypal",
+                "wechatpay",
+                "alipay"
+              ]
+            }
+          },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
@@ -5553,16 +5609,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           evaluatedAt: { type: "string", format: "date-time" },
           current: {
-            oneOf: [
-              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/AffiliatePlatformFeeRule" }, { type: "null" }]
           },
           nextScheduled: {
-            oneOf: [
-              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/AffiliatePlatformFeeRule" }, { type: "null" }]
           },
           latestVersion: { type: "integer", minimum: 0 }
         }

@@ -1,6 +1,7 @@
 import type { DashboardAggregateFacts } from "../src/domain/dashboard";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "../src/services/auth.service";
 import { BackofficeService } from "../src/services/backoffice.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-31T03:00:00.000Z");
 const context: AuthRequestContext = { ip: "127.0.0.1", userAgent: "jest" };
@@ -82,6 +83,7 @@ describe("BackofficeService named dashboard contract", () => {
     const service = new BackofficeService(
       { getDashboard } as never,
       { record } as never,
+      createDirectShopContextRepository(),
       () => now
     );
 
@@ -211,6 +213,7 @@ describe("BackofficeService named dashboard contract", () => {
     const service = new BackofficeService(
       { getDashboard } as never,
       { record } as never,
+      createDirectShopContextRepository(),
       () => now
     );
 
@@ -291,6 +294,7 @@ describe("BackofficeService named dashboard contract", () => {
     const service = new BackofficeService(
       { getDashboard: jest.fn(async () => facts) } as never,
       { record: jest.fn(async () => undefined) } as never,
+      createDirectShopContextRepository(),
       () => now
     );
 

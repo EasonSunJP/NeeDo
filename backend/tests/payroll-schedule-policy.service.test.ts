@@ -15,6 +15,7 @@ const actor = {
   email: "finance@lifedance.com",
   accessTokenJti: "jti",
   accessTokenExpiresAt: Date.now() + 60_000,
+  currentIdentityType: "merchant_staff",
   currentIdentityScopeType: "shop",
   currentIdentityScopeId: 16,
   roles: ["merchant_finance"],

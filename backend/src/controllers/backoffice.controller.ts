@@ -19,6 +19,7 @@ import {
   backofficeTechnicianUpdateBodySchema,
   merchantShopUpdateBodySchema,
   merchantDashboardQuerySchema,
+  merchantAdminListQuerySchema,
   manageableMerchantShopsQuerySchema,
   technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
@@ -76,15 +77,17 @@ export class BackofficeController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.service.listManageableMerchantShops(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            manageableMerchantShopsQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listManageableMerchantShops(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              manageableMerchantShopsQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -102,7 +105,7 @@ export class BackofficeController {
     service.listMerchantOrders(
       getAuthenticatedAccess(response),
       getRequestContext(request),
-      backofficeListQuerySchema.parse(request.query)
+      merchantAdminListQuerySchema.parse(request.query)
     )
   );
 
@@ -118,7 +121,7 @@ export class BackofficeController {
     service.listMerchantSchedule(
       getAuthenticatedAccess(response),
       getRequestContext(request),
-      backofficeListQuerySchema.parse(request.query)
+      merchantAdminListQuerySchema.parse(request.query)
     )
   );
 
@@ -142,7 +145,7 @@ export class BackofficeController {
     service.listMerchantFinance(
       getAuthenticatedAccess(response),
       getRequestContext(request),
-      backofficeListQuerySchema.parse(request.query)
+      merchantAdminListQuerySchema.parse(request.query)
     )
   );
 
@@ -158,7 +161,7 @@ export class BackofficeController {
     service.exportMerchantFinance(
       getAuthenticatedAccess(response),
       getRequestContext(request),
-      backofficeListQuerySchema.parse(request.query)
+      merchantAdminListQuerySchema.parse(request.query)
     )
   );
 
@@ -178,20 +181,19 @@ export class BackofficeController {
     )
   );
 
-  public platformTechnicianRankingsExport = this.createListHandler(
-    (service, request, response) =>
-      service.exportPlatformTechnicianRankings(
-        getAuthenticatedAccess(response),
-        getRequestContext(request),
-        technicianRankingQuerySchema.parse(request.query)
-      )
+  public platformTechnicianRankingsExport = this.createListHandler((service, request, response) =>
+    service.exportPlatformTechnicianRankings(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      technicianRankingQuerySchema.parse(request.query)
+    )
   );
 
   public merchantTechnicians = this.createListHandler((service, request, response) =>
     service.listMerchantTechnicians(
       getAuthenticatedAccess(response),
       getRequestContext(request),
-      backofficeListQuerySchema.parse(request.query)
+      merchantAdminListQuerySchema.parse(request.query)
     )
   );
 
@@ -224,49 +226,113 @@ export class BackofficeController {
   );
 
   public createPlatformShop = this.createMutationHandler(201, (service, request, response) =>
-    service.createPlatformShop(backofficeShopCreateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.createPlatformShop(
+      backofficeShopCreateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public updatePlatformShop = this.createMutationHandler(200, (service, request, response) =>
-    service.updatePlatformShop(this.getId(request), backofficeShopUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.updatePlatformShop(
+      this.getId(request),
+      backofficeShopUpdateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public updateMerchantShop = this.createMutationHandler(200, (service, request, response) =>
-    service.updateMerchantShop(merchantShopUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.updateMerchantShop(
+      merchantShopUpdateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public approvePlatformShop = this.createMutationHandler(200, (service, request, response) =>
-    service.approvePlatformShop(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.approvePlatformShop(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public deletePlatformShop = this.createMutationHandler(200, (service, request, response) =>
-    service.deletePlatformShop(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.deletePlatformShop(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public updatePlatformTechnician = this.createMutationHandler(200, (service, request, response) =>
-    service.updatePlatformTechnician(this.getId(request), backofficeTechnicianUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.updatePlatformTechnician(
+      this.getId(request),
+      backofficeTechnicianUpdateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public updateMerchantTechnician = this.createMutationHandler(200, (service, request, response) =>
-    service.updateMerchantTechnician(this.getId(request), backofficeTechnicianUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.updateMerchantTechnician(
+      this.getId(request),
+      backofficeTechnicianUpdateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public approvePlatformTechnician = this.createMutationHandler(200, (service, request, response) =>
-    service.approvePlatformTechnician(this.getId(request), backofficeTechnicianApproveBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.approvePlatformTechnician(
+      this.getId(request),
+      backofficeTechnicianApproveBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public approveMerchantTechnician = this.createMutationHandler(200, (service, request, response) =>
-    service.approveMerchantTechnician(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.approveMerchantTechnician(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public deletePlatformTechnician = this.createMutationHandler(200, (service, request, response) =>
-    service.deletePlatformTechnician(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.deletePlatformTechnician(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public deleteMerchantTechnician = this.createMutationHandler(200, (service, request, response) =>
-    service.deleteMerchantTechnician(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.deleteMerchantTechnician(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public platformCustomers = this.createListHandler((service, request, response) =>
-    service.listPlatformCustomers(getAuthenticatedAccess(response), getRequestContext(request), backofficeListQuerySchema.parse(request.query))
+    service.listPlatformCustomers(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeListQuerySchema.parse(request.query)
+    )
   );
   public merchantCustomers = this.createListHandler((service, request, response) =>
-    service.listMerchantCustomers(getAuthenticatedAccess(response), getRequestContext(request), backofficeListQuerySchema.parse(request.query))
+    service.listMerchantCustomers(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      merchantAdminListQuerySchema.parse(request.query)
+    )
   );
   public platformCustomer = this.createListHandler((service, request, response) =>
-    service.getPlatformCustomer(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.getPlatformCustomer(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public merchantCustomer = this.createListHandler((service, request, response) =>
-    service.getMerchantCustomer(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.getMerchantCustomer(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public platformCustomerTimeline = this.createListHandler((service, request, response) =>
     service.getPlatformCustomerTimeline(
@@ -285,42 +351,88 @@ export class BackofficeController {
     )
   );
   public updatePlatformCustomer = this.createMutationHandler(200, (service, request, response) =>
-    service.updatePlatformCustomer(this.getId(request), backofficeCustomerUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
-  );
-  public assignPlatformCustomerMembership = this.createMutationHandler(200, (service, request, response) =>
-    service.assignPlatformCustomerMembership(
+    service.updatePlatformCustomer(
       this.getId(request),
-      backofficeCustomerMembershipGrantBodySchema.parse(request.body),
+      backofficeCustomerUpdateBodySchema.parse(request.body),
       getAuthenticatedAccess(response),
       getRequestContext(request)
     )
   );
+  public assignPlatformCustomerMembership = this.createMutationHandler(
+    200,
+    (service, request, response) =>
+      service.assignPlatformCustomerMembership(
+        this.getId(request),
+        backofficeCustomerMembershipGrantBodySchema.parse(request.body),
+        getAuthenticatedAccess(response),
+        getRequestContext(request)
+      )
+  );
   public deletePlatformCustomer = this.createMutationHandler(200, (service, request, response) =>
-    service.deletePlatformCustomer(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.deletePlatformCustomer(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public platformServices = this.createListHandler((service, request, response) =>
-    service.listPlatformServices(getAuthenticatedAccess(response), getRequestContext(request), backofficeListQuerySchema.parse(request.query))
+    service.listPlatformServices(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeListQuerySchema.parse(request.query)
+    )
   );
   public merchantServices = this.createListHandler((service, request, response) =>
-    service.listMerchantServices(getAuthenticatedAccess(response), getRequestContext(request), backofficeListQuerySchema.parse(request.query))
+    service.listMerchantServices(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      merchantAdminListQuerySchema.parse(request.query)
+    )
   );
   public createPlatformService = this.createMutationHandler(201, (service, request, response) =>
-    service.createPlatformService(this.getShopId(request), backofficeServiceCreateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.createPlatformService(
+      this.getShopId(request),
+      backofficeServiceCreateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public createMerchantService = this.createMutationHandler(201, (service, request, response) =>
-    service.createMerchantService(backofficeServiceCreateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.createMerchantService(
+      backofficeServiceCreateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public updatePlatformService = this.createMutationHandler(200, (service, request, response) =>
-    service.updatePlatformService(this.getId(request), backofficeServiceUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.updatePlatformService(
+      this.getId(request),
+      backofficeServiceUpdateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public updateMerchantService = this.createMutationHandler(200, (service, request, response) =>
-    service.updateMerchantService(this.getId(request), backofficeServiceUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+    service.updateMerchantService(
+      this.getId(request),
+      backofficeServiceUpdateBodySchema.parse(request.body),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public deletePlatformService = this.createMutationHandler(200, (service, request, response) =>
-    service.deletePlatformService(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.deletePlatformService(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
   public deleteMerchantService = this.createMutationHandler(200, (service, request, response) =>
-    service.deleteMerchantService(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))
+    service.deleteMerchantService(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
   );
 
   private getId(request: Request): number {
@@ -337,7 +449,9 @@ export class BackofficeController {
   ) {
     return async (request: Request, response: Response, next: NextFunction): Promise<void> => {
       try {
-        response.status(statusCode).json(successResponse(await handler(this.service, request, response)));
+        response
+          .status(statusCode)
+          .json(successResponse(await handler(this.service, request, response)));
       } catch (error) {
         next(error);
       }

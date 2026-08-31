@@ -13,6 +13,7 @@ const merchantActor = {
   email: "merchant@example.com",
   accessTokenJti: "jti",
   accessTokenExpiresAt: Date.now() + 60_000,
+  currentIdentityType: "merchant_owner",
   currentIdentityScopeType: "shop",
   currentIdentityScopeId: 11,
   roles: ["merchant_owner"],

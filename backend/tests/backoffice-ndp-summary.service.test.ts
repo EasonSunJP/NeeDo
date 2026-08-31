@@ -1,4 +1,5 @@
 import { BackofficeService } from "../src/services/backoffice.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 describe("BackofficeService NDP summary", () => {
   it("uses the current Tokyo date and zeroes a missing formal NDP aggregate", async () => {
@@ -20,6 +21,7 @@ describe("BackofficeService NDP summary", () => {
     const service = new BackofficeService(
       { summarizeNdpByCurrency } as never,
       { record } as never,
+      createDirectShopContextRepository(),
       () => new Date("2026-05-25T15:30:00.000Z")
     );
 

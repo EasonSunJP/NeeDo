@@ -8,6 +8,7 @@ import { PayrollSchedulePolicyService } from "../src/services/payroll-schedule-p
 import { PricingModeService } from "../src/services/pricing-mode.service";
 import { TechnicianShopAffiliationService } from "../src/services/technician-shop-affiliation.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "../src/services/auth.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const SHOP_A_ID = 11;
 const SHOP_B_ID = 12;
@@ -91,6 +92,7 @@ describe("merchant-account selected shop scope", () => {
     expect(
       requireMerchantShopId({
         ...selectedShopBActor,
+        currentIdentityType: "merchant_owner",
         currentIdentityScopeType: "shop",
         currentIdentityScopeId: 77
       })
@@ -110,6 +112,149 @@ describe("merchant-account selected shop scope", () => {
     ).toThrow(expect.objectContaining({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 }));
   });
 
+  it.each([
+    ["customer", "shop", SHOP_B_ID],
+    ["merchant_organization", "shop", SHOP_B_ID],
+    ["merchant", "merchant_account", 41],
+    ["technician", "shop", SHOP_B_ID]
+  ] as const)(
+    "rejects malformed %s + %s scope before using shop %s",
+    (type, scopeType, scopeId) => {
+      expect(() =>
+        requireMerchantShopId({
+          ...selectedShopBActor,
+          currentIdentityType: type,
+          currentIdentityScopeType: scopeType,
+          currentIdentityScopeId: scopeId,
+          selectedMerchantShopId: SHOP_B_ID
+        })
+      ).toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.IDENTITY_FORBIDDEN,
+          message: "error.identity.forbidden",
+          statusCode: 403
+        })
+      );
+    }
+  );
+
+  it.each([
+    ["selected merchant account", selectedShopBActor],
+    [
+      "direct shop",
+      {
+        ...selectedShopBActor,
+        currentIdentityType: "merchant_owner",
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: SHOP_B_ID,
+        selectedMerchantShopId: undefined,
+        selectedMerchantShopPublicId: undefined
+      }
+    ],
+    [
+      "operations preview",
+      {
+        ...selectedShopBActor,
+        currentIdentityType: "platform_admin",
+        currentIdentityScopeType: "global",
+        currentIdentityScopeId: null,
+        selectedMerchantShopId: undefined,
+        selectedMerchantShopPublicId: undefined,
+        isReadOnlyMerchantPreview: true,
+        merchantPreviewShopId: SHOP_B_ID
+      }
+    ]
+  ] as const)(
+    "prevents query Shop A from overriding %s Shop B across merchant lists",
+    async (_label, actor) => {
+      const repository = {
+        listOrders: jest.fn(async () => emptyPage),
+        listSchedule: jest.fn(async () => emptyPage),
+        listFinanceSettlements: jest.fn(async () => emptyPage),
+        exportFinanceSettlements: jest.fn(async () => ({
+          filename: "finance.csv",
+          contentType: "text/csv; charset=utf-8",
+          content: ""
+        })),
+        listTechnicians: jest.fn(async () => emptyPage),
+        listCustomers: jest.fn(async () => emptyPage),
+        listCustomerTimeline: jest.fn(async () => emptyPage),
+        listServices: jest.fn(async () => emptyPage)
+      };
+      const contextRepository = {
+        listManageableShops: jest.fn(),
+        resolveShop: jest.fn(),
+        resolveDefaultShop: jest.fn()
+      };
+      const service = new BackofficeService(
+        repository as never,
+        { record: jest.fn(async () => undefined) } as never,
+        contextRepository as never,
+        () => new Date("2026-08-31T00:00:00.000Z"),
+        undefined
+      );
+      const maliciousListQuery = { page: 1, pageSize: 20, shopId: SHOP_A_ID };
+      const maliciousTimelineQuery = { page: 1, pageSize: 20, shopId: SHOP_A_ID } as never;
+
+      await service.listMerchantOrders(
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousListQuery
+      );
+      await service.listMerchantSchedule(
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousListQuery
+      );
+      await service.listMerchantFinance(
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousListQuery
+      );
+      await service.exportMerchantFinance(
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousListQuery
+      );
+      await service.listMerchantTechnicians(
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousListQuery
+      );
+      await service.listMerchantCustomers(
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousListQuery
+      );
+      await service.getMerchantCustomerTimeline(
+        44,
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousTimelineQuery
+      );
+      await service.listMerchantServices(
+        actor as AuthenticatedAccessContext,
+        context,
+        maliciousListQuery
+      );
+
+      [
+        repository.listOrders,
+        repository.listSchedule,
+        repository.listFinanceSettlements,
+        repository.exportFinanceSettlements,
+        repository.listTechnicians,
+        repository.listCustomers,
+        repository.listCustomerTimeline,
+        repository.listServices
+      ].forEach((method) => {
+        expect(method).toHaveBeenCalledWith(
+          expect.objectContaining({ scope: "merchant", shopId: SHOP_B_ID })
+        );
+      });
+    }
+  );
+
   it("uses Shop B across dashboard, orders, schedule, finance, employees, and settings reads/writes", async () => {
     const repository = {
       getDashboard: jest.fn(async () => dashboardFacts),
@@ -124,6 +269,7 @@ describe("merchant-account selected shop scope", () => {
     const service = new BackofficeService(
       repository as never,
       { record: jest.fn(async () => undefined) } as never,
+      createDirectShopContextRepository(),
       () => new Date("2026-08-31T00:00:00.000Z")
     );
 
@@ -188,9 +334,9 @@ describe("merchant-account selected shop scope", () => {
     const service = new BackofficeService(
       {} as never,
       { record: jest.fn(async () => undefined) } as never,
+      contextRepository as never,
       () => new Date("2026-08-31T00:00:00.000Z"),
-      undefined,
-      contextRepository as never
+      undefined
     );
 
     const result = await service.listManageableMerchantShops(selectedShopBActor, context, {
