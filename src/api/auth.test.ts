@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
+  AuthRotatedResponseError,
   authApi,
   authEndpointPaths,
   type SwitchMerchantShopPayload,
@@ -235,6 +236,28 @@ describe("formal auth API", () => {
     ).resolves.toEqual({ status: "verification_required", ...challenge });
 
     expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("rejects and exposes tokens hidden in a malformed Google verification challenge", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      status: "verification_required",
+      ...challenge,
+      accessToken: "malformed-access",
+      refreshToken: "malformed-refresh"
+    });
+
+    const request = authApi.submitGoogleCredential({
+      credential: "opaque-google-credential",
+      nonceChallengeId: googleInitialization.nonceChallengeId
+    });
+
+    await expect(request).rejects.toBeInstanceOf(AuthRotatedResponseError);
+    await expect(request).rejects.toMatchObject({
+      rotatedCredentials: {
+        accessToken: "malformed-access",
+        refreshToken: "malformed-refresh"
+      }
+    });
   });
 
   it("verifies first-use Google registration without persisting its token pair", async () => {

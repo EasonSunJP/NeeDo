@@ -10,8 +10,10 @@ import type {
 } from "../api/auth";
 import { AuthProvider, useAuth, type AuthSession, type PortalScope } from "./AuthProvider";
 import {
+  createAnonymousAuthEnvelope,
   createCommittedAuthEnvelope,
   persistedAuthEnvelopeStorageKey,
+  readPersistedAuthEnvelope,
   writePersistedAuthEnvelope
 } from "./authEnvelope";
 import {
@@ -946,6 +948,36 @@ describe("AuthProvider formal registration and Google sessions", () => {
       refreshToken: null
     });
     expect(mocked.authApi.me).not.toHaveBeenCalled();
+  });
+
+  it("revokes credentials hidden in a malformed Google verification challenge", async () => {
+    const malformed = new Error("error.api");
+    malformed.name = "AuthRotatedResponseError";
+    Object.assign(malformed, {
+      rotatedCredentials: {
+        accessToken: "malformed-google-access",
+        refreshToken: "malformed-google-refresh"
+      }
+    });
+    mocked.authApi.submitGoogleCredential.mockRejectedValueOnce(malformed);
+    await renderProvider();
+
+    const result = await invoke(() =>
+      auth.authenticateWithGoogleCredential({
+        credential: "google-credential",
+        nonceChallengeId: "nonce-challenge"
+      })
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      message: "error.api"
+    });
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "malformed-google-access",
+      refreshToken: "malformed-google-refresh"
+    });
+    expect(auth.session).toBeNull();
   });
 
   it("clears remembered account tokens when Google requires first-use verification", async () => {
@@ -2142,7 +2174,36 @@ describe("AuthProvider formal registration and Google sessions", () => {
     });
     expect(auth.session).toBeNull();
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    expect(auth.restoreError).toBe("error.auth.durable_logout_unconfirmed");
     expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).toBe(previousRaw);
+  });
+
+  it("terminates this tab when another tab replaces its committed envelope with a tombstone", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(customerMe));
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+    const committed = readPersistedAuthEnvelope();
+    expect(committed?.state).toBe("committed");
+    if (!committed) throw new Error("expected committed envelope");
+    const tombstone = createAnonymousAuthEnvelope({
+      authInstanceId: committed.authInstanceId,
+      credentialVersion: committed.credentialVersion + 1
+    });
+    window.localStorage.setItem(persistedAuthEnvelopeStorageKey, JSON.stringify(tombstone));
+
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: persistedAuthEnvelopeStorageKey,
+          newValue: JSON.stringify(tombstone),
+          storageArea: window.localStorage
+        })
+      );
+    });
+
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    expect(readPersistedAuthEnvelope()).toEqual(tombstone);
   });
 
   it("fails safe on reload when only the revoked pre-rotation envelope remains", async () => {

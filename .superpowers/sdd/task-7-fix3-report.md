@@ -38,6 +38,13 @@ Prisma/schema, Task 8-10 visual pages, deployment, or remote state.
   simultaneous storage/network failure boundary.
 - Remembered portal updates transform and rewrite the whole envelope once;
   the envelope module is the only browser auth writer/reader.
+- Every committed/tombstone write now supplies the expected durable state,
+  auth instance, and credential version. A stale tab cannot replace a newer
+  envelope, a different auth instance, or an anonymous tombstone. A storage
+  event terminates the old tab's memory credentials/session immediately.
+- All five production logout callers await the durability result and navigate
+  only on success. The double-failure result is also recorded as the Provider
+  auth error instead of being silently discarded.
 
 ## Strict backend auth contracts
 
@@ -51,6 +58,10 @@ Prisma/schema, Task 8-10 visual pages, deployment, or remote state.
   RFC 3339 calendar/date-time validation, safe numeric IDs, formal public-ID
   patterns, unique identities, and full equality between the selected
   identity and its identities-list entry.
+- Both Google result branches use exact union validation. A
+  `verification_required` response carrying any extra access/refresh token is
+  rejected as a rotated response, revoked by Provider, and never exposed as a
+  successful challenge.
 - Switch results require the trusted expected user, expected current
   identity, and requested merchant shop. Malformed rotated responses retain
   any valid returned refresh-token candidate for best-effort revocation,
@@ -85,28 +96,45 @@ owner abort, response pagination invariants, in-flight LRU eviction, and
 pre-parse JSON/CSV/binary 401 handling. Each was made GREEN within the Task 7
 scope.
 
+The post-commit blocker review added four further RED failures: a stale
+committed authority overwriting a tombstone, another tab's storage event not
+terminating local credentials, a double-failure logout not recording its
+durability error, and a token-bearing Google challenge being accepted. The
+four production boundaries are covered by GREEN tests.
+
 Fresh expanded command:
 
 ```bash
-npm test -- src/api/backofficeDashboard.test.ts src/api/auth.test.ts src/auth/AuthProvider.test.ts src/features/merchant-admin/dashboardResource.test.ts src/api/httpClient.test.ts src/auth/rbac.test.ts src/auth/portalAuthorization.test.ts src/components/merchant-admin/MerchantAdminLayout.test.ts src/auth/authCredentialCoordinator.test.ts src/pages/auth/LoginPage.test.ts src/auth/authEnvelope.test.ts
+npm test -- src/api/backofficeDashboard.test.ts src/api/auth.test.ts src/auth/AuthProvider.test.ts src/features/merchant-admin/dashboardResource.test.ts src/api/httpClient.test.ts src/auth/rbac.test.ts src/auth/portalAuthorization.test.ts src/components/merchant-admin/MerchantAdminLayout.test.ts src/auth/authCredentialCoordinator.test.ts src/pages/auth/LoginPage.test.ts src/auth/authEnvelope.test.ts src/features/settings/UnifiedSettingsPages.test.ts
 ```
 
-Final result: 11 test files passed and 234 tests passed.
+Final result: 12 test files passed and 270 tests passed.
 
 ## Static verification
 
 - Target ESLint passed for every Task 7 changed source and test file using
   `backend/eslint.config.mjs`.
-- Target Prettier check passed for every Task 7 changed source and test file
-  using `backend/.prettierrc.json`.
+- Target Prettier passed for the Task 7 auth/API/session/resource sources and
+  tests. Three pre-existing legacy UI files touched only to await logout
+  (`AdminAccountMenu.tsx`, `CpsSidebar.tsx`, and
+  `UnifiedSettingsPages.tsx`) remain globally nonconforming under whole-file
+  Prettier; they were not mechanically reformatted because that would add a
+  1,700-line unrelated visual/settings diff. Their changed logout hunks are
+  minimal and `git diff --check` clean.
 - `git diff --check` passed.
-- Fresh `npm run lint` passed.
-- A forced non-incremental application TypeScript check,
-  `tsc --noEmit --project tsconfig.app.json --incremental false`, also passed.
+- Full `npm run lint` remains the planned Task 9/10 sequence gate with exactly
+  66 TypeScript errors in only the four untouched pages below.
 
-The earlier four-page/66-error Task 8-10 allowlist did not appear in this
-fresh worktree validation. No Task 8-10 page was changed by this fix. Full
-lint/build remains a required gate when those later tasks are integrated.
+| Deferred page                                             | Errors |
+| --------------------------------------------------------- | -----: |
+| `src/pages/admin/AnalyticsPage.tsx`                       |     16 |
+| `src/pages/admin/DashboardPage.tsx`                       |     14 |
+| `src/pages/merchant-admin/MerchantAdminAnalyticsPage.tsx` |     17 |
+| `src/pages/merchant-admin/MerchantAdminDashboardPage.tsx` |     19 |
+
+No Task 7 source/test or logout caller appears in the strict TypeScript
+output. No deferred page was changed. Full lint and production build must
+return to green after Tasks 8-10 migrate those planned consumers.
 
 ## Remaining boundary and exclusions
 

@@ -365,8 +365,26 @@ export function readPersistedAuthEnvelope(): PersistedAuthEnvelopeV8 | null {
   }
 }
 
-export function writePersistedAuthEnvelope(envelope: PersistedAuthEnvelopeV8) {
+function hasSameDurableAuthority(
+  actual: PersistedAuthEnvelopeV8 | null,
+  expected: PersistedAuthEnvelopeV8 | null
+) {
+  if (!actual || !expected) return actual === expected;
+  return (
+    actual.state === expected.state &&
+    actual.authInstanceId === expected.authInstanceId &&
+    actual.credentialVersion === expected.credentialVersion
+  );
+}
+
+export function writePersistedAuthEnvelope(
+  envelope: PersistedAuthEnvelopeV8,
+  options?: { expectedCurrent: PersistedAuthEnvelopeV8 | null }
+) {
   if (!isPersistedAuthEnvelopeV8(envelope)) return false;
+  if (options && !hasSameDurableAuthority(readPersistedAuthEnvelope(), options.expectedCurrent)) {
+    return false;
+  }
   return writeBrowserStorage(persistedAuthEnvelopeStorageKey, JSON.stringify(envelope), {
     silent: true
   });

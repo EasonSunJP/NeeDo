@@ -309,6 +309,11 @@ export function LoginPage({
   const hasRememberedActivePortal = hasRememberedPortalAuthorization(activePortal);
   const hasActiveAccess = (isAuthenticated && canAccess(activePortal)) || hasRememberedActivePortal;
 
+  const handleLogout = async () => {
+    const result = await logout();
+    if (!result.ok) setFeedback(resolveLoginErrorMessage(result.message, language));
+  };
+
   useEffect(() => setActivePortal(requestedPortal), [requestedPortal]);
   useEffect(() => {
     setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
@@ -705,7 +710,7 @@ export function LoginPage({
                 </button>
                 <button
                   className="h-12 w-full rounded-full border border-[color:var(--client-line)] px-5 text-sm font-black text-[color:var(--client-muted)]"
-                  onClick={() => void logout()}
+                  onClick={() => void handleLogout()}
                   type="button"
                 >
                   {copy.logout}

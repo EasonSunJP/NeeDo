@@ -315,17 +315,41 @@ export const authApi = {
       }
     );
 
-    if (result.status === "authenticated") {
-      const validated = validateRotatedResponse(result, (payload) =>
-        requireFormalTokenPair<Extract<GoogleCredentialResult, { status: "authenticated" }>>(
+    return validateRotatedResponse(result, (payload) => {
+      if (!payload || typeof payload !== "object" || !("status" in payload)) {
+        throw new Error("error.api");
+      }
+      if (payload.status === "authenticated") {
+        return requireFormalTokenPair<Extract<GoogleCredentialResult, { status: "authenticated" }>>(
           payload,
           ["status", "accessToken", "refreshToken", "expiresIn"]
-        )
-      );
-      return validated;
-    }
-
-    return result;
+        );
+      }
+      if (payload.status !== "verification_required") throw new Error("error.api");
+      const challenge = payload as Record<string, unknown>;
+      const exactKeys = ["status", "challengeId", "maskedEmail", "expiresIn", "cooldownSeconds"];
+      if (
+        Object.keys(challenge).length !== exactKeys.length ||
+        !exactKeys.every((key) => Object.hasOwn(challenge, key)) ||
+        typeof challenge.challengeId !== "string" ||
+        challenge.challengeId.length === 0 ||
+        typeof challenge.maskedEmail !== "string" ||
+        challenge.maskedEmail.length === 0 ||
+        !Number.isSafeInteger(challenge.expiresIn) ||
+        Number(challenge.expiresIn) <= 0 ||
+        !Number.isSafeInteger(challenge.cooldownSeconds) ||
+        Number(challenge.cooldownSeconds) < 0
+      ) {
+        throw new Error("error.api");
+      }
+      return {
+        status: "verification_required",
+        challengeId: challenge.challengeId,
+        maskedEmail: challenge.maskedEmail,
+        expiresIn: challenge.expiresIn,
+        cooldownSeconds: challenge.cooldownSeconds
+      } as Extract<GoogleCredentialResult, { status: "verification_required" }>;
+    });
   },
 
   async verifyGoogleRegistrationOrLink(input: VerificationChallengeInput) {

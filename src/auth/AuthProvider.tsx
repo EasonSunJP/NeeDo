@@ -39,6 +39,7 @@ import {
   createAnonymousAuthEnvelope,
   createAuthInstanceId,
   createCommittedAuthEnvelope,
+  persistedAuthEnvelopeStorageKey,
   readPersistedAuthEnvelope,
   writePersistedAuthEnvelope,
   type CommittedAuthEnvelopeV8,
@@ -257,7 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authInstanceId: currentEnvelope?.authInstanceId ?? createAuthInstanceId(),
       credentialVersion: getAuthCredentialSnapshot().credentialVersion
     });
-    const written = writePersistedAuthEnvelope(tombstone);
+    const written = writePersistedAuthEnvelope(tombstone, {
+      expectedCurrent: currentEnvelope
+    });
     if (written) envelopeRef.current = tombstone;
     return written;
   }, []);
@@ -269,17 +272,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [persistAnonymousTombstone, terminateLocalSession]);
 
   const createCommittedEnvelope = useCallback(
-    (nextSession: AuthSession, refreshToken: string): CommittedAuthEnvelopeV8 => {
+    (
+      nextSession: AuthSession,
+      refreshToken: string,
+      preserveAuthInstance: boolean
+    ): {
+      envelope: CommittedAuthEnvelopeV8;
+      expectedCurrent: PersistedAuthEnvelopeV8 | null;
+    } => {
       const existing = envelopeRef.current;
-      const sameUser = existing?.state === "committed" && existing.session.id === nextSession.id;
+      const sameUser =
+        preserveAuthInstance &&
+        existing?.state === "committed" &&
+        existing.session.id === nextSession.id;
       const previousRemembered = sameUser ? existing.rememberedByPortal : {};
-      return createCommittedAuthEnvelope({
-        authInstanceId: sameUser ? existing.authInstanceId : createAuthInstanceId(),
-        credentialVersion: getAuthCredentialSnapshot().credentialVersion + 1,
-        refreshToken,
-        session: nextSession,
-        rememberedByPortal: buildRememberedByPortal(previousRemembered, nextSession, refreshToken)
-      });
+      return {
+        expectedCurrent: existing,
+        envelope: createCommittedAuthEnvelope({
+          authInstanceId: sameUser ? existing.authInstanceId : createAuthInstanceId(),
+          credentialVersion: getAuthCredentialSnapshot().credentialVersion + 1,
+          refreshToken,
+          session: nextSession,
+          rememberedByPortal: buildRememberedByPortal(previousRemembered, nextSession, refreshToken)
+        })
+      };
     },
     []
   );
@@ -314,10 +330,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         !markAuthOperationServerRotated(operation, credentials)
       )
         return "superseded" as const;
-      const nextEnvelope = createCommittedEnvelope(nextSession, credentials.refreshToken);
+      const { envelope: nextEnvelope, expectedCurrent } = createCommittedEnvelope(
+        nextSession,
+        credentials.refreshToken,
+        operation.mode === "rotation" ||
+          operation.kind === "startup-restore" ||
+          operation.kind === "remembered-portal-restore"
+      );
       const committed = commitRotatedAuthOperation(operation, {
         expectedUserId: nextSession.id,
-        persistClient: () => writePersistedAuthEnvelope(nextEnvelope)
+        persistClient: () => writePersistedAuthEnvelope(nextEnvelope, { expectedCurrent })
       });
       if (!committed) {
         publishAnonymous();
@@ -335,9 +357,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (operation: AuthOperation, nextSession: AuthSession) => {
       const refreshToken = getAuthCredentialSnapshot().refreshToken;
       if (!refreshToken) return "storage_failed" as const;
-      const nextEnvelope = createCommittedEnvelope(nextSession, refreshToken);
+      const { envelope: nextEnvelope, expectedCurrent } = createCommittedEnvelope(
+        nextSession,
+        refreshToken,
+        true
+      );
       const committed = commitExistingAuthOperation(operation, nextSession.id, () =>
-        writePersistedAuthEnvelope(nextEnvelope)
+        writePersistedAuthEnvelope(nextEnvelope, { expectedCurrent })
       );
       if (!committed) return "storage_failed" as const;
       envelopeRef.current = nextEnvelope;
@@ -504,6 +530,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthCredentialRevoker(null);
     };
   }, [persistAnonymousTombstone, publishAnonymous]);
+
+  useEffect(() => {
+    const handleAuthEnvelopeStorage = (event: StorageEvent) => {
+      if (
+        event.key !== persistedAuthEnvelopeStorageKey ||
+        event.storageArea !== window.localStorage
+      ) {
+        return;
+      }
+      const durableEnvelope = readPersistedAuthEnvelope();
+      const localEnvelope = envelopeRef.current;
+      if (
+        durableEnvelope?.state === localEnvelope?.state &&
+        durableEnvelope?.authInstanceId === localEnvelope?.authInstanceId &&
+        durableEnvelope?.credentialVersion === localEnvelope?.credentialVersion
+      ) {
+        return;
+      }
+      envelopeRef.current = durableEnvelope;
+      terminateLocalSession();
+    };
+    window.addEventListener("storage", handleAuthEnvelopeStorage);
+    return () => window.removeEventListener("storage", handleAuthEnvelopeStorage);
+  }, [terminateLocalSession]);
 
   useEffect(() => {
     let observedCredentialVersion = getAuthCredentialSnapshot().credentialVersion;
@@ -769,9 +819,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         revoked = false;
       }
     }
-    return tombstoneWritten || revoked
-      ? { ok: true }
-      : { ok: false, message: "error.auth.durable_logout_unconfirmed" };
+    if (tombstoneWritten || revoked) return { ok: true };
+    const message = "error.auth.durable_logout_unconfirmed";
+    setRestoreError(message);
+    return { ok: false, message };
   }, [persistAnonymousTombstone, terminateLocalSession]);
 
   const switchPortal = useCallback(

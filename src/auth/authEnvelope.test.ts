@@ -105,6 +105,30 @@ describe("PersistedAuthEnvelopeV8", () => {
     expect(readPersistedAuthEnvelope()).toEqual(previous);
   });
 
+  it("refuses to replace a durable tombstone from a stale committed authority", () => {
+    const previous = createCommittedAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000008",
+      credentialVersion: 8,
+      refreshToken: "refresh-r1",
+      session: session()
+    });
+    expect(writePersistedAuthEnvelope(previous)).toBe(true);
+    const tombstone = createAnonymousAuthEnvelope({
+      authInstanceId: previous.authInstanceId,
+      credentialVersion: 9
+    });
+    expect(writePersistedAuthEnvelope(tombstone)).toBe(true);
+
+    const staleCommit = createCommittedAuthEnvelope({
+      authInstanceId: previous.authInstanceId,
+      credentialVersion: 9,
+      refreshToken: "stale-refresh-r2",
+      session: session()
+    });
+    expect(writePersistedAuthEnvelope(staleCommit, { expectedCurrent: previous })).toBe(false);
+    expect(readPersistedAuthEnvelope()).toEqual(tombstone);
+  });
+
   it("never persists an access token and rejects unknown envelope fields", () => {
     const envelope = createCommittedAuthEnvelope({
       authInstanceId: "00000000-0000-4000-8000-000000000008",

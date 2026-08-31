@@ -52,7 +52,8 @@ export function rememberPortalAuthorization(
       refreshToken,
       session,
       rememberedByPortal: buildRememberedByPortal(previous, session, refreshToken)
-    })
+    }),
+    { expectedCurrent: existing }
   );
 }
 
@@ -61,19 +62,25 @@ export function forgetRememberedPortalAuthorization(portal: PortalScope) {
   if (!existing || existing.state !== "committed") return true;
   const rememberedByPortal = { ...existing.rememberedByPortal };
   delete rememberedByPortal[portal];
-  return writePersistedAuthEnvelope({
-    ...existing,
-    credentialVersion: existing.credentialVersion + 1,
-    rememberedByPortal
-  });
+  return writePersistedAuthEnvelope(
+    {
+      ...existing,
+      credentialVersion: existing.credentialVersion + 1,
+      rememberedByPortal
+    },
+    { expectedCurrent: existing }
+  );
 }
 
 export function forgetAllRememberedPortalAuthorizations() {
   const existing = readPersistedAuthEnvelope();
   if (!existing || existing.state !== "committed") return true;
-  return writePersistedAuthEnvelope({
-    ...existing,
-    credentialVersion: existing.credentialVersion + 1,
-    rememberedByPortal: {}
-  });
+  return writePersistedAuthEnvelope(
+    {
+      ...existing,
+      credentialVersion: existing.credentialVersion + 1,
+      rememberedByPortal: {}
+    },
+    { expectedCurrent: existing }
+  );
 }

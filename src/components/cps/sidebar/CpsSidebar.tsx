@@ -179,11 +179,11 @@ export function CpsSidebar({
     });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setAccountMenuOpen(false);
     onCloseMobile();
-    logout();
-    navigate("/login/afirieito?redirect=/NDA-admin", { replace: true });
+    const result = await logout();
+    if (result.ok) navigate("/login/afirieito?redirect=/NDA-admin", { replace: true });
   };
 
   return (
