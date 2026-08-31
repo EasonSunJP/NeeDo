@@ -43,6 +43,7 @@ import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-m
 import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
 import type { ShopMembershipCardAdjustmentRepositoryPort } from "./services/shop-membership-card-adjustment.service";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
+import type { TechnicianDataCenterRepositoryPort } from "./services/technician-data-center.service";
 import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
@@ -127,6 +128,7 @@ import { createShopMembershipCardPlanRoutes } from "./routes/shop-membership-car
 import { createShopMembershipCardIssuanceRoutes } from "./routes/shop-membership-card-issuance.routes";
 import { createShopMembershipCardAdjustmentRoutes } from "./routes/shop-membership-card-adjustment.routes";
 import { createTechnicianProfileRoutes } from "./routes/technician-profile.routes";
+import { createTechnicianDataCenterRoutes } from "./routes/technician-data-center.routes";
 import { createMerchantProfileRoutes } from "./routes/merchant-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
@@ -216,6 +218,7 @@ export interface AppDependencies {
   shopMembershipCardIssuanceRepository?: ShopMembershipCardIssuanceRepositoryPort;
   shopMembershipCardAdjustmentRepository?: ShopMembershipCardAdjustmentRepositoryPort;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
+  technicianDataCenterRepository?: TechnicianDataCenterRepositoryPort;
   merchantProfileRepository?: MerchantProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
@@ -359,6 +362,7 @@ export const createApp = (
   apiRouter.use(createShopMembershipCardIssuanceRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipCardAdjustmentRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianProfileRoutes(config, resolvedDependencies));
+  apiRouter.use(createTechnicianDataCenterRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));

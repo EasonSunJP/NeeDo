@@ -819,6 +819,20 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/merchant-admin/employees/{needoId}/compensation-profile/preview"
     );
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-profile/me");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/data-center");
+    expect(response.body.paths["/api/v1/technician/data-center"].get.parameters).toEqual([
+      expect.objectContaining({
+        name: "period",
+        schema: expect.objectContaining({
+          enum: ["last7days", "last30days", "week", "month", "year"]
+        })
+      })
+    ]);
+    expect(response.body.components.schemas.TechnicianDataCenter.properties.series.items.properties)
+      .toEqual(expect.objectContaining({
+        incomeJpy: { type: "integer" },
+        workedMinutes: { type: "integer" }
+      }));
     expect(response.body.paths["/api/v1/merchant-profile/me"]).toMatchObject({
       get: { responses: { "200": expect.any(Object), "403": expect.any(Object) } },
       patch: { responses: { "200": expect.any(Object), "400": expect.any(Object) } }

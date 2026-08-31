@@ -4459,6 +4459,137 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
+      TechnicianDataCenter: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "period",
+          "range",
+          "technician",
+          "affiliation",
+          "incomeModel",
+          "summary",
+          "series",
+          "recentOrders",
+          "nextOrder"
+        ],
+        properties: {
+          period: {
+            type: "string",
+            enum: ["last7days", "last30days", "week", "month", "year"]
+          },
+          range: {
+            type: "object",
+            required: ["startsAt", "endsAt", "timeZone", "bucketUnit"],
+            properties: {
+              startsAt: { type: "string", format: "date-time" },
+              endsAt: { type: "string", format: "date-time" },
+              timeZone: { type: "string", enum: ["Asia/Tokyo"] },
+              bucketUnit: { type: "string", enum: ["day", "five_days", "week", "month"] }
+            }
+          },
+          technician: {
+            type: "object",
+            required: ["id", "userId", "displayName", "employmentStartedAt"],
+            properties: {
+              id: { type: "integer" },
+              userId: { type: "integer" },
+              displayName: { type: "string" },
+              employmentStartedAt: { type: ["string", "null"], format: "date-time" }
+            }
+          },
+          affiliation: {
+            oneOf: [
+              {
+                type: "object",
+                required: ["shopId", "shopName", "relationshipType", "startsAt"],
+                properties: {
+                  shopId: { type: "integer" },
+                  shopName: { type: "string" },
+                  relationshipType: { type: "string" },
+                  startsAt: { type: "string", format: "date-time" }
+                }
+              },
+              { type: "null" }
+            ]
+          },
+          incomeModel: {
+            oneOf: [
+              {
+                type: "object",
+                required: [
+                  "sourceType",
+                  "name",
+                  "version",
+                  "updatedAt",
+                  "baseSalaryJpy",
+                  "serviceCommissionRatePercent",
+                  "extensionCommissionRatePercent",
+                  "nominationFeeJpy",
+                  "hasBonus"
+                ],
+                properties: {
+                  sourceType: { type: "string", enum: ["shop_default", "technician_override"] },
+                  name: { type: "string" },
+                  version: { type: "integer" },
+                  updatedAt: { type: "string", format: "date-time" },
+                  baseSalaryJpy: { type: "integer" },
+                  serviceCommissionRatePercent: { type: "number" },
+                  extensionCommissionRatePercent: { type: "number" },
+                  nominationFeeJpy: { type: "integer" },
+                  hasBonus: { type: "boolean" }
+                }
+              },
+              { type: "null" }
+            ]
+          },
+          summary: {
+            type: "object",
+            required: ["recognizedIncomeJpy", "completedOrderCount", "workedMinutes", "upcomingOrderCount"],
+            properties: {
+              recognizedIncomeJpy: { type: "integer" },
+              completedOrderCount: { type: "integer" },
+              workedMinutes: { type: "integer" },
+              upcomingOrderCount: { type: "integer" }
+            }
+          },
+          series: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["key", "label", "startsAt", "endsAt", "incomeJpy", "workedMinutes", "completedOrderCount"],
+              properties: {
+                key: { type: "string" },
+                label: { type: "string" },
+                startsAt: { type: "string", format: "date-time" },
+                endsAt: { type: "string", format: "date-time" },
+                incomeJpy: { type: "integer" },
+                workedMinutes: { type: "integer" },
+                completedOrderCount: { type: "integer" }
+              }
+            }
+          },
+          recentOrders: {
+            type: "array",
+            maxItems: 3,
+            items: {
+              type: "object",
+              required: ["id", "orderNo", "serviceName", "shopName", "status", "startsAt", "endsAt", "recognizedIncomeJpy"],
+              properties: {
+                id: { type: "integer" },
+                orderNo: { type: "string" },
+                serviceName: { type: "string" },
+                shopName: { type: "string" },
+                status: { type: "string" },
+                startsAt: { type: "string", format: "date-time" },
+                endsAt: { type: "string", format: "date-time" },
+                recognizedIncomeJpy: { type: ["integer", "null"] }
+              }
+            }
+          },
+          nextOrder: { type: ["object", "null"] }
+        }
+      },
       MerchantIdentityProfile: {
         type: "object",
         additionalProperties: false,
@@ -11630,6 +11761,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/TechnicianSelfProfile"
           }),
           ...technicianProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technician/data-center`]: {
+      get: {
+        tags: ["Technician Data Center"],
+        summary: "Read formal income, completed work time, current income model, and three recent orders",
+        security: [{ bearerAuth: [] }],
+        parameters: [{
+          name: "period",
+          in: "query",
+          required: false,
+          schema: {
+            type: "string",
+            enum: ["last7days", "last30days", "week", "month", "year"],
+            default: "last7days"
+          }
+        }],
+        responses: {
+          "200": jsonDataResponse("Current technician data center", {
+            $ref: "#/components/schemas/TechnicianDataCenter"
+          }),
+          "400": { description: "error.validation — unsupported period" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing technician-data-center permission or technician identity scope" },
+          "404": { description: "error.technician_data_center.not_found" }
         }
       }
     },
