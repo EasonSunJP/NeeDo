@@ -226,4 +226,49 @@ The self-profile response includes `id`, `displayName`, `avatarUrl`, `gender`, `
 
 Avatar bytes are served only when the requested filename is a SHA-256 content hash with a supported `.jpg`, `.png`, or `.webp` extension. Successful avatar responses are immutable-cacheable for one year; directory requests and arbitrary filenames return `404`.
 
+## Shop Membership Card Plans And NDP Reward Fee
+
+All endpoints below are database-backed, use strict Zod validation, and are described in OpenAPI. Merchant routes derive the shop exclusively from the authenticated `shop` identity; they never accept a client-supplied shop ID.
+
+### Merchant card plans
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/merchant-admin/shop-membership-card-plans` | Paginated plans for the current shop | `shop.member.card_plan.view` |
+| `POST` | `/api/v1/merchant-admin/shop-membership-card-plans` | Create a plan and version-1 draft | `shop.member.card_plan.manage` |
+| `GET` | `/api/v1/merchant-admin/shop-membership-card-plans/:publicId` | Read one current-shop plan | `shop.member.card_plan.view` |
+| `PATCH` | `/api/v1/merchant-admin/shop-membership-card-plans/:publicId/draft` | Save the editable draft using `expectedLockVersion` | `shop.member.card_plan.manage` |
+| `POST` | `/api/v1/merchant-admin/shop-membership-card-plans/:publicId/preview` | Evaluate the draft with a server-side scenario | `shop.member.card_plan.view` |
+| `POST` | `/api/v1/merchant-admin/shop-membership-card-plans/:publicId/publish` | Publish the draft with a fee snapshot | `shop.member.card_plan.publish` |
+| `POST` | `/api/v1/merchant-admin/shop-membership-card-plans/:publicId/retire` | Retire an active plan | `shop.member.card_plan.manage` |
+
+Drafts accept `cardType` values `stored_value`, `count`, or `benefit`; validity may be `never`, `fixed_days`, or `fixed_date`. Initial issuance limits contain nullable minimum/maximum principal JPY and use counts. Reward caps contain nullable per-order, per-day, per-month, and lifetime NDP ceilings.
+
+Supported rule kinds are `fixed_per_completion`, `percent_of_eligible_amount`, `spend_block`, `first_card_use_bonus`, `service_scope_bonus`, `completion_milestone_bonus`, `spend_milestone_bonus`, `birthday_month_bonus`, `schedule_window_bonus`, and `consecutive_month_bonus`. Rules may scope or exclude current-shop services and categories and may carry an active interval. Discounts, non-NDP gifts, free services, and bonus service counts are not valid rule types.
+
+Preview returns matched rule details plus `customerRewardNdp`, `platformFeeNdp`, and `totalShopDebitNdp`. The platform fee is rounded up from the customer reward. Publishing stores the effective fee policy public ID and basis-point rate on the immutable version; later fee versions do not alter that snapshot. Saving or publishing does not reserve wallet funds and does not write ledger entries.
+
+### Merchant card issuance
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `POST` | `/api/v1/merchant-admin/shop-memberships/:membershipPublicId/cards` | Issue one card from the current active published plan version to a current-shop active member | `shop.member.card.issue` |
+
+The strict request contains `planPublicId`, nullable `initialPrincipalJpy`, nullable `initialUses`, `issuanceSource`, nullable `issuanceReference`, nullable `issuanceNote`, and `idempotencyKey`. `issuanceSource` is `offline_paid`, `historical_replacement`, or `manual_grant`. Offline payment requires a reference or note; the other sources require a note.
+
+Stored-value plans require principal within the published issuance range and create zero bonus balance. Count plans require uses within the published range. Benefit plans reject both values. The server derives issue time and expiry from the current published version and snapshots the exact plan version and platform fee rate. Card, audit, and customer notification commit atomically. An identical idempotent replay returns the original card with `replayed: true`; the same key with changed normalized content returns `409`.
+
+Issuance does not debit a store wallet, credit customer NDP, or create ledger entries. Platform fees are charged only at a later actual reward settlement node. Internal issuance references and notes are returned to the authorized merchant issuance response but are excluded from shared customer card reads.
+
+### Operations membership reward fee
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/backoffice/membership-reward-fee-policy` | Current, next scheduled, latest version, and paginated history | `page:backoffice-membership-reward-fee` |
+| `POST` | `/api/v1/backoffice/membership-reward-fee-policy/versions` | Create the next immutable version | `button:backoffice-membership-reward-fee-create` |
+
+The create body requires `feeRateBps` from 0 through 10,000, `expectedVersion`, ISO-8601 `effectiveFrom`, and a non-empty reason. The initial version is 1000 bps (10%). Creating a version writes an audit record; stale versions or overlapping policy boundaries return a conflict response.
+
+Customer approval for later balance/use-count changes, top-up, redemption, refund, and reward ledger settlement remain outside these configuration and issuance endpoints and must be implemented as separate state-machine microsteps.
+
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.

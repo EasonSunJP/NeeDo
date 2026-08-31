@@ -36,8 +36,19 @@ vi.mock("../../components/scheduling/ScheduleSearchField", () => ({
 }));
 
 vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
-  UnifiedUserCalendar: ({ currentCustomer, formalOnly }: { currentCustomer: { name: string }; formalOnly?: boolean }) => (
-    <div data-testid={formalOnly ? "formal-user-calendar" : "non-formal-user-calendar"}>
+  UnifiedUserCalendar: ({
+    currentCustomer,
+    formalOnly,
+    showSourceDrawer
+  }: {
+    currentCustomer: { name: string };
+    formalOnly?: boolean;
+    showSourceDrawer?: boolean;
+  }) => (
+    <div
+      data-source-drawer-enabled={showSourceDrawer ? "true" : "false"}
+      data-testid={formalOnly ? "formal-user-calendar" : "non-formal-user-calendar"}
+    >
       {currentCustomer.name}
     </div>
   )
@@ -103,7 +114,9 @@ describe("UserSchedulePage formal data boundary", () => {
 
     expect(container.textContent).toContain(profileFixture.displayName);
     expect(container.textContent).toContain(profileFixture.city);
-    expect(container.querySelector('[data-testid="formal-user-calendar"]')).not.toBeNull();
+    const calendar = container.querySelector('[data-testid="formal-user-calendar"]');
+    expect(calendar).not.toBeNull();
+    expect(calendar?.getAttribute("data-source-drawer-enabled")).toBe("true");
   });
 
   it("shows a retryable API failure without a fallback customer", async () => {

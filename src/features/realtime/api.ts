@@ -1,4 +1,5 @@
 import { buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
+import type { ImMessageRichText } from "../im/reaction-policy";
 
 export type PaginatedRealtimeData<TItem> = {
   list: TItem[];
@@ -67,6 +68,7 @@ export type RealtimeConversation = {
   title: string | null;
   type: "direct" | "group";
   unreadCount: number;
+  autoTranslateMessages?: boolean;
   isPinned?: boolean;
   isMuted?: boolean;
   isHidden?: boolean;
@@ -135,7 +137,7 @@ export type RealtimeFriendRequest = {
 export type RealtimeDirectoryProfile = {
   user: RealtimeParticipant;
   identityCard: RealtimeDirectoryIdentityCard;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: RealtimeFriendRequest | null;
 };
@@ -178,10 +180,28 @@ export type RealtimeSocialPost = {
   createdAt: string;
   id: number;
   media: unknown;
+  replyCount: number;
+  replyToPostId: number | null;
   updatedAt?: string;
   viewerFollowsAuthor?: boolean;
   viewerIsFriend?: boolean;
   visibility: "public" | "followers";
+  counters?: {
+    likes: number;
+    reposts: number;
+    views: number;
+    bookmarks: number;
+  };
+  viewerInteraction?: {
+    liked: boolean;
+    bookmarked: boolean;
+    shared: boolean;
+  };
+};
+
+export type RealtimeSocialShareResult = {
+  post: RealtimeSocialPost;
+  deliveredUserIds: number[];
 };
 
 export type RealtimeSocialProfileSummary = NonNullable<RealtimeSocialPost["author"]>;
@@ -239,6 +259,7 @@ export type RealtimeSocialCreateMediaEnvelope = {
   repostPostId?: number;
   postType?: "post" | "reply" | "quote" | "repost" | "announcement" | "technician-daily";
   locationLabel?: string;
+  richText?: ImMessageRichText;
 };
 
 export type RealtimeSocialCreatePostInput = {
@@ -271,6 +292,21 @@ export const realtimeApi = {
   createMessage(conversationId: number, input: { content: string; metadata?: Record<string, unknown>; type?: RealtimeMessage["type"] }) {
     return httpClient.request<RealtimeMessage>(`/im/conversations/${conversationId}/messages`, { body: input, method: "POST" });
   },
+  createVoiceMessage(
+    conversationId: number,
+    voice: Blob,
+    metadata: { durationSeconds: number; fileName: string },
+  ) {
+    return httpClient.request<RealtimeMessage>(
+      `/im/conversations/${conversationId}/voice`,
+      {
+        body: voice,
+        headers: { "Content-Type": voice.type || "audio/webm" },
+        method: "POST",
+        query: metadata,
+      },
+    );
+  },
   recallMessage(conversationId: number, messageId: number, mode: "standard") {
     return httpClient.request<RealtimeRecallResult>(
       `/im/conversations/${conversationId}/messages/${messageId}/recall`,
@@ -297,7 +333,11 @@ export const realtimeApi = {
   },
   updateConversationPreferences(
     conversationId: number,
-    preferences: { isMuted?: boolean; isPinned?: boolean }
+    preferences: {
+      autoTranslateMessages?: boolean;
+      isMuted?: boolean;
+      isPinned?: boolean;
+    }
   ) {
     return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}/preferences`, {
       body: preferences,
@@ -389,20 +429,48 @@ export const realtimeApi = {
   rejectFriendRequest(id: number) {
     return httpClient.request<RealtimeFriendRequest>(`/im/friend-requests/${id}/reject`, { method: "POST" });
   },
-  listSocialPosts(query: PageQuery & { authorUserId?: number } = {}) {
-    return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", { query });
+  listSocialPosts(
+    query: PageQuery & { authorUserId?: number; replyToPostId?: number; bookmarked?: boolean } = {},
+    options: { signal?: AbortSignal } = {}
+  ) {
+    return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", {
+      query,
+      signal: options.signal
+    });
   },
   getSocialActivityStatus(userId: number) {
     return httpClient.request<RealtimeSocialActivityStatus>(`/social/users/${userId}/activity-status`);
   },
-  getSocialPost(id: number) {
-    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`);
+  getSocialPost(id: number, options: { signal?: AbortSignal } = {}) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { signal: options.signal });
   },
   createSocialPost(input: RealtimeSocialCreatePostInput) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });
   },
   updateSocialPost(id: number, input: RealtimeSocialUpdatePostInput) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { body: input, method: "PATCH" });
+  },
+  likeSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/like`, { method: "PUT" });
+  },
+  unlikeSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/like`, { method: "DELETE" });
+  },
+  bookmarkSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/bookmark`, { method: "PUT" });
+  },
+  unbookmarkSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/bookmark`, { method: "DELETE" });
+  },
+  recordSocialPostView(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/view`, { method: "POST" });
+  },
+  shareSocialPostToFriends(id: number, targetUserIds: number[], idempotencyKey: string) {
+    return httpClient.request<RealtimeSocialShareResult>(`/social/posts/${id}/shares`, {
+      body: { targetUserIds },
+      headers: { "Idempotency-Key": idempotencyKey },
+      method: "POST"
+    });
   },
   follow(targetUserId: number) {
     return httpClient.request<{ id: number }>("/social/follows", { body: { targetUserId }, method: "POST" });

@@ -30,6 +30,7 @@ import { FinancePage } from "./pages/admin/FinancePage";
 import { FloorplanPage } from "./pages/admin/FloorplanPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
+import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
 import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
@@ -95,6 +96,7 @@ import { StoreDetailPage } from "./pages/user/StoreDetailPage";
 import { TechnicianServicesPage } from "./pages/user/TechnicianServicesPage";
 import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
+import { UserMembershipsPage } from "./pages/user/UserMembershipsPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
 import { UserSchedulePage } from "./pages/user/UserSchedulePage";
@@ -192,7 +194,9 @@ import {
   SocialAccountProfilePage,
   SocialComposerPage,
   SocialDraftsPage,
+  SocialFavoritesPage,
   SocialMediaViewerPage,
+  SocialLegacyReplyRedirectPage,
   SocialNotificationsPage,
   SocialPostDetailPage,
   SocialRelationshipsPage,
@@ -1126,7 +1130,7 @@ export default function App() {
               <Route path="/moments/tags/:tag" element={protect("user", <SocialSearchPage />)} />
               <Route path="/moments/notifications" element={protect("user", <SocialNotificationsPage />)} />
               <Route path="/moments/users/:userId" element={protect("user", <SocialAccountProfilePage />)} />
-              <Route path="/moments/posts/:postId/replies" element={protect("user", <SocialPostDetailPage />)} />
+              <Route path="/moments/posts/:postId/replies" element={protect("user", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/moments/posts/:postId/repost" element={protect("user", <SocialRepostPage />)} />
               <Route path="/moments/posts/:postId/media/:mediaId" element={protect("user", <SocialMediaViewerPage />)} />
               <Route path="/moments/posts/:postId" element={protect("user", <SocialPostDetailPage />)} />
@@ -1173,6 +1177,9 @@ export default function App() {
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
+              <Route path="/me/favorites" element={protect("user", <SocialFavoritesPage />)} />
+              <Route path="/me/memberships" element={protect("user", <UserMembershipsPage />)} />
+              <Route path="/me/memberships/:membershipPublicId" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/settings" element={protect("user", <UserSettingsPage />)} />
               <Route path="/me/settings/theme" element={protect("user", <UserSettingsThemePage />)} />
               <Route path="/me/settings/language" element={protect("user", <UserSettingsLanguagePage />)} />
@@ -1219,7 +1226,7 @@ export default function App() {
               <Route path="/merchant/moments/tags/:tag" element={protect("merchant", <SocialSearchPage />)} />
               <Route path="/merchant/moments/notifications" element={protect("merchant", <SocialNotificationsPage />)} />
               <Route path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)} />
-              <Route path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialPostDetailPage />)} />
+              <Route path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/merchant/moments/posts/:postId/repost" element={protect("merchant", <SocialRepostPage />)} />
               <Route path="/merchant/moments/posts/:postId/media/:mediaId" element={protect("merchant", <SocialMediaViewerPage />)} />
               <Route path="/merchant/moments/posts/:postId" element={protect("merchant", <SocialPostDetailPage />)} />
@@ -1348,7 +1355,7 @@ export default function App() {
               <Route path="/technician/moments/tags/:tag" element={protect("technician", <SocialSearchPage />)} />
               <Route path="/technician/moments/notifications" element={protect("technician", <SocialNotificationsPage />)} />
               <Route path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)} />
-              <Route path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialPostDetailPage />)} />
+              <Route path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/technician/moments/posts/:postId/repost" element={protect("technician", <SocialRepostPage />)} />
               <Route path="/technician/moments/posts/:postId/media/:mediaId" element={protect("technician", <SocialMediaViewerPage />)} />
               <Route path="/technician/moments/posts/:postId" element={protect("technician", <SocialPostDetailPage />)} />
@@ -1400,6 +1407,7 @@ export default function App() {
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
+              <Route path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
               <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <MerchantApplicationsReviewPage />)} />

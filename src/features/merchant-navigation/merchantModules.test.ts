@@ -13,4 +13,12 @@ describe("merchant primary navigation modules", () => {
       "场控"
     ]);
   });
+
+  it("marks the membership and dine-in modules as Test", () => {
+    expect(
+      merchantPrimaryModules
+        .filter((module) => module.badge === "Test")
+        .map((module) => module.key),
+    ).toEqual(["members", "dine_order", "menu", "floor_control"]);
+  });
 });

@@ -9,6 +9,26 @@ const mocks = vi.hoisted(() => ({
   timelineProps: vi.fn()
 }));
 
+vi.mock("../../components/client-ui/AppScaffold", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../components/client-ui/AppScaffold")>();
+  return {
+    ...actual,
+    FeatureSegmentedTabs: ({
+      items,
+      onChange
+    }: {
+      items: Array<{ label: string; value: "calendar" | "settings" }>;
+      onChange: (value: "calendar" | "settings") => void;
+    }) => (
+      <div>
+        {items.map((item) => (
+          <button key={item.value} onClick={() => onChange(item.value)} type="button">{item.label}</button>
+        ))}
+      </div>
+    )
+  };
+});
+
 vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
   UnifiedUserCalendar: (props: Record<string, unknown>) => {
     mocks.calendarProps(props);
@@ -24,6 +44,15 @@ vi.mock("../../components/mobile/ContactEventTimeline", () => ({
     return <div data-testid="formal-status-timeline">状态记录</div>;
   }
 }));
+vi.mock("../../components/mobile/FloatingHomeHeader", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../components/mobile/FloatingHomeHeader")>();
+  return {
+    ...actual,
+    FloatingHomeHeader: ({ children }: { children: React.ReactNode }) => (
+      <header data-testid="formal-schedule-floating-header">{children}</header>
+    )
+  };
+});
 vi.mock("../../features/scheduling/window-loader", () => ({
   loadEveryTechnicianOrder: vi.fn().mockResolvedValue([])
 }));
@@ -114,6 +143,12 @@ describe("FormalTechnicianScheduleWorkspace", () => {
       search?.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({ searchQuery: "预约" }));
+  });
+
+  it("uses the approved floating header controls with a separate search action", async () => {
+    await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-floating-header"]')).not.toBeNull());
+    expect(container.querySelector('button[aria-label="搜索"]')).not.toBeNull();
+    expect(container.querySelector('input[role="searchbox"]')).not.toBeNull();
   });
 
   it("keeps the approved three-column formal status timeline below the shared calendar", async () => {

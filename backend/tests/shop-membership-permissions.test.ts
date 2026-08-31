@@ -1,0 +1,49 @@
+import {
+  SYSTEM_PERMISSION_CODES,
+  buildRolePermissionAssignments
+} from "../src/constants/permissions.constants";
+import { SHOP_MEMBERSHIP_ROUTE_PERMISSIONS } from "../src/routes/shop-membership.routes";
+import { SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS } from "../src/routes/shop-membership-card-issuance.routes";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const membershipPermissions = [
+  "shop.member.view",
+  "shop.member.create",
+  "shop.member.analytics.view",
+  "shop.member.operation_log.view"
+] as const;
+
+describe("shop membership permissions", () => {
+  it("declares the exact route permission map", () => {
+    expect(SHOP_MEMBERSHIP_ROUTE_PERMISSIONS).toEqual({
+      view: "shop.member.view",
+      create: "shop.member.create",
+      analytics: "shop.member.analytics.view",
+      operationLog: "shop.member.operation_log.view",
+      customerRead: "customer-profile:read"
+    });
+    expect(SYSTEM_PERMISSION_CODES).toEqual(expect.arrayContaining(membershipPermissions));
+    expect(SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS).toEqual({ issue: "shop.member.card.issue" });
+  });
+
+  it("grants all membership controls to owners and read-only access to staff", () => {
+    const assignments = buildRolePermissionAssignments();
+    expect(assignments.merchant_owner).toEqual(expect.arrayContaining(membershipPermissions));
+    expect(assignments.merchant_staff).toContain("shop.member.view");
+    expect(assignments.merchant_staff).not.toContain("shop.member.create");
+    expect(assignments.merchant_staff).not.toContain("shop.member.analytics.view");
+    expect(assignments.merchant_staff).not.toContain("shop.member.operation_log.view");
+  });
+
+  it("deploys the same role grants when migrations run without a seed", () => {
+    const migration = readFileSync(
+      join(process.cwd(), "prisma/migrations/20260831123000_shop_membership_permissions/migration.sql"),
+      "utf8"
+    );
+    for (const permission of membershipPermissions) expect(migration).toContain(`'${permission}'`);
+    expect(migration).toContain("`roles`.`code` IN ('admin', 'merchant_owner')");
+    expect(migration).toContain("`roles`.`code` = 'merchant_staff'");
+    expect(migration).toContain("`permissions`.`code` = 'shop.member.view'");
+  });
+});

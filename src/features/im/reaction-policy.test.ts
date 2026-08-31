@@ -53,6 +53,35 @@ describe("IM reaction policy", () => {
     expect(restore(serialized.content, serialized.richText)).toBe(draft);
   });
 
+  it("normalizes only complete version-one judgement rich text metadata", () => {
+    const normalize = (
+      reactionPolicy as typeof reactionPolicy & {
+        normalizeImMessageRichText?: (content: string, richText: unknown) => unknown;
+      }
+    ).normalizeImMessageRichText;
+
+    expect(normalize).toBeTypeOf("function");
+    if (!normalize) return;
+
+    expect(normalize("确认Pending", {
+      version: 1,
+      parts: [
+        { type: "text", value: "确认" },
+        { type: "judgement", value: "Pending" }
+      ]
+    })).toEqual({
+      version: 1,
+      parts: [
+        { type: "text", value: "确认" },
+        { type: "judgement", value: "Pending" }
+      ]
+    });
+    expect(normalize("确认Pending", {
+      version: 1,
+      parts: [{ type: "text", value: "确认Pending" }]
+    })).toBeUndefined();
+  });
+
   it("keeps judgement choices as opaque draft tokens and materializes them for sending", () => {
     const okToken = encodeImComposerJudgement("OK");
     const pendingToken = encodeImComposerJudgement("Pending");

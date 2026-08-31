@@ -195,6 +195,18 @@ export function canShareUserCard(scope: ImRoleType, user?: ImUser) {
   return Boolean(user && getImRoleConfig(scope).chatCapabilityConfig.shareableProfileKinds.includes(user.profileKind));
 }
 
+export function resolveImContactInformationPath(
+  scope: ImRoleType,
+  user?: ImUser,
+  profilesHidden = false,
+) {
+  if (!user || profilesHidden) {
+    return undefined;
+  }
+
+  return getImRoleConfig(scope).routes.directoryProfile(user.id);
+}
+
 export function resolveImProfilePath(scope: ImRoleType, user?: ImUser) {
   if (!user) {
     return undefined;

@@ -38,10 +38,12 @@ import { resolveCustomerMembership } from "../../../shared/profile-card/customer
 import { useEntityStore } from "../../../state/entityStore";
 import { useTechnicianScheduleStore } from "../../../state/technicianScheduleStore";
 import { getImRoleConfig } from "../../im/role-config";
+import { ImReactionValue } from "../../im/JudgementReactionIcon";
+import { resolveImMessageRichText, type ImMessageRichTextPart } from "../../im/reaction-policy";
 import { useImStore } from "../../im/store";
 import type { ImUser } from "../../im/model";
 import { useSocial } from "../context";
-import { socialPaths } from "../paths";
+import { socialPaths, socialReplyFocusState } from "../paths";
 import { buildTechnicianWeeklyScheduleItems, type TechnicianWeeklyScheduleTone } from "../profileHeaderPresentation";
 import { getCustomerCustomProfileReviewTags } from "../profileReviewPresentation";
 import type { SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialSearchTab, SocialTimelineFilterTab } from "../types";
@@ -797,11 +799,13 @@ export function SocialEmptyState({
 
 export function SocialPostTextRenderer({
   text,
+  parts,
   scope,
   profiles,
   className
 }: {
   text: string;
+  parts?: ImMessageRichTextPart[];
   scope: SocialPortalScope;
   profiles: Record<string, SocialProfile>;
   className?: string;
@@ -812,31 +816,38 @@ export function SocialPostTextRenderer({
     [profileList]
   );
   const mentionMatcher = useMemo(() => buildProfileMentionMatcher(profileList), [profileList]);
-  const segments: Array<{ type: "text" | "mention" | "tag" | "url"; value: string }> = [];
+  const segments: Array<{ type: "text" | "mention" | "tag" | "url" | "judgement"; value: string }> = [];
   const regex = mentionMatcher
     ? new RegExp(`(https?:\\/\\/[^\\s]+|[＃#][\\p{L}\\p{N}_-]+|${mentionMatcher.source})`, "gu")
     : /(https?:\/\/[^\s]+|[＃#][\p{L}\p{N}_-]+)/gu;
-  let lastIndex = 0;
-
-  text.replace(regex, (match, _capture, offset) => {
-    if (offset > lastIndex) {
-      segments.push({ type: "text", value: text.slice(lastIndex, offset) });
+  for (const part of parts ?? [{ type: "text", value: text }]) {
+    if (part.type === "judgement") {
+      segments.push(part);
+      continue;
     }
 
-    if (match.startsWith("@")) {
-      segments.push({ type: "mention", value: match });
-    } else if (match.startsWith("#") || match.startsWith("＃")) {
-      segments.push({ type: "tag", value: match });
-    } else {
-      segments.push({ type: "url", value: match });
+    let lastIndex = 0;
+
+    part.value.replace(regex, (match, _capture, offset) => {
+      if (offset > lastIndex) {
+        segments.push({ type: "text", value: part.value.slice(lastIndex, offset) });
+      }
+
+      if (match.startsWith("@")) {
+        segments.push({ type: "mention", value: match });
+      } else if (match.startsWith("#") || match.startsWith("＃")) {
+        segments.push({ type: "tag", value: match });
+      } else {
+        segments.push({ type: "url", value: match });
+      }
+
+      lastIndex = offset + match.length;
+      return match;
+    });
+
+    if (lastIndex < part.value.length) {
+      segments.push({ type: "text", value: part.value.slice(lastIndex) });
     }
-
-    lastIndex = offset + match.length;
-    return match;
-  });
-
-  if (lastIndex < text.length) {
-    segments.push({ type: "text", value: text.slice(lastIndex) });
   }
 
   if (segments.length === 0) {
@@ -846,6 +857,14 @@ export function SocialPostTextRenderer({
   return (
     <p className={cn("whitespace-pre-wrap break-words text-[15px] leading-7 text-[color:var(--client-text)]", className)}>
       {segments.map((segment, index) => {
+        if (segment.type === "judgement") {
+          return (
+            <span className="mx-0.5 inline-flex align-[-0.3em]" data-social-judgement={segment.value} key={`judgement-${segment.value}-${index}`}>
+              <ImReactionValue judgementDisplay="summary" value={segment.value} />
+            </span>
+          );
+        }
+
         if (segment.type === "mention") {
           const profile = profilesByMentionLabel[segment.value.toLowerCase()];
 
@@ -892,12 +911,30 @@ export function SocialPostTextRenderer({
   );
 }
 
-function truncatePostText(text: string, limit = 240) {
-  if (text.length <= limit) {
-    return text;
+function truncatePostParts(parts: ImMessageRichTextPart[], limit = 240): ImMessageRichTextPart[] {
+  let remaining = limit;
+  const truncated: ImMessageRichTextPart[] = [];
+
+  for (const part of parts) {
+    const characters = Array.from(part.value);
+    if (characters.length <= remaining) {
+      truncated.push(part);
+      remaining -= characters.length;
+      continue;
+    }
+
+    if (part.type === "text" && remaining > 0) {
+      const value = characters.slice(0, remaining).join("").trimEnd();
+      if (value) {
+        truncated.push({ type: "text", value });
+      }
+    }
+
+    truncated.push({ type: "text", value: "..." });
+    return truncated;
   }
 
-  return `${text.slice(0, limit).trimEnd()}...`;
+  return truncated;
 }
 
 function shouldIgnorePostNavigation(target: EventTarget | null) {
@@ -1009,32 +1046,39 @@ function TechnicianRelatedShopHeaderAction({
 
 export function UnifiedPostText({
   text,
+  richText,
   scope,
   profiles,
   expanded = false,
   allowExpand = true,
+  collapseLimit,
   className
 }: {
   text: string;
+  richText?: SocialPost["richText"];
   scope: SocialPortalScope;
   profiles: Record<string, SocialProfile>;
   expanded?: boolean;
   allowExpand?: boolean;
+  collapseLimit?: number;
   className?: string;
 }) {
-  const shouldCollapse = allowExpand && (text.length > 240 || text.split("\n").length > 6);
+  const resolvedParts = useMemo(() => resolveImMessageRichText(text, richText), [richText, text]);
+  const characterCount = Array.from(text).length;
+  const truncationLimit = collapseLimit ?? 240;
+  const shouldCollapse = (allowExpand && (characterCount > truncationLimit || text.split("\n").length > 6)) || (!allowExpand && collapseLimit !== undefined && characterCount > truncationLimit);
   const [isExpanded, setIsExpanded] = useState(expanded);
 
   useEffect(() => {
     setIsExpanded(expanded);
   }, [expanded, text]);
 
-  const displayText = shouldCollapse && !isExpanded ? truncatePostText(text) : text;
+  const displayParts = shouldCollapse && !isExpanded ? truncatePostParts(resolvedParts, truncationLimit) : resolvedParts;
 
   return (
     <div>
-      <SocialPostTextRenderer className={className} profiles={profiles} scope={scope} text={displayText} />
-      {shouldCollapse ? (
+      <SocialPostTextRenderer className={className} parts={displayParts} profiles={profiles} scope={scope} text={text} />
+      {allowExpand && shouldCollapse ? (
         <button
           className="mt-2 text-sm font-semibold text-[color:var(--client-primary)] transition hover:opacity-80"
           onClick={() => setIsExpanded((current) => !current)}
@@ -1116,8 +1160,8 @@ function SocialPostContextRow({
   if (post.postType === "repost" && contentPost.id !== post.id) {
     activityText = `${activityAuthor.displayName} 转发了`;
   } else if (post.replyToPostId) {
-    const replyPost = getPostById(post.replyToPostId);
-    const replyTarget = replyPost ? profiles[profileKey({ entityType: replyPost.authorType, id: replyPost.authorId })] : undefined;
+    const replyParentPost = getPostById(post.replyToPostId);
+    const replyTarget = replyParentPost ? profiles[profileKey({ entityType: replyParentPost.authorType, id: replyParentPost.authorId })] : undefined;
     activityText = `回复给 ${replyTarget ? profileMentionLabel(replyTarget) : "主帖"}`;
   }
 
@@ -1218,10 +1262,11 @@ function EmbeddedPostCard({
           <UnifiedPostText
             allowExpand={false}
             className="mt-2 text-sm leading-6"
-            expanded
+            collapseLimit={140}
             profiles={profiles}
+            richText={post.richText}
             scope={scope}
-            text={truncatePostText(post.text, 140)}
+            text={post.text}
           />
         ) : null}
       </div>
@@ -1421,7 +1466,7 @@ export function SocialInteractionBar({
       <div className="grid min-w-0 flex-1 grid-cols-4 items-center gap-1">
         <button
           className={countedActionClassName}
-          onClick={() => navigate(socialPaths.compose(scope, { replyToPostId: post.id }))}
+          onClick={() => navigate(detailHref, { state: socialReplyFocusState })}
           type="button"
         >
           <InteractionIcon name="reply" />
@@ -1437,7 +1482,7 @@ export function SocialInteractionBar({
         </button>
         <button
           className={cn(countedActionClassName, interaction.liked ? "text-[color:var(--client-warm)]" : undefined)}
-          onClick={() => toggleLike(post.id, actorKey)}
+          onClick={() => { void toggleLike(post.id, actorKey).catch(() => undefined); }}
           type="button"
         >
           <InteractionIcon active={interaction.liked} name="like" />
@@ -1453,7 +1498,7 @@ export function SocialInteractionBar({
         <button
           aria-label={interaction.bookmarked ? "取消收藏" : "收藏"}
           className={cn(trailingActionClassName, interaction.bookmarked ? "text-[color:var(--client-primary)]" : undefined)}
-          onClick={() => toggleBookmark(post.id, actorKey)}
+          onClick={() => { void toggleBookmark(post.id, actorKey).catch(() => undefined); }}
           type="button"
         >
           <InteractionIcon active={interaction.bookmarked} name="bookmark" />
@@ -1574,6 +1619,7 @@ export function SocialPostItem({
                 className={highlight ? "text-[18px] leading-8 sm:text-[21px]" : undefined}
                 expanded={highlight}
                 profiles={mergedProfiles}
+                richText={contentPost.richText}
                 scope={scope}
                 text={contentPost.text}
               />

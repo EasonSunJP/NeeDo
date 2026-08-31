@@ -24,6 +24,8 @@ import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
+import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
@@ -38,11 +40,25 @@ import {
 import {
   encodeImComposerJudgement,
   getImReactionCategory,
+  materializeImComposerDraft,
   parseImComposerDraft,
-  resolveImMessageRichText,
   type ImReactionCategory
 } from "./reaction-policy";
+import { getImMessageDisplayParts, type ImMessageTranslationOptions } from "./message-translation";
 import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
+
+const defaultImMessageTranslation: ImMessageTranslationOptions = {
+  enabled: false,
+  language: "zh"
+};
+
+const socialPostCardCopy: Record<Language, { fallback: string; open: string }> = {
+  zh: { fallback: "查看这条动态", open: "打开原动态" },
+  "zh-Hant": { fallback: "查看這則動態", open: "開啟原動態" },
+  ja: { fallback: "この投稿を見る", open: "元の投稿を開く" },
+  en: { fallback: "View this post", open: "Open original post" },
+  ko: { fallback: "이 게시물 보기", open: "원본 게시물 열기" }
+};
 
 export function ImIcon({
   name,
@@ -456,11 +472,6 @@ export type ImChatComposerAction = {
   label: string;
   run: () => void;
 };
-export type ImChatComposerRecordingState = {
-  active: boolean;
-  cancel: boolean;
-  durationSeconds: number;
-};
 export type ImChatComposerPendingImage = {
   fileName: string;
   previewUrl: string;
@@ -555,6 +566,7 @@ function ImComposerRichInput({
   disabled,
   draft,
   inputRef,
+  nativeDisabled,
   onDraftChange,
   onEnterSubmit,
   placeholder
@@ -562,10 +574,13 @@ function ImComposerRichInput({
   disabled: boolean;
   draft: string;
   inputRef?: Ref<HTMLDivElement>;
+  nativeDisabled: boolean;
   onDraftChange: (value: string) => void;
   onEnterSubmit?: () => void;
   placeholder: string;
 }) {
+  const i18n = useProvidedI18n();
+  const localizedPlaceholder = i18n ? translateText(placeholder, i18n.language) : placeholder;
   const editorRef = useRef<HTMLDivElement | null>(null);
   const setEditorRef = useCallback((element: HTMLDivElement | null) => {
     editorRef.current = element;
@@ -576,7 +591,7 @@ function ImComposerRichInput({
     const editor = editorRef.current;
     if (!editor || readImComposerValue(editor) === draft) return;
     renderImComposerValue(editor, draft);
-  }, [draft]);
+  }, [disabled, draft]);
 
   const handlePaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
     const text = event.clipboardData.getData("text/plain");
@@ -586,20 +601,40 @@ function ImComposerRichInput({
     onDraftChange(readImComposerValue(event.currentTarget));
   };
 
+  if (disabled && nativeDisabled) {
+    return (
+      <div className="relative min-h-[24px]">
+        <textarea
+          aria-placeholder={placeholder}
+          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+          data-im-composer-native-input="true"
+          disabled
+          placeholder={placeholder}
+          rows={1}
+          value={materializeImComposerDraft(draft)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-[24px]">
       {!draft ? (
-        <span className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]">
-          {placeholder}
+        <span
+          className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]"
+          data-no-i18n="true"
+        >
+          {localizedPlaceholder}
         </span>
       ) : null}
       <div
         aria-disabled={disabled}
         aria-multiline="true"
-        aria-placeholder={placeholder}
+        aria-placeholder={localizedPlaceholder}
         className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
+        data-no-i18n="true"
         onInput={(event) => onDraftChange(readImComposerValue(event.currentTarget))}
         onKeyDown={(event) => {
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || !onEnterSubmit) {
@@ -660,63 +695,63 @@ export function ImChatComposer({
   disabled = false,
   draft,
   isNight,
-  maxVoiceRecordingSeconds = 60,
-  onCancelRecording,
   onDraftChange,
-  onEndRecording,
-  onMoveRecording,
+  onOpenVoiceRecording,
   onPanelChange,
   onRemovePendingImage,
   onSend,
-  onStartRecording,
-  onToggleVoice,
   panel,
   pendingImage,
   placeholder = "发送消息",
-  recording = { active: false, cancel: false, durationSeconds: 0 },
   leadingAccessory,
   moreAction,
+  nativeDisabledInput = false,
   sendLabel = "发送",
   sendingLabel = "发送中",
   sending = false,
   submitOnEnter = false,
   textareaRef,
-  voiceMode = false
+  voiceButtonRef,
+  voiceInputAriaLabel = "录制语音"
 }: {
   actions?: ImChatComposerAction[];
   blocked?: boolean;
   disabled?: boolean;
   draft: string;
   isNight: boolean;
-  maxVoiceRecordingSeconds?: number;
-  onCancelRecording?: () => void;
   onDraftChange: (value: string) => void;
-  onEndRecording?: () => void;
-  onMoveRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onOpenVoiceRecording?: () => void;
   onPanelChange: (panel: ImChatComposerPanel | ((value: ImChatComposerPanel) => ImChatComposerPanel)) => void;
   onRemovePendingImage?: () => void;
   onSend: () => void;
-  onStartRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onToggleVoice?: () => void;
   panel: ImChatComposerPanel;
   pendingImage?: ImChatComposerPendingImage;
   placeholder?: string;
   leadingAccessory?: ReactNode;
   moreAction?: { ariaLabel: string; run: () => void };
-  recording?: ImChatComposerRecordingState;
+  nativeDisabledInput?: boolean;
   sendLabel?: string;
   sendingLabel?: string;
   sending?: boolean;
   submitOnEnter?: boolean;
   textareaRef?: Ref<HTMLDivElement>;
-  voiceMode?: boolean;
+  voiceButtonRef?: Ref<HTMLButtonElement>;
+  voiceInputAriaLabel?: string;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
-  const recentReactions = useSyncExternalStore(
-    subscribeRecentImReactions,
-    getRecentImReactionSnapshot,
-    getRecentImReactionSnapshot
+  const previousPanelRef = useRef<ImChatComposerPanel>(null);
+  const [visibleRecentReactions, setVisibleRecentReactions] = useState<readonly string[]>(
+    () => getRecentImReactionSnapshot()
   );
+
+  useLayoutEffect(() => {
+    const openingEmojiPanel = panel === "emoji" && previousPanelRef.current !== "emoji";
+    previousPanelRef.current = panel;
+
+    if (openingEmojiPanel) {
+      setVisibleRecentReactions(getRecentImReactionSnapshot());
+    }
+  }, [panel]);
 
   useLayoutEffect(() => {
     const root = composerRootRef.current;
@@ -760,7 +795,7 @@ export function ImChatComposer({
       }
       conversationLayout.style.removeProperty("--im-composer-overlay-height");
     };
-  }, [draft, panel, pendingImage, voiceMode]);
+  }, [draft, panel, pendingImage]);
 
   const selectReactionValue = (value: string) => {
     const nextValue = getImReactionCategory(value) === "judgement"
@@ -807,21 +842,22 @@ export function ImChatComposer({
             </div>
           ) : (
             <button
-              aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
+              aria-label={voiceInputAriaLabel}
               className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
               data-im-composer-control="voice-input"
-              disabled={disabled}
+              disabled={disabled || blocked}
               onClick={() => {
-                onToggleVoice?.();
                 onPanelChange(null);
+                onOpenVoiceRecording?.();
               }}
+              ref={voiceButtonRef}
               type="button"
             >
               <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
             </button>
           )}
           <div className={composerInputShellClass}>
-            {pendingImage && !voiceMode ? (
+            {pendingImage ? (
               <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
                 <div className="relative w-fit max-w-full">
                   <img alt={pendingImage.fileName} className="h-16 w-16 rounded-[14px] object-cover" src={pendingImage.previewUrl} />
@@ -837,35 +873,15 @@ export function ImChatComposer({
                 </div>
               </div>
             ) : null}
-            {voiceMode ? (
-              <button
-                className={cn(
-                  "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
-                  recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
-                )}
-                disabled={disabled || blocked}
-                onPointerCancel={onCancelRecording}
-                onPointerDown={onStartRecording}
-                onPointerMove={onMoveRecording}
-                onPointerUp={onEndRecording}
-                type="button"
-              >
-                {recording.active
-                  ? recording.cancel
-                    ? `松开取消发送 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                    : `松开发送，上滑取消 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                  : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
-              </button>
-            ) : (
-              <ImComposerRichInput
-                disabled={disabled}
-                draft={draft}
-                inputRef={textareaRef}
-                onDraftChange={onDraftChange}
-                onEnterSubmit={submitOnEnter ? onSend : undefined}
-                placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
-              />
-            )}
+            <ImComposerRichInput
+              disabled={disabled}
+              draft={draft}
+              inputRef={textareaRef}
+              nativeDisabled={nativeDisabledInput}
+              onDraftChange={onDraftChange}
+              onEnterSubmit={submitOnEnter ? onSend : undefined}
+              placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
+            />
           </div>
           <button
             aria-label={panel === "emoji" ? "关闭表情面板" : "打开表情面板"}
@@ -877,7 +893,7 @@ export function ImChatComposer({
           >
             <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
           </button>
-          {(draft.trim() || pendingImage) && !voiceMode ? (
+          {draft.trim() || pendingImage ? (
             <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={disabled || blocked || sending} onClick={onSend}>
               {sending ? sendingLabel : sendLabel}
             </Button>
@@ -907,7 +923,7 @@ export function ImChatComposer({
               disabled={disabled}
               expanded
               onSelect={selectReactionValue}
-              recentValues={recentReactions}
+              recentValues={visibleRecentReactions}
             />
           </div>
         ) : null}
@@ -1251,6 +1267,7 @@ export function ImEntryCell({
   caption,
   badge,
   badgeDot = false,
+  trailing,
   to,
   onClick
 }: {
@@ -1259,6 +1276,7 @@ export function ImEntryCell({
   caption?: string;
   badge?: string | number;
   badgeDot?: boolean;
+  trailing?: ReactNode;
   to?: string;
   onClick?: () => void;
 }) {
@@ -1276,7 +1294,10 @@ export function ImEntryCell({
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <strong className="truncate text-[15px] font-black text-[color:var(--client-text)]">{title}</strong>
+          <div className="flex min-w-0 items-center gap-2">
+            <strong className="truncate text-[15px] font-black text-[color:var(--client-text)]">{title}</strong>
+            {trailing ? <span className="shrink-0">{trailing}</span> : null}
+          </div>
           {caption ? <span className="shrink-0 text-xs font-bold text-[color:var(--client-muted)]">{caption}</span> : null}
         </div>
       </div>
@@ -2542,7 +2563,7 @@ export function ImMessageActionSheet({
     >
       <button
         aria-label="关闭消息操作菜单"
-        className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        className="im-message-action-backdrop absolute inset-0 bg-black/20"
         onClick={(event) => {
           const pointerStartedOnBackdrop = backdropPointerStartedRef.current;
           backdropPointerStartedRef.current = false;
@@ -2641,11 +2662,13 @@ export function ToggleRow({
   title,
   caption,
   checked,
+  disabled = false,
   onChange
 }: {
   title: string;
   caption?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
   return (
@@ -2654,7 +2677,7 @@ export function ToggleRow({
         <div className="text-[15px] font-black text-[color:var(--client-text)]">{title}</div>
         {caption ? <p className="mt-1 text-xs text-[color:var(--client-muted)]">{caption}</p> : null}
       </div>
-      <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} size="md" />
+      <ToggleSwitch ariaLabel={title} checked={checked} disabled={disabled} onChange={onChange} size="md" />
     </div>
   );
 }
@@ -2682,6 +2705,7 @@ function previewLabel(type: ImMessageType) {
     location: "位置",
     "contact-card": "名片",
     "service-card": "服务",
+    "social-post-card": "动态",
     "schedule-invite": "日程邀请",
     system: "系统消息",
     recalled: "撤回消息"
@@ -2786,14 +2810,16 @@ function ImRichMessageText({
   className,
   content,
   richText,
+  translation = defaultImMessageTranslation,
   selectable = false,
 }: {
   className?: string;
   content: string;
   richText?: MessageExt["richText"];
+  translation?: ImMessageTranslationOptions;
   selectable?: boolean;
 }) {
-  const parts = resolveImMessageRichText(content, richText);
+  const parts = getImMessageDisplayParts(content, richText, translation);
   const hasJudgement = parts.some((part) => part.type === "judgement");
 
   return (
@@ -2801,6 +2827,7 @@ function ImRichMessageText({
       className={className}
       data-im-message-rich-text={hasJudgement ? "true" : undefined}
       data-im-message-selectable-text={selectable ? "true" : undefined}
+      data-no-i18n="true"
     >
       {parts.map((part, index) =>
         part.type === "judgement" ? (
@@ -2827,6 +2854,20 @@ export function ImQuotedMessagePreview({
   className?: string;
 }) {
   const caption = message.ext?.caption?.trim() ?? "";
+  const fileName = message.ext?.fileName ?? "";
+  const hasFileName = Boolean(fileName.trim());
+
+  if (message.type === "system" || message.type === "recalled" || message.status === "recalled") {
+    const label = message.type === "system"
+      ? message.content
+      : previewLabel("recalled");
+
+    return (
+      <p className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}>
+        {label}
+      </p>
+    );
+  }
 
   if (message.type === "image" || message.type === "video") {
     const thumbnailUrl = message.ext?.thumbnailUrl ?? (message.type === "image" ? message.ext?.url ?? message.content : undefined);
@@ -2863,17 +2904,30 @@ export function ImQuotedMessagePreview({
   }
 
   if (message.type === "voice" || message.type === "file") {
-    const label = caption || (message.type === "file" ? message.ext?.fileName?.trim() ?? "" : "");
+    const hasLabel = Boolean(caption) || message.type === "file";
 
     return (
       <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-black/10">
           <ImIcon className="h-5 w-5 opacity-80" name={message.type === "voice" ? "mic" : "file"} />
         </span>
-        {label ? (
-          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
-            {label}
-          </p>
+        {hasLabel ? (
+          <div data-im-quoted-media-caption="true">
+            {caption ? (
+              <ImRichMessageText
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                content={caption}
+                richText={message.ext?.captionRichText}
+              />
+            ) : (
+              <p
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                data-no-i18n={hasFileName ? "true" : undefined}
+              >
+                {hasFileName ? fileName : previewLabel("file")}
+              </p>
+            )}
+          </div>
         ) : null}
       </div>
     );
@@ -2903,8 +2957,10 @@ export function MessageBubble({
   disappearingNow,
   onPreviewMedia,
   onOpenContact,
+  onOpenSocialPost,
   renderContactCard,
-  renderContactCardAction
+  renderContactCardAction,
+  translation = defaultImMessageTranslation
 }: {
   message: ConversationMessage;
   isMine: boolean;
@@ -2920,10 +2976,15 @@ export function MessageBubble({
   disappearingNow?: number;
   onPreviewMedia?: (message: ConversationMessage) => void;
   onOpenContact?: (userId: string) => void;
+  onOpenSocialPost?: (postId: string) => void;
   renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
+  translation?: ImMessageTranslationOptions;
 }) {
+  const i18n = useProvidedI18n();
+  const postCardCopy = socialPostCardCopy[i18n?.language ?? "zh"];
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
+  const bodyTranslation = isMine ? defaultImMessageTranslation : translation;
   const disappearing = message.ext?.disappearing;
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
@@ -2942,6 +3003,7 @@ export function MessageBubble({
           )}
           content={message.content}
           richText={message.ext?.richText}
+          translation={bodyTranslation}
           selectable
         />
       );
@@ -2963,6 +3025,7 @@ export function MessageBubble({
               className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
               content={message.ext.caption}
               richText={message.ext.captionRichText}
+              translation={bodyTranslation}
               selectable
             />
           ) : null}
@@ -2989,13 +3052,21 @@ export function MessageBubble({
     }
 
     if (message.type === "file") {
+      const fileName = message.ext?.fileName ?? "";
+      const hasFileName = Boolean(fileName.trim());
+
       return (
         <div className="flex min-w-[220px] items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-black/6">
               <ImIcon name="file" />
-            </span>
+          </span>
           <div className="min-w-0">
-            <p className="truncate text-[14px] font-medium">{message.ext?.fileName ?? "未命名文件"}</p>
+            <p
+              className="truncate text-[14px] font-medium"
+              data-no-i18n={hasFileName ? "true" : undefined}
+            >
+              {hasFileName ? fileName : previewLabel("file")}
+            </p>
             <p className={cn("mt-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{formatSize(message.ext?.fileSize)}</p>
           </div>
         </div>
@@ -3073,6 +3144,27 @@ export function MessageBubble({
       );
 
       return card.href ? <Link to={card.href}>{cardBody}</Link> : cardBody;
+    }
+
+    if (message.type === "social-post-card" && message.ext?.socialPostCard) {
+      const card = message.ext.socialPostCard;
+      return (
+        <button
+          className="block w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
+          onClick={() => onOpenSocialPost?.(card.postId)}
+          type="button"
+        >
+          {card.mediaUrl ? <img alt="" className="h-36 w-full object-cover" src={card.mediaUrl} /> : null}
+          <div className="p-3">
+            <div className="flex items-center gap-2">
+              <AvatarImage alt={card.authorName} className="h-8 w-8" src={card.authorAvatar} />
+              <p className="min-w-0 flex-1 truncate text-[13px] font-black">{card.authorName}</p>
+            </div>
+            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-5 text-[color:var(--client-muted)]">{card.text || postCardCopy.fallback}</p>
+            <p className="mt-3 border-t border-[color:var(--client-line)] pt-2 text-[11px] font-black text-[color:var(--client-primary)]">{postCardCopy.open}</p>
+          </div>
+        </button>
+      );
     }
 
     if (message.type === "schedule-invite" && message.ext?.scheduleInvite) {
@@ -3181,7 +3273,7 @@ export function MessageBubble({
       })}
     </div>
   ) : null;
-  const bubbleShellClass = message.type === "contact-card" && !quotedMessage ? "rounded-[24px]" : cn("rounded-[20px] px-3 py-2", bubbleClass);
+  const bubbleShellClass = (message.type === "contact-card" || message.type === "social-post-card") && !quotedMessage ? "rounded-[24px]" : cn("rounded-[20px] px-3 py-2", bubbleClass);
   const contentNode = quoteNode || reactionNode ? (
     <div className="min-w-0 max-w-full overflow-hidden">
       {quoteNode}

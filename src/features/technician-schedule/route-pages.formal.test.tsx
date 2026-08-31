@@ -317,7 +317,7 @@ describe("formal technician schedule routes", () => {
 
     await render("/technician/schedule");
 
-    expect(container.textContent).toContain("排班与预约");
+    expect(container.textContent).not.toContain("排班与预约");
     expect(container.textContent).toContain("正式技师");
     expect(container.textContent).toContain("正式店铺");
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.textContent).toBe("正式技师:正式店铺");

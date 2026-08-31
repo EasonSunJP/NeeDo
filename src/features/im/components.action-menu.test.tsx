@@ -2,12 +2,15 @@
 
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ImMessageActionSheet, MessageBubble } from "./components";
+import { ImMessageActionSheet, ImQuotedMessagePreview, MessageBubble } from "./components";
 import type { ImMessageActionSheetItem } from "./components";
 import type { ConversationMessage } from "./model";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 function buildRect({
   bottom,
@@ -129,12 +132,19 @@ describe("ImMessageActionSheet", () => {
     const quickReactionGrid = reactions?.querySelector<HTMLElement>('[data-im-message-reaction-row="quick"]');
     const actionGrid = menu?.querySelector<HTMLElement>('[data-im-message-action-section="actions"]');
     const actionItem = menu?.querySelector<HTMLElement>('[data-im-message-action-item="true"]');
+    const backdrop = document.querySelector<HTMLButtonElement>('[aria-label="关闭消息操作菜单"]');
+    const backdropRule = stylesSource.match(/\.im-message-action-backdrop\s*\{([^}]*)\}/)?.[1] ?? "";
 
     expect(menu).not.toBeNull();
     expect(container.contains(menu)).toBe(false);
     expect(shell.contains(menu)).toBe(true);
     expect(menu?.classList.contains("client-liquid-glass-surface")).toBe(true);
     expect(menu?.className).not.toContain("var(--client-elevated)_98%");
+    expect(backdrop?.classList.contains("im-message-action-backdrop")).toBe(true);
+    expect(backdrop?.className).not.toContain("backdrop-blur");
+    expect(backdropRule).toContain("-webkit-backdrop-filter: none");
+    expect(backdropRule).toContain("backdrop-filter: none");
+    expect(backdropRule).toContain("filter: none");
     expect(menuPositioner?.style.position).toBe("fixed");
     expect(menuPositioner?.style.left).toBe("12px");
     expect(menuPositioner?.style.top).toBe("210px");
@@ -680,6 +690,277 @@ describe("MessageBubble quoted media", () => {
     expect(container.querySelector('[data-im-quoted-media="image"] img')).not.toBeNull();
     expect(container.textContent).not.toContain(quotedMessage.content);
     expect(container.querySelector('[data-im-quoted-media-caption="true"]')).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+});
+
+describe("MessageBubble translation display boundary", () => {
+  const japaneseTranslation = { enabled: true, language: "ja" } as const;
+  const messageBase = {
+    conversationId: "conversation-translation-1",
+    senderId: "sender-1",
+    status: "sent" as const,
+    sentAt: "2026-08-30T00:00:00.000Z",
+    clientSeq: 1
+  };
+
+  it("translates only the other party's body text", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const message: ConversationMessage = {
+      ...messageBase,
+      id: "translation-body-1",
+      localId: "translation-body-1",
+      type: "text",
+      content: "测试测试"
+    };
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: true }));
+    });
+    expect(container.textContent).toContain("测试测试");
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: true, translation: japaneseTranslation }));
+    });
+    expect(container.textContent).toContain("测试测试");
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation }));
+    });
+    expect(container.textContent).toContain("テストテスト");
+    expect(container.querySelector('[data-no-i18n][data-im-message-selectable-text="true"]')).not.toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps judgement SVGs while translating only adjacent rich text", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const message: ConversationMessage = {
+      ...messageBase,
+      id: "translation-judgement-1",
+      localId: "translation-judgement-1",
+      type: "text",
+      content: "Done测试OK",
+      ext: {
+        richText: {
+          version: 1,
+          parts: [
+            { type: "judgement", value: "Done" },
+            { type: "text", value: "测试" },
+            { type: "judgement", value: "OK" }
+          ]
+        }
+      }
+    };
+
+    await act(async () => {
+      root.render(createElement(MessageBubble, { message, isMine: false, translation: japaneseTranslation }));
+    });
+
+    const richText = container.querySelector<HTMLElement>('[data-im-message-rich-text="true"]');
+    expect(richText?.textContent).toBe("テスト");
+    expect([...richText!.querySelectorAll("img")].map((image) => image.alt)).toEqual(["Done", "OK"]);
+
+    await act(async () => root.unmount());
+  });
+
+  it("translates an incoming media caption but keeps quoted previews raw", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const mediaMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-media-1",
+      localId: "translation-media-1",
+      type: "image",
+      content: "/media/image.jpg",
+      ext: { caption: "测试测试", thumbnailUrl: "/media/thumb.jpg" }
+    };
+    const quotedText: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-text-1",
+      localId: "translation-quoted-text-1",
+      type: "text",
+      content: "测试测试"
+    };
+    const quotedMedia: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-media-1",
+      localId: "translation-quoted-media-1",
+      type: "video",
+      content: "/media/video.mp4",
+      ext: { caption: "测试测试", thumbnailUrl: "/media/video.jpg" }
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-main-media-caption": "true" },
+          createElement(MessageBubble, { message: mediaMessage, isMine: false, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-text": "true" },
+          createElement(ImQuotedMessagePreview, { message: quotedText })
+        ),
+        createElement("section", { "data-test-quoted-media-caption": "true" },
+          createElement(ImQuotedMessagePreview, { message: quotedMedia })
+        )
+      ));
+    });
+
+    expect(container.querySelector('[data-test-main-media-caption] [data-no-i18n]')?.textContent).toBe("テストテスト");
+    expect(container.querySelector('[data-test-quoted-text] [data-no-i18n]')?.textContent).toBe("测试测试");
+    expect(container.querySelector('[data-test-quoted-media-caption] [data-im-quoted-media-caption="true"] [data-no-i18n]')?.textContent).toBe("测试测试");
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps actual file names raw and protected with translation enabled or disabled", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const fileMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-file-name-1",
+      localId: "translation-file-name-1",
+      type: "file",
+      content: "/media/file.bin",
+      ext: { fileName: "文件" }
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-main-file-name": "true" },
+          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-file-name-enabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
+        ),
+        createElement("section", { "data-test-quoted-file-name-disabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
+        )
+      ));
+    });
+
+    for (const selector of [
+      "[data-test-main-file-name]",
+      "[data-test-quoted-file-name-enabled]",
+      "[data-test-quoted-file-name-disabled]",
+    ]) {
+      const fileRoot = container.querySelector<HTMLElement>(selector);
+      expect(fileRoot?.textContent).toContain("文件");
+      expect(fileRoot?.textContent).not.toContain("ファイル");
+      expect(fileRoot?.querySelector("[data-no-i18n]")?.textContent).toBe("文件");
+    }
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps quoted file captions raw even when bubble translation is enabled", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const fileMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-file-caption-1",
+      localId: "translation-file-caption-1",
+      type: "file",
+      content: "/media/file.bin",
+      ext: { caption: "测试测试", fileName: "文件" }
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-quoted-file-caption-enabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
+        ),
+        createElement("section", { "data-test-quoted-file-caption-disabled": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
+        )
+      ));
+    });
+
+    expect(container.querySelector("[data-test-quoted-file-caption-enabled]")?.textContent).toBe("测试测试");
+    expect(container.querySelector("[data-test-quoted-file-caption-disabled]")?.textContent).toBe("测试测试");
+
+    await act(async () => root.unmount());
+  });
+
+  it("leaves quoted and main fallback file labels on normal UI i18n", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const fileMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-file-fallback-1",
+      localId: "translation-file-fallback-1",
+      type: "file",
+      content: "/media/file.bin"
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-main-file-fallback": "true" },
+          createElement(MessageBubble, { message: fileMessage, isMine: true, translation: japaneseTranslation })
+        ),
+        createElement("section", { "data-test-quoted-file-fallback": "true" },
+          createElement(ImQuotedMessagePreview, { message: fileMessage })
+        )
+      ));
+    });
+
+    for (const selector of ["[data-test-main-file-fallback]", "[data-test-quoted-file-fallback]"]) {
+      const fallbackRoot = container.querySelector<HTMLElement>(selector);
+      expect(fallbackRoot?.textContent).toContain("文件");
+      expect(fallbackRoot?.querySelector("[data-no-i18n]")).toBeNull();
+    }
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps quoted system and recalled labels outside the user text translation boundary", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const systemMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-system-1",
+      localId: "translation-quoted-system-1",
+      type: "system",
+      content: "测试测试"
+    };
+    const recalledMessage: ConversationMessage = {
+      ...messageBase,
+      id: "translation-quoted-recalled-1",
+      localId: "translation-quoted-recalled-1",
+      senderId: "current-user",
+      type: "text",
+      content: "",
+      status: "recalled"
+    };
+
+    await act(async () => {
+      root.render(createElement("div", null,
+        createElement("section", { "data-test-quoted-system": "true" },
+          createElement(ImQuotedMessagePreview, { message: systemMessage })
+        ),
+        createElement("section", { "data-test-quoted-recalled": "true" },
+          createElement(ImQuotedMessagePreview, { message: recalledMessage })
+        )
+      ));
+    });
+
+    const systemRoot = container.querySelector<HTMLElement>("[data-test-quoted-system]");
+    const recalledRoot = container.querySelector<HTMLElement>("[data-test-quoted-recalled]");
+    expect(systemRoot?.textContent).toBe("测试测试");
+    expect(recalledRoot?.textContent).toBe("撤回消息");
+    expect(systemRoot?.querySelector("[data-no-i18n]")).toBeNull();
+    expect(recalledRoot?.querySelector("[data-no-i18n]")).toBeNull();
+    expect(systemRoot?.querySelector("[data-im-message-rich-text]")).toBeNull();
+    expect(recalledRoot?.querySelector("[data-im-message-rich-text]")).toBeNull();
 
     await act(async () => root.unmount());
   });

@@ -190,6 +190,50 @@ capacity tier.
 
 All portals require a formal authenticated session. Local preview, acceptance, and production use the same authorization path.
 
+### Formal Social single reply acceptance
+
+The canonical Social reply surface is the post detail page in every portal. Historical reply URLs immediately replace themselves with that detail route and focus the fixed chat-style composer; they never mount a second reply UI. A direct detail link hydrates its parent with `GET /api/v1/social/posts/:id` and loads every reply page through the first-class `replyToPostId` list filter, so older posts and threads beyond the 100-item bootstrap window remain complete across realtime refreshes. The additive migration is `20260831000000_social_reply_relation`. Run the guarded local checks before and after applying it:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:social-reply-relations -- --phase=preflight
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run check:social-reply-relations -- --phase=postflight
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+```
+
+The checker rejects production-like or remote databases. Preflight writes its recoverable legacy snapshot only under ignored `backend/.data/`; postflight requires the same total post count, the expected backfilled relations, zero orphan relations, and the reply index and foreign key.
+
+Use this route matrix with authenticated formal accounts. In each row, verify the header is `回复动态`, the reply icon count equals `回复列表`, every reply is an independent card, both historical routes replace to the canonical detail, and the bottom composer retains avatar, emoji, and the shared `+` actions `相册 / 拍照 / 位置`.
+
+| Portal | Canonical detail | Historical reply deep link | Historical compose link |
+|---|---|---|---|
+| Customer | `user.html#/moments/posts/:postId` | `user.html#/moments/posts/:postId/replies` | `user.html#/moments/compose?replyToPostId=:postId` |
+| Merchant | `merchant.html#/merchant/moments/posts/:postId` | `merchant.html#/merchant/moments/posts/:postId/replies` | `merchant.html#/merchant/moments/compose?replyToPostId=:postId` |
+| Technician | `technician.html#/technician/moments/posts/:postId` | `technician.html#/technician/moments/posts/:postId/replies` | `technician.html#/technician/moments/compose?replyToPostId=:postId` |
+
+Submit text, a judgement sticker, an image, and a location through the formal API, then reload. The detail count and list total must match; the judgement must remain an SVG image, the uploaded media and location must remain visible inside their reply cards, and unstructured plain text such as `Pending` must remain text. Repeat at 440×956 and 320×956 while checking horizontal overflow, the last card above the fixed composer, console errors, and failed requests. Before judging the result, confirm ports 5180 and 3000 belong to the intended worktree/runtime; a listener from another worktree is not valid acceptance evidence.
+
+Local acceptance recorded on 2026-08-31 used `needo_dev`: preflight found 51,818 posts and four valid legacy reply relations; postflight kept the same post total, backfilled all four relations, reported zero orphans, and found the required index and foreign key. The final isolated regression run passed 255 frontend files / 1,577 tests and 326 backend suites / 2,166 tests, with 10 suites / 38 environment-conditional backend tests reported as skipped. Authenticated user, merchant, and technician routes were checked at mobile widths; the four formal reply types were submitted to post `64773`, and reload showed the authoritative count and list total both at seven with sticker, image, and location presentation preserved. A final isolated merchant-browser check opened older post `64000` directly; the runtime issued both `GET /api/v1/social/posts/64000` and `GET /api/v1/social/posts?page=1&pageSize=100&replyToPostId=64000`, then rendered the canonical detail instead of the not-found state.
+
+### Formal Social interaction acceptance
+
+Likes, bookmarks, unique views, and friend shares are persisted by migration `20260831150000_social_post_interactions`; the timeline no longer increments these counters in browser-only state. `PUT/DELETE /api/v1/social/posts/:id/like` and `PUT/DELETE /api/v1/social/posts/:id/bookmark` return the authoritative post, `POST /api/v1/social/posts/:id/view` counts one active identity only once, and `POST /api/v1/social/posts/:id/shares` requires an `Idempotency-Key` plus 1–20 unique formal-friend user IDs. Every route requires `social-post:interact`; friend sharing additionally requires `message:create` and creates a real direct-conversation `social-post-card` message instead of a public repost.
+
+`GET /api/v1/social/posts?bookmarked=true&page=1&pageSize=20` is the formal source for the customer-center `/me/favorites` page. Timeline, detail, and favorites consume the same returned `counters` and `viewerInteraction` fields. The SSE event `social.post.interaction.updated` refreshes the relevant formal post, while `message.created` delivers a newly shared card to sender and recipient. Legacy media-envelope counters remain a read-only baseline for existing seeded posts; new interaction rows are added to that baseline without rewriting old media JSON.
+
+Before local data acceptance, confirm the backend and frontend listeners belong to the intended checkout and inspect migration status first. Apply the additive migration only when the repository history, `_prisma_migrations`, and physical schema are reconciled:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+# Run only after the read-only checks are consistent:
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+```
+
+The 2026-08-31 local `needo_dev` Social migration is now applied. The successful `_prisma_migrations` row has checksum `408ae19a...`, matching the committed migration; the earlier overlong-index attempt is recorded as rolled back. Read-only physical-schema checks found all four tables, their foreign keys and shortened unique share index, and the five intended role grants. `prisma migrate status` reports all 80 repository migrations applied. The database still contains unrelated migration history that is absent from this checkout; this acceptance did not repair, delete, or reinterpret those rows and must not be used as authority to copy that unrelated schema into this repository.
+
+Local acceptance used the formal `sim.customer.100@needo.local` identity, post `64774`, one bilateral friend, backend `3000`, frontend `5180`, MySQL `3307`, and Redis `6379`. It verified authoritative like/unlike persistence, favorites add/remove, one unique view per identity, one `social-post-card` message in the existing friendship conversation, idempotent replay without a duplicate count/message, actor interaction SSE, and recipient message SSE. The guarded checker then deleted the exact temporary interaction, message, share, and audit rows and restored the conversation and participant snapshots. At 440×956, the browser verified detail-view count persistence across reload, the `/me/favorites` entry and refresh persistence, the 12-friend forwarding selector and send-button gate, no horizontal overflow, and zero console errors; the browser-created bookmark/view and their audits were also removed by exact ID.
+
 ### Formal friend verification
 
 Adding a contact now uses the persisted Step 13 friend-request flow rather than direct Contact creation. Search opens the target's formal identity profile first; a request remains actionable for exactly 72 hours by database UTC time. Repeating the same pending request does not refresh its timestamp or notification, while rejection permits immediate reapplication and expiry permits a newly notified request. Acceptance atomically creates reciprocal Contact and Follow rows.
@@ -197,6 +241,12 @@ Adding a contact now uses the persisted Step 13 friend-request flow rather than 
 Deleting a friendship physically removes both Contact directions and both Follow directions. It also removes only the deleter's participant row from the friendship conversation, so the deleter loses the one-to-one conversation and history entry while the other account retains its history. A retained non-friend conversation cannot send new messages: the backend returns `error.im.not_friends` before message, unread, or SSE writes. Re-acceptance creates a new participant history boundary and does not restore the deleter's old history. Manual Social follow/unfollow remains independent from Contact after friendship creation.
 
 The chat information page reads the same formal directory profile and renders the contact's customer, technician, shop, or safe account identity card. The customer portal omits the credit summary from this chat-settings card, while technician and merchant/shop portals retain it; this does not change the customer's own personal-center credit display. City is not rendered in chat settings, and customer basic information always keeps gender, age, and height with explicit private/not-set states. Points, usage count, and the personal-profile privacy toggle are not included. A retained conversation whose friendship was removed shows the formal add-friend action instead of an empty friend-action area. Full state, API, migration, and acceptance rules are documented in [`docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`](docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md#616-好友验证双向解除与身份资料卡2026-08-30).
+
+### Formal per-conversation chat translation
+
+One-to-one contact information now includes a default-off “聊天内容自动翻译” preference. The value belongs to the authenticated active identity's `ConversationParticipant` for that conversation, is updated through the formal preferences API, and changes the rendered text only after the server-confirmed conversation payload returns. Enabling it translates only the other party's message-bubble body in the current App language, including the other party's image/video caption. The current user's messages, quoted previews, conversation/search/pinned previews, copied text, system messages, file names, cards, and judgement stickers remain unchanged. Disabling it immediately renders the unchanged raw message again. Group information does not expose this switch, and translated display text is never written into the IM store, message payload, or database.
+
+Contact identity cards normalize stored language aliases to full labels such as `日本語`, `中文`, `English`, `한국어`, `ไทย`, `Tiếng Việt`, and `Español`, deduplicate equivalent aliases, retain unknown non-empty formal values, and wrap pills on narrow screens. Friendship classification now requires reciprocal active Contact rows whose source is `friend_request`; technician-application contacts do not suppress a real pending request. An active incoming request remains on the independent `拒绝` / `添加好友` action page, while an outgoing request remains read-only. Technician languages and the public-profile fallback are returned only from eligible persisted public profiles. The complete behavior, automated evidence, current production-build gate, migration, and still-pending database/browser acceptance are recorded in [`docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`](docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md#621-单聊自动翻译语言能力与待处理好友资料修复2026-08-31).
 
 ## Formal Merchant Employee Affiliations
 
@@ -310,6 +360,8 @@ The technician portal's visible order tab is also identity-scoped to the formal 
 Authenticated customer identities now receive an API-backed “My” page. `GET /api/v1/customer-profile/me` resolves the profile solely from the active customer identity, and `PATCH /api/v1/customer-profile/me` persists a non-empty, Zod-validated partial edit with `customer-profile:read` / `customer-profile:write` permissions. Clients cannot select a profile ID. Successful writes use the `customer_profile.self_update` audit action and return the current persisted profile so the card updates without a browser-storage merge. Each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`.
 
 On `/me`, the information card switches in place between normal and editable state. The top-right control is an edit action normally and a red X while editing; cancelling discards only the current draft. The ordinary user bottom navigation is disabled for the view, loading, error, editing, and saving states. Editing shows the single viewport-fixed “保存并退出编辑模式” action with safe-area spacing, while NDP, usage count, credit score, NeeDo ID, and membership level remain read-only. Profile reads and writes always use the formal authenticated API.
+
+Shop membership is a separate, shop-scoped relationship from the NeeDo platform-level `CustomerProfile.membershipLevel`. Merchant membership routes live under `/api/v1/merchant-admin/shop-memberships`, `/api/v1/merchant-admin/shop-membership-candidates`, `/api/v1/merchant-admin/shop-membership-cards`, `/api/v1/merchant-admin/shop-membership-activities`, and `/api/v1/merchant-admin/shop-membership-analytics`; every query derives the shop from the active authenticated `shop` identity. Customer self-service reads use `/api/v1/customer-profile/me/shop-memberships` and never accept a user or profile ID. `merchant_owner` receives view, create, analytics, and operation-log permissions, while `merchant_staff` receives only `shop.member.view`. Creating a shop membership requires a persisted booking relationship and writes `merchant.shop_membership.create` audit evidence in the same transaction. The `Test` badge marks feature maturity only: all data is persisted API/MySQL data. Card issuing, top-up, redemption, and refund remain deferred as four independent microsteps; the current card surface is read-only and creates no demo records.
 
 Customer avatars are accepted only as bounded JPEG, PNG, or WebP data URLs, stored under a SHA-256 content hash, and exposed as immutable files under `/media/customer-avatars/:contentHash.ext`; original browser data URLs are never stored in MySQL. Configure `CUSTOMER_AVATAR_STORAGE_DIR` (local default: `runtime/customer-avatars`) and `CUSTOMER_AVATAR_PUBLIC_BASE_URL` (local default: `http://localhost:3000/media/customer-avatars`). Production requires an HTTPS avatar public base URL.
 

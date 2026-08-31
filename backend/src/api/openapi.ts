@@ -5,6 +5,7 @@ import {
   IM_PRIVACY_TTL_MAX_SECONDS,
   IM_PRIVACY_TTL_MIN_SECONDS
 } from "../constants/im-privacy";
+import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 
 type OpenApiDocument = Record<string, unknown>;
 
@@ -53,6 +54,42 @@ const authJsonBody = (properties: Record<string, unknown>, required: string[] = 
     }
   }
 });
+
+const socialRichTextOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["version", "parts"],
+  properties: {
+    version: { type: "integer", enum: [1] },
+    parts: {
+      type: "array",
+      minItems: 1,
+      maxItems: 100,
+      items: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "value"],
+            properties: {
+              type: { type: "string", enum: ["text"] },
+              value: { type: "string", minLength: 1, maxLength: 5000 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "value"],
+            properties: {
+              type: { type: "string", enum: ["judgement"] },
+              value: { type: "string", enum: MESSAGE_JUDGEMENT_REACTIONS }
+            }
+          }
+        ]
+      }
+    }
+  }
+};
 
 const socialPostWriteRequestBody = {
   required: true,
@@ -111,7 +148,8 @@ const socialPostWriteRequestBody = {
                 type: "string",
                 enum: ["post", "reply", "quote", "repost", "announcement", "technician-daily"]
               },
-              locationLabel: { type: "string", maxLength: 160 }
+              locationLabel: { type: "string", maxLength: 160 },
+              richText: socialRichTextOpenApiSchema
             }
           },
           mentionUserIds: {
@@ -191,6 +229,289 @@ const orderAcceptancePauseListParameters = [
   },
   { name: "subjectId", in: "query", schema: { type: "integer", minimum: 1 } }
 ];
+
+const shopMembershipErrorResponses = {
+  "400": { description: "error.validation — strict shop membership request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
+  "404": { description: "error.shop_membership.not_found — membership, shop, or eligible customer does not exist in the active scope" },
+  "409": { description: "error.shop_membership.already_active — the customer already has an active membership in this shop" }
+};
+
+const shopMembershipCardPlanErrorResponses = {
+  "400": { description: "error.validation — strict membership card plan request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
+  "404": { description: "error.shop_membership_card_plan.not_found or error.shop_membership_card_plan.rule_reference_not_found" },
+  "409": { description: "error.shop_membership_card_plan.version_conflict, invalid_state, or membership reward fee policy conflict" }
+};
+
+const membershipRewardScopeOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    servicePublicIds: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "string", format: "uuid" } },
+    categoryCodes: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 100 } },
+    excludedServicePublicIds: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "string", format: "uuid" } },
+    excludedCategoryCodes: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 100 } },
+    activeFrom: { type: ["string", "null"], format: "date-time" },
+    activeTo: { type: ["string", "null"], format: "date-time" }
+  }
+};
+
+const membershipRewardRuleObject = (
+  kind: string,
+  properties: Record<string, unknown>,
+  required: string[]
+) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["kind", ...required],
+  properties: {
+    kind: { type: "string", enum: [kind] },
+    ...properties,
+    scope: membershipRewardScopeOpenApiSchema
+  }
+});
+
+const membershipRewardRuleOpenApiSchemas = {
+  MembershipRewardScope: membershipRewardScopeOpenApiSchema,
+  MembershipRewardRuleFixedPerCompletion: membershipRewardRuleObject("fixed_per_completion", { rewardNdp: { type: "integer", minimum: 0 } }, ["rewardNdp"]),
+  MembershipRewardRulePercentOfEligibleAmount: membershipRewardRuleObject("percent_of_eligible_amount", { rewardRateBps: { type: "integer", minimum: 0, maximum: 10_000 } }, ["rewardRateBps"]),
+  MembershipRewardRuleSpendBlock: membershipRewardRuleObject("spend_block", { blockAmountJpy: { type: "integer", minimum: 1 }, rewardNdpPerBlock: { type: "integer", minimum: 0 } }, ["blockAmountJpy", "rewardNdpPerBlock"]),
+  MembershipRewardRuleFirstCardUseBonus: membershipRewardRuleObject("first_card_use_bonus", { rewardNdp: { type: "integer", minimum: 0 } }, ["rewardNdp"]),
+  MembershipRewardRuleServiceScopeBonus: membershipRewardRuleObject("service_scope_bonus", { rewardNdp: { type: ["integer", "null"], minimum: 0 }, rewardRateBps: { type: ["integer", "null"], minimum: 0, maximum: 10_000 } }, []),
+  MembershipRewardRuleCompletionMilestoneBonus: membershipRewardRuleObject("completion_milestone_bonus", { everyCompletions: { type: "integer", minimum: 1 }, rewardNdp: { type: "integer", minimum: 0 }, repeat: { type: "boolean" } }, ["everyCompletions", "rewardNdp", "repeat"]),
+  MembershipRewardRuleSpendMilestoneBonus: membershipRewardRuleObject("spend_milestone_bonus", { thresholdJpy: { type: "integer", minimum: 1 }, rewardNdp: { type: "integer", minimum: 0 }, repeat: { type: "boolean" } }, ["thresholdJpy", "rewardNdp", "repeat"]),
+  MembershipRewardRuleBirthdayMonthBonus: membershipRewardRuleObject("birthday_month_bonus", { rewardNdp: { type: "integer", minimum: 0 }, annualLimit: { type: "integer", minimum: 1, maximum: 12 } }, ["rewardNdp", "annualLimit"]),
+  MembershipRewardRuleScheduleWindowBonus: membershipRewardRuleObject("schedule_window_bonus", { rewardNdp: { type: "integer", minimum: 0 }, timezone: { type: "string", enum: ["Asia/Tokyo"] }, daysOfWeek: { type: "array", minItems: 1, maxItems: 7, uniqueItems: true, items: { type: "integer", minimum: 0, maximum: 6 } }, startTime: { type: "string", pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }, endTime: { type: "string", pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" } }, ["rewardNdp", "timezone", "daysOfWeek", "startTime", "endTime"]),
+  MembershipRewardRuleConsecutiveMonthBonus: membershipRewardRuleObject("consecutive_month_bonus", { consecutiveMonths: { type: "integer", minimum: 2, maximum: 60 }, rewardNdp: { type: "integer", minimum: 0 } }, ["consecutiveMonths", "rewardNdp"]),
+  MembershipRewardRule: {
+    oneOf: [
+      { $ref: "#/components/schemas/MembershipRewardRuleFixedPerCompletion" },
+      { $ref: "#/components/schemas/MembershipRewardRulePercentOfEligibleAmount" },
+      { $ref: "#/components/schemas/MembershipRewardRuleSpendBlock" },
+      { $ref: "#/components/schemas/MembershipRewardRuleFirstCardUseBonus" },
+      { $ref: "#/components/schemas/MembershipRewardRuleServiceScopeBonus" },
+      { $ref: "#/components/schemas/MembershipRewardRuleCompletionMilestoneBonus" },
+      { $ref: "#/components/schemas/MembershipRewardRuleSpendMilestoneBonus" },
+      { $ref: "#/components/schemas/MembershipRewardRuleBirthdayMonthBonus" },
+      { $ref: "#/components/schemas/MembershipRewardRuleScheduleWindowBonus" },
+      { $ref: "#/components/schemas/MembershipRewardRuleConsecutiveMonthBonus" }
+    ],
+    discriminator: { propertyName: "kind" }
+  }
+};
+
+const nullableNonNegativeInteger = { type: ["integer", "null"], minimum: 0 };
+const shopMembershipCardPlanOpenApiSchemas = {
+  ...membershipRewardRuleOpenApiSchemas,
+  MembershipRewardCaps: {
+    type: "object", additionalProperties: false,
+    required: ["perOrderNdp", "perDayNdp", "perMonthNdp", "lifetimeNdp"],
+    properties: { perOrderNdp: nullableNonNegativeInteger, perDayNdp: nullableNonNegativeInteger, perMonthNdp: nullableNonNegativeInteger, lifetimeNdp: nullableNonNegativeInteger }
+  },
+  ShopMembershipCardPlanValidity: {
+    oneOf: [
+      { type: "object", additionalProperties: false, required: ["mode"], properties: { mode: { type: "string", enum: ["never"] } } },
+      { type: "object", additionalProperties: false, required: ["mode", "days"], properties: { mode: { type: "string", enum: ["fixed_days"] }, days: { type: "integer", minimum: 1, maximum: 3650 } } },
+      { type: "object", additionalProperties: false, required: ["mode", "expiresAt"], properties: { mode: { type: "string", enum: ["fixed_date"] }, expiresAt: { type: "string", format: "date-time" } } }
+    ], discriminator: { propertyName: "mode" }
+  },
+  ShopMembershipCardPlanIssuance: {
+    type: "object", additionalProperties: false,
+    required: ["minInitialPrincipalJpy", "maxInitialPrincipalJpy", "minInitialUses", "maxInitialUses"],
+    properties: { minInitialPrincipalJpy: nullableNonNegativeInteger, maxInitialPrincipalJpy: nullableNonNegativeInteger, minInitialUses: nullableNonNegativeInteger, maxInitialUses: nullableNonNegativeInteger }
+  },
+  ShopMembershipCardIssuanceRequest: {
+    type: "object", additionalProperties: false,
+    required: ["planPublicId", "initialPrincipalJpy", "initialUses", "issuanceSource", "issuanceReference", "issuanceNote", "idempotencyKey"],
+    properties: {
+      planPublicId: { type: "string", format: "uuid" },
+      initialPrincipalJpy: nullableNonNegativeInteger,
+      initialUses: nullableNonNegativeInteger,
+      issuanceSource: { type: "string", enum: ["offline_paid", "historical_replacement", "manual_grant"] },
+      issuanceReference: { type: ["string", "null"], maxLength: 160 },
+      issuanceNote: { type: ["string", "null"], maxLength: 500 },
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+    }
+  },
+  ShopMembershipCardIssuanceResult: {
+    type: "object", additionalProperties: false,
+    required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "initialPrincipalJpy", "initialUses", "issuanceSource", "issuanceReference", "issuanceNote", "issuedAt", "expiresAt", "frozenAt", "platformFeeRateBpsSnapshot", "planPublicId", "planVersionPublicId", "planVersion", "customerNeedoId", "customerDisplayName", "replayed"],
+    properties: {
+      publicId: { type: "string", format: "uuid" },
+      cardNoMasked: { type: "string" },
+      name: { type: "string", minLength: 1, maxLength: 120 },
+      type: { type: "string", enum: ["stored_value", "count", "benefit"] },
+      status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
+      principalBalanceJpy: nullableNonNegativeInteger,
+      bonusBalanceJpy: nullableNonNegativeInteger,
+      remainingUses: nullableNonNegativeInteger,
+      totalUses: nullableNonNegativeInteger,
+      initialPrincipalJpy: nullableNonNegativeInteger,
+      initialUses: nullableNonNegativeInteger,
+      issuanceSource: { type: "string", enum: ["offline_paid", "historical_replacement", "manual_grant"] },
+      issuanceReference: { type: ["string", "null"], maxLength: 160 },
+      issuanceNote: { type: ["string", "null"], maxLength: 500 },
+      issuedAt: { type: "string", format: "date-time" },
+      expiresAt: { type: ["string", "null"], format: "date-time" },
+      frozenAt: { type: ["string", "null"], format: "date-time" },
+      platformFeeRateBpsSnapshot: { type: "integer", minimum: 0, maximum: 10_000 },
+      planPublicId: { type: "string", format: "uuid" },
+      planVersionPublicId: { type: "string", format: "uuid" },
+      planVersion: { type: "integer", minimum: 1 },
+      customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+      customerDisplayName: { type: "string", minLength: 1 },
+      replayed: { type: "boolean" }
+    }
+  },
+  ShopMembershipCardPlanDraftRequest: {
+    type: "object", additionalProperties: false,
+    required: ["expectedLockVersion", "name", "description", "cardType", "validity", "issuance", "caps", "rules"],
+    properties: {
+      expectedLockVersion: { type: "integer", minimum: 0 },
+      name: { type: "string", minLength: 1, maxLength: 120 },
+      description: { type: ["string", "null"], maxLength: 500 },
+      cardType: { type: "string", enum: ["stored_value", "count", "benefit"] },
+      validity: { $ref: "#/components/schemas/ShopMembershipCardPlanValidity" },
+      issuance: { $ref: "#/components/schemas/ShopMembershipCardPlanIssuance" },
+      caps: { $ref: "#/components/schemas/MembershipRewardCaps" },
+      rules: { type: "array", minItems: 1, maxItems: 21, items: { $ref: "#/components/schemas/MembershipRewardRule" } }
+    }
+  },
+  ShopMembershipCardPlanPreviewRequest: {
+    type: "object", additionalProperties: false,
+    required: ["eligibleAmountJpy", "servicePublicId", "categoryCode", "scheduledAt", "completedCountBefore", "lifetimeEligibleSpendJpyBefore", "isFirstCardUse", "customerBirthMonth", "birthdayRewardsThisYear", "consecutiveEligibleMonths", "rewardedConsecutiveMonthMilestones", "alreadyRewardedTodayNdp", "alreadyRewardedMonthNdp", "alreadyRewardedLifetimeNdp"],
+    properties: {
+      eligibleAmountJpy: { type: "integer", minimum: 0 }, servicePublicId: { type: "string", format: "uuid" }, categoryCode: { type: "string", minLength: 1, maxLength: 100 }, scheduledAt: { type: "string", format: "date-time" }, completedCountBefore: { type: "integer", minimum: 0 }, lifetimeEligibleSpendJpyBefore: { type: "integer", minimum: 0 }, isFirstCardUse: { type: "boolean" }, customerBirthMonth: { type: ["integer", "null"], minimum: 1, maximum: 12 }, birthdayRewardsThisYear: { type: "integer", minimum: 0 }, consecutiveEligibleMonths: { type: "integer", minimum: 0 }, rewardedConsecutiveMonthMilestones: { type: "array", maxItems: 100, items: { type: "integer", minimum: 1 } }, alreadyRewardedTodayNdp: { type: "integer", minimum: 0 }, alreadyRewardedMonthNdp: { type: "integer", minimum: 0 }, alreadyRewardedLifetimeNdp: { type: "integer", minimum: 0 }
+    }
+  },
+  ShopMembershipCardPlanPublishRequest: { type: "object", additionalProperties: false, required: ["expectedLockVersion"], properties: { expectedLockVersion: { type: "integer", minimum: 0 } } },
+  ShopMembershipCardPlan: {
+    type: "object", additionalProperties: false,
+    required: ["publicId", "status", "currentVersion", "draftVersion", "createdAt", "updatedAt"],
+    properties: { publicId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["draft", "active", "retired"] }, currentVersion: { type: ["object", "null"] }, draftVersion: { type: ["object", "null"] }, createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" } }
+  },
+  ShopMembershipRewardPreview: {
+    type: "object", additionalProperties: false,
+    required: ["hits", "rawCustomerRewardNdp", "customerRewardNdp", "platformFeeRateBps", "platformFeeNdp", "totalShopDebitNdp", "capped"],
+    properties: { hits: { type: "array", items: { type: "object" } }, rawCustomerRewardNdp: { type: "integer", minimum: 0 }, customerRewardNdp: { type: "integer", minimum: 0 }, platformFeeRateBps: { type: "integer", minimum: 0, maximum: 10_000 }, platformFeeNdp: { type: "integer", minimum: 0 }, totalShopDebitNdp: { type: "integer", minimum: 0 }, capped: { type: "boolean" } }
+  },
+  MembershipRewardFeeVersionCreateRequest: {
+    type: "object", additionalProperties: false,
+    required: ["feeRateBps", "expectedVersion", "effectiveFrom", "reason"],
+    properties: { feeRateBps: { type: "integer", minimum: 0, maximum: 10_000 }, expectedVersion: { type: "integer", minimum: 0 }, effectiveFrom: { type: "string", format: "date-time" }, reason: { type: "string", minLength: 1, maxLength: 500 } }
+  },
+  MembershipRewardFeePolicyOverview: { type: "object", additionalProperties: false, required: ["summary", "history"], properties: { summary: { type: "object" }, history: { type: "object" } } }
+};
+
+const membershipCardPlanRequestBody = (schemaName: string) => ({
+  required: true,
+  content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } }
+});
+
+const membershipCardPlanPublicIdParameter = {
+  name: "publicId", in: "path", required: true,
+  schema: { type: "string", format: "uuid" }
+};
+
+const createShopMembershipCardPlanOpenApiPaths = (config: AppConfig): Record<string, unknown> => ({
+  [`${config.API_PREFIX}/merchant-admin/shop-memberships/{publicId}/cards`]: {
+    post: {
+      tags: ["Shop Membership"],
+      summary: "Issue a membership card from the current published plan version",
+      description: "Creates the card, audit record, and customer notification atomically. Initial issuance does not reward NDP or mutate wallets or ledgers.",
+      security: [{ bearerAuth: [] }],
+      parameters: [membershipCardPlanPublicIdParameter],
+      requestBody: membershipCardPlanRequestBody("ShopMembershipCardIssuanceRequest"),
+      responses: {
+        "200": jsonDataResponse("Idempotent replay of the existing issued card", { $ref: "#/components/schemas/ShopMembershipCardIssuanceResult" }),
+        "201": jsonDataResponse("Created membership card", { $ref: "#/components/schemas/ShopMembershipCardIssuanceResult" }),
+        ...shopMembershipCardPlanErrorResponses
+      }
+    }
+  },
+  [`${config.API_PREFIX}/merchant-admin/shop-membership-card-plans`]: {
+    get: {
+      tags: ["Shop Membership Card Plan"], summary: "List membership card plans in the current shop", security: [{ bearerAuth: [] }],
+      parameters: [{ name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }],
+      responses: { "200": jsonDataResponse("Paginated card plans", { type: "object" }), ...shopMembershipCardPlanErrorResponses }
+    },
+    post: {
+      tags: ["Shop Membership Card Plan"], summary: "Create a shop-scoped card plan draft", description: "The authenticated shop scope is authoritative. Client shop ids and fee rates are rejected.", security: [{ bearerAuth: [] }],
+      requestBody: membershipCardPlanRequestBody("ShopMembershipCardPlanDraftRequest"),
+      responses: { "201": jsonDataResponse("Created card plan draft", { $ref: "#/components/schemas/ShopMembershipCardPlan" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  },
+  [`${config.API_PREFIX}/merchant-admin/shop-membership-card-plans/{publicId}`]: {
+    get: {
+      tags: ["Shop Membership Card Plan"], summary: "Read one card plan in the current shop", security: [{ bearerAuth: [] }], parameters: [membershipCardPlanPublicIdParameter],
+      responses: { "200": jsonDataResponse("Card plan", { $ref: "#/components/schemas/ShopMembershipCardPlan" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  },
+  [`${config.API_PREFIX}/merchant-admin/shop-membership-card-plans/{publicId}/draft`]: {
+    patch: {
+      tags: ["Shop Membership Card Plan"], summary: "Save a version-locked card plan draft", security: [{ bearerAuth: [] }], parameters: [membershipCardPlanPublicIdParameter], requestBody: membershipCardPlanRequestBody("ShopMembershipCardPlanDraftRequest"),
+      responses: { "200": jsonDataResponse("Updated card plan draft", { $ref: "#/components/schemas/ShopMembershipCardPlan" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  },
+  [`${config.API_PREFIX}/merchant-admin/shop-membership-card-plans/{publicId}/preview`]: {
+    post: {
+      tags: ["Shop Membership Card Plan"], summary: "Preview NDP reward and shop cost without wallet mutation", security: [{ bearerAuth: [] }], parameters: [membershipCardPlanPublicIdParameter], requestBody: membershipCardPlanRequestBody("ShopMembershipCardPlanPreviewRequest"),
+      responses: { "200": jsonDataResponse("Server-authoritative reward preview", { $ref: "#/components/schemas/ShopMembershipRewardPreview" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  },
+  [`${config.API_PREFIX}/merchant-admin/shop-membership-card-plans/{publicId}/publish`]: {
+    post: {
+      tags: ["Shop Membership Card Plan"], summary: "Publish an immutable card plan version with the effective fee snapshot", security: [{ bearerAuth: [] }], parameters: [membershipCardPlanPublicIdParameter], requestBody: membershipCardPlanRequestBody("ShopMembershipCardPlanPublishRequest"),
+      responses: { "201": jsonDataResponse("Published card plan", { $ref: "#/components/schemas/ShopMembershipCardPlan" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  },
+  [`${config.API_PREFIX}/merchant-admin/shop-membership-card-plans/{publicId}/retire`]: {
+    post: {
+      tags: ["Shop Membership Card Plan"], summary: "Retire a card plan from future use", security: [{ bearerAuth: [] }], parameters: [membershipCardPlanPublicIdParameter],
+      responses: { "200": jsonDataResponse("Retired card plan", { $ref: "#/components/schemas/ShopMembershipCardPlan" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  },
+  [`${config.API_PREFIX}/backoffice/membership-reward-fee-policy`]: {
+    get: {
+      tags: ["Membership Reward Fee"], summary: "Read current, scheduled, and immutable membership reward fee history", security: [{ bearerAuth: [] }],
+      parameters: [{ name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }],
+      responses: { "200": jsonDataResponse("Fee policy overview", { $ref: "#/components/schemas/MembershipRewardFeePolicyOverview" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  },
+  [`${config.API_PREFIX}/backoffice/membership-reward-fee-policy/versions`]: {
+    post: {
+      tags: ["Membership Reward Fee"], summary: "Create an immutable membership reward fee version", description: "The fee is added on top of customer NDP and is snapshotted only when a card plan version is published.", security: [{ bearerAuth: [] }], requestBody: membershipCardPlanRequestBody("MembershipRewardFeeVersionCreateRequest"),
+      responses: { "201": jsonDataResponse("Created fee policy version", { type: "object" }), ...shopMembershipCardPlanErrorResponses }
+    }
+  }
+});
+
+const shopMembershipPageParameters = [
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+  { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+];
+
+const shopMembershipPublicIdParameter = {
+  name: "publicId",
+  in: "path",
+  required: true,
+  schema: { type: "string", format: "uuid" }
+};
+
+const shopMembershipPageSchema = (itemSchema: Record<string, unknown>) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["list", "total", "page", "page_size"],
+  properties: {
+    list: { type: "array", items: itemSchema },
+    total: { type: "integer", minimum: 0 },
+    page: { type: "integer", minimum: 1 },
+    page_size: { type: "integer", minimum: 1, maximum: 100 }
+  }
+});
 
 const affiliatePlatformFeeErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
@@ -964,6 +1285,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     schemas: {
+      ...shopMembershipCardPlanOpenApiSchemas,
       ExchangeActor: {
         type: "object",
         additionalProperties: false,
@@ -1479,6 +1801,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "participants",
           "lastMessage",
           "unreadCount",
+          "isPinned",
+          "isMuted",
+          "autoTranslateMessages",
           "privacyModeEnabled",
           "hideMemberProfiles",
           "disappearingTtlSeconds",
@@ -1504,6 +1829,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             anyOf: [{ $ref: "#/components/schemas/RealtimeMessage" }, { type: "null" }]
           },
           unreadCount: { type: "integer" },
+          isPinned: { type: "boolean" },
+          isMuted: { type: "boolean" },
+          autoTranslateMessages: { type: "boolean", default: false },
           privacyModeEnabled: { type: "boolean" },
           hideMemberProfiles: { type: "boolean" },
           disappearingTtlSeconds: {
@@ -1643,7 +1971,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" },
           relationship: {
             type: "string",
-            enum: ["none", "friend", "incoming_pending", "outgoing_pending"]
+            enum: ["none", "friend", "incoming_pending", "outgoing_pending", "self"]
           },
           contactId: { type: "integer", nullable: true },
           friendRequest: {
@@ -1682,13 +2010,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "authorIdentityId",
           "content",
           "media",
+          "replyToPostId",
+          "replyCount",
           "visibility",
           "createdAt",
           "updatedAt",
           "author",
           "viewerFollowsAuthor",
           "authorFollowsViewer",
-          "viewerIsFriend"
+          "viewerIsFriend",
+          "counters",
+          "viewerInteraction"
         ],
         properties: {
           id: { type: "integer" },
@@ -1696,6 +2028,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           authorIdentityId: { type: "integer" },
           content: { type: "string" },
           media: {},
+          replyToPostId: { type: "integer", nullable: true, minimum: 1 },
+          replyCount: { type: "integer", minimum: 0 },
           visibility: { type: "string", enum: ["public", "followers"] },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -1705,6 +2039,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "boolean",
             description:
               "True when the viewer and author have active, unblocked Contact rows in both directions."
+          },
+          counters: {
+            type: "object",
+            additionalProperties: false,
+            required: ["likes", "reposts", "views", "bookmarks"],
+            properties: {
+              likes: { type: "integer", minimum: 0 },
+              reposts: { type: "integer", minimum: 0 },
+              views: { type: "integer", minimum: 0 },
+              bookmarks: { type: "integer", minimum: 0 }
+            }
+          },
+          viewerInteraction: {
+            type: "object",
+            additionalProperties: false,
+            required: ["liked", "bookmarked", "shared"],
+            properties: {
+              liked: { type: "boolean" },
+              bookmarked: { type: "boolean" },
+              shared: { type: "boolean" }
+            }
           },
           author: { $ref: "#/components/schemas/SocialProfileSummary" }
         }
@@ -6604,6 +6959,174 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           taskAction: { $ref: "#/components/schemas/OfficialAnnouncementTaskAction" }
         }
       },
+      ShopMembershipStore: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "shopNo", "name", "city", "address"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopNo: { type: ["string", "null"], pattern: "^s[0-9]{9,10}$" },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          address: { type: "string", minLength: 1, maxLength: 255 }
+        }
+      },
+      ShopMembershipCard: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "initialPrincipalJpy", "initialUses", "issuanceSource", "platformFeeRateBpsSnapshot", "planPublicId", "planVersionPublicId", "planVersion", "issuedAt", "expiresAt", "frozenAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          cardNoMasked: { type: "string" },
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          type: { type: "string", enum: ["stored_value", "count", "benefit"] },
+          status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
+          principalBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+          bonusBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+          remainingUses: { type: ["integer", "null"], minimum: 0 },
+          totalUses: { type: ["integer", "null"], minimum: 0 },
+          initialPrincipalJpy: { type: ["integer", "null"], minimum: 0 },
+          initialUses: { type: ["integer", "null"], minimum: 0 },
+          issuanceSource: { type: ["string", "null"], enum: ["offline_paid", "historical_replacement", "manual_grant", null] },
+          platformFeeRateBpsSnapshot: { type: ["integer", "null"], minimum: 0, maximum: 10_000 },
+          planPublicId: { type: ["string", "null"], format: "uuid" },
+          planVersionPublicId: { type: ["string", "null"], format: "uuid" },
+          planVersion: { type: ["integer", "null"], minimum: 1 },
+          issuedAt: { type: "string", format: "date-time" },
+          expiresAt: { type: ["string", "null"], format: "date-time" },
+          frozenAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ShopMembership: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "customerNeedoId", "displayName", "avatarUrl", "city", "status", "source", "startedAt", "endedAt", "cardCount", "activeCardCount", "lastActivityAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          city: { type: ["string", "null"], maxLength: 100 },
+          status: { type: "string", enum: ["active", "ended"] },
+          source: { type: "string", enum: ["merchant_manual"] },
+          startedAt: { type: "string", format: "date-time" },
+          endedAt: { type: ["string", "null"], format: "date-time" },
+          cardCount: { type: "integer", minimum: 0 },
+          activeCardCount: { type: "integer", minimum: 0 },
+          lastActivityAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopMembershipDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/ShopMembership" },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["shop", "cards"],
+            properties: {
+              shop: { $ref: "#/components/schemas/ShopMembershipStore" },
+              cards: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCard" } }
+            }
+          }
+        ]
+      },
+      ShopMembershipActivity: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "action", "membershipPublicId", "customerNeedoId", "customerDisplayName", "actorName", "occurredAt"],
+        properties: {
+          id: { type: "string" },
+          action: { type: "string", enum: ["membership_created"] },
+          membershipPublicId: { type: "string", format: "uuid" },
+          customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          customerDisplayName: { type: "string" },
+          actorName: { type: "string" },
+          occurredAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopMembershipOverview: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shop", "activeMemberCount", "todayNewMemberCount", "activeCardCount", "expiringSoonCardCount", "recentActivities"],
+        properties: {
+          shop: { $ref: "#/components/schemas/ShopMembershipStore" },
+          activeMemberCount: { type: "integer", minimum: 0 },
+          todayNewMemberCount: { type: "integer", minimum: 0 },
+          activeCardCount: { type: "integer", minimum: 0 },
+          expiringSoonCardCount: { type: "integer", minimum: 0 },
+          recentActivities: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipActivity" } }
+        }
+      },
+      ShopMembershipAnalytics: {
+        type: "object",
+        additionalProperties: false,
+        required: ["period", "from", "to", "activeMemberCount", "newMemberCount", "cardStatusCounts", "dailyNewMembers"],
+        properties: {
+          period: { type: "string", enum: ["last7days", "last30days", "last90days"] },
+          from: { type: "string", format: "date-time" },
+          to: { type: "string", format: "date-time" },
+          activeMemberCount: { type: "integer", minimum: 0 },
+          newMemberCount: { type: "integer", minimum: 0 },
+          cardStatusCounts: { type: "object", additionalProperties: false },
+          dailyNewMembers: { type: "array", items: { type: "object", additionalProperties: false } }
+        }
+      },
+      ShopMembershipCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["customerNeedoId"],
+        properties: { customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" } }
+      },
+      ShopMembershipCandidate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["customerNeedoId", "displayName", "avatarUrl", "city", "lastOrderAt"],
+        properties: {
+          customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          city: { type: ["string", "null"], maxLength: 100 },
+          lastOrderAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopMembershipPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembership" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      CustomerShopMembership: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "status", "startedAt", "endedAt", "cardCount", "activeCardCount", "expiringSoonCardCount", "updatedAt", "shop"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["active", "ended"] },
+          startedAt: { type: "string", format: "date-time" },
+          endedAt: { type: ["string", "null"], format: "date-time" },
+          cardCount: { type: "integer", minimum: 0 },
+          activeCardCount: { type: "integer", minimum: 0 },
+          expiringSoonCardCount: { type: "integer", minimum: 0 },
+          updatedAt: { type: "string", format: "date-time" },
+          shop: { $ref: "#/components/schemas/ShopMembershipStore" }
+        }
+      },
+      CustomerShopMembershipDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/CustomerShopMembership" },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["cards"],
+            properties: { cards: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCard" } } }
+          }
+        ]
+      },
       OrderAcceptancePause: {
         type: "object",
         additionalProperties: false,
@@ -6704,6 +7227,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
     [`${config.API_PREFIX}/backoffice/affiliate/fee-rules/summary`]: {
@@ -6913,6 +7437,140 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/ShopPlatformFeePolicy"
           }),
           ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-memberships/overview`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read the current shop membership overview",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current shop membership overview", { $ref: "#/components/schemas/ShopMembershipOverview" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-memberships`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List memberships in the current shop identity scope",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["active", "ended"] } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated shop memberships", { $ref: "#/components/schemas/ShopMembershipPage" }),
+          ...shopMembershipErrorResponses
+        }
+      },
+      post: {
+        tags: ["Shop Membership"],
+        summary: "Enroll one eligible customer in the current shop",
+        description: "The shop is resolved exclusively from the authenticated shop identity. Card issuing, top-up, redemption, and refund are not part of this operation.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopMembershipCreateRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created shop membership with transactional audit", { $ref: "#/components/schemas/ShopMembershipDetail" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-memberships/{publicId}`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read one membership in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Shop membership detail", { $ref: "#/components/schemas/ShopMembershipDetail" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-candidates`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List customers eligible for shop membership enrollment",
+        description: "Only customers with a persisted booking in the current shop and no active membership are returned.",
+        security: [{ bearerAuth: [] }],
+        parameters: [...shopMembershipPageParameters, { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } }],
+        responses: {
+          "200": jsonDataResponse("Paginated eligible customers", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCandidate" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List read-only membership card projections in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "type", in: "query", schema: { type: "string", enum: ["stored_value", "count", "benefit"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["active", "frozen", "expired", "void"] } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated read-only membership cards", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCard" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-activities`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List membership operation activity in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: shopMembershipPageParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated shop membership activity", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipActivity" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-analytics`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read bounded membership and card-state analytics for the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "period", in: "query", schema: { type: "string", enum: ["last7days", "last30days", "last90days"], default: "last30days" } }],
+        responses: {
+          "200": jsonDataResponse("Current shop membership analytics", { $ref: "#/components/schemas/ShopMembershipAnalytics" }),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-memberships`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "List the authenticated customer's own shop memberships",
+        security: [{ bearerAuth: [] }],
+        parameters: [...shopMembershipPageParameters, { name: "status", in: "query", schema: { type: "string", enum: ["active", "ended"] } }],
+        responses: {
+          "200": jsonDataResponse("Paginated customer shop memberships", shopMembershipPageSchema({ $ref: "#/components/schemas/CustomerShopMembership" })),
+          ...shopMembershipErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-memberships/{publicId}`]: {
+      get: {
+        tags: ["Shop Membership"],
+        summary: "Read one authenticated-customer shop membership and its card states",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Customer shop membership detail", { $ref: "#/components/schemas/CustomerShopMembershipDetail" }),
+          ...shopMembershipErrorResponses
         }
       }
     },
@@ -13539,7 +14197,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/im/conversations/{conversationId}/preferences`]: {
       patch: {
         tags: ["Step 13 Realtime"],
-        summary: "Update the current participant's pin or mute preferences",
+        summary: "Update the current participant's conversation preferences",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -13557,7 +14215,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 properties: {
                   isPinned: { type: "boolean" },
-                  isMuted: { type: "boolean" }
+                  isMuted: { type: "boolean" },
+                  autoTranslateMessages: { type: "boolean", default: false }
                 },
                 minProperties: 1
               }
@@ -13782,6 +14441,60 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "404": { description: "Conversation not found for current participant" },
           "413": { description: "Image exceeds 8 MiB" },
           "415": { description: "Unsupported image media type" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/voice`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Send one validated raw-audio IM voice message",
+        description:
+          "Requires Bearer authentication and message:create. Accepts at most 8 MiB of pure audio. The server-probed duration is authoritative: media must contain audio, contain no video track, and be no longer than 59.5 seconds. Parser failures and unverifiable media fail closed. The response uses the existing RealtimeMessage contract.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "fileName",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          },
+          {
+            name: "durationSeconds",
+            in: "query",
+            required: true,
+            description:
+              "Integer client hint from 1 to 59 seconds. The server parses the media and accepts only when its authoritative rounded duration differs by at most one second.",
+            schema: { type: "integer", minimum: 1, maximum: 59 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          description: "Raw audio body, maximum 8 MiB",
+          content: {
+            "audio/webm": { schema: { type: "string", format: "binary" } },
+            "audio/mp4": { schema: { type: "string", format: "binary" } },
+            "audio/ogg": { schema: { type: "string", format: "binary" } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created voice message", {
+            $ref: "#/components/schemas/RealtimeMessage"
+          }),
+          "400": {
+            description:
+              "Invalid path or query, parser failure, unverifiable media, video-bearing media, over-limit authoritative duration, or client hint mismatch"
+          },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:create permission or send access" },
+          "404": { description: "Conversation not found for current participant" },
+          "413": { description: "Audio exceeds 8 MiB" },
+          "415": { description: "Unsupported audio media type" }
         }
       }
     },
@@ -14273,6 +14986,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "authorUserId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "replyToPostId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "bookmarked", in: "query", schema: { type: "boolean" } },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
@@ -14354,7 +15069,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                           "technician-daily"
                         ]
                       },
-                      locationLabel: { type: "string", maxLength: 160 }
+                      locationLabel: { type: "string", maxLength: 160 },
+                      richText: socialRichTextOpenApiSchema
                     }
                   },
                   mentionUserIds: {
@@ -14413,6 +15129,107 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description:
               "error.social.invalid_mention_contact or error.social.media_not_owned — contact or media ownership changed"
           }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/like`]: {
+      put: {
+        tags: ["Step 13 Realtime"],
+        summary: "Like one visible social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Remove the current identity's like",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/bookmark`]: {
+      put: {
+        tags: ["Step 13 Realtime"],
+        summary: "Bookmark one visible social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Remove one bookmark for the current identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post counters and viewer interaction state" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/view`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Record one unique authenticated viewer",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Idempotent authoritative view count" },
+          "403": { description: "Missing social-post:interact permission" },
+          "404": { description: "Post is missing or not visible" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}/shares`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Forward a visible social post to active bilateral friends",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 8, maxLength: 191 } }
+        ],
+        requestBody: authJsonBody(
+          {
+            targetUserIds: {
+              type: "array",
+              minItems: 1,
+              maxItems: 20,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            }
+          },
+          ["targetUserIds"]
+        ),
+        responses: {
+          "200": { description: "Delivered friend user ids and authoritative post counters" },
+          "400": { description: "Invalid targets or Idempotency-Key" },
+          "403": { description: "Missing social-post:interact or message:create permission" },
+          "404": { description: "Post is missing or not visible" },
+          "409": { description: "Target is no longer a friend or cannot view the post" }
         }
       }
     },

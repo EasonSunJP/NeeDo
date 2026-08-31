@@ -85,6 +85,7 @@ const navSections: AdminNavSection[] = [
     title: "财务",
     items: [
       { label: "财务结算", to: "/admin/finance", icon: "¥", children: ["今日营收", "待结算", "渠道手续费"] },
+      { label: "会员返点平台费", to: "/admin/finance/membership-reward-fee", icon: "返", permission: "page:backoffice-membership-reward-fee", children: ["TEST", "费率快照", "版本历史"] },
       { label: "退款审核", to: "/admin/finance?module=refund-review", icon: "审" },
       { label: "分账规则", to: "/admin/finance?module=commission", icon: "％" },
       { label: "发票记录", to: "/admin/finance?module=invoices", icon: "票" }

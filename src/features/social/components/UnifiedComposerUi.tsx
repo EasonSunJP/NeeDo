@@ -725,7 +725,8 @@ export function ComposerLocationSelector({
   options,
   onQueryChange,
   onSelect,
-  onBack
+  onBack,
+  onConfirm
 }: {
   query: string;
   selectedValue?: string;
@@ -734,10 +735,11 @@ export function ComposerLocationSelector({
   onQueryChange: (value: string) => void;
   onSelect: (value: string) => void;
   onBack: () => void;
+  onConfirm?: () => void;
 }) {
   return (
     <SelectorLayout
-      footer={<SelectorConfirmButton onClick={onBack} />}
+      footer={<SelectorConfirmButton onClick={onConfirm ?? onBack} />}
       onBack={onBack}
       subtitle="可从常用地点里快速选择，也可搜索"
       title="所在位置"

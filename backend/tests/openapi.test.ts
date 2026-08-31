@@ -30,6 +30,23 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/refresh");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+    [
+      "/api/v1/social/posts/{id}/like",
+      "/api/v1/social/posts/{id}/bookmark",
+      "/api/v1/social/posts/{id}/view",
+      "/api/v1/social/posts/{id}/shares"
+    ].forEach((path) => expect(response.body.paths).toHaveProperty(path));
+    expect(response.body.components.schemas.SocialPost.required).toEqual(
+      expect.arrayContaining(["counters", "viewerInteraction"])
+    );
+    expect(response.body.paths["/api/v1/social/posts"].get.parameters).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "bookmarked", in: "query" })])
+    );
+    expect(response.body.paths["/api/v1/social/posts/{id}/shares"].post.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Idempotency-Key", in: "header", required: true })
+      ])
+    );
 
     const strictAuthBodies = [
       ["/api/v1/auth/register", ["email", "password"]],
@@ -343,6 +360,9 @@ describe("GET /api/v1/openapi.json", () => {
         identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" }
       }
     });
+    expect(
+      response.body.components.schemas.RealtimeDirectoryProfile.properties.relationship.enum
+    ).toEqual(["none", "friend", "incoming_pending", "outgoing_pending", "self"]);
     expect(response.body.components.schemas.RealtimeDirectoryIdentityCard).toMatchObject({
       required: expect.arrayContaining([
         "entityType",
@@ -363,6 +383,38 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody
         .content
     ).toHaveProperty("image/png");
+    const voicePath =
+      response.body.paths["/api/v1/im/conversations/{conversationId}/voice"].post;
+    expect(voicePath.security).toEqual([{ bearerAuth: [] }]);
+    expect(voicePath.description).toContain("server-probed duration is authoritative");
+    expect(voicePath.description).toContain("pure audio");
+    expect(voicePath.description).toContain("59.5 seconds");
+    expect(voicePath.requestBody.content).toEqual(
+      expect.objectContaining({
+        "audio/webm": expect.any(Object),
+        "audio/mp4": expect.any(Object),
+        "audio/ogg": expect.any(Object)
+      })
+    );
+    expect(voicePath.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "durationSeconds",
+          description: expect.stringContaining("client hint"),
+          schema: expect.objectContaining({ minimum: 1, maximum: 59 })
+        })
+      ])
+    );
+    expect(voicePath.responses).toEqual(
+      expect.objectContaining({
+        "201": expect.any(Object),
+        "400": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object),
+        "413": expect.any(Object),
+        "415": expect.any(Object)
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/shops/{id}");
     expect(response.body.paths["/api/v1/shops/{id}"].get.parameters[0].schema.oneOf).toEqual(
       expect.arrayContaining([
@@ -871,6 +923,10 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("PayrollCsvExport");
     expect(response.body.components.schemas).toHaveProperty("PayrollAdjustmentRequest");
     expect(response.body.components.schemas).toHaveProperty("RealtimeConversation");
+    expect(response.body.components.schemas.RealtimeConversation).toMatchObject({
+      required: expect.arrayContaining(["autoTranslateMessages"]),
+      properties: { autoTranslateMessages: { type: "boolean", default: false } }
+    });
     expect(
       response.body.components.schemas.RealtimeConversation.properties.disappearingTtlSeconds.maximum
     ).toBe(359_940);
@@ -882,6 +938,13 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.paths["/api/v1/im/conversations/{conversationId}/privacy"].patch.requestBody
         .content["application/json"].schema.properties.disappearingTtlSeconds.maximum
     ).toBe(359_940);
+    expect(
+      response.body.paths["/api/v1/im/conversations/{conversationId}/preferences"].patch
+        .requestBody.content["application/json"].schema
+    ).toMatchObject({
+      minProperties: 1,
+      properties: { autoTranslateMessages: { type: "boolean", default: false } }
+    });
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessage");
     expect(response.body.components.schemas.RealtimeMessage.required).toContain("reactions");
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessageReaction");
@@ -1116,6 +1179,76 @@ describe("GET /api/v1/openapi.json", () => {
     expect(document.components.schemas.SocialPost.properties.author).toEqual({
       $ref: "#/components/schemas/SocialProfileSummary"
     });
+    expect(document.components.schemas.SocialPost.required).toEqual(
+      expect.arrayContaining(["replyToPostId", "replyCount"])
+    );
+    expect(document.components.schemas.SocialPost.properties).toMatchObject({
+      replyToPostId: { type: "integer", nullable: true, minimum: 1 },
+      replyCount: { type: "integer", minimum: 0 }
+    });
+    expect((document.paths["/api/v1/social/posts"] as { get: { parameters: unknown[] } }).get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "replyToPostId",
+          in: "query",
+          schema: { type: "integer", minimum: 1 }
+        })
+      ])
+    );
+    const socialCreateMedia = (
+      document.paths["/api/v1/social/posts"] as {
+        post: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } };
+      }
+    ).post.requestBody.content["application/json"].schema.properties.media as {
+      properties: Record<string, unknown>;
+    };
+    const socialPatchMedia = (
+      document.paths["/api/v1/social/posts/{id}"] as {
+        patch: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown> } }> } };
+      }
+    ).patch.requestBody.content["application/json"].schema.properties.media as {
+      properties: Record<string, unknown>;
+    };
+    const expectedRichText = {
+      type: "object",
+      additionalProperties: false,
+      required: ["version", "parts"],
+      properties: {
+        version: { type: "integer", enum: [1] },
+        parts: {
+          type: "array",
+          minItems: 1,
+          maxItems: 100,
+          items: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["type", "value"],
+                properties: {
+                  type: { type: "string", enum: ["text"] },
+                  value: { type: "string", minLength: 1, maxLength: 5000 }
+                }
+              },
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["type", "value"],
+                properties: {
+                  type: { type: "string", enum: ["judgement"] },
+                  value: {
+                    type: "string",
+                    enum: ["OK", "NO", "Pending", "+1", "Done", "Cool", "Good", "Thanks"]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    };
+    expect(socialCreateMedia.properties.richText).toEqual(expectedRichText);
+    expect(socialPatchMedia.properties.richText).toEqual(expectedRichText);
     expect(document.components.schemas.SocialActivityStatus.properties.status.enum).toEqual([
       "recent_posts",
       "no_recent_posts"

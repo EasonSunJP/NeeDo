@@ -1,4 +1,5 @@
 import type { Response } from "express";
+import { logger } from "../config/logger";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   ConversationPayload,
@@ -15,6 +16,7 @@ import type {
   NotificationListInput,
   RealtimeRepositoryPort,
   SocialPostListInput,
+  SocialPostPayload,
   UpdateSocialPostInput,
   UpdateConversationPrivacyInput,
   UpdateConversationPreferencesInput
@@ -226,22 +228,41 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.listConversations(scope.identityId, input);
   }
 
-  public async createMessage(
+  public async assertMessageSendAllowed(
     auth: AuthenticatedAccessContext,
-    input: Omit<CreateMessageInput, "senderUserId">
+    conversationId: number
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    if (await this.repository.isMessageSenderBlocked(
-      input.conversationId,
-      auth.userId,
-      scope.identityId
-    )) {
+    const eligibility = await this.repository.checkMessageSendEligibility({
+      conversationId,
+      senderUserId: auth.userId,
+      senderIdentityId: scope.identityId
+    });
+    if (eligibility === "not_found") {
+      throw this.notFoundError("error.realtime.conversation_not_found");
+    }
+    if (eligibility === "recipient_blocked") {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
         message: "error.im.recipient_blocked",
         statusCode: 403
       });
     }
+    if (eligibility === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    return scope;
+  }
+
+  public async createMessage(
+    auth: AuthenticatedAccessContext,
+    input: Omit<CreateMessageInput, "senderUserId">
+  ) {
+    const scope = await this.assertMessageSendAllowed(auth, input.conversationId);
 
     const outcome = await this.repository.createMessage({
       ...input,
@@ -252,6 +273,13 @@ export class RealtimeService implements OrderStatusNotificationPort {
     if (outcome.status === "not_found") {
       throw this.notFoundError("error.realtime.conversation_not_found");
     }
+    if (outcome.status === "recipient_blocked") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.recipient_blocked",
+        statusCode: 403
+      });
+    }
     if (outcome.status === "not_friends") {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
@@ -261,13 +289,25 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
     const { message } = outcome;
 
-    await this.publishToConversation(
-      input.conversationId,
-      "message.created",
-      message,
-      auth.userId,
-      scope.identityId
-    );
+    try {
+      await this.publishToConversation(
+        input.conversationId,
+        "message.created",
+        message,
+        auth.userId,
+        scope.identityId
+      );
+    } catch (error) {
+      logger.error(
+        {
+          conversationId: input.conversationId,
+          error,
+          eventType: "message.created",
+          messageId: message.id
+        },
+        "Realtime message publication failed after message commit"
+      );
+    }
 
     return message;
   }
@@ -489,11 +529,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
   }
 
   public async getDirectoryProfile(auth: AuthenticatedAccessContext, targetUserId: number) {
-    if (auth.userId === targetUserId) {
-      throw this.validationError("error.realtime.contact_self");
-    }
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = await this.requireCanonicalTargetIdentity(targetUserId);
+    const targetIdentityId = auth.userId === targetUserId
+      ? scope.identityId
+      : await this.requireCanonicalTargetIdentity(targetUserId);
     const profile = await this.repository.getDirectoryProfile(
       auth.userId,
       scope.identityId,
@@ -787,6 +826,128 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return post;
   }
 
+  public async setSocialPostLike(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    active: boolean,
+    context: AuthRequestContext
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const result = await this.repository.setSocialPostLike({
+      postId,
+      actorUserId: auth.userId,
+      actorIdentityId: scope.identityId,
+      active,
+      context
+    });
+    if (!result) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+    if (result.changed) {
+      await this.publishSocialPostInteraction(result.post, {
+        userId: auth.userId,
+        identityId: scope.identityId
+      });
+    }
+    return result.post;
+  }
+
+  public async setSocialPostBookmark(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    active: boolean,
+    context: AuthRequestContext
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const result = await this.repository.setSocialPostBookmark({
+      postId,
+      actorUserId: auth.userId,
+      actorIdentityId: scope.identityId,
+      active,
+      context
+    });
+    if (!result) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+    if (result.changed) {
+      await this.publishSocialPostInteraction(result.post, {
+        userId: auth.userId,
+        identityId: scope.identityId
+      });
+    }
+    return result.post;
+  }
+
+  public async recordSocialPostView(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    context: AuthRequestContext
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const result = await this.repository.recordSocialPostView({
+      postId,
+      actorUserId: auth.userId,
+      actorIdentityId: scope.identityId,
+      context
+    });
+    if (!result) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+    if (result.changed) {
+      await this.publishSocialPostInteraction(result.post, {
+        userId: auth.userId,
+        identityId: scope.identityId
+      });
+    }
+    return result.post;
+  }
+
+  public async shareSocialPost(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    input: { targetUserIds: number[]; idempotencyKey: string },
+    context: AuthRequestContext
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const result = await this.repository.shareSocialPost({
+      postId,
+      actorUserId: auth.userId,
+      actorIdentityId: scope.identityId,
+      targetUserIds: input.targetUserIds,
+      idempotencyKey: input.idempotencyKey,
+      context
+    });
+    if (!result) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+
+    for (const delivery of result.deliveries.filter((item) => item.created)) {
+      for (const recipient of [
+        { userId: auth.userId, identityId: scope.identityId },
+        { userId: delivery.recipientUserId, identityId: delivery.recipientIdentityId }
+      ]) {
+        this.eventGateway.publish({
+          id: this.createEventId(),
+          type: "message.created",
+          recipientUserId: recipient.userId,
+          recipientIdentityId: recipient.identityId,
+          payload: delivery.message,
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+    if (result.changed) {
+      await this.publishSocialPostInteraction(result.post, {
+        userId: auth.userId,
+        identityId: scope.identityId
+      });
+    }
+    return {
+      post: result.post,
+      deliveredUserIds: result.deliveries.map((delivery) => delivery.recipientUserId)
+    };
+  }
+
   public async getSocialActivityStatus(
     auth: AuthenticatedAccessContext,
     targetUserId: number,
@@ -973,6 +1134,37 @@ export class RealtimeService implements OrderStatusNotificationPort {
         recipientUserId: participant.userId,
         recipientIdentityId: participant.identityId,
         payload,
+        createdAt: new Date().toISOString()
+      });
+    }
+  }
+
+  private async publishSocialPostInteraction(
+    post: SocialPostPayload,
+    actor: { userId: number; identityId: number }
+  ): Promise<void> {
+    const followerRecipients = this.repository.listFollowerRecipients
+      ? await this.repository.listFollowerRecipients(post.authorIdentityId)
+      : (await this.repository.listFollowerUserIds(post.authorUserId)).map((userId) => ({
+          userId,
+          identityId: userId
+        }));
+    const recipients = [
+      actor,
+      { userId: post.authorUserId, identityId: post.authorIdentityId },
+      ...followerRecipients
+    ].filter(
+      (recipient, index, all) =>
+        all.findIndex((candidate) => candidate.identityId === recipient.identityId) === index
+    );
+
+    for (const recipient of recipients) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "social.post.interaction.updated",
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
+        payload: post,
         createdAt: new Date().toISOString()
       });
     }

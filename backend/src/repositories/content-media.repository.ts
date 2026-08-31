@@ -44,6 +44,7 @@ export const createContentMediaAdvisoryLockConnectionFactory = (
     database: runtimeConfig.database,
     charset: runtimeConfig.charset,
     collation: runtimeConfig.collation,
+    timezone: runtimeConfig.timezone,
     allowPublicKeyRetrieval: runtimeConfig.allowPublicKeyRetrieval,
     connectTimeout: runtimeConfig.connectTimeout
   };

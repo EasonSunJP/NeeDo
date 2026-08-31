@@ -5,6 +5,120 @@ import { affiliateMarketplaceTranslations } from "../features/affiliate-marketpl
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes automatic chat translation controls in all five App languages", () => {
+    const expected = {
+      "聊天内容自动翻译": {
+        zh: "聊天内容自动翻译",
+        "zh-Hant": "聊天內容自動翻譯",
+        ja: "チャット内容を自動翻訳",
+        en: "Automatically translate chat",
+        ko: "채팅 내용 자동 번역",
+      },
+      "打开后按当前 App 语言显示；关闭后显示原文": {
+        zh: "打开后按当前 App 语言显示；关闭后显示原文",
+        "zh-Hant": "開啟後依目前 App 語言顯示；關閉後顯示原文",
+        ja: "オンにすると現在のアプリ言語で表示し、オフにすると原文を表示します",
+        en: "On: display in the current app language; Off: display the original text",
+        ko: "켜면 현재 앱 언어로 표시하고, 끄면 원문을 표시합니다",
+      },
+      "聊天内容自动翻译设置失败，请稍后重试": {
+        zh: "聊天内容自动翻译设置失败，请稍后重试",
+        "zh-Hant": "聊天內容自動翻譯設定失敗，請稍後再試",
+        ja: "チャット内容の自動翻訳設定に失敗しました。しばらくしてからもう一度お試しください",
+        en: "Couldn't update automatic chat translation. Try again later.",
+        ko: "채팅 내용 자동 번역 설정에 실패했습니다. 잠시 후 다시 시도해 주세요",
+      },
+    } as const;
+
+    Object.entries(expected).forEach(([source, translationsByLanguage]) => {
+      Object.entries(translationsByLanguage).forEach(([language, translated]) => {
+        expect(translateText(source, language as keyof typeof translationsByLanguage)).toBe(translated);
+      });
+    });
+  });
+
+  it("localizes the complete IM voice recording confirmation flow", () => {
+    const voiceKeys = [
+      "录制语音",
+      "正在连接麦克风",
+      "后将停止录音",
+      "取消录音",
+      "停止录音",
+      "删除录音",
+      "重放录音",
+      "发送录音",
+      "录音预览",
+      "正在播放录音",
+      "正在发送录音",
+      "录音失败，请重试",
+      "请允许麦克风权限后重试",
+      "没有检测到麦克风声音，请检查输入设备后重试",
+      "当前设备不支持浏览器录音",
+      "自动播放已暂停，请点击重放",
+      "语音发送失败，请重试",
+    ] as const;
+
+    for (const key of voiceKeys) {
+      expect(translations[key], key).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String),
+      });
+      expect(translateText(key, "zh-Hant")).not.toBe(key);
+      expect(translateText(key, "ja")).not.toBe(key);
+      expect(translateText(key, "en")).not.toBe(key);
+      expect(translateText(key, "ko")).not.toBe(key);
+    }
+  });
+
+  it("preserves complete voice error guidance in all five languages", () => {
+    const expected = {
+      "请允许麦克风权限后重试": {
+        zh: "请允许麦克风权限后重试",
+        "zh-Hant": String.fromCodePoint(
+          0x8acb, 0x5141, 0x8a31, 0x9ea5, 0x514b, 0x98a8, 0x6b0a, 0x9650, 0x5f8c, 0x91cd, 0x8a66,
+        ),
+        ja: "マイクの使用を許可してから再試行してください",
+        en: "Allow microphone access, then try again",
+        ko: "마이크 권한을 허용한 후 다시 시도하세요",
+      },
+      "自动播放已暂停，请点击重放": {
+        zh: "自动播放已暂停，请点击重放",
+        "zh-Hant": String.fromCodePoint(
+          0x81ea, 0x52d5, 0x64ad, 0x653e, 0x5df2, 0x66ab, 0x505c, 0xff0c, 0x8acb, 0x9ede, 0x64ca,
+          0x91cd, 0x64ad,
+        ),
+        ja: "自動再生が一時停止しました。再生をタップしてください",
+        en: "Autoplay paused. Tap replay",
+        ko: "자동 재생이 일시 중지되었습니다. 다시 재생을 탭하세요",
+      },
+      "当前设备不支持浏览器录音": {
+        zh: "当前设备不支持浏览器录音",
+        "zh-Hant": String.fromCodePoint(
+          0x76ee, 0x524d, 0x88dd, 0x7f6e, 0x4e0d, 0x652f, 0x63f4, 0x700f, 0x89bd, 0x5668, 0x9304,
+          0x97f3,
+        ),
+        ja: "この端末ではブラウザ録音を利用できません",
+        en: "Browser recording is not supported on this device",
+        ko: "현재 기기에서는 브라우저 녹음을 지원하지 않습니다",
+      },
+      "没有检测到麦克风声音，请检查输入设备后重试": {
+        zh: "没有检测到麦克风声音，请检查输入设备后重试",
+        "zh-Hant": "沒有偵測到麥克風聲音，請檢查輸入裝置後重試",
+        ja: "マイクから音声が検出されません。入力デバイスを確認してから再試行してください",
+        en: "No microphone input detected. Check your input device and try again.",
+        ko: "마이크 입력이 감지되지 않았습니다. 입력 장치를 확인한 후 다시 시도하세요",
+      },
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+    }
+  });
+
   it("localizes the complete friend-verification flow in all five languages", () => {
     const friendVerificationCopy = [
       "取消",
@@ -113,18 +227,55 @@ describe("translations", () => {
     expect(translateText("时间上限最大为99小时59分钟", "ko")).toBe("최대 시간은 99시간 59분입니다");
   });
 
-  it("localizes the Social quick-reply action and sending state", () => {
-    expect(translations["打开完整回复"]).toEqual({
-      "zh-Hant": "開啟回覆畫面",
-      ja: "返信画面を開く",
-      en: "Open reply composer",
-      ko: "답글 작성 화면 열기",
-    });
+  it("localizes the Social quick-reply sending state without obsolete full-composer copy", () => {
+    expect(translations).not.toHaveProperty("打开完整回复");
+    expect(translations).not.toHaveProperty("回复草稿");
+    expect(translations).not.toHaveProperty("你可以从底部输入框直接回复，也可以进入完整发帖页继续补充文字、图片和引用内容。");
     expect(translations["回复中"]).toEqual({
       "zh-Hant": "回覆中",
       ja: "返信中",
       en: "Replying",
       ko: "답글 작성 중",
+    });
+  });
+
+  it("localizes every Social quick-reply attachment state and action in all five languages", () => {
+    const keys = [
+      "图片上传中",
+      "上传失败",
+      "移除图片",
+      "重试图片",
+      "已选位置",
+      "移除位置"
+    ] as const;
+
+    keys.forEach((key) => {
+      expect(key.trim().length, `${key}:zh`).toBeGreaterThan(0);
+      expect(translations[key], key).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+      expect(Object.values(translations[key]).every((value) => value?.trim())).toBe(true);
+    });
+  });
+
+  it("localizes the canonical Social post-detail reply header", () => {
+    expect(translations["回复动态"]).toEqual({
+      "zh-Hant": "回覆動態",
+      ja: "投稿に返信",
+      en: "Reply to Post",
+      ko: "게시물에 답글"
+    });
+  });
+
+  it("localizes the semantic Social post-detail link label", () => {
+    expect(translations["查看动态详情"]).toEqual({
+      "zh-Hant": "查看動態詳情",
+      ja: "投稿の詳細を見る",
+      en: "View post details",
+      ko: "게시물 상세 보기"
     });
   });
 

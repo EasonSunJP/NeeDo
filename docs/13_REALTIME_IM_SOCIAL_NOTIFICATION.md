@@ -263,9 +263,111 @@
 
 - 用户端、商户端和技师端共用的动态详情页底部快捷回复栏改为复用正式聊天 `ImChatComposer`，不再维护独立黑色渐变 footer、输入框尺寸和按钮样式。
 - Social 左侧使用当前认证账号的 40×40 圆形头像替代聊天语音按钮；聊天默认语音输入、录音和既有行为保持不变。
-- Social 保留共享表情面板；“+”进入当前动态的既有完整回复页，继续使用正式 Social 图片、地点、提醒对象、可见范围和评论权限流程，不复制聊天专用订单、通话或支付动作。
+- Social 保留共享表情面板；“+”复用正式聊天附件面板的交互，但只提供能由 Social 正式接口持久化的相册、拍照和位置。曾经进入完整回复页的旧接线已由 6.21 删除。
 - 快捷回复继续通过正式 Social provider/API 创建；提交会裁剪并物化共享 composer 草稿，成功后才清空，受限评论状态保留可见输入栏并原生禁用交互。
 - 本节只修改共享前端组件、Social 快捷回复接线、测试与文档；不新增 API、schema、migration、mock、轮询或浏览器业务持久化。
+
+## 6.21 动态单一回复系统、正式回复计数与判断贴纸（2026-08-31）
+
+- 用户端、商户端和技师端的所有回复入口统一进入动态详情并聚焦底部聊天式输入框；完整回复模式、替代详情模式及其入口已经删除，历史回复深链和旧 `replyToPostId` compose 链接只做无 UI 的替换重定向。
+- 详情页头部统一为“回复动态”。每条回复使用独立圆角容器和容器间距，不再把多条回复包进同一个外框或用内部白线拼接。
+- 底部回复栏复用正式聊天输入框：左侧用当前账号头像替代语音按钮，右侧保留共享表情和“+”。“+”只提供能通过正式 Social API 落库的相册、拍照和位置，不再打开已废弃的第二套回复页。
+- `SocialPost.replyToPostId` 是带索引和外键的正式自关联；migration `20260831000000_social_reply_relation` 从有效 JSON 关系回填现有回复。列表、详情和创建响应的 `replyCount` 均由未删除子记录权威计算，前端不再依赖媒体信封计数。
+- 详情页不再依赖启动时最多 100 条的时间线缓存：父动态通过正式详情 API 单独水合，回复通过 `replyToPostId` 服务端筛选逐页取完。缓存和请求按精确 `currentIdentity.id` 隔离；切换身份或离开详情会取消旧请求。SSE 只用完整分页快照原子替换当前讨论串，遇到重复页等不完整结果时保留上一份完整数据。
+- 判断贴纸保存严格校验的版本化结构与文字回退。时间线、详情、独立回复卡、引用预览和刷新后的正式数据继续显示共享 SVG；没有结构化 `richText` 的普通 `Pending` 等文字仍按文字显示。
+- 快捷回复的文字、判断贴纸、图片和位置均走同一个正式创建接口；回复卡会直接渲染持久化的图片/视频附件和位置标签。图片上传失败、提交失败或目标身份切换时保留或隔离草稿，不产生临时成功态。
+- 本切片不新增 mock、轮询或平行回复状态，也不改变聊天端语音按钮和聊天完整附件能力。
+
+## 6.22 单聊自动翻译、语言能力与待处理好友资料修复（2026-08-31）
+
+### 正式偏好边界
+
+- additive migration `20260831120000_conversation_auto_translate_messages` 在 `conversation_participants` 增加非空布尔列 `auto_translate_messages`，默认值为 `FALSE`。该字段依附现有唯一边界 `conversationId + identityId`，因此同一账号的不同活动身份、不同会话以及同一会话的对方成员互不共享设置。
+- `PATCH /api/v1/im/conversations/:conversationId/preferences` 接受可选布尔字段 `autoTranslateMessages`，并继续要求 `isPinned`、`isMuted`、`autoTranslateMessages` 至少提交一项。Service/Repository 只查找当前 Bearer 会话所认证的活动身份参与者；响应、OpenAPI、正式前端 transport 和 Store 模型均返回明确布尔值，兼容旧响应时安全回退为 `false`。
+- “聊天内容自动翻译”只出现在一对一联系人信息页，默认关闭；群信息页不显示。提交期间开关锁定，Store 只在正式 PATCH 成功并返回完整会话后替换确认值；失败保留原确认状态并显示五语言可本地化错误，不使用 optimistic state、`localStorage` 或 `sessionStorage` 保存此业务偏好。刷新、重登和身份切换后的来源仍是服务端会话 payload。
+
+### 只影响显示的自动翻译
+
+- 用户消息正文节点显式标记 `data-no-i18n`，阻止全局 `I18nRuntime` 把用户内容误当界面文案。开关开启后，共享纯函数只对聊天页中对方消息气泡的 rich-text 文字片段调用现有 App `translateText`；对方图片/视频消息的说明文字使用同一边界。判断贴纸 SVG/结构化 token、原始正文与 metadata 不变，也未接入 DeepL、Google Translate、OpenAI 或其他外部翻译服务。
+- 当前账号自己发送的消息、气泡内引用、输入框上方待发送引用、会话列表摘要、置顶摘要、会话内搜索结果和复制结果始终使用原文，不读取自动翻译偏好。系统消息、撤回残留、文件名、卡片字段和判断贴纸也不进入自动翻译。
+- 关闭开关会直接从 Store 的原始消息重新渲染对方气泡原文，不需要回写或重新拉取。转发、重发、撤回恢复、搜索输入以及发送/持久化链路继续读取原始 `ConversationMessage`；任何派生翻译都不会写入 Store、REST/SSE payload 或数据库。
+
+### 联系人语言与好友状态修复
+
+- 联系人资料卡将 `ja/ja-JP/Japanese`、`zh/zh-CN/zh-Hant/Chinese`、`en/en-US/English`、`ko/ko-KR/Korean`、`th/th-TH/Thai`、`vi/vi-VN/Vietnamese`、`es/es-ES/Spanish` 统一显示为 `日本語 / 中文 / English / 한국어 / ไทย / Tiếng Việt / Español`。别名按规范化显示值去重；未知但非空的正式值会裁剪后保留，大小写不同的相同未知值也会去重。资料源不被修改，pill 使用 `flex-wrap` 和 `max-width` 避免窄屏横向撑开。
+- 目录资料正式查询补齐技师 `languages` 与 `visibility`。技师语言只在资料已发布且可见性为 `public` 时返回；客户身份优先使用公开客户资料中的语言，仅当它为空时才允许回退到同一账号已发布且公开的技师资料语言。私密、已删除或不合格资料不会通过 fallback 泄露语言。
+- 目录关系与好友申请创建判断只把双方未删除且 `source = friend_request` 的 Contact 视为好友；`technician_application` 等业务联系人既不会让目录误报“好友”，也不会让发送好友申请错误返回 `already_friends`。
+- 资料页先解析仍在有效期内的正式申请，再处理可能滞后的 `relationship`。接收方保持两个独立按钮“拒绝”和“添加好友”，发出方保持只读“等待对方验证”，并禁止在有效申请存在时自动创建/跳转聊天；过期申请不能覆盖真实好友关系，已接受且没有有效申请的好友仍进入完整联系人信息页。
+
+### 2026-08-31 自动化验证记录
+
+- 聚焦后端命令 `npm --prefix backend test -- conversation-auto-translate-schema.test.ts realtime-api.test.ts realtime-service.test.ts realtime-repository-identity.test.ts friend-request-lifecycle.repository.test.ts openapi.test.ts`：沙箱内首次因 Supertest 临时监听 `0.0.0.0` 返回 `listen EPERM`；在受控权限下原命令重跑通过，`8` 个 suites、`100` 个 tests、`0` failures。Jest 的 `openapi.test.ts` 正则同时匹配仓库已有的 `backoffice-profile-detail-openapi.test.ts` 与 `exchange.openapi.test.ts`，所以实际为 8 个 suites。
+- 范围收窄先把错误行为改成测试预期，确认旧实现产生 `13` 个失败，再修改实现；收窄后的 IM 聚焦回归为 `8` 个 test files、`145` 个 tests 全部通过。语言能力和好友按钮独立回归为 `6` 个 test files、`94` 个 tests 全部通过；前端全量为 `264` 个 test files、`1,675` 个 tests 全部通过。
+- 后端偏好、目录资料、好友申请生命周期和 OpenAPI 聚焦回归为 `9` 个 suites、`117` 个 tests 全部通过。新工作树首次运行前先执行 `npm run prisma:generate`；未连接或修改数据库。
+- `npm --prefix backend run prisma:generate`、`npm --prefix backend run lint`、`npm --prefix backend run build` 与根目录 `npm run lint` 均退出 `0`。计划命令 `npm --prefix backend exec -- prisma validate` 从仓库根目录解析 schema，因找不到 `./prisma/schema.prisma` 退出 `1`；在 `backend/` 目录执行等价的 `npm exec -- prisma validate` 后正式 schema 校验通过。
+- `npm run verify:production-build` 当前为 **GREEN**：Vite 成功转换 `503` 个模块，生成的 `i18n-B5Wo-LxK.js` 为 `3,703,025` bytes、`main-eHabnjBK.js` 为 `3,389,214` bytes；生产审计通过 `8` 个 HTML entries 与 `23` 个 assets，总命令退出 `0`。同次构建仍显示仓库既有的 `SocialProfilePage.tsx` 静态/动态混合导入警告和大 chunk 警告，但不影响既有门禁判定。
+- `git diff --check` 与从基线 `cbf05a86` 到当前实现 HEAD 的 `git diff --check cbf05a86..HEAD` 均通过。禁止模式扫描只命中仓库既有的 IM 草稿/滚动/筛选/最近表情等 UI 状态持久化，以及一个新增测试的 `window.localStorage.clear()` 清理；实现差异没有新增浏览器业务偏好、`TODO`、`FIXME`、`not implemented`、`sessionStorage` 或外部翻译提供商引用。人工差异核对确认派生翻译只进入对方气泡 render helper，没有赋回 `ConversationMessage`、Store 或发送/转发/重发/撤回输入。
+
+### 仍待授权的正式验收
+
+- 本轮没有应用 `20260831120000_conversation_auto_translate_messages` migration，没有修改正式数据库，没有启动或接管浏览器端口，没有发送测试消息，也没有执行部署或线上验收。
+- 生产 bundle 预算门禁已恢复为 GREEN；仍需用户明确授权，才可在受控本地正式环境核对端口/工作树归属、应用 migration、用双方真实测试身份验证默认关闭与身份/对端隔离、验证 `测试测试` 的历史/新消息开关与刷新持久化、验证只有对方气泡正文和对方媒体说明发生显示翻译，并检查本人消息、贴纸、引用、复制、置顶、列表、搜索、转发仍使用原始 payload；同时核对真实资料语言与移动端换行、console/请求/安全区，并清理临时消息与偏好。
+
+## 6.23 点击录音、自动试听与正式语音消息（2026-08-31）
+
+- 用户端、技师端和商户端共用的会话页把语音入口改为单击开始录音；录音浮层会模糊、压暗并禁用下层会话界面。录音气泡从 `59″ 后将停止录音` 开始倒计时，录音态只显示 X 与停止，不包含长按、上滑取消、转文字按钮或底部半圆。
+- 手动停止或达到 59 秒上限都只结束录音并自动试听，不再自动发送。预览态固定显示 X、重放与纸飞机发送；重放从头开始，只有用户明确点击发送才调用正式接口。发送失败保留同一个本地 Blob 与 object URL 供重试，发送成功才关闭浮层并把焦点还给语音按钮；文字草稿和引用消息保持不变。
+- 正式接口为 `POST /api/v1/im/conversations/:conversationId/voice`，使用原始音频请求体，只接受 WebM、MP4 或 Ogg，最大 8 MiB，并要求 Bearer 鉴权与 `message:create` 权限。服务端生成不可预测的媒体文件名，消息只保存配置后的 `/media/im/<opaque>.<audio-ext>` URL 和必要元数据，不保存 data URL 或音频字节。
+- 服务端先复用正式发送资格预检，再在创建 Message 的事务内重验成员、拉黑、好友、业务会话或群成员资格；Message 创建失败会补偿删除已经写入的媒体文件。成功响应、发送方 Store、接收方 SSE 与历史重载继续使用同一个权威 Message。
+- 本切片不新增 schema、migration、mock、轮询、转写或平行消息实现。前端 9 个聚焦套件 174 项测试、后端 7 个聚焦套件 95 项测试、前后端 lint/类型构建、i18n 审计和正式生产构建安全门均已通过；完整会话页运行测试与录音 hook、浮层、共享 composer 测试共同覆盖单击打开、停止试听、失败保留、成功关闭和焦点恢复。浏览器页面点击、权限、失败重试、双账号 SSE/重载播放仍待隔离正式运行验收，当前不标记为已通过。
+
+## 6.24 服务端权威语音时长与纯音频校验（2026-08-31）
+
+- `durationSeconds=1..59` 继续作为兼容客户端的整数提示，但不再作为消息时长权威值。服务端在正式发送资格预检通过后、媒体落盘前解析请求体，要求可证明存在音频轨且不存在视频轨；解析失败、轨道信息不完整、视频媒体或真实时长超过 `59.5` 秒都统一返回 `400 / error.im.voice_duration_invalid`。
+- 服务端权威整数时长为真实秒数向上取整后限制到 `1..59`；客户端提示与权威整数最多允许相差 1 秒。成功消息的 `needoMessageExt.duration` 只保存该权威整数，不再保存 query 提示值。
+- WebM、MP4 与 Ogg 使用固定版本 `music-metadata@11.15.0` 在 Node Worker 中解析。默认最多同时运行 2 个 Worker、排队 8 项、每项 2 秒超时，并限制 Worker 的 old/young heap 与 stack。队列不预复制音频；任务获得活动槽位后才创建一次专用缓冲区并转移给 Worker，Worker 使用零拷贝 Buffer 视图，避免满队列时重复放大 8 MiB 请求体。
+- 任何实际媒体校验失败都发生在存储、Message 事务、未读数、成功审计与 SSE 之前；原有 transaction-time 成员/好友/拉黑/业务会话/群成员重验和媒体补偿删除保持不变。本切片不新增接口、schema、migration、mock、转写或系统级媒体二进制依赖。
+- A1 聚焦后端验证为 6 个套件、85 项测试全部通过；后端全量为 328 个套件、2228 项测试通过，另有 10 个套件、38 项按既有配置跳过。后端 lint、TypeScript build、正式前端 production build 与 bundle audit 均通过。独立代码审查关闭了 Worker 缓冲区复制与生命周期测试问题，最终 P0–P3 均为零。
+- B1 已在隔离正式本地运行中完成浏览器录音验收：单击语音入口、授权麦克风、停止后自动试听、手动重放，以及 X / 重放 / 纸飞机按钮均已验证；为避免产生业务数据，验收未点击发送。`npm audit --omit=dev` 仍报告现有其他依赖路径中的 12 项告警（1 low、4 moderate、7 high），新增 `music-metadata` 路径未出现在告警列表，本切片未执行自动升级。
+
+## 6.25 可听语音预览与居中放大控制（2026-08-31）
+
+- 自动化聚焦命令 `npm test -- src/features/im/useImVoiceRecording.test.tsx src/features/im/ImVoiceRecordingOverlay.test.tsx src/features/im/pages.test.ts src/features/im/pages.test.tsx src/features/im/components.composer.test.tsx src/i18n/translations.test.ts` 通过：6 个 test files、154 个 tests、0 failures。
+- 根目录 `npm test` 通过：264 个 test files、1,679 个 tests、0 failures。
+- `npm run i18n:audit` 退出码为 0；本次输出摘要为 `zhSourceCount=12195`、`nonZhSourceCount=3200`、`coveredCount=7328`、`recoverableFromIndexedCount=0`、`missingCount=4867`。任务要求的既有 5 秒超时在本次重跑中未出现。
+- 补齐测试 mock 的严格 `this: HTMLMediaElement` 类型后，`npm run lint` 通过；`npm run verify:production-build` 完成 TypeScript、formal Vite build 与 production bundle audit，8 个 HTML 入口和 23 个资产检查通过。最终 `git diff --check` 通过，没有放宽门禁。
+- 随后主工作树出现与本语音切片无关的 Social 并行修改；本任务复核时 `npm run lint` 与 `npm run verify:production-build` 均在 `src/features/social/formal-adapter.test.ts:68:7` 因 `counters` 不属于 `RealtimeSocialPost` 而退出。该并行修改未纳入本次文档提交，也未放宽门禁。
+- 正式运行监听已确认来自当前检出：前端 `5180` 的 cwd 为仓库根目录，后端 `3000` 的 cwd 为 `backend/`。在 `http://127.0.0.1:5180/user.html#/messages/2546` 实测单击打开、录音态 X + 停止、预览态 X + 重放 + 发送、动作区 `top-[57%]`、72×72 CSS 像素按钮、Blob 音频 `muted=false` / `defaultMuted=false` / `playsinline=true` 及播放进度；用户确认实际录音回放有声。`volume=1` 已由 hook 回归测试覆盖并在每次 `play()` 前设置，但本次浏览器检查接口未返回该属性，因此不标记为浏览器直接取值通过。440×956、320×956、持续静音输入提示、失败重试及双账号 SSE/重载播放仍未在本切片重新验收。
+
+## 6.26 动态互动权威计数、用户收藏与好友私信转发（2026-08-31）
+
+### 权威数据与权限边界
+
+- additive migration `20260831150000_social_post_interactions` 新增 `social_post_likes`、`social_post_bookmarks`、`social_post_views` 与 `social_post_shares`。四张表均包含软删除时间与审计时间；点赞、收藏和浏览以 `postId + identityId` 唯一，转发以 `postId + actorIdentityId + targetUserId` 记录投递，并以 `actorIdentityId + idempotencyKey + targetUserId` 阻止重试重复消息。
+- `social-post:interact` 已进入正式 permission catalog，并授予 `admin / merchant_owner / merchant_staff / technician / customer`。所有互动路由要求该权限；好友私信转发同时要求现有 `message:create`。Service 始终从当前 Bearer 会话解析活动身份，Controller 不直接访问 Prisma。
+- 列表、详情和每个互动响应都返回服务端 `counters.likes / reposts / views / bookmarks` 与当前活动身份的 `viewerInteraction.liked / bookmarked / shared`。旧正式种子写在 media envelope 内的计数只作为兼容基线读取；新增关系计数叠加其上，不回写旧 JSON，也不把浏览器状态当作累计来源。
+
+### 正式 REST 与实时事件
+
+- `PUT /api/v1/social/posts/:id/like`、`DELETE /api/v1/social/posts/:id/like`、`PUT /api/v1/social/posts/:id/bookmark` 与 `DELETE /api/v1/social/posts/:id/bookmark` 使用幂等软恢复/软删除并返回权威动态。`POST /api/v1/social/posts/:id/view` 对同一活动身份只累计一次有效浏览。
+- `GET /api/v1/social/posts?bookmarked=true&page=...&pageSize=...` 仍是分页接口，并只返回当前活动身份有效收藏的可见动态；资料隐私、作者屏蔽和 follower-only 可见性继续由 Repository 的统一可见性条件约束。
+- `POST /api/v1/social/posts/:id/shares` 接受 1–20 个去重 `targetUserIds`，要求 `Idempotency-Key`，拒绝本人、非双向正式好友、拉黑关系和无权看到 follower-only 动态的收件人。事务内复用或恢复一对一 friendship conversation，并创建带 `needoMessageType = social-post-card` 的正式 Message；重复相同 key 只返回既有投递，不重复增加转发计数、未读数或 SSE。
+- 点赞、收藏和首次浏览通过 `social.post.interaction.updated` 通知当前账号、作者及现有关注者刷新权威动态；首次好友转发继续使用正式 `message.created` 发送给双方。未新增轮询、浏览器业务存储或平行 IM 数据源。
+
+### 前端统一入口
+
+- 时间线和详情的点赞、收藏及浏览直接调用正式 API，并只提交服务端返回的 post/counter/viewer state。收藏入口改为客户个人中心 `/me/favorites`；页面数据来自正式 bookmarked 分页启动快照，复用同一动态卡片，取消收藏后按确认状态移除。
+- “转发”页不再发布到公共时间线，也不再维护失效的快速转发/引用转发按钮；它加载正式联系人候选，支持搜索和多选，并把动态卡片发给所选好友。聊天消息模型、会话摘要和气泡共同识别 `social-post-card`，可从卡片返回原动态。
+- 互动请求失败不再产生 optimistic 计数；原确认状态保留。所有三端继续复用 Social provider 与同一详情/时间线组件，本切片没有复制三套 UI。
+
+### 自动化与本地正式验收
+
+- 聚焦前端回归覆盖权威映射、正式 provider、好友转发页、详情浏览、个人中心收藏入口、IM 正式消息解析和翻译质量：8 个功能文件、145 项通过，独立 i18n quality 1 项通过。最终前端全量使用 `npm test -- --testTimeout=20000`，265 个文件、1,689 项通过；默认 5 秒上限的前一轮只有既有 `ReactionCatalog` 1 项在满负载下超时，该文件随后独立 3/3 通过。没有修改该组件、断言或生产超时。
+- 聚焦后端 Social/Realtime/OpenAPI 回归为 6 个 suites、47 项通过。最终后端全量使用 `npm test -- --testTimeout=20000`，339 个 suites、2,290 项通过，另有 10 个 suites、38 项按既有配置跳过；默认 5 秒上限曾使两个 bcrypt 密集认证用例在满负载下超时，未修改 bcrypt rounds、限流或认证代码。
+- `npm --prefix backend run lint`、`npm --prefix backend run build`、根目录 `npm run lint`、`npm run i18n:audit` 与 Prisma schema validate 均退出 `0`。正式 `npm run verify:production-build` 检查 8 个 HTML 与 25 个 assets 通过；页面专属五语文案留在懒加载的 `SocialFavoritesPage` / `SocialRepostPage` chunk，`i18n` chunk 为 3,703,450 bytes，没有提高 3,704,096 bytes 预算。
+- 2026-08-31 再检查时，`needo_dev` 已存在成功的 `20260831150000_social_post_interactions` 记录，其 checksum `408ae19a...` 与当前仓库 migration 一致；此前因 MySQL 64 字符标识符上限失败的长索引版本保留为 rolled-back 记录。四张互动表、外键、短名称幂等唯一索引和五类角色授权均与当前 migration 一致，`prisma migrate status` 报告仓库 80 个 migration 全部已应用。本次没有手改 `_prisma_migrations` 或执行原始 DDL；数据库中仍有与本 Social 切片无关、当前 checkout 不包含的历史记录，不把它们解释或复制回仓库。
+- 本地正式数据验收使用 `sim.customer.100@needo.local` 的 customer identity、动态 `64774` 和一个既有双向好友会话。真实 API 验证了点赞/取消及刷新持久化、收藏分页添加/移除、同身份两次浏览只累计一次、好友收到 `social-post-card`、重复同一 `Idempotency-Key` 不重复计数或消息、发送方互动 SSE 与接收方消息 SSE。验收脚本随后按精确 ID 删除 interaction/share/message/audit，并恢复 conversation 与 participant 的未读、last-read、隐藏状态和时间戳；复查所有 marker 为零、动态计数回到基线。
+- 440×956 浏览器验收确认：详情首次进入从 1 次浏览变为 2，刷新仍为 2；用户中心 `/me/favorites` 收藏后可见且刷新持久；转发页加载 12 位正式好友，选择后发送按钮启用、取消后禁用；动态、收藏和转发页均无横向溢出且 console error 为零。浏览器产生的临时 bookmark/view 及对应 audit 已按精确 ID 清理，时间线恢复未收藏与原计数。
 
 ---
 

@@ -2,17 +2,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { httpClient } from "../../api/httpClient";
 import { realtimeApi } from "../realtime/api";
+import realtimeApiSource from "../realtime/api.ts?raw";
 import {
   createFormalImApi,
   shouldForwardFormalImEvent,
   toFormalImStoreUpdate,
 } from "./formal-api";
+import imModelSource from "./model.ts?raw";
 
 const now = "2026-08-25T10:00:00.000Z";
 
 describe("formal IM adapter", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("declares self in both formal directory profile contracts", () => {
+    const relationshipContract =
+      'relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";';
+
+    expect(realtimeApiSource).toContain(relationshipContract);
+    expect(imModelSource).toContain(relationshipContract);
   });
 
   it("maps real conversations and reciprocal contacts into the original IM model", async () => {
@@ -101,7 +111,10 @@ describe("formal IM adapter", () => {
       contactUserId: "201",
       title: "sim-technician-001",
       lastMessagePreview: "明天下午三点可以为您服务。",
+      lastMessageType: "text",
+      lastMessageStatus: "sent",
       unreadCount: 2,
+      autoTranslateMessages: false,
     });
     expect(bootstrap.contacts[0]).toMatchObject({
       id: "31",
@@ -288,6 +301,22 @@ describe("formal IM adapter", () => {
       "92": "音频",
       "93": "视频",
       "94": "报价单.pdf",
+    });
+    expect(
+      Object.fromEntries(
+        bootstrap.conversations.map((conversation) => [
+          conversation.id,
+          [
+            conversation.lastMessageType,
+            conversation.lastMessageStatus,
+          ],
+        ]),
+      ),
+    ).toEqual({
+      "91": ["image", "sent"],
+      "92": ["voice", "sent"],
+      "93": ["video", "sent"],
+      "94": ["file", "sent"],
     });
     expect(Object.values(previews).join(" ")).not.toContain("/media/im/");
   });
@@ -591,6 +620,102 @@ describe("formal IM adapter", () => {
     expect(listConversations).not.toHaveBeenCalled();
   });
 
+  it("sends voice bytes through the formal endpoint instead of message content", async () => {
+    const blob = new Blob(
+      [new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])],
+      { type: "audio/webm" },
+    );
+    const send = vi.spyOn(realtimeApi, "createVoiceMessage").mockResolvedValue({
+      id: 702,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+    const createMessage = vi.spyOn(realtimeApi, "createMessage");
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(
+      api.sendVoiceMessage("91", blob, {
+        durationSeconds: 6,
+        fileName: "voice.webm",
+      }),
+    ).resolves.toEqual({
+      message: expect.objectContaining({ type: "voice", content: "语音" }),
+    });
+    expect(send).toHaveBeenCalledWith(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the voice Blob, MIME type, and metadata query intact for the realtime endpoint", async () => {
+    const blob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], {
+      type: "audio/webm;codecs=opus",
+    });
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 703,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+    const createMessage = vi.spyOn(realtimeApi, "createMessage");
+
+    await realtimeApi.createVoiceMessage(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+
+    expect(request).toHaveBeenCalledWith("/im/conversations/91/voice", {
+      body: blob,
+      headers: { "Content-Type": "audio/webm;codecs=opus" },
+      method: "POST",
+      query: { durationSeconds: 6, fileName: "voice.webm" },
+    });
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it("falls back to audio/webm when the voice Blob has no MIME type", async () => {
+    const blob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])]);
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 704,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+
+    await realtimeApi.createVoiceMessage(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      "/im/conversations/91/voice",
+      expect.objectContaining({
+        body: blob,
+        headers: { "Content-Type": "audio/webm" },
+        query: { durationSeconds: 6, fileName: "voice.webm" },
+      }),
+    );
+  });
+
   it("persists message reactions through the formal API and maps the saved people", async () => {
     const setMessageReaction = vi
       .spyOn(realtimeApi, "setMessageReaction")
@@ -859,12 +984,20 @@ describe("formal IM adapter", () => {
       unreadCount: 0,
       isPinned: false,
       isMuted: false,
+      autoTranslateMessages: false,
       isHidden: false,
       createdAt: now,
       updatedAt: now,
     };
     const updateConversationPreferences = vi.fn(
-      async (_conversationId: number, preferences: { isMuted?: boolean; isPinned?: boolean }) => ({
+      async (
+        _conversationId: number,
+        preferences: {
+          autoTranslateMessages?: boolean;
+          isMuted?: boolean;
+          isPinned?: boolean;
+        },
+      ) => ({
         ...conversation,
         ...preferences,
       }),
@@ -899,6 +1032,11 @@ describe("formal IM adapter", () => {
     await expect(api.muteConversation("91", true)).resolves.toMatchObject({
       conversation: { id: "91", isMuted: true },
     });
+    await expect(
+      api.setConversationAutoTranslateMessages("91", true),
+    ).resolves.toMatchObject({
+      conversation: { id: "91", autoTranslateMessages: true },
+    });
     await expect(api.markConversationRead("91", true)).resolves.toMatchObject({
       conversation: { id: "91", unreadCount: 1 },
     });
@@ -908,6 +1046,9 @@ describe("formal IM adapter", () => {
 
     expect(updateConversationPreferences).toHaveBeenNthCalledWith(1, 91, { isPinned: true });
     expect(updateConversationPreferences).toHaveBeenNthCalledWith(2, 91, { isMuted: true });
+    expect(updateConversationPreferences).toHaveBeenNthCalledWith(3, 91, {
+      autoTranslateMessages: true,
+    });
     expect(markConversationUnread).toHaveBeenCalledWith(91);
     expect(deleteConversation).toHaveBeenCalledWith(91);
   });
@@ -1029,6 +1170,53 @@ describe("formal IM adapter", () => {
     });
     expect(getDirectoryProfile).toHaveBeenCalledWith(201);
     expect(createFriendRequest).toHaveBeenCalledWith({ targetUserId: 201 });
+  });
+
+  it("maps the authenticated account directory profile as self", async () => {
+    vi.spyOn(realtimeApi, "getDirectoryProfile").mockResolvedValue({
+      user: {
+        userId: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      relationship: "self",
+      contactId: null,
+      friendRequest: null,
+      identityCard: {
+        entityType: "user",
+        profileId: 70,
+        displayName: "测试用户",
+        identityLabel: "free",
+        verified: false,
+        creditValue: null,
+        creditReviewCount: 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: null,
+        serviceArea: null,
+        yearsExperience: null,
+        bio: null,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.getDirectoryProfile("100")).resolves.toMatchObject({
+      user: { id: "100" },
+      relationship: "self",
+      contactId: undefined,
+      friendRequest: undefined,
+    });
   });
 
   it("uploads a selected image instead of invoking the unavailable placeholder", async () => {

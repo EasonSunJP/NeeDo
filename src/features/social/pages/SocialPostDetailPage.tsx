@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, PrimaryButton } from "../../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../../components/mobile/FloatingHomeHeader";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { ShareNetworkIconPath } from "../../../components/ui/ShareNetworkIcon";
 import { getGeneratedImageThumbnailUrl } from "../../../lib/imageThumbnails";
+import { useOptionalI18n } from "../../../i18n/I18nProvider";
+import { translateText } from "../../../i18n/translations";
 import { shareContent } from "../../../lib/share";
 import { cn } from "../../../lib/utils";
 import { getClientThemeClassName, useClientTheme } from "../../../theme/ClientThemeProvider";
@@ -19,7 +21,7 @@ import {
   socialMediaGridClassName,
   socialMediaTileClassName
 } from "../components/SocialUi";
-import { SocialQuickReplyComposer } from "../components/SocialQuickReplyComposer";
+import { SocialQuickReplyComposer, type SocialQuickReplyComposerHandle } from "../components/SocialQuickReplyComposer";
 import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { isFriend, isMutualFollow } from "../timeline";
@@ -28,6 +30,19 @@ import { buildAbsoluteUrl, formatCount, formatRelativeTime, profileKey } from ".
 
 function shouldIgnoreCardNavigation(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("a,button,summary,details,input,textarea,video"));
+}
+
+function activatePostCard(
+  event: ReactMouseEvent<HTMLElement>,
+  onActivate: () => void
+) {
+  if (shouldIgnoreCardNavigation(event.target)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  onActivate();
 }
 
 function formatDetailDate(value: string) {
@@ -254,8 +269,10 @@ function DetailMiniPostCard({
   chrome?: "framed" | "plain";
 }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const author = profiles[profileKey({ entityType: post.authorType, id: post.authorId })];
   const leadMedia = post.media[0];
+  const detailLinkLabel = translateText("查看动态详情", language);
 
   if (!author) {
     return null;
@@ -267,13 +284,7 @@ function DetailMiniPostCard({
         "cursor-pointer rounded-[24px] p-3.5 transition hover:bg-white/[0.06]",
         chrome === "plain" ? "bg-white/[0.03]" : "border border-white/12 bg-white/[0.04]"
       )}
-      onClick={(event) => {
-        if (shouldIgnoreCardNavigation(event.target)) {
-          return;
-        }
-
-        navigate(socialPaths.post(scope, post.id));
-      }}
+      onClick={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
     >
       {caption ? <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#d1ff4d]/84">{caption}</p> : null}
 
@@ -288,7 +299,7 @@ function DetailMiniPostCard({
         </div>
       </div>
 
-      {post.text ? <UnifiedPostText allowExpand={false} className="mt-2.5 text-[14px] leading-6 text-white" expanded profiles={profiles} scope={scope} text={post.text} /> : null}
+      {post.text ? <UnifiedPostText allowExpand={false} className="mt-2.5 text-[14px] leading-6 text-white" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}
 
       {leadMedia ? (
         <div className={cn("relative mt-3 h-40 overflow-hidden bg-black", chrome === "plain" ? "" : "border border-white/8")}>
@@ -299,6 +310,10 @@ function DetailMiniPostCard({
           )}
         </div>
       ) : null}
+
+      <Link className="sr-only focus:not-sr-only focus:mt-3 focus:inline-flex focus:rounded-full focus:outline-none focus:ring-2 focus:ring-[#d1ff4d] focus:ring-offset-2 focus:ring-offset-black" to={socialPaths.post(scope, post.id)}>
+        {detailLinkLabel}
+      </Link>
     </article>
   );
 }
@@ -406,9 +421,12 @@ function ReplyListItem({
   profiles: Record<string, SocialProfile>;
 }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const { getPostById } = useSocial();
   const author = profiles[profileKey({ entityType: post.authorType, id: post.authorId })];
   const quotedPost = post.quotePostId ? getPostById(post.quotePostId) : undefined;
+  const replyMedia = post.media[0];
+  const detailLinkLabel = translateText("查看动态详情", language);
 
   if (!author) {
     return null;
@@ -416,14 +434,8 @@ function ReplyListItem({
 
   return (
     <article
-      className="cursor-pointer border-b border-white/8 px-4 py-4 transition hover:bg-white/[0.03] last:border-none"
-      onClick={(event) => {
-        if (shouldIgnoreCardNavigation(event.target)) {
-          return;
-        }
-
-        navigate(socialPaths.post(scope, post.id));
-      }}
+      className="cursor-pointer rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.06]"
+      onClick={(event) => activatePostCard(event, () => navigate(socialPaths.post(scope, post.id)))}
     >
       <div className="flex items-start gap-3">
         <Link className="shrink-0" to={socialPaths.profile(scope, author)}>
@@ -439,7 +451,33 @@ function ReplyListItem({
             <span className="text-[13px] text-white/46">{formatRelativeTime(post.createdAt)}</span>
           </div>
 
-          {post.text ? <UnifiedPostText allowExpand={false} className="mt-2 text-[15px] leading-7 text-white" expanded profiles={profiles} scope={scope} text={post.text} /> : null}
+          {post.text ? <UnifiedPostText allowExpand={false} className="mt-2 text-[15px] leading-7 text-white" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}
+
+          {replyMedia ? (
+            <div className="relative mt-3 h-40 overflow-hidden rounded-[18px] border border-white/10 bg-black" data-testid="social-reply-media">
+              {replyMedia.type === "video" ? (
+                <video
+                  className="absolute inset-0 h-full w-full object-cover"
+                  muted
+                  playsInline
+                  poster={replyMedia.thumbnailUrl ? getGeneratedImageThumbnailUrl(replyMedia.thumbnailUrl) : undefined}
+                  src={replyMedia.url}
+                />
+              ) : (
+                <img alt={replyMedia.alt ?? ""} className="absolute inset-0 h-full w-full object-cover" src={getSocialMediaPreviewUrl(replyMedia)} />
+              )}
+            </div>
+          ) : null}
+
+          {post.locationLabel ? (
+            <p className="mt-3 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-[#d1ff4d]/86" data-testid="social-reply-location">
+              <svg aria-hidden="true" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+                <path d="M12 21s6-5.5 6-11a6 6 0 1 0-12 0c0 5.5 6 11 6 11Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+                <circle cx="12" cy="10" r="2" stroke="currentColor" strokeWidth="1.8" />
+              </svg>
+              <span className="min-w-0 truncate">{post.locationLabel}</span>
+            </p>
+          ) : null}
 
           {quotedPost ? (
             <div className="mt-3">
@@ -453,6 +491,10 @@ function ReplyListItem({
             <span>{formatCount(post.likeCount)} 喜欢</span>
             <span>{formatCount(post.viewCount)} 浏览</span>
           </div>
+
+          <Link className="sr-only focus:not-sr-only focus:mt-3 focus:inline-flex focus:rounded-full focus:outline-none focus:ring-2 focus:ring-[#d1ff4d] focus:ring-offset-2 focus:ring-offset-black" to={socialPaths.post(scope, post.id)}>
+            {detailLinkLabel}
+          </Link>
         </div>
       </div>
     </article>
@@ -477,21 +519,60 @@ export function SocialPostDetailPage() {
     markShared,
     toggleBookmark,
     toggleLike,
-    createPost
+    createPost,
+    ensurePostThread,
+    releasePostThread
   } = useSocial();
   const actorKey = getActorForScope(scope);
   const actor = profiles[actorKey];
   const post = postId ? getPostById(postId, actorKey) : undefined;
   const postAuthorKey = post ? profileKey({ entityType: post.authorType, id: post.authorId }) : "";
   const author = post ? profiles[postAuthorKey] : undefined;
+  const { language } = useOptionalI18n();
   const { theme } = useClientTheme();
   const shellClassName = cn("client-shell client-theme-night min-h-[100dvh] bg-[#000000] text-white", getClientThemeClassName(theme));
   const quotedPost = post?.quotePostId ? getPostById(post.quotePostId, actorKey) : undefined;
   const ancestors = useMemo(() => (postId ? getAncestors(postId) : []), [getAncestors, postId]);
   const replies = useMemo(() => (postId ? getReplies(postId) : []), [getReplies, postId]);
   const relatedPosts = useMemo(() => (postId ? getRelatedPosts(postId).slice(0, 4) : []), [getRelatedPosts, postId]);
+  const [threadLoadStatus, setThreadLoadStatus] = useState<"loading" | "ready" | "not-found" | "error">("loading");
   const viewedRef = useRef<string | null>(null);
-  const isThreadPage = location.pathname.endsWith("/replies");
+  const composerRef = useRef<SocialQuickReplyComposerHandle>(null);
+  const mountedComposerTargetRef = useRef<string | null>(null);
+  const focusRequestTargetRef = useRef<string | null>(null);
+  const routeTargetIdentity = postId ? `${actorKey}:${postId}` : "";
+  const composerTargetIdentity = post ? `${actorKey}:${post.id}` : "";
+  const composerRefCallback = useCallback((handle: SocialQuickReplyComposerHandle | null) => {
+    composerRef.current = handle;
+    mountedComposerTargetRef.current = handle ? composerTargetIdentity : null;
+  }, [composerTargetIdentity]);
+  const focusReply = () => composerRef.current?.focus();
+
+  useEffect(() => {
+    if (!postId) {
+      setThreadLoadStatus("not-found");
+      return undefined;
+    }
+
+    let mounted = true;
+    setThreadLoadStatus("loading");
+    void ensurePostThread(postId)
+      .then((available) => {
+        if (mounted) {
+          setThreadLoadStatus(available ? "ready" : "not-found");
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setThreadLoadStatus("error");
+        }
+      });
+
+    return () => {
+      mounted = false;
+      releasePostThread(postId);
+    };
+  }, [ensurePostThread, postId, releasePostThread]);
 
   useEffect(() => {
     if (!postId || viewedRef.current === postId) {
@@ -499,19 +580,83 @@ export function SocialPostDetailPage() {
     }
 
     viewedRef.current = postId;
-    incrementView(postId);
+    void incrementView(postId).catch(() => undefined);
   }, [incrementView, postId]);
+
+  useEffect(() => {
+    if (location.state?.focusSocialReply !== true) {
+      focusRequestTargetRef.current = null;
+      return undefined;
+    }
+
+    if (!routeTargetIdentity) {
+      return undefined;
+    }
+
+    if (focusRequestTargetRef.current === null) {
+      focusRequestTargetRef.current = routeTargetIdentity;
+    } else if (focusRequestTargetRef.current !== routeTargetIdentity) {
+      navigate({
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      }, { replace: true, state: null });
+      return undefined;
+    }
+
+    if (!post || !composerTargetIdentity || composerTargetIdentity !== focusRequestTargetRef.current || !composerRef.current) {
+      return undefined;
+    }
+
+    const requestTargetIdentity = focusRequestTargetRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      if (
+        focusRequestTargetRef.current !== requestTargetIdentity ||
+        mountedComposerTargetRef.current !== requestTargetIdentity ||
+        !composerRef.current
+      ) {
+        return;
+      }
+
+      composerRef.current.focus();
+      navigate({
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash
+      }, { replace: true, state: null });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [composerTargetIdentity, location.hash, location.key, location.pathname, location.search, location.state, navigate, post, routeTargetIdentity]);
+
+  if (!post && threadLoadStatus === "loading") {
+    return (
+      <div className={shellClassName}>
+        <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
+
+        <main aria-busy="true" className="mx-auto max-w-[720px] animate-pulse px-4 pb-20 pt-4">
+          <div className="h-11 w-11 rounded-full bg-white/10" />
+          <div className="mt-4 h-5 w-40 rounded-full bg-white/10" />
+          <div className="mt-3 h-4 w-full rounded-full bg-white/[0.07]" />
+          <div className="mt-2 h-4 w-3/4 rounded-full bg-white/[0.07]" />
+        </main>
+      </div>
+    );
+  }
 
   if (!post) {
     return (
       <div className={shellClassName}>
-        <SocialPostDetailHeader onBack={() => navigate(-1)} title="帖子" />
+        <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
 
         <main className="mx-auto max-w-[720px] px-4 pb-20 pt-4">
           <SocialEmptyState
             action={<PrimaryButton to={socialPaths.timeline(scope)}>返回动态页</PrimaryButton>}
-            description="这条动态可能已删除，或当前链接已经失效。"
-            title="动态不存在"
+            description={translateText(
+              threadLoadStatus === "error" ? "数据加载失败，请检查网络后重试" : "这条动态可能已删除，或当前链接已经失效。",
+              language
+            )}
+            title={translateText(threadLoadStatus === "error" ? "当前数据集加载失败" : "动态不存在", language)}
           />
         </main>
       </div>
@@ -528,7 +673,7 @@ export function SocialPostDetailPage() {
 
   return (
     <div className={shellClassName}>
-      <SocialPostDetailHeader onBack={() => navigate(-1)} title={isThreadPage ? "回复" : "帖子"} />
+      <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
 
       <main className="mx-auto max-w-[720px] px-4 pb-[152px] pt-4">
         {ancestors.length > 0 ? (
@@ -561,7 +706,7 @@ export function SocialPostDetailPage() {
                 <DetailPostMenu actorKey={actorKey} post={post} scope={scope} />
               </div>
 
-              {post.text ? <UnifiedPostText allowExpand={false} className="mt-3 text-[19px] leading-8 text-white sm:text-[21px]" expanded profiles={profiles} scope={scope} text={post.text} /> : null}
+              {post.text ? <UnifiedPostText allowExpand={false} className="mt-3 text-[19px] leading-8 text-white sm:text-[21px]" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}
 
               {quotedPost ? (
                 <div className="mt-4">
@@ -577,10 +722,10 @@ export function SocialPostDetailPage() {
 
               <div className="mt-4 py-2">
                 <div className="grid grid-cols-5 items-center gap-1">
-                  <DetailActionButton count={post.replyCount} disabled={!canComment} icon="reply" label="回复" to={socialPaths.compose(scope, { replyToPostId: post.id })} />
+                  <DetailActionButton count={post.replyCount} disabled={!canComment} icon="reply" label="回复" onClick={focusReply} />
                   <DetailActionButton active={interaction.reposted} count={post.repostCount} icon="repost" label="转发" to={socialPaths.repost(scope, post.id)} tone="primary" />
-                  <DetailActionButton active={interaction.liked} count={post.likeCount} icon="like" label="喜欢" onClick={() => toggleLike(post.id, actorKey)} tone="danger" />
-                  <DetailActionButton active={interaction.bookmarked} count={post.bookmarkCount} icon="bookmark" label="收藏" onClick={() => toggleBookmark(post.id, actorKey)} tone="primary" />
+                  <DetailActionButton active={interaction.liked} count={post.likeCount} icon="like" label="喜欢" onClick={() => { void toggleLike(post.id, actorKey).catch(() => undefined); }} tone="danger" />
+                  <DetailActionButton active={interaction.bookmarked} count={post.bookmarkCount} icon="bookmark" label="收藏" onClick={() => { void toggleBookmark(post.id, actorKey).catch(() => undefined); }} tone="primary" />
                   <DetailActionButton
                     active={interaction.shared}
                     icon="share"
@@ -607,20 +752,20 @@ export function SocialPostDetailPage() {
         <section className="pt-4">
           <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div>
-              <h2 className="text-[18px] font-black text-white">{isThreadPage ? "全部回复" : "回复列表"}</h2>
-              <p className="mt-1 text-[13px] text-white/42">{replies.length > 0 ? `${formatCount(replies.length)} 条公开回复` : "从这里继续这个讨论串"}</p>
+              <h2 className="text-[18px] font-black text-white">回复列表</h2>
+              <p className="mt-1 text-[13px] text-white/42">{replies.length > 0 ? `${formatCount(post.replyCount)} 条公开回复` : "从这里继续这个讨论串"}</p>
             </div>
             {canComment ? (
-              <Link className="text-[13px] font-semibold text-[#d1ff4d]" to={socialPaths.compose(scope, { replyToPostId: post.id })}>
+              <button className="text-[13px] font-semibold text-[#d1ff4d]" onClick={focusReply} type="button">
                 写回复
-              </Link>
+              </button>
             ) : (
               <span className="text-[13px] font-semibold text-white/28">仅好友可评论</span>
             )}
           </div>
 
           {replies.length > 0 ? (
-            <div className="mt-4 overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]">
+            <div className="mt-4 space-y-3">
               {replies.map((reply) => (
                 <ReplyListItem key={reply.id} post={reply} profiles={profiles} scope={scope} />
               ))}
@@ -628,7 +773,7 @@ export function SocialPostDetailPage() {
           ) : (
             <div className="mt-4 rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-5">
               <p className="text-[15px] font-semibold text-white">还没有公开回复</p>
-              <p className="mt-2 text-sm leading-7 text-white/46">你可以从底部输入框直接回复，也可以进入完整发帖页继续补充文字、图片和引用内容。</p>
+              <p className="mt-2 text-sm leading-7 text-white/46">你可以从底部输入框直接回复这条动态。</p>
             </div>
           )}
         </section>
@@ -652,14 +797,17 @@ export function SocialPostDetailPage() {
       <SocialQuickReplyComposer
         actor={actor}
         canComment={canComment}
-        onOpenFullComposer={() => navigate(socialPaths.compose(scope, { replyToPostId: post.id }))}
-        onSubmit={(text) => createPost({
+        onSubmit={(input) => createPost({
           authorKey: actorKey,
           replyToPostId: post.id,
-          text,
+          text: input.text,
+          richText: input.richText,
+          media: input.media,
+          locationLabel: input.locationLabel,
           postType: "reply"
         })}
-        targetIdentity={`${actorKey}:${post.id}`}
+        ref={composerRefCallback}
+        targetIdentity={composerTargetIdentity}
       />
     </div>
   );

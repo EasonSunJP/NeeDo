@@ -4,7 +4,7 @@ import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
   applyConversationDraft,
   buildSearchResults,
-  buildMessagePreview,
+  buildConversationLastMessageSummary,
   canRecallMessage,
   getConversationById,
   getAnonymousGroupConversationTitle,
@@ -415,6 +415,28 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
   }
 
+  function recomputeCurrentLastMessageSummary(message: ConversationMessage) {
+    snapshot = {
+      ...snapshot,
+      conversations: sortConversations(
+        snapshot.conversations.map((conversation) =>
+          conversation.id === message.conversationId &&
+          conversation.lastMessageId === message.id
+            ? {
+                ...conversation,
+                ...buildConversationLastMessageSummary(
+                  message,
+                  snapshot.currentUserId ?? "",
+                  snapshot.usersById,
+                  conversation.updatedAt,
+                ),
+              }
+            : conversation,
+        ),
+      ),
+    };
+  }
+
   function removeDraft(conversationId: string) {
     const nextDrafts = { ...snapshot.ui.drafts };
     delete nextDrafts[conversationId];
@@ -442,6 +464,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     if (event.type === "message.created" || event.type === "message.updated" || event.type === "message.recalled") {
       upsertConversation(event.payload.conversation);
       upsertMessage(event.payload.message);
+      if (event.type === "message.recalled") {
+        recomputeCurrentLastMessageSummary(event.payload.message);
+      }
 
       if (
         snapshot.activeConversationId &&
@@ -552,6 +577,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
               update.type === "message.recalled"
             ) {
               upsertMessage(update.message);
+              if (update.type === "message.recalled") {
+                recomputeCurrentLastMessageSummary(update.message);
+              }
               emit();
 
               if (
@@ -748,10 +776,15 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         unreadCount: 0,
         isPinned: false,
         isMuted: false,
+        autoTranslateMessages: false,
         updatedAt: optimistic.sentAt
       }),
-      lastMessagePreview: buildMessagePreview(optimistic, snapshot.currentUserId ?? "", snapshot.usersById),
-      lastMessageTime: optimistic.sentAt,
+      ...buildConversationLastMessageSummary(
+        optimistic,
+        snapshot.currentUserId ?? "",
+        snapshot.usersById,
+        optimistic.sentAt,
+      ),
       updatedAt: optimistic.sentAt
     });
     emit();
@@ -779,6 +812,36 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       emit();
       throw error;
     }
+  }
+
+  async function sendVoiceMessage(
+    conversationId: string,
+    voice: Blob,
+    metadata: { durationSeconds: number; fileName: string },
+  ) {
+    await hydrateStore();
+    const response = await api.sendVoiceMessage(conversationId, voice, metadata);
+    upsertMessage(response.message);
+    const conversation = getConversationById(
+      { conversations: snapshot.conversations },
+      conversationId,
+    );
+
+    if (conversation) {
+      upsertConversation({
+        ...conversation,
+        ...buildConversationLastMessageSummary(
+          response.message,
+          snapshot.currentUserId ?? "",
+          snapshot.usersById,
+          response.message.sentAt,
+        ),
+        updatedAt: response.message.sentAt,
+      });
+    }
+
+    emit();
+    return response.message;
   }
 
   async function estimateTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignEstimate> {
@@ -828,6 +891,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     await hydrateStore();
     const response = await api.recallMessage(conversationId, messageId, mode);
     upsertMessage(response.message);
+    recomputeCurrentLastMessageSummary(response.message);
     emit();
     return response;
   }
@@ -849,15 +913,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         conversation.id === conversationId
           ? {
               ...conversation,
-              lastMessagePreview: latestMessage
-                ? buildMessagePreview(
-                    latestMessage,
-                    snapshot.currentUserId ?? "",
-                    snapshot.usersById,
-                  )
-                : "",
-              lastMessageId: latestMessage?.id,
-              lastMessageTime: latestMessage?.sentAt ?? conversation.updatedAt,
+              ...buildConversationLastMessageSummary(
+                latestMessage,
+                snapshot.currentUserId ?? "",
+                snapshot.usersById,
+                conversation.updatedAt,
+              ),
             }
           : conversation,
       ),
@@ -889,6 +950,20 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     const response = await api.muteConversation(conversationId, isMuted);
     upsertConversation(response.conversation);
     emit();
+  }
+
+  async function setConversationAutoTranslateMessages(
+    conversationId: string,
+    enabled: boolean,
+  ) {
+    await hydrateStore();
+    const response = await api.setConversationAutoTranslateMessages(
+      conversationId,
+      enabled,
+    );
+    upsertConversation(response.conversation);
+    emit();
+    return response.conversation;
   }
 
   async function updateConversationPrivacy(conversationId: string, privacyOptions: UpdateConversationPrivacyOptions) {
@@ -1243,6 +1318,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       setActiveConversation,
       setDraft,
       sendMessage,
+      sendVoiceMessage,
       estimateTagMessageCampaign,
       sendTagMessageCampaign,
       resendMessage,
@@ -1252,6 +1328,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       forwardMessage,
       pinConversation,
       muteConversation,
+      setConversationAutoTranslateMessages,
       updateConversationPrivacy,
       updateConversationGroupInfo,
       markConversationRead,

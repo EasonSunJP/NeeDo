@@ -19,6 +19,8 @@ const formalPost: RealtimeSocialPost = {
   },
   content: "肩颈护理前会先确认力度。#服务日常",
   createdAt: "2026-08-25T02:00:00.000Z",
+  replyToPostId: null,
+  replyCount: 4,
   media: {
     items: [
       {
@@ -58,6 +60,64 @@ describe("formal social adapter", () => {
         media: [expect.objectContaining({ id: "media-video-1", type: "video" })]
       })
     );
+  });
+
+  it("prefers server-authoritative interaction counters and viewer state over legacy media snapshots", () => {
+    const mapped = mapFormalSocialPost({
+      ...formalPost,
+      counters: { likes: 31, reposts: 7, views: 922, bookmarks: 15 },
+      viewerInteraction: {
+        liked: true,
+        bookmarked: true,
+        shared: true
+      }
+    });
+
+    expect(mapped).toMatchObject({
+      likeCount: 31,
+      repostCount: 7,
+      viewCount: 922,
+      bookmarkCount: 15
+    });
+  });
+
+  it("maps authoritative reply fields and valid rich text while safely dropping malformed metadata", () => {
+    const mapped = mapFormalSocialPost({
+      id: 701,
+      authorUserId: 41,
+      content: "确认Pending",
+      createdAt: "2026-08-30T03:00:00.000Z",
+      media: {
+        items: [],
+        richText: {
+          version: 1,
+          parts: [
+            { type: "text", value: "确认" },
+            { type: "judgement", value: "Pending" }
+          ]
+        }
+      },
+      replyToPostId: 700,
+      replyCount: 2,
+      visibility: "public"
+    } as RealtimeSocialPost);
+
+    expect(mapped).toMatchObject({
+      replyToPostId: "700",
+      replyCount: 2,
+      richText: {
+        version: 1,
+        parts: [
+          { type: "text", value: "确认" },
+          { type: "judgement", value: "Pending" }
+        ]
+      }
+    });
+    expect(mapFormalSocialPost({
+      ...formalPost,
+      content: "确认Pending",
+      media: { items: [], richText: { version: 1, parts: [{ type: "text", value: "确认Pending" }] } }
+    }).richText).toBeUndefined();
   });
 
   it("keeps legacy array media readable and builds safe public author profiles", () => {
@@ -116,6 +176,28 @@ describe("formal social adapter", () => {
       quotePostId: 42,
       postType: "quote",
       locationLabel: "东京 银座"
+    });
+  });
+
+  it("preserves valid structured rich text in formal create envelopes", () => {
+    expect(buildFormalSocialCreateMediaEnvelope({
+      media: [],
+      richText: {
+        version: 1,
+        parts: [
+          { type: "text", value: "确认" },
+          { type: "judgement", value: "Pending" }
+        ]
+      }
+    })).toEqual({
+      items: [],
+      richText: {
+        version: 1,
+        parts: [
+          { type: "text", value: "确认" },
+          { type: "judgement", value: "Pending" }
+        ]
+      }
     });
   });
 

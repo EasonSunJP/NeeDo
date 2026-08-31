@@ -15,6 +15,7 @@ import {
   compareMessageReactionCategories,
   getMessageReactionCategory
 } from "../constants/message-reaction.constants";
+import type { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { prisma } from "../prisma/client";
 import type { AuthRequestContext } from "../services/auth.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -54,6 +55,7 @@ export interface ConversationPayload {
   unreadCount: number;
   isPinned: boolean;
   isMuted: boolean;
+  autoTranslateMessages: boolean;
   isHidden: boolean;
   privacyModeEnabled: boolean;
   hideMemberProfiles: boolean;
@@ -182,7 +184,7 @@ export type CreateFriendRequestOutcome =
 export interface DirectoryProfilePayload {
   user: ParticipantPayload;
   identityCard: DirectoryIdentityCardPayload;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: FriendRequestPayload | null;
 }
@@ -239,6 +241,8 @@ export interface SocialPostPayload {
   authorIdentityId: number;
   content: string;
   media: unknown;
+  replyToPostId: number | null;
+  replyCount: number;
   visibility: SocialPostVisibilityPayload;
   createdAt: Date;
   updatedAt: Date;
@@ -246,12 +250,69 @@ export interface SocialPostPayload {
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
   viewerIsFriend: boolean;
+  counters: {
+    likes: number;
+    reposts: number;
+    views: number;
+    bookmarks: number;
+  };
+  viewerInteraction: {
+    liked: boolean;
+    bookmarked: boolean;
+    shared: boolean;
+  };
 }
 
 type SocialRelationshipMap = {
   follows: Set<string>;
   friendIdentityIds: Set<number>;
 };
+
+type SocialInteractionMap = {
+  likedPostIds: Set<number>;
+  bookmarkedPostIds: Set<number>;
+  sharedPostIds: Set<number>;
+};
+
+export interface SocialPostInteractionMutationInput {
+  postId: number;
+  actorUserId: number;
+  actorIdentityId?: number;
+  active: boolean;
+  context: AuthRequestContext;
+}
+
+export interface RecordSocialPostViewInput {
+  postId: number;
+  actorUserId: number;
+  actorIdentityId?: number;
+  context: AuthRequestContext;
+}
+
+export interface ShareSocialPostInput {
+  postId: number;
+  actorUserId: number;
+  actorIdentityId?: number;
+  targetUserIds: number[];
+  idempotencyKey: string;
+  context: AuthRequestContext;
+}
+
+export interface SocialPostInteractionMutationResult {
+  changed: boolean;
+  post: SocialPostPayload;
+}
+
+export interface SocialPostShareDelivery {
+  recipientUserId: number;
+  recipientIdentityId: number;
+  message: MessagePayload;
+  created: boolean;
+}
+
+export interface ShareSocialPostResult extends SocialPostInteractionMutationResult {
+  deliveries: SocialPostShareDelivery[];
+}
 
 export interface FollowPayload {
   id: number;
@@ -351,7 +412,20 @@ export interface CreateMessageInput {
 export type CreateMessageOutcome =
   | { status: "created"; message: MessagePayload }
   | { status: "not_found" }
+  | { status: "recipient_blocked" }
   | { status: "not_friends" };
+
+export type MessageSendEligibility =
+  | "allowed"
+  | "not_found"
+  | "recipient_blocked"
+  | "not_friends";
+
+export interface CheckMessageSendEligibilityInput {
+  conversationId: number;
+  senderUserId: number;
+  senderIdentityId?: number;
+}
 
 export interface RecallMessageInput {
   conversationId: number;
@@ -398,6 +472,7 @@ export interface UpdateConversationPreferencesInput {
   identityId?: number;
   isPinned?: boolean;
   isMuted?: boolean;
+  autoTranslateMessages?: boolean;
 }
 
 export interface FriendRequestListInput extends PaginationInput {
@@ -444,6 +519,13 @@ export interface CreateSocialPostMediaEnvelope {
   repostPostId?: number;
   postType?: "post" | "reply" | "quote" | "repost" | "announcement" | "technician-daily";
   locationLabel?: string;
+  richText?: {
+    version: 1;
+    parts: Array<
+      | { type: "text"; value: string }
+      | { type: "judgement"; value: (typeof MESSAGE_JUDGEMENT_REACTIONS)[number] }
+    >;
+  };
 }
 
 export interface CreateSocialPostResult {
@@ -460,6 +542,8 @@ export type UpdateSocialPostResult = CreateSocialPostResult;
 export interface SocialPostListInput extends PaginationInput {
   authorUserId?: number;
   authorIdentityId?: number;
+  replyToPostId?: number;
+  bookmarked?: boolean;
 }
 
 export interface SocialActivityStatusInput {
@@ -520,6 +604,9 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ConversationPayload>>;
+  checkMessageSendEligibility: (
+    input: CheckMessageSendEligibilityInput
+  ) => Promise<MessageSendEligibility>;
   createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
@@ -603,6 +690,16 @@ export interface RealtimeRepositoryPort {
     postId: number,
     userId?: number
   ) => Promise<SocialPostPayload | null>;
+  setSocialPostLike: (
+    input: SocialPostInteractionMutationInput
+  ) => Promise<SocialPostInteractionMutationResult | null>;
+  setSocialPostBookmark: (
+    input: SocialPostInteractionMutationInput
+  ) => Promise<SocialPostInteractionMutationResult | null>;
+  recordSocialPostView: (
+    input: RecordSocialPostViewInput
+  ) => Promise<SocialPostInteractionMutationResult | null>;
+  shareSocialPost: (input: ShareSocialPostInput) => Promise<ShareSocialPostResult | null>;
   getSocialActivityStatus: (
     input: SocialActivityStatusInput
   ) => Promise<SocialActivityStatusPayload | null>;
@@ -664,6 +761,15 @@ const socialPostInclude = {
   },
   authorIdentity: {
     select: { id: true, type: true, displayName: true }
+  },
+  _count: {
+    select: {
+      replies: { where: { deletedAt: null } },
+      likes: { where: { deletedAt: null } },
+      bookmarks: { where: { deletedAt: null } },
+      views: { where: { deletedAt: null } },
+      shares: { where: { deletedAt: null } }
+    }
   }
 } satisfies Prisma.SocialPostInclude;
 
@@ -739,6 +845,7 @@ type DirectoryProfileUserRecord = {
   username: string;
   avatarUrl: string | null;
   identities: Array<{
+    id: number;
     type: string;
     scopeType: string | null;
     scopeId: number | null;
@@ -767,6 +874,8 @@ type DirectoryProfileUserRecord = {
     city: string;
     serviceArea: string | null;
     yearsExperience: number;
+    languages: unknown;
+    visibility: string;
     employmentType: string;
     status: string;
     verifiedAt: Date | null;
@@ -1257,6 +1366,72 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
   }
 
+  public async checkMessageSendEligibility(
+    input: CheckMessageSendEligibilityInput
+  ): Promise<MessageSendEligibility> {
+    const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
+    const participant = await this.client.conversationParticipant.findFirst({
+      where: {
+        conversationId: input.conversationId,
+        identityId: senderIdentityId,
+        deletedAt: null,
+        conversation: { deletedAt: null }
+      },
+      select: {
+        conversation: {
+          select: {
+            accessPolicy: true,
+            participants: {
+              where: { deletedAt: null },
+              select: { identityId: true }
+            }
+          }
+        }
+      }
+    });
+    if (!participant) {
+      return "not_found";
+    }
+    if (
+      await this.isMessageSenderBlocked(
+        input.conversationId,
+        input.senderUserId,
+        senderIdentityId
+      )
+    ) {
+      return "recipient_blocked";
+    }
+    if (
+      participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED
+    ) {
+      const identityIds = participant.conversation.participants.map(
+        ({ identityId }) => identityId
+      );
+      if (identityIds.length !== 2) {
+        return "not_friends";
+      }
+      const reciprocalCount = await this.client.contact.count({
+        where: {
+          deletedAt: null,
+          OR: [
+            {
+              ownerIdentityId: identityIds[0],
+              contactIdentityId: identityIds[1]
+            },
+            {
+              ownerIdentityId: identityIds[1],
+              contactIdentityId: identityIds[0]
+            }
+          ]
+        }
+      });
+      if (reciprocalCount !== 2) {
+        return "not_friends";
+      }
+    }
+    return "allowed";
+  }
+
   public async createMessage(input: CreateMessageInput): Promise<CreateMessageOutcome> {
     return this.client.$transaction(async (tx) => {
       const participant = await tx.conversationParticipant.findFirst({
@@ -1278,7 +1453,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
               accessPolicy: true,
               participants: {
                 where: { deletedAt: null },
-                select: { identityId: true }
+                select: {
+                  userId: true,
+                  identityId: true,
+                  identity: {
+                    select: {
+                      ownedContacts: {
+                        where: {
+                          contactIdentityId: input.senderIdentityId ?? input.senderUserId,
+                          blockedAt: { not: null },
+                          deletedAt: null
+                        },
+                        select: { id: true }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -1287,6 +1477,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
       if (!participant) {
         return { status: "not_found" };
+      }
+      if (
+        participant.conversation.type === ConversationType.DIRECT &&
+        participant.conversation.participants.some(
+          (conversationParticipant) =>
+            conversationParticipant.userId !== input.senderUserId &&
+            conversationParticipant.identity?.ownedContacts?.length > 0
+        )
+      ) {
+        return { status: "recipient_blocked" };
       }
       if (
         participant.conversation.accessPolicy === ConversationAccessPolicy.FRIENDSHIP_REQUIRED
@@ -1884,6 +2084,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       data: {
         ...(input.isPinned === undefined ? {} : { isPinned: input.isPinned }),
         ...(input.isMuted === undefined ? {} : { isMuted: input.isMuted }),
+        ...(input.autoTranslateMessages === undefined
+          ? {}
+          : { autoTranslateMessages: input.autoTranslateMessages }),
         hiddenAt: null
       }
     });
@@ -2323,6 +2526,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         identities: {
           where: { deletedAt: null, isActive: true },
           select: {
+            id: true,
             type: true,
             scopeType: true,
             scopeId: true,
@@ -2362,6 +2566,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             city: true,
             serviceArea: true,
             yearsExperience: true,
+            languages: true,
+            visibility: true,
             employmentType: true,
             status: true,
             verifiedAt: true,
@@ -2380,11 +2586,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (!user) {
       return null;
     }
-    const identityCard = await this.buildDirectoryIdentityCard(user);
+    const identityCard = await this.buildDirectoryIdentityCard(user, targetIdentityId);
+    if (viewerUserId === targetUserId && viewerIdentityId === targetIdentityId) {
+      return {
+        user: this.mapParticipant(user),
+        identityCard,
+        relationship: "self",
+        contactId: null,
+        friendRequest: null
+      };
+    }
     const contact = await this.client.contact.findFirst({
       where: {
         ownerIdentityId: viewerIdentityId,
         contactIdentityId: targetIdentityId,
+        source: "friend_request",
         deletedAt: null
       },
       select: { id: true }
@@ -2394,6 +2610,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           where: {
             ownerIdentityId: targetIdentityId,
             contactIdentityId: viewerIdentityId,
+            source: "friend_request",
             deletedAt: null
           },
           select: { id: true }
@@ -2489,6 +2706,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }
       const reciprocalContactCount = await tx.contact.count({
         where: {
+          source: "friend_request",
           deletedAt: null,
           OR: [
             { ownerIdentityId: requesterIdentityId, contactIdentityId: targetIdentityId },
@@ -2864,6 +3082,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         }
       }
 
+      const replyToPostId = input.media?.replyToPostId;
+      if (replyToPostId !== undefined) {
+        const replyTarget = await transaction.socialPost.findFirst({
+          where: { id: replyToPostId, deletedAt: null },
+          select: { id: true }
+        });
+        if (!replyTarget) {
+          throw this.socialPostConflict("error.social.reply_target_not_found");
+        }
+      }
+
       const requestedMediaItems = input.media?.items ?? [];
       const mediaPublicIds = requestedMediaItems.map((item) => item.mediaAssetPublicId);
       if (new Set(mediaPublicIds).size !== mediaPublicIds.length) {
@@ -2925,6 +3154,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             ...(input.media.locationLabel !== undefined
               ? { locationLabel: input.media.locationLabel }
               : {}),
+            ...(input.media.richText !== undefined ? { richText: input.media.richText } : {}),
             items: requestedMediaItems.map((item) => {
               const mediaAsset = selectedMediaByPublicId.get(item.mediaAssetPublicId);
               if (!mediaAsset) {
@@ -2949,6 +3179,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           authorIdentityId,
           content: input.content,
           media: this.toJsonValue(media),
+          replyToPostId: replyToPostId ?? null,
           visibility: this.socialPostVisibilityToDb(input.visibility)
         },
         include: socialPostInclude
@@ -3037,6 +3268,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
       if (!existingPost) {
         return null;
+      }
+
+      if (
+        input.media?.replyToPostId !== undefined &&
+        input.media.replyToPostId !== existingPost.replyToPostId
+      ) {
+        throw this.socialPostConflict("error.social.reply_relation_immutable");
       }
 
       const mentionUserIds = Array.from(new Set(input.mentionUserIds));
@@ -3140,6 +3378,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             ...(input.media.repostPostId !== undefined ? { repostPostId: input.media.repostPostId } : {}),
             ...(input.media.postType !== undefined ? { postType: input.media.postType } : {}),
             ...(input.media.locationLabel !== undefined ? { locationLabel: input.media.locationLabel } : {}),
+            ...(input.media.richText !== undefined ? { richText: input.media.richText } : {}),
             items: requestedMediaItems.map((item) => {
               const mediaAsset = selectedMediaByPublicId.get(item.mediaAssetPublicId);
               if (!mediaAsset) {
@@ -3244,6 +3483,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       deletedAt: null,
       ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
       ...(input.authorIdentityId ? { authorIdentityId: input.authorIdentityId } : {}),
+      ...(input.replyToPostId ? { replyToPostId: input.replyToPostId } : {}),
+      ...(input.bookmarked
+        ? {
+            bookmarks: {
+              some: { actorIdentityId: identityId, deletedAt: null }
+            }
+          }
+        : {}),
       OR: [
         { visibility: SocialPostVisibility.PUBLIC },
         { authorIdentityId: identityId },
@@ -3270,14 +3517,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       this.client.socialPost.count({ where })
     ]);
 
-    const relationshipMap = await this.loadSocialRelationshipMap(
-      identityId,
-      list.map((socialPost) => socialPost.authorIdentityId)
-    );
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(
+        identityId,
+        list.map((socialPost) => socialPost.authorIdentityId)
+      ),
+      this.loadSocialInteractionMap(identityId, list.map((socialPost) => socialPost.id))
+    ]);
 
     return buildPaginatedResponse(
       list.map((socialPost) =>
-        this.mapSocialPost(socialPost, identityId, socialPost.authorIdentityId, relationshipMap)
+        this.mapSocialPost(
+          socialPost,
+          identityId,
+          socialPost.authorIdentityId,
+          relationshipMap,
+          interactionMap
+        )
       ),
       total,
       pagination
@@ -3316,15 +3572,536 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       return null;
     }
 
-    const relationshipMap = await this.loadSocialRelationshipMap(identityId, [
-      socialPost.authorIdentityId
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(identityId, [socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(identityId, [socialPost.id])
     ]);
     return this.mapSocialPost(
       socialPost,
       identityId,
       socialPost.authorIdentityId,
-      relationshipMap
+      relationshipMap,
+      interactionMap
     );
+  }
+
+  public async setSocialPostLike(
+    input: SocialPostInteractionMutationInput
+  ): Promise<SocialPostInteractionMutationResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+
+      const existing = await transaction.socialPostLike.findUnique({
+        where: {
+          postId_actorIdentityId: { postId: socialPost.id, actorIdentityId }
+        }
+      });
+      const changed = input.active ? existing?.deletedAt !== null : Boolean(existing && !existing.deletedAt);
+      if (input.active && !existing) {
+        await transaction.socialPostLike.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId
+          }
+        });
+      } else if (input.active && existing?.deletedAt) {
+        await transaction.socialPostLike.update({
+          where: { id: existing.id },
+          data: { actorUserId: input.actorUserId, deletedAt: null }
+        });
+      } else if (!input.active && existing && !existing.deletedAt) {
+        await transaction.socialPostLike.update({
+          where: { id: existing.id },
+          data: { deletedAt: new Date() }
+        });
+      }
+
+      if (changed) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: input.active ? "social.post.liked" : "social.post.unliked",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { actorIdentityId }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return { actorIdentityId, changed, socialPost: updated };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      )
+    };
+  }
+
+  public async setSocialPostBookmark(
+    input: SocialPostInteractionMutationInput
+  ): Promise<SocialPostInteractionMutationResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+
+      const existing = await transaction.socialPostBookmark.findUnique({
+        where: {
+          postId_actorIdentityId: { postId: socialPost.id, actorIdentityId }
+        }
+      });
+      const changed = input.active ? existing?.deletedAt !== null : Boolean(existing && !existing.deletedAt);
+      if (input.active && !existing) {
+        await transaction.socialPostBookmark.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId
+          }
+        });
+      } else if (input.active && existing?.deletedAt) {
+        await transaction.socialPostBookmark.update({
+          where: { id: existing.id },
+          data: { actorUserId: input.actorUserId, deletedAt: null }
+        });
+      } else if (!input.active && existing && !existing.deletedAt) {
+        await transaction.socialPostBookmark.update({
+          where: { id: existing.id },
+          data: { deletedAt: new Date() }
+        });
+      }
+
+      if (changed) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: input.active ? "social.post.bookmarked" : "social.post.unbookmarked",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { actorIdentityId }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return { actorIdentityId, changed, socialPost: updated };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      )
+    };
+  }
+
+  public async recordSocialPostView(
+    input: RecordSocialPostViewInput
+  ): Promise<SocialPostInteractionMutationResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+      const existing = await transaction.socialPostView.findUnique({
+        where: {
+          postId_actorIdentityId: { postId: socialPost.id, actorIdentityId }
+        }
+      });
+      const changed = !existing || Boolean(existing.deletedAt);
+      if (!existing) {
+        await transaction.socialPostView.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId
+          }
+        });
+      } else if (existing.deletedAt) {
+        await transaction.socialPostView.update({
+          where: { id: existing.id },
+          data: { actorUserId: input.actorUserId, deletedAt: null }
+        });
+      }
+      if (changed) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "social.post.viewed",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { actorIdentityId }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return { actorIdentityId, changed, socialPost: updated };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      )
+    };
+  }
+
+  public async shareSocialPost(
+    input: ShareSocialPostInput
+  ): Promise<ShareSocialPostResult | null> {
+    const mutation = await this.client.$transaction(async (transaction) => {
+      const actorIdentityId = input.actorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.actorUserId);
+      if (!actorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+      const socialPost = await transaction.socialPost.findFirst({
+        where: this.socialPostVisibleWhere(actorIdentityId, input.postId),
+        include: socialPostInclude
+      });
+      if (!socialPost) return null;
+
+      const targetUserIds = [...new Set(input.targetUserIds)];
+      if (
+        targetUserIds.length !== input.targetUserIds.length ||
+        targetUserIds.length === 0 ||
+        targetUserIds.length > 20 ||
+        targetUserIds.includes(input.actorUserId)
+      ) {
+        throw this.socialPostConflict("error.social.invalid_share_target");
+      }
+      const outgoingContacts = await transaction.contact.findMany({
+        where: {
+          ownerIdentityId: actorIdentityId,
+          contactUserId: { in: targetUserIds },
+          blockedAt: null,
+          deletedAt: null,
+          contactUser: { isActive: true, deletedAt: null }
+        },
+        select: { contactUserId: true, contactIdentityId: true },
+        orderBy: { contactIdentityId: "asc" }
+      });
+      const targetIdentityByUser = new Map(
+        outgoingContacts.map((contact) => [contact.contactUserId, contact.contactIdentityId])
+      );
+      if (targetUserIds.some((userId) => !targetIdentityByUser.has(userId))) {
+        throw this.socialPostConflict("error.social.share_target_not_friend");
+      }
+      const targetIdentityIds = targetUserIds.map((userId) => targetIdentityByUser.get(userId)!);
+      const reciprocalContacts = await transaction.contact.findMany({
+        where: {
+          ownerIdentityId: { in: targetIdentityIds },
+          contactIdentityId: actorIdentityId,
+          blockedAt: null,
+          deletedAt: null
+        },
+        select: { ownerIdentityId: true }
+      });
+      const reciprocalIdentityIds = new Set(
+        reciprocalContacts.map((contact) => contact.ownerIdentityId)
+      );
+      if (targetIdentityIds.some((identityId) => !reciprocalIdentityIds.has(identityId))) {
+        throw this.socialPostConflict("error.social.share_target_not_friend");
+      }
+      if (socialPost.visibility === SocialPostVisibility.FOLLOWERS) {
+        const visibleTargetFollows = await transaction.follow.findMany({
+          where: {
+            followerIdentityId: { in: targetIdentityIds },
+            followingIdentityId: socialPost.authorIdentityId,
+            deletedAt: null
+          },
+          select: { followerIdentityId: true }
+        });
+        const visibleIdentityIds = new Set(
+          visibleTargetFollows.map((follow) => follow.followerIdentityId)
+        );
+        if (targetIdentityIds.some((identityId) => !visibleIdentityIds.has(identityId))) {
+          throw this.socialPostConflict("error.social.share_target_cannot_view");
+        }
+      }
+
+      const idempotentShares = await transaction.socialPostShare.findMany({
+        where: { actorIdentityId, idempotencyKey: input.idempotencyKey },
+        include: { message: { include: messageInclude } },
+        orderBy: { id: "asc" }
+      });
+      if (idempotentShares.some((share) => share.postId !== socialPost.id)) {
+        throw this.socialPostConflict("error.social.idempotency_conflict");
+      }
+      const existingShareByRecipient = new Map(
+        idempotentShares.map((share) => [share.recipientIdentityId, share])
+      );
+      const policy = await transaction.imPolicy.findFirst({
+        where: { activeKey: "active", deletedAt: null },
+        select: { textRetentionSeconds: true, recallWindowSeconds: true, version: true }
+      });
+      const mediaEnvelope = this.jsonRecord(socialPost.media);
+      const mediaItems = Array.isArray(mediaEnvelope?.items) ? mediaEnvelope.items : [];
+      const firstMedia = this.jsonRecord(mediaItems[0]);
+      const author = this.mapSocialAuthor(socialPost.author, socialPost.authorIdentity);
+      const deliveries: Array<{
+        recipientUserId: number;
+        recipientIdentityId: number;
+        message: MessageRecord;
+        created: boolean;
+      }> = [];
+
+      for (const recipientUserId of targetUserIds) {
+        const recipientIdentityId = targetIdentityByUser.get(recipientUserId)!;
+        const existingShare = existingShareByRecipient.get(recipientIdentityId);
+        if (existingShare) {
+          deliveries.push({
+            recipientUserId,
+            recipientIdentityId,
+            message: existingShare.message,
+            created: false
+          });
+          continue;
+        }
+
+        const friendshipPairKey = toFriendshipPairKey(actorIdentityId, recipientIdentityId);
+        const conversation = await transaction.conversation.upsert({
+          where: { friendshipPairKey },
+          create: {
+            type: ConversationType.DIRECT,
+            accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+            friendshipPairKey,
+            createdByUserId: input.actorUserId,
+            createdByIdentityId: actorIdentityId,
+            participants: {
+              create: [
+                { userId: input.actorUserId, identityId: actorIdentityId, role: "owner" },
+                { userId: recipientUserId, identityId: recipientIdentityId, role: "member" }
+              ]
+            }
+          },
+          update: { deletedAt: null },
+          select: { id: true }
+        });
+        const createdAt = new Date();
+        for (const participant of [
+          { userId: input.actorUserId, identityId: actorIdentityId },
+          { userId: recipientUserId, identityId: recipientIdentityId }
+        ]) {
+          await transaction.conversationParticipant.upsert({
+            where: {
+              conversationId_identityId: {
+                conversationId: conversation.id,
+                identityId: participant.identityId
+              }
+            },
+            create: {
+              conversationId: conversation.id,
+              userId: participant.userId,
+              identityId: participant.identityId,
+              role: participant.identityId === actorIdentityId ? "owner" : "member"
+            },
+            update: { deletedAt: null, hiddenAt: null }
+          });
+        }
+        const globalExpiresAt =
+          policy?.textRetentionSeconds === null || policy?.textRetentionSeconds === undefined
+            ? null
+            : new Date(createdAt.getTime() + policy.textRetentionSeconds * 1_000);
+        const message = await transaction.message.create({
+          data: {
+            conversationId: conversation.id,
+            senderUserId: input.actorUserId,
+            senderIdentityId: actorIdentityId,
+            type: MessageType.TEXT,
+            content: "转发了一条动态",
+            metadata: {
+              needoMessageType: "social-post-card",
+              needoMessageExt: {
+                socialPostCard: {
+                  postId: String(socialPost.id),
+                  authorName: author.displayName,
+                  authorAvatar: author.avatarUrl ?? "",
+                  text: socialPost.content,
+                  ...(typeof firstMedia?.url === "string" ? { mediaUrl: firstMedia.url } : {})
+                }
+              }
+            },
+            createdAt,
+            expiresAt: globalExpiresAt,
+            recallDeadlineAt: new Date(
+              createdAt.getTime() + (policy?.recallWindowSeconds ?? 180) * 1_000
+            ),
+            lifecycleVersion: policy?.version ?? 1
+          },
+          include: messageInclude
+        });
+        await transaction.conversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: createdAt }
+        });
+        await transaction.conversationParticipant.updateMany({
+          where: { conversationId: conversation.id, identityId: actorIdentityId, deletedAt: null },
+          data: {
+            unreadCount: 0,
+            hiddenAt: null,
+            lastReadMessageId: message.id,
+            lastReadAt: message.createdAt
+          }
+        });
+        await transaction.conversationParticipant.updateMany({
+          where: {
+            conversationId: conversation.id,
+            identityId: recipientIdentityId,
+            deletedAt: null
+          },
+          data: { unreadCount: { increment: 1 }, hiddenAt: null }
+        });
+        await transaction.socialPostShare.create({
+          data: {
+            postId: socialPost.id,
+            actorUserId: input.actorUserId,
+            actorIdentityId,
+            recipientUserId,
+            recipientIdentityId,
+            conversationId: conversation.id,
+            messageId: message.id,
+            idempotencyKey: input.idempotencyKey
+          }
+        });
+        deliveries.push({ recipientUserId, recipientIdentityId, message, created: true });
+      }
+
+      const createdRecipientUserIds = deliveries
+        .filter((delivery) => delivery.created)
+        .map((delivery) => delivery.recipientUserId);
+      if (createdRecipientUserIds.length > 0) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "social.post.shared_to_friends",
+            targetType: "SocialPost",
+            targetId: socialPost.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: {
+              actorIdentityId,
+              recipientUserIds: createdRecipientUserIds,
+              idempotencyKey: input.idempotencyKey
+            }
+          }
+        });
+      }
+      const updated = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: socialPost.id },
+        include: socialPostInclude
+      });
+      return {
+        actorIdentityId,
+        changed: createdRecipientUserIds.length > 0,
+        deliveries,
+        socialPost: updated
+      };
+    });
+    if (!mutation) return null;
+
+    const [relationshipMap, interactionMap] = await Promise.all([
+      this.loadSocialRelationshipMap(mutation.actorIdentityId, [mutation.socialPost.authorIdentityId]),
+      this.loadSocialInteractionMap(mutation.actorIdentityId, [mutation.socialPost.id])
+    ]);
+    return {
+      changed: mutation.changed,
+      post: this.mapSocialPost(
+        mutation.socialPost,
+        mutation.actorIdentityId,
+        mutation.socialPost.authorIdentityId,
+        relationshipMap,
+        interactionMap
+      ),
+      deliveries: mutation.deliveries.map((delivery) => ({
+        recipientUserId: delivery.recipientUserId,
+        recipientIdentityId: delivery.recipientIdentityId,
+        message: this.mapMessage(delivery.message, mutation.actorIdentityId),
+        created: delivery.created
+      }))
+    };
   }
 
   public async getSocialActivityStatus(
@@ -3971,6 +4748,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       unreadCount: viewer?.unreadCount ?? 0,
       isPinned: viewer?.isPinned ?? false,
       isMuted: viewer?.isMuted ?? false,
+      autoTranslateMessages: viewer?.autoTranslateMessages ?? false,
       isHidden: viewer?.hiddenAt !== null && viewer?.hiddenAt !== undefined,
       privacyModeEnabled: conversation.privacyModeEnabled,
       hideMemberProfiles: conversation.hideMemberProfiles,
@@ -4157,9 +4935,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   private async buildDirectoryIdentityCard(
-    user: DirectoryProfileUserRecord
+    user: DirectoryProfileUserRecord,
+    targetIdentityId: number
   ): Promise<DirectoryIdentityCardPayload> {
     const identity =
+      user.identities.find((item) => item.id === targetIdentityId) ??
       user.identities.find((item) =>
         ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(
           item.type
@@ -4196,6 +4976,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const review = profile.reviewSummary?.deletedAt === null
         ? profile.reviewSummary
         : null;
+      const customerLanguages = toDirectoryLanguages(profile.languages);
+      const technicianLanguages =
+        customerLanguages.length === 0 &&
+        user.technicianProfile?.deletedAt === null &&
+        user.technicianProfile.status === "published" &&
+        user.technicianProfile.visibility === "public"
+          ? toDirectoryLanguages(user.technicianProfile.languages)
+          : [];
       return {
         entityType: "user",
         profileId: profile.id,
@@ -4207,7 +4995,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         gender: profile.gender === "private" ? null : profile.gender,
         age: profile.age,
         heightCm: profile.heightCm?.toString() ?? null,
-        languages: toDirectoryLanguages(profile.languages),
+        languages: customerLanguages.length > 0 ? customerLanguages : technicianLanguages,
         city: profile.city,
         serviceArea: null,
         yearsExperience: null,
@@ -4234,7 +5022,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         gender: null,
         age: null,
         heightCm: null,
-        languages: [],
+        languages:
+          profile.visibility === "public" ? toDirectoryLanguages(profile.languages) : [],
         city: profile.city,
         serviceArea: profile.serviceArea,
         yearsExperience: profile.yearsExperience,
@@ -4388,6 +5177,63 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return { follows, friendIdentityIds };
   }
 
+  private socialPostVisibleWhere(
+    viewerIdentityId: number,
+    postId?: number
+  ): Prisma.SocialPostWhereInput {
+    return {
+      ...(postId !== undefined ? { id: postId } : {}),
+      deletedAt: null,
+      OR: [
+        { visibility: SocialPostVisibility.PUBLIC },
+        { authorIdentityId: viewerIdentityId },
+        {
+          authorIdentity: {
+            followers: {
+              some: { followerIdentityId: viewerIdentityId, deletedAt: null }
+            }
+          }
+        }
+      ]
+    };
+  }
+
+  private async loadSocialInteractionMap(
+    viewerIdentityId: number,
+    postIds: number[]
+  ): Promise<SocialInteractionMap> {
+    const uniquePostIds = [...new Set(postIds)];
+    if (uniquePostIds.length === 0) {
+      return {
+        likedPostIds: new Set(),
+        bookmarkedPostIds: new Set(),
+        sharedPostIds: new Set()
+      };
+    }
+
+    const [likes, bookmarks, shares] = await Promise.all([
+      this.client.socialPostLike.findMany({
+        where: { postId: { in: uniquePostIds }, actorIdentityId: viewerIdentityId, deletedAt: null },
+        select: { postId: true }
+      }),
+      this.client.socialPostBookmark.findMany({
+        where: { postId: { in: uniquePostIds }, actorIdentityId: viewerIdentityId, deletedAt: null },
+        select: { postId: true }
+      }),
+      this.client.socialPostShare.findMany({
+        where: { postId: { in: uniquePostIds }, actorIdentityId: viewerIdentityId, deletedAt: null },
+        select: { postId: true },
+        distinct: ["postId"]
+      })
+    ]);
+
+    return {
+      likedPostIds: new Set(likes.map((item) => item.postId)),
+      bookmarkedPostIds: new Set(bookmarks.map((item) => item.postId)),
+      sharedPostIds: new Set(shares.map((item) => item.postId))
+    };
+  }
+
   private mapSocialAuthor(
     author: SocialAuthorRecord,
     postIdentity?: { id: number; type: string; displayName: string | null }
@@ -4425,14 +5271,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     relationshipMap: SocialRelationshipMap = {
       follows: new Set(),
       friendIdentityIds: new Set()
+    },
+    interactionMap: SocialInteractionMap = {
+      likedPostIds: new Set(),
+      bookmarkedPostIds: new Set(),
+      sharedPostIds: new Set()
     }
   ): SocialPostPayload {
+    const envelope = this.jsonRecord(socialPost.media);
+    const legacyCounters = this.jsonRecord(envelope?.counters);
     return {
       id: socialPost.id,
       authorUserId: socialPost.authorUserId,
       authorIdentityId: socialPost.authorIdentityId,
       content: socialPost.content,
       media: socialPost.media,
+      replyToPostId: socialPost.replyToPostId,
+      replyCount: socialPost._count.replies,
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
       createdAt: socialPost.createdAt,
       updatedAt: socialPost.updatedAt,
@@ -4443,6 +5298,17 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         viewerIdentityId === authorIdentityId ||
         relationshipMap.follows.has(`${authorIdentityId}:${viewerIdentityId}`),
       viewerIsFriend: relationshipMap.friendIdentityIds.has(authorIdentityId),
+      counters: {
+        likes: this.jsonCounter(legacyCounters?.likes, 0) + socialPost._count.likes,
+        reposts: this.jsonCounter(legacyCounters?.reposts, 0) + socialPost._count.shares,
+        views: this.jsonCounter(legacyCounters?.views, 1) + socialPost._count.views,
+        bookmarks: this.jsonCounter(legacyCounters?.bookmarks, 0) + socialPost._count.bookmarks
+      },
+      viewerInteraction: {
+        liked: interactionMap.likedPostIds.has(socialPost.id),
+        bookmarked: interactionMap.bookmarkedPostIds.has(socialPost.id),
+        shared: interactionMap.sharedPostIds.has(socialPost.id)
+      },
       author: this.mapSocialAuthor(socialPost.author, socialPost.authorIdentity)
     };
   }

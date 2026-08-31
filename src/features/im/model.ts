@@ -18,6 +18,7 @@ export type ImMessageType =
   | "location"
   | "contact-card"
   | "service-card"
+  | "social-post-card"
   | "schedule-invite"
   | "system"
   | "recalled";
@@ -92,7 +93,7 @@ export type FriendRequest = {
 export type DirectoryProfile = {
   user: ImUser;
   identityCard: DirectoryIdentityCard;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId?: string;
   friendRequest?: FriendRequest;
 };
@@ -178,10 +179,13 @@ export type Conversation = {
   contactUserId?: string;
   lastMessageId?: string;
   lastMessagePreview: string;
+  lastMessageType?: ImMessageType;
+  lastMessageStatus?: ImMessageStatus;
   lastMessageTime: string;
   unreadCount: number;
   isPinned: boolean;
   isMuted: boolean;
+  autoTranslateMessages: boolean;
   draftText?: string;
   draftUpdatedAt?: string;
   updatedAt: string;
@@ -262,6 +266,13 @@ export type MessageExt = {
     providerType?: "store" | "technician";
     href?: string;
     tags?: string[];
+  };
+  socialPostCard?: {
+    postId: string;
+    authorName: string;
+    authorAvatar: string;
+    text: string;
+    mediaUrl?: string;
   };
   scheduleInvite?: {
     scheduleId: string;
@@ -603,7 +614,7 @@ function createFriendRequest(input: Omit<FriendRequest, "createdAt"> & { created
 }
 
 function createConversation(
-  input: Omit<Conversation, "lastMessagePreview" | "lastMessageTime" | "updatedAt" | "unreadCount" | "isPinned" | "isMuted" | "avatar"> & {
+  input: Omit<Conversation, "lastMessagePreview" | "lastMessageTime" | "updatedAt" | "unreadCount" | "isPinned" | "isMuted" | "autoTranslateMessages" | "avatar"> & {
     avatar?: string;
     lastMessagePreview?: string;
     lastMessageTime?: string;
@@ -611,6 +622,7 @@ function createConversation(
     unreadCount?: number;
     isPinned?: boolean;
     isMuted?: boolean;
+    autoTranslateMessages?: boolean;
   }
 ) {
   return {
@@ -620,6 +632,7 @@ function createConversation(
     unreadCount: input.unreadCount ?? 0,
     isPinned: input.isPinned ?? false,
     isMuted: input.isMuted ?? false,
+    autoTranslateMessages: input.autoTranslateMessages ?? false,
     updatedAt: input.updatedAt ?? input.lastMessageTime ?? atDaysAgo(3),
     ...input
   };
@@ -995,7 +1008,11 @@ export function formatConversationTime(value: string, now = new Date()) {
   return `${target.getFullYear()}/${target.getMonth() + 1}/${target.getDate()}`;
 }
 
-export function buildMessagePreview(message: ConversationMessage, currentUserId: string, users: Record<string, ImUser>) {
+export function buildMessagePreview(
+  message: ConversationMessage,
+  currentUserId: string,
+  _users: Record<string, ImUser>,
+) {
   if (message.type === "recalled" || message.status === "recalled") {
     return getRecallResidueLabel(message.senderId === currentUserId);
   }
@@ -1025,18 +1042,54 @@ export function buildMessagePreview(message: ConversationMessage, currentUserId:
   }
 
   if (message.type === "contact-card") {
-    return message.ext?.contactCard?.displayName ? `[名片] ${message.ext.contactCard.displayName}` : "[名片]";
+    return message.ext?.contactCard?.displayName
+      ? `[名片] ${message.ext.contactCard.displayName}`
+      : "[名片]";
   }
 
   if (message.type === "service-card") {
-    return message.ext?.serviceCard?.name ? `[服务] ${message.ext.serviceCard.name}` : "[服务]";
+    return message.ext?.serviceCard?.name
+      ? `[服务] ${message.ext.serviceCard.name}`
+      : "[服务]";
+  }
+
+  if (message.type === "social-post-card") {
+    return message.ext?.socialPostCard?.authorName
+      ? `[动态] ${message.ext.socialPostCard.authorName}`
+      : "[动态]";
   }
 
   if (message.type === "schedule-invite") {
-    return message.ext?.scheduleInvite?.title ? `[日程邀请] ${message.ext.scheduleInvite.title}` : "[日程邀请]";
+    return message.ext?.scheduleInvite?.title
+      ? `[日程邀请] ${message.ext.scheduleInvite.title}`
+      : "[日程邀请]";
   }
 
   return message.content;
+}
+
+export function buildConversationLastMessageSummary(
+  message: ConversationMessage | undefined,
+  currentUserId: string,
+  users: Record<string, ImUser>,
+  fallbackTime: string,
+): Pick<
+  Conversation,
+  | "lastMessageId"
+  | "lastMessagePreview"
+  | "lastMessageType"
+  | "lastMessageStatus"
+  | "lastMessageTime"
+> {
+  return {
+    lastMessageId: message?.id,
+    lastMessagePreview: message
+      ? buildMessagePreview(message, currentUserId, users)
+      : "",
+    lastMessageType: message?.type,
+    lastMessageStatus: message?.status,
+    lastMessageTime: message?.sentAt ?? fallbackTime,
+  };
 }
 
 export function buildConversationRowPreview(conversation: Conversation) {
@@ -1325,16 +1378,28 @@ export function recomputeConversationSummary(database: ImDatabase, conversationI
   const lastMessage = messages.at(-1);
 
   if (!lastMessage) {
-    conversation.lastMessageId = undefined;
-    conversation.lastMessagePreview = "";
-    conversation.lastMessageTime = conversation.updatedAt;
+    Object.assign(
+      conversation,
+      buildConversationLastMessageSummary(
+        undefined,
+        database.currentUserId,
+        users,
+        conversation.updatedAt,
+      ),
+    );
     return conversation;
   }
 
-  conversation.lastMessageId = lastMessage.id;
-  conversation.lastMessageTime = lastMessage.sentAt;
+  Object.assign(
+    conversation,
+    buildConversationLastMessageSummary(
+      lastMessage,
+      database.currentUserId,
+      users,
+      conversation.updatedAt,
+    ),
+  );
   conversation.updatedAt = lastMessage.sentAt;
-  conversation.lastMessagePreview = buildMessagePreview(lastMessage, database.currentUserId, users);
 
   return conversation;
 }

@@ -78,6 +78,7 @@ describe("ContentMediaRepository dedicated MariaDB advisory lock", () => {
       database: "needo_test",
       charset: "utf8mb4",
       collation: "utf8mb4_unicode_ci",
+      timezone: "Z",
       allowPublicKeyRetrieval: true,
       connectTimeout: 3_000
     });

@@ -37,7 +37,6 @@ import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { merchantNavItems, roleBasedTabConfig } from "../../components/mobile/navItems";
 import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
-import { FormalScheduleInventoryPanel } from "../../components/scheduling/FormalScheduleInventoryPanel";
 import { Badge } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
@@ -2450,7 +2449,8 @@ function MerchantPortalContent({
               ? "px-4 pb-4 pt-0"
               : activeView === "dashboard"
                 ? "space-y-4 px-4 pb-4 pt-2"
-                : "space-y-4 px-4 py-4"
+                : "space-y-4 px-4 py-4",
+          activeView === "schedule" && "relative z-30"
         )}
       >
         {activeView === "dashboard" ? (
@@ -2775,10 +2775,7 @@ function MerchantPortalContent({
               />
             ) : null}
             {merchantSchedulePrimaryTab === "appointments" ? (
-              <div className="space-y-4">
-                <FormalScheduleInventoryPanel scope="merchant-admin" />
-                <UnifiedUserCalendar currentStore={store} displayMode="parallel" merchantLaneMode="appointmentStatus" scope="merchant" searchQuery={merchantAppointmentSearchQuery} />
-              </div>
+              <UnifiedUserCalendar currentStore={store} displayMode="parallel" merchantLaneMode="appointmentStatus" scope="merchant" searchQuery={merchantAppointmentSearchQuery} />
             ) : null}
             {merchantSchedulePrimaryTab === "planning" ? (
               <AutomationWizard operatorId={store.id} storeId={store.id} surface="mobile" />

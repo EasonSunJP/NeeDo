@@ -37,6 +37,9 @@ import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
+import type { ShopMembershipRepositoryPort } from "./repositories/shop-membership.repository";
+import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-membership-card-plan.repository";
+import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
@@ -114,6 +117,9 @@ import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
 import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
+import { createShopMembershipRoutes } from "./routes/shop-membership.routes";
+import { createShopMembershipCardPlanRoutes } from "./routes/shop-membership-card-plan.routes";
+import { createShopMembershipCardIssuanceRoutes } from "./routes/shop-membership-card-issuance.routes";
 import { createTechnicianProfileRoutes } from "./routes/technician-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
@@ -124,6 +130,7 @@ import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
 import { createImMediaRoutes } from "./routes/im-media.routes";
+import { createImVoiceMessageRoutes } from "./routes/im-voice-message.routes";
 import { createContentMediaRoutes } from "./routes/content-media.routes";
 import { createSocialMediaRoutes } from "./routes/social-media.routes";
 import { createOfficialAnnouncementRoutes } from "./routes/official-announcement.routes";
@@ -157,6 +164,9 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import type { ImVoiceDurationProbePort } from "./services/im-voice-duration-probe";
+import type { ImVoiceStoragePort } from "./services/im-voice.storage";
+import type { ImVoiceMessageService } from "./services/im-voice-message.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import {
   ObservabilityMetricsService,
@@ -183,6 +193,9 @@ export interface AppDependencies {
   testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
+  shopMembershipRepository?: ShopMembershipRepositoryPort;
+  shopMembershipCardPlanRepository?: ShopMembershipCardPlanRepositoryPort;
+  shopMembershipCardIssuanceRepository?: ShopMembershipCardIssuanceRepositoryPort;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
@@ -248,6 +261,9 @@ export interface AppDependencies {
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  imVoiceDurationProbe?: ImVoiceDurationProbePort;
+  imVoiceStorage?: ImVoiceStoragePort;
+  imVoiceMessageService?: ImVoiceMessageService;
   exchangeService?: ExchangeService;
 }
 
@@ -310,6 +326,9 @@ export const createApp = (
   apiRouter.use(createUserRoutes(config, resolvedDependencies));
   apiRouter.use(createCoreReadRoutes(resolvedDependencies));
   apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
+  apiRouter.use(createShopMembershipRoutes(config, resolvedDependencies));
+  apiRouter.use(createShopMembershipCardPlanRoutes(config, resolvedDependencies));
+  apiRouter.use(createShopMembershipCardIssuanceRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
@@ -338,6 +357,7 @@ export const createApp = (
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
   apiRouter.use(createImMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createImVoiceMessageRoutes(config, resolvedDependencies));
   apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
@@ -410,7 +430,7 @@ const createCustomerAvatarStaticMiddleware = (directory: string) => {
   };
 };
 
-const imMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+const imMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp|webm|mp4|ogg)$/;
 
 const createImMediaStaticMiddleware = (directory: string) => {
   const staticMiddleware = express.static(directory, {

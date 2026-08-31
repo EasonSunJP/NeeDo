@@ -57,10 +57,12 @@ const createFixture = (overrides: {
         authorIdentityId: data.authorIdentityId,
         content: data.content,
         media: data.media,
+        replyToPostId: data.replyToPostId,
         visibility: SocialPostVisibility.PUBLIC,
         createdAt: now,
         author,
-        authorIdentity: { id: 71, type: "customer", displayName: "Aya" }
+        authorIdentity: { id: 71, type: "customer", displayName: "Aya" },
+        _count: { replies: 0 }
       }))
     },
     notification: {
@@ -91,7 +93,7 @@ const createFixture = (overrides: {
 const createInput = () => ({
   authorUserId: 41,
   authorIdentityId: 71,
-  content: "formal post",
+  content: "formal Good",
   visibility: "public" as const,
   mentionUserIds: [52, 63],
   context,
@@ -101,7 +103,14 @@ const createInput = () => ({
       { id: "m2", type: "image" as const, mediaAssetPublicId: secondChecksum }
     ],
     postType: "post" as const,
-    locationLabel: "东京 银座"
+    locationLabel: "东京 银座",
+    richText: {
+      version: 1 as const,
+      parts: [
+        { type: "text" as const, value: "formal " },
+        { type: "judgement" as const, value: "Good" as const }
+      ]
+    }
   }
 });
 
@@ -130,6 +139,13 @@ describe("RealtimeRepository Social post mentions", () => {
       ],
       postType: "post",
       locationLabel: "东京 银座",
+      richText: {
+        version: 1,
+        parts: [
+          { type: "text", value: "formal " },
+          { type: "judgement", value: "Good" }
+        ]
+      },
       mentionUserIds: [52, 63],
       counters: { likes: 0, replies: 0, reposts: 0, views: 1, bookmarks: 0 }
     });

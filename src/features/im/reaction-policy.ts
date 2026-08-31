@@ -170,6 +170,18 @@ export function resolveImMessageRichText(
   return parts;
 }
 
+export function normalizeImMessageRichText(
+  content: string,
+  richText: unknown
+): ImMessageRichText | undefined {
+  const parts = resolveImMessageRichText(content, richText);
+  const hasJudgement = parts.some((part) => part.type === "judgement");
+  if (!hasJudgement || parts.map((part) => part.value).join("") !== content) {
+    return undefined;
+  }
+  return { version: 1, parts };
+}
+
 export function restoreImComposerDraft(content: string, richText: unknown): string {
   return resolveImMessageRichText(content, richText)
     .map((part) =>

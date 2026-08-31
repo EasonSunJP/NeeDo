@@ -75,4 +75,12 @@ describe("buildMessagePreview media summaries", () => {
       buildMessagePreview(message("text", "明天下午三点可以。"), "user-1", {}),
     ).toBe("明天下午三点可以。");
   });
+
+  it.each([
+    ["contact-card", { contactCard: { userId: "2", displayName: "系统消息", avatar: "", profileKind: "person" as const } }, "[名片] 系统消息"],
+    ["service-card", { serviceCard: { serviceId: "3", name: "changed 服务", cover: "", summary: "", priceLabel: "¥1" } }, "[服务] changed 服务"],
+    ["schedule-invite", { scheduleInvite: { scheduleId: "4", title: "left 日程", date: "2026-09-01", timeRange: "10:00" } }, "[日程邀请] left 日程"],
+  ] as const)("keeps the %s preview text unchanged", (type, ext, expected) => {
+    expect(buildMessagePreview(message(type, "", ext), "user-1", {})).toBe(expected);
+  });
 });

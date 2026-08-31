@@ -115,6 +115,14 @@ describe("production route chunk boundaries", () => {
     expect(appSource).toContain('path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)}');
     expect(appSource).toContain('path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)}');
   });
+
+  it("redirects every historical full reply route without mounting the post detail page directly", () => {
+    expect(appSource).toContain('SocialLegacyReplyRedirectPage,');
+    expect(appSource).toContain('path="/moments/posts/:postId/replies" element={protect("user", <SocialLegacyReplyRedirectPage />)}');
+    expect(appSource).toContain('path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialLegacyReplyRedirectPage />)}');
+    expect(appSource).toContain('path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialLegacyReplyRedirectPage />)}');
+    expect(appSource).not.toContain('path="/moments/posts/:postId/replies" element={protect("user", <SocialPostDetailPage />)}');
+  });
 });
 
 describe("Affiliate announcement route", () => {

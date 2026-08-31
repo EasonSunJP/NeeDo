@@ -101,7 +101,7 @@ export function SocialMediaViewerPage() {
           <SurfacePanel className="space-y-4 border border-white/10 bg-[color:rgba(255,255,255,0.04)]">
             <h2 className="text-lg font-black text-[color:var(--client-text)]">原动态概览</h2>
             {post.text ? (
-              <UnifiedPostText allowExpand={false} className="text-sm leading-7 text-[color:var(--client-muted)]" profiles={profiles} scope={scope} text={post.text} />
+              <UnifiedPostText allowExpand={false} className="text-sm leading-7 text-[color:var(--client-muted)]" profiles={profiles} richText={post.richText} scope={scope} text={post.text} />
             ) : (
               <p className="text-sm leading-7 text-[color:var(--client-muted)]">这条动态主要以媒体内容为主。</p>
             )}

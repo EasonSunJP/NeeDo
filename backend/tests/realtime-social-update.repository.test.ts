@@ -20,6 +20,7 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
     authorUserId: options.postAuthorUserId ?? 41,
     authorIdentityId: options.postAuthorUserId === 99 ? 199 : 71,
     content: "before",
+    replyToPostId: null,
     media: {
       items: [
         {
@@ -36,7 +37,8 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
     createdAt: now,
     updatedAt: now,
     author,
-    authorIdentity: { id: 71, type: "customer", displayName: "Aya" }
+    authorIdentity: { id: 71, type: "customer", displayName: "Aya" },
+    _count: { replies: 0 }
   };
   const transaction = {
     socialPost: {
@@ -105,7 +107,7 @@ const updateInput = () => ({
   postId: 701,
   authorUserId: 41,
   authorIdentityId: 71,
-  content: "after",
+  content: "afterDone",
   visibility: "followers" as const,
   mentionUserIds: [52, 63],
   context,
@@ -115,7 +117,14 @@ const updateInput = () => ({
       { id: "uploaded", type: "image" as const, mediaAssetPublicId: uploadedChecksum }
     ],
     postType: "post" as const,
-    locationLabel: "东京 银座"
+    locationLabel: "东京 银座",
+    richText: {
+      version: 1 as const,
+      parts: [
+        { type: "text" as const, value: "after" },
+        { type: "judgement" as const, value: "Done" as const }
+      ]
+    }
   }
 });
 
@@ -125,7 +134,7 @@ describe("RealtimeRepository Social post update", () => {
 
     const result = await fixture.repository.updateSocialPost(updateInput());
 
-    expect(result?.post).toMatchObject({ id: 701, content: "after", visibility: "followers" });
+    expect(result?.post).toMatchObject({ id: 701, content: "afterDone", visibility: "followers" });
     expect(result?.post.media).toEqual({
       items: [
         {
@@ -143,6 +152,13 @@ describe("RealtimeRepository Social post update", () => {
       ],
       postType: "post",
       locationLabel: "东京 银座",
+      richText: {
+        version: 1,
+        parts: [
+          { type: "text", value: "after" },
+          { type: "judgement", value: "Done" }
+        ]
+      },
       mentionUserIds: [52, 63],
       counters: { likes: 9, replies: 2, reposts: 1, views: 80, bookmarks: 4 }
     });
@@ -181,5 +197,19 @@ describe("RealtimeRepository Social post update", () => {
     });
     expect(fixture.transaction.socialPost.update).not.toHaveBeenCalled();
     expect(fixture.transaction.notification.create).not.toHaveBeenCalled();
+  });
+
+  it("does not allow an edit to create or move the reply relation", async () => {
+    const fixture = createFixture();
+    const input = {
+      ...updateInput(),
+      media: { ...updateInput().media, replyToPostId: 700 }
+    };
+
+    await expect(fixture.repository.updateSocialPost(input)).rejects.toMatchObject({
+      message: "error.social.reply_relation_immutable",
+      statusCode: 409
+    });
+    expect(fixture.transaction.socialPost.update).not.toHaveBeenCalled();
   });
 });

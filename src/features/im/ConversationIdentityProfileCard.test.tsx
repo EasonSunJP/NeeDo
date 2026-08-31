@@ -30,7 +30,7 @@ const identityCard: DirectoryIdentityCard = {
   gender: "female",
   age: 25,
   heightCm: 164,
-  languages: ["日本語", "中文"],
+  languages: ["ja", "zh", "en", "ko", "th", "vi", "es"],
   city: "东京",
   bio: "预约前请先确认时间、语言和付款方式。",
 };
@@ -66,11 +66,46 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).not.toContain("城市");
     expect(markup).not.toContain("东京");
     expect(markup).toContain("语言能力");
+    ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"].forEach((label) => {
+      expect(markup).toContain(`>${label}</span>`);
+    });
+    ["ja", "zh", "en", "ko", "th", "vi", "es"].forEach((code) => {
+      expect(markup).not.toContain(`>${code}</span>`);
+    });
+    expect(markup).toContain('data-im-language-pills="true"');
+    expect(markup).toContain('data-no-i18n="true"');
+    expect(markup).toContain("flex-wrap");
+    expect(markup).toContain("w-fit");
+    expect(markup).toContain("max-w-full");
+    expect(markup).toContain("break-words");
+    expect(markup).not.toContain("truncate text-xs font-black text-[color:var(--client-primary)]");
+    expect(markup).toContain('<div class="mt-4" data-im-language-section="true">');
+    expect(markup).not.toContain('<div class="mt-3 rounded-[18px] border');
     expect(markup).toContain("自我介绍");
     expect(markup).not.toContain("积分");
     expect(markup).not.toContain("利用次数");
     expect(markup).not.toContain("隐私模式");
     expect(markup).not.toContain("type=\"checkbox\"");
+  });
+
+  it("deduplicates normalized language pills, trims unknown values, and does not mutate the profile", () => {
+    const languages = [" ja ", "Japanese", " Klingon ", "", "Klingon"];
+    const duplicateIdentityCard = { ...identityCard, languages };
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={duplicateIdentityCard}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup.match(/>日本語<\/span>/g)).toHaveLength(1);
+    expect(markup.match(/>Klingon<\/span>/g)).toHaveLength(1);
+    expect(languages).toEqual([" ja ", "Japanese", " Klingon ", "", "Klingon"]);
   });
 
   it.each(["technician", "merchant"] as const)(
