@@ -75,6 +75,20 @@ export interface PlatformMembershipTierVersionPayload {
   benefits: PlatformMembershipTierBenefitDraft[];
 }
 
+export interface PlatformMembershipTierAdministrationPayload {
+  tierCode: PlatformMembershipTierCodeValue;
+  sortOrder: number;
+  publishedVersion: PlatformMembershipTierVersionPayload | null;
+  draftVersion: PlatformMembershipTierVersionPayload | null;
+}
+
+export interface PlatformMembershipBenefitAdministrationPayload {
+  code: PlatformMembershipBenefitCodeValue;
+  sortOrder: number;
+  isGloballyEnabled: boolean;
+  lockVersion: number;
+}
+
 export type PlatformMembershipTierMutationResult =
   | {
       kind: "saved" | "published";
@@ -89,7 +103,13 @@ export type PlatformMembershipEntitlementMutationResult =
     }
   | { kind: "not_found" | "version_conflict" | "invalid_state" };
 
+export type PlatformMembershipBenefitMutationResult =
+  | { kind: "updated"; value: PlatformMembershipBenefitAdministrationPayload }
+  | { kind: "not_found" | "version_conflict" };
+
 export interface PlatformMembershipRepositoryPort {
+  listTiersForAdministration: () => Promise<PlatformMembershipTierAdministrationPayload[]>;
+  listBenefitsForAdministration: () => Promise<PlatformMembershipBenefitAdministrationPayload[]>;
   hasActiveCustomerProfile: (userId: number) => Promise<boolean>;
   findActiveEntitlementAt: (
     userId: number,
@@ -122,6 +142,13 @@ export interface PlatformMembershipRepositoryPort {
     command: PlatformMembershipEntitlementCommand;
     audit: AuditLogCreateInput;
   }) => Promise<PlatformMembershipEntitlementMutationResult>;
+  updateBenefitWithAudit: (input: {
+    actorId: number;
+    benefitCode: PlatformMembershipBenefitCodeValue;
+    isGloballyEnabled: boolean;
+    expectedLockVersion: number;
+    audit: AuditLogCreateInput;
+  }) => Promise<PlatformMembershipBenefitMutationResult>;
 }
 
 const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionSelect>()({
@@ -244,6 +271,18 @@ const benefitCodeFromDb: Readonly<
   [PlatformMembershipBenefitCode.BIRTHDAY_GIFT]: "birthday_gift"
 };
 
+const benefitCodeToDb: Readonly<
+  Record<PlatformMembershipBenefitCodeValue, PlatformMembershipBenefitCode>
+> = {
+  ndp_experience: PlatformMembershipBenefitCode.NDP_EXPERIENCE,
+  member_sign_in: PlatformMembershipBenefitCode.MEMBER_SIGN_IN,
+  priority_request: PlatformMembershipBenefitCode.PRIORITY_REQUEST,
+  support_service: PlatformMembershipBenefitCode.SUPPORT_SERVICE,
+  exclusive_discount: PlatformMembershipBenefitCode.EXCLUSIVE_DISCOUNT,
+  member_day: PlatformMembershipBenefitCode.MEMBER_DAY,
+  birthday_gift: PlatformMembershipBenefitCode.BIRTHDAY_GIFT
+};
+
 const versionStatusFromDb = {
   [PlatformMembershipVersionStatus.DRAFT]: "draft",
   [PlatformMembershipVersionStatus.PUBLISHED]: "published",
@@ -283,6 +322,62 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     private readonly client: PrismaClient = prisma,
     private readonly now: () => Date = () => new Date()
   ) {}
+
+  public async listTiersForAdministration(): Promise<
+    PlatformMembershipTierAdministrationPayload[]
+  > {
+    const tiers = await this.client.platformMembershipTier.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: {
+        code: true,
+        sortOrder: true,
+        versions: {
+          where: {
+            status: {
+              in: [
+                PlatformMembershipVersionStatus.DRAFT,
+                PlatformMembershipVersionStatus.PUBLISHED
+              ]
+            },
+            deletedAt: null
+          },
+          orderBy: [{ version: "desc" }, { id: "desc" }],
+          select: tierVersionAdministrationSelect
+        }
+      }
+    });
+    return tiers.map((tier) => {
+      const published = tier.versions.find(
+        (version) => version.status === PlatformMembershipVersionStatus.PUBLISHED
+      );
+      const draft = tier.versions.find(
+        (version) => version.status === PlatformMembershipVersionStatus.DRAFT
+      );
+      return {
+        tierCode: tierCodeFromDb[tier.code],
+        sortOrder: tier.sortOrder,
+        publishedVersion: published ? this.mapAdministrationVersion(published) : null,
+        draftVersion: draft ? this.mapAdministrationVersion(draft) : null
+      };
+    });
+  }
+
+  public async listBenefitsForAdministration(): Promise<
+    PlatformMembershipBenefitAdministrationPayload[]
+  > {
+    const benefits = await this.client.platformMembershipBenefit.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: {
+        code: true,
+        sortOrder: true,
+        isGloballyEnabled: true,
+        lockVersion: true
+      }
+    });
+    return benefits.map((benefit) => this.mapBenefitAdministration(benefit));
+  }
 
   public async hasActiveCustomerProfile(userId: number): Promise<boolean> {
     return (
@@ -800,6 +895,54 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     }
   }
 
+  public async updateBenefitWithAudit(input: {
+    actorId: number;
+    benefitCode: PlatformMembershipBenefitCodeValue;
+    isGloballyEnabled: boolean;
+    expectedLockVersion: number;
+    audit: AuditLogCreateInput;
+  }): Promise<PlatformMembershipBenefitMutationResult> {
+    const result = await this.client.$transaction(async (transaction) => {
+      const benefit = await transaction.platformMembershipBenefit.findFirst({
+        where: { code: benefitCodeToDb[input.benefitCode], deletedAt: null },
+        select: { id: true, publicId: true, lockVersion: true }
+      });
+      if (!benefit) return { kind: "not_found" as const };
+      if (benefit.lockVersion !== input.expectedLockVersion) {
+        return { kind: "version_conflict" as const };
+      }
+      const updated = await transaction.platformMembershipBenefit.updateMany({
+        where: {
+          id: benefit.id,
+          lockVersion: input.expectedLockVersion,
+          deletedAt: null
+        },
+        data: {
+          isGloballyEnabled: input.isGloballyEnabled,
+          lockVersion: { increment: 1 }
+        }
+      });
+      if (updated.count !== 1) return { kind: "version_conflict" as const };
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          ...input.audit,
+          targetId: benefit.id,
+          metadata: {
+            ...this.metadataObject(input.audit.metadata),
+            benefitPublicId: benefit.publicId,
+            benefitCode: input.benefitCode,
+            isGloballyEnabled: input.isGloballyEnabled,
+            previousLockVersion: input.expectedLockVersion
+          }
+        })
+      });
+      return { kind: "updated" as const };
+    });
+    if (result.kind !== "updated") return result;
+    const value = await this.findBenefit(input.benefitCode);
+    return value ? { kind: "updated", value } : { kind: "not_found" };
+  }
+
   private async findTierVersion(
     tierCode: PlatformMembershipTierCodeValue,
     version: number
@@ -813,6 +956,21 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       select: tierVersionAdministrationSelect
     });
     return record ? this.mapAdministrationVersion(record) : null;
+  }
+
+  private async findBenefit(
+    benefitCode: PlatformMembershipBenefitCodeValue
+  ): Promise<PlatformMembershipBenefitAdministrationPayload | null> {
+    const benefit = await this.client.platformMembershipBenefit.findFirst({
+      where: { code: benefitCodeToDb[benefitCode], deletedAt: null },
+      select: {
+        code: true,
+        sortOrder: true,
+        isGloballyEnabled: true,
+        lockVersion: true
+      }
+    });
+    return benefit ? this.mapBenefitAdministration(benefit) : null;
   }
 
   private async findEntitlementBySource(
@@ -892,6 +1050,20 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       expiresAt: entitlement.expiresAt,
       experienceValueNdp: entitlement.experienceValueNdp,
       idempotent
+    };
+  }
+
+  private mapBenefitAdministration(benefit: {
+    code: PlatformMembershipBenefitCode;
+    sortOrder: number;
+    isGloballyEnabled: boolean;
+    lockVersion: number;
+  }): PlatformMembershipBenefitAdministrationPayload {
+    return {
+      code: benefitCodeFromDb[benefit.code],
+      sortOrder: benefit.sortOrder,
+      isGloballyEnabled: benefit.isGloballyEnabled,
+      lockVersion: benefit.lockVersion
     };
   }
 

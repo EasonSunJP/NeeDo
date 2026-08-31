@@ -3702,6 +3702,257 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           isPublic: { type: "boolean" }
         }
       },
+      PlatformMembershipTierCode: {
+        type: "string",
+        enum: ["free", "silver", "gold", "black_diamond"]
+      },
+      PlatformMembershipBenefitCode: {
+        type: "string",
+        enum: [
+          "ndp_experience",
+          "member_sign_in",
+          "priority_request",
+          "support_service",
+          "exclusive_discount",
+          "member_day",
+          "birthday_gift"
+        ]
+      },
+      PlatformMembershipTheme: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "detailAccentColor",
+          "detailSurfaceColor",
+          "detailItemSurfaceColor",
+          "detailOuterBorderColor",
+          "detailItemBorderColor",
+          "detailAvatarBorderColor",
+          "simpleTopColor",
+          "simpleBottomColor"
+        ],
+        properties: Object.fromEntries(
+          [
+            "detailAccentColor",
+            "detailSurfaceColor",
+            "detailItemSurfaceColor",
+            "detailOuterBorderColor",
+            "detailItemBorderColor",
+            "detailAvatarBorderColor",
+            "simpleTopColor",
+            "simpleBottomColor"
+          ].map((key) => [key, { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }])
+        )
+      },
+      PlatformMembershipTierBenefit: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "isEnabled", "configuration"],
+        properties: {
+          code: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" },
+          isEnabled: { type: "boolean" },
+          configuration: {
+            type: "object",
+            description:
+              "ndp_experience accepts paired extraThresholdNdp/extraAwardExpUnits; other benefits use an empty object"
+          }
+        }
+      },
+      PlatformMembershipTierVersion: {
+        type: "object",
+        required: [
+          "tierCode",
+          "tierVersionPublicId",
+          "version",
+          "status",
+          "lockVersion",
+          "durationDays",
+          "monthlyValueNdp",
+          "annualBillingMonths",
+          "experienceMultiplier",
+          "description",
+          "effectiveFrom",
+          "effectiveTo",
+          "publishedAt",
+          "theme",
+          "benefits"
+        ],
+        properties: {
+          tierCode: { $ref: "#/components/schemas/PlatformMembershipTierCode" },
+          tierVersionPublicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: ["draft", "published", "archived"] },
+          lockVersion: { type: "integer", minimum: 1 },
+          durationDays: { type: ["integer", "null"], minimum: 1 },
+          monthlyValueNdp: { type: "integer", minimum: 0 },
+          annualBillingMonths: { type: "integer", minimum: 0, maximum: 12 },
+          experienceMultiplier: { type: "number", exclusiveMinimum: 0 },
+          description: { type: ["string", "null"] },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          publishedAt: { type: ["string", "null"], format: "date-time" },
+          theme: { $ref: "#/components/schemas/PlatformMembershipTheme" },
+          benefits: {
+            type: "array",
+            minItems: 7,
+            maxItems: 7,
+            items: { $ref: "#/components/schemas/PlatformMembershipTierBenefit" }
+          }
+        }
+      },
+      PlatformMembershipTierAdministration: {
+        type: "object",
+        required: ["tierCode", "sortOrder", "publishedVersion", "draftVersion"],
+        properties: {
+          tierCode: { $ref: "#/components/schemas/PlatformMembershipTierCode" },
+          sortOrder: { type: "integer", minimum: 0 },
+          publishedVersion: {
+            anyOf: [
+              { $ref: "#/components/schemas/PlatformMembershipTierVersion" },
+              { type: "null" }
+            ]
+          },
+          draftVersion: {
+            anyOf: [
+              { $ref: "#/components/schemas/PlatformMembershipTierVersion" },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      PlatformMembershipBenefitAdministration: {
+        type: "object",
+        required: ["code", "sortOrder", "isGloballyEnabled", "lockVersion"],
+        properties: {
+          code: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" },
+          sortOrder: { type: "integer", minimum: 0 },
+          isGloballyEnabled: { type: "boolean" },
+          lockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      PlatformMembershipTierDraftInput: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "expectedVersion",
+          "expectedLockVersion",
+          "durationDays",
+          "monthlyValueNdp",
+          "annualBillingMonths",
+          "experienceMultiplier",
+          "description",
+          "theme",
+          "benefits"
+        ],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          durationDays: { type: ["integer", "null"], minimum: 1, maximum: 3650 },
+          monthlyValueNdp: { type: "integer", minimum: 0, maximum: 214748364 },
+          annualBillingMonths: { type: "integer", minimum: 0, maximum: 12 },
+          experienceMultiplier: { type: "number", exclusiveMinimum: 0, maximum: 100 },
+          description: { type: ["string", "null"], maxLength: 500 },
+          theme: { $ref: "#/components/schemas/PlatformMembershipTheme" },
+          benefits: {
+            type: "array",
+            minItems: 7,
+            maxItems: 7,
+            items: { $ref: "#/components/schemas/PlatformMembershipTierBenefit" }
+          }
+        }
+      },
+      PlatformMembershipTierPublishInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "expectedLockVersion"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          expectedLockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      PlatformMembershipBenefitUpdateInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["isGloballyEnabled", "expectedLockVersion"],
+        properties: {
+          isGloballyEnabled: { type: "boolean" },
+          expectedLockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      PlatformMembershipPaidEntitlementCommand: {
+        type: "object",
+        required: [
+          "kind",
+          "targetTierCode",
+          "billingCycle",
+          "source",
+          "sourceReference",
+          "expectedCurrentLockVersion"
+        ],
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["grant", "renew", "upgrade", "schedule_downgrade"]
+          },
+          targetTierCode: {
+            type: "string",
+            enum: ["silver", "gold", "black_diamond"]
+          },
+          billingCycle: { type: "string", enum: ["monthly", "annual"] },
+          source: {
+            type: "string",
+            enum: ["operations", "offline_transfer", "internal"]
+          },
+          sourceReference: { type: "string", minLength: 1, maxLength: 160 },
+          expectedCurrentLockVersion: { type: ["integer", "null"], minimum: 1 }
+        }
+      },
+      PlatformMembershipExpireEntitlementCommand: {
+        type: "object",
+        required: ["kind", "source", "sourceReference", "expectedCurrentLockVersion"],
+        properties: {
+          kind: { type: "string", enum: ["expire"] },
+          source: {
+            type: "string",
+            enum: ["operations", "offline_transfer", "internal"]
+          },
+          sourceReference: { type: "string", minLength: 1, maxLength: 160 },
+          expectedCurrentLockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      PlatformMembershipEntitlementCommand: {
+        oneOf: [
+          { $ref: "#/components/schemas/PlatformMembershipPaidEntitlementCommand" },
+          { $ref: "#/components/schemas/PlatformMembershipExpireEntitlementCommand" }
+        ],
+        discriminator: { propertyName: "kind" }
+      },
+      PlatformMembershipEntitlementResult: {
+        type: "object",
+        required: [
+          "kind",
+          "tierCode",
+          "tierVersionPublicId",
+          "entitlementPublicId",
+          "startsAt",
+          "expiresAt",
+          "experienceValueNdp",
+          "idempotent"
+        ],
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["grant", "renew", "upgrade", "schedule_downgrade", "expire"]
+          },
+          tierCode: { $ref: "#/components/schemas/PlatformMembershipTierCode" },
+          tierVersionPublicId: { type: "string", format: "uuid" },
+          entitlementPublicId: { type: ["string", "null"], format: "uuid" },
+          startsAt: { type: "string", format: "date-time" },
+          expiresAt: { type: ["string", "null"], format: "date-time" },
+          experienceValueNdp: { type: "integer", minimum: 0 },
+          idempotent: { type: "boolean" }
+        }
+      },
       BackofficeCustomerMembershipGrantInput: {
         type: "object",
         additionalProperties: false,
@@ -12787,6 +13038,194 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "Customer not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/membership-tiers`]: {
+      get: {
+        tags: ["Platform Membership"],
+        summary: "List the four fixed platform membership tiers",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Fixed tier catalog", {
+            type: "array",
+            minItems: 4,
+            maxItems: 4,
+            items: { $ref: "#/components/schemas/PlatformMembershipTierAdministration" }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/membership-tiers/{tierCode}/draft`]: {
+      get: {
+        tags: ["Platform Membership"],
+        summary: "Read the current draft for a fixed tier",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "tierCode",
+            in: "path",
+            required: true,
+            schema: { $ref: "#/components/schemas/PlatformMembershipTierCode" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Tier draft", {
+            $ref: "#/components/schemas/PlatformMembershipTierVersion"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Draft not found" }
+        }
+      },
+      put: {
+        tags: ["Platform Membership"],
+        summary: "Save a tier draft with optimistic concurrency",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "tierCode",
+            in: "path",
+            required: true,
+            schema: { $ref: "#/components/schemas/PlatformMembershipTierCode" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/PlatformMembershipTierDraftInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Saved tier draft", {
+            $ref: "#/components/schemas/PlatformMembershipTierVersion"
+          }),
+          "400": { description: "Invalid tier draft" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Tier not found" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/membership-tiers/{tierCode}/publish`]: {
+      post: {
+        tags: ["Platform Membership"],
+        summary: "Publish the expected tier draft",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "tierCode",
+            in: "path",
+            required: true,
+            schema: { $ref: "#/components/schemas/PlatformMembershipTierCode" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/PlatformMembershipTierPublishInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Published tier version", {
+            $ref: "#/components/schemas/PlatformMembershipTierVersion"
+          }),
+          "400": { description: "Invalid publication" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Tier not found" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/membership-benefits`]: {
+      get: {
+        tags: ["Platform Membership"],
+        summary: "List the seven fixed global membership benefits",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Fixed benefit catalog", {
+            type: "array",
+            minItems: 7,
+            maxItems: 7,
+            items: { $ref: "#/components/schemas/PlatformMembershipBenefitAdministration" }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/membership-benefits/{benefitCode}`]: {
+      patch: {
+        tags: ["Platform Membership"],
+        summary: "Enable or disable a fixed benefit globally",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "benefitCode",
+            in: "path",
+            required: true,
+            schema: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/PlatformMembershipBenefitUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated global benefit", {
+            $ref: "#/components/schemas/PlatformMembershipBenefitAdministration"
+          }),
+          "400": { description: "Invalid benefit mutation" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Benefit not found" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/platform-membership`]: {
+      post: {
+        tags: ["Platform Membership"],
+        summary: "Change one customer's formal platform membership entitlement",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "userId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/PlatformMembershipEntitlementCommand" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Changed membership entitlement", {
+            $ref: "#/components/schemas/PlatformMembershipEntitlementResult"
+          }),
+          "400": { description: "Invalid entitlement command" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User or tier not found" },
+          "409": { description: "Version conflict" },
+          "422": { description: "Target is not an active customer" }
         }
       }
     },
