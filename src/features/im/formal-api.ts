@@ -179,15 +179,24 @@ function chatRecordFavoritePage(value: unknown, requestedPage: number, requested
 }
 
 function chatRecordItemPage(value: unknown, beforePosition: number | undefined, requestedPageSize: number) {
-  const page = rawChatRecordPage(value, true);
-  if (page.page_size !== requestedPageSize || (beforePosition === undefined ? page.page !== 1 : page.page < 2)) invalidChatRecord();
-  const offset = (page.page - 1) * requestedPageSize;
-  const expectedLength = Math.min(requestedPageSize, Math.max(page.total - offset, 0));
-  if (page.list.length !== expectedLength) invalidChatRecord();
-  const hasMore = offset + page.list.length < page.total;
-  if (hasMore) {
-    if (page.nextCursor === null || responseInteger(page.nextCursor, 1) === beforePosition) invalidChatRecord();
-  } else if (page.nextCursor !== null) {
+  const rawPage = rawChatRecordPage(value, true);
+  const list = rawPage.list.map((item) => toChatRecordItem(item as import("../realtime/api").RealtimeChatRecordItem));
+  const page = { ...rawPage, list };
+  if (page.page_size !== requestedPageSize || (beforePosition === undefined && page.page !== 1) || list.length > requestedPageSize || list.length > page.total) invalidChatRecord();
+  const positions = list.map((item) => item.position);
+  if (positions.some((position, index) => (index > 0 && position <= positions[index - 1]) || (beforePosition !== undefined && position >= beforePosition))) invalidChatRecord();
+  const minimumPosition = positions[0];
+  if (beforePosition === undefined) {
+    const expectedLength = Math.min(requestedPageSize, page.total);
+    if (list.length !== expectedLength) invalidChatRecord();
+    if (page.total > list.length) {
+      if (minimumPosition === undefined || responseInteger(page.nextCursor, 1) !== minimumPosition) invalidChatRecord();
+    } else if (page.nextCursor !== null) {
+      invalidChatRecord();
+    }
+  } else if (list.length < requestedPageSize) {
+    if (page.nextCursor !== null) invalidChatRecord();
+  } else if (page.nextCursor !== null && (minimumPosition === undefined || responseInteger(page.nextCursor, 1) !== minimumPosition)) {
     invalidChatRecord();
   }
   return page;
@@ -1153,7 +1162,7 @@ export function createFormalImApi({
       const safeQuery = { ...(query.beforePosition === undefined ? {} : { beforePosition: positive(query.beforePosition) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) };
       const result = await realtimeApi.listChatRecordItems(assertUuid(publicId), safeQuery);
       const page = chatRecordItemPage(result, safeQuery.beforePosition, safeQuery.pageSize ?? 20);
-      return { ...page, list: page.list.map((item) => toChatRecordItem(item as import("../realtime/api").RealtimeChatRecordItem)), nextCursor: page.nextCursor! };
+      return { ...page, nextCursor: page.nextCursor! };
     },
     getChatRecordMedia(publicId, checksumSha256) { return realtimeApi.getChatRecordMedia(assertUuid(publicId), assertChecksum(checksumSha256)); },
     async createChatRecordFavorite(command) {

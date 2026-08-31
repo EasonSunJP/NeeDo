@@ -35,6 +35,20 @@ function chatRecordDeliveryMessage(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function chatRecordItem(position: number, overrides: Record<string, unknown> = {}) {
+  return {
+    id: 900 + position,
+    position,
+    senderDisplayName: "A",
+    senderAvatarUrl: null,
+    messageType: "text",
+    content: `item-${position}`,
+    metadata: null,
+    sentAt: now,
+    ...overrides,
+  };
+}
+
 describe("formal IM adapter", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -1523,10 +1537,10 @@ describe("formal IM adapter", () => {
 
   it("accepts an empty chat-record page beyond the current total", async () => {
     const publicId = "22222222-2222-4222-8222-222222222222";
-    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [], total: 20, page: 2, page_size: 20, nextCursor: null });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [], total: 43, page: 3, page_size: 20, nextCursor: null });
     vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValueOnce({ list: [], total: 0, page: 3, page_size: 20 });
     const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
-    await expect(api.listChatRecordItems(publicId, { beforePosition: 1 })).resolves.toMatchObject({ list: [], total: 20, page: 2, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 1 })).resolves.toMatchObject({ list: [], total: 43, page: 3, page_size: 20, nextCursor: null });
     await expect(api.listChatRecordFavorites({ page: 3 })).resolves.toMatchObject({ list: [], total: 0, page: 3, page_size: 20 });
   });
 
@@ -1545,38 +1559,58 @@ describe("formal IM adapter", () => {
     await expect(api.listChatRecordFavorites({ page: 1, pageSize: 2 })).rejects.toThrow("error.response.invalid_chat_record");
   });
 
-  it("rejects inconsistent item cursor pages, lengths, and next cursors", async () => {
+  it("accepts first-page full and exact-terminal item pages with repository position cursors", async () => {
     const publicId = "22222222-2222-4222-8222-222222222222";
     const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
-    const item = { id: 901, position: 1, senderDisplayName: "A", senderAvatarUrl: null, messageType: "text", content: "one", metadata: null, sentAt: now };
-    const malformedPages = [
-      { list: [item], total: 1, page: 2, page_size: 2, nextCursor: null },
-      { list: [], total: 0, page: 1, page_size: Number.MAX_SAFE_INTEGER + 1, nextCursor: null },
-      { list: [], total: 0, page: 1, page_size: 2, nextCursor: Number.MAX_SAFE_INTEGER + 1 },
-      { list: [], total: 0, page: 1, page_size: 2, nextCursor: null, extra: true },
-      { list: [], total: 0, page: 1, page_size: 3, nextCursor: null },
-      { list: [item], total: 2, page: 1, page_size: 2, nextCursor: 1 },
-      { list: [item, { ...item, id: 902, position: 2 }], total: 3, page: 1, page_size: 2, nextCursor: null },
-      { list: [item, { ...item, id: 902, position: 2 }], total: 3, page: 1, page_size: 2, nextCursor: Number.MAX_SAFE_INTEGER + 1 },
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, index) => chatRecordItem(24 + index)), total: 43, page: 1, page_size: 20, nextCursor: 24 });
+    await expect(api.listChatRecordItems(publicId, { pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: 24, page: 1 });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, index) => chatRecordItem(1 + index)), total: 20, page: 1, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: null, page: 1 });
+  });
+
+  it("accepts unaligned cursors, soft-delete position gaps, and a full nonterminal cursor page", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 19 }, (_, index) => chatRecordItem(1 + index)), total: 43, page: 2, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 20, pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: null, page: 2 });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [chatRecordItem(1), chatRecordItem(4), chatRecordItem(9)], total: 5, page: 1, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 20, pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: null, page: 1 });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, index) => chatRecordItem(4 + index)), total: 43, page: 2, page_size: 20, nextCursor: 4 });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 24, pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: 4, page: 2 });
+  });
+
+  it("rejects cursor pages with wrong cursors, order, duplicates, or positions outside the boundary", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const validFull = Array.from({ length: 20 }, (_, index) => chatRecordItem(4 + index));
+    const malformed = [
+      { list: validFull, total: 43, page: 2, page_size: 20, nextCursor: 7 },
+      { list: [chatRecordItem(2), chatRecordItem(1)], total: 2, page: 1, page_size: 20, nextCursor: null },
+      { list: [chatRecordItem(1), chatRecordItem(1, { id: 999 })], total: 2, page: 1, page_size: 20, nextCursor: null },
+      { list: [chatRecordItem(1), chatRecordItem(20)], total: 5, page: 1, page_size: 20, nextCursor: null },
     ];
-    for (const page of malformedPages) {
+    for (const page of malformed) {
+      vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce(page as never);
+      await expect(api.listChatRecordItems(publicId, { beforePosition: 20, pageSize: 20 })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+  });
+
+  it("retains strict item-page envelope and first-page query validation", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const malformed = [
+      { list: [], total: 0, page: 1, page_size: Number.MAX_SAFE_INTEGER + 1, nextCursor: null },
+      { list: [], total: 0, page: 1, page_size: 3, nextCursor: null },
+      { list: [], total: 0, page: 1, page_size: 2, nextCursor: null, extra: true },
+      { list: [chatRecordItem(1)], total: 1, page: 2, page_size: 2, nextCursor: null },
+      { list: [chatRecordItem(1)], total: 2, page: 1, page_size: 2, nextCursor: 1 },
+    ];
+    for (const page of malformed) {
       vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce(page as never);
       await expect(api.listChatRecordItems(publicId, { pageSize: 2 })).rejects.toThrow("error.response.invalid_chat_record");
     }
     vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 2, nextCursor: null });
-    await expect(api.listChatRecordItems(publicId, { beforePosition: 2, pageSize: 2 })).rejects.toThrow("error.response.invalid_chat_record");
-    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [item], total: 3, page: 2, page_size: 2, nextCursor: 2 });
-    await expect(api.listChatRecordItems(publicId, { beforePosition: 2, pageSize: 2 })).rejects.toThrow("error.response.invalid_chat_record");
-    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [item, { ...item, id: 902, position: 2 }], total: 5, page: 2, page_size: 2, nextCursor: 2 });
-    await expect(api.listChatRecordItems(publicId, { beforePosition: 2, pageSize: 2 })).rejects.toThrow("error.response.invalid_chat_record");
-  });
-
-  it("accepts a backend-derived item cursor without treating it as a message ID", async () => {
-    const publicId = "22222222-2222-4222-8222-222222222222";
-    const list = Array.from({ length: 20 }, (_, index) => ({ id: 901 + index, position: 4 + index, senderDisplayName: "A", senderAvatarUrl: null, messageType: "text", content: "one", metadata: null, sentAt: now }));
-    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list, total: 43, page: 2, page_size: 20, nextCursor: 7 });
-    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
-    await expect(api.listChatRecordItems(publicId, { beforePosition: 24, pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: 7, page: 2 });
+    await expect(api.listChatRecordItems(publicId, { pageSize: 2 })).resolves.toMatchObject({ list: [], total: 0, nextCursor: null });
   });
 
   it("rejects unsafe chat-record IDs and malformed UUIDs before requests", async () => {

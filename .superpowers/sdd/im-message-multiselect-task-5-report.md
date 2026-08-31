@@ -255,3 +255,41 @@ PASS
 ```
 
 The targeted backend Prettier check passes for `im-chat-record-openapi.test.ts` and continues to identify pre-existing whole-file style in the large legacy `openapi.ts`. No formatter write was run and no unrelated formatting churn is included.
+
+## Final cursor review remediation — 2026-08-31
+
+The prior item cursor validator incorrectly inferred a page offset from `page * page_size`. The repository cannot expose exact `consumed` to the client: it derives `page` from the count at or above an arbitrary position cursor, while soft-deleted positions can leave gaps. The formal adapter now follows the repository's observable invariants only:
+
+- Every raw item is strictly parsed before page validation.
+- Returned positions are unique and strictly increasing after the repository's reverse step, remain within `1..100`, and are below `beforePosition` when a cursor was supplied.
+- A first request must return page 1 and exactly `min(page_size, total)` rows. A non-terminal first page carries the minimum returned position as `nextCursor`; an exact terminal page uses `null`.
+- Cursor requests allow any positive page number. They never derive `consumed`, remaining rows, or terminal state from the page number. Partial and empty pages are terminal with `nextCursor: null`; a full page may also be terminal. Any non-null cursor must be a positive integer exactly equal to the minimum returned position.
+- Cursor positions are not message IDs and need not be contiguous. Unaligned cursors and soft-delete gaps are valid.
+
+### Final cursor RED
+
+```text
+frontend formal: 1 file / 45 tests, 3 failures
+  empty terminal and unaligned cursor were wrongly rejected; nextCursor=7 was wrongly accepted for minimum position 4
+```
+
+### Final cursor GREEN and verification
+
+```text
+npm test -- --run src/features/im/formal-api.test.ts
+1 file, 46 tests passed
+
+npm test -- --run src/features/im src/features/realtime
+29 files, 322 tests passed
+
+npm run lint
+PASS
+
+npm run build
+PASS (pre-existing Vite dynamic-import and chunk-size warnings only)
+
+git diff --check
+PASS
+```
+
+No backend, formatter, database, API, or stash operation was performed for this final cursor correction.
