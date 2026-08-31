@@ -227,6 +227,34 @@ export type MessageAttachment = {
   height?: number;
 };
 
+export type ImContactCardCandidate = {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
+};
+
+export type ImContactCardSnapshot = {
+  userId: string;
+  displayName: string;
+  avatar: string;
+  profileKind: ImProfileKind;
+  entityType?: "user" | "technician" | "shop";
+  entityId?: string;
+  userIdLabel?: string;
+  headline?: string;
+  snapshotVersion?: 2;
+  needoId?: string;
+  entityKind?: "customer" | "technician" | "shop" | "service";
+  ekycVerified?: boolean;
+  level?: number | null;
+  tierCode?: "free" | "silver" | "gold" | "black_diamond" | null;
+  themeVersionPublicId?: string | null;
+  simpleTopColor?: string | null;
+  simpleBottomColor?: string | null;
+};
+
 export type MessageExt = {
   width?: number;
   height?: number;
@@ -245,16 +273,7 @@ export type MessageExt = {
     latitude: number;
     longitude: number;
   };
-  contactCard?: {
-    userId: string;
-    displayName: string;
-    avatar: string;
-    profileKind: ImProfileKind;
-    entityType?: "user" | "technician" | "shop";
-    entityId?: string;
-    userIdLabel?: string;
-    headline?: string;
-  };
+  contactCard?: ImContactCardSnapshot;
   serviceCard?: {
     serviceId: string;
     name: string;
