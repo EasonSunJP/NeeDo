@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCategorySearchDraft } from "./categorySearch";
+import { canRunCategorySearch, parseCategorySearchDraft } from "./categorySearch";
 
 describe("parseCategorySearchDraft", () => {
   it("keeps a multi-word entity name as one fuzzy term", () => {
@@ -24,5 +24,15 @@ describe("parseCategorySearchDraft", () => {
       tagIds: ["tag-massage-door"],
       customLabels: []
     });
+  });
+});
+
+describe("canRunCategorySearch", () => {
+  it("allows a fuzzy name query even when the retained home category has no formal mapping", () => {
+    expect(canRunCategorySearch({
+      selectedHomeCategoryIds: ["appliance"],
+      searchCategoryIds: [],
+      keywords: ["Tanak"]
+    })).toBe(true);
   });
 });
