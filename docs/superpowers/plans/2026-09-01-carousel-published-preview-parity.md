@@ -18,16 +18,20 @@
 
 ---
 
-### Task 1: Lock the no-draft display contract
+### Task 1: Lock and implement the no-draft published preview
 
 **Files:**
+- Create: `src/features/content-publication/CarouselReleasePreview.tsx`
+- Create: `src/features/content-publication/CarouselReleasePreview.test.tsx`
+- Modify: `src/features/content-publication/LocalizedCarouselEditor.tsx`
 - Modify: `src/features/content-publication/LocalizedCarouselEditor.test.tsx`
 - Modify: `src/features/content-publication/i18n.ts`
+- Test: `src/features/content-publication/CarouselReleasePreview.test.tsx`
 - Test: `src/features/content-publication/LocalizedCarouselEditor.test.tsx`
 
 **Interfaces:**
 - Consumes: `BackofficeCarouselScene.published: CarouselRelease | null`
-- Produces: UI contract `data-testid="published-carousel-preview"` and translated `publishedPreview` label
+- Produces: read-only `CarouselReleasePreview`, UI contract `data-testid="published-carousel-preview"`, and translated `publishedPreview` label
 
 - [ ] **Step 1: Write the failing test**
 
@@ -54,7 +58,20 @@ Run: `npm test -- src/features/content-publication/LocalizedCarouselEditor.test.
 
 Expected: FAIL because `published-carousel-preview` is not rendered.
 
-- [ ] **Step 3: Add exact five-language copy**
+- [ ] **Step 3: Add the focused component test and exact five-language copy**
+
+Create `CarouselReleasePreview.test.tsx` and prove the selected locale is projected without any edit controls:
+
+```tsx
+it("projects the selected locale without edit controls", () => {
+  render(<CarouselReleasePreview locale="zh-CN" release={publishedRelease} />);
+  expect(screen.getByText("正式轮播")).toBeVisible();
+  expect(screen.getAllByRole("img")[0]).toHaveAttribute("src", publishedRelease.slides[0].defaultImageUrl);
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+});
+```
+
+Add the exact five-language copy:
 
 ```ts
 publishedPreview: {
@@ -66,49 +83,13 @@ publishedPreview: {
 }
 ```
 
-- [ ] **Step 4: Run the focused test and keep it failing only on the missing component**
+- [ ] **Step 4: Run both focused tests and verify they fail because the preview component is missing**
 
-Run: `npm test -- src/features/content-publication/LocalizedCarouselEditor.test.tsx`
+Run: `npm test -- src/features/content-publication/CarouselReleasePreview.test.tsx src/features/content-publication/LocalizedCarouselEditor.test.tsx`
 
-Expected: FAIL only because the preview component is not yet implemented.
+Expected: FAIL because `CarouselReleasePreview` does not exist and the editor does not render the published preview.
 
-- [ ] **Step 5: Commit the contract test**
-
-```bash
-git add src/features/content-publication/LocalizedCarouselEditor.test.tsx src/features/content-publication/i18n.ts
-git commit -m "test: lock published carousel preview contract"
-```
-
-### Task 2: Render a read-only published release
-
-**Files:**
-- Create: `src/features/content-publication/CarouselReleasePreview.tsx`
-- Create: `src/features/content-publication/CarouselReleasePreview.test.tsx`
-- Modify: `src/features/content-publication/LocalizedCarouselEditor.tsx`
-- Test: `src/features/content-publication/CarouselReleasePreview.test.tsx`
-
-**Interfaces:**
-- Consumes: `release: CarouselRelease`, `locale: ContentLocaleCode`
-- Produces: `CarouselReleasePreview({ release, locale }): JSX.Element`
-
-- [ ] **Step 1: Write the component test**
-
-```tsx
-it("projects the selected locale without edit controls", () => {
-  render(<CarouselReleasePreview locale="zh-CN" release={publishedRelease} />);
-  expect(screen.getByText("正式轮播")).toBeVisible();
-  expect(screen.getAllByRole("img")[0]).toHaveAttribute("src", publishedRelease.slides[0].defaultImageUrl);
-  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-});
-```
-
-- [ ] **Step 2: Run the new test and verify failure**
-
-Run: `npm test -- src/features/content-publication/CarouselReleasePreview.test.tsx`
-
-Expected: FAIL because `CarouselReleasePreview` does not exist.
-
-- [ ] **Step 3: Implement the focused preview component**
+- [ ] **Step 5: Implement the focused read-only preview**
 
 ```tsx
 export function CarouselReleasePreview({ release, locale }: {
@@ -132,20 +113,20 @@ export function CarouselReleasePreview({ release, locale }: {
 
 In the `!draft` branch, render `CarouselReleasePreview` above the clone controls when `state.sceneState?.published` exists.
 
-- [ ] **Step 4: Run both editor tests**
+- [ ] **Step 6: Run both focused tests and verify green**
 
 Run: `npm test -- src/features/content-publication/CarouselReleasePreview.test.tsx src/features/content-publication/LocalizedCarouselEditor.test.tsx`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the preview**
+- [ ] **Step 7: Commit the green slice**
 
 ```bash
-git add src/features/content-publication/CarouselReleasePreview.tsx src/features/content-publication/CarouselReleasePreview.test.tsx src/features/content-publication/LocalizedCarouselEditor.tsx
+git add src/features/content-publication/CarouselReleasePreview.tsx src/features/content-publication/CarouselReleasePreview.test.tsx src/features/content-publication/LocalizedCarouselEditor.tsx src/features/content-publication/LocalizedCarouselEditor.test.tsx src/features/content-publication/i18n.ts
 git commit -m "feat: show published carousel without a draft"
 ```
 
-### Task 3: Lock published-release cloning and public parity
+### Task 2: Lock published-release cloning and public parity
 
 **Files:**
 - Modify: `src/features/content-publication/LocalizedCarouselEditor.test.tsx`
@@ -197,7 +178,7 @@ git add src/features/content-publication/LocalizedCarouselEditor.tsx src/feature
 git commit -m "test: enforce carousel publication parity"
 ```
 
-### Task 4: Verify the formal browser workflow
+### Task 3: Verify the formal browser workflow
 
 **Files:**
 - Modify only if a discovered defect requires it; otherwise no source change
