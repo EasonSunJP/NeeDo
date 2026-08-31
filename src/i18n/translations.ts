@@ -12858,6 +12858,7 @@ export const translations: TranslationMap = {
   "正在发送录音": fourLanguageTranslation("傳送錄音中", "録音送信中", "Sending", "녹음 보내는 중"),
   "录音失败，请重试": fourLanguageTranslation("錄音失敗，請重試", "録音に失敗しました。再試行してください", "Recording failed. Try again", "녹음에 실패했습니다. 다시 시도하세요"),
   "请允许麦克风权限后重试": fourLanguageTranslation("請允許麥克風權限後重試", "マイクの使用を許可してから再試行してください", "Allow microphone access, then try again", "마이크 권한을 허용한 후 다시 시도하세요"),
+  "没有检测到麦克风声音，请检查输入设备后重试": fourLanguageTranslation("沒有偵測到麥克風聲音，請檢查輸入裝置後重試", "マイクから音声が検出されません。入力デバイスを確認してから再試行してください", "No microphone input detected. Check your input device and try again.", "마이크 입력이 감지되지 않았습니다. 입력 장치를 확인한 후 다시 시도하세요"),
   "当前设备不支持浏览器录音": fourLanguageTranslation("目前裝置不支援瀏覽器錄音", "この端末ではブラウザ録音を利用できません", "Browser recording is not supported on this device", "현재 기기에서는 브라우저 녹음을 지원하지 않습니다"),
   "自动播放已暂停，请点击重放": fourLanguageTranslation("自動播放已暫停，請點擊重播", "自動再生が一時停止しました。再生をタップしてください", "Autoplay paused. Tap replay", "자동 재생이 일시 중지되었습니다. 다시 재생을 탭하세요"),
   "语音发送失败，请重试": fourLanguageTranslation("語音傳送失敗，請重試", "音声を送信できません。再試行してください", "Voice send failed. Try again", "음성 전송에 실패했습니다. 다시 시도하세요"),

@@ -16,6 +16,7 @@ const imUiTranslations: Record<string, ImUiTranslation> = {
   "正在加载": { "zh-Hant": "正在載入", ja: "読み込み中", en: "Loading", ko: "불러오는 중" },
   "返回个人中心": { "zh-Hant": "返回個人中心", ja: "マイページに戻る", en: "Back to profile", ko: "마이페이지로 돌아가기" },
   "我的收藏": { "zh-Hant": "我的收藏", ja: "お気に入り", en: "My favorites", ko: "내 즐겨찾기" },
+  "动态收藏": { "zh-Hant": "動態收藏", ja: "お気に入りの投稿", en: "Bookmarked posts", ko: "즐겨찾기 게시물" },
   "保存的聊天记录": { "zh-Hant": "已儲存的聊天記錄", ja: "保存したチャット履歴", en: "Saved chat records", ko: "저장된 채팅 기록" },
   "正在读取收藏": { "zh-Hant": "正在讀取收藏", ja: "お気に入りを読み込んでいます", en: "Loading favorites", ko: "즐겨찾기를 불러오는 중" },
   "收藏读取失败": { "zh-Hant": "收藏讀取失敗", ja: "お気に入りを読み込めませんでした", en: "Couldn't load favorites", ko: "즐겨찾기를 불러오지 못했습니다" },

@@ -37,6 +37,7 @@ export interface MariaDbPoolRuntimeConfig {
   database?: string;
   charset: "utf8mb4";
   collation: "utf8mb4_unicode_ci";
+  timezone: "Z";
   allowPublicKeyRetrieval: boolean;
   connectionLimit: number;
   acquireTimeout: number;
@@ -71,6 +72,7 @@ export const createMariaDbPoolConfig = (
     database: database ? decodeURIComponent(database) : undefined,
     charset: "utf8mb4",
     collation: "utf8mb4_unicode_ci",
+    timezone: "Z",
     allowPublicKeyRetrieval: config.DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL,
     connectionLimit: config.DATABASE_POOL_CONNECTION_LIMIT,
     acquireTimeout: config.DATABASE_POOL_ACQUIRE_TIMEOUT_MS,

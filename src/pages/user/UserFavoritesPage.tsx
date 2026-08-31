@@ -88,6 +88,9 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
           <h1 className="truncate text-[20px] font-black">{translateText("我的收藏", language)}</h1>
           <p className="mt-0.5 text-xs font-bold text-[color:var(--client-muted)]">{translateText("保存的聊天记录", language)}</p>
         </div>
+        <Link className="ml-auto shrink-0 rounded-full border border-[color:var(--client-line)] px-3 py-2 text-xs font-black text-[color:var(--client-primary)] focus-visible:outline focus-visible:outline-2" to="/me/favorites">
+          {translateText("动态收藏", language)}
+        </Link>
       </header>
 
       {status === "loading" ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText("正在读取收藏", language)}</p> : null}

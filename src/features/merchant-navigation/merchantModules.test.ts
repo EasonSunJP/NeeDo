@@ -14,8 +14,11 @@ describe("merchant primary navigation modules", () => {
     ]);
   });
 
-  it("marks only the membership module as Test", () => {
-    expect(merchantPrimaryModules.find((module) => module.key === "members")?.badge).toBe("Test");
-    expect(merchantPrimaryModules.filter((module) => module.badge === "Test")).toHaveLength(1);
+  it("marks the membership and dine-in modules as Test", () => {
+    expect(
+      merchantPrimaryModules
+        .filter((module) => module.badge === "Test")
+        .map((module) => module.key),
+    ).toEqual(["members", "dine_order", "menu", "floor_control"]);
   });
 });

@@ -184,8 +184,21 @@ export const friendRequestCreateBodySchema = z.object({
 export const socialPostListQuerySchema = z.object({
   ...paginationQuerySchema,
   authorUserId: z.coerce.number().int().positive().optional(),
-  replyToPostId: z.coerce.number().int().positive().optional()
+  replyToPostId: z.coerce.number().int().positive().optional(),
+  bookmarked: booleanQuerySchema.optional()
 });
+
+export const socialPostShareBodySchema = z.object({
+  targetUserIds: z
+    .array(z.coerce.number().int().positive())
+    .min(1)
+    .max(20)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "error.social.duplicate_share_target"
+    })
+}).strict();
+
+export const socialPostIdempotencyKeySchema = z.string().trim().min(8).max(191);
 
 const socialCreateMediaItemSchema = z
   .object({
@@ -277,5 +290,6 @@ export type FriendRequestListQuery = z.infer<typeof friendRequestListQuerySchema
 export type SocialPostCreateBody = z.infer<typeof socialPostCreateBodySchema>;
 export type SocialPostUpdateBody = z.infer<typeof socialPostUpdateBodySchema>;
 export type SocialPostListQuery = z.infer<typeof socialPostListQuerySchema>;
+export type SocialPostShareBody = z.infer<typeof socialPostShareBodySchema>;
 export type FollowCreateBody = z.infer<typeof followCreateBodySchema>;
 export type NotificationListQuery = z.infer<typeof notificationListQuerySchema>;

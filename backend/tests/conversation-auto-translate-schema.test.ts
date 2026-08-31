@@ -14,8 +14,8 @@ describe("conversation auto-translation schema contract", () => {
       ? readFileSync(migrationPath, "utf8")
       : "";
 
-    expect(schema).toContain(
-      'autoTranslateMessages Boolean @default(false) @map("auto_translate_messages")',
+    expect(schema).toMatch(
+      /autoTranslateMessages\s+Boolean\s+@default\(false\)\s+@map\("auto_translate_messages"\)/,
     );
     expect(migration).toMatch(
       /ALTER TABLE `conversation_participants`[\s\S]*`auto_translate_messages` BOOLEAN NOT NULL DEFAULT FALSE/,

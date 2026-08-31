@@ -11,7 +11,8 @@ import { UnifiedUserCalendar } from "./UnifiedUserCalendar";
 
 const testState = vi.hoisted(() => ({
   legacyListOrders: vi.fn(),
-  loadCustomerOrderWindow: vi.fn()
+  loadCustomerOrderWindow: vi.fn(),
+  listScheduleSlots: vi.fn()
 }));
 
 vi.mock("../../features/booking/window-loaders", () => ({
@@ -25,6 +26,17 @@ vi.mock("../../features/booking/api", async (importOriginal) => {
     bookingApi: {
       ...actual.bookingApi,
       listOrders: testState.legacyListOrders
+    }
+  };
+});
+
+vi.mock("../../features/scheduling/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../features/scheduling/api")>();
+  return {
+    ...actual,
+    schedulingApi: {
+      ...actual.schedulingApi,
+      listSlots: testState.listScheduleSlots
     }
   };
 });
@@ -75,6 +87,13 @@ const customerFixture: Customer = {
   lastOrderAt: "",
   activeScore: 0,
   churnRisk: "low"
+};
+
+const technicianFixture = {
+  avatar: "",
+  id: "48",
+  name: "山崎 俊介",
+  storeId: "17"
 };
 
 function todayKey() {
@@ -138,6 +157,7 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     }]));
     testState.legacyListOrders.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
     testState.loadCustomerOrderWindow.mockRejectedValue(new Error("schedule unavailable"));
+    testState.listScheduleSlots.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
   });
 
   afterEach(async () => {
@@ -201,5 +221,34 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(menu?.textContent).toContain("ToDo");
     expect(menu?.textContent).toContain("生日");
     expect(storageWrite.mock.calls.filter(([key]) => key === "needo.user-unified-calendar.v1")).toHaveLength(0);
+  });
+
+  it("keeps a formal technician search inside the selected calendar period", async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <I18nProvider>
+            <UnifiedUserCalendar
+              currentTechnician={technicianFixture}
+              displayMode="parallel"
+              formalOnly
+              scope="technician"
+              searchQuery="山崎"
+            />
+          </I18nProvider>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(testState.listScheduleSlots).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(testState.listScheduleSlots).toHaveBeenCalledTimes(1);
+    const [, query] = testState.listScheduleSlots.mock.calls[0] as [string, { from: Date; to: Date }];
+    expect(query.to.getTime() - query.from.getTime()).toBeLessThanOrEqual(2 * 24 * 60 * 60 * 1000);
+    expect(container.textContent).toContain("搜索「山崎」");
+    expect(container.textContent).toContain("00:00");
   });
 });

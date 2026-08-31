@@ -22,13 +22,16 @@ type ApiEnvelope<TData> = ApiSuccessResponse<TData> | ApiErrorResponse;
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
+export type ApiQueryScalar = boolean | number | string;
+export type ApiQueryValue = ApiQueryScalar | readonly ApiQueryScalar[] | null | undefined;
+
 export type HttpClientRequestOptions = {
   auth?: boolean;
   baseUrl?: string;
   body?: unknown;
   headers?: Record<string, string>;
   method?: HttpMethod;
-  query?: Record<string, boolean | number | string | null | undefined>;
+  query?: Record<string, ApiQueryValue>;
   retryOnUnauthorized?: boolean;
   signal?: AbortSignal;
 };
@@ -120,11 +123,15 @@ function appendQuery(url: string, query?: HttpClientRequestOptions["query"]) {
 
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === "") {
-      return;
-    }
+    const values = Array.isArray(value) ? value : [value];
 
-    params.set(key, String(value));
+    values.forEach((item) => {
+      if (item === undefined || item === null || item === "") {
+        return;
+      }
+
+      params.append(key, String(item));
+    });
   });
   const queryString = params.toString();
 

@@ -1482,7 +1482,7 @@ export function SocialInteractionBar({
         </button>
         <button
           className={cn(countedActionClassName, interaction.liked ? "text-[color:var(--client-warm)]" : undefined)}
-          onClick={() => toggleLike(post.id, actorKey)}
+          onClick={() => { void toggleLike(post.id, actorKey).catch(() => undefined); }}
           type="button"
         >
           <InteractionIcon active={interaction.liked} name="like" />
@@ -1498,7 +1498,7 @@ export function SocialInteractionBar({
         <button
           aria-label={interaction.bookmarked ? "取消收藏" : "收藏"}
           className={cn(trailingActionClassName, interaction.bookmarked ? "text-[color:var(--client-primary)]" : undefined)}
-          onClick={() => toggleBookmark(post.id, actorKey)}
+          onClick={() => { void toggleBookmark(post.id, actorKey).catch(() => undefined); }}
           type="button"
         >
           <InteractionIcon active={interaction.bookmarked} name="bookmark" />

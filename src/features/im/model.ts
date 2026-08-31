@@ -18,6 +18,7 @@ export type ImMessageType =
   | "location"
   | "contact-card"
   | "service-card"
+  | "social-post-card"
   | "schedule-invite"
   | "chat-record"
   | "system"
@@ -266,6 +267,13 @@ export type MessageExt = {
     providerType?: "store" | "technician";
     href?: string;
     tags?: string[];
+  };
+  socialPostCard?: {
+    postId: string;
+    authorName: string;
+    authorAvatar: string;
+    text: string;
+    mediaUrl?: string;
   };
   scheduleInvite?: {
     scheduleId: string;
@@ -1045,6 +1053,12 @@ export function buildMessagePreview(
     return message.ext?.serviceCard?.name
       ? `[服务] ${message.ext.serviceCard.name}`
       : "[服务]";
+  }
+
+  if (message.type === "social-post-card") {
+    return message.ext?.socialPostCard?.authorName
+      ? `[动态] ${message.ext.socialPostCard.authorName}`
+      : "[动态]";
   }
 
   if (message.type === "schedule-invite") {

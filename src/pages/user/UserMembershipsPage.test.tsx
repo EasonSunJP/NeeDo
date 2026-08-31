@@ -17,6 +17,10 @@ describe("UserMembershipsPage formal UI", () => {
     expect(source).not.toContain("立即充值");
     expect(source).not.toContain("扫码核销");
     expect(source).not.toContain("申请退款");
+    expect(source).not.toContain("开卡会在后续");
+    for (const copy of ["方案版本", "开卡时间", "开卡来源", "线下已付款", "历史补卡", "人工发放", "平台费率快照", "开卡不会自动产生 NDP"]) {
+      expect(source).toContain(copy);
+    }
   });
 
   it("has explicit loading, empty, error, and retry copy", () => {
@@ -24,5 +28,10 @@ describe("UserMembershipsPage formal UI", () => {
     expect(source).toContain("还没有加入任何店铺会员");
     expect(source).toContain("会员数据读取失败");
     expect(source).toContain("重新加载");
+  });
+
+  it("remounts when navigation changes between the list and a detail response shape", () => {
+    expect(source).toContain("function UserMembershipsPageContent");
+    expect(source).toContain('key={membershipPublicId ?? "list"}');
   });
 });

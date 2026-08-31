@@ -41,6 +41,14 @@ export interface ServiceListInput extends PaginationInput {
   sort?: CoreReadSort;
 }
 
+export type CoreSearchEntityType = "service" | "shop" | "technician";
+
+export interface CoreSearchInput extends ServiceListInput {
+  entityType: CoreSearchEntityType;
+  keywords: string[];
+  categoryIds: number[];
+}
+
 export interface HomeRecommendationsInput {
   city?: string;
   limit?: number;
@@ -163,12 +171,21 @@ export interface HomeRecommendationsPayload {
   technicians: TechnicianCardPayload[];
 }
 
+export type CoreSearchResponse =
+  | PaginatedResponse<ServiceCardPayload>
+  | PaginatedResponse<ShopCardPayload>
+  | PaginatedResponse<TechnicianCardPayload>;
+
 export interface CoreReadRepositoryPort {
   listCategories: (input: CategoryListInput) => Promise<PaginatedResponse<CategoryPayload>>;
   listServices: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   findServiceDetail: (id: number | string) => Promise<ServiceDetailPayload | null>;
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
-  search: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
+  search: (input: CoreSearchInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
+  searchShops: (input: CoreSearchInput) => Promise<PaginatedResponse<ShopCardPayload>>;
+  searchTechnicians: (
+    input: CoreSearchInput
+  ) => Promise<PaginatedResponse<TechnicianCardPayload>>;
   findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (id: number) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
@@ -251,7 +268,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   public async listServices(
-    input: ServiceListInput
+    input: ServiceListInput | CoreSearchInput
   ): Promise<PaginatedResponse<ServiceCardPayload>> {
     const pagination = toPrismaPagination(input);
     const where = this.buildServiceWhere(input);
@@ -319,8 +336,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       }),
       this.client.technicianProfile.findMany({
         where: {
-          deletedAt: null,
-          status: PUBLISHED_STATUS,
+          ...this.publishedTechnicianProfileWhere(),
           isRecommended: true,
           ...cityWhere
         },
@@ -338,8 +354,54 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  public search(input: ServiceListInput): Promise<PaginatedResponse<ServiceCardPayload>> {
+  public search(input: CoreSearchInput): Promise<PaginatedResponse<ServiceCardPayload>> {
     return this.listServices({ ...input, sort: input.sort ?? "rating_desc" });
+  }
+
+  public async searchShops(
+    input: CoreSearchInput
+  ): Promise<PaginatedResponse<ShopCardPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where = this.buildShopSearchWhere(input);
+    const [list, total] = await Promise.all([
+      this.client.shop.findMany({
+        where,
+        include: this.shopCardInclude(),
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ isRecommended: "desc" }, { id: "asc" }]
+      }),
+      this.client.shop.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((shop) => this.mapShopCard(shop)),
+      total,
+      pagination
+    );
+  }
+
+  public async searchTechnicians(
+    input: CoreSearchInput
+  ): Promise<PaginatedResponse<TechnicianCardPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where = this.buildTechnicianSearchWhere(input);
+    const [list, total] = await Promise.all([
+      this.client.technicianProfile.findMany({
+        where,
+        include: this.technicianCardInclude(),
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ isRecommended: "desc" }, { id: "asc" }]
+      }),
+      this.client.technicianProfile.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((technician) => this.mapTechnicianCard(technician)),
+      total,
+      pagination
+    );
   }
 
   public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
@@ -363,7 +425,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           orderBy: this.buildServiceOrderBy("recommended")
         },
         technicians: {
-          where: { deletedAt: null, status: PUBLISHED_STATUS },
+          where: this.publishedTechnicianProfileWhere(),
           include: this.technicianCardInclude(),
           orderBy: [{ id: "asc" }]
         }
@@ -377,8 +439,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     const technician = await this.client.technicianProfile.findFirst({
       where: {
         id,
-        deletedAt: null,
-        status: PUBLISHED_STATUS
+        ...this.publishedTechnicianProfileWhere()
       },
       include: {
         ...this.technicianCardInclude(),
@@ -457,7 +518,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             where: {
               deletedAt: null,
               isActive: true,
-              type: { in: ["technician", "service", "s"] }
+              type: { in: ["technician", "service", "s"] },
+              publicIdentifier: {
+                is: this.publicIdentifierWhere("S")
+              }
             },
             include: { publicIdentifier: true }
           }
@@ -466,7 +530,198 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private buildServiceWhere(input: ServiceListInput): Prisma.ServiceWhereInput {
+  private searchKeywords(input: Pick<CoreSearchInput, "keyword" | "keywords">): string[] {
+    return Array.from(
+      new Set(
+        [input.keyword, ...input.keywords]
+          .map((value) => value?.trim())
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+  }
+
+  private publicIdentifierWhere(kind: "S" | "SHOP"): Prisma.PublicIdentifierWhereInput {
+    return { kind, status: "ACTIVE", deletedAt: null };
+  }
+
+  private serviceKeywordBranches(keyword: string): Prisma.ServiceWhereInput[] {
+    return [
+      { name: { contains: keyword } },
+      { description: { contains: keyword } },
+      { category: { name: { contains: keyword } } },
+      { category: { nameJa: { contains: keyword } } },
+      { category: { nameEn: { contains: keyword } } },
+      { shop: { name: { contains: keyword } } },
+      { technicianProfile: { displayName: { contains: keyword } } }
+    ];
+  }
+
+  private publishedServiceKeywordWhere(keyword: string): Prisma.ServiceWhereInput {
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      category: { deletedAt: null, isActive: true },
+      OR: this.serviceKeywordBranches(keyword)
+    };
+  }
+
+  private publishedServiceCategoryWhere(categoryIds: number[]): Prisma.ServiceWhereInput {
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      categoryId: { in: categoryIds },
+      category: { deletedAt: null, isActive: true }
+    };
+  }
+
+  private technicianServiceKeywordWhere(
+    keyword: string
+  ): Prisma.TechnicianServiceWhereInput {
+    return {
+      deletedAt: null,
+      isActive: true,
+      reviewStatus: "APPROVED",
+      OR: [
+        { name: { contains: keyword } },
+        { description: { contains: keyword } },
+        { category: { name: { contains: keyword } } },
+        { category: { nameJa: { contains: keyword } } },
+        { category: { nameEn: { contains: keyword } } }
+      ]
+    };
+  }
+
+  private technicianServiceCategoryWhere(
+    categoryIds: number[]
+  ): Prisma.TechnicianServiceWhereInput {
+    return {
+      deletedAt: null,
+      isActive: true,
+      reviewStatus: "APPROVED",
+      categoryId: { in: categoryIds },
+      category: { deletedAt: null, isActive: true }
+    };
+  }
+
+  private activeTechnicianIdentityWhere(
+    publicId?: string
+  ): Prisma.UserIdentityWhereInput {
+    return {
+      deletedAt: null,
+      isActive: true,
+      type: { in: ["technician", "service", "s"] },
+      publicIdentifier: {
+        is: {
+          ...this.publicIdentifierWhere("S"),
+          ...(publicId ? { publicId } : {})
+        }
+      }
+    };
+  }
+
+  private publishedTechnicianProfileWhere(): Prisma.TechnicianProfileWhereInput {
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      user: {
+        identities: { some: this.activeTechnicianIdentityWhere() }
+      }
+    };
+  }
+
+  private buildShopSearchWhere(input: CoreSearchInput): Prisma.ShopWhereInput {
+    const keywords = this.searchKeywords(input);
+    const searchBranches: Prisma.ShopWhereInput[] = keywords.flatMap((keyword) => [
+      { name: { contains: keyword } },
+      { city: { contains: keyword } },
+      { address: { contains: keyword } },
+      { description: { contains: keyword } },
+      { publicIdentifier: { is: { publicId: keyword } } },
+      { services: { some: this.publishedServiceKeywordWhere(keyword) } }
+    ]);
+
+    if (input.categoryIds.length > 0) {
+      searchBranches.push({
+        services: { some: this.publishedServiceCategoryWhere(input.categoryIds) }
+      });
+    }
+
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      publicIdentifier: { is: this.publicIdentifierWhere("SHOP") },
+      ...(input.city ? { city: input.city } : {}),
+      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
+    };
+  }
+
+  private buildTechnicianSearchWhere(
+    input: CoreSearchInput
+  ): Prisma.TechnicianProfileWhereInput {
+    const keywords = this.searchKeywords(input);
+    const searchBranches: Prisma.TechnicianProfileWhereInput[] = keywords.flatMap(
+      (keyword) => [
+        { displayName: { contains: keyword } },
+        { city: { contains: keyword } },
+        { bio: { contains: keyword } },
+        { serviceArea: { contains: keyword } },
+        {
+          user: {
+            identities: { some: this.activeTechnicianIdentityWhere(keyword) }
+          }
+        },
+        { services: { some: this.publishedServiceKeywordWhere(keyword) } },
+        { technicianServices: { some: this.technicianServiceKeywordWhere(keyword) } },
+        {
+          technicianShopAffiliations: {
+            some: {
+              deletedAt: null,
+              workStatus: "ACTIVE",
+              shop: {
+                deletedAt: null,
+                status: PUBLISHED_STATUS,
+                services: { some: this.publishedServiceKeywordWhere(keyword) }
+              }
+            }
+          }
+        }
+      ]
+    );
+
+    if (input.categoryIds.length > 0) {
+      searchBranches.push(
+        { services: { some: this.publishedServiceCategoryWhere(input.categoryIds) } },
+        {
+          technicianServices: {
+            some: this.technicianServiceCategoryWhere(input.categoryIds)
+          }
+        },
+        {
+          technicianShopAffiliations: {
+            some: {
+              deletedAt: null,
+              workStatus: "ACTIVE",
+              shop: {
+                deletedAt: null,
+                status: PUBLISHED_STATUS,
+                services: { some: this.publishedServiceCategoryWhere(input.categoryIds) }
+              }
+            }
+          }
+        }
+      );
+    }
+
+    return {
+      ...this.publishedTechnicianProfileWhere(),
+      ...(input.city ? { city: input.city } : {}),
+      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
+    };
+  }
+
+  private buildServiceWhere(
+    input: ServiceListInput | CoreSearchInput
+  ): Prisma.ServiceWhereInput {
     const priceAmount =
       input.minPrice !== undefined || input.maxPrice !== undefined
         ? {
@@ -475,6 +730,19 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           }
         : undefined;
     const keyword = input.keyword?.trim();
+    const isCoreSearch = "keywords" in input && "categoryIds" in input;
+    const hasOrSearch =
+      isCoreSearch && (input.keywords.length > 0 || input.categoryIds.length > 0);
+    const searchBranches = hasOrSearch
+      ? [
+          ...this.searchKeywords(input).flatMap((value) => this.serviceKeywordBranches(value)),
+          ...(input.categoryIds.length > 0
+            ? [{ categoryId: { in: input.categoryIds } } satisfies Prisma.ServiceWhereInput]
+            : [])
+        ]
+      : keyword
+        ? this.serviceKeywordBranches(keyword)
+        : [];
 
     return {
       deletedAt: null,
@@ -493,19 +761,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       ...(input.city ? { city: input.city } : {}),
       ...(input.serviceMode ? { serviceMode: input.serviceMode } : {}),
       ...(priceAmount ? { priceAmount } : {}),
-      ...(keyword
-        ? {
-            OR: [
-              { name: { contains: keyword } },
-              { description: { contains: keyword } },
-              { category: { name: { contains: keyword } } },
-              { category: { nameJa: { contains: keyword } } },
-              { category: { nameEn: { contains: keyword } } },
-              { shop: { name: { contains: keyword } } },
-              { technicianProfile: { displayName: { contains: keyword } } }
-            ]
-          }
-        : {})
+      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
     };
   }
 
@@ -566,7 +822,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       description: service.description,
       category: this.mapCategory(service.category),
       shop,
-      technician: service.technicianProfile
+      technician: service.technicianProfile && this.isPublicTechnicianCard(service.technicianProfile)
         ? this.mapTechnicianCard(service.technicianProfile)
         : null,
       city: service.city,
@@ -619,7 +875,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private mapTechnicianCard(technician: TechnicianCardRecord): TechnicianCardPayload {
     const identifier = technician.user.identities.find(
-      (identity) => identity.publicIdentifier?.kind === "S"
+      (identity) => this.isActivePublicIdentifier(identity.publicIdentifier, "S")
     )?.publicIdentifier;
 
     return {
@@ -632,6 +888,28 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         technician.user.avatarBootstrapUrl,
       reviewSummary: this.mapReviewSummary(technician.reviewSummary)
     };
+  }
+
+  private isPublicTechnicianCard(technician: TechnicianCardRecord): boolean {
+    return (
+      technician.deletedAt === null &&
+      technician.status === PUBLISHED_STATUS &&
+      technician.user.identities.some((identity) =>
+        this.isActivePublicIdentifier(identity.publicIdentifier, "S")
+      )
+    );
+  }
+
+  private isActivePublicIdentifier(
+    identifier: PublicIdentifier | null,
+    expectedKind: "S" | "SHOP"
+  ): identifier is PublicIdentifier {
+    return Boolean(
+      identifier &&
+      identifier.kind === expectedKind &&
+      identifier.status === "ACTIVE" &&
+      identifier.deletedAt === null
+    );
   }
 
   private mapTechnicianDetail(technician: TechnicianDetailRecord): TechnicianDetailPayload {
@@ -667,12 +945,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   private requirePublicId(identifier: PublicIdentifier | null, expectedKind: "S" | "SHOP"): string {
-    if (
-      identifier &&
-      identifier.kind === expectedKind &&
-      identifier.status === "ACTIVE" &&
-      identifier.deletedAt === null
-    ) {
+    if (this.isActivePublicIdentifier(identifier, expectedKind)) {
       return identifier.publicId;
     }
 

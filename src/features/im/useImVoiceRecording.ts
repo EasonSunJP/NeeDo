@@ -13,6 +13,21 @@ export type ImVoiceRecordingPhase =
 
 export type ImVoiceRecordingStopReason = "manual" | "limit";
 
+const VOICE_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: { ideal: 1 },
+  echoCancellation: { ideal: true },
+  noiseSuppression: { ideal: true },
+  autoGainControl: { ideal: true },
+};
+
+interface VoiceInputTrackState {
+  stream: MediaStream;
+  track: MediaStreamTrack;
+  hasEverUnmuted: boolean;
+  onMute: () => void;
+  onUnmute: () => void;
+}
+
 export interface UseImVoiceRecordingResult {
   phase: ImVoiceRecordingPhase;
   openAttempt: number;
@@ -68,6 +83,8 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
   const tickRef = useRef<number | null>(null);
   const limitRef = useRef<number | null>(null);
   const stoppedTracksRef = useRef(new WeakSet<MediaStreamTrack>());
+  const voiceInputTrackRef = useRef<VoiceInputTrackState | null>(null);
+  const playbackReadinessCleanupRef = useRef<(() => void) | null>(null);
 
   const transition = useCallback((nextPhase: ImVoiceRecordingPhase) => {
     phaseRef.current = nextPhase;
@@ -87,8 +104,45 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     }
   }, []);
 
+  const clearVoiceInputTrack = useCallback((stream?: MediaStream | null) => {
+    const trackedInput = voiceInputTrackRef.current;
+    if (!trackedInput || (stream && trackedInput.stream !== stream)) return;
+    trackedInput.track.removeEventListener("mute", trackedInput.onMute);
+    trackedInput.track.removeEventListener("unmute", trackedInput.onUnmute);
+    voiceInputTrackRef.current = null;
+  }, []);
+
+  const monitorVoiceInputTrack = useCallback((stream: MediaStream) => {
+    clearVoiceInputTrack();
+    const track = stream.getTracks().find(
+      (candidate) => candidate.kind === "audio" && candidate.readyState === "live",
+    );
+    if (!track) return false;
+
+    const trackedInput: VoiceInputTrackState = {
+      stream,
+      track,
+      hasEverUnmuted: !track.muted,
+      onMute: () => undefined,
+      onUnmute: () => undefined,
+    };
+    trackedInput.onUnmute = () => {
+      trackedInput.hasEverUnmuted = true;
+    };
+    track.addEventListener("mute", trackedInput.onMute);
+    track.addEventListener("unmute", trackedInput.onUnmute);
+    voiceInputTrackRef.current = trackedInput;
+    return true;
+  }, [clearVoiceInputTrack]);
+
+  const didVoiceInputStayMuted = useCallback((stream: MediaStream) => {
+    const trackedInput = voiceInputTrackRef.current;
+    return trackedInput?.stream === stream && !trackedInput.hasEverUnmuted;
+  }, []);
+
   const stopStream = useCallback((stream: MediaStream | null) => {
     if (!stream) return;
+    clearVoiceInputTrack(stream);
     for (const track of stream.getTracks()) {
       if (!stoppedTracksRef.current.has(track)) {
         stoppedTracksRef.current.add(track);
@@ -98,17 +152,24 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     if (streamRef.current === stream) {
       streamRef.current = null;
     }
+  }, [clearVoiceInputTrack]);
+
+  const invalidatePendingPlayback = useCallback(() => {
+    playbackAttemptRef.current += 1;
+    const cleanup = playbackReadinessCleanupRef.current;
+    playbackReadinessCleanupRef.current = null;
+    cleanup?.();
   }, []);
 
   const revokePreviewUrl = useCallback(() => {
-    playbackAttemptRef.current += 1;
+    invalidatePendingPlayback();
     autoPlaybackUrlRef.current = null;
     const currentUrl = objectUrlRef.current;
     objectUrlRef.current = null;
     if (currentUrl) {
       URL.revokeObjectURL(currentUrl);
     }
-  }, []);
+  }, [invalidatePendingPlayback]);
 
   const pausePreview = useCallback(() => {
     audioRef.current?.pause();
@@ -150,13 +211,14 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
         recorder.stop();
       } catch {
         generationRef.current += 1;
+        invalidatePendingPlayback();
         recorderRef.current = null;
         stopStream(streamRef.current);
         transition("idle");
         if (mountedRef.current) setError("error.im.voice_recording_failed");
       }
     }
-  }, [clearTimers, stopStream, transition]);
+  }, [clearTimers, invalidatePendingPlayback, stopStream, transition]);
 
   const attemptPlayback = useCallback(async (
     generation: number,
@@ -172,39 +234,80 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       return;
     }
 
-    const attempt = playbackAttemptRef.current + 1;
-    playbackAttemptRef.current = attempt;
+    invalidatePendingPlayback();
+    const attempt = playbackAttemptRef.current;
+    const isPlaybackCurrent = () => (
+      mountedRef.current &&
+      playbackAttemptRef.current === attempt &&
+      generationRef.current === generation &&
+      objectUrlRef.current === expectedUrl &&
+      (phaseRef.current === "preview_paused" ||
+        phaseRef.current === "preview_playing" ||
+        phaseRef.current === "send_error")
+    );
     if (resetTime) audio.currentTime = 0;
     if (resetTime && mountedRef.current) setPlaybackSeconds(0);
+
+    audio.defaultMuted = false;
+    audio.muted = false;
+    audio.volume = 1;
+    audio.setAttribute("playsinline", "");
+
+    if (audio.error) {
+      if (isPlaybackCurrent()) {
+        setError("error.im.voice_recording_failed");
+        transition("preview_paused");
+      }
+      return;
+    }
+
     try {
+      if (audio.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const cleanup = () => {
+            audio.removeEventListener("loadeddata", onReady);
+            audio.removeEventListener("canplay", onReady);
+            audio.removeEventListener("error", onError);
+            if (playbackReadinessCleanupRef.current === cleanup) {
+              playbackReadinessCleanupRef.current = null;
+            }
+          };
+          const settle = (callback: () => void) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            callback();
+          };
+          const onReady = () => settle(resolve);
+          const onError = () => settle(() => reject(new DOMException(
+            "Preview media could not be loaded",
+            "NotSupportedError",
+          )));
+          playbackReadinessCleanupRef.current = () => settle(() => reject(new DOMException(
+            "Preview playback was cancelled",
+            "AbortError",
+          )));
+          audio.addEventListener("loadeddata", onReady, { once: true });
+          audio.addEventListener("canplay", onReady, { once: true });
+          audio.addEventListener("error", onError, { once: true });
+        });
+      }
+      if (!isPlaybackCurrent()) return;
       await audio.play();
-      if (
-        mountedRef.current &&
-        playbackAttemptRef.current === attempt &&
-        generationRef.current === generation &&
-        objectUrlRef.current === expectedUrl &&
-        (phaseRef.current === "preview_paused" ||
-          phaseRef.current === "preview_playing" ||
-          phaseRef.current === "send_error")
-      ) {
+      if (isPlaybackCurrent()) {
         setError(null);
         transition("preview_playing");
       }
-    } catch {
-      if (
-        mountedRef.current &&
-        playbackAttemptRef.current === attempt &&
-        generationRef.current === generation &&
-        objectUrlRef.current === expectedUrl &&
-        (phaseRef.current === "preview_paused" ||
-          phaseRef.current === "preview_playing" ||
-          phaseRef.current === "send_error")
-      ) {
-        setError("error.im.voice_autoplay_blocked");
+    } catch (error) {
+      if (isPlaybackCurrent()) {
+        setError(error instanceof DOMException && error.name === "NotAllowedError"
+          ? "error.im.voice_autoplay_blocked"
+          : "error.im.voice_recording_failed");
         transition("preview_paused");
       }
     }
-  }, [transition]);
+  }, [invalidatePendingPlayback, transition]);
 
   const open = useCallback(async () => {
     if (phaseRef.current !== "idle") return;
@@ -218,6 +321,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
     const generation = generationRef.current + 1;
     generationRef.current = generation;
+    invalidatePendingPlayback();
     stopRequestedRef.current = false;
     stoppedDurationRef.current = 0;
     startedAtRef.current = 0;
@@ -234,7 +338,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
     let stream: MediaStream;
     try {
-      stream = await mediaDevices.getUserMedia({ audio: true });
+      stream = await mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
     } catch {
       if (mountedRef.current && generationRef.current === generation) {
         transition("idle");
@@ -248,6 +352,14 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       return;
     }
 
+    if (!monitorVoiceInputTrack(stream)) {
+      stopStream(stream);
+      transition("idle");
+      if (mountedRef.current && generationRef.current === generation) {
+        setError("error.im.voice_recording_failed");
+      }
+      return;
+    }
     streamRef.current = stream;
     const chunks: Blob[] = [];
     let recorder: MediaRecorder;
@@ -282,6 +394,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
         return;
       }
       generationRef.current += 1;
+      invalidatePendingPlayback();
       recorderRef.current = null;
       stopRequestedRef.current = true;
       transition("idle");
@@ -289,6 +402,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     };
 
     recorder.onstop = () => {
+      const inputStayedMuted = didVoiceInputStayMuted(stream);
       stopStream(stream);
       clearTimers();
       if (
@@ -303,12 +417,25 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       const measuredDuration =
         stoppedDurationRef.current || clampDuration(startedAtRef.current);
       stoppedDurationRef.current = measuredDuration;
+      if (inputStayedMuted) {
+        generationRef.current += 1;
+        invalidatePendingPlayback();
+        setBlob(null);
+        setPreviewUrl(null);
+        setDurationSeconds(0);
+        setPlaybackSeconds(0);
+        setRemainingSeconds(MAX_VOICE_RECORDING_SECONDS);
+        setProgress(0);
+        setError("error.im.voice_input_muted");
+        transition("idle");
+        return;
+      }
       const recordedBlob = new Blob(chunks, {
         type: recorder.mimeType || chunks[0]?.type || "audio/webm",
       });
       if (chunks.length === 0 || recordedBlob.size === 0) {
         generationRef.current += 1;
-        playbackAttemptRef.current += 1;
+        invalidatePendingPlayback();
         setBlob(null);
         setPreviewUrl(null);
         setDurationSeconds(0);
@@ -365,10 +492,11 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     limitRef.current = window.setTimeout(() => {
       stop("limit");
     }, MAX_VOICE_RECORDING_SECONDS * 1_000);
-  }, [clearTimers, stop, stopStream, transition]);
+  }, [clearTimers, didVoiceInputStayMuted, invalidatePendingPlayback, monitorVoiceInputTrack, stop, stopStream, transition]);
 
   const cancel = useCallback(() => {
     generationRef.current += 1;
+    invalidatePendingPlayback();
     clearTimers();
     pausePreview();
     const recorder = recorderRef.current;
@@ -385,7 +513,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     revokePreviewUrl();
     transition("idle");
     resetVisibleState();
-  }, [clearTimers, pausePreview, resetVisibleState, revokePreviewUrl, stopStream, transition]);
+  }, [clearTimers, invalidatePendingPlayback, pausePreview, resetVisibleState, revokePreviewUrl, stopStream, transition]);
 
   const replay = useCallback(async () => {
     if (
@@ -423,10 +551,10 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     }
     setPlaybackSeconds(stoppedDurationRef.current);
     if (phaseRef.current === "preview_playing") {
-      playbackAttemptRef.current += 1;
+      invalidatePendingPlayback();
       transition("preview_paused");
     }
-  }, [transition]);
+  }, [invalidatePendingPlayback, transition]);
 
   const beginSending = useCallback(() => {
     if (
@@ -436,11 +564,11 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     ) {
       return;
     }
-    playbackAttemptRef.current += 1;
+    invalidatePendingPlayback();
     transition("sending");
     setError(null);
     pausePreview();
-  }, [pausePreview, transition]);
+  }, [invalidatePendingPlayback, pausePreview, transition]);
 
   const finishSending = useCallback(() => {
     if (phaseRef.current !== "sending") return;
@@ -465,7 +593,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
 
     const markPaused = () => {
       if (phaseRef.current === "preview_playing") {
-        playbackAttemptRef.current += 1;
+        invalidatePendingPlayback();
         transition("preview_paused");
       }
     };
@@ -473,7 +601,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     return () => {
       audio.removeEventListener("pause", markPaused);
     };
-  }, [phase, transition]);
+  }, [invalidatePendingPlayback, phase, transition]);
 
   useEffect(() => {
     const currentUrl = previewUrl;
@@ -494,7 +622,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
     return () => {
       mountedRef.current = false;
       generationRef.current += 1;
-      playbackAttemptRef.current += 1;
+      invalidatePendingPlayback();
       clearTimers();
       pausePreview();
       const recorder = recorderRef.current;
@@ -510,7 +638,7 @@ export function useImVoiceRecording(): UseImVoiceRecordingResult {
       stopStream(streamRef.current);
       revokePreviewUrl();
     };
-  }, [clearTimers, pausePreview, revokePreviewUrl, stopStream]);
+  }, [clearTimers, invalidatePendingPlayback, pausePreview, revokePreviewUrl, stopStream]);
 
   return {
     phase,

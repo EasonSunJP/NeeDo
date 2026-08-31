@@ -344,7 +344,7 @@
 - 新接口为 `POST /im/conversations/:targetConversationId/chat-records`、`GET /im/chat-records/:publicId`、分页 `GET /im/chat-records/:publicId/items?beforePosition=&pageSize=50`、鉴权媒体读取、聊天记录收藏的创建/分页 `GET /im/chat-record-favorites?page=1&pageSize=20`/移除、`POST /im/conversations/:conversationId/messages/delete-for-me` 及 `POST /im/conversations/:conversationId/messages/translations`，统一位于 `/api/v1`，使用 Bearer、Zod、RBAC 与 OpenAPI；分页字段按实际契约使用 `pageSize`。
 - 长按菜单保持既有玻璃容器、箭头、表情区与仅半透明压暗的无滤镜下层；动作固定四列两行。常用表情在一次打开期间冻结，使用记录只影响下次打开。
 - 多选以长按消息为锚点，左侧圆圈是唯一逐条切换入口；上下“选择到这里”与底部转发/复制/收藏/删除栏固定悬浮。普通点按消息区取消，实际拖动或滚动后抬手不取消，文字选区手柄拖动不滚动并退出多选。一次最多 100 条。
-- 单条/多条转发都是一张不可变聊天记录卡；收藏整体保存为一项，二者复用带右侧关闭按钮和信息入口的只读全屏窗口。多选复制按权威顺序输出 `发送者:内容`，显示译文存在时复制显示译文，否则复制原文。
+- 单条/多条转发都是一张不可变聊天记录卡；收藏整体保存为一项，二者复用带右侧关闭按钮和信息入口的只读全屏窗口。用户中心 `/me/favorites` 保留动态收藏，并通过同一入口下的 `/me/favorites/chat-records` 进入聊天记录收藏。多选复制按权威顺序输出 `发送者:内容`，显示译文存在时复制显示译文，否则复制原文。
 
 ### DeepL Free 与无密钥行为
 
@@ -356,6 +356,44 @@
 
 - 五语言新增文案使用完整短语键处理动态选中数量和批量删除确认，不依赖片段拼接；日语“选择到这里”为 `ここまで`。自动化测试覆盖紧凑菜单、无滤镜遮罩、翻译显隐/复制、固定范围按钮、手势仲裁、不可变记录卡/详情、收藏分页、身份访问、媒体、幂等和仅本人删除。
 - 本轮未应用 migration、未读取或修改共享数据库、未创建测试消息/收藏、未调用真实 DeepL、未合并/推送/部署。390px/440px 双账号浏览器验收依赖正式 migration、临时消息/收藏和仅本人永久删除验证，必须另行取得这些数据写入与清理授权；在此之前不标记为通过。
+## 6.26 可听语音预览与居中放大控制（2026-08-31）
+
+- 自动化聚焦命令 `npm test -- src/features/im/useImVoiceRecording.test.tsx src/features/im/ImVoiceRecordingOverlay.test.tsx src/features/im/pages.test.ts src/features/im/pages.test.tsx src/features/im/components.composer.test.tsx src/i18n/translations.test.ts` 通过：6 个 test files、154 个 tests、0 failures。
+- 根目录 `npm test` 通过：264 个 test files、1,679 个 tests、0 failures。
+- `npm run i18n:audit` 退出码为 0；本次输出摘要为 `zhSourceCount=12195`、`nonZhSourceCount=3200`、`coveredCount=7328`、`recoverableFromIndexedCount=0`、`missingCount=4867`。任务要求的既有 5 秒超时在本次重跑中未出现。
+- 补齐测试 mock 的严格 `this: HTMLMediaElement` 类型后，`npm run lint` 通过；`npm run verify:production-build` 完成 TypeScript、formal Vite build 与 production bundle audit，8 个 HTML 入口和 23 个资产检查通过。最终 `git diff --check` 通过，没有放宽门禁。
+- 随后主工作树出现与本语音切片无关的 Social 并行修改；本任务复核时 `npm run lint` 与 `npm run verify:production-build` 均在 `src/features/social/formal-adapter.test.ts:68:7` 因 `counters` 不属于 `RealtimeSocialPost` 而退出。该并行修改未纳入本次文档提交，也未放宽门禁。
+- 正式运行监听已确认来自当前检出：前端 `5180` 的 cwd 为仓库根目录，后端 `3000` 的 cwd 为 `backend/`。在 `http://127.0.0.1:5180/user.html#/messages/2546` 实测单击打开、录音态 X + 停止、预览态 X + 重放 + 发送、动作区 `top-[57%]`、72×72 CSS 像素按钮、Blob 音频 `muted=false` / `defaultMuted=false` / `playsinline=true` 及播放进度；用户确认实际录音回放有声。`volume=1` 已由 hook 回归测试覆盖并在每次 `play()` 前设置，但本次浏览器检查接口未返回该属性，因此不标记为浏览器直接取值通过。440×956、320×956、持续静音输入提示、失败重试及双账号 SSE/重载播放仍未在本切片重新验收。
+
+## 6.27 动态互动权威计数、用户收藏与好友私信转发（2026-08-31）
+
+### 权威数据与权限边界
+
+- additive migration `20260831150000_social_post_interactions` 新增 `social_post_likes`、`social_post_bookmarks`、`social_post_views` 与 `social_post_shares`。四张表均包含软删除时间与审计时间；点赞、收藏和浏览以 `postId + identityId` 唯一，转发以 `postId + actorIdentityId + targetUserId` 记录投递，并以 `actorIdentityId + idempotencyKey + targetUserId` 阻止重试重复消息。
+- `social-post:interact` 已进入正式 permission catalog，并授予 `admin / merchant_owner / merchant_staff / technician / customer`。所有互动路由要求该权限；好友私信转发同时要求现有 `message:create`。Service 始终从当前 Bearer 会话解析活动身份，Controller 不直接访问 Prisma。
+- 列表、详情和每个互动响应都返回服务端 `counters.likes / reposts / views / bookmarks` 与当前活动身份的 `viewerInteraction.liked / bookmarked / shared`。旧正式种子写在 media envelope 内的计数只作为兼容基线读取；新增关系计数叠加其上，不回写旧 JSON，也不把浏览器状态当作累计来源。
+
+### 正式 REST 与实时事件
+
+- `PUT /api/v1/social/posts/:id/like`、`DELETE /api/v1/social/posts/:id/like`、`PUT /api/v1/social/posts/:id/bookmark` 与 `DELETE /api/v1/social/posts/:id/bookmark` 使用幂等软恢复/软删除并返回权威动态。`POST /api/v1/social/posts/:id/view` 对同一活动身份只累计一次有效浏览。
+- `GET /api/v1/social/posts?bookmarked=true&page=...&pageSize=...` 仍是分页接口，并只返回当前活动身份有效收藏的可见动态；资料隐私、作者屏蔽和 follower-only 可见性继续由 Repository 的统一可见性条件约束。
+- `POST /api/v1/social/posts/:id/shares` 接受 1–20 个去重 `targetUserIds`，要求 `Idempotency-Key`，拒绝本人、非双向正式好友、拉黑关系和无权看到 follower-only 动态的收件人。事务内复用或恢复一对一 friendship conversation，并创建带 `needoMessageType = social-post-card` 的正式 Message；重复相同 key 只返回既有投递，不重复增加转发计数、未读数或 SSE。
+- 点赞、收藏和首次浏览通过 `social.post.interaction.updated` 通知当前账号、作者及现有关注者刷新权威动态；首次好友转发继续使用正式 `message.created` 发送给双方。未新增轮询、浏览器业务存储或平行 IM 数据源。
+
+### 前端统一入口
+
+- 时间线和详情的点赞、收藏及浏览直接调用正式 API，并只提交服务端返回的 post/counter/viewer state。收藏入口改为客户个人中心 `/me/favorites`；页面数据来自正式 bookmarked 分页启动快照，复用同一动态卡片，取消收藏后按确认状态移除。
+- “转发”页不再发布到公共时间线，也不再维护失效的快速转发/引用转发按钮；它加载正式联系人候选，支持搜索和多选，并把动态卡片发给所选好友。聊天消息模型、会话摘要和气泡共同识别 `social-post-card`，可从卡片返回原动态。
+- 互动请求失败不再产生 optimistic 计数；原确认状态保留。所有三端继续复用 Social provider 与同一详情/时间线组件，本切片没有复制三套 UI。
+
+### 自动化与本地正式验收
+
+- 聚焦前端回归覆盖权威映射、正式 provider、好友转发页、详情浏览、个人中心收藏入口、IM 正式消息解析和翻译质量：8 个功能文件、145 项通过，独立 i18n quality 1 项通过。最终前端全量使用 `npm test -- --testTimeout=20000`，265 个文件、1,689 项通过；默认 5 秒上限的前一轮只有既有 `ReactionCatalog` 1 项在满负载下超时，该文件随后独立 3/3 通过。没有修改该组件、断言或生产超时。
+- 聚焦后端 Social/Realtime/OpenAPI 回归为 6 个 suites、47 项通过。最终后端全量使用 `npm test -- --testTimeout=20000`，339 个 suites、2,290 项通过，另有 10 个 suites、38 项按既有配置跳过；默认 5 秒上限曾使两个 bcrypt 密集认证用例在满负载下超时，未修改 bcrypt rounds、限流或认证代码。
+- `npm --prefix backend run lint`、`npm --prefix backend run build`、根目录 `npm run lint`、`npm run i18n:audit` 与 Prisma schema validate 均退出 `0`。正式 `npm run verify:production-build` 检查 8 个 HTML 与 25 个 assets 通过；页面专属五语文案留在懒加载的 `SocialFavoritesPage` / `SocialRepostPage` chunk，`i18n` chunk 为 3,703,450 bytes，没有提高 3,704,096 bytes 预算。
+- 2026-08-31 再检查时，`needo_dev` 已存在成功的 `20260831150000_social_post_interactions` 记录，其 checksum `408ae19a...` 与当前仓库 migration 一致；此前因 MySQL 64 字符标识符上限失败的长索引版本保留为 rolled-back 记录。四张互动表、外键、短名称幂等唯一索引和五类角色授权均与当前 migration 一致，`prisma migrate status` 报告仓库 80 个 migration 全部已应用。本次没有手改 `_prisma_migrations` 或执行原始 DDL；数据库中仍有与本 Social 切片无关、当前 checkout 不包含的历史记录，不把它们解释或复制回仓库。
+- 本地正式数据验收使用 `sim.customer.100@needo.local` 的 customer identity、动态 `64774` 和一个既有双向好友会话。真实 API 验证了点赞/取消及刷新持久化、收藏分页添加/移除、同身份两次浏览只累计一次、好友收到 `social-post-card`、重复同一 `Idempotency-Key` 不重复计数或消息、发送方互动 SSE 与接收方消息 SSE。验收脚本随后按精确 ID 删除 interaction/share/message/audit，并恢复 conversation 与 participant 的未读、last-read、隐藏状态和时间戳；复查所有 marker 为零、动态计数回到基线。
+- 440×956 浏览器验收确认：详情首次进入从 1 次浏览变为 2，刷新仍为 2；用户中心 `/me/favorites` 收藏后可见且刷新持久；转发页加载 12 位正式好友，选择后发送按钮启用、取消后禁用；动态、收藏和转发页均无横向溢出且 console error 为零。浏览器产生的临时 bookmark/view 及对应 audit 已按精确 ID 清理，时间线恢复未收藏与原计数。
 
 ---
 

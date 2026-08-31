@@ -193,6 +193,7 @@ const realtimePermissions = [
   "friend-request:respond",
   "social-post:list",
   "social-post:create",
+  "social-post:interact",
   "follow:write",
   "notification:list",
   "notification:read",
@@ -371,6 +372,10 @@ const createFixture = async () => {
     visibility: string;
     createdAt: Date;
   }> = [];
+  const socialLikeKeys = new Set<string>();
+  const socialBookmarkKeys = new Set<string>();
+  const socialViewKeys = new Set<string>();
+  const socialShareKeys = new Set<string>();
   const follows: Array<{
     id: number;
     followerUserId: number;
@@ -394,6 +399,36 @@ const createFixture = async () => {
     needoId: `u${String(userId).padStart(10, "0")}`,
     username: users.find((user) => user.id === userId)?.username ?? "Unknown",
     avatarUrl: null
+  });
+
+  const mapSocialInteractionPost = (
+    post: (typeof socialPosts)[number],
+    viewerIdentityId: number
+  ) => ({
+    ...post,
+    authorIdentityId: post.authorUserId,
+    updatedAt: post.createdAt,
+    author: {
+      ...publicProfile(post.authorUserId),
+      identityId: post.authorUserId,
+      displayName: publicProfile(post.authorUserId).username,
+      entityType: "user" as const,
+      joinedAt: post.createdAt
+    },
+    viewerFollowsAuthor: false,
+    authorFollowsViewer: false,
+    viewerIsFriend: false,
+    counters: {
+      likes: [...socialLikeKeys].filter((key) => key.startsWith(`${post.id}:`)).length,
+      bookmarks: [...socialBookmarkKeys].filter((key) => key.startsWith(`${post.id}:`)).length,
+      views: [...socialViewKeys].filter((key) => key.startsWith(`${post.id}:`)).length,
+      reposts: [...socialShareKeys].filter((key) => key.startsWith(`${post.id}:`)).length
+    },
+    viewerInteraction: {
+      liked: socialLikeKeys.has(`${post.id}:${viewerIdentityId}`),
+      bookmarked: socialBookmarkKeys.has(`${post.id}:${viewerIdentityId}`),
+      shared: [...socialShareKeys].some((key) => key.startsWith(`${post.id}:${viewerIdentityId}:`))
+    }
   });
 
   const mapMessage = (message: (typeof messages)[number], viewerUserId: number) => {
@@ -1263,6 +1298,84 @@ const createFixture = async () => {
         return { post, notifications: [] };
       }
     ),
+    setSocialPostLike: jest.fn(async (input: {
+      postId: number;
+      actorIdentityId: number;
+      active: boolean;
+    }) => {
+      const post = socialPosts.find((candidate) => candidate.id === input.postId);
+      if (!post) return null;
+      const key = `${input.postId}:${input.actorIdentityId}`;
+      const changed = input.active ? !socialLikeKeys.has(key) : socialLikeKeys.has(key);
+      if (input.active) socialLikeKeys.add(key);
+      else socialLikeKeys.delete(key);
+      return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
+    }),
+    setSocialPostBookmark: jest.fn(async (input: {
+      postId: number;
+      actorIdentityId: number;
+      active: boolean;
+    }) => {
+      const post = socialPosts.find((candidate) => candidate.id === input.postId);
+      if (!post) return null;
+      const key = `${input.postId}:${input.actorIdentityId}`;
+      const changed = input.active ? !socialBookmarkKeys.has(key) : socialBookmarkKeys.has(key);
+      if (input.active) socialBookmarkKeys.add(key);
+      else socialBookmarkKeys.delete(key);
+      return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
+    }),
+    recordSocialPostView: jest.fn(async (input: { postId: number; actorIdentityId: number }) => {
+      const post = socialPosts.find((candidate) => candidate.id === input.postId);
+      if (!post) return null;
+      const key = `${input.postId}:${input.actorIdentityId}`;
+      const changed = !socialViewKeys.has(key);
+      socialViewKeys.add(key);
+      return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
+    }),
+    shareSocialPost: jest.fn(async (input: {
+      postId: number;
+      actorUserId: number;
+      actorIdentityId: number;
+      targetUserIds: number[];
+      idempotencyKey: string;
+    }) => {
+      const post = socialPosts.find((candidate) => candidate.id === input.postId);
+      if (!post) return null;
+      const deliveries = input.targetUserIds.map((recipientUserId) => {
+        const key = `${input.postId}:${input.actorIdentityId}:${recipientUserId}:${input.idempotencyKey}`;
+        const created = !socialShareKeys.has(key);
+        socialShareKeys.add(key);
+        return {
+          recipientUserId,
+          recipientIdentityId: recipientUserId,
+          created,
+          message: {
+            id: 900 + recipientUserId,
+            conversationId: 800 + recipientUserId,
+            senderUserId: input.actorUserId,
+            type: "text" as const,
+            content: "转发了一条动态",
+            metadata: { needoMessageType: "social-post-card" },
+            reactions: [],
+            createdAt: now,
+            recallDeadlineAt: new Date(now.getTime() + 180_000),
+            recalledAt: null,
+            recallMode: null,
+            contentPurgedAt: null,
+            expiresAt: null,
+            privacyPolicyVersionAtSend: null,
+            lifecycleVersion: 1,
+            reactionVersion: 0,
+            availableRecallModes: ["standard" as const]
+          }
+        };
+      });
+      return {
+        changed: deliveries.some((delivery) => delivery.created),
+        deliveries,
+        post: mapSocialInteractionPost(post, input.actorIdentityId)
+      };
+    }),
     listSocialPosts: jest.fn(async () => listPage(socialPosts)),
     getSocialPost: jest.fn(async (userId: number, postId: number) => {
       const post = socialPosts.find((item) => item.id === postId);
@@ -2487,5 +2600,81 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       { page: 2, pageSize: 100, replyToPostId: 700 },
       1
     );
+  });
+
+  it("wires formal like, bookmark, unique-view, and friend-share endpoints", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const created = await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ content: "Interaction contract", visibility: "public" })
+      .expect(201);
+    const postId = created.body.data.id as number;
+
+    await request(fixture.app)
+      .put(`/api/v1/social/posts/${postId}/like`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          counters: { likes: 1 },
+          viewerInteraction: { liked: true }
+        });
+      });
+    await request(fixture.app)
+      .delete(`/api/v1/social/posts/${postId}/like`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          counters: { likes: 0 },
+          viewerInteraction: { liked: false }
+        });
+      });
+    await request(fixture.app)
+      .put(`/api/v1/social/posts/${postId}/bookmark`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.viewerInteraction.bookmarked).toBe(true);
+      });
+    await request(fixture.app)
+      .get("/api/v1/social/posts?bookmarked=true&page=1&pageSize=20")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200);
+    expect(fixture.realtimeRepository.listSocialPosts).toHaveBeenLastCalledWith(
+      1,
+      { bookmarked: true, page: 1, pageSize: 20 },
+      1
+    );
+
+    await request(fixture.app)
+      .post(`/api/v1/social/posts/${postId}/view`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200);
+    await request(fixture.app)
+      .post(`/api/v1/social/posts/${postId}/view`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.counters.views).toBe(1);
+      });
+
+    await request(fixture.app)
+      .post(`/api/v1/social/posts/${postId}/shares`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ targetUserIds: [2] })
+      .expect(400);
+    await request(fixture.app)
+      .post(`/api/v1/social/posts/${postId}/shares`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .set("Idempotency-Key", "social-share-contract-1")
+      .send({ targetUserIds: [2] })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ deliveredUserIds: [2] });
+        expect(response.body.data.post.counters.reposts).toBe(1);
+      });
   });
 });

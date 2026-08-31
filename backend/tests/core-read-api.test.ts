@@ -80,6 +80,8 @@ describe("Step 08 core read API", () => {
         technicians: [technicianCard]
       })),
       search: jest.fn(async () => paginated([serviceCard])),
+      searchShops: jest.fn(async () => paginated([shopCard])),
+      searchTechnicians: jest.fn(async () => paginated([technicianCard])),
       findShopDetail: jest.fn(async () => ({
         ...shopCard,
         description: "Private care studio in Aoyama.",
@@ -167,6 +169,53 @@ describe("Step 08 core read API", () => {
         city: "Tokyo"
       })
     );
+  });
+
+  it("dispatches typed shop and technician searches with repeated OR inputs", async () => {
+    const fixture = createFixture();
+
+    const shopResponse = await request(fixture.app)
+      .get("/api/v1/search?entityType=shop&keywords=LifeDance&keywords=%E5%AE%B6%E6%94%BF&categoryIds=3&categoryIds=9")
+      .expect(200);
+    expect(shopResponse.body.data).toEqual(paginated([shopCard]));
+    expect(fixture.coreReadRepository.searchShops).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: "shop",
+        keywords: ["LifeDance", "家政"],
+        categoryIds: [3, 9]
+      })
+    );
+
+    const technicianResponse = await request(fixture.app)
+      .get("/api/v1/search?entityType=technician&keywords=%E3%81%B2%E3%81%8B%E3%82%8A")
+      .expect(200);
+    expect(technicianResponse.body.data).toEqual(paginated([technicianCard]));
+    expect(fixture.coreReadRepository.searchTechnicians).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: "technician", keywords: ["ひかり"] })
+    );
+  });
+
+  it("keeps the legacy omitted entity type on service search", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/search?keyword=shiatsu").expect(200);
+
+    expect(fixture.coreReadRepository.search).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: "service", keyword: "shiatsu" })
+    );
+  });
+
+  it("rejects invalid or excessive multi-entity search values", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/search?entityType=customer").expect(400);
+    await request(fixture.app)
+      .get(`/api/v1/search?${Array.from({ length: 21 }, (_, index) => `keywords=k${index}`).join("&")}`)
+      .expect(400);
+
+    expect(fixture.coreReadRepository.search).not.toHaveBeenCalled();
+    expect(fixture.coreReadRepository.searchShops).not.toHaveBeenCalled();
+    expect(fixture.coreReadRepository.searchTechnicians).not.toHaveBeenCalled();
   });
 
   it("returns shop, technician, service, and customer profile details without sensitive user fields", async () => {

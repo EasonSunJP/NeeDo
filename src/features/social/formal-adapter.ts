@@ -133,7 +133,7 @@ function toEntityType(value: string | undefined): SocialEntityType {
 export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
   const envelope = readMediaEnvelope(post.media);
   const entityType = toEntityType(post.author?.entityType);
-  const counters = envelope.counters;
+  const counters = post.counters ?? envelope.counters;
 
   return {
     id: String(post.id),

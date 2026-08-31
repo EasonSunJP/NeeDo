@@ -19,6 +19,7 @@ import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
+import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
@@ -1205,6 +1206,7 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
 function getPreviewLabelForMessageType(messageType: ConversationMessage["type"] | undefined) {
   if (messageType === "contact-card") return "[名片]";
   if (messageType === "service-card") return "[服务]";
+  if (messageType === "social-post-card") return "[动态]";
   if (messageType === "schedule-invite") return "[日程邀请]";
   return undefined;
 }
@@ -1273,6 +1275,8 @@ function buildMessageRawPreview(
     ? message.ext?.contactCard?.displayName?.trim()
     : message.type === "service-card"
       ? message.ext?.serviceCard?.name?.trim()
+      : message.type === "social-post-card"
+        ? message.ext?.socialPostCard?.authorName?.trim()
       : message.type === "schedule-invite"
         ? message.ext?.scheduleInvite?.title?.trim()
         : undefined;
@@ -1399,6 +1403,9 @@ function getVoiceRecordingFileExtension(blob: Blob) {
 }
 
 function getVoiceRecordingErrorSource(errorKey: string) {
+  if (errorKey === "error.im.voice_input_muted") {
+    return "没有检测到麦克风声音，请检查输入设备后重试";
+  }
   if (errorKey === "error.im.voice_permission_denied") {
     return "请允许麦克风权限后重试";
   }
@@ -2217,10 +2224,6 @@ export function ImContactsListPage() {
   const activeDragLetterRef = useRef<ContactIndexLetter | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const [activeIndexLetter, setActiveIndexLetter] = useState<ContactIndexLetter | null>(null);
-  const serviceContacts = getServiceContacts({
-    ...store,
-    contacts: visibleContacts
-  });
   const organizationContacts = useMemo(
     () => getOrganizationContacts(store, scope, entityStore),
     [entityStore, scope, store.contacts, store.organizationContacts, store.usersById]
@@ -2487,7 +2490,12 @@ export function ImContactsListPage() {
               {scope !== "user" ? <ImEntryCell caption={`${organizationContacts.length} 人`} icon={<ImIcon name="organization" />} title="组织" to={config.routes.organization} /> : null}
               <ImEntryCell icon={<ImIcon name="group" />} title="群聊" to={appendQuery(config.routes.newConversation, { mode: "group" })} />
               <ImEntryCell icon={<ImIcon name="tag" />} title="标签" to={config.routes.tags} />
-              {serviceContacts.length > 0 ? <ImEntryCell icon={<ImIcon name="service" />} title="服务号" to={config.routes.serviceAccounts} /> : null}
+              <ImEntryCell
+                icon={<ImIcon name="service" />}
+                title="服务号"
+                to={config.routes.serviceAccounts}
+                trailing={<TestFeatureBadge className="min-h-4 px-1.5 py-0 text-[8px]" />}
+              />
             </section>
 
             <div className="px-1 pt-3">
@@ -6631,6 +6639,9 @@ export function ImConversationRoomPage({
                     const targetProfilePath = resolveImProfilePath(scope, targetUser);
                     if (targetProfilePath) { navigate(targetProfilePath); return; }
                     if (targetContact) navigate(config.routes.contactDetail(targetContact.id));
+                  }}
+                  onOpenSocialPost={(socialPostId) => {
+                    navigate(socialPaths.post(scope, socialPostId));
                   }}
                   onPreviewMedia={openMediaPreview}
                   quotedMessage={quoted}

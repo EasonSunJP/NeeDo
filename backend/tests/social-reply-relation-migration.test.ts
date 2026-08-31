@@ -18,7 +18,7 @@ describe("Social reply relation migration", () => {
     expect(migration).toContain("JSON_EXTRACT(`reply`.`media`, '$.replyToPostId')");
     expect(migration).toContain("social_posts_reply_parent_active_idx");
     expect(migration).toContain("social_posts_reply_to_post_id_fkey");
-    expect(schema).toContain("replyToPostId Int?");
+    expect(schema).toMatch(/replyToPostId\s+Int\?/);
     expect(schema).toContain('@relation("SocialPostReplies"');
   });
 

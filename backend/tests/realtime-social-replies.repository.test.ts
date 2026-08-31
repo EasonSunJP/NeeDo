@@ -29,7 +29,13 @@ function createFixture(options: { replyTargetExists?: boolean; activeReplyCount?
         updatedAt: now,
         author,
         authorIdentity: { id: 71, type: "customer", displayName: "Aya" },
-        _count: { replies: options.activeReplyCount ?? 0 }
+        _count: {
+          replies: options.activeReplyCount ?? 0,
+          likes: 0,
+          bookmarks: 0,
+          views: 0,
+          shares: 0
+        }
       }))
     },
     auditLog: { create: jest.fn(async () => ({ id: 901 })) }
@@ -82,7 +88,9 @@ describe("RealtimeRepository Social post replies", () => {
       expect.objectContaining({
         data: expect.objectContaining({ replyToPostId: 700 }),
         include: expect.objectContaining({
-          _count: { select: { replies: { where: { deletedAt: null } } } }
+          _count: expect.objectContaining({
+            select: expect.objectContaining({ replies: { where: { deletedAt: null } } })
+          })
         })
       })
     );

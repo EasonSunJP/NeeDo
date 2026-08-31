@@ -16,7 +16,6 @@ describe("CategoryPage technician showcase card", () => {
     expect(technicianShowcaseCardSource).toContain('taxSuffix: "세금 포함"');
     expect(technicianShowcaseCardSource).not.toContain('taxSuffix: "税后"');
     expect(technicianShowcaseCardSource).not.toContain('taxSuffix: "세후"');
-    expect(categoryPageSource).toContain("language={language}");
     expect(technicianShowcaseCardSource).toContain("{duration}{copy.minuteSuffix}({copy.taxSuffix})");
   });
 
@@ -32,26 +31,34 @@ describe("CategoryPage technician showcase card", () => {
     expect(categoryPageSource).toContain('className="mt-4 grid grid-cols-3 gap-2"');
   });
 
-  it("does not apply the default category to a custom keyword search", () => {
-    expect(categoryPageSource).toContain(
-      'const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0;'
-    );
-    expect(categoryPageSource).toContain(
-      'const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");'
-    );
-    expect(categoryPageSource).toContain(
-      "const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;"
-    );
+  it("uses direct typed entity searches instead of deriving profiles from services", () => {
+    expect(categoryPageSource).toContain("coreReadApi.searchShops");
+    expect(categoryPageSource).toContain("coreReadApi.searchTechnicians");
+    expect(categoryPageSource).toContain("coreReadApi.searchServices");
+    expect(categoryPageSource).not.toContain('buildDisplayLabels(appliedTagIds, appliedCustomLabels).join(" ")');
+    expect(categoryPageSource).not.toContain("searchQuery.data.list.flatMap");
+    expect(categoryPageSource).not.toContain("matchesAllSearchKeywords");
   });
 
-  it("shows up to 20 technician cards and routes cards through the technician dynamic path", () => {
+  it("routes new scoped search states through the existing i18n helper", () => {
+    expect(categoryPageSource).toContain('title={`${t("店铺")} · ${t("搜索失败，请稍后重试")}`}');
+    expect(categoryPageSource).toContain('title={`${t("技师")} · ${t("搜索失败，请稍后重试")}`}');
+    expect(categoryPageSource).toContain('title={`${t("服务")} · ${t("搜索失败，请稍后重试")}`}');
+  });
+
+  it("shows up to 20 technician cards and routes cards to the formal profile", () => {
     expect(categoryPageSource).toContain('pageSize: 40');
     expect(categoryPageSource).toContain('entityFilter === "technician" ? 20');
-    expect(categoryPageSource).toContain("getTechnicianDynamicPath(item.technician)");
+    expect(categoryPageSource).toContain('`/profiles/technician/${props.profile.id}`');
   });
 
-  it("disables legacy category content", () => {
-    expect(categoryPageSource).toContain("searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? []");
+  it("keeps direct shop and technician cards capability-neutral", () => {
+    expect(categoryPageSource).toContain("serviceSearchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? []");
+    expect(categoryPageSource).toContain("shopSearchQuery.data?.list ?? []");
+    expect(categoryPageSource).toContain("technicianSearchQuery.data?.list ?? []");
+    expect(categoryPageSource).not.toContain("mapCoreShopToStore");
+    expect(categoryPageSource).not.toContain("mapCoreTechnicianToTechnician");
+    expect(categoryPageSource).not.toContain("TechnicianShowcaseCard");
     expect(categoryPageSource).not.toContain("legacyServices");
     expect(categoryPageSource).not.toContain("legacyStores");
     expect(categoryPageSource).not.toContain("legacyTechnicians");

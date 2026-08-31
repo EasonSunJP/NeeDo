@@ -149,19 +149,42 @@ export type CoreServiceListQuery = {
   technicianId?: number;
 };
 
+export type CoreSearchListQuery = Omit<CoreServiceListQuery, "keyword" | "categoryId"> & {
+  keyword?: string;
+  keywords?: readonly string[];
+  categoryIds?: readonly number[];
+};
+
 const fallbackServiceImage = "/images/generated/services/service-home-organization.jpg";
 const fallbackStoreImage = "/images/generated/stores/store-cafe-consult.jpg";
 const fallbackTechnicianAvatar = "/images/generated/profiles/ai-profile-01.jpg";
 const fallbackCustomerAvatar = "/images/generated/profiles/ai-profile-30.jpg";
 
 const categoryCodeToHomeCategoryId: Partial<Record<string, ServiceCategory["id"]>> = {
+  appliance: "appliance",
   beauty: "beauty",
   business: "business",
   care: "care",
   cleaning: "cleaning",
+  deep: "deep",
   dining: "dining",
+  guide: "guide",
+  homecare: "homecare",
+  install: "install",
+  laundry: "laundry",
+  legal: "legal",
+  massage: "massage",
+  moving: "moving",
+  nanny: "nanny",
+  other: "other",
   pet: "pet",
+  property: "property",
+  recycle: "recycle",
+  renovation: "renovation",
   repair: "repair",
+  sports: "sports",
+  storage: "storage",
+  tutor: "tutor",
   wellness: "massage"
 };
 
@@ -413,6 +436,13 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
   };
 }
 
+function searchEntity<TItem>(entityType: "service" | "shop" | "technician", query: CoreSearchListQuery) {
+  return httpClient.request<PaginatedCoreReadData<TItem>>("/search", {
+    auth: false,
+    query: { ...query, entityType }
+  });
+}
+
 export const coreReadApi = {
   listCategories(query: { page?: number; pageSize?: number; parentId?: number | null } = {}) {
     return httpClient.request<PaginatedCoreReadData<CoreCategory>>("/categories", { auth: false, query });
@@ -422,8 +452,20 @@ export const coreReadApi = {
     return httpClient.request<PaginatedCoreReadData<CoreServiceCard>>("/services", { auth: false, query });
   },
 
-  search(query: CoreServiceListQuery = {}) {
-    return httpClient.request<PaginatedCoreReadData<CoreServiceCard>>("/search", { auth: false, query });
+  searchServices(query: CoreSearchListQuery = {}) {
+    return searchEntity<CoreServiceCard>("service", query);
+  },
+
+  searchShops(query: CoreSearchListQuery = {}) {
+    return searchEntity<CoreShopCard>("shop", query);
+  },
+
+  searchTechnicians(query: CoreSearchListQuery = {}) {
+    return searchEntity<CoreTechnicianCard>("technician", query);
+  },
+
+  search(query: CoreServiceListQuery | CoreSearchListQuery = {}) {
+    return searchEntity<CoreServiceCard>("service", query);
   },
 
   getHomeRecommendations(query: { city?: string; limit?: number } = {}) {

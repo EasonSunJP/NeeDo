@@ -30,6 +30,7 @@ import { FinancePage } from "./pages/admin/FinancePage";
 import { FloorplanPage } from "./pages/admin/FloorplanPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
+import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
 import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
@@ -195,6 +196,7 @@ import {
   SocialAccountProfilePage,
   SocialComposerPage,
   SocialDraftsPage,
+  SocialFavoritesPage,
   SocialMediaViewerPage,
   SocialLegacyReplyRedirectPage,
   SocialNotificationsPage,
@@ -1178,7 +1180,8 @@ export default function App() {
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
-              <Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />
+              <Route path="/me/favorites" element={protect("user", <SocialFavoritesPage />)} />
+              <Route path="/me/favorites/chat-records" element={protect("user", <UserFavoritesRoutePage />)} />
               <Route path="/me/memberships" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/memberships/:membershipPublicId" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/settings" element={protect("user", <UserSettingsPage />)} />
@@ -1410,6 +1413,7 @@ export default function App() {
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
+              <Route path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
               <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <MerchantApplicationsReviewPage />)} />

@@ -215,6 +215,25 @@ Submit text, a judgement sticker, an image, and a location through the formal AP
 
 Local acceptance recorded on 2026-08-31 used `needo_dev`: preflight found 51,818 posts and four valid legacy reply relations; postflight kept the same post total, backfilled all four relations, reported zero orphans, and found the required index and foreign key. The final isolated regression run passed 255 frontend files / 1,577 tests and 326 backend suites / 2,166 tests, with 10 suites / 38 environment-conditional backend tests reported as skipped. Authenticated user, merchant, and technician routes were checked at mobile widths; the four formal reply types were submitted to post `64773`, and reload showed the authoritative count and list total both at seven with sticker, image, and location presentation preserved. A final isolated merchant-browser check opened older post `64000` directly; the runtime issued both `GET /api/v1/social/posts/64000` and `GET /api/v1/social/posts?page=1&pageSize=100&replyToPostId=64000`, then rendered the canonical detail instead of the not-found state.
 
+### Formal Social interaction acceptance
+
+Likes, bookmarks, unique views, and friend shares are persisted by migration `20260831150000_social_post_interactions`; the timeline no longer increments these counters in browser-only state. `PUT/DELETE /api/v1/social/posts/:id/like` and `PUT/DELETE /api/v1/social/posts/:id/bookmark` return the authoritative post, `POST /api/v1/social/posts/:id/view` counts one active identity only once, and `POST /api/v1/social/posts/:id/shares` requires an `Idempotency-Key` plus 1–20 unique formal-friend user IDs. Every route requires `social-post:interact`; friend sharing additionally requires `message:create` and creates a real direct-conversation `social-post-card` message instead of a public repost.
+
+`GET /api/v1/social/posts?bookmarked=true&page=1&pageSize=20` is the formal source for the customer-center `/me/favorites` page. Timeline, detail, and favorites consume the same returned `counters` and `viewerInteraction` fields. The SSE event `social.post.interaction.updated` refreshes the relevant formal post, while `message.created` delivers a newly shared card to sender and recipient. Legacy media-envelope counters remain a read-only baseline for existing seeded posts; new interaction rows are added to that baseline without rewriting old media JSON.
+
+Before local data acceptance, confirm the backend and frontend listeners belong to the intended checkout and inspect migration status first. Apply the additive migration only when the repository history, `_prisma_migrations`, and physical schema are reconciled:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+# Run only after the read-only checks are consistent:
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+```
+
+The 2026-08-31 local `needo_dev` Social migration is now applied. The successful `_prisma_migrations` row has checksum `408ae19a...`, matching the committed migration; the earlier overlong-index attempt is recorded as rolled back. Read-only physical-schema checks found all four tables, their foreign keys and shortened unique share index, and the five intended role grants. `prisma migrate status` reports all 80 repository migrations applied. The database still contains unrelated migration history that is absent from this checkout; this acceptance did not repair, delete, or reinterpret those rows and must not be used as authority to copy that unrelated schema into this repository.
+
+Local acceptance used the formal `sim.customer.100@needo.local` identity, post `64774`, one bilateral friend, backend `3000`, frontend `5180`, MySQL `3307`, and Redis `6379`. It verified authoritative like/unlike persistence, favorites add/remove, one unique view per identity, one `social-post-card` message in the existing friendship conversation, idempotent replay without a duplicate count/message, actor interaction SSE, and recipient message SSE. The guarded checker then deleted the exact temporary interaction, message, share, and audit rows and restored the conversation and participant snapshots. At 440×956, the browser verified detail-view count persistence across reload, the `/me/favorites` entry and refresh persistence, the 12-friend forwarding selector and send-button gate, no horizontal overflow, and zero console errors; the browser-created bookmark/view and their audits were also removed by exact ID.
+
 ### Formal friend verification
 
 Adding a contact now uses the persisted Step 13 friend-request flow rather than direct Contact creation. Search opens the target's formal identity profile first; a request remains actionable for exactly 72 hours by database UTC time. Repeating the same pending request does not refresh its timestamp or notification, while rejection permits immediate reapplication and expiry permits a newly notified request. Acceptance atomically creates reciprocal Contact and Follow rows.

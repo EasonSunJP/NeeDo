@@ -39,6 +39,7 @@ import {
   socialPostCreateBodySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialPostShareBodySchema,
   socialPostUpdateBodySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
@@ -72,6 +73,7 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   getSocialPost: "social-post:list",
   createSocialPost: "social-post:create",
   updateSocialPost: "social-post:create",
+  interactSocialPost: "social-post:interact",
   writeFollow: "follow:write",
   listNotifications: "notification:list",
   readNotification: "notification:read",
@@ -326,6 +328,49 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.updateSocialPost),
     validateRequest({ params: socialPostIdParamSchema, body: socialPostUpdateBodySchema }),
     controller.updateSocialPost
+  );
+  router.put(
+    "/social/posts/:id/like",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.likeSocialPost
+  );
+  router.delete(
+    "/social/posts/:id/like",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.unlikeSocialPost
+  );
+  router.put(
+    "/social/posts/:id/bookmark",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.bookmarkSocialPost
+  );
+  router.delete(
+    "/social/posts/:id/bookmark",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.unbookmarkSocialPost
+  );
+  router.post(
+    "/social/posts/:id/view",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.recordSocialPostView
+  );
+  router.post(
+    "/social/posts/:id/shares",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
+    validateRequest({ params: socialPostIdParamSchema, body: socialPostShareBodySchema }),
+    controller.shareSocialPost
   );
   router.post(
     "/social/follows",

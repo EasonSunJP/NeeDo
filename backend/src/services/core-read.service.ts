@@ -3,6 +3,8 @@ import type {
   CategoryListInput,
   CategoryPayload,
   CoreReadRepositoryPort,
+  CoreSearchInput,
+  CoreSearchResponse,
   HomeRecommendationsInput,
   HomeRecommendationsPayload,
   ServiceCardPayload,
@@ -42,7 +44,14 @@ export class CoreReadService {
     return this.repository.getHomeRecommendations(input);
   }
 
-  public search(input: ServiceListInput): Promise<PaginatedResponse<ServiceCardPayload>> {
+  public search(input: CoreSearchInput): Promise<CoreSearchResponse> {
+    if (input.entityType === "shop") {
+      return this.repository.searchShops(input);
+    }
+    if (input.entityType === "technician") {
+      return this.repository.searchTechnicians(input);
+    }
+
     return this.repository.search(input);
   }
 

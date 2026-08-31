@@ -1674,8 +1674,14 @@ describe("ImConversationRoomPage voice recording integration", () => {
     window.localStorage.setItem("needo.client.theme.mode", "manual");
 
     const trackStop = vi.fn();
+    const inputTrack = Object.assign(new EventTarget(), {
+      kind: "audio",
+      muted: false,
+      readyState: "live",
+      stop: trackStop,
+    });
     const getUserMedia = vi.fn().mockResolvedValue({
-      getTracks: () => [{ stop: trackStop }],
+      getTracks: () => [inputTrack],
     } as unknown as MediaStream);
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -1696,6 +1702,8 @@ describe("ImConversationRoomPage voice recording integration", () => {
     }));
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get")
+      .mockReturnValue(HTMLMediaElement.HAVE_CURRENT_DATA);
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
 

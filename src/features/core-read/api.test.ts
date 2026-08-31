@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   coreReadApi,
+  mapCoreCategoryToServiceCategory,
   mapCoreCustomerToCustomer,
   mapCoreServiceToServiceItem,
   mapCoreShopToStore,
@@ -92,10 +93,45 @@ describe("core read API adapter", () => {
     await coreReadApi.search({ keyword: "shiatsu", page: 2, pageSize: 8, sort: "rating_desc" });
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/search?keyword=shiatsu&page=2&pageSize=8&sort=rating_desc",
+      "/api/v1/search?keyword=shiatsu&page=2&pageSize=8&sort=rating_desc&entityType=service",
       expect.objectContaining({
         headers: expect.not.objectContaining({ Authorization: expect.any(String) })
       })
+    );
+  });
+
+  it("calls typed multi-entity search endpoints with repeated OR values", async () => {
+    vi.mocked(fetch).mockImplementation(async () =>
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: { list: [], page: 1, page_size: 20, total: 0 }
+      })
+    );
+    const query = {
+      keywords: ["LifeDance", "家政"],
+      categoryIds: [3, 9],
+      page: 1
+    };
+
+    await coreReadApi.searchShops(query);
+    await coreReadApi.searchTechnicians(query);
+    await coreReadApi.searchServices(query);
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/search?keywords=LifeDance&keywords=%E5%AE%B6%E6%94%BF&categoryIds=3&categoryIds=9&page=1&entityType=shop",
+      expect.any(Object)
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("entityType=technician"),
+      expect.any(Object)
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining("entityType=service"),
+      expect.any(Object)
     );
   });
 
@@ -131,6 +167,16 @@ describe("core read API adapter", () => {
       durationMinutes: 60,
       price: 8800
     });
+  });
+
+  it("preserves supported formal category codes for selected-tag search", () => {
+    expect(mapCoreCategoryToServiceCategory({
+      ...coreService.category,
+      id: 19,
+      code: "moving",
+      name: "Moving",
+      nameJa: "引っ越し"
+    })).toMatchObject({ id: "moving" });
   });
 
   it("maps shop, technician, and customer DTOs for read-only profile pages", () => {

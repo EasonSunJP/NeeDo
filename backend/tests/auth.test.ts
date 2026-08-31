@@ -12,6 +12,8 @@ import type {
   VerificationPurpose
 } from "../src/services/auth-verification-challenge.store";
 
+const fixturePasswordHashPromise = hash("Abcd@1234", 12);
+
 interface StoredValue {
   value: string;
   expiresAt: number;
@@ -297,7 +299,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const deliveredOtps: Array<{ email: string; otp: string }> = [];
   const loginLogs: unknown[] = [];
   const auditLogs: unknown[] = [];
-  const passwordHash = await hash("Abcd@1234", 12);
+  const passwordHash = await fixturePasswordHashPromise;
 
   const passwordUser = {
     id: 1,

@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import source from "./UserCenterPage.tsx?raw";
 
 describe("UserCenterPage", () => {
+  it("links the collection entry to the formal dynamics and chat-record favorites hub", () => {
+    expect(source).toContain('zh: "已收藏的动态与聊天记录"');
+    expect(source).toContain('{ label: "我的收藏", info: userCenterCollectionInfo[language]');
+    expect(source).toContain('to: "/me/favorites"');
+    expect(source).not.toContain('to: "/categories?type=store"');
+  });
+
   it("has no legacy mock or static-preview fallback in the formal user center", () => {
     expect(source).not.toContain('from "../../data/mock"');
     expect(source).not.toContain("legacyOrderShortcuts");
@@ -22,8 +29,9 @@ describe("UserCenterPage", () => {
   });
 
   it("moves shortcut helper copy behind title info triggers", () => {
-    expect(source).toContain('info: "聊天记录"');
+    expect(source).toContain('info: userCenterCollectionInfo[language]');
     expect(source).toContain('to: "/me/favorites"');
+    expect(source).toContain('zh: "已收藏的动态与聊天记录"');
     expect(source).not.toContain('to: "/categories?type=store"');
     expect(source).toContain('info: "家庭、公司、常用地址"');
     expect(source).toContain('info: "已评价与待回复"');

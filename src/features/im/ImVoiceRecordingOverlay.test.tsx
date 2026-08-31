@@ -141,6 +141,19 @@ describe("ImVoiceRecordingOverlay", () => {
     expect(container.querySelector("[data-im-voice-playback-time='true']")).toBeNull();
     expect(container.textContent).not.toContain("转文字");
     expect(container.querySelector("[data-im-voice-semicircle]")).toBeNull();
+    const actions = container.querySelector<HTMLElement>(
+      "[data-im-voice-recording-actions='true']",
+    )!;
+    expect(actions.className).toContain("top-[57%]");
+    expect(actions.className).toContain("left-1/2");
+    expect(actions.className).toContain("-translate-x-1/2");
+    expect(actions.className).toContain("-translate-y-1/2");
+    expect(actions.className).toContain("gap-7");
+    expect(actions.className).not.toContain("mt-auto");
+    for (const button of actions.querySelectorAll("button")) {
+      expect(button.className).toContain("h-[72px]");
+      expect(button.className).toContain("w-[72px]");
+    }
     await act(async () => {
       container.querySelector<HTMLButtonElement>("button[aria-label='取消录音']")?.click();
       container.querySelector<HTMLButtonElement>("button[aria-label='停止录音']")?.click();
@@ -173,6 +186,48 @@ describe("ImVoiceRecordingOverlay", () => {
     await render("preview_playing");
     expect(container.textContent).toContain("正在播放录音");
     expect(container.querySelector("button[aria-label='停止录音']")).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps preview controls available while surfacing localized preview playback errors", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const errors = [
+      "自动播放已暂停，请点击重放",
+      "录音无法播放，请重新录制后重试",
+    ];
+
+    for (const error of errors) {
+      await act(async () => {
+        root.render(
+          <ImVoiceRecordingOverlay
+            audioRef={createRef<HTMLAudioElement>()}
+            copy={copy}
+            durationSeconds={8}
+            error={error}
+            onCancel={vi.fn()}
+            onDelete={vi.fn()}
+            onPreviewEnded={vi.fn()}
+            onReplay={vi.fn()}
+            onSend={vi.fn()}
+            onStop={vi.fn()}
+            onTimeUpdate={vi.fn()}
+            phase="preview_paused"
+            playbackSeconds={3}
+            previewUrl="blob:voice-preview"
+            remainingSeconds={51}
+          />,
+        );
+      });
+
+      expect(container.querySelector("[data-im-voice-bubble='true']")?.textContent).toContain(error);
+      expect(container.querySelectorAll("[data-im-voice-recording-actions='true'] button")).toHaveLength(3);
+      expect(container.querySelector("button[aria-label='删除录音']")).not.toBeNull();
+      expect(container.querySelector("button[aria-label='重放录音']")).not.toBeNull();
+      expect(container.querySelector("button[aria-label='发送录音']")).not.toBeNull();
+    }
 
     await act(async () => root.unmount());
   });
