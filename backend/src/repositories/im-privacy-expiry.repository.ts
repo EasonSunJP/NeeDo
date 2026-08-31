@@ -55,14 +55,23 @@ export class ImPrivacyExpiryRepository implements ImPrivacyExpiryRepositoryPort 
           AND: [{ expiresAt: { lte: input.now } }]
         },
         data: {
-          content: null,
-          metadata: Prisma.DbNull,
-          contentPurgedAt: input.now,
-          expiredAt: input.now,
           lifecycleVersion: { increment: 1 }
         }
       });
       if (claimed.count !== 1) return null;
+
+      await tx.imMessageTranslation.deleteMany({
+        where: { messageId: input.candidate.id }
+      });
+      await tx.message.update({
+        where: { id: input.candidate.id },
+        data: {
+          content: null,
+          metadata: Prisma.DbNull,
+          contentPurgedAt: input.now,
+          expiredAt: input.now
+        }
+      });
 
       const participants = await tx.conversationParticipant.findMany({
         where: {

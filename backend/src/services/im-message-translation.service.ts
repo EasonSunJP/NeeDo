@@ -1,10 +1,12 @@
-import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   ImMessageTranslationCacheEntry,
   ImMessageTranslationRepositoryPort,
-  TranslationCacheKey,
-  VisibleImMessage
+  TranslationCacheKey
+} from "../repositories/im-message-translation.repository";
+import {
+  extractImMessageTranslationSource,
+  hashImMessageTranslationSource
 } from "../repositories/im-message-translation.repository";
 import { AppError } from "../utils/app-error";
 import type {
@@ -33,9 +35,6 @@ interface EligibleMessage {
 const kanaPattern = /[\u3040-\u30ff\uff66-\uff9f]/u;
 const hangulPattern = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u;
 
-const hashSource = (source: string): string =>
-  createHash("sha256").update(source, "utf8").digest("hex");
-
 const cacheKeyString = (key: TranslationCacheKey): string =>
   `${key.messageId}:${key.sourceContentHash}:${key.targetLanguage}:${key.providerKey}`;
 
@@ -56,32 +55,6 @@ const isSameLanguage = (
   const normalized = normalizedDetectedLanguage(sourceLanguage);
   if (targetLanguage === "zh" || targetLanguage === "zh-Hant") return normalized === "zh";
   return normalized === targetLanguage;
-};
-
-const extractEligibleSource = (message: VisibleImMessage): string | null => {
-  if (message.senderUserId === null || message.type !== "text") return null;
-  const metadata =
-    typeof message.metadata === "object" && message.metadata !== null
-      ? (message.metadata as Record<string, unknown>)
-      : null;
-  const needoMessageType = metadata?.needoMessageType;
-
-  if (needoMessageType === undefined || needoMessageType === "text") {
-    return typeof message.content === "string" && message.content.trim().length > 0
-      ? message.content
-      : null;
-  }
-
-  if (needoMessageType === "image" || needoMessageType === "video") {
-    const extension = metadata?.needoMessageExt;
-    const caption =
-      typeof extension === "object" && extension !== null
-        ? (extension as Record<string, unknown>).caption
-        : null;
-    return typeof caption === "string" && caption.trim().length > 0 ? caption : null;
-  }
-
-  return null;
 };
 
 export const detectObviousSourceLanguage = (source: string): "ja" | "ko" | null => {
@@ -125,9 +98,9 @@ export class ImMessageTranslationService {
     const ordered = command.messageIds.map((messageId) => messagesById.get(messageId)!);
     const eligibleByMessageId = new Map<number, EligibleMessage>();
     for (const message of ordered) {
-      const source = extractEligibleSource(message);
+      const source = extractImMessageTranslationSource(message);
       if (source === null) continue;
-      const sourceContentHash = hashSource(source);
+      const sourceContentHash = hashImMessageTranslationSource(source);
       eligibleByMessageId.set(message.id, {
         messageId: message.id,
         source,
@@ -148,11 +121,13 @@ export class ImMessageTranslationService {
     const cacheByKey = new Map(cached.map((entry) => [cacheKeyString(entry), entry]));
     const results = new Map<number, ImMessageTranslationResult>();
     const providerCandidates: EligibleMessage[] = [];
+    const requiredCacheKeys: TranslationCacheKey[] = [];
 
     for (const item of eligible) {
       const cachedEntry = cacheByKey.get(cacheKeyString(item.cacheKey));
       if (cachedEntry) {
         results.set(item.messageId, this.resultFromCache(cachedEntry, command.targetLanguage));
+        requiredCacheKeys.push(item.cacheKey);
       } else if (detectObviousSourceLanguage(item.source) === command.targetLanguage) {
         results.set(item.messageId, { messageId: item.messageId, status: "same_language" });
       } else {
@@ -160,8 +135,45 @@ export class ImMessageTranslationService {
       }
     }
 
-    if (providerCandidates.length > 0) {
-      await this.translateProviderCandidates(providerCandidates, command.targetLanguage, results);
+    const writes =
+      providerCandidates.length > 0
+        ? await this.translateProviderCandidates(
+            providerCandidates,
+            command.targetLanguage,
+            results
+          )
+        : [];
+
+    const finalized = await this.repository.finalizeTranslations({
+      conversationId: command.conversationId,
+      userId: scope.userId,
+      identityId: scope.identityId,
+      messageIds: command.messageIds,
+      expectedMessages: ordered.map((message) => {
+        const source = extractImMessageTranslationSource(message);
+        return {
+          messageId: message.id,
+          source,
+          sourceContentHash: source === null ? null : hashImMessageTranslationSource(source)
+        };
+      }),
+      requiredCacheKeys,
+      writes,
+      now: this.now()
+    });
+    if (finalized === "not_found") {
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.im.translation_message_not_found",
+        statusCode: 404
+      });
+    }
+    if (finalized === "cache_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.IM_TRANSLATION_CACHE_CONFLICT,
+        message: "error.im.translation_cache_conflict",
+        statusCode: 409
+      });
     }
 
     return ordered.map(
@@ -174,7 +186,7 @@ export class ImMessageTranslationService {
     candidates: EligibleMessage[],
     targetLanguage: ImTranslationTargetLanguage,
     results: Map<number, ImMessageTranslationResult>
-  ): Promise<void> {
+  ): Promise<ImMessageTranslationCacheEntry[]> {
     const uniqueSources: string[] = [];
     const sourceIndexes = new Map<string, number>();
     for (const candidate of candidates) {
@@ -187,7 +199,9 @@ export class ImMessageTranslationService {
     const providerResult = await this.provider.translate({ texts: uniqueSources, targetLanguage });
     if (
       providerResult.texts.length !== uniqueSources.length ||
-      providerResult.detectedSourceLanguages.length !== uniqueSources.length
+      providerResult.detectedSourceLanguages.length !== uniqueSources.length ||
+      (providerResult.providerRequestIds !== undefined &&
+        providerResult.providerRequestIds.length !== uniqueSources.length)
     ) {
       throw new AppError({
         code: ERROR_CODES.IM_TRANSLATION_PROVIDER_UNAVAILABLE,
@@ -202,14 +216,15 @@ export class ImMessageTranslationService {
         ...candidate.cacheKey,
         sourceLanguage: providerResult.detectedSourceLanguages[index] ?? null,
         translatedContent: providerResult.texts[index]!,
-        providerRequestId: providerResult.providerRequestId
+        providerRequestId:
+          providerResult.providerRequestIds?.[index] ?? providerResult.providerRequestId
       };
     });
-    await this.repository.saveTranslations(entries);
 
     for (const entry of entries) {
       results.set(entry.messageId, this.resultFromCache(entry, targetLanguage));
     }
+    return entries;
   }
 
   private resultFromCache(

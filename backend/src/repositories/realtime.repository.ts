@@ -1489,11 +1489,6 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           recallDeadlineAt: { gte: input.now }
         },
         data: {
-          content: null,
-          metadata: Prisma.DbNull,
-          recalledAt: input.now,
-          recallMode: MessageRecallMode.STANDARD,
-          contentPurgedAt: input.now,
           lifecycleVersion: { increment: 1 }
         }
       });
@@ -1515,6 +1510,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         }
         return { status: "not_found" } as const;
       }
+
+      await tx.imMessageTranslation.deleteMany({ where: { messageId: input.messageId } });
+      await tx.message.update({
+        where: { id: input.messageId },
+        data: {
+          content: null,
+          metadata: Prisma.DbNull,
+          recalledAt: input.now,
+          recallMode: MessageRecallMode.STANDARD,
+          contentPurgedAt: input.now
+        }
+      });
 
       await tx.messageReaction.updateMany({
         where: { messageId: input.messageId, deletedAt: null },

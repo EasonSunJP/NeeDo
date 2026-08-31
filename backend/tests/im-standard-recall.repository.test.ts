@@ -37,10 +37,14 @@ const recalledMessage = {
   updatedAt: recalledAt
 };
 
-const createFixture = (candidate: typeof activeMessage | typeof recalledMessage | null = activeMessage) => {
+const createFixture = (
+  candidate: typeof activeMessage | typeof recalledMessage | null = activeMessage
+) => {
   const messageFindFirst = jest.fn(async () => candidate);
   const messageUpdateMany = jest.fn(async () => ({ count: 1 }));
+  const messageUpdate = jest.fn(async () => recalledMessage);
   const messageFindUnique = jest.fn(async () => recalledMessage);
+  const translationDeleteMany = jest.fn(async () => ({ count: 2 }));
   const reactionUpdateMany = jest.fn(async () => ({ count: 2 }));
   const syncUpsert = jest.fn(async ({ create }: { create: Record<string, unknown> }) => ({
     id: 91,
@@ -58,8 +62,10 @@ const createFixture = (candidate: typeof activeMessage | typeof recalledMessage 
     message: {
       findFirst: messageFindFirst,
       updateMany: messageUpdateMany,
+      update: messageUpdate,
       findUnique: messageFindUnique
     },
+    imMessageTranslation: { deleteMany: translationDeleteMany },
     messageReaction: { updateMany: reactionUpdateMany },
     imDeletionSync: { upsert: syncUpsert },
     auditLog: { create: auditCreate },
@@ -73,7 +79,9 @@ const createFixture = (candidate: typeof activeMessage | typeof recalledMessage 
     repository: new RealtimeRepository(client),
     messageFindFirst,
     messageUpdateMany,
+    messageUpdate,
     messageFindUnique,
+    translationDeleteMany,
     reactionUpdateMany,
     syncUpsert,
     auditCreate,
@@ -116,15 +124,22 @@ describe("RealtimeRepository standard recall", () => {
         deletedAt: null,
         recallDeadlineAt: { gte: recalledAt }
       },
+      data: { lifecycleVersion: { increment: 1 } }
+    });
+    expect(fixture.translationDeleteMany).toHaveBeenCalledWith({ where: { messageId: 41 } });
+    expect(fixture.messageUpdate).toHaveBeenCalledWith({
+      where: { id: 41 },
       data: {
         content: null,
         metadata: Prisma.DbNull,
         recalledAt,
         recallMode: "STANDARD",
-        contentPurgedAt: recalledAt,
-        lifecycleVersion: { increment: 1 }
+        contentPurgedAt: recalledAt
       }
     });
+    expect(fixture.translationDeleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.messageUpdate.mock.invocationCallOrder[0] ?? 0
+    );
     expect(fixture.reactionUpdateMany).toHaveBeenCalledWith({
       where: { messageId: 41, deletedAt: null },
       data: { deletedAt: recalledAt }

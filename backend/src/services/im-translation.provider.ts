@@ -14,6 +14,7 @@ export interface TranslationProviderResult {
   texts: string[];
   detectedSourceLanguages: Array<string | null>;
   providerRequestId: string | null;
+  providerRequestIds?: Array<string | null>;
 }
 
 export type TranslationProviderInput = TranslationProviderRequest;

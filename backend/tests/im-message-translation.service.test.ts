@@ -3,6 +3,7 @@ import type {
   ImMessageTranslationRepositoryPort,
   VisibleImMessage
 } from "../src/repositories/im-message-translation.repository";
+import { DeepLTranslationProvider } from "../src/services/deepl-translation.provider";
 import { ImMessageTranslationService } from "../src/services/im-message-translation.service";
 import type { TranslationProvider } from "../src/services/im-translation.provider";
 
@@ -27,13 +28,16 @@ const message = (
 
 const createFixture = (options: {
   messages?: ReturnType<typeof message>[];
+  provider?: TranslationProvider;
+  finalizationOutcome?: "committed" | "not_found" | "cache_conflict";
   providerOutput?: {
     detectedSourceLanguages: Array<string | null>;
     providerRequestId: string | null;
+    providerRequestIds?: Array<string | null>;
     texts: string[];
   };
 }) => {
-  const provider: TranslationProvider = {
+  const provider: TranslationProvider = options.provider ?? {
     key: "deepl",
     translate: jest.fn(
       async () =>
@@ -44,7 +48,13 @@ const createFixture = (options: {
         }
     )
   };
-  const repository: jest.Mocked<ImMessageTranslationRepositoryPort> = {
+  const finalizeTranslations = jest
+    .fn<
+      ReturnType<ImMessageTranslationRepositoryPort["finalizeTranslations"]>,
+      Parameters<ImMessageTranslationRepositoryPort["finalizeTranslations"]>
+    >()
+    .mockResolvedValue(options.finalizationOutcome ?? "committed");
+  const repository = {
     loadVisibleMessages: jest
       .fn<
         ReturnType<ImMessageTranslationRepositoryPort["loadVisibleMessages"]>,
@@ -57,12 +67,9 @@ const createFixture = (options: {
         Parameters<ImMessageTranslationRepositoryPort["findCachedTranslations"]>
       >()
       .mockResolvedValue([]),
-    saveTranslations: jest
-      .fn<
-        ReturnType<ImMessageTranslationRepositoryPort["saveTranslations"]>,
-        Parameters<ImMessageTranslationRepositoryPort["saveTranslations"]>
-      >()
-      .mockResolvedValue(undefined)
+    finalizeTranslations
+  } as jest.Mocked<ImMessageTranslationRepositoryPort> & {
+    finalizeTranslations: typeof finalizeTranslations;
   };
   const personalIdentityScope = {
     resolve: jest.fn(async () => ({
@@ -98,7 +105,7 @@ describe("ImMessageTranslationService", () => {
         })
       ).resolves.toEqual([{ messageId: 1, status: "same_language" }]);
       expect(fixture.provider.translate).not.toHaveBeenCalled();
-      expect(fixture.repository.saveTranslations).not.toHaveBeenCalled();
+      expect(fixture.repository.finalizeTranslations).toHaveBeenCalledTimes(1);
     }
   );
 
@@ -138,14 +145,20 @@ describe("ImMessageTranslationService", () => {
       texts: [source],
       targetLanguage: "ja"
     });
-    expect(fixture.repository.saveTranslations).toHaveBeenCalledWith([
+    expect(fixture.repository.finalizeTranslations).toHaveBeenCalledWith(
       expect.objectContaining({
-        messageId: 1,
-        sourceContentHash: createHash("sha256").update(source, "utf8").digest("hex"),
-        targetLanguage: "ja",
-        providerKey: "deepl"
+        conversationId: 91,
+        identityId: 71,
+        writes: [
+          expect.objectContaining({
+            messageId: 1,
+            sourceContentHash: createHash("sha256").update(source, "utf8").digest("hex"),
+            targetLanguage: "ja",
+            providerKey: "deepl"
+          })
+        ]
       })
-    ]);
+    );
   });
 
   it("preserves requested message order while translating duplicate text once", async () => {
@@ -154,6 +167,7 @@ describe("ImMessageTranslationService", () => {
       providerOutput: {
         detectedSourceLanguages: ["EN", "EN"],
         providerRequestId: "provider-request-2",
+        providerRequestIds: ["chunk-1", "chunk-2"],
         texts: ["同じ", "最初"]
       }
     });
@@ -173,6 +187,15 @@ describe("ImMessageTranslationService", () => {
       { messageId: 1, status: "translated", translatedContent: "最初" },
       { messageId: 3, status: "translated", translatedContent: "同じ" }
     ]);
+    expect(fixture.repository.finalizeTranslations).toHaveBeenCalledWith(
+      expect.objectContaining({
+        writes: [
+          expect.objectContaining({ messageId: 2, providerRequestId: "chunk-1" }),
+          expect.objectContaining({ messageId: 1, providerRequestId: "chunk-2" }),
+          expect.objectContaining({ messageId: 3, providerRequestId: "chunk-1" })
+        ]
+      })
+    );
   });
 
   it("rejects the full batch when any requested authoritative message is unavailable", async () => {
@@ -229,7 +252,7 @@ describe("ImMessageTranslationService", () => {
       message: "error.im.translation_provider_invalid_response",
       statusCode: 503
     });
-    expect(fixture.repository.saveTranslations).not.toHaveBeenCalled();
+    expect(fixture.repository.finalizeTranslations).not.toHaveBeenCalled();
   });
 
   it("returns cached results only for the exact message/hash/target/provider key", async () => {
@@ -261,5 +284,90 @@ describe("ImMessageTranslationService", () => {
       })
     ]);
     expect(fixture.provider.translate).not.toHaveBeenCalled();
+    expect(fixture.repository.finalizeTranslations).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requiredCacheKeys: [expect.objectContaining({ messageId: 1 })],
+        writes: []
+      })
+    );
+  });
+
+  it.each([
+    "provider-period recall",
+    "delete-for-me tombstone",
+    "clear-history cutoff",
+    "participant removal",
+    "exact source change"
+  ])("rejects the whole batch when final authoritative validation detects %s", async () => {
+    const fixture = createFixture({ finalizationOutcome: "not_found" });
+
+    await expect(
+      fixture.service.translateVisibleMessages(auth, {
+        conversationId: 91,
+        messageIds: [1],
+        targetLanguage: "ja"
+      })
+    ).rejects.toMatchObject({
+      message: "error.im.translation_message_not_found",
+      statusCode: 404
+    });
+  });
+
+  it("returns a typed conflict without writes for a soft-deleted cache reservation", async () => {
+    const fixture = createFixture({ finalizationOutcome: "cache_conflict" });
+
+    await expect(
+      fixture.service.translateVisibleMessages(auth, {
+        conversationId: 91,
+        messageIds: [1],
+        targetLanguage: "ja"
+      })
+    ).rejects.toMatchObject({
+      message: "error.im.translation_cache_conflict",
+      statusCode: 409
+    });
+  });
+
+  it("writes nothing when a later DeepL chunk fails", async () => {
+    let call = 0;
+    const fetchImplementation = jest.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        call += 1;
+        if (call === 2) {
+          return new Response(JSON.stringify({ message: "unavailable" }), { status: 503 });
+        }
+        const texts = new URLSearchParams(String(init?.body)).getAll("text");
+        return new Response(
+          JSON.stringify({
+            translations: texts.map((text) => ({
+              detected_source_language: "EN",
+              text: `translated-${text.slice(-2)}`
+            }))
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+    );
+    const provider = new DeepLTranslationProvider({
+      apiBaseUrl: "https://api-free.deepl.com",
+      apiKey: "private-test-key:fx",
+      fetch: fetchImplementation,
+      maxRetries: 0,
+      timeoutMs: 500
+    });
+    const messages = Array.from({ length: 33 }, (_, index) =>
+      message(index + 1, `${"a".repeat(3_997)}-${String(index).padStart(2, "0")}`)
+    );
+    const fixture = createFixture({ messages, provider });
+
+    await expect(
+      fixture.service.translateVisibleMessages(auth, {
+        conversationId: 91,
+        messageIds: messages.map(({ id }) => id),
+        targetLanguage: "ja"
+      })
+    ).rejects.toMatchObject({ message: "error.im.translation_provider_unavailable" });
+    expect(fetchImplementation).toHaveBeenCalledTimes(2);
+    expect(fixture.repository.finalizeTranslations).not.toHaveBeenCalled();
   });
 });

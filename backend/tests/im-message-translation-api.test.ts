@@ -120,6 +120,7 @@ describe("POST IM message translations", () => {
 
   it.each([
     [404, ERROR_CODES.NOT_FOUND, "error.im.translation_message_not_found"],
+    [409, ERROR_CODES.IM_TRANSLATION_CACHE_CONFLICT, "error.im.translation_cache_conflict"],
     [429, ERROR_CODES.IM_TRANSLATION_RATE_LIMITED, "error.im.translation_rate_limited"],
     [456, ERROR_CODES.IM_TRANSLATION_QUOTA_EXCEEDED, "error.im.translation_quota_exceeded"]
   ])(
@@ -165,6 +166,7 @@ describe("IM translation OpenAPI", () => {
       "401",
       "403",
       "404",
+      "409",
       "429",
       "456",
       "503"

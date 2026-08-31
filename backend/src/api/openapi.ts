@@ -1,7 +1,10 @@
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
-import { IM_PRIVACY_TTL_MAX_SECONDS, IM_PRIVACY_TTL_MIN_SECONDS } from "../constants/im-privacy";
+import {
+  IM_PRIVACY_TTL_MAX_SECONDS,
+  IM_PRIVACY_TTL_MIN_SECONDS
+} from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 
 type OpenApiDocument = Record<string, unknown>;
@@ -239,17 +242,9 @@ const orderAcceptancePauseListParameters = [
 const shopMembershipErrorResponses = {
   "400": { description: "error.validation — strict shop membership request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
-  "403": {
-    description: "error.forbidden or error.identity.forbidden — denied permission or identity scope"
-  },
-  "404": {
-    description:
-      "error.shop_membership.not_found — membership, shop, or eligible customer does not exist in the active scope"
-  },
-  "409": {
-    description:
-      "error.shop_membership.already_active — the customer already has an active membership in this shop"
-  }
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
+  "404": { description: "error.shop_membership.not_found — membership, shop, or eligible customer does not exist in the active scope" },
+  "409": { description: "error.shop_membership.already_active — the customer already has an active membership in this shop" }
 };
 
 const shopMembershipPageParameters = [
@@ -1520,14 +1515,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "id",
-          "position",
-          "senderDisplayName",
-          "senderAvatarUrl",
-          "messageType",
-          "content",
-          "metadata",
-          "sentAt"
+          "id", "position", "senderDisplayName", "senderAvatarUrl",
+          "messageType", "content", "metadata", "sentAt"
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
@@ -1555,15 +1544,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ImChatRecordFavorite: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "id",
-          "bundlePublicId",
-          "title",
-          "preview",
-          "senderCount",
-          "itemCount",
-          "createdAt"
-        ],
+        required: ["id", "bundlePublicId", "title", "preview", "senderCount", "itemCount", "createdAt"],
         properties: {
           id: { type: "integer", minimum: 1 },
           bundlePublicId: { type: "string", format: "uuid" },
@@ -1592,10 +1573,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           idempotencyKey: { type: "string", format: "uuid" },
           messageIds: {
-            type: "array",
-            minItems: 1,
-            maxItems: 100,
-            uniqueItems: true,
+            type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
             items: { type: "integer", minimum: 1 }
           },
           sourceConversationId: { type: "integer", minimum: 1 }
@@ -1607,10 +1585,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["messageIds", "idempotencyKey"],
         properties: {
           messageIds: {
-            type: "array",
-            minItems: 1,
-            maxItems: 100,
-            uniqueItems: true,
+            type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
             items: { type: "integer", minimum: 1 }
           },
           idempotencyKey: { type: "string", format: "uuid" }
@@ -1648,10 +1623,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           conversationId: { type: "integer", minimum: 1 },
           messageIds: {
-            type: "array",
-            minItems: 1,
-            maxItems: 100,
-            uniqueItems: true,
+            type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
             items: { type: "integer", minimum: 1 }
           },
           count: { type: "integer", minimum: 1, maximum: 100 },
@@ -1844,10 +1816,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
-          requesterUserId: { type: "integer" },
-          requesterIdentityId: { type: "integer" },
-          targetUserId: { type: "integer" },
-          targetIdentityId: { type: "integer" },
+            requesterUserId: { type: "integer" },
+            requesterIdentityId: { type: "integer" },
+            targetUserId: { type: "integer" },
+            targetIdentityId: { type: "integer" },
           requester: { $ref: "#/components/schemas/RealtimeParticipant" },
           target: { $ref: "#/components/schemas/RealtimeParticipant" },
           status: { type: "string", enum: ["pending", "accepted", "rejected", "expired"] },
@@ -1987,15 +1959,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       SocialProfileSummary: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "userId",
-          "identityId",
-          "username",
-          "displayName",
-          "avatarUrl",
-          "entityType",
-          "joinedAt"
-        ],
+        required: ["userId", "identityId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
         properties: {
           userId: { type: "integer" },
           identityId: { type: "integer" },
@@ -3380,28 +3344,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       TechnicianSelfProfile: {
         type: "object",
         required: [
-          "id",
-          "publicId",
-          "userId",
-          "shopId",
-          "displayName",
-          "avatarUrl",
-          "bio",
-          "city",
-          "age",
-          "heightCm",
-          "languages",
-          "serviceAreas",
-          "profileTags",
-          "canServeForeigners",
-          "bidBudgetMinJpy",
-          "bidBudgetMaxJpy",
-          "paymentMethods",
-          "visibility",
-          "employmentType",
-          "yearsExperience",
-          "createdAt",
-          "updatedAt"
+          "id", "publicId", "userId", "shopId", "displayName", "avatarUrl", "bio", "city",
+          "age", "heightCm", "languages", "serviceAreas", "profileTags", "canServeForeigners",
+          "bidBudgetMinJpy", "bidBudgetMaxJpy", "paymentMethods", "visibility",
+          "employmentType", "yearsExperience", "createdAt", "updatedAt"
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
@@ -3422,19 +3368,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
           paymentMethods: {
             type: "array",
-            items: {
-              type: "string",
-              enum: [
-                "platform",
-                "offline",
-                "prepay",
-                "cash",
-                "paypay",
-                "paypal",
-                "wechatpay",
-                "alipay"
-              ]
-            }
+            items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] }
           },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
           employmentType: { type: "string", enum: ["independent", "full_time", "temporary"] },
@@ -3456,41 +3390,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
-          languages: {
-            type: "array",
-            minItems: 1,
-            maxItems: 10,
-            items: { type: "string", maxLength: 40 }
-          },
+          languages: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", maxLength: 40 } },
           bio: { type: ["string", "null"], maxLength: 2000 },
-          serviceAreas: {
-            type: "array",
-            minItems: 1,
-            maxItems: 20,
-            items: { type: "string", maxLength: 80 }
-          },
+          serviceAreas: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 80 } },
           profileTags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
-          paymentMethods: {
-            type: "array",
-            minItems: 1,
-            maxItems: 8,
-            items: {
-              type: "string",
-              enum: [
-                "platform",
-                "offline",
-                "prepay",
-                "cash",
-                "paypay",
-                "paypal",
-                "wechatpay",
-                "alipay"
-              ]
-            }
-          },
+          paymentMethods: { type: "array", minItems: 1, maxItems: 8, items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] } },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
@@ -5509,10 +5416,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           evaluatedAt: { type: "string", format: "date-time" },
           current: {
-            oneOf: [{ $ref: "#/components/schemas/AffiliatePlatformFeeRule" }, { type: "null" }]
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
+              { type: "null" }
+            ]
           },
           nextScheduled: {
-            oneOf: [{ $ref: "#/components/schemas/AffiliatePlatformFeeRule" }, { type: "null" }]
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
+              { type: "null" }
+            ]
           },
           latestVersion: { type: "integer", minimum: 0 }
         }
@@ -6920,20 +6833,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopMembershipCard: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "publicId",
-          "cardNoMasked",
-          "name",
-          "type",
-          "status",
-          "principalBalanceJpy",
-          "bonusBalanceJpy",
-          "remainingUses",
-          "totalUses",
-          "issuedAt",
-          "expiresAt",
-          "frozenAt"
-        ],
+        required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy", "remainingUses", "totalUses", "issuedAt", "expiresAt", "frozenAt"],
         properties: {
           publicId: { type: "string", format: "uuid" },
           cardNoMasked: { type: "string" },
@@ -6952,20 +6852,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopMembership: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "publicId",
-          "customerNeedoId",
-          "displayName",
-          "avatarUrl",
-          "city",
-          "status",
-          "source",
-          "startedAt",
-          "endedAt",
-          "cardCount",
-          "activeCardCount",
-          "lastActivityAt"
-        ],
+        required: ["publicId", "customerNeedoId", "displayName", "avatarUrl", "city", "status", "source", "startedAt", "endedAt", "cardCount", "activeCardCount", "lastActivityAt"],
         properties: {
           publicId: { type: "string", format: "uuid" },
           customerNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
@@ -6998,15 +6885,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopMembershipActivity: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "id",
-          "action",
-          "membershipPublicId",
-          "customerNeedoId",
-          "customerDisplayName",
-          "actorName",
-          "occurredAt"
-        ],
+        required: ["id", "action", "membershipPublicId", "customerNeedoId", "customerDisplayName", "actorName", "occurredAt"],
         properties: {
           id: { type: "string" },
           action: { type: "string", enum: ["membership_created"] },
@@ -7020,38 +6899,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopMembershipOverview: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "shop",
-          "activeMemberCount",
-          "todayNewMemberCount",
-          "activeCardCount",
-          "expiringSoonCardCount",
-          "recentActivities"
-        ],
+        required: ["shop", "activeMemberCount", "todayNewMemberCount", "activeCardCount", "expiringSoonCardCount", "recentActivities"],
         properties: {
           shop: { $ref: "#/components/schemas/ShopMembershipStore" },
           activeMemberCount: { type: "integer", minimum: 0 },
           todayNewMemberCount: { type: "integer", minimum: 0 },
           activeCardCount: { type: "integer", minimum: 0 },
           expiringSoonCardCount: { type: "integer", minimum: 0 },
-          recentActivities: {
-            type: "array",
-            items: { $ref: "#/components/schemas/ShopMembershipActivity" }
-          }
+          recentActivities: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipActivity" } }
         }
       },
       ShopMembershipAnalytics: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "period",
-          "from",
-          "to",
-          "activeMemberCount",
-          "newMemberCount",
-          "cardStatusCounts",
-          "dailyNewMembers"
-        ],
+        required: ["period", "from", "to", "activeMemberCount", "newMemberCount", "cardStatusCounts", "dailyNewMembers"],
         properties: {
           period: { type: "string", enum: ["last7days", "last30days", "last90days"] },
           from: { type: "string", format: "date-time" },
@@ -7094,17 +6955,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       CustomerShopMembership: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "publicId",
-          "status",
-          "startedAt",
-          "endedAt",
-          "cardCount",
-          "activeCardCount",
-          "expiringSoonCardCount",
-          "updatedAt",
-          "shop"
-        ],
+        required: ["publicId", "status", "startedAt", "endedAt", "cardCount", "activeCardCount", "expiringSoonCardCount", "updatedAt", "shop"],
         properties: {
           publicId: { type: "string", format: "uuid" },
           status: { type: "string", enum: ["active", "ended"] },
@@ -7124,9 +6975,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "object",
             additionalProperties: false,
             required: ["cards"],
-            properties: {
-              cards: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCard" } }
-            }
+            properties: { cards: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCard" } } }
           }
         ]
       },
@@ -7448,9 +7297,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read the current shop membership overview",
         security: [{ bearerAuth: [] }],
         responses: {
-          "200": jsonDataResponse("Current shop membership overview", {
-            $ref: "#/components/schemas/ShopMembershipOverview"
-          }),
+          "200": jsonDataResponse("Current shop membership overview", { $ref: "#/components/schemas/ShopMembershipOverview" }),
           ...shopMembershipErrorResponses
         }
       }
@@ -7466,17 +7313,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "status", in: "query", schema: { type: "string", enum: ["active", "ended"] } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated shop memberships", {
-            $ref: "#/components/schemas/ShopMembershipPage"
-          }),
+          "200": jsonDataResponse("Paginated shop memberships", { $ref: "#/components/schemas/ShopMembershipPage" }),
           ...shopMembershipErrorResponses
         }
       },
       post: {
         tags: ["Shop Membership"],
         summary: "Enroll one eligible customer in the current shop",
-        description:
-          "The shop is resolved exclusively from the authenticated shop identity. Card issuing, top-up, redemption, and refund are not part of this operation.",
+        description: "The shop is resolved exclusively from the authenticated shop identity. Card issuing, top-up, redemption, and refund are not part of this operation.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -7487,9 +7331,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "201": jsonDataResponse("Created shop membership with transactional audit", {
-            $ref: "#/components/schemas/ShopMembershipDetail"
-          }),
+          "201": jsonDataResponse("Created shop membership with transactional audit", { $ref: "#/components/schemas/ShopMembershipDetail" }),
           ...shopMembershipErrorResponses
         }
       }
@@ -7501,9 +7343,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [shopMembershipPublicIdParameter],
         responses: {
-          "200": jsonDataResponse("Shop membership detail", {
-            $ref: "#/components/schemas/ShopMembershipDetail"
-          }),
+          "200": jsonDataResponse("Shop membership detail", { $ref: "#/components/schemas/ShopMembershipDetail" }),
           ...shopMembershipErrorResponses
         }
       }
@@ -7512,18 +7352,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Shop Membership"],
         summary: "List customers eligible for shop membership enrollment",
-        description:
-          "Only customers with a persisted booking in the current shop and no active membership are returned.",
+        description: "Only customers with a persisted booking in the current shop and no active membership are returned.",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          ...shopMembershipPageParameters,
-          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } }
-        ],
+        parameters: [...shopMembershipPageParameters, { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } }],
         responses: {
-          "200": jsonDataResponse(
-            "Paginated eligible customers",
-            shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCandidate" })
-          ),
+          "200": jsonDataResponse("Paginated eligible customers", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCandidate" })),
           ...shopMembershipErrorResponses
         }
       }
@@ -7535,22 +7368,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [
           ...shopMembershipPageParameters,
-          {
-            name: "type",
-            in: "query",
-            schema: { type: "string", enum: ["stored_value", "count", "benefit"] }
-          },
-          {
-            name: "status",
-            in: "query",
-            schema: { type: "string", enum: ["active", "frozen", "expired", "void"] }
-          }
+          { name: "type", in: "query", schema: { type: "string", enum: ["stored_value", "count", "benefit"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["active", "frozen", "expired", "void"] } }
         ],
         responses: {
-          "200": jsonDataResponse(
-            "Paginated read-only membership cards",
-            shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCard" })
-          ),
+          "200": jsonDataResponse("Paginated read-only membership cards", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipCard" })),
           ...shopMembershipErrorResponses
         }
       }
@@ -7562,10 +7384,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: shopMembershipPageParameters,
         responses: {
-          "200": jsonDataResponse(
-            "Paginated shop membership activity",
-            shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipActivity" })
-          ),
+          "200": jsonDataResponse("Paginated shop membership activity", shopMembershipPageSchema({ $ref: "#/components/schemas/ShopMembershipActivity" })),
           ...shopMembershipErrorResponses
         }
       }
@@ -7575,21 +7394,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Shop Membership"],
         summary: "Read bounded membership and card-state analytics for the current shop",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "period",
-            in: "query",
-            schema: {
-              type: "string",
-              enum: ["last7days", "last30days", "last90days"],
-              default: "last30days"
-            }
-          }
-        ],
+        parameters: [{ name: "period", in: "query", schema: { type: "string", enum: ["last7days", "last30days", "last90days"], default: "last30days" } }],
         responses: {
-          "200": jsonDataResponse("Current shop membership analytics", {
-            $ref: "#/components/schemas/ShopMembershipAnalytics"
-          }),
+          "200": jsonDataResponse("Current shop membership analytics", { $ref: "#/components/schemas/ShopMembershipAnalytics" }),
           ...shopMembershipErrorResponses
         }
       }
@@ -7599,15 +7406,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Shop Membership"],
         summary: "List the authenticated customer's own shop memberships",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          ...shopMembershipPageParameters,
-          { name: "status", in: "query", schema: { type: "string", enum: ["active", "ended"] } }
-        ],
+        parameters: [...shopMembershipPageParameters, { name: "status", in: "query", schema: { type: "string", enum: ["active", "ended"] } }],
         responses: {
-          "200": jsonDataResponse(
-            "Paginated customer shop memberships",
-            shopMembershipPageSchema({ $ref: "#/components/schemas/CustomerShopMembership" })
-          ),
+          "200": jsonDataResponse("Paginated customer shop memberships", shopMembershipPageSchema({ $ref: "#/components/schemas/CustomerShopMembership" })),
           ...shopMembershipErrorResponses
         }
       }
@@ -7619,9 +7420,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [shopMembershipPublicIdParameter],
         responses: {
-          "200": jsonDataResponse("Customer shop membership detail", {
-            $ref: "#/components/schemas/CustomerShopMembershipDetail"
-          }),
+          "200": jsonDataResponse("Customer shop membership detail", { $ref: "#/components/schemas/CustomerShopMembershipDetail" }),
           ...shopMembershipErrorResponses
         }
       }
@@ -14087,31 +13886,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Create an immutable chat-record delivery",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "targetConversationId",
-            in: "path",
-            required: true,
-            schema: { type: "integer", minimum: 1 }
-          }
-        ],
+        parameters: [{ name: "targetConversationId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         requestBody: {
           required: true,
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } }
-          }
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } } }
         },
         responses: {
-          "201": jsonDataResponse("Created or exactly replayed chat-record delivery", {
-            $ref: "#/components/schemas/ImChatRecordDeliveryResult"
-          }),
+          "201": jsonDataResponse("Created or exactly replayed chat-record delivery", { $ref: "#/components/schemas/ImChatRecordDeliveryResult" }),
           "400": { description: "Strict validation failed" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:forward permission" },
           "404": { description: "Target conversation not found for the active identity" },
-          "409": {
-            description: "Source unavailable or idempotency key reused with changed payload"
-          }
+          "409": { description: "Source unavailable or idempotency key reused with changed payload" }
         }
       }
     },
@@ -14120,18 +13906,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Read an authorized chat-record summary",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "publicId",
-            in: "path",
-            required: true,
-            schema: { type: "string", format: "uuid" }
-          }
-        ],
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
-          "200": jsonDataResponse("Authorized chat-record summary", {
-            $ref: "#/components/schemas/ImChatRecordSummary"
-          }),
+          "200": jsonDataResponse("Authorized chat-record summary", { $ref: "#/components/schemas/ImChatRecordSummary" }),
           "400": { description: "Invalid chat-record public UUID" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },
@@ -14145,19 +13922,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Cursor-paginated immutable chat-record items",
         security: [{ bearerAuth: [] }],
         parameters: [
-          {
-            name: "publicId",
-            in: "path",
-            required: true,
-            schema: { type: "string", format: "uuid" }
-          },
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
           { name: "beforePosition", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
-          "200": jsonDataResponse("Authorized chat-record item page", {
-            $ref: "#/components/schemas/ImChatRecordItemPage"
-          }),
+          "200": jsonDataResponse("Authorized chat-record item page", { $ref: "#/components/schemas/ImChatRecordItemPage" }),
           "400": { description: "Invalid chat-record public UUID, cursor, or page size" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },
@@ -14171,18 +13941,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Stream one authorized immutable chat-record media snapshot",
         security: [{ bearerAuth: [] }],
         parameters: [
-          {
-            name: "publicId",
-            in: "path",
-            required: true,
-            schema: { type: "string", format: "uuid" }
-          },
-          {
-            name: "checksumSha256",
-            in: "path",
-            required: true,
-            schema: { type: "string", pattern: "^[a-f0-9]{64}$" }
-          }
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "checksumSha256", in: "path", required: true, schema: { type: "string", pattern: "^[a-f0-9]{64}$" } }
         ],
         responses: {
           "200": {
@@ -14190,9 +13950,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             headers: {
               ETag: { schema: { type: "string" } },
               "Content-Length": { schema: { type: "integer", minimum: 0 } },
-              "Cache-Control": {
-                schema: { type: "string", enum: ["private, max-age=31536000, immutable"] }
-              }
+              "Cache-Control": { schema: { type: "string", enum: ["private, max-age=31536000, immutable"] } }
             },
             content: {
               "image/jpeg": { schema: { type: "string", format: "binary" } },
@@ -14217,20 +13975,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } }
-          }
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } } }
         },
         responses: {
-          "201": jsonDataResponse("Created or exactly replayed chat-record favorite", {
-            $ref: "#/components/schemas/ImChatRecordFavoriteMutationResult"
-          }),
+          "201": jsonDataResponse("Created or exactly replayed chat-record favorite", { $ref: "#/components/schemas/ImChatRecordFavoriteMutationResult" }),
           "400": { description: "Strict validation failed" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:favorite permission" },
-          "409": {
-            description: "Source unavailable or idempotency key reused with changed payload"
-          }
+          "409": { description: "Source unavailable or idempotency key reused with changed payload" }
         }
       },
       get: {
@@ -14242,9 +13994,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
-          "200": jsonDataResponse("Active identity favorite page", {
-            $ref: "#/components/schemas/ImChatRecordFavoritePage"
-          }),
+          "200": jsonDataResponse("Active identity favorite page", { $ref: "#/components/schemas/ImChatRecordFavoritePage" }),
           "400": { description: "Invalid pagination" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:favorite permission" }
@@ -14256,18 +14006,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Remove one favorite owned by the active identity",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "favoriteId",
-            in: "path",
-            required: true,
-            schema: { type: "integer", minimum: 1 }
-          }
-        ],
+        parameters: [{ name: "favoriteId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         responses: {
-          "200": jsonDataResponse("Favorite removed", {
-            $ref: "#/components/schemas/ImChatRecordFavoriteDeleteResult"
-          }),
+          "200": jsonDataResponse("Favorite removed", { $ref: "#/components/schemas/ImChatRecordFavoriteDeleteResult" }),
           "400": { description: "Invalid favorite ID" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:favorite permission" },
@@ -14280,24 +14021,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 13 Realtime"],
         summary: "Atomically delete up to 100 messages for the active identity",
         security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "conversationId",
-            in: "path",
-            required: true,
-            schema: { type: "integer", minimum: 1 }
-          }
-        ],
+        parameters: [{ name: "conversationId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         requestBody: {
           required: true,
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/ImBatchDeleteRequest" } }
-          }
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ImBatchDeleteRequest" } } }
         },
         responses: {
-          "200": jsonDataResponse("Atomic deletion result or exact replay", {
-            $ref: "#/components/schemas/ImBatchDeleteResult"
-          }),
+          "200": jsonDataResponse("Atomic deletion result or exact replay", { $ref: "#/components/schemas/ImBatchDeleteResult" }),
           "400": { description: "Strict validation failed" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },
@@ -14720,6 +14450,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": jsonErrorResponse("error.auth.token_invalid — authentication required"),
           "403": jsonErrorResponse("error.forbidden or error.auth.identity_not_found"),
           "404": jsonErrorResponse("error.im.translation_message_not_found — batch rejected"),
+          "409": jsonErrorResponse(
+            "error.im.translation_cache_conflict — cache reservation changed concurrently"
+          ),
           "429": jsonErrorResponse("error.im.translation_rate_limited — provider throttled"),
           "456": jsonErrorResponse(
             "error.im.translation_quota_exceeded — provider quota exhausted"

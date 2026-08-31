@@ -138,3 +138,78 @@ Created:
 - The configured monthly character limit is present for deployment policy; provider-side 456 is mapped, but no new local usage-ledger schema was introduced in this bounded task.
 - Repository behavior was statically built and exercised through the service port plus existing Task 1 schema/migration regressions. Database integration acceptance was intentionally not performed because connecting to or writing shared data was prohibited.
 - The default provider remains `disabled`; ambiguous translation requests return the typed provider-unavailable response until a validated DeepL configuration is explicitly injected.
+
+## Review Remediation
+
+### Lifecycle audit and Critical fix
+
+The formal runtime paths that clear or hard-delete shared message content are:
+
+- standard recall in `backend/src/repositories/realtime.repository.ts`, which clears the authoritative body and marks the message recalled;
+- privacy expiry in `backend/src/repositories/im-privacy-expiry.repository.ts`, which clears the body and then hard-deletes the message after sync/audit bookkeeping.
+
+Both paths now delete every `ImMessageTranslation` row for the message inside the same existing serializable transaction, before clearing content or deleting the message. The lifecycle claim, translation deletion, body transition, deletion sync, audit, unread/reaction cleanup, and final hard delete therefore commit or roll back atomically. The `Restrict` foreign key was intentionally retained and no applied migration was edited.
+
+Delete-for-me only writes an identity-scoped tombstone, and clear-history only advances the participant cutoff; neither is a shared-content deletion path and neither should destroy cache rows needed by other identities. Both boundaries are rechecked during translation finalization. `backend/scripts/seed-three-month-simulation.ts` contains simulation-seed cleanup, not a formal runtime recall/privacy path, and was not changed.
+
+Repository transaction-contract tests assert translation rows are deleted before recall content clearing and before privacy-expiry content clearing/hard deletion. They use injected Prisma transaction doubles only. A real MySQL `Restrict` integration check remains deferred to Task 9 or another explicitly authorized database acceptance because this task prohibited database connections and writes.
+
+### Remediation RED
+
+The review fixes began with failing tests:
+
+```text
+npm test -- --runTestsByPath tests/deepl-translation.provider.test.ts tests/im-translation-config.test.ts
+```
+
+Observed RED: `providerRequestIds` did not exist; successful `null`/primitive DeepL payloads were not safely classified; IANA example hosts, additional loopback/unspecified addresses, and placeholder keys were accepted.
+
+```text
+npm test -- --runTestsByPath tests/im-standard-recall.repository.test.ts tests/im-privacy-expiry.repository.test.ts
+```
+
+Observed RED: both repositories cleared message content before any translation-row deletion, so the expected transaction call order failed.
+
+```text
+npm test -- --runTestsByPath tests/im-message-translation.repository.test.ts tests/im-message-translation.service.test.ts tests/im-message-translation-api.test.ts
+```
+
+Observed RED: `finalizeTranslations` and the typed cache-conflict error did not exist; local/cache paths skipped final authoritative validation; provider-period visibility/content changes still returned success; soft-deleted reservations could be revived; and the 33 × 4,000-character case was not chunked. A final micro-RED also proved the transaction contract lacked the exact source alongside its SHA-256 hash (`ExpectedTranslationMessage.source`).
+
+### Remediation GREEN
+
+- A successful DeepL response must now be a non-null object with a translations array whose every item is a non-null object containing string `text`; malformed 2xx payloads map to the typed 503 invalid-response error and cannot leak a native `TypeError`.
+- DeepL form bodies are partitioned by the actual UTF-8 byte length of `URLSearchParams.toString()`, never exceeding 128 KiB. The exact boundary and one-byte overflow are tested, as is 33 × 4,000-character splitting. Each row retains the request ID of its own chunk. All chunks and their cardinality must succeed before finalization, so a later-chunk failure writes nothing.
+- Provider HTTP runs outside any database transaction. A single short serializable finalization transaction re-resolves the active identity participant, join time, clear cutoff, identity tombstone, conversation/message deletion, recall, purge, expiry, and exact authoritative source plus SHA-256 hash. It validates cache hits and proposed writes, then creates the full write set atomically. Local same-language and ineligible results also traverse this final authoritative path.
+- Soft-deleted unique cache reservations are never reset to active. If a hit disappeared or any active/soft-deleted reservation now occupies a proposed key, the whole request returns typed conflict with no new writes.
+- Production configuration now normalizes hostnames and rejects IANA `example.com`, `.net`, and `.org` hosts/subdomains, every IPv4 `127/8` address, `0.0.0.0`, IPv6 `::1` and `::`, trailing-dot/bracket variants, and obvious placeholder keys. These checks are required only when the selected provider is `deepl`; development still permits official or custom HTTPS endpoints.
+- `IM_TRANSLATION_MONTHLY_CHARACTER_LIMIT` remains present as provider quota-policy metadata. This bounded task deliberately does not invent a local usage ledger; provider quota exhaustion remains represented by DeepL's mapped 456 response.
+- The OpenAPI diff was reduced back to semantic additions only relative to baseline: the translation schemas/path and mapped 200/400/401/403/404/409/429/456/503 responses.
+
+Review remediation focused test result:
+
+```text
+npm test -- --runTestsByPath tests/deepl-translation.provider.test.ts tests/im-translation-config.test.ts tests/im-message-translation.repository.test.ts tests/im-message-translation.service.test.ts tests/im-message-translation-api.test.ts tests/im-standard-recall.repository.test.ts tests/im-privacy-expiry.repository.test.ts
+```
+
+Result: **7 suites passed, 79 tests passed**.
+
+Associated regression result:
+
+```text
+npm test -- --runTestsByPath tests/deepl-translation.provider.test.ts tests/im-translation-config.test.ts tests/im-message-translation.repository.test.ts tests/im-message-translation.service.test.ts tests/im-message-translation-api.test.ts tests/im-standard-recall.repository.test.ts tests/im-privacy-expiry.repository.test.ts tests/im-privacy-expiry.service.test.ts tests/im-privacy-message-countdown.repository.test.ts tests/im-message-user-deletion.repository.test.ts tests/message-batch-delete.test.ts tests/im-chat-record-schema.test.ts tests/im-chat-record-migration.test.ts tests/im-chat-record-permissions-migration.test.ts tests/im-chat-record.repository.test.ts tests/im-chat-record.service.test.ts tests/im-chat-record-api.test.ts tests/im-chat-record-openapi.test.ts tests/realtime-service.test.ts tests/realtime-api.test.ts tests/realtime-repository-identity.test.ts tests/openapi.test.ts
+```
+
+Result: **22 suites passed, 266 tests passed**.
+
+Static verification after remediation:
+
+```text
+npm run lint
+npm run build
+git diff --check
+```
+
+Results: **PASS**, **PASS**, and **PASS**. Targeted Prettier was run only over the changed TypeScript implementation/tests; legacy formatting in the large OpenAPI/realtime repositories was kept out of the final semantic diff where practical.
+
+No real DeepL credential was accessed, no real DeepL request was made, no migration was applied, no database was connected, and no shared data was written during remediation. Real DeepL and real MySQL foreign-key acceptance therefore remain explicitly unclaimed.

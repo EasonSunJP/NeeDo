@@ -65,6 +65,8 @@ const optionalSecretSchema = z.preprocess((value) => {
 }, z.string().trim().min(1).optional());
 
 const productionPlaceholderPattern = /(change-?me|example|placeholder|replace-?with)/i;
+const translationPlaceholderPattern =
+  /(change-?me|example|placeholder|replace-?with|dummy|test-key|fake|sample)/i;
 const productionGoogleWebClientIdPattern =
   /^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?\.apps\.googleusercontent\.com$/;
 const productionGoogleClientIdNonProductionValuePattern = /\b(local|dummy|test)\b/i;
@@ -75,6 +77,26 @@ const addProductionIssue = (context: z.RefinementCtx, path: string, message: str
     message,
     path: [path]
   });
+};
+
+const normalizeConfiguredHostname = (hostname: string): string =>
+  hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/gu, "")
+    .replace(/\.+$/u, "");
+
+const isUnsafeProductionTranslationHostname = (hostname: string): boolean => {
+  const normalized = normalizeConfiguredHostname(hostname);
+  return (
+    normalized === "localhost" ||
+    normalized === "0.0.0.0" ||
+    normalized === "::" ||
+    normalized === "::1" ||
+    /^127(?:\.|$)/u.test(normalized) ||
+    /(?:^|\.)example\.(?:com|net|org)$/u.test(normalized) ||
+    normalized === "example" ||
+    normalized.endsWith(".example")
+  );
 };
 
 const envSchema = z
@@ -151,6 +173,7 @@ const envSchema = z
     IM_TRANSLATION_API_KEY: optionalSecretSchema,
     IM_TRANSLATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
     IM_TRANSLATION_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(2),
+    // Provider quota policy metadata only; this bounded step does not create a local usage ledger.
     IM_TRANSLATION_MONTHLY_CHARACTER_LIMIT: z.coerce.number().int().positive().default(500_000),
     CONTENT_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/content-media"),
     FRIEND_REQUEST_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
@@ -220,9 +243,7 @@ const envSchema = z
         }
         if (
           value.NODE_ENV === "production" &&
-          (["localhost", "127.0.0.1", "::1"].includes(translationApiUrl.hostname) ||
-            translationApiUrl.hostname === "example" ||
-            translationApiUrl.hostname.endsWith(".example"))
+          isUnsafeProductionTranslationHostname(translationApiUrl.hostname)
         ) {
           addProductionIssue(
             context,
@@ -238,7 +259,7 @@ const envSchema = z
           "IM_TRANSLATION_API_KEY",
           "IM_TRANSLATION_API_KEY is required for the DeepL provider"
         );
-      } else if (productionPlaceholderPattern.test(value.IM_TRANSLATION_API_KEY)) {
+      } else if (translationPlaceholderPattern.test(value.IM_TRANSLATION_API_KEY)) {
         addProductionIssue(
           context,
           "IM_TRANSLATION_API_KEY",

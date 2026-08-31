@@ -55,6 +55,7 @@ describe("DeepLTranslationProvider", () => {
       ).resolves.toEqual({
         detectedSourceLanguages: ["EN", "EN"],
         providerRequestId: "deepl-request-1",
+        providerRequestIds: ["deepl-request-1", "deepl-request-1"],
         texts: ["一", "二"]
       });
       expect(fetchImplementation).toHaveBeenCalledWith(
@@ -158,5 +159,91 @@ describe("DeepLTranslationProvider", () => {
       statusCode: 503
     });
     expect(fetchImplementation).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([null, 7, "translations", { translations: [null] }, { translations: ["bad"] }])(
+    "maps malformed successful payload %p to a typed invalid-response error",
+    async (payload) => {
+      const provider = new DeepLTranslationProvider({
+        apiBaseUrl: "https://api-free.deepl.com",
+        apiKey: "private-test-key:fx",
+        fetch: jest.fn(async () => response(200, payload)),
+        maxRetries: 0,
+        timeoutMs: 500
+      });
+
+      await expect(
+        provider.translate({ texts: ["hello"], targetLanguage: "ja" })
+      ).rejects.toMatchObject({
+        message: "error.im.translation_provider_invalid_response",
+        statusCode: 503
+      });
+    }
+  );
+
+  it("splits 33 four-thousand-character texts by actual encoded bytes and preserves per-item request IDs", async () => {
+    let chunk = 0;
+    const fetchImplementation = jest.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        chunk += 1;
+        expect(Buffer.byteLength(String(init?.body), "utf8")).toBeLessThanOrEqual(128 * 1024);
+        const texts = new URLSearchParams(String(init?.body)).getAll("text");
+        return response(
+          200,
+          {
+            translations: texts.map((text) => ({
+              detected_source_language: "EN",
+              text: `translated-${text.slice(-2)}`
+            }))
+          },
+          { "x-request-id": `chunk-${chunk}` }
+        );
+      }
+    );
+    const provider = new DeepLTranslationProvider({
+      apiBaseUrl: "https://api-free.deepl.com",
+      apiKey: "private-test-key:fx",
+      fetch: fetchImplementation,
+      maxRetries: 0,
+      timeoutMs: 500
+    });
+    const texts = Array.from(
+      { length: 33 },
+      (_, index) => `${"a".repeat(3_997)}-${String(index).padStart(2, "0")}`
+    );
+
+    const result = await provider.translate({ texts, targetLanguage: "ja" });
+
+    expect(fetchImplementation).toHaveBeenCalledTimes(2);
+    expect(result.texts).toHaveLength(33);
+    expect(result.providerRequestIds).toEqual([
+      ...Array.from({ length: 32 }, () => "chunk-1"),
+      "chunk-2"
+    ]);
+  });
+
+  it("accepts an exactly 128 KiB encoded request and rejects a one-byte overflow before fetch", async () => {
+    const fetchImplementation = jest.fn(async () =>
+      response(200, { translations: [{ detected_source_language: "EN", text: "ok" }] })
+    );
+    const provider = new DeepLTranslationProvider({
+      apiBaseUrl: "https://api-free.deepl.com",
+      apiKey: "private-test-key:fx",
+      fetch: fetchImplementation,
+      maxRetries: 0,
+      timeoutMs: 500
+    });
+    const exactlyAtLimit = "a".repeat(128 * 1024 - 20);
+
+    await expect(
+      provider.translate({ texts: [exactlyAtLimit], targetLanguage: "ja" })
+    ).resolves.toMatchObject({ texts: ["ok"] });
+    await expect(
+      provider.translate({ texts: [`${exactlyAtLimit}a`], targetLanguage: "ja" })
+    ).rejects.toMatchObject({
+      message: "error.im.translation_request_too_large",
+      statusCode: 400
+    });
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
   });
 });
