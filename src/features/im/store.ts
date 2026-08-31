@@ -1491,7 +1491,16 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
   }
 
+  const chatRecordApi = Object.freeze({
+    getChatRecord: api.getChatRecord,
+    listChatRecordItems: api.listChatRecordItems,
+    getChatRecordMedia: api.getChatRecordMedia,
+    listChatRecordFavorites: api.listChatRecordFavorites,
+    removeChatRecordFavorite: api.removeChatRecordFavorite,
+  });
+
   return {
+    chatRecordApi,
     useStore
   };
 }
@@ -1568,7 +1577,7 @@ export function canRecall(snapshotData: ImSnapshot, message: ConversationMessage
   return snapshotData.config && snapshotData.currentUserId ? canRecallMessage(message, snapshotData.currentUserId, snapshotData.config) : false;
 }
 
-export function useImStore(scope: ImRoleType = "user") {
+function useScopedImStore(scope: ImRoleType) {
   const { session } = useAuth();
   const currentUser = {
     id: session?.id ?? 0,
@@ -1577,7 +1586,15 @@ export function useImStore(scope: ImRoleType = "user") {
     avatarUrl: session?.avatarUrl ?? null
   };
 
-  return getScopedStore(scope, currentUser).useStore();
+  return getScopedStore(scope, currentUser);
+}
+
+export function useImStore(scope: ImRoleType = "user") {
+  return useScopedImStore(scope).useStore();
+}
+
+export function useImStoreApi(scope: ImRoleType = "user") {
+  return useScopedImStore(scope).chatRecordApi;
 }
 
 export type ImStoreHook = ReturnType<typeof useImStore>;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
+import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ImApi } from "./contract";
@@ -46,6 +46,7 @@ import {
   selectLatestFriendRequestsByCounterpart,
   upsertConversationMessage,
   useImStore,
+  useImStoreApi,
 } from "./store";
 
 const sentAt = "2026-08-25T10:00:00.000Z";
@@ -270,6 +271,38 @@ describe("formal IM recall terminal precedence", () => {
       lastMessageStatus: "recalled",
     });
     expect(bootstrap).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("chat-record store facade", () => {
+  it("keeps one production facade identity and does not refetch after an unrelated SSE snapshot update", async () => {
+    mocked.session = { activePublicId: "u0000000901", avatarUrl: null, id: 901, primaryPublicId: "u0000000901", username: "record-reader" };
+    const getChatRecord = vi.fn().mockResolvedValue({ publicId: "11111111-1111-4111-8111-111111111111", title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: sentAt });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "901", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [], members: [] }),
+      getChatRecord,
+      listChatRecordItems: vi.fn(),
+      getChatRecordMedia: vi.fn(),
+      listChatRecordFavorites: vi.fn(),
+      removeChatRecordFavorite: vi.fn(),
+    } as unknown as ImApi;
+    let firstFacade: ReturnType<typeof useImStoreApi> | undefined;
+    let latestFacade: ReturnType<typeof useImStoreApi> | undefined;
+    function FacadeProbe() {
+      const facade = useImStoreApi("user");
+      firstFacade ??= facade;
+      latestFacade = facade;
+      useEffect(() => { void facade.getChatRecord("11111111-1111-4111-8111-111111111111"); }, [facade]);
+      return null;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => { root?.render(createElement(FacadeProbe)); await Promise.resolve(); });
+    expect(getChatRecord).toHaveBeenCalledTimes(1);
+    await act(async () => { mocked.subscriptionListener?.({ type: "message.updated", message: message({ id: "unrelated", conversationId: "other" }) }); await Promise.resolve(); });
+    expect(latestFacade).toBe(firstFacade);
+    expect(getChatRecord).toHaveBeenCalledTimes(1);
   });
 });
 

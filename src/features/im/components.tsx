@@ -2985,6 +2985,7 @@ export function MessageBubble({
       return (
         <ImChatRecordCard
           language={translation.language}
+          openerId={`im-chat-record-message-${message.id}`}
           record={{
             publicId: record.publicId,
             title: message.content,

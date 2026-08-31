@@ -16,7 +16,7 @@ import {
 } from "./pages";
 import { ImChatRecordDetailPage as RichImChatRecordDetailPage } from "./ImChatRecordDetailPage";
 import { useImScope } from "./scope";
-import { useImStore } from "./store";
+import { useImStoreApi } from "./store";
 
 export function ImMessagesEntryPage() {
   return <RichImMessagesEntryPage />;
@@ -26,8 +26,8 @@ export function ImConversationRoomRoutePage() {
 }
 export function ImChatRecordDetailRoutePage() {
   const scope = useImScope();
-  const store = useImStore(scope);
-  return <RichImChatRecordDetailPage api={store} scope={scope} />;
+  const api = useImStoreApi(scope);
+  return <RichImChatRecordDetailPage api={api} scope={scope} />;
 }
 export function ImContactsListPage() {
   return <RichImContactsListPage />;

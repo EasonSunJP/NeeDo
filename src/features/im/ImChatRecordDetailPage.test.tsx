@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ImChatRecordCard } from "./ImChatRecordCard";
@@ -13,6 +13,7 @@ import {
 import source from "./ImChatRecordDetailPage.tsx?raw";
 import appSource from "../../App.tsx?raw";
 import type { ImChatRecordMedia } from "./chat-records";
+import { restoreImChatRecordFocus } from "./chat-record-focus";
 
 const publicId = "11111111-1111-4111-8111-111111111111";
 const summary = {
@@ -83,6 +84,28 @@ async function flush() {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, reject, resolve };
+}
+
+function RouteSwitch({ api: recordApi }: { api: ImChatRecordReadApi }) {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button data-testid="route-a" onClick={() => navigate(`/messages/chat-records/${publicId}`)} type="button">A</button>
+      <button data-testid="route-b" onClick={() => navigate("/messages/chat-records/22222222-2222-4222-8222-222222222222")} type="button">B</button>
+      <button data-testid="route-c" onClick={() => navigate("/messages/chat-records/33333333-3333-4333-8333-333333333333")} type="button">C</button>
+      <Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="zh" />} /></Routes>
+    </>
+  );
 }
 
 describe("ImChatRecordDetailPage", () => {
@@ -241,6 +264,53 @@ describe("ImChatRecordDetailPage", () => {
     expect(document.activeElement?.getAttribute("data-im-chat-record-opener")).toBe("favorite-row-7");
   });
 
+  it("restores focus to the exact second card when duplicate records share a publicId", async () => {
+    const recordApi = api();
+    function DuplicateList() {
+      return <><ImChatRecordCard language="zh" record={{ ...summary, id: "favorite-a", bundlePublicId: summary.publicId }} /><ImChatRecordCard language="zh" record={{ ...summary, id: "favorite-b", bundlePublicId: summary.publicId }} /></>;
+    }
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={["/me/favorites"]}><Routes><Route path="/me/favorites" element={<DuplicateList />} /><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="zh" />} /></Routes></MemoryRouter>)));
+    const openers = document.querySelectorAll<HTMLAnchorElement>("[data-im-chat-record-opener]");
+    expect(openers[0]?.id).not.toBe(openers[1]?.id);
+    await act(async () => openers[1]?.click());
+    await flush();
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="关闭聊天记录"]')?.click());
+    await flush();
+    await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+    expect(document.activeElement).toBe(document.querySelectorAll("[data-im-chat-record-opener]")[1]);
+  });
+
+  it("waits for an asynchronously remounted opener before focusing it", async () => {
+    const recordApi = api();
+    let visits = 0;
+    function DelayedList() {
+      const [visible, setVisible] = useState(() => visits++ === 0);
+      useEffect(() => {
+        if (!visible) window.setTimeout(() => setVisible(true), 0);
+      }, [visible]);
+      return visible ? <ImChatRecordCard language="zh" openerId="async-record-card" record={summary} /> : null;
+    }
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={["/me/favorites"]}><Routes><Route path="/me/favorites" element={<DelayedList />} /><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="zh" />} /></Routes></MemoryRouter>)));
+    await act(async () => document.querySelector<HTMLAnchorElement>("[data-im-chat-record-opener]")?.click());
+    await flush();
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="关闭聊天记录"]')?.click());
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 10)));
+    expect(document.activeElement).toBe(document.querySelector("[data-im-chat-record-opener]"));
+  });
+
+  it("disconnects the bounded focus observer when an opener never remounts", async () => {
+    vi.useFakeTimers();
+    const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 1));
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
+    restoreImChatRecordFocus("missing-opener", { maxFrames: 2 });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   it("does not materialize a protected object URL after route unmount", async () => {
     let resolveMedia!: (value: ImChatRecordMedia) => void;
     const createObjectURL = vi.fn(() => "blob:stale");
@@ -264,6 +334,39 @@ describe("ImChatRecordDetailPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("rejects protected media whose binary headers do not match the immutable descriptor", async () => {
+    const createObjectURL = vi.fn(() => "blob:mismatch");
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    const recordApi = api({
+      getChatRecordMedia: vi.fn(async () => ({ blob: new Blob(["image"], { type: "image/png" }), contentType: "image/jpeg", contentLength: 6, etag: `"${"c".repeat(64)}"`, cacheControl: "private" })),
+      listChatRecordItems: vi.fn(async () => ({ ...firstPage, total: 1, nextCursor: null, list: [{ ...firstPage.list[0], content: null, metadata: { media: { checksumSha256: "b".repeat(64), mimeType: "image/png", size: 5 } } }] })),
+    });
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="zh" />} /></Routes></MemoryRouter>)));
+    await flush();
+    expect(document.body.textContent).toContain("媒体读取失败");
+    expect(createObjectURL).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("revokes every item-owned URL exactly once when equal checksums appear more than once", async () => {
+    let index = 0;
+    const createObjectURL = vi.fn(() => `blob:shared-${++index}`);
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+    const descriptor = { media: { checksumSha256: "d".repeat(64), mimeType: "image/png", size: 5 } };
+    const recordApi = api({
+      getChatRecordMedia: vi.fn(async () => ({ blob: new Blob(["image"], { type: "image/png" }), contentType: "image/png", contentLength: 5, etag: `"${"d".repeat(64)}"`, cacheControl: "private" })),
+      listChatRecordItems: vi.fn(async () => ({ ...firstPage, total: 2, nextCursor: null, list: [{ ...firstPage.list[0], id: "media-1", position: 1, content: null, metadata: descriptor }, { ...firstPage.list[0], id: "media-2", position: 2, content: null, metadata: descriptor }] })),
+    });
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="zh" />} /></Routes></MemoryRouter>)));
+    await flush();
+    expect(createObjectURL).toHaveBeenCalledTimes(2);
+    await act(async () => root.unmount());
+    expect(revokeObjectURL.mock.calls.map(([url]) => url).sort()).toEqual(["blob:shared-1", "blob:shared-2"]);
+    root = createRoot(container);
+    vi.unstubAllGlobals();
+  });
+
   it("rejects malformed public ids without calling the API", async () => {
     const recordApi = api();
     await act(async () => {
@@ -280,6 +383,23 @@ describe("ImChatRecordDetailPage", () => {
     expect(recordApi.getChatRecord).not.toHaveBeenCalled();
   });
 
+  it("renders complete English detail, info, media failure, and retry copy", async () => {
+    const recordApi = api({
+      getChatRecordMedia: vi.fn().mockRejectedValue(new Error("network")),
+      listChatRecordItems: vi.fn(async () => ({ ...firstPage, total: 1, nextCursor: null, list: [{ ...firstPage.list[0], content: null, metadata: { media: { checksumSha256: "e".repeat(64), mimeType: "image/png", size: 5 } } }] })),
+    });
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><Routes><Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="en" />} /></Routes></MemoryRouter>)));
+    await flush();
+    expect(document.body.textContent).toContain("Chat record with A");
+    const infoButton = document.querySelector('button[aria-label="About this chat record"]') as HTMLButtonElement;
+    expect(infoButton).not.toBeNull();
+    await act(async () => infoButton.click());
+    expect(document.body.textContent).toContain("This page shows a read-only message snapshot");
+    expect(document.body.textContent).toContain("Couldn't load media");
+    expect(document.body.textContent).toContain("Retry");
+    expect(document.querySelector('button[aria-label="Close chat record"]')).not.toBeNull();
+  });
+
   it("registers unshadowed record detail routes before dynamic conversations in all scopes", () => {
     for (const prefix of ["", "/merchant", "/technician"]) {
       const recordRoute = `path=\"${prefix}/messages/chat-records/:publicId\"`;
@@ -287,5 +407,52 @@ describe("ImChatRecordDetailPage", () => {
       expect(appSource).toContain(recordRoute);
       expect(appSource.indexOf(recordRoute)).toBeLessThan(appSource.indexOf(conversationRoute));
     }
+  });
+
+  it("clears the old record immediately and ignores a slow initial response after publicId changes", async () => {
+    const aSummary = deferred<typeof summary>();
+    const aItems = deferred<typeof firstPage>();
+    const recordApi = api({
+      getChatRecord: vi.fn((id) => id === publicId ? aSummary.promise : Promise.resolve({ ...summary, publicId: id, senderNames: ["B"], preview: "B: current" })),
+      listChatRecordItems: vi.fn((id) => id === publicId ? aItems.promise : Promise.resolve({ ...firstPage, list: [{ ...firstPage.list[0], id: "b-item", senderDisplayName: "B", content: "current" }] })),
+    });
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><RouteSwitch api={recordApi} /></MemoryRouter>)));
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="route-b"]')?.click());
+    await flush();
+    expect(document.body.textContent).toContain("B的聊天记录");
+    expect(document.body.textContent).toContain("current");
+    aSummary.resolve(summary);
+    aItems.resolve(firstPage);
+    await flush();
+    expect(document.body.textContent).toContain("B的聊天记录");
+    expect(document.body.textContent).not.toContain("immutable");
+  });
+
+  it("does not show old title/items while a replacement fails and ignores an old late page", async () => {
+    const oldPage = deferred<Awaited<ReturnType<ImChatRecordReadApi["listChatRecordItems"]>>>();
+    const recordApi = api({
+      getChatRecord: vi.fn((id) => id.endsWith("333333333333") ? Promise.reject(new Error("gone")) : Promise.resolve(id === publicId ? summary : { ...summary, publicId: id, senderNames: ["B"], preview: "B" })),
+      listChatRecordItems: vi.fn((id, query) => {
+        if (id.endsWith("333333333333")) return Promise.reject(new Error("gone"));
+        if (id === publicId && query?.beforePosition) return oldPage.promise;
+        return Promise.resolve({ ...firstPage, nextCursor: id === publicId ? 2 : null, list: [{ ...firstPage.list[0], id: id === publicId ? "a" : "b", senderDisplayName: id === publicId ? "A" : "B", content: id === publicId ? "old-initial" : "current" }] });
+      }),
+    });
+    await act(async () => root.render(themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}><RouteSwitch api={recordApi} /></MemoryRouter>)));
+    await flush();
+    const loadOlder = Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.includes("加载更早"));
+    await act(async () => loadOlder?.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="route-b"]')?.click());
+    await flush();
+    oldPage.resolve({ ...firstPage, nextCursor: null, list: [{ ...firstPage.list[0], id: "late", position: 1, content: "late-old-page" }] });
+    await flush();
+    expect(document.body.textContent).toContain("current");
+    expect(document.body.textContent).not.toContain("late-old-page");
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="route-c"]')?.click());
+    expect(document.body.textContent).not.toContain("B的聊天记录");
+    expect(document.body.textContent).not.toContain("current");
+    await flush();
+    expect(document.body.textContent).toContain("聊天记录不可用");
+    expect(document.body.textContent).not.toContain("current");
   });
 });

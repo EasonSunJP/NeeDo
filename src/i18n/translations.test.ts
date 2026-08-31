@@ -321,6 +321,37 @@ describe("translations", () => {
     expect(translateText("开始聊天", "ko")).toBe("채팅 시작");
   });
 
+  it("localizes every static chat-record and favorites UI key exactly", () => {
+    const expected = {
+      "查看聊天记录": ["查看聊天記錄", "チャット履歴を表示", "View chat record", "채팅 기록 보기"],
+      "关闭聊天记录": ["關閉聊天記錄", "チャット履歴を閉じる", "Close chat record", "채팅 기록 닫기"],
+      "聊天记录说明": ["聊天記錄說明", "チャット履歴の説明", "About this chat record", "채팅 기록 안내"],
+      "此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。": ["此頁面顯示建立時儲存的唯讀訊息快照，不會隨原聊天資料變更。", "このページには作成時に保存された読み取り専用のメッセージスナップショットが表示され、元のチャット情報が変わっても更新されません。", "This page shows a read-only message snapshot saved when the record was created. It does not change with the original chat.", "이 페이지에는 기록 생성 시 저장된 읽기 전용 메시지 스냅샷이 표시되며 원본 채팅 정보가 바뀌어도 변경되지 않습니다."],
+      "媒体读取失败": ["媒體讀取失敗", "メディアを読み込めませんでした", "Couldn't load media", "미디어를 불러오지 못했습니다"],
+      "收藏读取失败": ["收藏讀取失敗", "お気に入りを読み込めませんでした", "Couldn't load favorites", "즐겨찾기를 불러오지 못했습니다"],
+      "移除收藏": ["移除收藏", "お気に入りから削除", "Remove favorite", "즐겨찾기에서 삭제"],
+      "暂无收藏的聊天记录": ["暫無收藏的聊天記錄", "お気に入りのチャット履歴はありません", "No favorite chat records yet", "즐겨찾기한 채팅 기록이 없습니다"],
+    } as const;
+    for (const [source, values] of Object.entries(expected)) {
+      expect(translateText(source, "zh-Hant")).toBe(values[0]);
+      expect(translateText(source, "ja")).toBe(values[1]);
+      expect(translateText(source, "en")).toBe(values[2]);
+      expect(translateText(source, "ko")).toBe(values[3]);
+    }
+    const completeKeys = [
+      "查看聊天记录", "聊天记录", "关闭聊天记录", "聊天记录说明", "此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。",
+      "聊天记录媒体", "媒体不可用", "媒体读取失败", "正在读取媒体", "正在读取聊天记录", "聊天记录不可用",
+      "加载更早", "正在加载", "返回个人中心", "我的收藏", "保存的聊天记录", "正在读取收藏", "收藏读取失败",
+      "暂无收藏的聊天记录", "移除失败", "正在移除", "移除收藏", "收藏分页", "上一页", "下一页", "重试",
+    ];
+    for (const key of completeKeys) {
+      expect(translations[key]).toMatchObject({ "zh-Hant": expect.any(String), ja: expect.any(String), en: expect.any(String), ko: expect.any(String) });
+      for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
+        expect(translateText(key, language)).toBe(translations[key]?.[language]);
+      }
+    }
+  });
+
   it("uses the approved affiliate name in operations navigation", () => {
     expect(translateText("联盟营销", "zh")).toBe("联盟营销");
     expect(translateText("联盟营销", "en")).toBe("Affiliate");

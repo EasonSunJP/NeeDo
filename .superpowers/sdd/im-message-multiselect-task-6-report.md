@@ -41,6 +41,38 @@ Task 5 intentionally returns strict summary/favorite keys `title`, `preview`, `s
 
 No database, live API, Task 7 menu, or Task 8 multi-select change was made.
 
+## Review remediation (2026-08-31)
+
+### RED evidence
+
+- Public-id/request isolation: new route-switch tests reproduced a late A-page response entering B and stale title/items surviving a failed replacement.
+- Production facade: the real scoped-store composition test initially failed because `useImStoreApi` did not exist and route pages subscribed to the full mutable store snapshot.
+- Focus: duplicate favorite cards had no unique DOM opener ids; an opener remounted after navigation could not be focused; timeout cleanup was untested.
+- Read-only actions: a production conversation-page long press on a `chat-record` message opened the ordinary reply/forward/copy/pin/recall/delete action sheet.
+- Favorites: page 2 temporarily retained page 1 rows on load failure, same-tick removal issued two requests, and removing the last row of a later page did not return/reload the previous page.
+- Protected media: a Blob with descriptor-mismatched MIME/size/ETag still reached `URL.createObjectURL`.
+- Localization: non-Chinese card labels fell through substring replacement (for example mixed `ViewChat...` output), and the header's generated info aria label mixed an English title with Chinese `说明`.
+
+### GREEN implementation
+
+- Detail now clears all route-bound UI state immediately and guards initial/page success, failure, and finalizers with a public-id request generation plus cursor request key. Page merges deduplicate by either immutable id or position and retain chronological order.
+- `useImStoreApi` exposes one frozen, stable per-scope formal API facade. Detail/favorites route pages consume it without reacting to unrelated SSE/store snapshots; the production composition test proves one fetch across an unrelated store update. No cross-session cache was added.
+- Each record-card instance has an exact `useId`-based opener id (favorites use their unique favorite id). Route state carries that id. Close restoration uses `getElementById` and a bounded MutationObserver/requestAnimationFrame helper, with exact duplicate-card restoration, asynchronous remount, direct fallback, timeout, and observer cleanup coverage.
+- The production conversation render path does not wrap chat-record bubbles in `MessagePressable`; menu construction also rejects chat-record defensively. A real-page long-press test proves no action sheet for the record while an ordinary text message still opens the existing menu unchanged.
+- Favorites clear on page changes and bind loads/removals to page generations. Retry does not mix old rows; a synchronous in-flight set suppresses same-tick duplicates; failure retains the row; late completion cannot mutate a new page; removing the final row on page > 1 reloads the preceding page, while page 1 becomes empty.
+- Media validates the immutable descriptor against adapter `contentType`, `contentLength`, `etag`, Blob MIME, and Blob size before creating a URL. Mismatch stays retryable without creating a URL. Two same-checksum items each revoke their own created URL exactly once.
+- All Task 6 visible strings now have exact formal entries for zh/zh-Hant/ja/en/ko, including card/title/count/caption/info, detail/media/errors/retry, and favorites/remove/empty/pagination. Page-level English assertions and table-driven five-language tests prevent mixed fallbacks.
+
+### Final verification
+
+- Focused IM/App/i18n/header command: PASS — 10 files / 221 tests.
+- Detail + favorites page command after the final info-label correction: PASS — 2 files / 21 tests.
+- `npm run lint`: PASS (`tsc -b --noEmit`).
+- `npm run build`: PASS; only the pre-existing SocialProfile mixed-import and chunk-size warnings remain.
+- `git diff --check`: PASS.
+
+The review was completed without database or live-API writes and without changing Task 7 menu visuals or Task 8 multi-select. Real-browser acceptance remains intentionally deferred to the Task 9 acceptance pass; this remediation uses production composition/interaction tests rather than claiming browser evidence.
+
 ### Skill influence
 
 - `needo-mobile-headers` made the shared fullscreen header contract non-negotiable: title truncation stays in the central slot, immutable-snapshot explanation is supplied through `info`, and the shared right close is driven only through `onClose`.

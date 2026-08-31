@@ -701,6 +701,37 @@ describe("IM contact information automatic translation control", () => {
 });
 
 describe("ImConversationRoomPage voice recording integration", () => {
+  it("never opens the action sheet for chat-record messages while ordinary messages retain it", async () => {
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: () => [] });
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: () => new DOMRect() });
+    const store = buildConversationRoomStore();
+    const base = { localId: "record-delivery", conversationId: "conversation-room", senderId: "partner-user", status: "sent", sentAt: "2026-08-31T00:01:00.000Z", clientSeq: 1 } as const;
+    store.messagesByConversation["conversation-room"] = [
+      { ...base, id: "record-delivery", type: "chat-record", content: "backend title", ext: { chatRecord: { publicId: "11111111-1111-4111-8111-111111111111", itemCount: 1, preview: "A: saved", senderNames: ["A"], titleKind: "single" } } },
+      { ...base, id: "ordinary-message", localId: "ordinary-message", clientSeq: 2, type: "text", content: "ordinary" },
+    ];
+    roomHarness.store = store;
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => { root.render(<MemoryRouter><I18nProvider><ClientThemeProvider><ImScopeProvider scope="user"><ImConversationRoomPage conversationId="conversation-room" /></ImScopeProvider></ClientThemeProvider></I18nProvider></MemoryRouter>); await Promise.resolve(); await Promise.resolve(); });
+    vi.useFakeTimers();
+    await act(async () => {
+      document.querySelector("[data-im-chat-record-opener]")?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 4, clientY: 4 }));
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(document.querySelector("[data-im-message-action-sheet]")).toBeNull();
+    const ordinary = Array.from(document.querySelectorAll<HTMLElement>("[data-im-message-bubble]")).find((element) => element.textContent?.includes("ordinary"));
+    await act(async () => {
+      ordinary?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 4, clientY: 4 }));
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(document.querySelector("[data-im-message-action-sheet]")).not.toBeNull();
+    await act(async () => root.unmount());
+    vi.useRealTimers();
+  });
+
   it("shows the unsupported recording notice again after the previous notice expires", async () => {
     vi.useFakeTimers();
     roomHarness.store = buildConversationRoomStore();

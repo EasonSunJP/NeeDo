@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
@@ -31,20 +32,25 @@ export function ImChatRecordCard({
   const contextScope = useImScope();
   const { language: contextLanguage } = useOptionalI18n();
   const location = useLocation();
+  const generatedOpenerId = useId();
   const scope = requestedScope ?? contextScope;
   const language = requestedLanguage ?? contextLanguage;
   const publicId = "bundlePublicId" in record ? record.bundlePublicId : record.publicId;
   const title = formatLocalizedImChatRecordTitle(record.senderNames, record.titleKind ?? deriveImChatRecordTitleKind(record.senderNames, record.senderCount), language);
-  const stableOpenerId = openerId ?? `chat-record-${publicId}`;
+  const viewLabel = translateText("查看聊天记录", language);
+  const ariaLabel = language === "en" || language === "ko" ? `${viewLabel}: ${title}` : `${viewLabel}：${title}`;
+  const stableOpenerId = openerId
+    ?? ("id" in record ? `im-chat-record-favorite-${record.id}` : `im-chat-record-opener-${generatedOpenerId}`);
 
   return (
     <Link
-      aria-label={`${translateText("查看", language)}${title}`}
+      aria-label={ariaLabel}
       className={cn(
         "group block w-full rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:var(--client-surface)] p-3.5 text-left text-[color:var(--client-text)] shadow-[0_10px_26px_rgba(0,0,0,0.08)] transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--client-primary)] motion-reduce:transform-none motion-reduce:transition-none",
         className,
       )}
       data-im-chat-record-opener={stableOpenerId}
+      id={stableOpenerId}
       state={{
         imChatRecordFallbackPath: `${location.pathname}${location.search}`,
         imChatRecordOpenerId: stableOpenerId,

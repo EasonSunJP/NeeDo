@@ -5708,6 +5708,7 @@ export function ImConversationRoomPage({
   };
 
   const openMessageMenu = (message: ConversationMessage) => {
+    if (message.type === "chat-record") return;
     setMessageMenuExpanded(false);
     setMenuState({ message });
     selectMessageText(message);
@@ -5883,6 +5884,7 @@ export function ImConversationRoomPage({
   };
 
   const createMessageActions = (message: ConversationMessage) => {
+    if (message.type === "chat-record") return { primaryActions: [], listActions: [] };
     const canRecall =
       getStandardRecallAvailability(message, store.currentUserId ?? "") !==
       "unavailable";
@@ -6167,6 +6169,34 @@ export function ImConversationRoomPage({
               const quotedSender = quoted ? store.usersById[quoted.senderId] : undefined;
               const quotedSenderName = getConversationMemberDisplayName(quotedSender);
               const quotedSenderAvatar = getConversationMemberAvatar(quotedSender);
+              const bubble = (
+                <MessageBubble
+                  avatar={senderAvatar}
+                  avatarTo={senderProfilePath}
+                  disappearingNow={hasRunningDisappearingCountdown ? disappearingNow : undefined}
+                  isMine={isMine}
+                  message={message}
+                  onOpenContact={(userId) => {
+                    if (hiddenMemberProfilesActive) return;
+                    const targetContact = store.contacts.find((item) => item.targetUserId === userId);
+                    const targetUser = store.usersById[userId];
+                    const targetProfilePath = resolveImProfilePath(scope, targetUser);
+                    if (targetProfilePath) { navigate(targetProfilePath); return; }
+                    if (targetContact) navigate(config.routes.contactDetail(targetContact.id));
+                  }}
+                  onPreviewMedia={openMediaPreview}
+                  quotedMessage={quoted}
+                  quotedSenderAvatar={quotedSenderAvatar}
+                  quotedSenderName={quotedSenderName}
+                  onToggleReaction={(reaction) => toggleMessageReaction(message, reaction, false)}
+                  reactions={getMessageReactionSummaries(message.id)}
+                  renderContactCard={renderContactCard}
+                  renderContactCardAction={renderContactCardAction}
+                  senderName={senderName}
+                  showSender={showSender}
+                  translation={messageTranslation}
+                />
+              );
 
               return (
                 <div
@@ -6178,43 +6208,7 @@ export function ImConversationRoomPage({
                     messageRefs.current[message.id] = element;
                   }}
                 >
-                  <MessagePressable onOpenMenu={() => openMessageMenu(message)}>
-                    <MessageBubble
-                      avatar={senderAvatar}
-                      avatarTo={senderProfilePath}
-                      disappearingNow={hasRunningDisappearingCountdown ? disappearingNow : undefined}
-                      isMine={isMine}
-                      message={message}
-                      onOpenContact={(userId) => {
-                        if (hiddenMemberProfilesActive) {
-                          return;
-                        }
-
-                        const targetContact = store.contacts.find((item) => item.targetUserId === userId);
-                        const targetUser = store.usersById[userId];
-                        const targetProfilePath = resolveImProfilePath(scope, targetUser);
-                        if (targetProfilePath) {
-                          navigate(targetProfilePath);
-                          return;
-                        }
-
-                        if (targetContact) {
-                          navigate(config.routes.contactDetail(targetContact.id));
-                        }
-                      }}
-                      onPreviewMedia={openMediaPreview}
-                      quotedMessage={quoted}
-                      quotedSenderAvatar={quotedSenderAvatar}
-                      quotedSenderName={quotedSenderName}
-                      onToggleReaction={(reaction) => toggleMessageReaction(message, reaction, false)}
-                      reactions={getMessageReactionSummaries(message.id)}
-                      renderContactCard={renderContactCard}
-                      renderContactCardAction={renderContactCardAction}
-                      senderName={senderName}
-                      showSender={showSender}
-                      translation={messageTranslation}
-                    />
-                  </MessagePressable>
+                  {message.type === "chat-record" ? bubble : <MessagePressable onOpenMenu={() => openMessageMenu(message)}>{bubble}</MessagePressable>}
                 </div>
               );
             })}

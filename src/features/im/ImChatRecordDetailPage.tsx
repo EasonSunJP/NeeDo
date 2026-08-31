@@ -12,6 +12,7 @@ import type {
 } from "./chat-records";
 import { deriveImChatRecordTitleKind, formatLocalizedImChatRecordTitle } from "./chat-records";
 import { MessageBubble } from "./components";
+import { restoreImChatRecordFocus } from "./chat-record-focus";
 import type { ConversationMessage, ImMessageType, ImRoleType } from "./model";
 import { getImRoleConfig } from "./role-config";
 
@@ -32,6 +33,19 @@ type RouteState = {
 const publicIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const checksumPattern = /^[0-9a-f]{64}$/u;
 
+function mergeSnapshotItems(older: ImChatRecordItem[], current: ImChatRecordItem[]) {
+  const ids = new Set<string>();
+  const positions = new Set<number>();
+  return [...older, ...current]
+    .sort((left, right) => left.position - right.position)
+    .filter((item) => {
+      if (ids.has(item.id) || positions.has(item.position)) return false;
+      ids.add(item.id);
+      positions.add(item.position);
+      return true;
+    });
+}
+
 function snapshotMedia(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const media = (value as { media?: unknown }).media;
@@ -49,7 +63,18 @@ function snapshotMedia(value: unknown) {
   return { checksumSha256, mimeType, size };
 }
 
-function toSnapshotMessage(item: ImChatRecordItem, mediaUrl?: string): ConversationMessage {
+function mediaMatchesSnapshot(media: ImChatRecordMedia, snapshot: NonNullable<ReturnType<typeof snapshotMedia>>) {
+  const contentType = media.contentType.split(";", 1)[0]?.trim().toLowerCase();
+  const blobType = media.blob.type.split(";", 1)[0]?.trim().toLowerCase();
+  const etag = media.etag?.trim().replace(/^W\//u, "").replace(/^"|"$/gu, "").toLowerCase();
+  return contentType === snapshot.mimeType.toLowerCase()
+    && blobType === snapshot.mimeType.toLowerCase()
+    && media.contentLength === snapshot.size
+    && media.blob.size === snapshot.size
+    && etag === snapshot.checksumSha256.toLowerCase();
+}
+
+function toSnapshotMessage(item: ImChatRecordItem, language: Language, mediaUrl?: string): ConversationMessage {
   const metadata = snapshotMedia(item.metadata);
   const type: ImMessageType = metadata?.mimeType.startsWith("image/")
     ? "image"
@@ -68,7 +93,7 @@ function toSnapshotMessage(item: ImChatRecordItem, mediaUrl?: string): Conversat
     status: "sent",
     sentAt: item.sentAt,
     clientSeq: item.position,
-    ext: mediaUrl ? { url: mediaUrl, fileName: translateText("聊天记录媒体", "zh") } : undefined,
+    ext: mediaUrl ? { url: mediaUrl, fileName: translateText("聊天记录媒体", language) } : undefined,
   };
 }
 
@@ -96,6 +121,7 @@ function ProtectedSnapshotMedia({
     setUrl(null);
     void api.getChatRecordMedia(publicId, metadata.checksumSha256).then((media) => {
       if (!active) return;
+      if (!mediaMatchesSnapshot(media, metadata)) throw new Error("error.im.chat_record_media_mismatch");
       objectUrl = URL.createObjectURL(media.blob);
       setUrl(objectUrl);
     }).catch(() => {
@@ -117,7 +143,7 @@ function ProtectedSnapshotMedia({
     </div>
   );
   if (!url) return <p className="px-3 text-xs font-bold text-[color:var(--client-muted)]">{translateText("正在读取媒体", language)}</p>;
-  return <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item, url)} readOnly senderName={item.senderDisplayName} showSender />;
+  return <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item, language, url)} readOnly senderName={item.senderDisplayName} showSender />;
 }
 
 function SnapshotTimelineItem({ api, item, publicId, language }: { api: ImChatRecordReadApi; item: ImChatRecordItem; publicId: string; language: Language }) {
@@ -128,7 +154,7 @@ function SnapshotTimelineItem({ api, item, publicId, language }: { api: ImChatRe
       <time className="mb-1 block px-3 text-[10px] font-bold text-[color:var(--client-muted)]" dateTime={item.sentAt}>
         {new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.sentAt))}
       </time>
-      {media ? <ProtectedSnapshotMedia api={api} item={item} language={language} publicId={publicId} /> : <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item)} readOnly senderName={item.senderDisplayName} showSender />}
+      {media ? <ProtectedSnapshotMedia api={api} item={item} language={language} publicId={publicId} /> : <MessageBubble avatar={item.senderAvatarUrl ?? undefined} isMine={false} message={toSnapshotMessage(item, language)} readOnly senderName={item.senderDisplayName} showSender />}
     </li>
   );
 }
@@ -146,12 +172,21 @@ export function ImChatRecordDetailPage({ api, scope = "user", language: requeste
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [loadingOlder, setLoadingOlder] = useState(false);
   const alive = useRef(true);
+  const requestGeneration = useRef(0);
+  const paginationRequest = useRef<string | null>(null);
 
   useEffect(() => {
     alive.current = true;
     return () => { alive.current = false; };
   }, []);
   useEffect(() => {
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
+    paginationRequest.current = null;
+    setSummary(null);
+    setItems([]);
+    setNextCursor(null);
+    setLoadingOlder(false);
     if (!publicIdPattern.test(publicId)) {
       setStatus("unavailable");
       return;
@@ -159,13 +194,13 @@ export function ImChatRecordDetailPage({ api, scope = "user", language: requeste
     let active = true;
     setStatus("loading");
     void Promise.all([api.getChatRecord(publicId), api.listChatRecordItems(publicId, { pageSize: 20 })]).then(([record, page]) => {
-      if (!active || !alive.current) return;
+      if (!active || !alive.current || requestGeneration.current !== generation) return;
       setSummary(record);
       setItems([...page.list].sort((left, right) => left.position - right.position));
       setNextCursor(page.nextCursor);
       setStatus("ready");
     }).catch(() => {
-      if (active && alive.current) setStatus("unavailable");
+      if (active && alive.current && requestGeneration.current === generation) setStatus("unavailable");
     });
     return () => { active = false; };
   }, [api, publicId]);
@@ -174,28 +209,34 @@ export function ImChatRecordDetailPage({ api, scope = "user", language: requeste
     const openerId = state.imChatRecordOpenerId;
     if (openerId) {
       navigate(-1);
-      window.setTimeout(() => {
-        const opener = Array.from(document.querySelectorAll<HTMLElement>("[data-im-chat-record-opener]")).find((element) => element.dataset.imChatRecordOpener === openerId);
-        opener?.focus();
-      }, 0);
+      restoreImChatRecordFocus(openerId);
       return;
     }
     navigate(state.imChatRecordFallbackPath ?? getImRoleConfig(scope).routes.messages, { replace: true });
+    restoreImChatRecordFocus();
   }, [navigate, scope, state.imChatRecordFallbackPath, state.imChatRecordOpenerId]);
 
   const loadOlder = useCallback(() => {
     if (nextCursor === null || loadingOlder) return;
+    const generation = requestGeneration.current;
+    const requestKey = `${generation}:${publicId}:${nextCursor}`;
+    if (paginationRequest.current === requestKey) return;
+    paginationRequest.current = requestKey;
     setLoadingOlder(true);
     void api.listChatRecordItems(publicId, { beforePosition: nextCursor, pageSize: 20 }).then((page) => {
-      if (!alive.current) return;
+      if (!alive.current || requestGeneration.current !== generation || paginationRequest.current !== requestKey) return;
       setItems((current) => {
-        const unique = new Map([...page.list, ...current].map((item) => [item.id, item]));
-        return [...unique.values()].sort((left, right) => left.position - right.position);
+        return mergeSnapshotItems(page.list, current);
       });
       setNextCursor(page.nextCursor);
     }).catch(() => {
       // Keep the cursor and button available so a read-only page can retry safely.
-    }).finally(() => { if (alive.current) setLoadingOlder(false); });
+    }).finally(() => {
+      if (alive.current && requestGeneration.current === generation && paginationRequest.current === requestKey) {
+        paginationRequest.current = null;
+        setLoadingOlder(false);
+      }
+    });
   }, [api, loadingOlder, nextCursor, publicId]);
 
   const title = useMemo(() => summary ? formatLocalizedImChatRecordTitle(summary.senderNames, summary.titleKind ?? deriveImChatRecordTitleKind(summary.senderNames, summary.senderCount), language) : translateText("聊天记录", language), [language, summary]);
@@ -205,6 +246,7 @@ export function ImChatRecordDetailPage({ api, scope = "user", language: requeste
       <MobileFullscreenHeader
         closeLabel={translateText("关闭聊天记录", language)}
         info={translateText("此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。", language)}
+        infoLabel={translateText("聊天记录说明", language)}
         onClose={close}
         title={title}
       />
@@ -215,7 +257,7 @@ export function ImChatRecordDetailPage({ api, scope = "user", language: requeste
           <>
             {nextCursor !== null ? <button className="mx-auto mb-4 block rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black text-[color:var(--client-primary)] focus-visible:outline focus-visible:outline-2" disabled={loadingOlder} onClick={loadOlder} type="button">{loadingOlder ? translateText("正在加载", language) : translateText("加载更早", language)}</button> : null}
             <ol className="im-chat-record-timeline ml-5 border-l border-[color:var(--client-line)] pl-4">
-              {items.map((item) => <SnapshotTimelineItem api={api} item={item} key={item.id} language={language} publicId={publicId} />)}
+              {items.map((item) => <SnapshotTimelineItem api={api} item={item} key={`${publicId}:${item.id}`} language={language} publicId={publicId} />)}
             </ol>
           </>
         ) : null}

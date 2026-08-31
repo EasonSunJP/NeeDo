@@ -4,7 +4,7 @@ import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { ImChatRecordCard } from "../../features/im/ImChatRecordCard";
 import type { ImChatRecordFavorite, ImChatRecordFavoritePage } from "../../features/im/chat-records";
-import { useImStore } from "../../features/im/store";
+import { useImStoreApi } from "../../features/im/store";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 
@@ -17,11 +17,15 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
   const { language: contextLanguage } = useOptionalI18n();
   const language = requestedLanguage ?? contextLanguage;
   const [page, setPage] = useState(1);
+  const [loadRevision, setLoadRevision] = useState(0);
   const [result, setResult] = useState<ImChatRecordFavoritePage | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [removingId, setRemovingId] = useState<string | null>(null);
-  const [removeErrorId, setRemoveErrorId] = useState<string | null>(null);
+  const [removingKey, setRemovingKey] = useState<string | null>(null);
+  const [removeErrorKey, setRemoveErrorKey] = useState<string | null>(null);
   const alive = useRef(true);
+  const loadGeneration = useRef(0);
+  const activePage = useRef(page);
+  const inflightRemovals = useRef(new Set<string>());
 
   useEffect(() => {
     alive.current = true;
@@ -29,33 +33,48 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
   }, []);
 
   useEffect(() => {
+    const generation = loadGeneration.current + 1;
+    loadGeneration.current = generation;
+    activePage.current = page;
     let active = true;
+    setResult(null);
+    setRemoveErrorKey(null);
+    setRemovingKey(null);
     setStatus("loading");
     void api.listChatRecordFavorites({ page, pageSize: 20 }).then((next) => {
-      if (!active) return;
+      if (!active || !alive.current || loadGeneration.current !== generation || activePage.current !== page) return;
       setResult(next);
       setStatus("ready");
     }).catch(() => {
-      if (active) setStatus("error");
+      if (active && alive.current && loadGeneration.current === generation && activePage.current === page) setStatus("error");
     });
     return () => { active = false; };
-  }, [api, page]);
+  }, [api, loadRevision, page]);
 
   const remove = (favorite: ImChatRecordFavorite) => {
-    if (removingId) return;
-    setRemovingId(favorite.id);
-    setRemoveErrorId(null);
+    const originPage = page;
+    const generation = loadGeneration.current;
+    const operationKey = `${originPage}:${favorite.id}`;
+    if (inflightRemovals.current.has(operationKey)) return;
+    inflightRemovals.current.add(operationKey);
+    setRemovingKey(operationKey);
+    setRemoveErrorKey(null);
     void api.removeChatRecordFavorite(favorite.id).then(() => {
-      if (!alive.current) return;
-      setResult((current) => current ? {
-        ...current,
-        list: current.list.filter((item) => item.id !== favorite.id),
-        total: Math.max(0, current.total - 1),
-      } : current);
+      if (!alive.current || activePage.current !== originPage || loadGeneration.current !== generation) return;
+      setResult((current) => {
+        if (!current || current.page !== originPage) return current;
+        const list = current.list.filter((item) => item.id !== favorite.id);
+        if (list.length === 0 && originPage > 1) {
+          setPage(originPage - 1);
+          return null;
+        }
+        return { ...current, list, total: Math.max(0, current.total - 1) };
+      });
     }).catch(() => {
-      if (alive.current) setRemoveErrorId(favorite.id);
+      if (alive.current && activePage.current === originPage && loadGeneration.current === generation) setRemoveErrorKey(operationKey);
     }).finally(() => {
-      if (alive.current) setRemovingId(null);
+      inflightRemovals.current.delete(operationKey);
+      if (alive.current && activePage.current === originPage) setRemovingKey((current) => current === operationKey ? null : current);
     });
   };
 
@@ -72,7 +91,7 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
       </header>
 
       {status === "loading" ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText("正在读取收藏", language)}</p> : null}
-      {status === "error" ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText("收藏读取失败", language)}</p> : null}
+      {status === "error" ? <div className="py-10 text-center"><p className="text-sm font-bold text-[color:var(--client-muted)]">{translateText("收藏读取失败", language)}</p><button className="mt-3 rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black text-[color:var(--client-primary)]" onClick={() => setLoadRevision((value) => value + 1)} type="button">{translateText("重试", language)}</button></div> : null}
       {status === "ready" && result?.list.length === 0 ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText("暂无收藏的聊天记录", language)}</p> : null}
 
       <ul className="space-y-3">
@@ -80,9 +99,9 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
           <li className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] p-1.5" key={favorite.id}>
             <ImChatRecordCard language={language} openerId={`favorite-${favorite.id}`} record={favorite} />
             <div className="flex items-center justify-end gap-3 px-2 pb-1 pt-2">
-              {removeErrorId === favorite.id ? <span className="text-[11px] font-bold text-[color:var(--client-danger,#d84b4b)]" role="alert">{translateText("移除失败", language)}</span> : null}
-              <button className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--client-primary)]" disabled={removingId === favorite.id} onClick={() => remove(favorite)} type="button">
-                {removingId === favorite.id ? translateText("正在移除", language) : translateText("移除收藏", language)}
+              {removeErrorKey === `${page}:${favorite.id}` ? <span className="text-[11px] font-bold text-[color:var(--client-danger,#d84b4b)]" role="alert">{translateText("移除失败", language)}</span> : null}
+              <button className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--client-primary)]" disabled={removingKey === `${page}:${favorite.id}`} onClick={() => remove(favorite)} type="button">
+                {removingKey === `${page}:${favorite.id}` ? translateText("正在移除", language) : translateText("移除收藏", language)}
               </button>
             </div>
           </li>
@@ -101,6 +120,6 @@ export function UserFavoritesPage({ api, language: requestedLanguage }: { api: U
 }
 
 export function UserFavoritesRoutePage() {
-  const store = useImStore("user");
-  return <MobileShell><UserFavoritesPage api={store} /></MobileShell>;
+  const api = useImStoreApi("user");
+  return <MobileShell><UserFavoritesPage api={api} /></MobileShell>;
 }
