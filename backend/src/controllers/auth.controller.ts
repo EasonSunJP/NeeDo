@@ -12,7 +12,8 @@ import type {
   RefreshBody,
   RegisterBody,
   RegisterVerifyBody,
-  SwitchIdentityBody
+  SwitchIdentityBody,
+  SwitchMerchantShopBody
 } from "../validators/auth.validator";
 
 type BodyRequest<TBody> = Request<Record<string, string>, unknown, TBody>;
@@ -328,6 +329,29 @@ export class AuthController {
               this.getAuthenticatedAccess(response),
               request.body.refreshToken,
               request.body.identityId,
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public switchMerchantShop = async (
+    request: BodyRequest<SwitchMerchantShopBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.switchMerchantShop(
+              this.getAuthenticatedAccess(response),
+              request.body.refreshToken,
+              request.body.shopPublicId,
               this.getContext(request)
             )
           )

@@ -3,6 +3,7 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { checkRedisHealth, createRedisClient, disconnectRedis } from "./config/redis";
 import { disconnectPrisma } from "./prisma/client";
+import { createMerchantShopAuditCompletionRuntime } from "./prisma/merchant-shop-audit-completion.runtime";
 import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.repository";
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
@@ -23,6 +24,8 @@ import { FriendRequestExpiryService } from "./services/friend-request-expiry.ser
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
+import { RedisAuthSessionStore } from "./services/auth-session.store";
+import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-outbox.service";
 import { ExchangeService } from "./services/exchange.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
@@ -37,6 +40,7 @@ import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
+import { MerchantShopAuditOutboxWorker } from "./workers/merchant-shop-audit-outbox.worker";
 
 const realtimeEventGateway = new SseRealtimeEventGateway({
   eventBus: new RedisRealtimeEventBus({
@@ -56,10 +60,71 @@ const exchangeService = new ExchangeService(
   undefined,
   new PersonalIdentityScopeService(new AuthRepository())
 );
+const authRepository = new AuthRepository();
+const authSessionStore = new RedisAuthSessionStore(undefined, {
+  onSecurityEvent: (event) => {
+    logger.error(event, "Merchant shop switch receipt post-state mismatch");
+  }
+});
+const merchantShopAuditOutboxWorker = new MerchantShopAuditOutboxWorker(
+  () => {
+    const redisClient = createRedisClient(env, {
+      disableOfflineQueue: true,
+      commandsQueueMaxLength: 100
+    });
+    redisClient.on("error", (error) => {
+      logger.error({ error }, "Merchant shop audit outbox Redis connection error");
+    });
+    const sessionStore = new RedisAuthSessionStore(() => redisClient, {
+      onSecurityEvent: (event) => {
+        logger.error(event, "Merchant shop audit outbox receipt post-state mismatch");
+      }
+    });
+    const completionRuntime = createMerchantShopAuditCompletionRuntime(env, {
+      socketTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_DRAIN_TIMEOUT_MS,
+      onDisconnectError: (error) => {
+        logger.error({ error }, "Merchant shop audit completion database disconnect failed");
+      }
+    });
+    return {
+      service: new MerchantShopAuditOutboxService(completionRuntime.repository, sessionStore),
+      destroy: async () => {
+        let redisError: unknown;
+        try {
+          if (redisClient.isOpen) redisClient.destroy();
+        } catch (error) {
+          redisError = error;
+        }
+        try {
+          await completionRuntime.destroy();
+        } catch (databaseError) {
+          if (redisError) {
+            throw new AggregateError(
+              [redisError, databaseError],
+              "Merchant shop audit worker runtime shutdown failed"
+            );
+          }
+          throw databaseError;
+        }
+        if (redisError) throw redisError;
+      }
+    };
+  },
+  logger,
+  env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_INTERVAL_MS,
+  1_000,
+  {
+    drainTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_DRAIN_TIMEOUT_MS,
+    shutdownTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_SHUTDOWN_TIMEOUT_MS
+  }
+);
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
-  exchangeService
+  exchangeService,
+  authRepository,
+  authSessionStore,
+  merchantShopAuditOutboxTrigger: merchantShopAuditOutboxWorker
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
   new IdentityApplicationPurgeService(
@@ -150,6 +215,7 @@ const server = app.listen(env.PORT, () => {
   affiliateAllianceInvitationExpiryWorker.start();
   contentPublicationWorker.start();
   imPrivacyExpiryWorker.start();
+  merchantShopAuditOutboxWorker.start();
 });
 
 const shutdown = createShutdownHandler({
@@ -159,7 +225,9 @@ const shutdown = createShutdownHandler({
   },
   exit: (code) => process.exit(code),
   logger,
-  stopWorker: () => {
+  forceStopWorker: () => merchantShopAuditOutboxWorker.forceDestroy(),
+  workerStopTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_SHUTDOWN_TIMEOUT_MS,
+  stopWorker: async () => {
     void realtimeEventGateway.close().catch((error) => {
       logger.error({ error }, "Realtime gateway shutdown failed");
     });
@@ -171,6 +239,7 @@ const shutdown = createShutdownHandler({
     friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
+    await merchantShopAuditOutboxWorker.stop();
   }
 });
 

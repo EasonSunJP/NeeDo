@@ -22,6 +22,7 @@ const baseMe = {
   username: "Admin",
   avatarUrl: null,
   isActive: true,
+  isTestAccount: false,
   currentIdentity: {
     id: 1,
     publicId: "needo0000000001",
@@ -40,13 +41,15 @@ const baseMe = {
   ],
   roles: ["admin"],
   permissions: ["page:dashboard", "page:user-management", "button:user:create"],
-  menus: ["menu:dashboard", "menu:user-management"]
+  menus: ["menu:dashboard", "menu:user-management"],
+  identityAvailability: []
 } satisfies AuthMePayload;
 
 describe("frontend RBAC session helpers", () => {
   it("keeps an organization O identity inside the merchant portal", () => {
     const organizationIdentity = {
       id: 9,
+      publicId: "o0000000009",
       type: "merchant_organization",
       scopeType: "merchant_account",
       scopeId: 4
@@ -70,7 +73,7 @@ describe("frontend RBAC session helpers", () => {
         ...baseMe,
         identities: [
           ...baseMe.identities,
-          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }
         ],
         roles: ["admin", "customer"],
         permissions: [...baseMe.permissions, "page:client-app"],
@@ -91,7 +94,7 @@ describe("frontend RBAC session helpers", () => {
         ...baseMe,
         identities: [
           ...baseMe.identities,
-          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }
         ],
         roles: ["admin", "customer"],
         permissions: [...baseMe.permissions, "page:client-app"],
@@ -109,11 +112,11 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 3 },
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 3 },
         identities: [
-          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 3 },
-          { id: 3, type: "merchant_owner", scopeType: "store", scopeId: 2 },
-          { id: 4, type: "technician", scopeType: "technician_profile", scopeId: 4 }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 3 },
+          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 2 },
+          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 4 }
         ],
         roles: ["customer", "merchant_owner", "technician"],
         permissions: ["page:client-app", "page:merchant-app", "page:technician-app"],
@@ -132,8 +135,8 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
-        identities: [{ id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }],
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        identities: [{ id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }],
         roles: ["customer"],
         permissions: ["page:client-app"],
         menus: ["menu:client-app"]
@@ -153,8 +156,8 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
-        identities: [{ id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }],
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        identities: [{ id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }],
         roles: ["customer"],
         permissions: ["page:client-app"],
         menus: ["menu:client-app"]
@@ -189,36 +192,16 @@ describe("frontend RBAC session helpers", () => {
     expect(session.identityAvailability).toEqual(identityAvailability);
   });
 
-  it("derives active availability for legacy payloads without inventing extra permissions", () => {
-    const session = buildAuthSessionFromMe(
-      {
-        ...baseMe,
-        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
-        identities: [{ id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }],
-        roles: ["customer"]
-      },
-      "user",
-      "password"
-    );
-
-    expect(session.identityAvailability).toEqual([
-      { kind: "customer", state: "active", identityId: 2, applicationId: null, rejectionReason: null },
-      { kind: "technician", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null },
-      { kind: "merchant", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null },
-      { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
-    ]);
-  });
-
   it("keeps the shared legacy test account on user by default while allowing merchant, technician, and Afirieito switches", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
         identities: [
-          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
-          { id: 3, type: "merchant_owner", scopeType: "store", scopeId: 20 },
-          { id: 4, type: "technician", scopeType: "technician_profile", scopeId: 30 },
-          { id: 5, type: "scout", scopeType: "global", scopeId: null }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
+          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 20 },
+          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 30 },
+          { id: 5, publicId: null, type: "scout", scopeType: "global", scopeId: null }
         ],
         roles: ["customer", "merchant_owner", "technician", "scout"],
         permissions: ["page:client-app", "page:merchant-app", "page:technician-app", "page:business-app"],
@@ -239,12 +222,12 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
         identities: [
-          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
-          { id: 3, type: "merchant_owner", scopeType: "store", scopeId: 20 },
-          { id: 4, type: "technician", scopeType: "technician_profile", scopeId: 30 },
-          { id: 5, type: "scout", scopeType: "global", scopeId: null }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
+          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 20 },
+          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 30 },
+          { id: 5, publicId: null, type: "scout", scopeType: "global", scopeId: null }
         ],
         roles: ["customer", "merchant_owner", "technician", "scout"],
         permissions: ["page:client-app", "page:merchant-app", "page:technician-app", "page:business-app"],
@@ -268,8 +251,8 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, type: "scout", scopeType: "global", scopeId: null },
-        identities: [{ id: 2, type: "scout", scopeType: "global", scopeId: null }],
+        currentIdentity: { id: 2, publicId: null, type: "scout", scopeType: "global", scopeId: null },
+        identities: [{ id: 2, publicId: null, type: "scout", scopeType: "global", scopeId: null }],
         roles: ["scout"],
         permissions: ["page:dashboard"],
         menus: ["menu:dashboard"]

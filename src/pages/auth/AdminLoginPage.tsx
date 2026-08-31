@@ -555,6 +555,12 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     setCodeSent(true);
   };
 
+  const handleLogout = async () => {
+    setError("");
+    const result = await logout();
+    if (!result.ok) setError(result.message ?? copy.accountError);
+  };
+
   return (
     <div
       className={cn(
@@ -614,7 +620,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       <button className="admin-login-primary px-5 text-base" onClick={() => void enterExistingBackendSession()} type="button">
                         {copy.continue}
                       </button>
-                      <button className="admin-login-secondary px-5 text-base" onClick={logout} type="button">
+                      <button className="admin-login-secondary px-5 text-base" onClick={() => void handleLogout()} type="button">
                         {copy.logout}
                       </button>
                     </div>

@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  DASHBOARD_PERIODS,
+  MAX_DASHBOARD_CUSTOM_RANGE_DAYS,
+  type DashboardPeriod
+} from "../domain/dashboard-period";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -6,6 +11,15 @@ const paginationQuerySchema = {
 };
 
 const isoDateSchema = z.coerce.date();
+
+export const manageableMerchantShopsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(100).default(20)
+  })
+  .strict();
+
+export type ManageableMerchantShopsQuery = z.infer<typeof manageableMerchantShopsQuerySchema>;
 
 export const backofficeListQuerySchema = z.object({
   ...paginationQuerySchema,
@@ -17,14 +31,25 @@ export const backofficeListQuerySchema = z.object({
   categoryId: z.coerce.number().int().positive().optional()
 });
 
-export const backofficeTimelineQuerySchema = z
+export const merchantAdminListQuerySchema = z
   .object({
-    page: z.coerce.number().int().positive().default(1),
-    pageSize: z.coerce.number().int().positive().max(100).default(10),
+    ...paginationQuerySchema,
+    keyword: z.string().trim().max(100).optional(),
+    status: z.string().trim().max(80).optional(),
+    from: isoDateSchema.optional(),
+    to: isoDateSchema.optional(),
+    categoryId: z.coerce.number().int().positive().optional()
   })
   .strict();
 
-const calendarDateSchema = z
+export const backofficeTimelineQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(10)
+  })
+  .strict();
+
+export const calendarDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((value) => {
@@ -53,6 +78,65 @@ const technicianRankingPeriodSchema = z.enum([
 ]);
 const technicianRankingSortSchema = z.enum(["revenue", "completedOrders", "workingDays"]);
 
+const dashboardPeriodSchema = z.enum(DASHBOARD_PERIODS);
+
+const dashboardQueryBaseSchema = z
+  .object({
+    period: dashboardPeriodSchema.default("last7days"),
+    from: calendarDateSchema.optional(),
+    to: calendarDateSchema.optional(),
+    city: z.string().trim().min(1).max(100).optional()
+  })
+  .strict();
+
+const refineDashboardQuery = (
+  value: { period: DashboardPeriod; from?: string; to?: string },
+  context: z.RefinementCtx
+) => {
+  const hasBoundaries = Boolean(value.from || value.to);
+  if (value.period === "custom" && (!value.from || !value.to)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [!value.from ? "from" : "to"],
+      message: "custom period requires from and to"
+    });
+  }
+  if (value.period !== "custom" && hasBoundaries) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [value.from ? "from" : "to"],
+      message: "date boundaries require custom period"
+    });
+  }
+  if (value.period === "custom" && value.from && value.to) {
+    const inclusiveDays =
+      Math.floor(
+        (Date.parse(`${value.to}T00:00:00.000Z`) - Date.parse(`${value.from}T00:00:00.000Z`)) /
+          86_400_000
+      ) + 1;
+    if (inclusiveDays < 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["to"],
+        message: "to must not be before from"
+      });
+    }
+    if (inclusiveDays > MAX_DASHBOARD_CUSTOM_RANGE_DAYS) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["to"],
+        message: `custom period must not exceed ${MAX_DASHBOARD_CUSTOM_RANGE_DAYS} days`
+      });
+    }
+  }
+};
+
+export const backofficeDashboardQuerySchema =
+  dashboardQueryBaseSchema.superRefine(refineDashboardQuery);
+export const merchantDashboardQuerySchema = dashboardQueryBaseSchema
+  .omit({ city: true })
+  .superRefine(refineDashboardQuery);
+
 export const technicianRankingQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
@@ -70,7 +154,11 @@ export const technicianRankingQuerySchema = z
   .superRefine((value, context) => {
     if (value.period === "custom") {
       if (!value.from) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["from"], message: "from is required" });
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["from"],
+          message: "from is required"
+        });
       }
       if (!value.to) {
         context.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "to is required" });
@@ -91,8 +179,16 @@ export const technicianRankingQuerySchema = z
     }
   });
 
-const emailSchema = z.string().trim().email().max(255).transform((email) => email.toLowerCase());
-const passwordSchema = z.string().min(8).max(128)
+const emailSchema = z
+  .string()
+  .trim()
+  .email()
+  .max(255)
+  .transform((email) => email.toLowerCase());
+const passwordSchema = z
+  .string()
+  .min(8)
+  .max(128)
   .regex(/[a-z]/, "password must include a lowercase letter")
   .regex(/[A-Z]/, "password must include an uppercase letter")
   .regex(/[0-9]/, "password must include a number")
@@ -131,58 +227,68 @@ const merchantShopUpdateFields = {
     .optional()
 };
 
-export const backofficeShopUpdateBodySchema = z.object({
-  ...merchantShopUpdateFields,
-  isRecommended: z.boolean().optional()
-}).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+export const backofficeShopUpdateBodySchema = z
+  .object({
+    ...merchantShopUpdateFields,
+    isRecommended: z.boolean().optional()
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
-export const merchantShopUpdateBodySchema = z.object(merchantShopUpdateFields)
+export const merchantShopUpdateBodySchema = z
+  .object(merchantShopUpdateFields)
   .strict()
   .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
-export const backofficeTechnicianUpdateBodySchema = z.object({
-  displayName: z.string().trim().min(1).max(120).optional(),
-  city: z.string().trim().min(1).max(100).optional(),
-  serviceArea: z.string().trim().max(255).nullable().optional(),
-  shopId: z.number().int().positive().nullable().optional(),
-  employmentType: z.enum(["independent", "full_time", "temporary"]).optional(),
-  employmentStartedAt: z.string().datetime().nullable().optional(),
-  isRecommended: z.boolean().optional()
-}).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+export const backofficeTechnicianUpdateBodySchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120).optional(),
+    city: z.string().trim().min(1).max(100).optional(),
+    serviceArea: z.string().trim().max(255).nullable().optional(),
+    shopId: z.number().int().positive().nullable().optional(),
+    employmentType: z.enum(["independent", "full_time", "temporary"]).optional(),
+    employmentStartedAt: z.string().datetime().nullable().optional(),
+    isRecommended: z.boolean().optional()
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export const backofficeTechnicianApproveBodySchema = z.object({
   shopId: z.number().int().positive().optional()
 });
 
-export const backofficeCustomerUpdateBodySchema = z.object({
-  displayName: z.string().trim().min(1).max(120).optional(),
-  bio: z.string().trim().max(5000).nullable().optional(),
-  city: z.string().trim().max(100).nullable().optional(),
-  isPublic: z.boolean().optional()
-}).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+export const backofficeCustomerUpdateBodySchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120).optional(),
+    bio: z.string().trim().max(5000).nullable().optional(),
+    city: z.string().trim().max(100).nullable().optional(),
+    isPublic: z.boolean().optional()
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
-export const backofficeCustomerMembershipGrantBodySchema = z.object({
-  membershipLevel: z.string().trim().min(1).max(50),
-  grantMode: z.literal("operator_complimentary"),
-  durationUnit: z.enum(["forever", "day", "month"]),
-  durationValue: z.number().int().positive().max(1200).nullable(),
-  startsAt: z.string().datetime({ offset: true })
-}).strict().superRefine((value, context) => {
-  if (value.durationUnit === "forever" && value.durationValue !== null) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Forever membership must not define a duration value",
-      path: ["durationValue"]
-    });
-  }
-  if (value.durationUnit !== "forever" && value.durationValue === null) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Timed membership requires a duration value",
-      path: ["durationValue"]
-    });
-  }
-});
+export const backofficeCustomerMembershipGrantBodySchema = z
+  .object({
+    membershipLevel: z.string().trim().min(1).max(50),
+    grantMode: z.literal("operator_complimentary"),
+    durationUnit: z.enum(["forever", "day", "month"]),
+    durationValue: z.number().int().positive().max(1200).nullable(),
+    startsAt: z.string().datetime({ offset: true })
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.durationUnit === "forever" && value.durationValue !== null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Forever membership must not define a duration value",
+        path: ["durationValue"]
+      });
+    }
+    if (value.durationUnit !== "forever" && value.durationValue === null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Timed membership requires a duration value",
+        path: ["durationValue"]
+      });
+    }
+  });
 
 const serviceFields = {
   categoryId: z.number().int().positive(),
@@ -199,22 +305,26 @@ const serviceFields = {
 };
 
 export const backofficeServiceCreateBodySchema = z.object(serviceFields);
-export const backofficeServiceUpdateBodySchema = z.object({
-  categoryId: serviceFields.categoryId.optional(),
-  technicianProfileId: serviceFields.technicianProfileId,
-  name: serviceFields.name.optional(),
-  description: serviceFields.description,
-  city: serviceFields.city.optional(),
-  serviceMode: serviceFields.serviceMode.optional(),
-  priceAmount: serviceFields.priceAmount.optional(),
-  durationMinutes: serviceFields.durationMinutes.optional(),
-  status: serviceFields.status,
-  isRecommended: serviceFields.isRecommended,
-  sortOrder: serviceFields.sortOrder
-}).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+export const backofficeServiceUpdateBodySchema = z
+  .object({
+    categoryId: serviceFields.categoryId.optional(),
+    technicianProfileId: serviceFields.technicianProfileId,
+    name: serviceFields.name.optional(),
+    description: serviceFields.description,
+    city: serviceFields.city.optional(),
+    serviceMode: serviceFields.serviceMode.optional(),
+    priceAmount: serviceFields.priceAmount.optional(),
+    durationMinutes: serviceFields.durationMinutes.optional(),
+    status: serviceFields.status,
+    isRecommended: serviceFields.isRecommended,
+    sortOrder: serviceFields.sortOrder
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
 export type BackofficeNdpSummaryQuery = z.infer<typeof backofficeNdpSummaryQuerySchema>;
+export type BackofficeDashboardQuery = z.infer<typeof backofficeDashboardQuerySchema>;
+export type MerchantDashboardQuery = z.infer<typeof merchantDashboardQuerySchema>;
 export type BackofficeTimelineQuery = z.infer<typeof backofficeTimelineQuerySchema>;
 export type TechnicianRankingPeriod = z.infer<typeof technicianRankingPeriodSchema>;
 export type TechnicianRankingSort = z.infer<typeof technicianRankingSortSchema>;
@@ -226,6 +336,8 @@ export type MerchantShopUpdateBody = z.infer<typeof merchantShopUpdateBodySchema
 export type BackofficeTechnicianUpdateBody = z.infer<typeof backofficeTechnicianUpdateBodySchema>;
 export type BackofficeTechnicianApproveBody = z.infer<typeof backofficeTechnicianApproveBodySchema>;
 export type BackofficeCustomerUpdateBody = z.infer<typeof backofficeCustomerUpdateBodySchema>;
-export type BackofficeCustomerMembershipGrantBody = z.infer<typeof backofficeCustomerMembershipGrantBodySchema>;
+export type BackofficeCustomerMembershipGrantBody = z.infer<
+  typeof backofficeCustomerMembershipGrantBodySchema
+>;
 export type BackofficeServiceCreateBody = z.infer<typeof backofficeServiceCreateBodySchema>;
 export type BackofficeServiceUpdateBody = z.infer<typeof backofficeServiceUpdateBodySchema>;

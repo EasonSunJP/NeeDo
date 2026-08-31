@@ -10,6 +10,7 @@ import { AUTH_ROUTE_PERMISSIONS } from "../src/routes/auth.routes";
 import { AuthTokenService } from "../src/services/auth-token.service";
 
 const accountSecurityPermissions = [
+  "auth:me:read",
   "auth:google:read",
   "auth:google:link",
   "auth:google:unlink",
@@ -175,6 +176,7 @@ describe("formal Auth account-security permissions", () => {
     expect(AUTH_ROUTE_PERMISSIONS).toEqual({
       logout: "auth:logout",
       me: "auth:me",
+      merchantShopSwitch: "auth:me:read",
       googleRead: "auth:google:read",
       googleLink: "auth:google:link",
       googleUnlink: "auth:google:unlink",

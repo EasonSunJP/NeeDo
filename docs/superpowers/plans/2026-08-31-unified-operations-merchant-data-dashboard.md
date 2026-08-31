@@ -949,11 +949,11 @@ git commit -m "feat(merchant): unify scoped data dashboard"
 **Interfaces:**
 - Formal local frontend `5180`, backend `3000`, MySQL `3307`, Redis `6379`.
 
-- [ ] **Step 1: Update formal documentation**
+- [x] **Step 1: Update formal documentation**
 
 Document exact query parameters, named response fields, metric formulas, Tokyo boundaries, city exceptions, member `null` contract, shop-list/switch endpoints, token rotation, RBAC, audit actions, deleted routes, and the fact that no schema migration was added.
 
-- [ ] **Step 2: Run the full static and automated gates**
+- [x] **Step 2: Run the full static and automated gates**
 
 Run from the root:
 
@@ -975,7 +975,9 @@ npx prisma validate
 
 Expected: all PASS. If the formal build safety gate refuses ordinary build, retain `verify:production-build` as the authoritative frontend build command.
 
-- [ ] **Step 3: Prove the route and mock retirement boundary**
+Evidence (2026-08-31, isolated worktree): root `npm test` passed 261 files / 1,737 tests after the browser-discovered recovery fixes; root `npm run lint` passed; `npm run i18n:audit` and `npm run i18n:quality` exited successfully, with the quality audit loading 14,488 entries and reporting zero missing entries for `zh-Hant`, `ja`, `en`, and `ko`; `npm run verify:production-build` passed 501 transformed modules plus the production bundle audit for 8 HTML entries / 24 assets. Backend `npm test -- --runInBand` passed 340 suites / 2,315 tests with 11 suites / 47 tests skipped and zero failures; backend lint, TypeScript build, and `npx prisma validate` passed. The root package does not define `check:i18n`, so the two repository-defined i18n audit commands above were used instead.
+
+- [x] **Step 3: Prove the route and mock retirement boundary**
 
 Run:
 
@@ -986,21 +988,41 @@ rg -n 'formalRuntimeFallbacks|../../data/mock|entityStore|localStorage' src/page
 
 Expected: no reachable old Dashboard route/payload/mock references. References in migration history or this plan are informational and do not count as production consumers.
 
-- [ ] **Step 4: Start and identify the formal runtime**
+Evidence: production source has no old analytics page import/route, no old Dashboard payload consumer, and no Dashboard mock/local business state. Remaining `rg` hits are negative test assertions or historical translation records; the browser also proved that the old hash routes no longer mount either Dashboard or legacy analytics content.
+
+- [x] **Step 4: Start and identify the formal runtime**
 
 Check port ownership before acceptance. Start `cd backend && npm run dev` and root frontend on `5180`; verify `3000`, `5180`, `3307`, `6379`, `/api/v1/health`, `/api/v1/ready`, frontend HTTP 200, and that port `5180` belongs to this checkout.
 
-- [ ] **Step 5: Browser-accept the operations Dashboard**
+Evidence: an old main-checkout backend/frontend pair was identified by cwd and stopped before acceptance. The isolated backend listened on `3000` as PID 79029 with cwd ending in `.worktrees/unified-data-dashboard/backend`; after the final HMR-safe restart, Vite listened on `5180` as PID 86898 with the isolated worktree root cwd. MySQL `3307` and Redis `6379` were listening. `/api/v1/health` returned `status=ok` with Redis healthy; `/api/v1/ready` returned `status=ready` with database and Redis healthy; the frontend returned HTTP 200. A served-module check after restart proved the loading-only shop-switch blocker predicate was the committed code.
+
+- [x] **Step 5: Browser-accept the operations Dashboard**
 
 With a formal operations test account, verify desktop and narrow widths, light/dark themes, all preset ranges, valid/invalid custom ranges, city apply/reset, all five cards, all three charts, formal/Test NDP labels, city-independent notices, zero/empty data, retry, console, failed network calls, focus visibility, and horizontal overflow.
 
-- [ ] **Step 6: Browser-accept the merchant Dashboard**
+Evidence: credential-safe headless Chrome logged in as `admin@lifedance.com` and completed 32 functional checks at `1440×1000` light and `390×844` narrow. All five headline cards, three requested charts, three NDP cards, formal/Test NDP treatment, city-global notices, six preset periods, valid custom HTTP 200, invalid custom HTTP 400 plus visible recovery state, city apply/reset, injected failure plus retry, old-route retirement, keyboard focus, and `body/document` horizontal overflow `0/0` passed. Screenshots: `/private/tmp/unified-dashboard-operations-desktop.png` and `/private/tmp/unified-dashboard-operations-narrow.png`.
+
+- [x] **Step 6: Browser-accept the merchant Dashboard**
 
 With formal single-shop and merchant-account test identities, verify hidden/visible switch button, list contents, keyboard/Escape behavior, Shop A → Shop B token rotation, all merchant pages following Shop B, old Shop A response protection, billing labels, current wallet state, member unavailable state plus completed users, profit, schedule bars, NDP cost split, frozen NDP, empty/error states, console, network, and overflow.
 
-- [ ] **Step 7: Verify repository state and commit docs**
+Evidence: credential-safe headless Chrome logged in as `merchant@example.com` and completed 39 functional checks at `1440×1000` dark and `390×844` narrow after waiting for the real splash lifecycle. Store identity, trial billing, wallet-not-opened state, four cards, `会员数 —` plus real `利用者数`, three charts and all three schedule legends, NDP cost split, frozen NDP, six periods, valid/invalid custom ranges, reset, injected two-attempt failure plus retry, keyboard focus, old-route retirement, and horizontal overflow `0/0` passed. The formal identity exposes only one manageable shop, so the switch control was correctly hidden and Shop A → Shop B could not be browser-proven without inventing data; pagination, selection, token rotation, stale-response protection, and cross-page scope remain covered by automated tests. Screenshots: `/private/tmp/unified-dashboard-merchant-desktop.png` and `/private/tmp/unified-dashboard-merchant-narrow.png`.
+
+Both browser runs had zero unexplained failed Dashboard/network requests after excluding the deliberately induced 400/network failures and navigation-aborted manageable-shop/SSE reads. Console cleanliness is blocked only by the same five pre-existing published-content object misses, not Dashboard requests:
+
+- `/media/content/9d08216f3aa15c92710b7a1181be34a7277d5287a9fb0c777bc862e35807ae19.png`
+- `/media/content/be4b1ac6ce1e90460ebd7fa712fdada0c67acafa471c8d4761421626c4f141d2.jpg`
+- `/media/content/4399dcc5b43a9b9ad25c5e16cb1dfa003bbc9cbbba0598d0d3e03780778a7e8a.jpg`
+- `/media/content/3ce398d5ce4c4431f31cbb280d55c90c5289e64177365cbea16026ed5232535f.jpg`
+- `/media/content/b8ae0071e9cfb4635ca98744249d6ca93b2dc62e91a49f86388e085583e22a4b.png`
+
+Restoring those objects or correcting their published records is an existing content-data/object-storage task and was not performed because this task does not authorize business-data mutation.
+
+- [x] **Step 7: Verify repository state and commit docs**
 
 Run `git diff --check`, inspect `git status --short`, and confirm no unrelated user file is staged. Record exact test/build/browser evidence in this plan without describing local work as pushed, deployed, or online-accepted.
+
+Evidence: `git diff --check` passed; only the requested Dashboard documentation remained for the final documentation commit. All evidence above is local to the isolated branch; nothing was pushed, deployed, merged, or accepted online.
 
 Commit:
 

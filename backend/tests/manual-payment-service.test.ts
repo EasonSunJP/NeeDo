@@ -216,7 +216,7 @@ describe("BookingService manual payment", () => {
       )
     ).rejects.toMatchObject({
       code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.auth.identity_forbidden"
+      message: "error.identity.forbidden"
     });
     expect(bookingRepository.confirmManualPayment).not.toHaveBeenCalled();
   });

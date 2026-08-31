@@ -99,6 +99,13 @@ export const switchIdentityBodySchema = z
   })
   .strict();
 
+export const switchMerchantShopBodySchema = z
+  .object({
+    refreshToken: z.string().min(1).max(8192),
+    shopPublicId: z.string().regex(/^shop\d{10}$/)
+  })
+  .strict();
+
 export const logoutBodySchema = z
   .object({
     refreshToken: z.string().min(1).max(8192)
@@ -114,4 +121,5 @@ export type GoogleCredentialBody = z.infer<typeof googleCredentialBodySchema>;
 export type PasswordSetupBody = z.infer<typeof passwordSetupBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
 export type SwitchIdentityBody = z.infer<typeof switchIdentityBodySchema>;
+export type SwitchMerchantShopBody = z.infer<typeof switchMerchantShopBodySchema>;
 export type LogoutBody = z.infer<typeof logoutBodySchema>;

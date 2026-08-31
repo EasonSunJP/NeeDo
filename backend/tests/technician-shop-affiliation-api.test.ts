@@ -1,4 +1,5 @@
 import request from "supertest";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
@@ -165,7 +166,8 @@ const createFixture = (
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     technicianShopAffiliationRepository: repository,
     publicIdentifierRepository,
-    auditLogRepository
+    auditLogRepository,
+    merchantShopContextRepository: createDirectShopContextRepository()
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,

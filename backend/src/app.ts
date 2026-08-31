@@ -18,6 +18,7 @@ import { createTracingMiddleware } from "./middlewares/tracing.middleware";
 import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
 import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
 import { AuthRepository, type AuthRepositoryPort } from "./repositories/auth.repository";
+import type { MerchantShopContextRepositoryPort } from "./repositories/merchant-shop-context.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
 import type {
   AffiliateTaskRepositoryPort,
@@ -153,6 +154,7 @@ import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
+import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
@@ -178,8 +180,10 @@ export interface AppDependencies {
   databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
   metricsService?: ObservabilityMetricsPort;
   authRepository?: AuthRepositoryPort;
+  merchantShopContextRepository?: MerchantShopContextRepositoryPort;
   testOnlyAllowLegacyAuthAdapters?: boolean;
   authSessionStore?: AuthSessionStore;
+  merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger;
   otpDeliveryClient?: OtpDeliveryClient;
   verificationChallengeStore?: VerificationChallengeStore;
   googleCredentialVerifier?: GoogleCredentialVerifierPort;

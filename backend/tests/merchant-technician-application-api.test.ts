@@ -2,6 +2,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-26T05:00:00.000Z");
 const record = {
@@ -104,6 +105,7 @@ const createFixture = (permissions = permissionCodes) => {
     authRepository: { findUserById: jest.fn(async () => user) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 21 }),
     technicianApplicationReviewService,
     technicianResumeExportService
   } as never);

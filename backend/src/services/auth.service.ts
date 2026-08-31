@@ -1,4 +1,4 @@
-import { randomInt, timingSafeEqual } from "crypto";
+import { createHash, randomInt, randomUUID, timingSafeEqual } from "crypto";
 import { compare, hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import type { AppConfig } from "../config/env";
@@ -29,10 +29,23 @@ import {
   type AuthTokenPayload,
   type AuthTokenSubject
 } from "./auth-token.service";
+import type { MerchantShopContextRepositoryPort } from "../repositories/merchant-shop-context.repository";
+import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import {
+  FORMAL_MERCHANT_IDENTITY_TYPES,
+  merchantShopIdentityForbidden,
+  resolveFormalMerchantIdentityKind,
+  resolveMerchantShopScope,
+  type ResolvedMerchantShopScope
+} from "./merchant-shop-scope";
 
 export interface AuthRequestContext {
   ip: string;
   userAgent?: string;
+}
+
+export interface MerchantShopAuditOutboxTrigger {
+  trigger: () => void;
 }
 
 export interface TokenPairPayload {
@@ -48,6 +61,10 @@ export interface RefreshPayload {
 
 export interface SwitchIdentityPayload extends TokenPairPayload {
   me: AuthMePayload;
+}
+
+export interface SwitchMerchantShopPayload extends SwitchIdentityPayload {
+  shopPublicId: string;
 }
 
 export interface OtpSendPayload {
@@ -66,6 +83,8 @@ export interface AuthenticatedAccessContext {
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
+  selectedMerchantShopId?: number;
+  selectedMerchantShopPublicId?: string;
   roles: string[];
   permissions: string[];
   isReadOnlyMerchantPreview?: boolean;
@@ -192,7 +211,9 @@ export class AuthService {
     private readonly googleCredentialVerifier: GoogleCredentialVerifierPort = new GoogleCredentialVerifierService(
       undefined,
       config
-    )
+    ),
+    private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository(),
+    private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -912,12 +933,12 @@ export class AuthService {
       });
     }
 
-    const accessToken = this.tokenService.issueAccessToken({
-      id: user.id,
-      email: user.email,
-      currentIdentityId: payload.currentIdentityId,
-      sessionGeneration: payload.sessionGeneration
-    });
+    const { subject } = await this.buildAuthTokenContext(
+      user,
+      payload.currentIdentityId,
+      payload.merchantShopPublicId
+    );
+    const accessToken = this.tokenService.issueAccessToken(subject);
 
     return {
       accessToken: accessToken.token,
@@ -986,12 +1007,7 @@ export class AuthService {
       throw this.tokenInvalidError();
     }
     const me = this.buildMePayloadForIdentity(user, identityId);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration: refreshPayload.sessionGeneration
-    };
+    const { subject } = await this.buildAuthTokenContextFromMe(user, me);
     const nextAccessToken = this.tokenService.issueAccessToken(subject);
     const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
 
@@ -1029,6 +1045,121 @@ export class AuthService {
       refreshToken: nextRefreshToken.token,
       expiresIn: nextAccessToken.expiresIn,
       me
+    };
+  }
+
+  public async switchMerchantShop(
+    auth: AuthenticatedAccessContext,
+    refreshToken: string,
+    shopPublicId: string,
+    context: AuthRequestContext
+  ): Promise<SwitchMerchantShopPayload> {
+    const currentIdentityKind = resolveFormalMerchantIdentityKind({
+      type: auth.currentIdentityType ?? "",
+      scopeType: auth.currentIdentityScopeType ?? null,
+      scopeId: auth.currentIdentityScopeId ?? null
+    });
+    if (
+      currentIdentityKind !== "merchant_account" ||
+      !auth.currentIdentityId ||
+      !auth.selectedMerchantShopPublicId
+    ) {
+      throw merchantShopIdentityForbidden();
+    }
+
+    const refreshPayload = this.tokenService.verifyRefreshToken(refreshToken);
+    const refreshUserId = this.getUserIdFromToken(refreshPayload);
+    if (
+      refreshUserId !== auth.userId ||
+      refreshPayload.currentIdentityId !== auth.currentIdentityId ||
+      refreshPayload.merchantShopPublicId !== auth.selectedMerchantShopPublicId
+    ) {
+      throw this.tokenInvalidError();
+    }
+
+    const user = await this.repository.findUserById(refreshUserId);
+    this.assertActiveUser(user);
+    if (this.userSessionGeneration(user) !== refreshPayload.sessionGeneration) {
+      throw this.tokenInvalidError();
+    }
+
+    const me = this.buildMePayloadForIdentity(user, auth.currentIdentityId);
+    if (
+      resolveFormalMerchantIdentityKind(me.currentIdentity) !== "merchant_account" ||
+      me.currentIdentity.scopeId !== auth.currentIdentityScopeId
+    ) {
+      throw merchantShopIdentityForbidden();
+    }
+    const { subject, merchantShopScope } = await this.buildAuthTokenContextFromMe(
+      user,
+      me,
+      shopPublicId
+    );
+    if (!merchantShopScope?.tokenMerchantShopPublicId) {
+      throw merchantShopIdentityForbidden();
+    }
+
+    const nextAccessToken = this.tokenService.issueAccessToken(subject);
+    const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
+    if (!this.sessionStore.completeMerchantShopSwitch) throw this.redisUnavailableError();
+
+    const operationId = randomUUID();
+    const auditReceipt = await this.repository.createAuditLog({
+      actorId: auth.userId,
+      action: "auth.merchant_shop.switch",
+      targetType: "Shop",
+      targetId: null,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      metadata: {
+        phase: "authorized_attempt",
+        operationId,
+        previousShopPublicId: auth.selectedMerchantShopPublicId,
+        nextShopPublicId: merchantShopScope.shopPublicId,
+        shopId: merchantShopScope.shopId
+      }
+    });
+    if (!auditReceipt) {
+      throw new Error("Merchant shop switch audit did not return a durable identifier");
+    }
+    const operationHash = createHash("sha256")
+      .update(operationId)
+      .update("\u0000")
+      .update(String(user.id))
+      .update("\u0000")
+      .update(refreshPayload.jti)
+      .update("\u0000")
+      .update(nextRefreshToken.jti)
+      .update("\u0000")
+      .update(auth.accessTokenJti)
+      .update("\u0000")
+      .update(merchantShopScope.shopPublicId)
+      .digest("hex");
+
+    const commit = await this.sessionStore.completeMerchantShopSwitch({
+      userId: user.id,
+      generation: refreshPayload.sessionGeneration,
+      oldRefreshJti: refreshPayload.jti,
+      newRefreshJti: nextRefreshToken.jti,
+      refreshTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+      oldAccessJti: auth.accessTokenJti,
+      oldAccessExpiresAt: auth.accessTokenExpiresAt,
+      operationId,
+      operationHash,
+      auditId: auditReceipt.id,
+      receiptTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+    });
+    if (commit.status !== "committed" && commit.status !== "already_committed") {
+      throw this.tokenInvalidError();
+    }
+    this.merchantShopAuditOutboxTrigger?.trigger();
+
+    return {
+      accessToken: nextAccessToken.token,
+      refreshToken: nextRefreshToken.token,
+      expiresIn: nextAccessToken.expiresIn,
+      me,
+      shopPublicId: merchantShopScope.shopPublicId
     };
   }
 
@@ -1091,7 +1222,11 @@ export class AuthService {
     this.assertActiveUser(user);
     if (this.userSessionGeneration(user) !== payload.sessionGeneration)
       throw this.tokenInvalidError();
-    const me = this.buildMePayload(user, payload.currentIdentityId);
+    const { me, merchantShopScope } = await this.buildAuthTokenContext(
+      user,
+      payload.currentIdentityId,
+      payload.merchantShopPublicId
+    );
 
     if (requiredPermission && !me.permissions.includes(requiredPermission)) {
       throw new AppError({
@@ -1101,9 +1236,11 @@ export class AuthService {
       });
     }
 
+    this.merchantShopAuditOutboxTrigger?.trigger();
+
     return {
       userId,
-      email: payload.email,
+      email: user.email,
       accessTokenJti: payload.jti,
       accessTokenExpiresAt: payload.exp,
       sessionGeneration: payload.sessionGeneration,
@@ -1112,6 +1249,12 @@ export class AuthService {
       currentIdentityType: me.currentIdentity.type,
       currentIdentityScopeType: me.currentIdentity.scopeType,
       currentIdentityScopeId: me.currentIdentity.scopeId,
+      ...(merchantShopScope
+        ? {
+            selectedMerchantShopId: merchantShopScope.shopId,
+            selectedMerchantShopPublicId: merchantShopScope.shopPublicId
+          }
+        : {}),
       roles: me.roles,
       permissions: me.permissions
     };
@@ -1429,14 +1572,8 @@ export class AuthService {
     currentIdentityId?: number
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const loggedInAt = new Date();
-    const me = this.buildMePayload(user, currentIdentityId);
     const sessionGeneration = this.userSessionGeneration(user);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration
-    };
+    const { subject } = await this.buildAuthTokenContext(user, currentIdentityId);
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
 
@@ -1490,14 +1627,8 @@ export class AuthService {
     providerSubject: string,
     context: AuthRequestContext
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
-    const me = this.buildMePayload(user);
     const sessionGeneration = this.userSessionGeneration(user);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration
-    };
+    const { me, subject } = await this.buildAuthTokenContext(user);
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
     let refreshStored = false;
@@ -1649,6 +1780,48 @@ export class AuthService {
     });
   }
 
+  private async buildAuthTokenContext(
+    user: AuthUserRecord,
+    currentIdentityId?: number,
+    merchantShopPublicId?: string
+  ): Promise<{
+    me: AuthMePayload;
+    subject: AuthTokenSubject;
+    merchantShopScope: ResolvedMerchantShopScope | null;
+  }> {
+    return this.buildAuthTokenContextFromMe(
+      user,
+      this.buildMePayload(user, currentIdentityId),
+      merchantShopPublicId
+    );
+  }
+
+  private async buildAuthTokenContextFromMe(
+    user: AuthUserRecord,
+    me: AuthMePayload,
+    merchantShopPublicId?: string
+  ): Promise<{
+    me: AuthMePayload;
+    subject: AuthTokenSubject;
+    merchantShopScope: ResolvedMerchantShopScope | null;
+  }> {
+    const merchantShopScope = await resolveMerchantShopScope({
+      repository: this.merchantShopContextRepository,
+      identity: me.currentIdentity,
+      merchantShopPublicId
+    });
+    const subject: AuthTokenSubject = {
+      id: user.id,
+      email: user.email,
+      currentIdentityId: me.currentIdentity.id,
+      sessionGeneration: this.userSessionGeneration(user),
+      ...(merchantShopScope?.tokenMerchantShopPublicId
+        ? { merchantShopPublicId: merchantShopScope.tokenMerchantShopPublicId }
+        : {})
+    };
+    return { me, subject, merchantShopScope };
+  }
+
   private buildMePayloadForIdentity(user: AuthUserRecord, identityId: number): AuthMePayload {
     const identity = user.identities.find(
       (item) => item.id === identityId && item.deletedAt === null && item.isActive
@@ -1702,8 +1875,9 @@ export class AuthService {
         publicIdentityById.set(identity.publicId, identity);
       }
     }
-    const sharedPrimaryPublicId = allActiveIdentities.find((identity) => identity.publicId !== null)
-      ?.publicId;
+    const sharedPrimaryPublicId = allActiveIdentities.find(
+      (identity) => identity.publicId !== null
+    )?.publicId;
     const hasCustomerIdentity = allActiveIdentities.some((identity) =>
       ["customer", "user", "u"].includes(identity.type)
     );
@@ -1786,14 +1960,7 @@ export class AuthService {
     const identityTypes: Readonly<Record<AuthIdentityAvailabilityKind, readonly string[]>> = {
       customer: ["customer"],
       technician: ["technician"],
-      merchant: [
-        "merchant",
-        "merchant_organization",
-        "merchant_owner",
-        "merchant_staff",
-        "o",
-        "owner"
-      ],
+      merchant: [...FORMAL_MERCHANT_IDENTITY_TYPES],
       affiliate: ["affiliate", "scout"]
     };
     const customerIdentity = identities.find((identity) =>

@@ -12,6 +12,7 @@ import type {
 } from "./compensation-engine.service";
 import { CompensationEngine } from "./compensation-engine.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertMerchantShopId, requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface CompensationProfilePayload extends CompensationRuleSet {
   version: number;
@@ -388,30 +389,11 @@ export class CompensationProfileService {
   }
 
   private assertMerchantShopScope(actor: AuthenticatedAccessContext, shopId: number): void {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId === shopId) {
-      return;
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    assertMerchantShopId(actor, shopId);
   }
 
   private requireMerchantShopScope(actor: AuthenticatedAccessContext): number {
-    if (
-      actor.currentIdentityScopeType === "shop" &&
-      typeof actor.currentIdentityScopeId === "number" &&
-      actor.currentIdentityScopeId > 0
-    ) {
-      return actor.currentIdentityScopeId;
-    }
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    return requireMerchantShopId(actor);
   }
 
   private async requireEmployeeAffiliation(shopId: number, needoId: string) {

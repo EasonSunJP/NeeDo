@@ -23,7 +23,8 @@ import {
   registerBodySchema,
   registerVerifyBodySchema,
   refreshBodySchema,
-  switchIdentityBodySchema
+  switchIdentityBodySchema,
+  switchMerchantShopBodySchema
 } from "../validators/auth.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 import { AppError } from "../utils/app-error";
@@ -32,6 +33,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 export const AUTH_ROUTE_PERMISSIONS = {
   logout: "auth:logout",
   me: "auth:me",
+  merchantShopSwitch: "auth:me:read",
   googleRead: "auth:google:read",
   googleLink: "auth:google:link",
   googleUnlink: "auth:google:unlink",
@@ -89,6 +91,13 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
     authenticate(),
     authorize(AUTH_ROUTE_PERMISSIONS.me),
     controller.switchIdentity
+  );
+  router.post(
+    "/auth/merchant-shop/switch",
+    validateRequest({ body: switchMerchantShopBodySchema }),
+    authenticate(),
+    authorize(AUTH_ROUTE_PERMISSIONS.merchantShopSwitch),
+    controller.switchMerchantShop
   );
   router.post(
     "/auth/logout",

@@ -8,7 +8,11 @@ function sliceBetween(source: string, startToken: string, endToken: string) {
 }
 
 describe("portal identity switching boundaries", () => {
-  const requirePortalAuthSource = sliceBetween(appSource, "function RequirePortalAuth", "function LegacyBusinessRedirect");
+  const requirePortalAuthSource = sliceBetween(
+    appSource,
+    "function RequirePortalAuth",
+    "function LegacyBusinessRedirect"
+  );
   const settingsPortalPageSource = sliceBetween(
     settingsSource,
     "export function UnifiedSettingsPortalPage",
@@ -46,14 +50,24 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).toContain("isSessionAlignedWithPortal(session, portal)");
     expect(requirePortalAuthSource).toContain("needsPortalAlignment");
     expect(requirePortalAuthSource).toContain("switchPortal(portal)");
-    expect(requirePortalAuthSource).toContain("!isSessionAlignedWithPortal(result.session, portal)");
+    expect(requirePortalAuthSource).toContain(
+      "!isSessionAlignedWithPortal(result.session, portal)"
+    );
   });
 
   it("keeps backend and formal finance routes on direct portal access instead of remembered frontend authorization", () => {
-    expect(requirePortalAuthSource).toContain('const isTechnicianPayrollRoute = portal === "technician" && location.pathname.startsWith("/technician/payroll");');
-    expect(requirePortalAuthSource).toContain("const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;");
-    expect(requirePortalAuthSource).toContain("const hasAccess = hasDirectAccess || isOperationsMerchantPreview || (!requiresDirectPortalAccess && canEnterPortal(portal));");
-    expect(requirePortalAuthSource).toContain("const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);");
+    expect(requirePortalAuthSource).toContain(
+      'const isTechnicianPayrollRoute = portal === "technician" && location.pathname.startsWith("/technician/payroll");'
+    );
+    expect(requirePortalAuthSource).toContain(
+      "const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;"
+    );
+    expect(requirePortalAuthSource).toContain(
+      "const hasAccess = hasDirectAccess || isOperationsMerchantPreview || (!requiresDirectPortalAccess && canEnterPortal(portal));"
+    );
+    expect(requirePortalAuthSource).toContain(
+      "const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);"
+    );
   });
 
   it("does not include a temporary frontend bypass session", () => {
@@ -74,9 +88,15 @@ describe("portal identity switching boundaries", () => {
   });
 
   it("keeps all three ordinary-user application flows behind user authentication", () => {
-    expect(appSource).toContain('path="/me/identity/technician/apply" element={protect("user", <TechnicianApplicationPage />)}');
-    expect(appSource).toContain('path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)}');
-    expect(appSource).toContain('path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)}');
+    expect(appSource).toContain(
+      'path="/me/identity/technician/apply" element={protect("user", <TechnicianApplicationPage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)}'
+    );
   });
 
   it("routes activated affiliates to the formal profile instead of the capability gate", () => {
@@ -87,21 +107,42 @@ describe("portal identity switching boundaries", () => {
       'path="/afirieito/me" element={protect("business", <AffiliateProfilePage />)}'
     );
     expect(
-      affiliateActivationSource.match(
-        /openPortalEntry\("business", "\/afirieito\/me"\)/g,
-      ),
+      affiliateActivationSource.match(/openPortalEntry\("business", "\/afirieito\/me"\)/g)
     ).toHaveLength(2);
-    expect(affiliateActivationSource).not.toContain(
-      'window.location.assign("/afirieito',
-    );
+    expect(affiliateActivationSource).not.toContain('window.location.assign("/afirieito');
   });
 });
 
 describe("production route chunk boundaries", () => {
+  it("mounts one operations data dashboard route and removes the legacy analytics route", () => {
+    expect(appSource.match(/path="\/admin" element=/g)).toHaveLength(1);
+    expect(appSource).toContain(
+      'path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)}'
+    );
+    expect(appSource).not.toContain('import { AnalyticsPage } from "./pages/admin/AnalyticsPage";');
+    expect(appSource).not.toContain('path="/admin/analytics"');
+    expect(appSource).not.toContain("<AnalyticsPage />");
+  });
+
+  it("mounts one merchant data dashboard route and deletes the legacy analytics page", () => {
+    const oldAnalyticsPath = ["/merchant-admin", "analytics"].join("/");
+    const oldAnalyticsPage = ["MerchantAdmin", "AnalyticsPage"].join("");
+    expect(appSource.match(/path="\/merchant-admin" element=/g)).toHaveLength(1);
+    expect(appSource).toContain(
+      'path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)}'
+    );
+    expect(appSource).not.toContain(oldAnalyticsPage);
+    expect(appSource).not.toContain(`path="${oldAnalyticsPath}"`);
+  });
+
   it("loads the large technician portal only after entering a technician route", () => {
-    expect(appSource).not.toContain('import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";');
+    expect(appSource).not.toContain(
+      'import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";'
+    );
     expect(appSource).toContain('lazy(() => import("./pages/mobile/TechnicianPortalPage")');
-    expect(appSource.match(/<Suspense fallback=\{null\}><TechnicianPortalPage \/><\/Suspense>/g)).toHaveLength(2);
+    expect(
+      appSource.match(/<Suspense fallback=\{null\}><TechnicianPortalPage \/><\/Suspense>/g)
+    ).toHaveLength(2);
   });
 
   it("routes the accepted technician schedule index directly to the formal-only page", () => {
@@ -111,17 +152,31 @@ describe("production route chunk boundaries", () => {
   });
 
   it("exposes the same account social page in user, merchant, and technician portals", () => {
-    expect(appSource).toContain('path="/moments/users/:userId" element={protect("user", <SocialAccountProfilePage />)}');
-    expect(appSource).toContain('path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)}');
-    expect(appSource).toContain('path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)}');
+    expect(appSource).toContain(
+      'path="/moments/users/:userId" element={protect("user", <SocialAccountProfilePage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)}'
+    );
   });
 
   it("redirects every historical full reply route without mounting the post detail page directly", () => {
-    expect(appSource).toContain('SocialLegacyReplyRedirectPage,');
-    expect(appSource).toContain('path="/moments/posts/:postId/replies" element={protect("user", <SocialLegacyReplyRedirectPage />)}');
-    expect(appSource).toContain('path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialLegacyReplyRedirectPage />)}');
-    expect(appSource).toContain('path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialLegacyReplyRedirectPage />)}');
-    expect(appSource).not.toContain('path="/moments/posts/:postId/replies" element={protect("user", <SocialPostDetailPage />)}');
+    expect(appSource).toContain("SocialLegacyReplyRedirectPage,");
+    expect(appSource).toContain(
+      'path="/moments/posts/:postId/replies" element={protect("user", <SocialLegacyReplyRedirectPage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialLegacyReplyRedirectPage />)}'
+    );
+    expect(appSource).toContain(
+      'path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialLegacyReplyRedirectPage />)}'
+    );
+    expect(appSource).not.toContain(
+      'path="/moments/posts/:postId/replies" element={protect("user", <SocialPostDetailPage />)}'
+    );
   });
 });
 

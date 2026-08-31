@@ -103,6 +103,10 @@ export interface CreateAuditLogInput {
   metadata?: Prisma.InputJsonValue;
 }
 
+export interface AuditLogReceipt {
+  id: number;
+}
+
 export interface CreateVerifiedBaselineCustomerInput {
   email: string;
   passwordHash: string | null;
@@ -209,7 +213,11 @@ export interface AuthRepositoryPort {
   ) => Promise<AuthUserRecord | null>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
-  createAuditLog: (input: CreateAuditLogInput) => Promise<void>;
+  createAuditLog: (input: CreateAuditLogInput) => Promise<void | AuditLogReceipt>;
+  completeMerchantShopSwitchAudit?: (input: {
+    auditId: number;
+    operationId: string;
+  }) => Promise<boolean>;
 }
 
 export interface GoogleAuthRepositoryPort {
@@ -314,10 +322,7 @@ const resolveLoginIdentityId = (
   return matchedIdentifierIdentity?.id ?? customerIdentity?.id;
 };
 
-const toAuthUserRecord = (
-  user: AuthUserPrismaRecord,
-  loginIdentifier?: string
-): AuthUserRecord => {
+const toAuthUserRecord = (user: AuthUserPrismaRecord, loginIdentifier?: string): AuthUserRecord => {
   const primaryIdentifier = activeAuthIdentities(user).find(
     (identity) => identity.publicIdentifier?.kind === user.primaryIdentityType
   )?.publicIdentifier;
@@ -329,9 +334,7 @@ const toAuthUserRecord = (
       disabled: !user.isActive,
       restricted: activeAuthIdentities(user).length === 0
     },
-    ...(loginIdentifier
-      ? { loginIdentityId: resolveLoginIdentityId(user, loginIdentifier) }
-      : {})
+    ...(loginIdentifier ? { loginIdentityId: resolveLoginIdentityId(user, loginIdentifier) } : {})
   };
 };
 
@@ -356,7 +359,10 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
 
   public async findUserByLoginIdentifier(identifier: string): Promise<AuthUserRecord | null> {
     const findUser = (where: Prisma.UserWhereInput) =>
-      this.client.user.findFirst({ where: { ...where, deletedAt: null }, include: authUserInclude });
+      this.client.user.findFirst({
+        where: { ...where, deletedAt: null },
+        include: authUserInclude
+      });
     let user: AuthUserPrismaRecord | null;
 
     if (identifier.includes("@")) {
@@ -891,8 +897,8 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
     });
   }
 
-  public async createAuditLog(input: CreateAuditLogInput): Promise<void> {
-    await this.client.auditLog.create({
+  public async createAuditLog(input: CreateAuditLogInput): Promise<AuditLogReceipt> {
+    const created = await this.client.auditLog.create({
       data: {
         actorId: input.actorId ?? null,
         action: input.action,
@@ -901,8 +907,64 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         ip: input.ip ?? null,
         userAgent: input.userAgent ?? null,
         metadata: input.metadata
+      },
+      select: { id: true }
+    });
+    return created;
+  }
+
+  public async completeMerchantShopSwitchAudit(input: {
+    auditId: number;
+    operationId: string;
+  }): Promise<boolean> {
+    const audit = await this.client.auditLog.findFirst({
+      where: {
+        id: input.auditId,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null
+      },
+      select: { id: true, updatedAt: true, metadata: true }
+    });
+    if (!audit || !this.isJsonObject(audit.metadata)) return false;
+    if (audit.metadata.operationId !== input.operationId) return false;
+    if (audit.metadata.phase === "completed") return true;
+    if (audit.metadata.phase !== "authorized_attempt") return false;
+
+    const completed = await this.client.auditLog.updateMany({
+      where: {
+        id: audit.id,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null,
+        updatedAt: audit.updatedAt,
+        metadata: { path: "$.operationId", equals: input.operationId }
+      },
+      data: {
+        metadata: {
+          ...audit.metadata,
+          phase: "completed"
+        }
       }
     });
+    if (completed.count === 1) return true;
+
+    const current = await this.client.auditLog.findFirst({
+      where: {
+        id: input.auditId,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null
+      },
+      select: { id: true, updatedAt: true, metadata: true }
+    });
+    return Boolean(
+      current &&
+      this.isJsonObject(current.metadata) &&
+      current.metadata.operationId === input.operationId &&
+      current.metadata.phase === "completed"
+    );
+  }
+
+  private isJsonObject(value: Prisma.JsonValue | null): value is Prisma.JsonObject {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private async createOrRestoreGoogleBindingInTransaction(

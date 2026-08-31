@@ -7,6 +7,7 @@ import type {
   OrderAcceptancePausePayload,
   OrderAcceptancePauseRepositoryPort
 } from "../src/services/order-acceptance-pause.service";
+import { createMerchantAccountShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-29T00:00:00.000Z");
 
@@ -134,7 +135,7 @@ const createFixture = async () => {
       email: "merchant@example.com",
       role: merchantRole,
       identities: [
-        identity(3, 3, "merchant", "merchant_account", 41, true),
+        identity(3, 3, "merchant_organization", "merchant_account", 41, true),
         identity(4, 3, "merchant", "shop", 11, false),
         identity(5, 3, "customer", "customer_profile", 31, false)
       ]
@@ -211,6 +212,11 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
+    merchantShopContextRepository: createMerchantAccountShopContextRepository({
+      merchantAccountId: 41,
+      shopId: 11,
+      shopPublicId: "shop0000000011"
+    }),
     orderAcceptancePauseRepository: repository
   } as never);
   const loginPair = async (email: string) => {

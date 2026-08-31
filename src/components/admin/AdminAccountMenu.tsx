@@ -71,10 +71,10 @@ export function AdminAccountMenu({
     };
   }, [open]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setOpen(false);
-    logout();
-    navigate(loginPath, { replace: true });
+    const result = await logout();
+    if (result.ok) navigate(loginPath, { replace: true });
   };
 
   return (

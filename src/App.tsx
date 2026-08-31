@@ -10,7 +10,6 @@ import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, i
 import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
-import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
 import { AffiliateAdminPage } from "./pages/admin/AffiliateAdminPage";
 import { AffiliateFeeRulesPage } from "./pages/admin/AffiliateFeeRulesPage";
 import { AffiliateNoticeCarouselPage } from "./pages/admin/AffiliateNoticeCarouselPage";
@@ -58,7 +57,6 @@ import { NeedoExchangePage } from "./pages/mobile/NeedoExchangePage";
 import { NeedoPostDetailRoutePage } from "./pages/mobile/NeedoRoutePages";
 import { TechnicianPayrollPage } from "./pages/mobile/TechnicianPayrollPage";
 import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";
-import { MerchantAdminAnalyticsPage } from "./pages/merchant-admin/MerchantAdminAnalyticsPage";
 import {
   MerchantAdminDispatchCenterAutomationPage,
   MerchantAdminDispatchCenterAppointmentsPage,
@@ -1279,7 +1277,6 @@ export default function App() {
               <Route path="/merchant/settings/delete-account" element={protect("merchant", <UnifiedSettingsDeleteAccountPage portal="merchant" />)} />
               <Route path="/merchant/:view" element={protect("merchant", <MerchantPortalPage />)} />
               <Route path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)} />
-              <Route path="/merchant-admin/analytics" element={protect("merchant", <MerchantAdminAnalyticsPage />)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
               <Route path="/merchant-admin/dine" element={protectFeature("merchant", "store.dine-in.order.view", <Navigate replace to="/merchant-admin/dine/orders" />, "/merchant-admin")} />
@@ -1383,7 +1380,6 @@ export default function App() {
 
               <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
-              <Route path="/admin/analytics" element={protect("admin", <AnalyticsPage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
               <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications" element={protect("admin", <AdminNotificationsPage />)} />
