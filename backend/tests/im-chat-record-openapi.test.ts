@@ -8,7 +8,13 @@ type OpenApiSchema = Record<string, unknown> & {
 type OpenApiOperation = {
   security: Array<Record<string, string[]>>;
   requestBody: { content: Record<string, { schema: unknown }> };
-  responses: Record<string, { content: Record<string, { schema: unknown }> }>;
+  responses: Record<
+    string,
+    {
+      content: Record<string, { schema: unknown }>;
+      headers?: Record<string, unknown>;
+    }
+  >;
 };
 type OpenApiDocument = {
   paths: Record<string, Record<string, OpenApiOperation>>;
@@ -41,7 +47,11 @@ describe("chat-record OpenAPI contract", () => {
       "ImChatRecordItem",
       "ImChatRecordItemPage",
       "ImChatRecordFavoritePage",
-      "ImBatchDeleteRequest"
+      "ImBatchDeleteRequest",
+      "ImChatRecordDeliveryResult",
+      "ImChatRecordFavoriteMutationResult",
+      "ImChatRecordFavoriteDeleteResult",
+      "ImBatchDeleteResult"
     ]) {
       expect(api.components.schemas).toHaveProperty(schema);
     }
@@ -81,5 +91,105 @@ describe("chat-record OpenAPI contract", () => {
     );
     for (const response of Object.values(media.content))
       expect(response.schema).toEqual({ type: "string", format: "binary" });
+    expect(media.headers).toEqual(
+      expect.objectContaining({
+        "Content-Length": expect.objectContaining({ schema: { type: "integer", minimum: 0 } })
+      })
+    );
+  });
+
+  it("documents exact standard envelopes and result schemas for all four mutations", () => {
+    const api = document();
+    const mutations = [
+      [
+        "/api/v1/im/conversations/{targetConversationId}/chat-records",
+        "post",
+        "201",
+        "ImChatRecordDeliveryResult"
+      ],
+      ["/api/v1/im/chat-record-favorites", "post", "201", "ImChatRecordFavoriteMutationResult"],
+      [
+        "/api/v1/im/chat-record-favorites/{favoriteId}",
+        "delete",
+        "200",
+        "ImChatRecordFavoriteDeleteResult"
+      ],
+      [
+        "/api/v1/im/conversations/{conversationId}/messages/delete-for-me",
+        "post",
+        "200",
+        "ImBatchDeleteResult"
+      ]
+    ] as const;
+
+    for (const [path, method, status, resultSchema] of mutations) {
+      expect(
+        api.paths[path][method].responses[status].content["application/json"].schema
+      ).toMatchObject({
+        type: "object",
+        required: ["code", "message", "data"],
+        properties: {
+          code: { type: "integer", enum: [0] },
+          message: { type: "string", enum: ["success"] },
+          data: { $ref: `#/components/schemas/${resultSchema}` }
+        }
+      });
+    }
+
+    expect(api.components.schemas.ImChatRecordDeliveryResult).toMatchObject({
+      additionalProperties: false,
+      required: ["replayed", "bundle", "message"],
+      properties: {
+        replayed: { type: "boolean" },
+        bundle: { $ref: "#/components/schemas/ImChatRecordSummary" },
+        message: { $ref: "#/components/schemas/RealtimeMessage" }
+      }
+    });
+    expect(api.components.schemas.ImChatRecordFavoriteMutationResult).toMatchObject({
+      additionalProperties: false,
+      required: ["replayed", "favorite"],
+      properties: {
+        replayed: { type: "boolean" },
+        favorite: { $ref: "#/components/schemas/ImChatRecordFavorite" }
+      }
+    });
+    expect(api.components.schemas.ImChatRecordFavoriteDeleteResult).toMatchObject({
+      additionalProperties: false,
+      required: ["deleted"],
+      properties: { deleted: { type: "boolean", enum: [true] } }
+    });
+    expect(api.components.schemas.ImBatchDeleteResult).toMatchObject({
+      additionalProperties: false,
+      required: ["conversationId", "messageIds", "count", "deleted", "replayed"],
+      properties: {
+        conversationId: { type: "integer", minimum: 1 },
+        messageIds: {
+          type: "array",
+          minItems: 1,
+          maxItems: 100,
+          uniqueItems: true,
+          items: { type: "integer", minimum: 1 }
+        },
+        count: { type: "integer", minimum: 1, maximum: 100 },
+        deleted: { type: "boolean", enum: [true] },
+        replayed: { type: "boolean" }
+      }
+    });
+  });
+
+  it("documents validation errors for every UUID, checksum, and numeric ID boundary", () => {
+    const api = document();
+    for (const [path, method] of [
+      ["/api/v1/im/conversations/{targetConversationId}/chat-records", "post"],
+      ["/api/v1/im/chat-records/{publicId}", "get"],
+      ["/api/v1/im/chat-records/{publicId}/items", "get"],
+      ["/api/v1/im/chat-records/{publicId}/media/{checksumSha256}", "get"],
+      ["/api/v1/im/chat-record-favorites", "post"],
+      ["/api/v1/im/chat-record-favorites", "get"],
+      ["/api/v1/im/chat-record-favorites/{favoriteId}", "delete"],
+      ["/api/v1/im/conversations/{conversationId}/messages/delete-for-me", "post"]
+    ] as const) {
+      expect(api.paths[path][method].responses).toHaveProperty("400");
+    }
   });
 });

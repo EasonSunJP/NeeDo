@@ -566,7 +566,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       total,
       page: Math.floor(consumed / input.pageSize) + 1,
       pageSize: input.pageSize,
-      nextCursor: rows.length === input.pageSize ? (rows.at(-1)?.position ?? null) : null
+      nextCursor: consumed + rows.length < total ? (rows.at(-1)?.position ?? null) : null
     };
   }
 

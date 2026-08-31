@@ -1557,6 +1557,46 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotencyKey: { type: "string", format: "uuid" }
         }
       },
+      ImChatRecordDeliveryResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["replayed", "bundle", "message"],
+        properties: {
+          replayed: { type: "boolean" },
+          bundle: { $ref: "#/components/schemas/ImChatRecordSummary" },
+          message: { $ref: "#/components/schemas/RealtimeMessage" }
+        }
+      },
+      ImChatRecordFavoriteMutationResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["replayed", "favorite"],
+        properties: {
+          replayed: { type: "boolean" },
+          favorite: { $ref: "#/components/schemas/ImChatRecordFavorite" }
+        }
+      },
+      ImChatRecordFavoriteDeleteResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["deleted"],
+        properties: { deleted: { type: "boolean", enum: [true] } }
+      },
+      ImBatchDeleteResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["conversationId", "messageIds", "count", "deleted", "replayed"],
+        properties: {
+          conversationId: { type: "integer", minimum: 1 },
+          messageIds: {
+            type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
+            items: { type: "integer", minimum: 1 }
+          },
+          count: { type: "integer", minimum: 1, maximum: 100 },
+          deleted: { type: "boolean", enum: [true] },
+          replayed: { type: "boolean" }
+        }
+      },
       RealtimeParticipant: {
         type: "object",
         required: ["userId", "needoId", "username", "avatarUrl"],
@@ -13818,7 +13858,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           content: { "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } } }
         },
         responses: {
-          "201": { description: "Created or exactly replayed chat-record delivery" },
+          "201": jsonDataResponse("Created or exactly replayed chat-record delivery", { $ref: "#/components/schemas/ImChatRecordDeliveryResult" }),
           "400": { description: "Strict validation failed" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:forward permission" },
@@ -13835,6 +13875,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
           "200": jsonDataResponse("Authorized chat-record summary", { $ref: "#/components/schemas/ImChatRecordSummary" }),
+          "400": { description: "Invalid chat-record public UUID" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },
           "404": { description: "Bundle missing or unavailable to the active identity" }
@@ -13853,7 +13894,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         responses: {
           "200": jsonDataResponse("Authorized chat-record item page", { $ref: "#/components/schemas/ImChatRecordItemPage" }),
-          "400": { description: "Invalid cursor or page size" },
+          "400": { description: "Invalid chat-record public UUID, cursor, or page size" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },
           "404": { description: "Bundle missing or unavailable to the active identity" }
@@ -13874,6 +13915,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description: "Authorized snapshot bytes",
             headers: {
               ETag: { schema: { type: "string" } },
+              "Content-Length": { schema: { type: "integer", minimum: 0 } },
               "Cache-Control": { schema: { type: "string", enum: ["private, max-age=31536000, immutable"] } }
             },
             content: {
@@ -13885,6 +13927,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "audio/ogg": { schema: { type: "string", format: "binary" } }
             }
           },
+          "400": { description: "Invalid chat-record public UUID or SHA-256 checksum" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },
           "404": { description: "Media missing or unavailable to the active identity" }
@@ -13901,7 +13944,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           content: { "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } } }
         },
         responses: {
-          "201": { description: "Created or exactly replayed chat-record favorite" },
+          "201": jsonDataResponse("Created or exactly replayed chat-record favorite", { $ref: "#/components/schemas/ImChatRecordFavoriteMutationResult" }),
           "400": { description: "Strict validation failed" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:favorite permission" },
@@ -13931,7 +13974,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "favoriteId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         responses: {
-          "200": { description: "Favorite removed" },
+          "200": jsonDataResponse("Favorite removed", { $ref: "#/components/schemas/ImChatRecordFavoriteDeleteResult" }),
+          "400": { description: "Invalid favorite ID" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:favorite permission" },
           "404": { description: "Favorite missing or owned by another identity" }
@@ -13949,7 +13993,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           content: { "application/json": { schema: { $ref: "#/components/schemas/ImBatchDeleteRequest" } } }
         },
         responses: {
-          "200": { description: "Atomic deletion result or exact replay" },
+          "200": jsonDataResponse("Atomic deletion result or exact replay", { $ref: "#/components/schemas/ImBatchDeleteResult" }),
           "400": { description: "Strict validation failed" },
           "401": { description: "Missing or invalid Bearer access token" },
           "403": { description: "Missing message:list permission" },

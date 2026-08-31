@@ -338,6 +338,157 @@ describe("chat-record HTTP API", () => {
       .expect(200, { code: 0, message: "success", data: { deleted: true } });
   });
 
+  it("returns the standard success envelope for an atomic batch delete", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .post("/api/v1/im/conversations/91/messages/delete-for-me")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ messageIds: [12, 11], idempotencyKey: command.idempotencyKey })
+      .expect(200);
+
+    expect(response.body).toEqual({
+      code: 0,
+      message: "success",
+      data: {
+        conversationId: 91,
+        messageIds: [11, 12],
+        count: 2,
+        deleted: true,
+        replayed: false
+      }
+    });
+    expect(fixture.realtimeService.deleteMessagesForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 41, currentIdentityId: 71 }),
+      {
+        conversationId: 91,
+        messageIds: [12, 11],
+        idempotencyKey: command.idempotencyKey
+      }
+    );
+  });
+
+  it("rejects invalid batch bodies with 400 before the realtime service", async () => {
+    const fixture = createFixture();
+    for (const body of [
+      { messageIds: [11, 11], idempotencyKey: command.idempotencyKey },
+      { messageIds: [11], idempotencyKey: "not-a-uuid" }
+    ]) {
+      await request(fixture.app)
+        .post("/api/v1/im/conversations/91/messages/delete-for-me")
+        .set("Authorization", `Bearer ${fixture.token}`)
+        .send(body)
+        .expect(400);
+    }
+    expect(fixture.realtimeService.deleteMessagesForUser).not.toHaveBeenCalled();
+  });
+
+  it("returns safe 404 when any requested batch message is unavailable", async () => {
+    const fixture = createFixture();
+    fixture.realtimeService.deleteMessagesForUser.mockRejectedValueOnce(
+      new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.realtime.message_not_found",
+        statusCode: 404
+      })
+    );
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/91/messages/delete-for-me")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ messageIds: [11, 12], idempotencyKey: command.idempotencyKey })
+      .expect(404, {
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.realtime.message_not_found",
+        data: null
+      });
+  });
+
+  it("returns 409 when a batch idempotency key is reused with changed payload", async () => {
+    const fixture = createFixture();
+    fixture.realtimeService.deleteMessagesForUser.mockRejectedValueOnce(
+      new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency_key_reused",
+        statusCode: 409
+      })
+    );
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/91/messages/delete-for-me")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ messageIds: [13], idempotencyKey: command.idempotencyKey })
+      .expect(409, {
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency_key_reused",
+        data: null
+      });
+  });
+
+  it("composes the production route with injected repository, storage, and identity ports", async () => {
+    const user = userWithPermissions(["message:list"]);
+    const repository = {
+      getBundle: jest.fn(async () => bundle),
+      resolveAuthorizedMedia: jest.fn(async () => ({
+        publicId,
+        checksumSha256: checksum,
+        mimeType: "image/png",
+        size: 15
+      }))
+    };
+    const storage = {
+      read: jest.fn(async () => ({
+        bytes: Buffer.from("protected-media"),
+        publicId,
+        checksumSha256: checksum,
+        mimeType: "image/png",
+        size: 15
+      }))
+    };
+    const identityScope = {
+      resolve: jest.fn(async () => ({
+        identityId: 71,
+        userId: 41,
+        identityType: "customer",
+        scopeType: null,
+        scopeId: null
+      }))
+    };
+    const app = createApp(env, {
+      redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
+      testOnlyAllowLegacyAuthAdapters: true,
+      authRepository: { findUserById: jest.fn(async () => user) },
+      authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
+      otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
+      imChatRecordRepository: repository,
+      imChatRecordMediaStorage: storage,
+      personalIdentityScopeService: identityScope
+    } as never);
+    const token = new AuthTokenService(env).issueAccessToken({
+      id: 41,
+      email: user.email,
+      currentIdentityId: 71
+    }).token;
+
+    await request(app)
+      .get(`/api/v1/im/chat-records/${publicId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    await request(app)
+      .get(`/api/v1/im/chat-records/${publicId}/media/${checksum}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(repository.getBundle).toHaveBeenCalledWith({
+      publicId,
+      userId: 41,
+      identityId: 71
+    });
+    expect(repository.resolveAuthorizedMedia).toHaveBeenCalledWith({
+      publicId,
+      checksumSha256: checksum,
+      userId: 41,
+      identityId: 71
+    });
+    expect(storage.read).toHaveBeenCalledWith(checksum, "image/png");
+  });
+
   it("returns no partial success when the atomic batch service fails", async () => {
     const fixture = createFixture();
     fixture.realtimeService.deleteMessagesForUser.mockRejectedValueOnce(new Error("rollback"));

@@ -163,3 +163,117 @@ Result: exit 0; all matched files use Prettier style.
 
 - `npm run format:check` remains red on the repository baseline and reports 242 pre-existing files outside this Task 3 slice. Formatting those files would be an unrelated broad rewrite. New Task 3 files pass targeted Prettier checks; full ESLint, TypeScript build, and `git diff --check` pass.
 - The Task 1 migration remains intentionally unapplied. Database integration acceptance is deferred because the task explicitly prohibited connecting/applying a database or writing shared data.
+
+---
+
+## Independent-review remediation — 2026-08-31
+
+The first Task 3 review was not approved. This follow-up addresses every Critical/Important finding and the requested Minor test coverage without changing schema, migration, shared send lifecycle, or Task 2 media behavior.
+
+### Review findings verified
+
+1. `nextCursor` was based only on `rows.length === pageSize`. A complete result whose total equaled the page size, or a final subsequent page that was exactly full, incorrectly returned a cursor even though no active row remained.
+2. Four mutation success responses in OpenAPI were descriptions only and did not describe the actual `{ code, message, data }` JSON envelope or replay/result payloads.
+3. OpenAPI omitted actual 400 validation responses for public UUID, checksum, and favorite ID boundaries, and the binary media response omitted `Content-Length`.
+4. Batch HTTP coverage did not directly assert 200, 400, 404, and 409 responses, and route composition was only exercised with a fully injected service.
+
+### Remediation RED
+
+Tests were changed before production code.
+
+```bash
+cd backend
+npm test -- --runTestsByPath tests/im-chat-record.repository.test.ts tests/im-chat-record-openapi.test.ts tests/im-chat-record-api.test.ts
+```
+
+Result: exit 1. `im-chat-record-api.test.ts` passed while the two intended suites failed:
+
+- Repository failures: expected `nextCursor: null`, received `5` for `total === pageSize`; expected `null`, received `1` for an exactly-full final subsequent page.
+- OpenAPI failures: missing four result schemas, missing `Content-Length`, mutation success responses had no JSON content/schema, and UUID/checksum/ID routes were missing 400 responses.
+
+### Minimal implementation
+
+- Changed the cursor continuation condition to `consumed + rows.length < total`. This uses the same active-row counts that derive the deterministic page number, so soft-deleted position gaps and exact full-page boundaries are handled consistently.
+- Added exact OpenAPI result components:
+  - `ImChatRecordDeliveryResult`
+  - `ImChatRecordFavoriteMutationResult`
+  - `ImChatRecordFavoriteDeleteResult`
+  - `ImBatchDeleteResult`
+- Wired forward 201, favorite 201, favorite delete 200, and batch delete 200 through the existing standard `jsonDataResponse` envelope.
+- Added documented 400 responses for invalid chat-record UUID, cursor/page size, checksum, favorite ID, strict command bodies, and conversation/message batch IDs.
+- Added `Content-Length` to the protected media 200 response.
+
+### Added tests
+
+- Repository:
+  - active total exactly equals first page size → no cursor;
+  - final subsequent page exactly full → no cursor;
+  - prior active-row/soft-deleted-gap first and subsequent page test retained.
+- OpenAPI:
+  - exact standard success envelope `$ref` for all four mutations;
+  - exact replay/bundle/message/favorite/deleted/batch result components;
+  - validation 400 on all eight operations;
+  - binary media `Content-Length` plus existing MIME/ETag/cache checks.
+- Batch HTTP:
+  - 200 standard envelope and precise result;
+  - 400 duplicate IDs and invalid UUID before service;
+  - safe 404 unavailable message;
+  - 409 changed-payload idempotency reuse;
+  - existing atomic rollback 500 coverage retained.
+- Composition:
+  - direct production `createApp` route composition using injected repository, storage, and personal-identity-scope ports with the real `ImChatRecordService` and controller; verified protected bundle/media calls and identity-scoped arguments.
+
+### Remediation GREEN
+
+Focused review set:
+
+```bash
+cd backend
+npm test -- --runTestsByPath tests/im-chat-record.repository.test.ts tests/im-chat-record-openapi.test.ts tests/im-chat-record-api.test.ts
+```
+
+Result: exit 0; 3 suites passed, 44 tests passed.
+
+Formal Task 3 API/RBAC/OpenAPI set:
+
+```bash
+cd backend
+npm test -- --runTestsByPath tests/im-chat-record-api.test.ts tests/im-chat-record-openapi.test.ts tests/message-batch-delete.test.ts tests/realtime-api.test.ts tests/realtime-service.test.ts
+```
+
+Result: exit 0; 5 suites passed, 85 tests passed.
+
+Affected domain/realtime regression set:
+
+```bash
+cd backend
+npm test -- --runTestsByPath tests/im-chat-record.repository.test.ts tests/im-chat-record.service.test.ts tests/im-chat-record-media.storage.test.ts tests/im-message-send.transaction.test.ts tests/im-message-user-deletion.repository.test.ts tests/im-privacy-message-countdown.repository.test.ts tests/friendship-removal.repository.test.ts tests/realtime-identity-scope.test.ts tests/realtime-repository-identity.test.ts tests/realtime-event-gateway.test.ts
+```
+
+Result: exit 0; 10 suites passed, 93 tests passed.
+
+Static and formatting checks:
+
+```bash
+cd backend
+npm run lint
+npm run build
+git diff --check
+npx prettier --check src/repositories/im-chat-record.repository.ts tests/im-chat-record.repository.test.ts tests/im-chat-record-openapi.test.ts tests/im-chat-record-api.test.ts
+```
+
+Result: all exit 0; all targeted files use Prettier style.
+
+### Follow-up self-review
+
+- The cursor condition is strict: a cursor exists only when active rows remain after the rows already consumed and returned.
+- Page calculation and cursor continuation use the same active-row count basis; no position arithmetic or client page input is used.
+- Mutation OpenAPI schemas mirror controller/service results, including replay flags and standard envelope fields.
+- All eight operations document validation failures arising from their actual Zod path/query/body validators.
+- The new composition test exercises the production route factory with repository/storage/scope ports and does not add test-only production behavior.
+- No RBAC permission, identity boundary, atomicity rule, audit content, schema, migration, or database state was relaxed or modified.
+
+### Remaining concerns
+
+- The repository-wide Prettier baseline concern remains unchanged: unrelated existing files fail the broad check, while every file modified in this remediation that can be checked without reformatting the large legacy OpenAPI file passes targeted formatting. ESLint, TypeScript build, and diff whitespace checks pass.
+- Database integration remains intentionally unexecuted because applying/connecting the database was explicitly prohibited.

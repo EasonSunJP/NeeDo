@@ -839,6 +839,61 @@ describe("ImChatRecordRepository", () => {
     });
   });
 
+  it("omits a cursor when the first full page is the complete active result", async () => {
+    const rows = [7, 5].map((position) => ({
+      id: 700 + position,
+      position,
+      senderDisplayNameSnapshot: `Sender ${position}`,
+      senderAvatarSnapshot: null,
+      messageType: "text",
+      contentSnapshot: `message ${position}`,
+      metadataSnapshot: null,
+      sentAtSnapshot: now
+    }));
+    const repository = new ImChatRecordRepository({
+      imChatRecordItem: {
+        findMany: jest.fn(async () => rows),
+        count: jest.fn(async () => 2)
+      },
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations))
+    } as never);
+
+    await expect(repository.listItems({ bundleId: 501, pageSize: 2 })).resolves.toMatchObject({
+      total: 2,
+      page: 1,
+      nextCursor: null
+    });
+  });
+
+  it("omits a cursor when a subsequent final page is exactly full", async () => {
+    const rows = [3, 1].map((position) => ({
+      id: 700 + position,
+      position,
+      senderDisplayNameSnapshot: `Sender ${position}`,
+      senderAvatarSnapshot: null,
+      messageType: "text",
+      contentSnapshot: `message ${position}`,
+      metadataSnapshot: null,
+      sentAtSnapshot: now
+    }));
+    const count = jest
+      .fn<() => Promise<number>>()
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(2);
+    const repository = new ImChatRecordRepository({
+      imChatRecordItem: { findMany: jest.fn(async () => rows), count },
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations))
+    } as never);
+
+    await expect(
+      repository.listItems({ bundleId: 501, beforePosition: 5, pageSize: 2 })
+    ).resolves.toMatchObject({
+      total: 4,
+      page: 2,
+      nextCursor: null
+    });
+  });
+
   it.each([
     ["creator", { createdByIdentityId: 71, favorites: [], deliveries: [] }],
     ["favorite", { createdByIdentityId: 999, favorites: [{ id: 1 }], deliveries: [] }],
