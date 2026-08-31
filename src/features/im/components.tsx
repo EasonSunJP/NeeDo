@@ -2693,6 +2693,7 @@ function previewLabel(type: ImMessageType) {
     "contact-card": "名片",
     "service-card": "服务",
     "schedule-invite": "日程邀请",
+    "chat-record": "聊天记录",
     system: "系统消息",
     recalled: "撤回消息"
   };

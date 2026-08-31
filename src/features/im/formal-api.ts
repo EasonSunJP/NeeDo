@@ -67,6 +67,7 @@ const richMessageTypes = new Set<ImMessageType>([
   "contact-card",
   "service-card",
   "schedule-invite",
+  "chat-record",
   "system",
   "recalled",
 ]);
@@ -76,19 +77,55 @@ function featureUnavailable(): never {
 }
 
 function toNumericId(id: string) {
+  if (!/^[1-9]\d*$/.test(id)) throw new Error("error.validation.invalid_id");
   const value = Number(id);
 
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error("error.validation.invalid_id");
   }
 
   return value;
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const checksumPattern = /^[0-9a-f]{64}$/;
+function assertUuid(value: string) { if (!uuidPattern.test(value)) throw new Error("error.validation.invalid_uuid"); return value; }
+function assertChecksum(value: string) { if (!checksumPattern.test(value)) throw new Error("error.validation.invalid_checksum"); return value; }
+function toStringId(value: number) { if (!Number.isSafeInteger(value) || value <= 0) throw new Error("error.response.invalid_id"); return String(value); }
+function positive(value: number, max?: number) { if (!Number.isSafeInteger(value) || value <= 0 || (max !== undefined && value > max)) throw new Error("error.validation.invalid_id"); return value; }
+
 function readMetadata(metadata: unknown) {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>)
     : {};
+}
+
+function toChatRecordSummary(summary: import("../realtime/api").RealtimeChatRecordSummary): import("./chat-records").ImChatRecordSummary {
+  if (!Array.isArray(summary.senderNames) || summary.senderNames.length < 1 || summary.senderNames.some((name) => typeof name !== "string" || !name.trim()) || summary.senderCount !== summary.senderNames.length || !Number.isSafeInteger(summary.itemCount) || summary.itemCount < 1) throw new Error("error.response.invalid_chat_record");
+  return { ...summary, publicId: assertUuid(summary.publicId), senderNames: [...summary.senderNames] };
+}
+
+function toChatRecordFavorite(favorite: import("../realtime/api").RealtimeChatRecordFavorite): import("./chat-records").ImChatRecordFavorite {
+  const summary = toChatRecordSummary({ ...favorite, publicId: favorite.bundlePublicId });
+  return { id: toStringId(favorite.id), bundlePublicId: summary.publicId, title: summary.title, preview: summary.preview, senderNames: summary.senderNames, senderCount: summary.senderCount, itemCount: summary.itemCount, createdAt: summary.createdAt };
+}
+
+function toChatRecordItem(item: import("../realtime/api").RealtimeChatRecordItem): import("./chat-records").ImChatRecordItem {
+  positive(item.position);
+  return { ...item, id: toStringId(item.id) };
+}
+
+function toRealtimeChatRecordCommand(command: import("./chat-records").ImChatRecordCommand) {
+  assertUuid(command.idempotencyKey);
+  const messageIds = command.messageIds.map(toNumericId);
+  if (messageIds.length < 1 || messageIds.length > 100 || new Set(messageIds).size !== messageIds.length) throw new Error("error.validation.invalid_message_ids");
+  return { idempotencyKey: command.idempotencyKey, messageIds, sourceConversationId: toNumericId(command.sourceConversationId) };
+}
+
+function toChatRecordMessageExt(value: unknown): MessageExt | undefined {
+  const ext = readMetadata(value);
+  if (typeof ext.bundlePublicId !== "string" || !uuidPattern.test(ext.bundlePublicId) || !Number.isSafeInteger(ext.itemCount) || (ext.itemCount as number) < 1 || typeof ext.preview !== "string" || !Array.isArray(ext.senderNames) || ext.senderNames.length < 1 || ext.senderNames.some((name) => typeof name !== "string" || !name.trim()) || !["single", "pair", "group"].includes(String(ext.titleKind))) return undefined;
+  return { chatRecord: { publicId: ext.bundlePublicId, itemCount: ext.itemCount as number, preview: ext.preview, senderNames: [...ext.senderNames] as string[], titleKind: ext.titleKind as "single" | "pair" | "group" } };
 }
 
 const secondsPerMinute = 60;
@@ -286,7 +323,8 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
     ext && typeof ext === "object" && !Array.isArray(ext)
       ? (ext as MessageExt)
       : undefined;
-  const { disappearing: _untrustedDisappearing, ...safeExt } = rawExt ?? {};
+  const { disappearing: _untrustedDisappearing, ...safeRawExt } = rawExt ?? {};
+  const safeExt = type === "chat-record" ? (toChatRecordMessageExt(ext) ?? {}) : safeRawExt;
   const privacyPolicyVersionAtSend = message.privacyPolicyVersionAtSend;
   const createdAtMs = Date.parse(message.createdAt);
   const expiresAtMs = message.expiresAt ? Date.parse(message.expiresAt) : Number.NaN;
@@ -950,6 +988,35 @@ export function createFormalImApi({
         deleted: response.deleted,
       };
     },
+    async batchDeleteMessages(conversationId, input) {
+      assertUuid(input.idempotencyKey);
+      const messageIds = input.messageIds.map(toNumericId);
+      if (messageIds.length < 1 || messageIds.length > 100 || new Set(messageIds).size !== messageIds.length) throw new Error("error.validation.invalid_message_ids");
+      const result = await realtimeApi.batchDeleteMessagesForMe(toNumericId(conversationId), { idempotencyKey: input.idempotencyKey, messageIds });
+      return { ...result, conversationId: toStringId(result.conversationId), messageIds: result.messageIds.map(toStringId) };
+    },
+    async translateMessages(conversationId, input) {
+      if (input.messageIds.length < 1 || input.messageIds.length > 50 || new Set(input.messageIds).size !== input.messageIds.length) throw new Error("error.validation.invalid_message_ids");
+      const results = await realtimeApi.translateMessages(toNumericId(conversationId), { messageIds: input.messageIds.map(toNumericId), targetLanguage: input.targetLanguage });
+      return results.map((result) => ({ messageId: toStringId(result.messageId), status: result.status, ...(result.status === "translated" && typeof result.translatedContent === "string" ? { translatedContent: result.translatedContent } : {}) }));
+    },
+    async createChatRecordDelivery(targetConversationId, command) {
+      const result = await realtimeApi.createChatRecordDelivery(toNumericId(targetConversationId), toRealtimeChatRecordCommand(command));
+      return { replayed: result.replayed, bundle: toChatRecordSummary(result.bundle), message: toConversationMessage(result.message) };
+    },
+    async getChatRecord(publicId) { return toChatRecordSummary(await realtimeApi.getChatRecord(assertUuid(publicId))); },
+    async listChatRecordItems(publicId, query = {}) {
+      const safeQuery = { ...(query.beforePosition === undefined ? {} : { beforePosition: positive(query.beforePosition) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) };
+      const result = await realtimeApi.listChatRecordItems(assertUuid(publicId), safeQuery);
+      return { ...result, list: result.list.map(toChatRecordItem) };
+    },
+    getChatRecordMedia(publicId, checksumSha256) { return realtimeApi.getChatRecordMedia(assertUuid(publicId), assertChecksum(checksumSha256)); },
+    async createChatRecordFavorite(command) { const result = await realtimeApi.createChatRecordFavorite(toRealtimeChatRecordCommand(command)); return { replayed: result.replayed, favorite: toChatRecordFavorite(result.favorite) }; },
+    async listChatRecordFavorites(query = {}) {
+      const result = await realtimeApi.listChatRecordFavorites({ ...(query.page === undefined ? {} : { page: positive(query.page) }), ...(query.pageSize === undefined ? {} : { pageSize: positive(query.pageSize, 100) }) });
+      return { ...result, list: result.list.map(toChatRecordFavorite) };
+    },
+    removeChatRecordFavorite(favoriteId) { return realtimeApi.removeChatRecordFavorite(toNumericId(favoriteId)); },
     async sendMessage(
       type: ImMessageType,
       payload: {
@@ -959,6 +1026,9 @@ export function createFormalImApi({
         ext?: MessageExt;
       },
     ) {
+      if (type === "chat-record") {
+        throw new Error("error.im.chat_record_requires_server_snapshot");
+      }
       const storedType = type === "system" ? "system" : "text";
       const metadata = {
         needoMessageType: type,

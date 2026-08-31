@@ -703,15 +703,147 @@ describe("formal IM forwarding", () => {
     ).toThrow("error.im.forward_source_unavailable");
   });
 
-  it("uses the normal formal send path instead of the unavailable forward stub", () => {
+  it("keeps the legacy payload helper out of the formal chat-record path", () => {
     const source = storeSource;
-    const start = source.indexOf("async function forwardMessage");
+    const start = source.indexOf("async function forwardSelectedMessages");
     const end = source.indexOf("async function pinConversation", start);
     const forwardSource = source.slice(start, end);
 
-    expect(forwardSource).toContain("getForwardableMessagePayload");
-    expect(forwardSource).toContain("return sendMessage(");
-    expect(forwardSource).not.toContain("api.forwardMessage");
+    expect(forwardSource).toContain("api.createChatRecordDelivery");
+    expect(forwardSource).not.toContain("getForwardableMessagePayload");
+    expect(forwardSource).not.toContain("sendMessage(");
+  });
+
+  it("retains transient selection and the caller key on failure, then clears it on retry success", async () => {
+    mocked.session = {
+      activePublicId: "u0000000190",
+      avatarUrl: null,
+      id: 190,
+      primaryPublicId: "u0000000190",
+      username: "转发测试用户",
+    };
+    const createChatRecordDelivery = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("error.im.delivery_failed"))
+      .mockResolvedValueOnce({
+        replayed: false,
+        bundle: {
+          publicId: "018f47c0-8b5e-7d9f-a831-112233445566",
+          title: "木村",
+          preview: "木村: 原消息",
+          senderNames: ["木村"],
+          senderCount: 1,
+          itemCount: 1,
+          createdAt: sentAt,
+        },
+        message: message({
+          id: "901",
+          localId: "901",
+          type: "chat-record",
+          content: "木村",
+          ext: {
+            chatRecord: {
+              publicId: "018f47c0-8b5e-7d9f-a831-112233445566",
+              preview: "木村: 原消息",
+              senderNames: ["木村"],
+              itemCount: 1,
+              titleKind: "single",
+            },
+          },
+        }),
+      });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: [],
+      }),
+      createChatRecordDelivery,
+    };
+
+    await renderStore();
+    act(() => {
+      store?.setPendingChatRecordForward({
+        sourceConversationId: "91",
+        messageIds: ["700", "701"],
+      });
+    });
+    await expect(
+      store?.forwardSelectedMessages("91", "stable-key"),
+    ).rejects.toThrow("error.im.delivery_failed");
+    expect(store?.pendingChatRecordForward).toEqual({
+      sourceConversationId: "91",
+      messageIds: ["700", "701"],
+    });
+
+    await act(async () => {
+      await store?.forwardSelectedMessages("91", "stable-key");
+    });
+    expect(createChatRecordDelivery).toHaveBeenNthCalledWith(2, "91", {
+      idempotencyKey: "stable-key",
+      messageIds: ["700", "701"],
+      sourceConversationId: "91",
+    });
+    expect(store?.pendingChatRecordForward).toBeNull();
+    expect(store?.messagesByConversation["91"]).toEqual([
+      expect.objectContaining({ id: "901", type: "chat-record" }),
+    ]);
+  });
+
+  it("does not remove messages optimistically when batch deletion fails", async () => {
+    mocked.session = {
+      activePublicId: "u0000000191",
+      avatarUrl: null,
+      id: 191,
+      primaryPublicId: "u0000000191",
+      username: "删除测试用户",
+    };
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [message()],
+        nextCursor: null,
+        hasMore: false,
+      }),
+      batchDeleteMessages: vi
+        .fn()
+        .mockRejectedValue(new Error("error.im.batch_failed")),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+    });
+    await expect(
+      store?.batchDeleteMessages("91", ["700"], "delete-key"),
+    ).rejects.toThrow("error.im.batch_failed");
+    expect(store?.messagesByConversation["91"]).toEqual([
+      expect.objectContaining({ id: "700" }),
+    ]);
   });
 });
 

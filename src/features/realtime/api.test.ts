@@ -311,6 +311,47 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("uses exact chat-record mutations and maps protected binary media", async () => {
+    const key = "11111111-1111-4111-8111-111111111111";
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const command = { idempotencyKey: key, messageIds: [501, 502], sourceConversationId: 41 };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ replayed: false, bundle: { publicId, title: "A、B", preview: "A: one", senderNames: ["A", "B"], senderCount: 2, itemCount: 2, createdAt: "2026-08-31T08:00:00.000Z" }, message: { id: 900, conversationId: 91, senderUserId: 100, type: "text", content: "A、B", metadata: null, createdAt: "2026-08-31T08:00:00.000Z" } }, 201))
+      .mockResolvedValueOnce(jsonResponse({ replayed: false, favorite: { id: 71 } }, 201))
+      .mockResolvedValueOnce(jsonResponse({ conversationId: 41, messageIds: [501, 502], count: 2, deleted: true, replayed: false }))
+      .mockResolvedValueOnce(jsonResponse([{ messageId: 501, status: "translated", translatedContent: "翻译" }]))
+      .mockResolvedValueOnce(jsonResponse({ publicId, title: "A", preview: "one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: "2026-08-31T08:00:00.000Z" }))
+      .mockResolvedValueOnce(jsonResponse({ list: [], total: 0, page: 1, page_size: 20, nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse({ list: [], total: 0, page: 2, page_size: 20 }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "cache-control": "private", "content-length": "4", "content-type": "image/png", etag: '"etag"' } }));
+    await realtimeApi.createChatRecordDelivery(91, command);
+    await realtimeApi.createChatRecordFavorite(command);
+    await realtimeApi.batchDeleteMessagesForMe(41, { idempotencyKey: key, messageIds: [501, 502] });
+    await realtimeApi.translateMessages(41, { messageIds: [501], targetLanguage: "zh" });
+    await realtimeApi.getChatRecord(publicId);
+    await realtimeApi.listChatRecordItems(publicId, { beforePosition: 21, pageSize: 20 });
+    await realtimeApi.listChatRecordFavorites({ page: 2, pageSize: 20 });
+    await realtimeApi.removeChatRecordFavorite(71);
+    const media = await realtimeApi.getChatRecordMedia(publicId, "a".repeat(64));
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/v1/im/conversations/91/chat-records", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/im/chat-record-favorites", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(3, "/api/v1/im/conversations/41/messages/delete-for-me", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(4, "/api/v1/im/conversations/41/messages/translations", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(8, "/api/v1/im/chat-record-favorites/71", expect.objectContaining({ method: "DELETE" }));
+    expect(media).toMatchObject({ blob: expect.any(Blob), contentLength: 4, contentType: "image/png", etag: '"etag"' });
+    expect(JSON.stringify(media)).not.toContain("runtime/");
+  });
+
+  it("preserves chat-record JSON and binary errors", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 40401, message: "error.im.chat_record_not_found", data: null }), { headers: { "content-type": "application/json" }, status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 40301, message: "error.permission.denied", data: null }), { headers: { "content-type": "application/json" }, status: 403 }));
+    await expect(realtimeApi.getChatRecord(publicId)).rejects.toMatchObject({ code: 40401, status: 404 });
+    await expect(realtimeApi.getChatRecordMedia(publicId, "a".repeat(64))).rejects.toMatchObject({ code: 40301, status: 403 });
+  });
+
   it("parses authenticated SSE events and sends the last event id on reconnect", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

@@ -84,6 +84,23 @@ describe("chat-record OpenAPI contract", () => {
     expect(api.components.schemas.ImChatRecordFavoritePage.required).toEqual(
       expect.arrayContaining(["list", "total", "page", "page_size"])
     );
+    expect(api.components.schemas.ImChatRecordSummary).toMatchObject({
+      required: expect.arrayContaining(["senderNames"]),
+      properties: {
+        senderNames: {
+          type: "array",
+          minItems: 1,
+          maxItems: 100,
+          items: { type: "string", minLength: 1, maxLength: 120 }
+        }
+      }
+    });
+    expect(api.components.schemas.ImChatRecordFavorite).toMatchObject({
+      required: expect.arrayContaining(["senderNames"]),
+      properties: {
+        senderNames: api.components.schemas.ImChatRecordSummary.properties?.senderNames
+      }
+    });
     const media =
       api.paths["/api/v1/im/chat-records/{publicId}/media/{checksumSha256}"].get.responses["200"];
     expect(Object.keys(media.content).sort()).toEqual(

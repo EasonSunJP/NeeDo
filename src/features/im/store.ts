@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "../../auth/AuthProvider";
+import type { Language } from "../../i18n/translations";
 import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
   applyConversationDraft,
@@ -35,6 +36,11 @@ import {
 
 type StoreStatus = "idle" | "loading" | "ready" | "error";
 type DraftState = Record<string, { text: string; updatedAt: string }>;
+
+export type PendingChatRecordForward = {
+  sourceConversationId: string;
+  messageIds: string[];
+};
 
 type UiState = {
   drafts: DraftState;
@@ -240,6 +246,7 @@ type ImSnapshot = {
   members: ConversationMember[];
   messagesByConversation: Record<string, ConversationMessage[]>;
   paginationByConversation: PaginationState;
+  pendingChatRecordForward: PendingChatRecordForward | null;
   activeConversationId?: string;
   ui: UiState;
 };
@@ -289,6 +296,7 @@ function createInitialSnapshot(): ImSnapshot {
     members: [],
     messagesByConversation: {},
     paginationByConversation: {},
+    pendingChatRecordForward: null,
     ui: {
       drafts: {},
       searchHistory: []
@@ -927,14 +935,100 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response;
   }
 
-  async function forwardMessage(messageId: string, conversationId: string) {
+  function setPendingChatRecordForward(
+    pending: PendingChatRecordForward | null,
+  ) {
+    if (
+      pending &&
+      (!pending.sourceConversationId || pending.messageIds.length === 0)
+    ) {
+      throw new Error("error.im.chat_record_selection_invalid");
+    }
+
+    snapshot = {
+      ...snapshot,
+      pendingChatRecordForward: pending
+        ? {
+            sourceConversationId: pending.sourceConversationId,
+            messageIds: [...pending.messageIds],
+          }
+        : null,
+    };
+    emit();
+  }
+
+  async function forwardSelectedMessages(
+    conversationId: string,
+    idempotencyKey: string,
+  ) {
     await hydrateStore();
-    const source = getForwardableMessagePayload(
-      snapshot.messagesByConversation,
-      messageId,
-    );
-    return sendMessage(conversationId, source.type, source.content, {
-      ext: source.ext,
+    const pending = snapshot.pendingChatRecordForward;
+    if (!pending) {
+      throw new Error("error.im.chat_record_selection_expired");
+    }
+
+    const response = await api.createChatRecordDelivery(conversationId, {
+      idempotencyKey,
+      messageIds: [...pending.messageIds],
+      sourceConversationId: pending.sourceConversationId,
+    });
+    upsertMessage(response.message);
+    recomputeCurrentLastMessageSummary(response.message);
+    snapshot = { ...snapshot, pendingChatRecordForward: null };
+    emit();
+    return response.message;
+  }
+
+  async function favoriteSelectedMessages(
+    sourceConversationId: string,
+    messageIds: string[],
+    idempotencyKey: string,
+  ) {
+    await hydrateStore();
+    const response = await api.createChatRecordFavorite({
+      idempotencyKey,
+      messageIds: [...messageIds],
+      sourceConversationId,
+    });
+    return response.favorite;
+  }
+
+  async function batchDeleteMessages(
+    conversationId: string,
+    messageIds: string[],
+    idempotencyKey: string,
+  ) {
+    await hydrateStore();
+    const response = await api.batchDeleteMessages(conversationId, {
+      idempotencyKey,
+      messageIds: [...messageIds],
+    });
+    const removed = new Set(response.messageIds);
+    const remaining = (snapshot.messagesByConversation[conversationId] ?? [])
+      .filter((message) => !removed.has(message.id));
+    snapshot = {
+      ...snapshot,
+      messagesByConversation: {
+        ...snapshot.messagesByConversation,
+        [conversationId]: remaining,
+      },
+    };
+    const latest = remaining.at(-1);
+    if (latest) {
+      recomputeCurrentLastMessageSummary(latest);
+    }
+    emit();
+  }
+
+  async function translateMessages(
+    conversationId: string,
+    messageIds: string[],
+    targetLanguage: Language,
+  ) {
+    await hydrateStore();
+    return api.translateMessages(conversationId, {
+      messageIds: [...messageIds],
+      targetLanguage,
     });
   }
 
@@ -1325,7 +1419,16 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       setMessageReaction,
       recallMessage,
       deleteMessage,
-      forwardMessage,
+      setPendingChatRecordForward,
+      forwardSelectedMessages,
+      favoriteSelectedMessages,
+      batchDeleteMessages,
+      translateMessages,
+      getChatRecord: api.getChatRecord,
+      listChatRecordItems: api.listChatRecordItems,
+      getChatRecordMedia: api.getChatRecordMedia,
+      listChatRecordFavorites: api.listChatRecordFavorites,
+      removeChatRecordFavorite: api.removeChatRecordFavorite,
       pinConversation,
       muteConversation,
       setConversationAutoTranslateMessages,

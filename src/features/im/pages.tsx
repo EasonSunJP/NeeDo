@@ -185,7 +185,8 @@ import {
   getServiceContacts,
   getIncomingPendingFriendRequestCount,
   selectLatestFriendRequestsByCounterpart,
-  useImStore
+  useImStore,
+  type ImStoreHook
 } from "./store";
 import { useSocial } from "../social/context";
 import { socialPaths } from "../social/paths";
@@ -5903,7 +5904,11 @@ export function ImConversationRoomPage({
         icon: "forward",
         onClick: () => {
           closeMessageMenu();
-          navigate(appendQuery(config.routes.newConversation, { mode: "forward", messageId: message.id }));
+          store.setPendingChatRecordForward({
+            sourceConversationId: conversationId,
+            messageIds: [message.id]
+          });
+          navigate(appendQuery(config.routes.newConversation, { mode: "forward" }));
         }
       },
       {
@@ -6789,7 +6794,11 @@ export function ImConversationRoomPage({
               className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-2 text-xs font-black text-[color:var(--client-primary-contrast)]"
               onClick={() => {
                 closeMediaPreview();
-                navigate(appendQuery(config.routes.newConversation, { mode: "forward", messageId: mediaPreview.id }));
+                store.setPendingChatRecordForward({
+                  sourceConversationId: conversationId,
+                  messageIds: [mediaPreview.id]
+                });
+                navigate(appendQuery(config.routes.newConversation, { mode: "forward" }));
               }}
               type="button"
             >
@@ -7903,6 +7912,16 @@ export function ImMediaRecordsPage() {
   );
 }
 
+export async function submitImNewConversationForward(
+  store: Pick<ImStoreHook, "ensureDirectConversation" | "forwardSelectedMessages">,
+  userId: string,
+  idempotencyKey: string
+) {
+  const conversation = await store.ensureDirectConversation(userId);
+  await store.forwardSelectedMessages(conversation.id, idempotencyKey);
+  return conversation;
+}
+
 export function ImNewConversationPage() {
   const { scope, store, config } = useImRuntime();
   const { actions: dineInActions } = useDineInStore();
@@ -7925,8 +7944,7 @@ export function ImNewConversationPage() {
             ? "选择聊天"
             : "新建聊天";
   const groupSourceConversationId = isGroupMode ? searchParams.get("from") : null;
-  const forwardMessageId = searchParams.get("messageId");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q")?.trim() ?? "");
   const deferredQuery = useDeferredValue(query);
   const [directoryCandidates, setDirectoryCandidates] = useState<ImUser[]>([]);
   const [directoryStatus, setDirectoryStatus] = useState<"idle" | "searching" | "ready" | "error">("idle");
@@ -7942,6 +7960,9 @@ export function ImNewConversationPage() {
   const [collectNote, setCollectNote] = useState("");
   const [scanToken, setScanToken] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
+  const [forwardError, setForwardError] = useState<string | null>(null);
+  const [forwardPending, setForwardPending] = useState(false);
+  const forwardIdempotencyKeyRef = useRef<string | null>(null);
   const [myQrPurpose, setMyQrPurpose] = useState<MyQrCodePurpose>("friend");
   const contacts = useMemo(() => {
     const keyword = deferredQuery.trim().toLowerCase();
@@ -8219,10 +8240,26 @@ export function ImNewConversationPage() {
   };
 
   const createOrForward = async (userId: string) => {
-    if (mode === "forward" && forwardMessageId) {
-      const conversation = await store.ensureDirectConversation(userId);
-      await store.forwardMessage(forwardMessageId, conversation.id);
-      navigate(config.routes.conversation(conversation.id));
+    if (mode === "forward") {
+      if (!store.pendingChatRecordForward || forwardPending) {
+        return;
+      }
+
+      forwardIdempotencyKeyRef.current ??= crypto.randomUUID();
+      setForwardPending(true);
+      setForwardError(null);
+      try {
+        const conversation = await submitImNewConversationForward(
+          store,
+          userId,
+          forwardIdempotencyKeyRef.current
+        );
+        navigate(config.routes.conversation(conversation.id));
+      } catch (error) {
+        setForwardError(error instanceof Error ? error.message : "转发失败，请重试");
+      } finally {
+        setForwardPending(false);
+      }
       return;
     }
 
@@ -8307,7 +8344,15 @@ export function ImNewConversationPage() {
         />
       ) : (
         <ImTopBar
-          onBack={() => navigate(-1)}
+          onBack={() => {
+            if (mode === "forward") {
+              store.setPendingChatRecordForward(null);
+            }
+            navigate(-1);
+          }}
+          subtitle={mode === "forward" && store.pendingChatRecordForward
+            ? `已选 ${store.pendingChatRecordForward.messageIds.length} 条消息`
+            : undefined}
           title={pageTitle}
         />
       )}
@@ -8464,6 +8509,16 @@ export function ImNewConversationPage() {
         </div>
       ) : (
         <div className="space-y-4 px-4 py-4">
+          {mode === "forward" && !store.pendingChatRecordForward ? (
+            <div className="rounded-[24px] bg-white px-4 py-10 text-center text-sm text-ink/55 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+              转发内容已失效，请重新选择
+            </div>
+          ) : null}
+          {mode === "forward" && forwardError ? (
+            <div role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              转发失败，请重试
+            </div>
+          ) : null}
           <input
             className="h-11 w-full rounded-2xl bg-white px-4 text-[15px] outline-none shadow-[0_12px_32px_rgba(20,20,20,0.06)]"
             onChange={(event) => setQuery(event.target.value)}
@@ -8471,8 +8526,9 @@ export function ImNewConversationPage() {
             value={query}
           />
 
-          <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-            {contacts.map((contact) => {
+          {mode !== "forward" || store.pendingChatRecordForward ? (
+            <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+              {contacts.map((contact) => {
               const user = store.usersById[contact.targetUserId];
 
               if (!user) {
@@ -8489,8 +8545,9 @@ export function ImNewConversationPage() {
                   user={user}
                 />
               );
-            })}
-          </section>
+              })}
+            </section>
+          ) : null}
         </div>
       )}
 

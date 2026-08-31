@@ -48,6 +48,15 @@ export type RealtimeMessageDeletionResult = {
   messageId: number;
   deleted: true;
 };
+export type RealtimeChatRecordCommand = { idempotencyKey: string; messageIds: number[]; sourceConversationId: number };
+export type RealtimeChatRecordSummary = { publicId: string; title: string; preview: string; senderNames: string[]; senderCount: number; itemCount: number; createdAt: string };
+export type RealtimeChatRecordItem = { id: number; position: number; senderDisplayName: string; senderAvatarUrl: string | null; messageType: string; content: string | null; metadata: unknown; sentAt: string };
+export type RealtimeChatRecordItemPage = PaginatedRealtimeData<RealtimeChatRecordItem> & { nextCursor: number | null };
+export type RealtimeChatRecordFavorite = { id: number; bundlePublicId: string; title: string; preview: string; senderNames: string[]; senderCount: number; itemCount: number; createdAt: string };
+export type RealtimeChatRecordDelivery = { replayed: boolean; bundle: RealtimeChatRecordSummary; message: RealtimeMessage };
+export type RealtimeChatRecordFavoriteMutation = { replayed: boolean; favorite: RealtimeChatRecordFavorite };
+export type RealtimeBatchDeleteResult = { conversationId: number; messageIds: number[]; count: number; deleted: true; replayed: boolean };
+export type RealtimeMessageTranslationResult = { messageId: number; status: "translated" | "same_language" | "ineligible"; translatedContent?: string };
 
 export type RealtimeMessageReaction = {
   emoji: string;
@@ -367,6 +376,23 @@ export const realtimeApi = {
       { method: "DELETE" }
     );
   },
+  batchDeleteMessagesForMe(conversationId: number, input: { idempotencyKey: string; messageIds: number[] }) {
+    return httpClient.request<RealtimeBatchDeleteResult>(`/im/conversations/${conversationId}/messages/delete-for-me`, { body: input, method: "POST" });
+  },
+  translateMessages(conversationId: number, input: { messageIds: number[]; targetLanguage: "zh" | "zh-Hant" | "ja" | "en" | "ko" }) {
+    return httpClient.request<RealtimeMessageTranslationResult[]>(`/im/conversations/${conversationId}/messages/translations`, { body: input, method: "POST" });
+  },
+  createChatRecordDelivery(targetConversationId: number, input: RealtimeChatRecordCommand) {
+    return httpClient.request<RealtimeChatRecordDelivery>(`/im/conversations/${targetConversationId}/chat-records`, { body: input, method: "POST" });
+  },
+  getChatRecord(publicId: string) { return httpClient.request<RealtimeChatRecordSummary>(`/im/chat-records/${publicId}`); },
+  listChatRecordItems(publicId: string, query: { beforePosition?: number; pageSize?: number } = {}) {
+    return httpClient.request<RealtimeChatRecordItemPage>(`/im/chat-records/${publicId}/items`, { query });
+  },
+  getChatRecordMedia(publicId: string, checksumSha256: string) { return httpClient.requestBinary(`/im/chat-records/${publicId}/media/${checksumSha256}`); },
+  createChatRecordFavorite(input: RealtimeChatRecordCommand) { return httpClient.request<RealtimeChatRecordFavoriteMutation>("/im/chat-record-favorites", { body: input, method: "POST" }); },
+  listChatRecordFavorites(query: PageQuery = {}) { return httpClient.request<PaginatedRealtimeData<RealtimeChatRecordFavorite>>("/im/chat-record-favorites", { query }); },
+  removeChatRecordFavorite(favoriteId: number) { return httpClient.request<{ deleted: true }>(`/im/chat-record-favorites/${favoriteId}`, { method: "DELETE" }); },
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });
   },

@@ -38,6 +38,7 @@ export type HttpClientCsvExportPayload = {
   contentType: "text/csv; charset=utf-8";
   csv: string;
 };
+export type HttpClientBinaryPayload = { blob: Blob; cacheControl: string | null; contentLength: number | null; contentType: string; etag: string | null };
 
 export class ApiClientError extends Error {
   public readonly code: number;
@@ -526,6 +527,32 @@ async function sendDataUrlRequest(
   return `data:${contentType || "application/octet-stream"};base64,${arrayBufferToBase64(buffer)}`;
 }
 
+async function sendBinaryRequest(path: string, options: HttpClientRequestOptions, canRetry: boolean): Promise<HttpClientBinaryPayload> {
+  await alignAccessTokenWithExpectedUser(options);
+  const method = resolveRequestMethod(options);
+  const previewShopId = getPreviewShopId(options);
+  assertMerchantPreviewAllows(method, previewShopId);
+  const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
+    body: createRequestBody(options.body), headers: await createRequestHeaders(options, previewShopId), method, signal: options.signal
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  if (response.status === 401 && canRetry && options.auth !== false && options.retryOnUnauthorized !== false && getStoredRefreshToken()) {
+    try { await refreshStoredAccessToken(); return sendBinaryRequest(path, options, false); }
+    catch (error) { clearAuthTokens(); authExpiredHandler?.(); throw error; }
+  }
+  expireAuthenticationOnUnauthorized(response, options);
+  if (!response.ok || isJsonContentType(contentType) || contentType.includes("text/html")) {
+    const envelope = await parseEnvelope<unknown>(response); assertSuccess(envelope, response.status);
+  }
+  const header = response.headers.get("content-length");
+  const length = header === null ? Number.NaN : Number.parseInt(header, 10);
+  return {
+    blob: await response.blob(), cacheControl: response.headers.get("cache-control"),
+    contentLength: Number.isSafeInteger(length) && length >= 0 ? length : null,
+    contentType: contentType || "application/octet-stream", etag: response.headers.get("etag")
+  };
+}
+
 export function getAccessToken() {
   return accessToken;
 }
@@ -596,6 +623,7 @@ export const httpClient = {
   requestCsvExport(path: string, options: HttpClientRequestOptions = {}) {
     return sendCsvExportRequest(path, options, true);
   },
+  requestBinary(path: string, options: HttpClientRequestOptions = {}) { return sendBinaryRequest(path, options, true); },
   requestDataUrl(path: string, options: HttpClientRequestOptions = {}) {
     return sendDataUrlRequest(path, options, true);
   }

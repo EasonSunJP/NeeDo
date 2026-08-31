@@ -19,6 +19,7 @@ export type ImMessageType =
   | "contact-card"
   | "service-card"
   | "schedule-invite"
+  | "chat-record"
   | "system"
   | "recalled";
 export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
@@ -279,6 +280,7 @@ export type MessageExt = {
     statusLabel?: string;
     href?: string;
   };
+  chatRecord?: { publicId: string; itemCount: number; preview: string; senderNames: string[]; titleKind: "single" | "pair" | "group" };
   mentions?: string[];
   mentionAll?: boolean;
   groupSenderName?: string;

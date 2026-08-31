@@ -76,6 +76,7 @@ const repositoryFixture = (): jest.Mocked<ImChatRecordRepositoryPort> => ({
       publicId: input.publicId,
       title: input.titleSnapshot,
       preview: input.previewSnapshot,
+      senderNames: input.senderNamesSnapshot,
       senderCount: input.senderNamesSnapshot.length,
       itemCount: input.items.length,
       createdAt: now
@@ -108,6 +109,7 @@ const repositoryFixture = (): jest.Mocked<ImChatRecordRepositoryPort> => ({
       bundlePublicId: input.publicId,
       title: input.titleSnapshot,
       preview: input.previewSnapshot,
+      senderNames: input.senderNamesSnapshot,
       senderCount: input.senderNamesSnapshot.length,
       itemCount: input.items.length,
       createdAt: now
@@ -174,6 +176,7 @@ describe("ImChatRecordService", () => {
       publicId: "11111111-1111-4111-8111-111111111111",
       title: "A",
       preview: "A: message 1",
+      senderNames: ["A"],
       senderCount: 1,
       itemCount: 3,
       createdAt: now
@@ -214,6 +217,7 @@ describe("ImChatRecordService", () => {
           bundlePublicId: "11111111-1111-4111-8111-111111111111",
           title: "A",
           preview: "A: message 1",
+          senderNames: ["A"],
           senderCount: 1,
           itemCount: 1,
           createdAt: now
@@ -328,6 +332,7 @@ describe("ImChatRecordService", () => {
         bundlePublicId: "22222222-2222-4222-8222-222222222222",
         title: input.titleSnapshot,
         preview: input.previewSnapshot,
+        senderNames: input.senderNamesSnapshot,
         senderCount: input.senderNamesSnapshot.length,
         itemCount: input.items.length,
         createdAt: now

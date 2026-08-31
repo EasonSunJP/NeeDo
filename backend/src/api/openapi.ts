@@ -1501,11 +1501,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ImChatRecordSummary: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "title", "preview", "senderCount", "itemCount", "createdAt"],
+        required: [
+          "publicId",
+          "title",
+          "preview",
+          "senderNames",
+          "senderCount",
+          "itemCount",
+          "createdAt"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           title: { type: "string", maxLength: 255 },
           preview: { type: "string", maxLength: 500 },
+          senderNames: {
+            type: "array",
+            minItems: 1,
+            maxItems: 100,
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
           senderCount: { type: "integer", minimum: 1, maximum: 100 },
           itemCount: { type: "integer", minimum: 1, maximum: 100 },
           createdAt: { type: "string", format: "date-time" }
@@ -1544,12 +1558,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ImChatRecordFavorite: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "bundlePublicId", "title", "preview", "senderCount", "itemCount", "createdAt"],
+        required: [
+          "id",
+          "bundlePublicId",
+          "title",
+          "preview",
+          "senderNames",
+          "senderCount",
+          "itemCount",
+          "createdAt"
+        ],
         properties: {
           id: { type: "integer", minimum: 1 },
           bundlePublicId: { type: "string", format: "uuid" },
           title: { type: "string", maxLength: 255 },
           preview: { type: "string", maxLength: 500 },
+          senderNames: {
+            type: "array",
+            minItems: 1,
+            maxItems: 100,
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
           senderCount: { type: "integer", minimum: 1, maximum: 100 },
           itemCount: { type: "integer", minimum: 1, maximum: 100 },
           createdAt: { type: "string", format: "date-time" }

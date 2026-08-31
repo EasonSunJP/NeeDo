@@ -87,6 +87,7 @@ export interface ChatRecordBundlePayload {
   publicId: string;
   title: string;
   preview: string;
+  senderNames: string[];
   senderCount: number;
   itemCount: number;
   createdAt: Date;
@@ -116,6 +117,7 @@ export interface ChatRecordFavoritePayload {
   bundlePublicId: string;
   title: string;
   preview: string;
+  senderNames: string[];
   senderCount: number;
   itemCount: number;
   createdAt: Date;
@@ -386,6 +388,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
             bundlePublicId: input.publicId,
             itemCount: input.items.length,
             preview: input.previewSnapshot,
+            senderNames: input.senderNamesSnapshot,
             senderCount: input.senderNamesSnapshot.length,
             title: input.titleSnapshot,
             titleKind: input.titleKind
@@ -918,6 +921,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     publicId: string;
     titleSnapshot: string;
     previewSnapshot: string;
+    senderNamesSnapshot: Prisma.JsonValue;
     senderCount: number;
     itemCount: number;
     createdAt: Date;
@@ -927,6 +931,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       publicId: bundle.publicId,
       title: bundle.titleSnapshot,
       preview: bundle.previewSnapshot,
+      senderNames: this.senderNames(bundle.senderNamesSnapshot),
       senderCount: bundle.senderCount,
       itemCount: bundle.itemCount,
       createdAt: bundle.createdAt
@@ -940,6 +945,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       publicId: string;
       titleSnapshot: string;
       previewSnapshot: string;
+      senderNamesSnapshot: Prisma.JsonValue;
       senderCount: number;
       itemCount: number;
     }
@@ -949,10 +955,17 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       bundlePublicId: bundle.publicId,
       title: bundle.titleSnapshot,
       preview: bundle.previewSnapshot,
+      senderNames: this.senderNames(bundle.senderNamesSnapshot),
       senderCount: bundle.senderCount,
       itemCount: bundle.itemCount,
       createdAt
     };
+  }
+
+  private senderNames(value: Prisma.JsonValue): string[] {
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
   }
 
   private mapMessage(

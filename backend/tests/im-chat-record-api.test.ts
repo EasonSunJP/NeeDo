@@ -22,6 +22,7 @@ const bundle = {
   publicId,
   title: "Alice、Bob",
   preview: "Alice: one\nBob: two",
+  senderNames: ["Alice", "Bob"],
   senderCount: 2,
   itemCount: 2,
   createdAt: now
@@ -50,6 +51,7 @@ const favorite = {
   bundlePublicId: publicId,
   title: bundle.title,
   preview: bundle.preview,
+  senderNames: bundle.senderNames,
   senderCount: 2,
   itemCount: 2,
   createdAt: now
@@ -224,7 +226,7 @@ describe("chat-record HTTP API", () => {
       message: "success",
       data: {
         replayed: false,
-        bundle: { publicId, itemCount: 2 },
+        bundle: { publicId, itemCount: 2, senderNames: ["Alice", "Bob"] },
         message: { id: 801, conversationId: 99 }
       }
     });
@@ -327,7 +329,7 @@ describe("chat-record HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.token}`)
       .expect(200);
     expect(list.body.data).toEqual({
-      list: [expect.any(Object)],
+      list: [expect.objectContaining({ senderNames: ["Alice", "Bob"] })],
       total: 1,
       page: 1,
       page_size: 20

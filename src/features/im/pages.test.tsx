@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
@@ -48,7 +48,7 @@ vi.mock("../../state/entityStore", async (importOriginal) => {
   };
 });
 
-import { ImConversationRoomPage } from "./pages";
+import { ImConversationRoomPage, ImNewConversationPage } from "./pages";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -172,6 +172,91 @@ function buildConversationRoomStore() {
   };
 }
 
+function buildForwardPageStore({
+  conversationId = "existing-conversation",
+  messageIds = ["700", "701"],
+  pending = true,
+  forwardSelectedMessages = vi.fn().mockResolvedValue(undefined),
+}: {
+  conversationId?: string;
+  messageIds?: string[];
+  pending?: boolean;
+  forwardSelectedMessages?: ReturnType<typeof vi.fn>;
+} = {}) {
+  const user = {
+    accountId: "partner-account",
+    avatar: "/partner-avatar.png",
+    id: "partner-user",
+    nickname: "测试好友",
+    profileKind: "person",
+    searchableFields: ["测试好友"],
+    sortKey: "C",
+    status: "online",
+    tags: [],
+    userIdLabel: "NeeDo ID: partner-user",
+  };
+  const contact = {
+    id: "contact-1",
+    ownerUserId: "current-user",
+    targetUserId: user.id,
+    relationStatus: "active",
+    source: "manual",
+    isBlocked: false,
+    isStarred: false,
+    tags: [],
+    createdAt: "2026-08-31T00:00:00.000Z",
+    updatedAt: "2026-08-31T00:00:00.000Z",
+  };
+  return {
+    api: {},
+    contacts: [contact],
+    conversations: [],
+    currentUserId: "current-user",
+    ensureDirectConversation: vi.fn().mockResolvedValue({ id: conversationId }),
+    forwardSelectedMessages,
+    members: [],
+    pendingChatRecordForward: pending
+      ? { sourceConversationId: "source-conversation", messageIds }
+      : null,
+    searchDirectory: vi.fn().mockResolvedValue({ users: [] }),
+    setPendingChatRecordForward: vi.fn(),
+    users: [user],
+    usersById: { [user.id]: user },
+  };
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
+}
+
+async function renderForwardPage(store: Record<string, unknown>, entries = ["/messages/new?mode=forward"]) {
+  roomHarness.store = store;
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
+        <I18nProvider>
+          <ClientThemeProvider>
+            <ImScopeProvider scope="user">
+              <Routes>
+                <Route path="/messages/new" element={<ImNewConversationPage />} />
+                <Route path="/messages" element={<LocationProbe />} />
+                <Route path="/messages/:conversationId" element={<LocationProbe />} />
+              </Routes>
+            </ImScopeProvider>
+          </ClientThemeProvider>
+        </I18nProvider>
+      </MemoryRouter>,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  return { container, root };
+}
+
 afterEach(() => {
   vi.useRealTimers();
   RoomMediaRecorder.instances = [];
@@ -183,6 +268,92 @@ afterEach(() => {
   delete (navigator as Navigator & { mediaDevices?: MediaDevices }).mediaDevices;
   delete (URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL;
   delete (URL as typeof URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL;
+});
+
+describe("ImNewConversationPage chat-record forwarding", () => {
+  it("renders an expired selection as non-submittable", async () => {
+    const store = buildForwardPageStore({ pending: false });
+    const view = await renderForwardPage(store);
+
+    expect(view.container.textContent).toContain("转发内容已失效，请重新选择");
+    expect(view.container.textContent).not.toContain("测试好友");
+    expect(store.ensureDirectConversation).not.toHaveBeenCalled();
+
+    await act(async () => view.root.unmount());
+  });
+
+  it("clears the transient selection and navigates back on explicit cancel", async () => {
+    const store = buildForwardPageStore();
+    const view = await renderForwardPage(store, [
+      "/messages",
+      "/messages/new?mode=forward",
+    ]);
+
+    await act(async () => {
+      view.container.querySelector<HTMLButtonElement>('button[aria-label="返回"]')?.click();
+      await Promise.resolve();
+    });
+
+    expect(store.setPendingChatRecordForward).toHaveBeenCalledWith(null);
+    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe("/messages");
+    await act(async () => view.root.unmount());
+  });
+
+  it.each([
+    ["a single-message existing", "existing-conversation", ["700"]],
+    ["a multi-message newly created", "new-conversation", ["700", "701"]],
+  ])("submits to %s target through the same chat-record endpoint", async (_label, conversationId, messageIds) => {
+    const store = buildForwardPageStore({ conversationId, messageIds });
+    const view = await renderForwardPage(store);
+
+    await act(async () => {
+      Array.from(view.container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("测试好友"))
+        ?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(store.ensureDirectConversation).toHaveBeenCalledWith("partner-user");
+    expect(store.forwardSelectedMessages).toHaveBeenCalledWith(
+      conversationId,
+      expect.any(String),
+    );
+    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe(`/messages/${conversationId}`);
+    await act(async () => view.root.unmount());
+  });
+
+  it("retains the selection and reuses one idempotency key after a failed attempt", async () => {
+    const forwardSelectedMessages = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("error.im.delivery_failed"))
+      .mockResolvedValueOnce(undefined);
+    const store = buildForwardPageStore({ forwardSelectedMessages });
+    const view = await renderForwardPage(store);
+    const target = () => Array.from(view.container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("测试好友"));
+
+    await act(async () => {
+      target()?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(view.container.textContent).toContain("转发失败，请重试");
+    expect(view.container.textContent).toContain("已选 2 条消息");
+    expect(store.setPendingChatRecordForward).not.toHaveBeenCalled();
+
+    await act(async () => {
+      target()?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(forwardSelectedMessages).toHaveBeenCalledTimes(2);
+    expect(forwardSelectedMessages.mock.calls[0]?.[1]).toBe(
+      forwardSelectedMessages.mock.calls[1]?.[1],
+    );
+    expect(view.container.querySelector('[data-testid="location"]')?.textContent).toBe("/messages/existing-conversation");
+    await act(async () => view.root.unmount());
+  });
 });
 
 describe("ImNewConversationPage directory query handoff", () => {
@@ -398,7 +569,9 @@ describe("IM automatic translation display wiring", () => {
 
     expect(roomSource).toContain("getImMessageCopyText(message)");
     expect(roomSource).not.toContain("selectedContent");
-    expect(source).toContain("store.forwardMessage(forwardMessageId, conversation.id)");
+    expect(roomSource).toContain("store.setPendingChatRecordForward({");
+    expect(roomSource).toContain("messageIds: [message.id]");
+    expect(source).not.toContain('searchParams.get("messageId")');
     expect(roomSource).toContain("restoreImComposerDraft(message.content, message.ext?.richText)");
   });
 });

@@ -10,6 +10,7 @@ const bundle = {
   requestFingerprint: "a".repeat(64),
   titleSnapshot: "A",
   previewSnapshot: "A: hello",
+  senderNamesSnapshot: ["A"],
   senderCount: 1,
   itemCount: 1,
   createdAt: now
@@ -129,7 +130,7 @@ describe("ImChatRecordRepository", () => {
 
     await expect(repository.createDelivery(deliveryInput())).resolves.toMatchObject({
       replayed: false,
-      bundle: { id: 501 },
+      bundle: { id: 501, senderNames: ["A"] },
       message: { id: 801 },
       recipients: [
         { userId: 41, identityId: 71 },
@@ -148,7 +149,10 @@ describe("ImChatRecordRepository", () => {
           senderUserId: 41,
           senderIdentityId: 71,
           createdAt: now,
-          metadata: expect.objectContaining({ needoMessageType: "chat-record" })
+          metadata: expect.objectContaining({
+            needoMessageType: "chat-record",
+            needoMessageExt: expect.objectContaining({ senderNames: ["A"] })
+          })
         })
       })
     );
@@ -182,7 +186,7 @@ describe("ImChatRecordRepository", () => {
 
     await expect(repository.createDelivery(deliveryInput())).resolves.toMatchObject({
       replayed: true,
-      bundle: { id: 501 },
+      bundle: { id: 501, senderNames: ["A"] },
       message: { id: 801 }
     });
     await expect(
@@ -534,7 +538,7 @@ describe("ImChatRecordRepository", () => {
 
     await expect(repository.createFavorite(favoriteInput)).resolves.toMatchObject({
       replayed: false,
-      favorite: { id: 601, bundlePublicId: bundle.publicId }
+      favorite: { id: 601, bundlePublicId: bundle.publicId, senderNames: ["A"] }
     });
     expect(tx.mediaAsset.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -773,8 +777,8 @@ describe("ImChatRecordRepository", () => {
   );
 
   it("filters favorite rows and count by an active bundle", async () => {
-    const findMany = jest.fn(async () => []);
-    const count = jest.fn(async () => 0);
+    const findMany = jest.fn(async () => [{ id: 601, createdAt: now, bundle }]);
+    const count = jest.fn(async () => 1);
     const client = {
       imChatRecordFavorite: { findMany, count },
       $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations))
@@ -783,7 +787,7 @@ describe("ImChatRecordRepository", () => {
 
     await expect(
       repository.listFavorites({ identityId: 71, page: 1, pageSize: 20 })
-    ).resolves.toMatchObject({ list: [], total: 0 });
+    ).resolves.toMatchObject({ list: [{ senderNames: ["A"] }], total: 1 });
     const expectedWhere = {
       ownerIdentityId: 71,
       deletedAt: null,
@@ -933,7 +937,7 @@ describe("ImChatRecordRepository", () => {
 
     await expect(
       repository.getBundle({ publicId: bundle.publicId, userId: 41, identityId: 71 })
-    ).resolves.toMatchObject({ id: bundle.id, publicId: bundle.publicId });
+    ).resolves.toMatchObject({ id: bundle.id, publicId: bundle.publicId, senderNames: ["A"] });
   });
 
   it("returns authorized media metadata without reading or returning a storage URL", async () => {

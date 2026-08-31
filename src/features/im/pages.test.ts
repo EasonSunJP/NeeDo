@@ -354,7 +354,9 @@ describe("IM pages", () => {
     expect(componentSource).toContain("Math.max(1");
     expect(componentSource).toContain("download={mediaPreview.ext?.fileName");
     expect(componentSource).toContain('mode: "forward"');
-    expect(componentSource).toContain("messageId: mediaPreview.id");
+    expect(componentSource).toContain("messageIds: [mediaPreview.id]");
+    expect(componentSource).toContain("sourceConversationId: conversationId");
+    expect(componentSource).not.toContain("messageId: mediaPreview.id");
     expect(componentSource).toContain("<video");
   });
 

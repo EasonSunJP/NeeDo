@@ -16,6 +16,7 @@ import type {
   UpdateConversationGroupInfoOptions,
   UpdateConversationPrivacyOptions,
 } from "./model";
+import type { ImChatRecordCommand, ImChatRecordFavorite, ImChatRecordFavoritePage, ImChatRecordItemPage, ImChatRecordMedia, ImChatRecordSummary, ImMessageTranslationResult } from "./chat-records";
 
 export type ImApi = {
   bootstrap(): Promise<ImBootstrapPayload>;
@@ -83,6 +84,15 @@ export type ImApi = {
     conversationId: string,
     messageId: string,
   ): Promise<{ conversationId: string; messageId: string; deleted: true }>;
+  batchDeleteMessages(conversationId: string, input: { idempotencyKey: string; messageIds: string[] }): Promise<{ conversationId: string; messageIds: string[]; count: number; deleted: true; replayed: boolean }>;
+  translateMessages(conversationId: string, input: { messageIds: string[]; targetLanguage: "zh" | "zh-Hant" | "ja" | "en" | "ko" }): Promise<ImMessageTranslationResult[]>;
+  createChatRecordDelivery(targetConversationId: string, command: ImChatRecordCommand): Promise<{ replayed: boolean; bundle: ImChatRecordSummary; message: ConversationMessage }>;
+  getChatRecord(publicId: string): Promise<ImChatRecordSummary>;
+  listChatRecordItems(publicId: string, query?: { beforePosition?: number; pageSize?: number }): Promise<ImChatRecordItemPage>;
+  getChatRecordMedia(publicId: string, checksumSha256: string): Promise<ImChatRecordMedia>;
+  createChatRecordFavorite(command: ImChatRecordCommand): Promise<{ replayed: boolean; favorite: ImChatRecordFavorite }>;
+  listChatRecordFavorites(query?: { page?: number; pageSize?: number }): Promise<ImChatRecordFavoritePage>;
+  removeChatRecordFavorite(favoriteId: string): Promise<{ deleted: true }>;
   sendMessage(
     type: ImMessageType,
     payload: { conversationId: string; content: string; quotedMessageId?: string; ext?: MessageExt },
