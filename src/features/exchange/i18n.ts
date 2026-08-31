@@ -7,6 +7,7 @@ const translations = {
   customerIdentity: { zh: "用户", "zh-Hant": "用戶", ja: "利用者", en: "Customer", ko: "사용자" },
   technicianIdentity: { zh: "技师", "zh-Hant": "技師", ja: "技術者", en: "Technician", ko: "기술자" },
   merchantIdentity: { zh: "店铺", "zh-Hant": "店舖", ja: "店舗", en: "Merchant", ko: "매장" },
+  publisherHidden: { zh: "发布者已隐藏身份", "zh-Hant": "發布者已隱藏身分", ja: "投稿者の身元は非公開です", en: "Publisher identity hidden", ko: "게시자 신원 비공개" },
   exchangeTitle: { zh: "需求与情报", "zh-Hant": "需求與情報", ja: "依頼とサービス情報", en: "Requests & service posts", ko: "요청 및 서비스 정보" },
   exchangeCaption: { zh: "真实身份发布 · 正式数据保存", "zh-Hant": "真實身份發布 · 正式資料保存", ja: "実在するテストIDで投稿・正式データとして保存", en: "Verified test identities · persisted records", ko: "검증된 테스트 신원 · 정식 데이터 저장" },
   searchPlaceholder: { zh: "搜索需要的服务", "zh-Hant": "搜尋需要的服務", ja: "必要なサービスを検索", en: "Search services", ko: "필요한 서비스 검색" },

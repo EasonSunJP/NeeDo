@@ -144,6 +144,16 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
   });
 
+  it("renders a redacted publisher without reconstructing private identity", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({ ...demandPost, publisher: null });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.textContent).toContain("发布者已隐藏身份");
+    expect(document.body.textContent).not.toContain("测试客户 41");
+    expect(document.body.textContent).not.toContain("u0000000041");
+  });
+
   it("restores the approved full-screen intelligence detail composition with formal fields", async () => {
     vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
     await renderDetail("/needo/posts/61");

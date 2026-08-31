@@ -121,15 +121,15 @@ function HeaderActionButton({
   );
 }
 
-function DetailHero({ label, post }: { label: string; post: ExchangePost }) {
-  const image = post.publisher.avatarUrl || fallbackPublisherImage;
+function DetailHero({ label, post, publisherAlt }: { label: string; post: ExchangePost; publisherAlt: string }) {
+  const image = post.publisher?.avatarUrl || fallbackPublisherImage;
   return (
     <section
       className="relative h-[238px] overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft"
       data-no-i18n="true"
       data-testid="exchange-detail-hero"
     >
-      <img alt={post.publisher.displayName} className="absolute inset-0 h-full w-full object-cover" src={image} />
+      <img alt={post.publisher?.displayName ?? publisherAlt} className="absolute inset-0 h-full w-full object-cover" src={image} />
       <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/32 to-black/90" />
       <div className="relative flex h-full flex-col justify-between p-4">
         <div>
@@ -157,20 +157,25 @@ function publisherIdentityLabel(identityType: string, language: Language) {
 function PublisherCard({ post, language }: { post: ExchangePost; language: Language }) {
   const areas = post.intelligence?.serviceAreas ?? [post.areaLabel];
   const address = post.intelligence?.addressLabel || post.areaLabel;
+  const publisherName = post.publisher?.displayName ?? exchangeText("publisherHidden", language);
   return (
     <section className={`${detailCardClassName} overflow-hidden p-0`} data-no-i18n="true">
       <div className="relative overflow-hidden bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_14%,transparent),transparent_72%)] px-4 pb-4 pt-5">
         <div className="flex items-center gap-4">
           <AvatarImage
-            alt={post.publisher.displayName}
+            alt={publisherName}
             className="h-24 w-24 shrink-0 rounded-[24px] border border-[color:var(--client-line)] object-cover shadow-soft"
-            src={post.publisher.avatarUrl || fallbackPublisherImage}
+            src={post.publisher?.avatarUrl || fallbackPublisherImage}
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xl font-black text-[color:var(--client-text)]">{post.publisher.displayName}</p>
-            <p className="mt-1 truncate font-mono text-xs font-bold text-[color:var(--client-primary)]">{post.publisher.publicId}</p>
+            <p className="truncate text-xl font-black text-[color:var(--client-text)]">{publisherName}</p>
+            {post.publisher ? (
+              <p className="mt-1 truncate font-mono text-xs font-bold text-[color:var(--client-primary)]">{post.publisher.publicId}</p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-1.5">
-              <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">{publisherIdentityLabel(post.publisher.identityType, language)}</span>
+              {post.publisher ? (
+                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">{publisherIdentityLabel(post.publisher.identityType, language)}</span>
+              ) : null}
               {post.intelligence ? (
                 <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">
                   {exchangeText(post.intelligence.serviceMode, language)}
@@ -368,7 +373,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         ) : null}
         {actionError ? <p className="text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("interactionFailed")}</p> : null}
 
-        <DetailHero label={t(post.type)} post={post} />
+        <DetailHero label={t(post.type)} post={post} publisherAlt={t("publisherHidden")} />
 
         <section className={detailCardClassName} data-no-i18n="true">
           <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t("introduction")}</p>

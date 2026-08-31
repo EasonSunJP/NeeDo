@@ -46,7 +46,7 @@ export type ExchangePost = {
   serviceEndAt: string;
   expiresAt: string;
   publishedAt: string;
-  publisher: ExchangeActor;
+  publisher: ExchangeActor | null;
   counts: ExchangeInteractionCounts;
   viewer: ExchangeViewerState;
   demand: ExchangeDemand | null;

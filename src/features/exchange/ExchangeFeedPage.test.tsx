@@ -98,6 +98,18 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain("转发");
   });
 
+  it("renders a provider-visible Request when the server redacts its publisher", () => {
+    const markup = renderFeed(
+      { posts: [{ ...demandPost, publisher: null }] },
+      "merchant"
+    );
+
+    expect(markup).toContain("发布者已隐藏身份");
+    expect(markup).toContain("東京駅附近寻找中文口译");
+    expect(markup).not.toContain("测试客户 41");
+    expect(markup).not.toContain("u0000000041");
+  });
+
   it("shows distinct loading, empty, permission, authentication, and unavailable states", () => {
     expect(renderFeed({ loading: true, posts: [] })).toContain("正在读取正式需求");
     expect(renderFeed({ posts: [], total: 0 })).toContain("还没有正式需求");
