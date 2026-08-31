@@ -95,6 +95,13 @@ export function readOwnedDashboardPayload(
   return owned?.ownerKey === currentOwnerKey ? owned.payload : null;
 }
 
+export function resolveOwnedDashboardAfterFailure(
+  owned: OwnedDashboardPayload | null,
+  currentOwnerKey: string
+) {
+  return owned?.ownerKey === currentOwnerKey ? owned : null;
+}
+
 export async function resolveSelectedManageableShop(
   signal: AbortSignal,
   loadPage: ManageableShopsLoader = backofficeRealDataApi.manageableMerchantShops
@@ -533,7 +540,9 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
       })
       .catch((error: unknown) => {
         if (!activeRequest) return;
-        setOwnedDashboard(null);
+        setOwnedDashboard((current) =>
+          resolveOwnedDashboardAfterFailure(current, dashboardOwnerKey)
+        );
         setSummaryError(error);
         setSummaryStatus("error");
       });

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BackofficeDashboardPayload } from "../../api/backofficeRealData";
-import { readOwnedDashboardPayload, resolveSelectedManageableShop } from "./MerchantAdminLayout";
+import {
+  readOwnedDashboardPayload,
+  resolveOwnedDashboardAfterFailure,
+  resolveSelectedManageableShop
+} from "./MerchantAdminLayout";
 import source from "./MerchantAdminLayout.tsx?raw";
 
 describe("MerchantAdminLayout formal shop summary", () => {
@@ -67,6 +71,14 @@ describe("MerchantAdminLayout formal shop summary", () => {
 
     expect(readOwnedDashboardPayload(owned, "owner-a")).toBe(payload);
     expect(readOwnedDashboardPayload(owned, "owner-b")).toBeNull();
+  });
+
+  it("keeps the last successful payload after a same-shop query failure but clears an old shop owner", () => {
+    const payload = { shop: { name: "Shop A" } } as BackofficeDashboardPayload;
+    const owned = { ownerKey: "owner-a", payload };
+
+    expect(resolveOwnedDashboardAfterFailure(owned, "owner-a")).toBe(owned);
+    expect(resolveOwnedDashboardAfterFailure(owned, "owner-b")).toBeNull();
   });
 
   it("scans bounded manageable pages and finds a server-selected shop on page two", async () => {
