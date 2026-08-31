@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
@@ -123,7 +123,10 @@ function ScheduleResourceErrorPanel({
 
 export function TechnicianScheduleIndexRoutePage() {
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
   const resource = useFormalTechnicianScheduleResource(session, null);
+  const dataCenterPeriod = readDataCenterPeriod(searchParams.get("period"));
+  const initialSelectedDate = tokyoDateKey(searchParams.get("from"));
 
   if (resource.loading) {
     return <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
@@ -148,6 +151,8 @@ export function TechnicianScheduleIndexRoutePage() {
       title="排班与预约"
     >
       <FormalTechnicianScheduleWorkspace
+        dataCenterPeriod={dataCenterPeriod}
+        initialSelectedDate={initialSelectedDate}
         profileAvatarUrl={resource.data.profile.avatarUrl}
         profileId={resource.data.profile.id}
         profileName={resource.data.profile.displayName}
@@ -156,6 +161,24 @@ export function TechnicianScheduleIndexRoutePage() {
       />
     </TechnicianSchedulePageShell>
   );
+}
+
+function readDataCenterPeriod(value: string | null) {
+  return value === "last7days" || value === "last30days" || value === "week" || value === "month" || value === "year" ? value : undefined;
+}
+
+function tokyoDateKey(value: string | null) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return undefined;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Tokyo",
+    year: "numeric"
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return `${read("year")}-${read("month")}-${read("day")}`;
 }
 
 function localDateLabel(value: string | Date): string {
