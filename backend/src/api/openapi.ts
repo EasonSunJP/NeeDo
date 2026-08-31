@@ -262,6 +262,14 @@ const shopMembershipCardAdjustmentErrorResponses = {
   "409": { description: "pending, expired, terminal, idempotency, or card snapshot conflict" }
 };
 
+const shopMembershipCardTopUpErrorResponses = {
+  "400": { description: "error.validation or error.shop_membership_card_topup.invalid_value" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
+  "404": { description: "error.shop_membership_card_topup.not_found — card is outside the active shop or customer scope" },
+  "409": { description: "invalid card state, live adjustment, concurrency, or idempotency conflict" }
+};
+
 const membershipRewardScopeOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -7955,6 +7963,76 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      ShopMembershipCardTopUpCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountJpy", "paymentMethod", "paymentReference", "note", "idempotencyKey"],
+        properties: {
+          amountJpy: { type: "integer", minimum: 1, maximum: 10_000_000 },
+          paymentMethod: { type: "string", enum: ["cash", "card", "paypay", "bank_transfer", "other"] },
+          paymentReference: { type: ["string", "null"], minLength: 1, maxLength: 160 },
+          note: { type: ["string", "null"], minLength: 1, maxLength: 500 },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+        }
+      },
+      ShopMembershipCardTopUp: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "amountJpy", "paymentMethod", "paymentReference", "note",
+          "principalBalanceBeforeJpy", "principalBalanceAfterJpy", "createdAt", "updatedAt",
+          "card", "shop", "customer", "createdBy", "replayed"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          amountJpy: { type: "integer", minimum: 1, maximum: 10_000_000 },
+          paymentMethod: { type: "string", enum: ["cash", "card", "paypay", "bank_transfer", "other"] },
+          paymentReference: { type: ["string", "null"], maxLength: 160 },
+          note: { type: ["string", "null"], maxLength: 500 },
+          principalBalanceBeforeJpy: { type: "integer", minimum: 0 },
+          principalBalanceAfterJpy: { type: "integer", minimum: 1 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          replayed: { type: "boolean" },
+          card: {
+            type: "object",
+            additionalProperties: false,
+            required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy"],
+            properties: {
+              publicId: { type: "string", format: "uuid" },
+              cardNoMasked: { type: "string" },
+              name: { type: "string", minLength: 1, maxLength: 120 },
+              type: { type: "string", enum: ["stored_value", "count", "benefit"] },
+              status: { type: "string", enum: ["active", "frozen", "expired", "void"] },
+              principalBalanceJpy: { type: ["integer", "null"], minimum: 0 },
+              bonusBalanceJpy: { type: ["integer", "null"], minimum: 0 }
+            }
+          },
+          shop: {
+            type: "object", additionalProperties: false, required: ["shopNo", "name"],
+            properties: { shopNo: { type: ["string", "null"] }, name: { type: "string" } }
+          },
+          customer: {
+            type: "object", additionalProperties: false, required: ["needoId", "displayName"],
+            properties: { needoId: { type: "string", pattern: "^u[0-9]{10}$" }, displayName: { type: "string" } }
+          },
+          createdBy: {
+            type: "object", additionalProperties: false, required: ["needoId", "displayName"],
+            properties: { needoId: { type: "string", pattern: "^u[0-9]{10}$" }, displayName: { type: "string" } }
+          }
+        }
+      },
+      ShopMembershipCardTopUpPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCardTopUp" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       ShopMembershipCard: {
         type: "object",
         additionalProperties: false,
@@ -8563,6 +8641,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/top-ups`]: {
+      post: {
+        tags: ["Shop Membership Card Top-up"],
+        summary: "Record an immediate offline top-up for an active stored-value card",
+        description: "Credits only paid principal. It creates the balance mutation, immutable top-up evidence, audit log, and customer notification atomically; it never creates NDP rewards or wallet entries.",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardTopUpCreateRequest" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Idempotent replay of an existing top-up", { $ref: "#/components/schemas/ShopMembershipCardTopUp" }),
+          "201": jsonDataResponse("Created card top-up", { $ref: "#/components/schemas/ShopMembershipCardTopUp" }),
+          ...shopMembershipCardTopUpErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-card-top-ups`]: {
+      get: {
+        tags: ["Shop Membership Card Top-up"],
+        summary: "List immutable top-ups in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated shop top-up history", { $ref: "#/components/schemas/ShopMembershipCardTopUpPage" }),
+          ...shopMembershipCardTopUpErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-activities`]: {
       get: {
         tags: ["Shop Membership"],
@@ -8624,6 +8735,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": jsonDataResponse("Paginated customer adjustment requests", { $ref: "#/components/schemas/ShopMembershipCardAdjustmentPage" }),
           ...shopMembershipCardAdjustmentErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-membership-card-top-ups`]: {
+      get: {
+        tags: ["Shop Membership Card Top-up"],
+        summary: "List the authenticated customer's own card top-ups",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated customer top-up history", { $ref: "#/components/schemas/ShopMembershipCardTopUpPage" }),
+          ...shopMembershipCardTopUpErrorResponses
         }
       }
     },

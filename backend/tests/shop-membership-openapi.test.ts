@@ -89,6 +89,25 @@ describe("shop membership OpenAPI", () => {
     expect(document.components.schemas.ShopMembershipCardAdjustmentCreateRequest).toMatchObject({ additionalProperties: false });
     expect(document.components.schemas.ShopMembershipCardAdjustmentDecisionRequest).toMatchObject({ additionalProperties: false });
     expect(document.components.schemas.ShopMembershipCardAdjustment).toMatchObject({ additionalProperties: false });
+
+    const topUpOperations = [
+      document.paths["/api/v1/merchant-admin/shop-membership-cards/{publicId}/top-ups"].post,
+      document.paths["/api/v1/merchant-admin/shop-membership-card-top-ups"].get,
+      document.paths["/api/v1/customer-profile/me/shop-membership-card-top-ups"].get
+    ];
+    for (const operation of topUpOperations) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses).toEqual(expect.objectContaining({
+        "200": expect.any(Object), "400": expect.any(Object), "401": expect.any(Object),
+        "403": expect.any(Object), "404": expect.any(Object), "409": expect.any(Object)
+      }));
+    }
+    expect(topUpOperations[0].requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/ShopMembershipCardTopUpCreateRequest"
+    });
+    expect(document.components.schemas.ShopMembershipCardTopUpCreateRequest).toMatchObject({ additionalProperties: false });
+    expect(document.components.schemas.ShopMembershipCardTopUp).toMatchObject({ additionalProperties: false });
+    expect(document.components.schemas.ShopMembershipCardTopUpPage).toMatchObject({ additionalProperties: false });
   });
 
   it("documents strict membership card plan and reward fee contracts", () => {
