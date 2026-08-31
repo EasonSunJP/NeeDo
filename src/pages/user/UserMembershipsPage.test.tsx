@@ -8,6 +8,7 @@ describe("UserMembershipsPage formal UI", () => {
     expect(source).toContain("customerShopMembershipApi");
     expect(source).toContain("已加入店铺");
     expect(source).toContain("会员卡状态");
+    expect(source).toContain("<MembershipCardAdjustmentInbox");
   });
 
   it("supports real membership and card states without deferred mutations", () => {

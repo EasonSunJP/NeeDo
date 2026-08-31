@@ -259,6 +259,60 @@ export type CustomerShopMembershipDetail = CustomerShopMembershipListItem & {
   cards: ShopMembershipCard[];
 };
 
+export type ShopMembershipCardAdjustmentStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "expired"
+  | "invalidated";
+
+export type ShopMembershipCardAdjustment = {
+  publicId: string;
+  status: ShopMembershipCardAdjustmentStatus;
+  reason: string;
+  dimension: "principal_balance" | "remaining_uses";
+  beforeValue: number;
+  targetValue: number;
+  difference: number;
+  expiresAt: string;
+  remainingSeconds: number;
+  decidedAt: string | null;
+  cancelledAt: string | null;
+  invalidatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  card: Pick<
+    ShopMembershipCard,
+    | "publicId"
+    | "cardNoMasked"
+    | "name"
+    | "type"
+    | "status"
+    | "principalBalanceJpy"
+    | "bonusBalanceJpy"
+    | "remainingUses"
+    | "totalUses"
+  >;
+  shop: { shopNo: string | null; name: string };
+  customer: { needoId: string; displayName: string };
+  replayed: boolean;
+};
+
+export type ShopMembershipCardAdjustmentRequest = {
+  targetPrincipalBalanceJpy: number | null;
+  targetRemainingUses: number | null;
+  reason: string;
+  idempotencyKey: string;
+};
+
+export type ShopMembershipCardAdjustmentQuery = {
+  page?: number;
+  pageSize?: number;
+  status?: ShopMembershipCardAdjustmentStatus;
+  cardPublicId?: string;
+};
+
 export type MembershipListQuery = {
   page?: number;
   pageSize?: number;
@@ -316,6 +370,23 @@ export const merchantShopMembershipApi = {
       body
     });
   },
+  requestCardAdjustment(cardPublicId: string, body: ShopMembershipCardAdjustmentRequest) {
+    return httpClient.request<ShopMembershipCardAdjustment>(`${publicPath("/merchant-admin/shop-membership-cards", cardPublicId)}/adjustment-requests`, {
+      method: "POST",
+      body
+    });
+  },
+  adjustmentRequests(query: ShopMembershipCardAdjustmentQuery = {}) {
+    return httpClient.request<PaginatedShopMemberships<ShopMembershipCardAdjustment>>("/merchant-admin/shop-membership-card-adjustment-requests", {
+      query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, status: query.status, cardPublicId: query.cardPublicId }
+    });
+  },
+  cancelCardAdjustment(requestPublicId: string) {
+    return httpClient.request<ShopMembershipCardAdjustment>(`${publicPath("/merchant-admin/shop-membership-card-adjustment-requests", requestPublicId)}/cancel`, {
+      method: "POST",
+      body: {}
+    });
+  },
   activities(query: MembershipActivityQuery = {}) {
     return httpClient.request<PaginatedShopMemberships<ShopMembershipActivity>>("/merchant-admin/shop-membership-activities", {
       query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20 }
@@ -357,5 +428,16 @@ export const customerShopMembershipApi = {
   },
   detail(publicId: string) {
     return httpClient.request<CustomerShopMembershipDetail>(publicPath("/customer-profile/me/shop-memberships", publicId));
+  },
+  adjustmentRequests(query: ShopMembershipCardAdjustmentQuery = {}) {
+    return httpClient.request<PaginatedShopMemberships<ShopMembershipCardAdjustment>>("/customer-profile/me/shop-membership-card-adjustment-requests", {
+      query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, status: query.status, cardPublicId: query.cardPublicId }
+    });
+  },
+  decideCardAdjustment(requestPublicId: string, body: { decision: "approve" | "reject"; idempotencyKey: string }) {
+    return httpClient.request<ShopMembershipCardAdjustment>(`${publicPath("/customer-profile/me/shop-membership-card-adjustment-requests", requestPublicId)}/decision`, {
+      method: "POST",
+      body
+    });
   }
 };

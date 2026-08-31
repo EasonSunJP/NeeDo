@@ -31,6 +31,10 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain('hasPermission("shop.member.card.issue")');
     expect(source).toContain("<CardIssuanceDialog");
     expect(source).toContain("开卡");
+    expect(source).toContain("申请调整");
+    expect(source).toContain("<CardAdjustmentRequestDialog");
+    expect(source).toContain("<CardAdjustmentRequestList");
+    expect(source).toContain('hasPermission("shop.member.card.adjust.request")');
   });
 
   it("provides real loading, empty, error, retry, and permission states", () => {

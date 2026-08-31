@@ -19,5 +19,7 @@ describe("shop membership feature translations", () => {
       "View joined stores and membership card status"
     );
     expect(translateText("暂无会员卡", "ko")).toBe("회원 카드가 없습니다");
+    expect(translateText("待确认的会员卡调整", "ja")).toBe("確認が必要な会員カード変更");
+    expect(translateText("shop_membership.card_adjustment.expired.title", "en")).toBe("Membership card change expired");
   });
 });
