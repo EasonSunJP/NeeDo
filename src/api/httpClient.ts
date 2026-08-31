@@ -717,29 +717,84 @@ async function sendDataUrlRequest(
   return `data:${contentType || "application/octet-stream"};base64,${arrayBufferToBase64(buffer)}`;
 }
 
-async function sendBinaryRequest(path: string, options: HttpClientRequestOptions, canRetry: boolean): Promise<HttpClientBinaryPayload> {
+async function sendBinaryRequest(
+  path: string,
+  options: HttpClientRequestOptions,
+  canRetry: boolean
+): Promise<HttpClientBinaryPayload> {
   await alignAccessTokenWithExpectedUser(options);
+  const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
-    body: createRequestBody(options.body), headers: await createRequestHeaders(options, previewShopId), method, signal: options.signal
+    body: createRequestBody(options.body),
+    headers: await createRequestHeaders(options, previewShopId, captured.accessToken),
+    method,
+    signal: options.signal
   });
   const contentType = response.headers.get("content-type") ?? "";
-  if (response.status === 401 && canRetry && options.auth !== false && options.retryOnUnauthorized !== false && getStoredRefreshToken()) {
-    try { await refreshStoredAccessToken(); return sendBinaryRequest(path, options, false); }
-    catch (error) { clearAuthTokens(); authExpiredHandler?.(); throw error; }
+
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller"
+  ) {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current) && canRetry && current.accessToken) {
+      return sendBinaryRequest(path, options, false);
+    }
   }
-  expireAuthenticationOnUnauthorized(response, options);
+
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    options.retryOnUnauthorized !== false &&
+    captured.refreshToken
+  ) {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current)) {
+      if (current.accessToken) return sendBinaryRequest(path, options, false);
+    } else {
+      try {
+        await refreshStoredAccessToken();
+        return sendBinaryRequest(path, options, false);
+      } catch (error) {
+        if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
+          terminateAuthImmediately();
+          await awaitAuthExpired();
+        }
+        throw error;
+      }
+    }
+  }
+
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    isSameCredentialState(getCoordinatorSnapshot(), captured)
+  ) {
+    terminateAuthImmediately();
+    await awaitAuthExpired();
+  }
+
   if (!response.ok || isJsonContentType(contentType) || contentType.includes("text/html")) {
-    const envelope = await parseEnvelope<unknown>(response); assertSuccess(envelope, response.status);
+    const envelope = await parseEnvelope<unknown>(response);
+    assertSuccess(envelope, response.status);
   }
   const header = response.headers.get("content-length");
   const length = header !== null && /^\d+$/.test(header) ? Number(header) : Number.NaN;
   return {
-    blob: await response.blob(), cacheControl: response.headers.get("cache-control"),
+    blob: await response.blob(),
+    cacheControl: response.headers.get("cache-control"),
     contentLength: Number.isSafeInteger(length) && length >= 0 ? length : null,
-    contentType: contentType || "application/octet-stream", etag: response.headers.get("etag")
+    contentType: contentType || "application/octet-stream",
+    etag: response.headers.get("etag")
   };
 }
 
