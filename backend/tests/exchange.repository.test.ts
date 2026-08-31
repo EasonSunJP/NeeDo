@@ -800,19 +800,19 @@ describe("ExchangePostRepository", () => {
     expect(client.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it("expires only claimed live rows and audits each successful transition", async () => {
+  it("locks a live post before exposing its terminal financial state", async () => {
     const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 41 }]),
       exchangePost: {
-        findMany: jest.fn(async () => [{ id: 41 }, { id: 42 }, { id: 43 }]),
-        updateMany: jest
-          .fn()
-          .mockResolvedValueOnce({ count: 1 })
-          .mockResolvedValueOnce({ count: 0 })
-          .mockResolvedValueOnce({ count: 1 })
-      },
-      auditLog: {
-        create: jest.fn(async (input: { data: { targetId: number | null } }) => ({
-          id: input.data.targetId ?? 1
+        findFirst: jest.fn(async () => ({
+          id: 41,
+          authorUserId: 7,
+          ownerIdentityId: 17,
+          type: "DEMAND",
+          status: "PUBLISHED",
+          expiresAt: demandRow.expiresAt,
+          deletedAt: null,
+          requestFinancial: { state: "HELD" }
         }))
       }
     };
@@ -823,16 +823,58 @@ describe("ExchangePostRepository", () => {
     };
     const repository = new ExchangePostRepository(client as never);
 
-    await expect(repository.expireDue(now, 3)).resolves.toBe(2);
-    expect(transaction.exchangePost.findMany).toHaveBeenCalledWith({
+    await expect(
+      repository.runInTransaction((transactionRepository) =>
+        transactionRepository.lockPostForMutation(41)
+      )
+    ).resolves.toEqual({
+      id: 41,
+      authorUserId: 7,
+      ownerIdentityId: 17,
+      type: "demand",
+      status: "published",
+      expiresAt: demandRow.expiresAt,
+      requestFinancial: { state: "held" }
+    });
+    expect(transaction.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transaction.exchangePost.findFirst).toHaveBeenCalledWith({
+      where: { id: 41, deletedAt: null },
+      select: expect.objectContaining({ requestFinancial: { select: { state: true } } })
+    });
+  });
+
+  it("lists bounded due ids and guards each terminal status update", async () => {
+    const findMany = jest.fn(async () => [{ id: 41 }, { id: 42 }, { id: 43 }]);
+    const updateMany = jest
+      .fn()
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 });
+    const repository = new ExchangePostRepository({
+      exchangePost: { findMany, updateMany }
+    } as never);
+
+    await expect(repository.listDuePostIds(now, 3)).resolves.toEqual([41, 42, 43]);
+    await expect(repository.markWithdrawnIfPublished(41, now)).resolves.toBe(true);
+    await expect(repository.markExpiredIfPublished(42, now)).resolves.toBe(true);
+
+    expect(findMany).toHaveBeenCalledWith({
       where: { status: "PUBLISHED", expiresAt: { lte: now }, deletedAt: null },
       orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
       take: 3,
       select: { id: true }
     });
-    expect(transaction.exchangePost.updateMany).toHaveBeenCalledTimes(3);
-    expect(transaction.auditLog.create.mock.calls.map(([call]) => call.data.targetId)).toEqual([
-      41, 43
-    ]);
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: 41, status: "PUBLISHED", deletedAt: null },
+      data: { status: "WITHDRAWN", withdrawnAt: now, updatedAt: now }
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 42,
+        status: "PUBLISHED",
+        expiresAt: { lte: now },
+        deletedAt: null
+      },
+      data: { status: "EXPIRED", updatedAt: now }
+    });
   });
 });

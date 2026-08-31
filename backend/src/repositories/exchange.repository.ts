@@ -5,9 +5,10 @@ import {
   ExchangePostStatus as DatabaseExchangePostStatus,
   ExchangePostType as DatabaseExchangePostType,
   ExchangePublisherCapacitySource as DatabaseExchangePublisherCapacitySource,
+  ExchangeRequestFinancialState as DatabaseExchangeRequestFinancialState,
   ExchangeServiceMode as DatabaseExchangeServiceMode
 } from "@prisma/client";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
 import type {
@@ -20,7 +21,7 @@ import type {
   ExchangePublishRepositoryInput,
   ExchangeRepositoryPort,
   ExchangeShareRepositoryInput,
-  ExchangeWithdrawRepositoryInput
+  ExchangeTerminalPostRecord
 } from "../services/exchange.service";
 import type {
   ExchangeCommentPage,
@@ -54,6 +55,15 @@ const statusFromDatabase: Record<DatabaseExchangePostStatus, ExchangePostStatus>
   [DatabaseExchangePostStatus.PUBLISHED]: "published",
   [DatabaseExchangePostStatus.WITHDRAWN]: "withdrawn",
   [DatabaseExchangePostStatus.EXPIRED]: "expired"
+};
+
+const requestFinancialStateFromDatabase: Record<
+  DatabaseExchangeRequestFinancialState,
+  NonNullable<ExchangeTerminalPostRecord["requestFinancial"]>["state"]
+> = {
+  [DatabaseExchangeRequestFinancialState.HELD]: "held",
+  [DatabaseExchangeRequestFinancialState.CAPTURED]: "captured",
+  [DatabaseExchangeRequestFinancialState.RELEASED]: "released"
 };
 
 const serviceModeFromDatabase: Record<DatabaseExchangeServiceMode, ExchangeServiceMode> = {
@@ -445,46 +455,64 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     return this.mapPost(row, viewerIdentityId, now);
   }
 
-  public withdrawPost(
-    input: ExchangeWithdrawRepositoryInput
-  ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
-    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
-    return this.withClientTransaction(async (transaction) => {
-      const current = await transaction.exchangePost.findFirst({
-        where: { id: input.postId, deletedAt: null },
-        include: postInclude(ownerIdentityId)
-      });
-      if (!current) return { kind: "not_found" };
-      if (current.ownerIdentityId !== ownerIdentityId) return { kind: "forbidden" };
-      if (current.status === DatabaseExchangePostStatus.WITHDRAWN) {
-        return {
-          kind: "replayed",
-          value: this.mapPost(current, ownerIdentityId, input.now)
-        };
+  public async lockPostForMutation(postId: number): Promise<ExchangeTerminalPostRecord | null> {
+    const locked = await this.client.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`SELECT id
+        FROM exchange_posts
+        WHERE id = ${postId}
+          AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    if (!locked[0]) return null;
+    const post = await this.client.exchangePost.findFirst({
+      where: { id: postId, deletedAt: null },
+      select: {
+        id: true,
+        authorUserId: true,
+        ownerIdentityId: true,
+        type: true,
+        status: true,
+        expiresAt: true,
+        requestFinancial: { select: { state: true } }
       }
-      if (
-        current.status !== DatabaseExchangePostStatus.PUBLISHED ||
-        current.expiresAt.getTime() <= input.now.getTime()
-      ) {
-        return { kind: "unavailable" };
-      }
-      const updated = await transaction.exchangePost.update({
-        where: { id: current.id },
-        data: {
-          status: DatabaseExchangePostStatus.WITHDRAWN,
-          withdrawnAt: input.now,
-          updatedAt: input.now
-        },
-        include: postInclude(ownerIdentityId)
-      });
-      await transaction.auditLog.create({
-        data: toAuditLogCreateData({ ...input.audit, targetId: updated.id })
-      });
-      return {
-        kind: "success",
-        value: this.mapPost(updated, ownerIdentityId, input.now)
-      };
     });
+    if (!post) return null;
+    return {
+      id: post.id,
+      authorUserId: post.authorUserId,
+      ownerIdentityId: post.ownerIdentityId,
+      type: typeFromDatabase[post.type],
+      status: statusFromDatabase[post.status],
+      expiresAt: post.expiresAt,
+      requestFinancial: post.requestFinancial
+        ? { state: requestFinancialStateFromDatabase[post.requestFinancial.state] }
+        : null
+    };
+  }
+
+  public async markWithdrawnIfPublished(postId: number, now: Date): Promise<boolean> {
+    const updated = await this.client.exchangePost.updateMany({
+      where: { id: postId, status: DatabaseExchangePostStatus.PUBLISHED, deletedAt: null },
+      data: {
+        status: DatabaseExchangePostStatus.WITHDRAWN,
+        withdrawnAt: now,
+        updatedAt: now
+      }
+    });
+    return updated.count === 1;
+  }
+
+  public async markExpiredIfPublished(postId: number, now: Date): Promise<boolean> {
+    const updated = await this.client.exchangePost.updateMany({
+      where: {
+        id: postId,
+        status: DatabaseExchangePostStatus.PUBLISHED,
+        expiresAt: { lte: now },
+        deletedAt: null
+      },
+      data: { status: DatabaseExchangePostStatus.EXPIRED, updatedAt: now }
+    });
+    return updated.count === 1;
   }
 
   public async createComment(
@@ -632,44 +660,18 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     }
   }
 
-  public expireDue(now: Date, batchSize: number): Promise<number> {
-    return this.withClientTransaction(async (transaction) => {
-      const due = await transaction.exchangePost.findMany({
-        where: {
-          status: DatabaseExchangePostStatus.PUBLISHED,
-          expiresAt: { lte: now },
-          deletedAt: null
-        },
-        orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
-        take: Math.max(1, Math.floor(batchSize)),
-        select: { id: true }
-      });
-      if (due.length === 0) return 0;
-      let expired = 0;
-      for (const { id } of due) {
-        const updated = await transaction.exchangePost.updateMany({
-          where: {
-            id,
-            status: DatabaseExchangePostStatus.PUBLISHED,
-            expiresAt: { lte: now },
-            deletedAt: null
-          },
-          data: { status: DatabaseExchangePostStatus.EXPIRED, updatedAt: now }
-        });
-        if (updated.count !== 1) continue;
-        expired += 1;
-        await transaction.auditLog.create({
-          data: toAuditLogCreateData({
-            actorId: null,
-            action: "exchange.post.expire",
-            targetType: "ExchangePost",
-            targetId: id,
-            metadata: { expiredAt: now.toISOString() }
-          })
-        });
-      }
-      return expired;
+  public async listDuePostIds(now: Date, batchSize: number): Promise<number[]> {
+    const due = await this.client.exchangePost.findMany({
+      where: {
+        status: DatabaseExchangePostStatus.PUBLISHED,
+        expiresAt: { lte: now },
+        deletedAt: null
+      },
+      orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+      take: Math.max(1, Math.floor(batchSize)),
+      select: { id: true }
     });
+    return due.map(({ id }) => id);
   }
 
   private mapPost(

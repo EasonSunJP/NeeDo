@@ -82,6 +82,16 @@ export interface ExchangePublicationRecord {
   value: ExchangePostPayload;
 }
 
+export interface ExchangeTerminalPostRecord {
+  id: number;
+  authorUserId: number;
+  ownerIdentityId: number;
+  type: ExchangePostType;
+  status: "published" | "withdrawn" | "expired";
+  expiresAt: Date;
+  requestFinancial: { state: "held" | "captured" | "released" } | null;
+}
+
 interface ExchangeRequestFeePublicationPort {
   resolveCurrent: ExchangeRequestFeeService["resolveCurrent"];
   withTransactionClient(
@@ -94,9 +104,15 @@ interface ExchangeRequestLedgerPublicationPort {
     input: Parameters<LedgerService["freezeExchangeRequestPublication"]>[0],
     options: Parameters<LedgerService["freezeExchangeRequestPublication"]>[1]
   ): Promise<unknown>;
+  captureExchangeRequestPublication(
+    input: { exchangePostId: number; actorUserId: number; occurredAt: Date },
+    options: Parameters<LedgerService["captureExchangeRequestPublication"]>[1]
+  ): Promise<unknown>;
+  releaseExchangeRequestPublication(
+    input: { exchangePostId: number; actorUserId: number; occurredAt: Date },
+    options: Parameters<LedgerService["releaseExchangeRequestPublication"]>[1]
+  ): Promise<unknown>;
 }
-
-export type ExchangeWithdrawRepositoryInput = ExchangeMutationBase;
 
 export interface ExchangeCommentRepositoryInput extends ExchangeMutationBase {
   input: CreateExchangeCommentBody;
@@ -143,9 +159,10 @@ export interface ExchangeRepositoryPort {
     viewerIdentityId: number,
     now: Date
   ): Promise<ExchangePostPayload>;
-  withdrawPost(
-    input: ExchangeWithdrawRepositoryInput
-  ): Promise<ExchangeMutationResult<ExchangePostPayload>>;
+  lockPostForMutation(postId: number): Promise<ExchangeTerminalPostRecord | null>;
+  markWithdrawnIfPublished(postId: number, now: Date): Promise<boolean>;
+  markExpiredIfPublished(postId: number, now: Date): Promise<boolean>;
+  listDuePostIds(now: Date, batchSize: number): Promise<number[]>;
   createComment(
     input: ExchangeCommentRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeCommentPayload>>;
@@ -155,7 +172,6 @@ export interface ExchangeRepositoryPort {
   recordShare(
     input: ExchangeShareRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>>;
-  expireDue(now: Date, batchSize: number): Promise<number>;
 }
 
 const INTELLIGENCE_PUBLISHER_IDENTITIES = new Set([
@@ -375,17 +391,45 @@ export class ExchangeService {
     postId: number,
     key: string
   ): Promise<ExchangePostPayload> {
-    const actor = await this.resolveActor(access);
-    const result = await this.repository.withdrawPost({
-      actor,
-      postId,
-      idempotencyKey: exchangeIdempotencyKeySchema.parse(key),
-      now: this.now(),
-      audit: this.audit(access, "exchange.post.withdraw", postId, {
-        identityId: actor.identityId
-      })
+    exchangeIdempotencyKeySchema.parse(key);
+    const occurredAt = this.now();
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
+      const actor = await this.resolveActor(access, repository);
+      const ownerIdentityId = actor.ownerIdentityId ?? actor.identityId;
+      const locked = await repository.lockPostForMutation(postId);
+      if (!locked) throw this.postNotFound();
+      if (locked.ownerIdentityId !== ownerIdentityId) throw this.authorRequired();
+      if (locked.status === "withdrawn") {
+        return repository.findPostByIdOrThrow(postId, ownerIdentityId, occurredAt);
+      }
+      if (locked.status !== "published") throw this.exchangeFinancialStateConflict();
+      if (locked.expiresAt.getTime() <= occurredAt.getTime()) throw this.postUnavailable();
+
+      const settlesRequestFinancial = locked.type === "demand" && locked.requestFinancial !== null;
+      if (settlesRequestFinancial) {
+        if (!this.ledgerService) throw this.requestFeeUnavailable();
+        await this.ledgerService.captureExchangeRequestPublication(
+          {
+            exchangePostId: locked.id,
+            actorUserId: actor.userId,
+            occurredAt
+          },
+          { transactionClient }
+        );
+      }
+      if (!(await repository.markWithdrawnIfPublished(locked.id, occurredAt))) {
+        throw this.exchangeFinancialStateConflict();
+      }
+      await repository.createAudit(
+        this.audit(access, "exchange.post.withdraw", locked.id, {
+          identityId: actor.identityId,
+          previousStatus: "published",
+          nextStatus: "withdrawn",
+          publicationFeeOutcome: settlesRequestFinancial ? "captured" : "legacy_not_applicable"
+        })
+      );
+      return repository.findPostByIdOrThrow(locked.id, ownerIdentityId, occurredAt);
     });
-    return this.unwrapMutation(result);
   }
 
   public async listComments(
@@ -457,8 +501,61 @@ export class ExchangeService {
     return this.unwrapMutation(result);
   }
 
-  public expireDue(now: Date, batchSize: number): Promise<number> {
-    return this.repository.expireDue(now, batchSize);
+  public async expirePost(postId: number, now: Date): Promise<boolean> {
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
+      const locked = await repository.lockPostForMutation(postId);
+      if (!locked || locked.status === "expired") return false;
+      if (locked.status !== "published") throw this.exchangeFinancialStateConflict();
+      if (locked.expiresAt.getTime() > now.getTime()) return false;
+
+      const settlesRequestFinancial = locked.type === "demand" && locked.requestFinancial !== null;
+      if (settlesRequestFinancial) {
+        if (!this.ledgerService) throw this.requestFeeUnavailable();
+        await this.ledgerService.releaseExchangeRequestPublication(
+          {
+            exchangePostId: locked.id,
+            actorUserId: locked.authorUserId,
+            occurredAt: now
+          },
+          { transactionClient }
+        );
+      }
+      if (!(await repository.markExpiredIfPublished(locked.id, now))) {
+        throw this.exchangeFinancialStateConflict();
+      }
+      await repository.createAudit({
+        actorId: null,
+        action: "exchange.post.expire",
+        targetType: "ExchangePost",
+        targetId: locked.id,
+        metadata: {
+          expiredAt: now.toISOString(),
+          previousStatus: "published",
+          nextStatus: "expired",
+          publicationFeeOutcome: settlesRequestFinancial ? "released" : "legacy_not_applicable"
+        }
+      });
+      return true;
+    });
+  }
+
+  public async expireDue(now: Date, batchSize: number): Promise<number> {
+    const ids = await this.repository.listDuePostIds(now, batchSize);
+    let expired = 0;
+    for (const postId of ids) {
+      try {
+        if (await this.expirePost(postId, now)) expired += 1;
+      } catch (error) {
+        if (
+          error instanceof AppError &&
+          error.code === ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    return expired;
   }
 
   private async setLike(
@@ -589,6 +686,14 @@ export class ExchangeService {
       code: ERROR_CODES.EXCHANGE_REQUEST_FEE_UNAVAILABLE,
       message: "error.exchange.request_fee_unavailable",
       statusCode: 503
+    });
+  }
+
+  private exchangeFinancialStateConflict(): AppError {
+    return new AppError({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT,
+      message: "error.exchange.request_financial_state_conflict",
+      statusCode: 409
     });
   }
 
@@ -724,6 +829,22 @@ export class ExchangeService {
       code: ERROR_CODES.NOT_FOUND,
       message: "error.exchange.post_not_found",
       statusCode: 404
+    });
+  }
+
+  private authorRequired(): AppError {
+    return new AppError({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.exchange.author_required",
+      statusCode: 403
+    });
+  }
+
+  private postUnavailable(): AppError {
+    return new AppError({
+      code: ERROR_CODES.ORDER_INVALID_TRANSITION,
+      message: "error.exchange.post_unavailable",
+      statusCode: 409
     });
   }
 }
