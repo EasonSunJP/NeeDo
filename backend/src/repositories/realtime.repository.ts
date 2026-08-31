@@ -153,6 +153,18 @@ export interface DirectorySearchInput extends PaginationInput {
   ownerIdentityId?: number;
 }
 
+export interface ContactCardCandidateListInput extends PaginationInput {
+  query?: string;
+}
+
+export interface ContactCardCandidatePayload {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
+}
+
 export interface AddContactInput {
   contactUserId: number;
   ownerUserId: number;
@@ -675,6 +687,11 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ContactPayload>>;
+  listContactCardCandidates: (
+    userId: number,
+    identityId: number,
+    input: ContactCardCandidateListInput
+  ) => Promise<PaginatedResponse<ContactCardCandidatePayload>>;
   searchDirectory: (
     userId: number,
     input: DirectorySearchInput
@@ -2133,6 +2150,100 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async listContactCardCandidates(
+    userId: number,
+    identityId: number,
+    input: ContactCardCandidateListInput
+  ): Promise<PaginatedResponse<ContactCardCandidatePayload>> {
+    const pagination = toPrismaPagination(input);
+    const query = input.query?.trim() ?? "";
+    const searchWhere: Prisma.UserWhereInput = query
+      ? {
+          OR: [
+            { username: { contains: query } },
+            { needoId: { contains: query } }
+          ]
+        }
+      : {};
+    const projection = {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    } as const;
+
+    const self = await this.client.user.findFirst({
+      where: {
+        id: userId,
+        isActive: true,
+        deletedAt: null,
+        ...searchWhere
+      },
+      select: projection
+    });
+    const selfCount = self ? 1 : 0;
+    const friendWhere: Prisma.UserWhereInput = {
+      id: { not: userId },
+      isActive: true,
+      deletedAt: null,
+      contactEntries: {
+        some: {
+          ownerIdentityId: identityId,
+          blockedAt: null,
+          deletedAt: null,
+          contactIdentity: {
+            isActive: true,
+            deletedAt: null,
+            ownedContacts: {
+              some: {
+                contactIdentityId: identityId,
+                blockedAt: null,
+                deletedAt: null
+              }
+            }
+          }
+        }
+      },
+      ...searchWhere
+    };
+
+    const includeSelfOnPage = Boolean(self && pagination.skip === 0);
+    const friendSkip = Math.max(0, pagination.skip - selfCount);
+    const friendTake = Math.max(0, pagination.take - (includeSelfOnPage ? 1 : 0));
+    const [friends, friendCount] = await Promise.all([
+      friendTake > 0
+        ? this.client.user.findMany({
+            where: friendWhere,
+            select: projection,
+            skip: friendSkip,
+            take: friendTake,
+            orderBy: [{ username: "asc" }, { needoId: "asc" }, { id: "asc" }]
+          })
+        : Promise.resolve([]),
+      this.client.user.count({ where: friendWhere })
+    ]);
+
+    const list: ContactCardCandidatePayload[] = [];
+    if (includeSelfOnPage && self) {
+      list.push({
+        targetUserId: self.needoId,
+        needoId: self.needoId,
+        nickname: self.username,
+        avatarUrl: self.avatarUrl,
+        relationship: "self"
+      });
+    }
+    list.push(...friends.map((candidate) => ({
+      targetUserId: candidate.needoId,
+      needoId: candidate.needoId,
+      nickname: candidate.username,
+      avatarUrl: candidate.avatarUrl,
+      relationship: "friend" as const
+    })));
+
+    return buildPaginatedResponse(list, selfCount + friendCount, pagination);
   }
 
   public async searchDirectory(

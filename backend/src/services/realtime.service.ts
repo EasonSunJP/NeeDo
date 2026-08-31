@@ -10,6 +10,7 @@ import type {
   CreateMessageInput,
   CreateOrderStatusNotificationInput,
   CreateSocialPostInput,
+  ContactCardCandidateListInput,
   FriendRequestListInput,
   DirectorySearchInput,
   DeleteMessagesForUserInput,
@@ -545,6 +546,15 @@ export class RealtimeService implements OrderStatusNotificationPort {
   public async listContacts(auth: AuthenticatedAccessContext, input: PaginationInput) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     return this.repository.listContacts(scope.identityId, input);
+  }
+
+  public async listContactCardCandidates(
+    auth: AuthenticatedAccessContext,
+    conversationId: number,
+    input: ContactCardCandidateListInput
+  ) {
+    const scope = await this.assertMessageSendAllowed(auth, conversationId);
+    return this.repository.listContactCardCandidates(auth.userId, scope.identityId, input);
   }
 
   public async searchDirectory(auth: AuthenticatedAccessContext, input: DirectorySearchInput) {
