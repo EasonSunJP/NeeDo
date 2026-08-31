@@ -119,4 +119,3 @@ export const dashboardTranslations: Record<string, TranslationEntry> = {
   "正在切换店铺并重新加载数据": { "zh-Hant": "正在切換店鋪並重新載入資料", ja: "店舗を切り替えてデータを再読み込みしています", en: "Switching shops and reloading data", ko: "매장을 전환하고 데이터를 다시 불러오는 중" },
   "新店铺数据确认前，当前数据已冻结": { "zh-Hant": "新店鋪資料確認前，目前資料已凍結", ja: "新しい店舗データを確認するまで、現在のデータは固定されています", en: "Current data is frozen until the new shop data is confirmed", ko: "새 매장 데이터가 확인될 때까지 현재 데이터가 고정됩니다" }
 };
-
