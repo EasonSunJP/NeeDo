@@ -1328,7 +1328,19 @@ export class BookingRepository implements BookingRepositoryPort {
         DatabaseOrderServiceEventType.SERVICE_STARTED,
         { kind: "start" }
       );
-      if (replay) return replay;
+      if (replay) {
+        if (replay.outcome !== "ok") return replay;
+        if (!current) return { outcome: "not_found" };
+        if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
+        if (
+          input.actor === "technician" &&
+          (!input.verificationCode ||
+            !serviceVerificationCodeMatches(current.id, input.verificationCode))
+        ) {
+          return { outcome: "verification_failed" };
+        }
+        return replay;
+      }
       if (!current) return { outcome: "not_found" };
       if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
       if (current.status !== DatabaseBookingOrderStatus.CONFIRMED) {

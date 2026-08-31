@@ -719,6 +719,28 @@ describe("formal order fulfillment repository transactions", () => {
     });
   });
 
+  it("rejects a wrong technician code before replaying a successful start key", async () => {
+    const harness = createRepositoryHarness();
+    const input = {
+      actorUserId: assignedTechnician.userId,
+      actor: "technician" as const,
+      technicianProfileId: assignedTechnician.currentIdentityScopeId,
+      requestContext: context,
+      orderId: 41,
+      verificationCode: deriveOrderServiceVerificationCode(41),
+      idempotencyKey: "repository-tech-replay-code"
+    };
+    await harness.repository.startService(input);
+    const expectedEndsAt = harness.getSession()!.expectedEndsAt;
+
+    await expect(
+      harness.repository.startService({ ...input, verificationCode: "000000" })
+    ).resolves.toEqual({ outcome: "verification_failed" });
+    expect(harness.events).toHaveLength(1);
+    expect(harness.getSession()!.expectedEndsAt).toEqual(expectedEndsAt);
+    expect(harness.dbOrder.statusHistory).toHaveLength(1);
+  });
+
   it.each([
     [{ shopId: 999 }, "cross-shop"],
     [{ status: "draft" }, "unpublished"],
