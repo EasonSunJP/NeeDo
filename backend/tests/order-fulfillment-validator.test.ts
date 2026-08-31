@@ -1,7 +1,10 @@
 import {
+  bookingCreateBodySchema,
   confirmReceiptBodySchema,
   createOrderAddOnBodySchema,
   endServiceBodySchema,
+  orderAddOnIdParamsSchema,
+  orderAddOnDecisionBodySchema,
   orderListQuerySchema,
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
@@ -55,6 +58,36 @@ describe("order fulfillment validators", () => {
   });
 
   describe("add-on and end-service commands", () => {
+    it("accepts bounded order/add-on route ids and rejects invalid params", () => {
+      expect(orderAddOnIdParamsSchema.parse({ id: "41", addOnId: "9" })).toEqual({
+        id: 41,
+        addOnId: 9
+      });
+      expect(
+        orderAddOnIdParamsSchema.parse({
+          id: 2_147_483_647,
+          addOnId: 2_147_483_647
+        })
+      ).toEqual({ id: 2_147_483_647, addOnId: 2_147_483_647 });
+
+      for (const invalidId of [0, -1, 1.5, 2_147_483_648]) {
+        expect(() => orderAddOnIdParamsSchema.parse({ id: invalidId, addOnId: 9 })).toThrow();
+        expect(() => orderAddOnIdParamsSchema.parse({ id: 41, addOnId: invalidId })).toThrow();
+      }
+      expect(() =>
+        orderAddOnIdParamsSchema.parse({ id: 41, addOnId: 9, internalShopId: 3 })
+      ).toThrow();
+    });
+
+    it("defines a semantic strict idempotency contract for add-on resolution", () => {
+      expect(orderAddOnDecisionBodySchema.parse({ idempotencyKey })).toEqual({
+        idempotencyKey
+      });
+      expect(() =>
+        orderAddOnDecisionBodySchema.parse({ idempotencyKey, accepted: true })
+      ).toThrow();
+    });
+
     it("accepts a positive formal service id without client price or duration", () => {
       expect(createOrderAddOnBodySchema.parse({ serviceId: 41, idempotencyKey })).toEqual({
         serviceId: 41,
@@ -94,6 +127,9 @@ describe("order fulfillment validators", () => {
         idempotencyKey
       });
       expect(() => endServiceBodySchema.parse({ reason: "   ", idempotencyKey })).toThrow();
+      expect(() =>
+        endServiceBodySchema.parse({ reason: "\u200B".repeat(16), idempotencyKey })
+      ).toThrow();
       expect(() =>
         endServiceBodySchema.parse({ reason: "x".repeat(501), idempotencyKey })
       ).toThrow();
@@ -180,6 +216,22 @@ describe("order fulfillment validators", () => {
       expect(() =>
         selectPaymentMethodBodySchema.parse({
           method: "other",
+          otherMethodCode: "\u200B".repeat(16),
+          otherMethodLabel: "現地決済",
+          idempotencyKey
+        })
+      ).toThrow();
+      expect(() =>
+        selectPaymentMethodBodySchema.parse({
+          method: "other",
+          otherMethodCode: "local_qr",
+          otherMethodLabel: "\u200B".repeat(16),
+          idempotencyKey
+        })
+      ).toThrow();
+      expect(() =>
+        selectPaymentMethodBodySchema.parse({
+          method: "other",
           otherMethodCode: "other",
           otherMethodLabel: "   ",
           idempotencyKey
@@ -217,6 +269,9 @@ describe("order fulfillment validators", () => {
       ).toEqual({ idempotencyKey, reason: "r".repeat(500) });
       expect(() => confirmReceiptBodySchema.parse({ idempotencyKey, reason: "  " })).toThrow();
       expect(() =>
+        confirmReceiptBodySchema.parse({ idempotencyKey, reason: "\u200B".repeat(16) })
+      ).toThrow();
+      expect(() =>
         confirmReceiptBodySchema.parse({ idempotencyKey, reason: "x".repeat(501) })
       ).toThrow();
     });
@@ -236,7 +291,50 @@ describe("order fulfillment validators", () => {
       expect(() => payWithNdpBodySchema.parse({ idempotencyKey: "a".repeat(15) })).toThrow();
       expect(() => payWithNdpBodySchema.parse({ idempotencyKey: "b".repeat(161) })).toThrow();
       expect(() => payWithNdpBodySchema.parse({ idempotencyKey, unexpected: true })).toThrow();
+      expect(() =>
+        payWithNdpBodySchema.parse({ idempotencyKey: "\u200B".repeat(16) })
+      ).toThrow();
     });
+
+    it.each(["\u200B".repeat(16), "\u0000".repeat(16), "\u2028".repeat(16)])(
+      "rejects Unicode format, control and separator-only values",
+      (invisibleValue) => {
+        expect(() =>
+          endServiceBodySchema.parse({ reason: invisibleValue, idempotencyKey })
+        ).toThrow();
+        expect(() =>
+          payWithNdpBodySchema.parse({ idempotencyKey: invisibleValue })
+        ).toThrow();
+      }
+    );
+
+    it("allows visible multilingual text even when it contains format characters", () => {
+      expect(
+        endServiceBodySchema.parse({ reason: "施術\u200B完了", idempotencyKey })
+      ).toEqual({ reason: "施術\u200B完了", idempotencyKey });
+      expect(
+        selectPaymentMethodBodySchema.parse({
+          method: "other",
+          otherMethodCode: "店頭QR",
+          otherMethodLabel: "店頭\u200Bコード決済",
+          idempotencyKey
+        })
+      ).toMatchObject({ otherMethodCode: "店頭QR", otherMethodLabel: "店頭\u200Bコード決済" });
+    });
+
+    it.each(["cash", "ndp", "other"] as const)(
+      "keeps the legacy booking validator closed to %s checkout payment",
+      (paymentMethod) => {
+        expect(() =>
+          bookingCreateBodySchema.parse({
+            serviceId: 1,
+            scheduleSlotId: 11,
+            fulfillmentMode: "store",
+            paymentMethod
+          })
+        ).toThrow();
+      }
+    );
 
     it.each(["awaitingCheckout", "awaitingPaymentConfirmation"] as const)(
       "accepts the %s order-list status",

@@ -10,9 +10,23 @@ const isoDateSchema = z.union([
   z.string().datetime({ offset: true })
 ]).transform((value) => value instanceof Date ? value : new Date(value));
 const boundedDateRange = <TSchema extends z.ZodTypeAny>(schema: TSchema) => schema;
-const idempotencyKeySchema = z.string().trim().min(16).max(160);
-const fulfillmentReasonSchema = z.string().trim().min(1).max(500);
+const hasVisibleCodePoint = (value: string): boolean => /[^\p{Z}\p{Cc}\p{Cf}]/u.test(value);
+const visibleTextSchema = (maximumLength: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(maximumLength)
+    .refine(hasVisibleCodePoint, { message: "value must contain a visible character" });
+const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(16)
+  .max(160)
+  .refine(hasVisibleCodePoint, { message: "idempotency key must contain a visible character" });
+const fulfillmentReasonSchema = visibleTextSchema(500);
 const serviceCatalogIdSchema = z.number().int().positive().max(2_147_483_647);
+const routeIdSchema = z.coerce.number().int().positive().max(2_147_483_647);
 
 export const availabilityListQuerySchema = z
   .object({
@@ -74,6 +88,13 @@ export const orderIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
 
+export const orderAddOnIdParamsSchema = z
+  .object({
+    id: routeIdSchema,
+    addOnId: routeIdSchema
+  })
+  .strict();
+
 export const orderConfirmBodySchema = z
   .object({
     insufficientBalanceConfirmation: z
@@ -110,6 +131,12 @@ export const createOrderAddOnBodySchema = z
   })
   .strict();
 
+export const orderAddOnDecisionBodySchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema
+  })
+  .strict();
+
 export const endServiceBodySchema = z
   .object({
     reason: fulfillmentReasonSchema,
@@ -133,8 +160,8 @@ export const selectPaymentMethodBodySchema = z.discriminatedUnion("method", [
   z
     .object({
       method: z.literal("other"),
-      otherMethodCode: z.string().trim().min(1).max(40),
-      otherMethodLabel: z.string().trim().min(1).max(80),
+      otherMethodCode: visibleTextSchema(40),
+      otherMethodLabel: visibleTextSchema(80),
       idempotencyKey: idempotencyKeySchema
     })
     .strict()
@@ -257,9 +284,11 @@ export const scheduleSlotUpdateBodySchema = z.object({
 export type AvailabilityListQuery = z.infer<typeof availabilityListQuerySchema>;
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;
 export type OrderIdParams = z.infer<typeof orderIdParamSchema>;
+export type OrderAddOnIdParams = z.infer<typeof orderAddOnIdParamsSchema>;
 export type OrderConfirmBody = z.infer<typeof orderConfirmBodySchema>;
 export type StartServiceInput = z.infer<typeof startServiceBodySchema>;
 export type CreateOrderAddOnInput = z.infer<typeof createOrderAddOnBodySchema>;
+export type OrderAddOnDecisionInput = z.infer<typeof orderAddOnDecisionBodySchema>;
 export type EndServiceInput = z.infer<typeof endServiceBodySchema>;
 export type SelectPaymentMethodInput = z.infer<typeof selectPaymentMethodBodySchema>;
 export type PayWithNdpInput = z.infer<typeof payWithNdpBodySchema>;

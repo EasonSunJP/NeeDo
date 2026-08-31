@@ -1,4 +1,9 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import {
+  BookingOrderStatus as DatabaseBookingOrderStatus,
+  Prisma,
+  ServicePaymentMethod as DatabaseServicePaymentMethod,
+  type PrismaClient
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import type {
@@ -20,8 +25,90 @@ export type BookingOrderStatusPayload =
 export type BookingOrderTypePayload = "booking" | "request";
 export type ScheduleSlotStatusPayload = "available" | "booked" | "blocked";
 export type BookingFulfillmentMode = "home" | "store";
-export type ServicePaymentMethodPayload = "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
+export type LegacyServicePaymentMethodPayload = "onsite" | "bank_transfer";
+export type ServicePaymentMethodPayload =
+  | LegacyServicePaymentMethodPayload
+  | "cash"
+  | "ndp"
+  | "other";
 export type ServicePaymentStatusPayload = "pending" | "confirmed" | "refundPending" | "refunded";
+
+const BOOKING_ORDER_STATUS_FROM_DB = {
+  [DatabaseBookingOrderStatus.PENDING]: "pending",
+  [DatabaseBookingOrderStatus.CONFIRMED]: "confirmed",
+  [DatabaseBookingOrderStatus.IN_SERVICE]: "inService",
+  [DatabaseBookingOrderStatus.AWAITING_CHECKOUT]: "awaitingCheckout",
+  [DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION]: "awaitingPaymentConfirmation",
+  [DatabaseBookingOrderStatus.COMPLETED]: "completed",
+  [DatabaseBookingOrderStatus.CANCELLED]: "cancelled"
+} satisfies Record<DatabaseBookingOrderStatus, BookingOrderStatusPayload>;
+
+const BOOKING_ORDER_STATUS_TO_DB = {
+  pending: DatabaseBookingOrderStatus.PENDING,
+  confirmed: DatabaseBookingOrderStatus.CONFIRMED,
+  inService: DatabaseBookingOrderStatus.IN_SERVICE,
+  awaitingCheckout: DatabaseBookingOrderStatus.AWAITING_CHECKOUT,
+  awaitingPaymentConfirmation: DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION,
+  completed: DatabaseBookingOrderStatus.COMPLETED,
+  cancelled: DatabaseBookingOrderStatus.CANCELLED
+} satisfies Record<BookingOrderStatusPayload, DatabaseBookingOrderStatus>;
+
+const SERVICE_PAYMENT_METHOD_FROM_DB = {
+  [DatabaseServicePaymentMethod.ONSITE]: "onsite",
+  [DatabaseServicePaymentMethod.BANK_TRANSFER]: "bank_transfer",
+  [DatabaseServicePaymentMethod.CASH]: "cash",
+  [DatabaseServicePaymentMethod.NDP]: "ndp",
+  [DatabaseServicePaymentMethod.OTHER]: "other"
+} satisfies Record<DatabaseServicePaymentMethod, ServicePaymentMethodPayload>;
+
+const SERVICE_PAYMENT_METHOD_TO_DB = {
+  onsite: DatabaseServicePaymentMethod.ONSITE,
+  bank_transfer: DatabaseServicePaymentMethod.BANK_TRANSFER,
+  cash: DatabaseServicePaymentMethod.CASH,
+  ndp: DatabaseServicePaymentMethod.NDP,
+  other: DatabaseServicePaymentMethod.OTHER
+} satisfies Record<ServicePaymentMethodPayload, DatabaseServicePaymentMethod>;
+
+const hasOwnMapping = <TKey extends PropertyKey>(
+  mapping: object,
+  key: PropertyKey
+): key is TKey => Object.prototype.hasOwnProperty.call(mapping, key);
+
+export const bookingOrderStatusFromDb = (
+  status: DatabaseBookingOrderStatus
+): BookingOrderStatusPayload => {
+  if (!hasOwnMapping<DatabaseBookingOrderStatus>(BOOKING_ORDER_STATUS_FROM_DB, status)) {
+    throw new Error("Unsupported database booking order status");
+  }
+  return BOOKING_ORDER_STATUS_FROM_DB[status];
+};
+
+export const bookingOrderStatusToDb = (
+  status: BookingOrderStatusPayload
+): DatabaseBookingOrderStatus => {
+  if (!hasOwnMapping<BookingOrderStatusPayload>(BOOKING_ORDER_STATUS_TO_DB, status)) {
+    throw new Error("Unsupported booking order payload status");
+  }
+  return BOOKING_ORDER_STATUS_TO_DB[status];
+};
+
+export const servicePaymentMethodFromDb = (
+  method: DatabaseServicePaymentMethod
+): ServicePaymentMethodPayload => {
+  if (!hasOwnMapping<DatabaseServicePaymentMethod>(SERVICE_PAYMENT_METHOD_FROM_DB, method)) {
+    throw new Error("Unsupported database service payment method");
+  }
+  return SERVICE_PAYMENT_METHOD_FROM_DB[method];
+};
+
+export const servicePaymentMethodToDb = (
+  method: ServicePaymentMethodPayload
+): DatabaseServicePaymentMethod => {
+  if (!hasOwnMapping<ServicePaymentMethodPayload>(SERVICE_PAYMENT_METHOD_TO_DB, method)) {
+    throw new Error("Unsupported service payment payload method");
+  }
+  return SERVICE_PAYMENT_METHOD_TO_DB[method];
+};
 
 export interface AvailabilityListInput extends PaginationInput {
   serviceId?: number;
@@ -38,7 +125,7 @@ export interface BookingCreateRepositoryInput {
   technicianServiceId?: number;
   scheduleSlotId: number;
   fulfillmentMode: BookingFulfillmentMode;
-  paymentMethod?: ServicePaymentMethodPayload;
+  paymentMethod?: LegacyServicePaymentMethodPayload;
   note?: string | null;
 }
 
@@ -99,7 +186,7 @@ export type ManualPaymentScope = { scope: "merchant"; shopId: number } | { scope
 export type ConfirmManualPaymentRepositoryInput = ManualPaymentScope & {
   orderId: number;
   actorUserId: number;
-  method: ServicePaymentMethodPayload;
+  method: LegacyServicePaymentMethodPayload;
   amountJpy: number;
   reference?: string | null;
   note?: string | null;
@@ -944,7 +1031,7 @@ export class BookingRepository implements BookingRepositoryPort {
                 serviceSnapshotJson: serviceSource.snapshot,
                 startsAt: slot.startsAt,
                 endsAt: slot.endsAt,
-                paymentMethod: this.paymentMethodToDb(input.paymentMethod ?? "onsite"),
+                paymentMethod: servicePaymentMethodToDb(input.paymentMethod ?? "onsite"),
                 paymentAmountJpy: finalPriceJpy,
                 note: input.note?.trim() || null,
                 statusHistory: {
@@ -1048,7 +1135,7 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.customerUserId ? { customerUserId: input.customerUserId } : {}),
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}),
-      ...(input.status ? { status: this.statusToDb(input.status) } : {}),
+      ...(input.status ? { status: bookingOrderStatusToDb(input.status) } : {}),
       ...(input.from && input.to ? { startsAt: { gte: input.from, lt: input.to } } : {})
     };
     const [list, total] = await Promise.all([
@@ -1112,7 +1199,7 @@ export class BookingRepository implements BookingRepositoryPort {
           include: this.orderInclude()
         });
 
-        if (!current || this.statusFromDb(current.status) !== input.fromStatus) {
+        if (!current || bookingOrderStatusFromDb(current.status) !== input.fromStatus) {
           return { outcome: "invalid_state" as const };
         }
 
@@ -1145,10 +1232,10 @@ export class BookingRepository implements BookingRepositoryPort {
           where: {
             id: input.id,
             deletedAt: null,
-            status: this.statusToDb(input.fromStatus)
+            status: bookingOrderStatusToDb(input.fromStatus)
           },
           data: {
-            status: this.statusToDb(input.toStatus),
+            status: bookingOrderStatusToDb(input.toStatus),
             cancelReason: input.toStatus === "cancelled" ? input.reason?.trim() || null : undefined,
             paymentStatus:
               input.toStatus === "cancelled" && current.paymentStatus === "CONFIRMED"
@@ -1177,8 +1264,8 @@ export class BookingRepository implements BookingRepositoryPort {
         await tx.orderStatusHistory.create({
           data: {
             bookingOrderId: input.id,
-            fromStatus: this.statusToDb(input.fromStatus),
-            toStatus: this.statusToDb(input.toStatus),
+            fromStatus: bookingOrderStatusToDb(input.fromStatus),
+            toStatus: bookingOrderStatusToDb(input.toStatus),
             actorUserId: input.actorUserId,
             reason: input.reason?.trim() || null
           }
@@ -1231,7 +1318,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
       const reference = input.reference?.trim() || null;
       const note = input.note?.trim() || null;
-      const method = this.paymentMethodToDb(input.method);
+      const method = servicePaymentMethodToDb(input.method);
 
       if (current.paymentStatus === "CONFIRMED") {
         const isSameConfirmation =
@@ -1769,8 +1856,8 @@ export class BookingRepository implements BookingRepositoryPort {
       id: order.id,
       orderNo: order.orderNo,
       orderType: this.orderTypeFromDb(order.orderType),
-      status: this.statusFromDb(order.status),
-      paymentMethod: this.paymentMethodFromDb(order.paymentMethod),
+      status: bookingOrderStatusFromDb(order.status),
+      paymentMethod: servicePaymentMethodFromDb(order.paymentMethod),
       paymentStatus: this.paymentStatusFromDb(order.paymentStatus),
       paymentAmountJpy: order.paymentAmountJpy,
       paymentConfirmedById: order.paymentConfirmedById,
@@ -1824,8 +1911,8 @@ export class BookingRepository implements BookingRepositoryPort {
       statusHistory: order.statusHistory.map((history) => ({
         id: history.id,
         orderId: history.bookingOrderId,
-        fromStatus: history.fromStatus ? this.statusFromDb(history.fromStatus) : null,
-        toStatus: this.statusFromDb(history.toStatus),
+        fromStatus: history.fromStatus ? bookingOrderStatusFromDb(history.fromStatus) : null,
+        toStatus: bookingOrderStatusFromDb(history.toStatus),
         actorUserId: history.actorUserId,
         reason: history.reason,
         createdAt: history.createdAt
@@ -1890,75 +1977,11 @@ export class BookingRepository implements BookingRepositoryPort {
     };
   }
 
-  private statusFromDb(status: string): BookingOrderStatusPayload {
-    if (status === "CONFIRMED") {
-      return "confirmed";
-    }
-    if (status === "IN_SERVICE") {
-      return "inService";
-    }
-    if (status === "AWAITING_CHECKOUT") {
-      return "awaitingCheckout";
-    }
-    if (status === "AWAITING_PAYMENT_CONFIRMATION") {
-      return "awaitingPaymentConfirmation";
-    }
-    if (status === "COMPLETED") {
-      return "completed";
-    }
-    if (status === "CANCELLED") {
-      return "cancelled";
-    }
-
-    return "pending";
-  }
-
-  private paymentMethodFromDb(method: string): ServicePaymentMethodPayload {
-    if (method === "BANK_TRANSFER") return "bank_transfer";
-    if (method === "CASH") return "cash";
-    if (method === "NDP") return "ndp";
-    if (method === "OTHER") return "other";
-    return "onsite";
-  }
-
-  private paymentMethodToDb(
-    method: ServicePaymentMethodPayload
-  ): "ONSITE" | "BANK_TRANSFER" | "CASH" | "NDP" | "OTHER" {
-    if (method === "bank_transfer") return "BANK_TRANSFER";
-    if (method === "cash") return "CASH";
-    if (method === "ndp") return "NDP";
-    if (method === "other") return "OTHER";
-    return "ONSITE";
-  }
-
   private paymentStatusFromDb(status: string): ServicePaymentStatusPayload {
     if (status === "CONFIRMED") return "confirmed";
     if (status === "REFUND_PENDING") return "refundPending";
     if (status === "REFUNDED") return "refunded";
     return "pending";
-  }
-
-  private statusToDb(status: BookingOrderStatusPayload) {
-    if (status === "confirmed") {
-      return "CONFIRMED";
-    }
-    if (status === "inService") {
-      return "IN_SERVICE";
-    }
-    if (status === "awaitingCheckout") {
-      return "AWAITING_CHECKOUT";
-    }
-    if (status === "awaitingPaymentConfirmation") {
-      return "AWAITING_PAYMENT_CONFIRMATION";
-    }
-    if (status === "completed") {
-      return "COMPLETED";
-    }
-    if (status === "cancelled") {
-      return "CANCELLED";
-    }
-
-    return "PENDING";
   }
 
   private slotStatusFromDb(status: string): ScheduleSlotStatusPayload {

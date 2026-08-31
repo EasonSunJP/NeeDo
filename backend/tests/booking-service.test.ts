@@ -1,13 +1,21 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import type {
+  BookingCreateRepositoryInput,
   BookingOrderPayload,
   BookingRepositoryPort,
+  ConfirmManualPaymentRepositoryInput,
+  LegacyServicePaymentMethodPayload,
   ScheduleSlotPayload
 } from "../src/repositories/booking.repository";
-import { BookingRepository } from "../src/repositories/booking.repository";
+import {
+  bookingOrderStatusFromDb,
+  bookingOrderStatusToDb,
+  servicePaymentMethodFromDb,
+  servicePaymentMethodToDb
+} from "../src/repositories/booking.repository";
 import type { BookingLedgerSettlementPort } from "../src/services/ledger.service";
 import type { OrderStatusNotificationPort } from "../src/services/realtime.service";
-import { BookingService } from "../src/services/booking.service";
+import { BookingService, type BookingCreateInput } from "../src/services/booking.service";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import type {
   AffiliateCheckoutPrepared,
@@ -26,6 +34,25 @@ const technicianActor: AuthenticatedAccessContext = {
   currentIdentityScopeType: "technician_profile",
   currentIdentityScopeId: 31
 };
+
+type Assert<T extends true> = T;
+type IsEqual<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
+    ? true
+    : false;
+type BookingCreationPaymentBoundary = Assert<
+  IsEqual<NonNullable<BookingCreateRepositoryInput["paymentMethod"]>, LegacyServicePaymentMethodPayload>
+>;
+type ManualConfirmationPaymentBoundary = Assert<
+  IsEqual<ConfirmManualPaymentRepositoryInput["method"], LegacyServicePaymentMethodPayload>
+>;
+type BookingServicePaymentBoundary = Assert<
+  IsEqual<NonNullable<BookingCreateInput["paymentMethod"]>, LegacyServicePaymentMethodPayload>
+>;
+
+const bookingCreationPaymentBoundary: BookingCreationPaymentBoundary = true;
+const manualConfirmationPaymentBoundary: ManualConfirmationPaymentBoundary = true;
+const bookingServicePaymentBoundary: BookingServicePaymentBoundary = true;
 
 const scheduleSlot: ScheduleSlotPayload = {
   id: 10,
@@ -140,31 +167,41 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
-  it("maps the formal checkout statuses and payment methods without breaking legacy values", () => {
-    const repository = new BookingRepository({} as never) as unknown as {
-      statusFromDb: (status: string) => BookingOrderPayload["status"];
-      statusToDb: (status: BookingOrderPayload["status"]) => string;
-      paymentMethodFromDb: (method: string) => BookingOrderPayload["paymentMethod"];
-      paymentMethodToDb: (method: BookingOrderPayload["paymentMethod"]) => string;
-    };
+  it("keeps legacy creation/manual payment inputs narrower than order projections", () => {
+    expect(bookingCreationPaymentBoundary).toBe(true);
+    expect(manualConfirmationPaymentBoundary).toBe(true);
+    expect(bookingServicePaymentBoundary).toBe(true);
+  });
 
-    expect(repository.statusFromDb("AWAITING_CHECKOUT")).toBe("awaitingCheckout");
-    expect(repository.statusFromDb("AWAITING_PAYMENT_CONFIRMATION")).toBe(
-      "awaitingPaymentConfirmation"
-    );
-    expect(repository.statusToDb("awaitingCheckout")).toBe("AWAITING_CHECKOUT");
-    expect(repository.statusToDb("awaitingPaymentConfirmation")).toBe(
-      "AWAITING_PAYMENT_CONFIRMATION"
-    );
+  it.each([
+    ["PENDING", "pending"],
+    ["CONFIRMED", "confirmed"],
+    ["IN_SERVICE", "inService"],
+    ["AWAITING_CHECKOUT", "awaitingCheckout"],
+    ["AWAITING_PAYMENT_CONFIRMATION", "awaitingPaymentConfirmation"],
+    ["COMPLETED", "completed"],
+    ["CANCELLED", "cancelled"]
+  ] as const)("roundtrips booking status %s", (databaseValue, payloadValue) => {
+    expect(bookingOrderStatusFromDb(databaseValue)).toBe(payloadValue);
+    expect(bookingOrderStatusToDb(payloadValue)).toBe(databaseValue);
+  });
 
-    expect(repository.paymentMethodFromDb("CASH")).toBe("cash");
-    expect(repository.paymentMethodFromDb("NDP")).toBe("ndp");
-    expect(repository.paymentMethodFromDb("OTHER")).toBe("other");
-    expect(repository.paymentMethodToDb("cash")).toBe("CASH");
-    expect(repository.paymentMethodToDb("ndp")).toBe("NDP");
-    expect(repository.paymentMethodToDb("other")).toBe("OTHER");
-    expect(repository.paymentMethodFromDb("ONSITE")).toBe("onsite");
-    expect(repository.paymentMethodFromDb("BANK_TRANSFER")).toBe("bank_transfer");
+  it.each([
+    ["ONSITE", "onsite"],
+    ["BANK_TRANSFER", "bank_transfer"],
+    ["CASH", "cash"],
+    ["NDP", "ndp"],
+    ["OTHER", "other"]
+  ] as const)("roundtrips service payment method %s", (databaseValue, payloadValue) => {
+    expect(servicePaymentMethodFromDb(databaseValue)).toBe(payloadValue);
+    expect(servicePaymentMethodToDb(payloadValue)).toBe(databaseValue);
+  });
+
+  it("rejects unknown runtime status and payment enum values", () => {
+    expect(() => bookingOrderStatusFromDb("UNKNOWN_STATUS" as never)).toThrow();
+    expect(() => bookingOrderStatusToDb("unknownStatus" as never)).toThrow();
+    expect(() => servicePaymentMethodFromDb("UNKNOWN_METHOD" as never)).toThrow();
+    expect(() => servicePaymentMethodToDb("unknown_method" as never)).toThrow();
   });
 
   it("maps an atomic cross-shop confirmation collision to a non-leaking schedule conflict", async () => {
