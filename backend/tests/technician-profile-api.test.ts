@@ -270,6 +270,39 @@ describe("technician profile current-identity API", () => {
     );
   });
 
+  it("persists intentionally cleared optional list fields", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("technician@example.com");
+
+    await request(fixture.app)
+      .patch("/api/v1/technician-profile/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ languages: [], serviceAreas: [], profileTags: [], paymentMethods: [] })
+      .expect(200)
+      .expect(({ body }) => expect(body.data).toMatchObject({
+        languages: [],
+        paymentMethods: []
+      }));
+
+    expect(fixture.technicianProfileRepository.updateMine).toHaveBeenCalledWith(
+      9,
+      31,
+      109,
+      expect.objectContaining({
+        languages: [],
+        serviceAreas: [],
+        profileTags: [],
+        paymentMethods: []
+      }),
+      expect.objectContaining({
+        action: "technician_profile.self_update",
+        metadata: {
+          changedFields: ["languages", "paymentMethods", "profileTags", "serviceAreas"]
+        }
+      })
+    );
+  });
+
   it("rejects missing auth, missing permission, a non-technician identity and invalid data", async () => {
     const fixture = await createFixture();
     const technicianToken = await fixture.login("technician@example.com");

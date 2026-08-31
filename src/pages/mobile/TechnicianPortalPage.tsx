@@ -508,6 +508,17 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
 
 type TechnicianProfileDraft = ReturnType<typeof profileDraft>;
 
+function describeProfileMutationError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 400) return "请检查资料内容后重试";
+    if (error.status === 401) return "登录状态已失效，请重新登录技师账号后再操作";
+    if (error.status === 403) return "当前技师身份没有资料编辑权限";
+    if (error.status === 409) return "资料已在其他位置更新，请重新加载后再保存";
+  }
+  if (error instanceof Error && !error.message.startsWith("error.")) return error.message;
+  return "暂时无法保存，请稍后重试";
+}
+
 function TechnicianInfoCard({ profile, onSaved }: {
   profile: TechnicianSelfProfile;
   onSaved: (profile: TechnicianSelfProfile) => void;
@@ -531,7 +542,7 @@ function TechnicianInfoCard({ profile, onSaved }: {
       setDraft(profileDraft(saved));
       return saved;
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "error.technician_profile.update_failed");
+      setError(describeProfileMutationError(mutationError));
       return null;
     } finally {
       setSaving(false);

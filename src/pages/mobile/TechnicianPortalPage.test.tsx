@@ -121,6 +121,13 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain('role="alert">技师资料保存失败：{error}');
   });
 
+  it("shows actionable profile mutation errors instead of backend error keys", () => {
+    expect(source).toContain("function describeProfileMutationError");
+    expect(source).toContain("setError(describeProfileMutationError(mutationError))");
+    expect(source).toContain('return "请检查资料内容后重试"');
+    expect(source).not.toContain('setError(mutationError instanceof Error ? mutationError.message : "error.technician_profile.update_failed")');
+  });
+
   it("loads and mutates only persisted technician services", () => {
     const servicesStart = source.indexOf("function FormalTechnicianServicesPanel");
     const servicesEnd = source.indexOf("function DataCenter", servicesStart);
