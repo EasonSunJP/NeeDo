@@ -238,6 +238,12 @@ export default defineConfig(({ command, mode }) => {
               return "vendor";
             }
 
+            if (
+              normalizedId.endsWith("/src/features/dashboard/dashboardTranslations.ts")
+            ) {
+              return "dashboard-i18n";
+            }
+
             if (normalizedId.includes("/src/i18n/")) {
               return "i18n";
             }
