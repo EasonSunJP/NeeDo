@@ -12,6 +12,7 @@ import type {
   ManualPaymentMutationResult,
   ManualPaymentScope,
   OrderAcceptancePausedResult,
+  OrderTransitionRepositoryInput,
   OrderTransitionRepositoryOptions,
   OrderListInput,
   ScheduleListInput,
@@ -513,13 +514,30 @@ export class BookingService {
       throw this.invalidTransitionError();
     }
 
-    const transitionInput = {
-      id,
-      actorUserId: actor.userId,
-      fromStatus: order.status,
-      toStatus: rule.to,
-      reason
-    };
+    const transitionInput: OrderTransitionRepositoryInput =
+      action === "confirm"
+        ? {
+            id,
+            actorUserId: actor.userId,
+            fromStatus: "pending",
+            toStatus: "confirmed",
+            reason
+          }
+        : order.status === "pending"
+          ? {
+              id,
+              actorUserId: actor.userId,
+              fromStatus: "pending",
+              toStatus: "cancelled",
+              reason
+            }
+          : {
+              id,
+              actorUserId: actor.userId,
+              fromStatus: "confirmed",
+              toStatus: "cancelled",
+              reason
+            };
     const transitionOptions = this.createSettlementOptions(actor, order, action, confirmInput);
     const guardedResult =
       action === "confirm"

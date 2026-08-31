@@ -23,6 +23,8 @@ import {
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
 
+class FulfillmentTransactionAbort extends Error {}
+
 export const deriveOrderServiceVerificationCode = (orderId: number): string => {
   const digest = createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
     .update(SERVICE_CODE_DOMAIN)
@@ -280,13 +282,21 @@ export type ScheduleMutationResult =
   | { outcome: "ok"; slot: ScheduleSlotPayload }
   | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" };
 
-export interface OrderTransitionRepositoryInput {
+interface OrderTransitionRepositoryBaseInput {
   id: number;
   actorUserId: number;
-  fromStatus: BookingOrderStatusPayload;
-  toStatus: BookingOrderStatusPayload;
   reason?: string | null;
 }
+
+export type OrderTransitionRepositoryInput =
+  | (OrderTransitionRepositoryBaseInput & {
+      fromStatus: "pending";
+      toStatus: "confirmed";
+    })
+  | (OrderTransitionRepositoryBaseInput & {
+      fromStatus: "pending" | "confirmed";
+      toStatus: "cancelled";
+    });
 
 export interface OrderTransitionSettlementContext {
   transactionClient: LedgerTransactionClient;
@@ -355,7 +365,7 @@ export interface OrderAddOnPayload {
   currency: "JPY";
   durationMinutes: number;
   serviceSnapshot: unknown;
-  proposedBy: FulfillmentParticipant;
+  proposedBy: FulfillmentParticipant | null;
   proposedAt: Date;
   resolvedBy: FulfillmentParticipant | null;
   resolvedAt: Date | null;
@@ -452,6 +462,12 @@ export interface EndServiceRepositoryInput extends FulfillmentActorInput {
   reason: string;
   idempotencyKey: string;
 }
+
+type FulfillmentReplayExpectation =
+  | { kind: "start" }
+  | { kind: "proposal"; serviceId: number }
+  | { kind: "decision"; addOnId: number; decision: "accept" | "reject" }
+  | { kind: "end"; reason: string };
 
 export type FulfillmentMutationResult =
   | { outcome: "ok"; order: BookingOrderPayload; applied: boolean }
@@ -1310,7 +1326,7 @@ export class BookingRepository implements BookingRepositoryPort {
         current,
         input,
         DatabaseOrderServiceEventType.SERVICE_STARTED,
-        null
+        { kind: "start" }
       );
       if (replay) return replay;
       if (!current) return { outcome: "not_found" };
@@ -1379,7 +1395,7 @@ export class BookingRepository implements BookingRepositoryPort {
         },
         data: { status: DatabaseBookingOrderStatus.IN_SERVICE, updatedAt: now }
       });
-      if (updated.count !== 1) return { outcome: "invalid_transition" };
+      if (updated.count !== 1) throw new FulfillmentTransactionAbort();
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,
@@ -1420,7 +1436,7 @@ export class BookingRepository implements BookingRepositoryPort {
         current,
         input,
         DatabaseOrderServiceEventType.ADD_ON_PROPOSED,
-        null
+        { kind: "proposal", serviceId: input.serviceId }
       );
       if (replay) return replay;
       if (!current) return { outcome: "not_found" };
@@ -1519,7 +1535,7 @@ export class BookingRepository implements BookingRepositoryPort {
         current,
         input,
         eventType,
-        input.addOnId
+        { kind: "decision", addOnId: input.addOnId, decision: input.decision }
       );
       if (replay) return replay;
       if (!current) return { outcome: "not_found" };
@@ -1605,7 +1621,7 @@ export class BookingRepository implements BookingRepositoryPort {
         current,
         input,
         DatabaseOrderServiceEventType.SERVICE_ENDED,
-        null
+        { kind: "end", reason: input.reason }
       );
       if (replay) return replay;
       if (!current) return { outcome: "not_found" };
@@ -1635,7 +1651,7 @@ export class BookingRepository implements BookingRepositoryPort {
         },
         data: { status: DatabaseBookingOrderStatus.AWAITING_CHECKOUT, updatedAt: now }
       });
-      if (updated.count !== 1) return { outcome: "invalid_transition" };
+      if (updated.count !== 1) throw new FulfillmentTransactionAbort();
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,
@@ -1686,6 +1702,9 @@ export class BookingRepository implements BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
   ): Promise<OrderTransitionGuardedResult> {
+    if (!this.isAllowedGenericOrderTransition(input)) {
+      return { outcome: "invalid_state" };
+    }
     return runWithTransactionConflictRetry(() =>
       this.client.$transaction(async (tx) => {
         const current = await tx.bookingOrder.findFirst({
@@ -1787,6 +1806,17 @@ export class BookingRepository implements BookingRepositoryPort {
           ? { outcome: "ok" as const, order: this.mapOrder(next) }
           : { outcome: "invalid_state" as const };
       })
+    );
+  }
+
+  private isAllowedGenericOrderTransition(input: {
+    fromStatus: string;
+    toStatus: string;
+  }): boolean {
+    return (
+      (input.fromStatus === "pending" && input.toStatus === "confirmed") ||
+      ((input.fromStatus === "pending" || input.fromStatus === "confirmed") &&
+        input.toStatus === "cancelled")
     );
   }
 
@@ -2299,11 +2329,17 @@ export class BookingRepository implements BookingRepositoryPort {
     try {
       return await runWithTransactionConflictRetry(operation);
     } catch (error) {
+      if (error instanceof FulfillmentTransactionAbort) {
+        return { outcome: "invalid_transition" };
+      }
       if (isRetryableTransactionConflict(error)) return { outcome: "conflict" };
       if (!this.isPrismaUniqueConflict(error)) throw error;
       try {
         return await runWithTransactionConflictRetry(operation);
       } catch (replayedError) {
+        if (replayedError instanceof FulfillmentTransactionAbort) {
+          return { outcome: "invalid_transition" };
+        }
         if (
           isRetryableTransactionConflict(replayedError) ||
           this.isPrismaUniqueConflict(replayedError)
@@ -2361,18 +2397,49 @@ export class BookingRepository implements BookingRepositoryPort {
     current: OrderRecord | null,
     input: FulfillmentActorInput & { idempotencyKey: string },
     eventType: DatabaseOrderServiceEventType,
-    orderAddOnId: number | null
+    expectation: FulfillmentReplayExpectation
   ): Promise<FulfillmentMutationResult | null> {
     const event = await transaction.orderServiceEvent.findUnique({
       where: { idempotencyKey: input.idempotencyKey }
     });
     if (!event) return null;
+    const metadata =
+      event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+        ? event.metadata
+        : null;
     if (
       event.bookingOrderId !== current?.id ||
       event.eventType !== eventType ||
       event.actorUserId !== input.actorUserId ||
-      (orderAddOnId !== null && event.orderAddOnId !== orderAddOnId)
+      metadata?.actor !== input.actor
     ) {
+      return { outcome: "conflict" };
+    }
+    if (expectation.kind === "start" && event.orderAddOnId !== null) {
+      return { outcome: "conflict" };
+    }
+    if (expectation.kind === "proposal") {
+      if (event.orderAddOnId === null) return { outcome: "conflict" };
+      const addOn = await transaction.orderAddOn.findFirst({
+        where: {
+          id: event.orderAddOnId,
+          bookingOrderId: event.bookingOrderId,
+          deletedAt: null
+        },
+        select: { serviceId: true }
+      });
+      if (!addOn || addOn.serviceId !== expectation.serviceId) {
+        return { outcome: "conflict" };
+      }
+    }
+    if (
+      expectation.kind === "decision" &&
+      (event.orderAddOnId !== expectation.addOnId ||
+        metadata?.decision !== expectation.decision)
+    ) {
+      return { outcome: "conflict" };
+    }
+    if (expectation.kind === "end" && event.reason !== expectation.reason) {
       return { outcome: "conflict" };
     }
     return current
@@ -2554,17 +2621,12 @@ export class BookingRepository implements BookingRepositoryPort {
                 currency: "JPY" as const,
                 durationMinutes: addOn.durationMinutes,
                 serviceSnapshot: addOn.serviceSnapshotJson,
-                proposedBy:
-                  addOn.proposedByUserId === order.customerUserId
-                    ? ("customer" as const)
-                    : ("technician" as const),
+                proposedBy: this.fulfillmentParticipantForUser(
+                  order,
+                  addOn.proposedByUserId
+                ),
                 proposedAt: addOn.proposedAt,
-                resolvedBy:
-                  resolvedByUserId === null
-                    ? null
-                    : resolvedByUserId === order.customerUserId
-                      ? ("customer" as const)
-                      : ("technician" as const),
+                resolvedBy: this.fulfillmentParticipantForUser(order, resolvedByUserId),
                 resolvedAt: accepted
                   ? addOn.acceptedAt
                   : rejected
@@ -2587,6 +2649,16 @@ export class BookingRepository implements BookingRepositoryPort {
         createdAt: history.createdAt
       }))
     };
+  }
+
+  private fulfillmentParticipantForUser(
+    order: OrderRecord,
+    userId: number | null
+  ): FulfillmentParticipant | null {
+    if (userId === null) return null;
+    if (userId === order.customerUserId) return "customer";
+    if (userId === order.technicianProfile?.userId) return "technician";
+    return null;
   }
 
   private createShopServiceSource(slot: SlotRecord, requestedServiceId?: number) {

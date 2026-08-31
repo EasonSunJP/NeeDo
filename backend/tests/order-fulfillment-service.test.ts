@@ -3,7 +3,8 @@ import { Prisma } from "@prisma/client";
 import type {
   BookingOrderPayload,
   BookingRepositoryPort,
-  FulfillmentMutationResult
+  FulfillmentMutationResult,
+  OrderTransitionRepositoryInput
 } from "../src/repositories/booking.repository";
 import {
   BookingRepository,
@@ -349,6 +350,7 @@ describe("formal order fulfillment service", () => {
 type RepositoryHarnessOptions = {
   status?: "CONFIRMED" | "IN_SERVICE";
   session?: boolean;
+  guardedOrderUpdateCount?: number;
   service?: {
     id?: number;
     shopId?: number;
@@ -456,7 +458,7 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
       findFirst: jest.fn(async () => projectedOrder()),
       updateMany: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         Object.assign(dbOrder, data);
-        return { count: 1 };
+        return { count: options.guardedOrderUpdateCount ?? 1 };
       })
     },
     orderStatusHistory: {
@@ -543,7 +545,30 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     }
   };
   const client = {
-    $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    bookingOrder: tx.bookingOrder,
+    $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => {
+      const orderSnapshot = {
+        ...dbOrder,
+        statusHistory: dbOrder.statusHistory.map((entry) => ({ ...entry }))
+      };
+      const sessionSnapshot = session ? { ...session } : null;
+      const eventSnapshot = events.map((event) => ({ ...event }));
+      const addOnSnapshot = addOns.map((addOn) => ({ ...addOn }));
+      try {
+        return await callback(tx);
+      } catch (error) {
+        Object.assign(dbOrder, orderSnapshot);
+        dbOrder.statusHistory.splice(
+          0,
+          dbOrder.statusHistory.length,
+          ...orderSnapshot.statusHistory
+        );
+        session = sessionSnapshot;
+        events.splice(0, events.length, ...eventSnapshot);
+        addOns.splice(0, addOns.length, ...addOnSnapshot);
+        throw error;
+      }
+    })
   };
   return {
     repository: new BookingRepository(client as never),
@@ -561,6 +586,20 @@ const repositoryActor = {
   technicianProfileId: null,
   requestContext: context
 };
+
+const legalGenericTransition = {
+  id: 41,
+  actorUserId: customer.userId,
+  fromStatus: "pending",
+  toStatus: "confirmed"
+} satisfies OrderTransitionRepositoryInput;
+
+const illegalGenericTransition: OrderTransitionRepositoryInput = {
+  ...legalGenericTransition,
+  // @ts-expect-error generic transitions must not express fulfillment or completion pairs
+  toStatus: "inService"
+};
+void illegalGenericTransition;
 
 describe("formal order fulfillment repository transactions", () => {
   it("uses the existing three-attempt bound and maps exhausted write conflicts", async () => {
@@ -608,6 +647,30 @@ describe("formal order fulfillment repository transactions", () => {
     });
     expect(harness.events).toHaveLength(1);
     expect(harness.getSession()!.expectedEndsAt).toEqual(firstExpectedEndsAt);
+  });
+
+  it("conflicts when the same user reuses a start key through another actor identity", async () => {
+    const harness = createRepositoryHarness();
+    const idempotencyKey = "repository-start-actor-change";
+    await harness.repository.startService({
+      ...repositoryActor,
+      orderId: 41,
+      verificationCode: null,
+      idempotencyKey
+    });
+    harness.dbOrder.technicianProfile.userId = customer.userId;
+
+    await expect(
+      harness.repository.startService({
+        actorUserId: customer.userId,
+        actor: "technician",
+        technicianProfileId: assignedTechnician.currentIdentityScopeId,
+        requestContext: context,
+        orderId: 41,
+        verificationCode: deriveOrderServiceVerificationCode(41),
+        idempotencyKey
+      })
+    ).resolves.toEqual({ outcome: "conflict" });
   });
 
   it("rejects a technician's wrong code and global key reuse by another actor", async () => {
@@ -672,6 +735,26 @@ describe("formal order fulfillment repository transactions", () => {
       })
     ).resolves.toEqual({ outcome: "invalid_service" });
     expect(harness.addOns).toHaveLength(0);
+  });
+
+  it("conflicts when a proposal key is reused with a different service", async () => {
+    const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true });
+    const idempotencyKey = "repository-addon-service-change";
+    await harness.repository.createOrderAddOn({
+      ...repositoryActor,
+      orderId: 41,
+      serviceId: 19,
+      idempotencyKey
+    });
+
+    await expect(
+      harness.repository.createOrderAddOn({
+        ...repositoryActor,
+        orderId: 41,
+        serviceId: 20,
+        idempotencyKey
+      })
+    ).resolves.toEqual({ outcome: "conflict" });
   });
 
   it("snapshots a same-shop service and lets only the opposite participant accept once", async () => {
@@ -769,5 +852,150 @@ describe("formal order fulfillment repository transactions", () => {
     });
     expect(harness.dbOrder.status).toBe("AWAITING_CHECKOUT");
     expect(harness.events.at(-1)).toMatchObject({ eventType: "SERVICE_ENDED" });
+  });
+
+  it("conflicts when a decision key changes decision or add-on", async () => {
+    const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true });
+    await harness.repository.createOrderAddOn({
+      ...repositoryActor,
+      orderId: 41,
+      serviceId: 19,
+      idempotencyKey: "repository-decision-proposal1"
+    });
+    await harness.repository.createOrderAddOn({
+      ...repositoryActor,
+      orderId: 41,
+      serviceId: 19,
+      idempotencyKey: "repository-decision-proposal2"
+    });
+    const firstAddOnId = harness.addOns[0].id;
+    const secondAddOnId = harness.addOns[1].id;
+    const decisionKey = "repository-decision-equivalence";
+    const technicianDecision = {
+      actorUserId: assignedTechnician.userId,
+      actor: "technician" as const,
+      technicianProfileId: assignedTechnician.currentIdentityScopeId,
+      requestContext: context,
+      orderId: 41,
+      idempotencyKey: decisionKey
+    };
+    await harness.repository.decideOrderAddOn({
+      ...technicianDecision,
+      addOnId: firstAddOnId,
+      decision: "accept"
+    });
+
+    await expect(
+      harness.repository.decideOrderAddOn({
+        ...technicianDecision,
+        addOnId: firstAddOnId,
+        decision: "reject"
+      })
+    ).resolves.toEqual({ outcome: "conflict" });
+    await expect(
+      harness.repository.decideOrderAddOn({
+        ...technicianDecision,
+        addOnId: secondAddOnId,
+        decision: "accept"
+      })
+    ).resolves.toEqual({ outcome: "conflict" });
+  });
+
+  it("conflicts when an end key is reused with another reason", async () => {
+    const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true });
+    const idempotencyKey = "repository-end-reason-change";
+    await harness.repository.endService({
+      ...repositoryActor,
+      orderId: 41,
+      reason: "customer_completed",
+      idempotencyKey
+    });
+
+    await expect(
+      harness.repository.endService({
+        ...repositoryActor,
+        orderId: 41,
+        reason: "technician_completed",
+        idempotencyKey
+      })
+    ).resolves.toEqual({ outcome: "conflict" });
+  });
+
+  it("fails closed for unknown projected add-on actors without exposing secrets", async () => {
+    const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true });
+    harness.addOns.push({
+      id: 99,
+      serviceId: 19,
+      serviceSessionId: 81,
+      bookingOrderId: 41,
+      status: "ACCEPTED",
+      serviceNameSnapshot: "异常追加服务",
+      priceAmountJpy: 1000,
+      currency: "JPY",
+      durationMinutes: 10,
+      serviceSnapshotJson: {},
+      proposedByUserId: 999,
+      proposedAt: now,
+      acceptedByUserId: 998,
+      acceptedAt: now,
+      rejectedByUserId: null,
+      rejectedAt: null,
+      resolutionReason: null,
+      deletedAt: null
+    });
+
+    const projected = await harness.repository.findOrderById(41);
+    expect(projected?.serviceSession?.addOns[0]).toMatchObject({
+      proposedBy: null,
+      resolvedBy: null
+    });
+    expect(JSON.stringify(projected)).not.toContain("verificationHash");
+    expect(JSON.stringify(projected)).not.toContain("serviceVerificationCode");
+  });
+
+  it.each([
+    ["start", { status: "CONFIRMED" as const, session: false }],
+    ["end", { status: "IN_SERVICE" as const, session: true }]
+  ])("rolls back %s when its guarded order update loses the race", async (command, setup) => {
+    const harness = createRepositoryHarness({ ...setup, guardedOrderUpdateCount: 0 });
+    const result =
+      command === "start"
+        ? await harness.repository.startService({
+            ...repositoryActor,
+            orderId: 41,
+            verificationCode: null,
+            idempotencyKey: "repository-start-rollback"
+          })
+        : await harness.repository.endService({
+            ...repositoryActor,
+            orderId: 41,
+            reason: "customer_completed",
+            idempotencyKey: "repository-end-rollback"
+          });
+
+    expect(result).toEqual({ outcome: "invalid_transition" });
+    expect(harness.dbOrder.status).toBe(setup.status);
+    expect(harness.dbOrder.statusHistory).toHaveLength(0);
+    expect(harness.events).toHaveLength(0);
+    if (command === "start") {
+      expect(harness.getSession()).toBeNull();
+    } else {
+      expect(harness.getSession()).toMatchObject({ endedAt: null, endedByUserId: null });
+    }
+  });
+
+  it("rejects a generic illegal transition before opening a transaction", async () => {
+    const transaction = jest.fn();
+    const repository = new BookingRepository({ $transaction: transaction } as never);
+
+    await expect(
+      repository.transitionOrder({
+        id: 41,
+        actorUserId: customer.userId,
+        fromStatus: "pending",
+        toStatus: "inService"
+      } as never)
+    ).resolves.toBeNull();
+    expect(transaction).not.toHaveBeenCalled();
   });
 });

@@ -213,11 +213,8 @@ describe("BookingRepository order list scope", () => {
     });
   });
 
-  it("retries a formal order transition after a Prisma deadlock conflict", async () => {
-    const deadlock = Object.assign(new Error("Transaction failed due to a write conflict"), {
-      code: "P2034"
-    });
-    const transaction = jest.fn().mockRejectedValueOnce(deadlock).mockResolvedValueOnce(null);
+  it("rejects the retired generic completion pair before opening a transaction", async () => {
+    const transaction = jest.fn();
     const repository = new BookingRepository({ $transaction: transaction } as never);
 
     await expect(
@@ -226,9 +223,9 @@ describe("BookingRepository order list scope", () => {
         actorUserId: 7,
         fromStatus: "inService",
         toStatus: "completed"
-      })
+      } as never)
     ).resolves.toBeNull();
-    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it("does not retry a formal order transition after a non-transient failure", async () => {
