@@ -27,6 +27,10 @@ import {
   imMessageInclude as messageInclude,
   persistImMessageInTransaction
 } from "./im-message-send.transaction";
+import {
+  contactCardRequestFingerprint,
+  persistImContactCardInTransaction
+} from "./im-contact-card-send.transaction";
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -432,6 +436,24 @@ export type CreateMessageOutcome =
   | { status: "recipient_blocked" }
   | { status: "not_friends" };
 
+export interface SendContactCardInput {
+  conversationId: number;
+  senderUserId: number;
+  senderIdentityId: number;
+  targetUserPublicId: string;
+  idempotencyKey: string;
+}
+
+export type SendContactCardOutcome =
+  | { status: "created"; message: MessagePayload }
+  | { status: "replayed"; message: MessagePayload }
+  | { status: "target_not_found" }
+  | { status: "target_not_allowed" }
+  | { status: "idempotency_conflict" }
+  | { status: "not_found" }
+  | { status: "recipient_blocked" }
+  | { status: "not_friends" };
+
 export type MessageSendEligibility =
   | "allowed"
   | "not_found"
@@ -641,6 +663,7 @@ export interface RealtimeRepositoryPort {
     input: CheckMessageSendEligibilityInput
   ) => Promise<MessageSendEligibility>;
   createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
+  sendContactCard: (input: SendContactCardInput) => Promise<SendContactCardOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
     senderUserId: number,
@@ -1476,6 +1499,47 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         message: this.mapMessage(outcome.message, senderIdentityId)
       };
     });
+  }
+
+  public async sendContactCard(
+    input: SendContactCardInput
+  ): Promise<SendContactCardOutcome> {
+    const requestFingerprint = contactCardRequestFingerprint(input);
+    try {
+      const outcome = await this.client.$transaction((tx) =>
+        persistImContactCardInTransaction(tx, {
+          ...input,
+          requestFingerprint,
+          transactionNow: new Date()
+        })
+      );
+      if (outcome.status === "created" || outcome.status === "replayed") {
+        return {
+          status: outcome.status,
+          message: this.mapMessage(outcome.message, input.senderIdentityId)
+        };
+      }
+      return outcome;
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) throw error;
+      const replay = await this.client.imContactCardSendCommand.findUnique({
+        where: {
+          actorIdentityId_idempotencyKey: {
+            actorIdentityId: input.senderIdentityId,
+            idempotencyKey: input.idempotencyKey
+          }
+        },
+        include: { message: { include: messageInclude } }
+      });
+      if (!replay) throw error;
+      if (replay.requestFingerprint !== requestFingerprint) {
+        return { status: "idempotency_conflict" };
+      }
+      return {
+        status: "replayed",
+        message: this.mapMessage(replay.message, input.senderIdentityId)
+      };
+    }
   }
 
   public async isMessageSenderBlocked(

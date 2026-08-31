@@ -35,6 +35,15 @@ import type { PaginationInput } from "../utils/pagination";
 
 const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
+function isClientAuthoredContactCard(metadata: unknown): boolean {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
+    return false;
+  }
+  const record = metadata as Record<string, unknown>;
+  return record.needoMessageType === "contact-card" ||
+    (record.snapshotVersion === 2 && record.type === "contact-card");
+}
+
 export interface OrderStatusNotificationInput {
   actorUserId: number;
   actorIdentityId?: number;
@@ -265,6 +274,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<CreateMessageInput, "senderUserId">
   ) {
+    if (isClientAuthoredContactCard(input.metadata)) {
+      throw this.validationError("error.im.contact_card_requires_dedicated_endpoint");
+    }
     const scope = await this.assertMessageSendAllowed(auth, input.conversationId);
 
     const outcome = await this.repository.createMessage({
@@ -313,6 +325,66 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return message;
+  }
+
+  public async sendContactCard(
+    auth: AuthenticatedAccessContext,
+    conversationId: number,
+    targetUserPublicId: string,
+    idempotencyKey: string
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const outcome = await this.repository.sendContactCard({
+      conversationId,
+      senderUserId: auth.userId,
+      senderIdentityId: scope.identityId,
+      targetUserPublicId,
+      idempotencyKey
+    });
+    if (outcome.status === "target_not_found") {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    if (outcome.status === "target_not_allowed") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.contact_card_target_not_allowed",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "idempotency_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency_key_reused",
+        statusCode: 409
+      });
+    }
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.conversation_not_found");
+    }
+    if (outcome.status === "recipient_blocked") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.recipient_blocked",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "created") {
+      await this.publishToConversation(
+        conversationId,
+        "message.created",
+        outcome.message,
+        auth.userId,
+        scope.identityId
+      );
+    }
+    return { message: outcome.message, replayed: outcome.status === "replayed" };
   }
 
   public async listMessages(auth: AuthenticatedAccessContext, input: ListMessagesInput) {
