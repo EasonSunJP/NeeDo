@@ -28,7 +28,7 @@ import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn, yen } from "../../lib/utils";
 import type { ServiceCategory, ServiceItem } from "../../types/domain";
-import { parseCategorySearchDraft } from "./categorySearch";
+import { canRunCategorySearch, parseCategorySearchDraft } from "./categorySearch";
 
 const categoryDescriptionMap: Record<HomeCategoryId, string> = {
   cleaning: "日常保洁、深度保洁、厨卫清洁、退房清扫",
@@ -400,7 +400,11 @@ export function CategoryPage() {
   const loadShops = entityFilter === "all" || entityFilter === "store";
   const loadTechnicians = entityFilter === "all" || entityFilter === "technician";
   const loadServices = entityFilter === "all" || entityFilter === "service";
-  const searchFiltersReady = selectedHomeCategoryIds.length === 0 || searchCategoryIds.length > 0;
+  const searchFiltersReady = canRunCategorySearch({
+    selectedHomeCategoryIds,
+    searchCategoryIds,
+    keywords: appliedCustomLabels
+  });
   const shopSearchQuery = useCoreReadQuery(
     () => loadShops && searchFiltersReady ? coreReadApi.searchShops(coreSearchQuery) : null,
     [loadShops, searchFiltersReady, searchTermsKey, shopRetryKey]
