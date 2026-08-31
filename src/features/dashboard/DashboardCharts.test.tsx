@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { DashboardBucketPayload } from "../../api/backofficeRealData";
 import { I18nProvider } from "../../i18n/I18nProvider";
+import { translateText, type Language } from "../../i18n/translations";
 import { DualAxisLineChart, GroupedBarChart } from "./DashboardCharts";
 import source from "./DashboardCharts.tsx?raw";
 
@@ -63,6 +64,25 @@ describe("DashboardCharts", () => {
     expect(markup).toContain("订单总量 · 单");
     expect(markup).toContain("服务 GMV · JPY");
     expect(markup).not.toMatch(/NaN|Infinity/);
+  });
+
+  it.each([
+    ["ja", "件", "1つ"],
+    ["en", "orders", "One"],
+    ["ko", "건", "하나"]
+  ] as const)("renders the order-count chart unit correctly in %s", (language, expected, legacy) => {
+    const localizedUnit = translateText("单", language as Language);
+    const markup = renderChart(
+      <DualAxisLineChart
+        buckets={buckets}
+        description="订单与服务金额趋势"
+        left={{ ...orderSeries, unit: localizedUnit }}
+        title="订单总量"
+      />
+    );
+
+    expect(markup).toContain(`订单总量 · ${expected}`);
+    expect(markup).not.toContain(`订单总量 · ${legacy}`);
   });
 
   it("exposes every exact bucket value in a screen-reader table", () => {

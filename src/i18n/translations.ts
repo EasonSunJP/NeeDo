@@ -763,6 +763,7 @@ const dashboardTranslations: TranslationMap = {
   "图例": { "zh-Hant": "圖例", ja: "凡例", en: "Legend", ko: "범례" },
   "个": { "zh-Hant": "個", ja: "件", en: "items", ko: "개" },
   "个时段": { "zh-Hant": "個時段", ja: "枠", en: "slots", ko: "개 시간대" },
+  "单": { "zh-Hant": "單", ja: "件", en: "orders", ko: "건" },
   "人": { "zh-Hant": "人", ja: "名", en: "people", ko: "명" },
   "小时": { "zh-Hant": "小時", ja: "時間", en: "hours", ko: "시간" },
   "会员数": { "zh-Hant": "會員數", ja: "会員数", en: "Members", ko: "회원 수" },
