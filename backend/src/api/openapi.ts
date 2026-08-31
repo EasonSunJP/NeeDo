@@ -727,7 +727,10 @@ const exchangeErrorResponses = {
     description: "error.forbidden or error.identity.forbidden — denied permission or identity"
   },
   "404": { description: "error.exchange.post_not_found — post does not exist" },
-  "409": { description: "error.exchange.post_unavailable — post is withdrawn or expired" }
+  "409": {
+    description:
+      "error.exchange.post_unavailable, error.exchange.idempotency_conflict, error.exchange.request_target_limit, or error.wallet.insufficient_available"
+  }
 };
 
 const exchangeIdempotencyKeyParameter = {
@@ -802,7 +805,11 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             "201": jsonDataResponse("Persisted Exchange post", {
               $ref: "#/components/schemas/ExchangePost"
             }),
-            ...exchangeErrorResponses
+            ...exchangeErrorResponses,
+            "503": {
+              description:
+                "error.exchange.request_fee_unavailable — no valid Request publication fee is effective"
+            }
           }
         }
       )
@@ -997,10 +1004,57 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ExchangeDemand: {
         type: "object",
         additionalProperties: false,
-        required: ["budgetMinJpy", "budgetMaxJpy"],
+        required: [
+          "targetProviderCount",
+          "targetProviderLimitSnapshot",
+          "publisherCapacitySource",
+          "membershipLevelSnapshot",
+          "matchMode",
+          "budgetMode",
+          "budgetMinJpy",
+          "budgetMaxJpy",
+          "address"
+        ],
         properties: {
-          budgetMinJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
-          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+          targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
+          targetProviderLimitSnapshot: { type: "integer", minimum: 1, maximum: 20 },
+          publisherCapacitySource: {
+            type: "string",
+            enum: ["customer_membership", "shop_merchant"]
+          },
+          membershipLevelSnapshot: {
+            type: ["string", "null"],
+            enum: ["standard", "silver", "gold", "black", null]
+          },
+          matchMode: { type: "string", enum: ["quick", "selective"] },
+          budgetMode: { type: "string", enum: ["total", "per_provider"] },
+          budgetMinJpy: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 1000000000
+          },
+          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          address: { $ref: "#/components/schemas/ExchangeRequestAddress" }
+        }
+      },
+      ExchangeRequestAddress: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "line1",
+          "line2",
+          "line3",
+          "line2GenerallyVisible",
+          "line3GenerallyVisible",
+          "disclosure"
+        ],
+        properties: {
+          line1: { type: "string", minLength: 1, maxLength: 255 },
+          line2: { type: ["string", "null"], minLength: 1, maxLength: 255 },
+          line3: { type: ["string", "null"], minLength: 1, maxLength: 255 },
+          line2GenerallyVisible: { type: "boolean" },
+          line3GenerallyVisible: { type: "boolean" },
+          disclosure: { type: "string", enum: ["owner", "general"] }
         }
       },
       ExchangeIntelligence: {
@@ -1064,7 +1118,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceEndAt: { type: "string", format: "date-time" },
           expiresAt: { type: "string", format: "date-time" },
           publishedAt: { type: "string", format: "date-time" },
-          publisher: { $ref: "#/components/schemas/ExchangeActor" },
+          publisher: {
+            oneOf: [{ $ref: "#/components/schemas/ExchangeActor" }, { type: "null" }]
+          },
           counts: { $ref: "#/components/schemas/ExchangeInteractionCounts" },
           viewer: { $ref: "#/components/schemas/ExchangeViewerState" },
           demand: {
@@ -1117,12 +1173,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "title",
           "detail",
           "contentLocale",
-          "areaLabel",
           "serviceStartAt",
           "serviceEndAt",
           "expiresAt",
-          "budgetMinJpy",
-          "budgetMaxJpy"
+          "targetProviderCount",
+          "matchMode",
+          "budgetMode",
+          "budgetMaxJpy",
+          "addressLine1"
         ],
         properties: {
           type: { type: "string", enum: ["demand"] },
@@ -1139,12 +1197,35 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             example: "午後のイベント前に、自然なアップスタイルを希望します。"
           },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
-          areaLabel: { type: "string", minLength: 1, maxLength: 120 },
           serviceStartAt: { type: "string", format: "date-time" },
           serviceEndAt: { type: "string", format: "date-time" },
           expiresAt: { type: "string", format: "date-time" },
-          budgetMinJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
-          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+          targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
+          matchMode: { type: "string", enum: ["quick", "selective"] },
+          budgetMode: { type: "string", enum: ["total", "per_provider"] },
+          budgetMinJpy: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 1000000000,
+            default: null
+          },
+          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine2: {
+            type: ["string", "null"],
+            minLength: 1,
+            maxLength: 255,
+            default: null
+          },
+          addressLine3: {
+            type: ["string", "null"],
+            minLength: 1,
+            maxLength: 255,
+            default: null
+          },
+          addressLine2Public: { type: "boolean", default: false },
+          addressLine3Public: { type: "boolean", default: false },
+          publisherIdentityPublic: { type: "boolean", default: false }
         }
       },
       ExchangeIntelligencePublishRequest: {

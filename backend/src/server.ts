@@ -8,6 +8,7 @@ import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-exp
 import { AuditLogRepository } from "./repositories/audit-log.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
 import { ExchangePostRepository } from "./repositories/exchange.repository";
+import { ExchangeRequestFeeRepository } from "./repositories/exchange-request-fee.repository";
 import { AuthRepository } from "./repositories/auth.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
@@ -24,6 +25,7 @@ import { IdentityApplicationMediaFileStorage } from "./services/identity-applica
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
 import { ExchangeService } from "./services/exchange.service";
+import { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
@@ -51,15 +53,21 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
+const exchangeRequestFeeService = new ExchangeRequestFeeService(new ExchangeRequestFeeRepository());
+const exchangeLedgerService = new LedgerService(new LedgerRepository());
 const exchangeService = new ExchangeService(
   new ExchangePostRepository(),
   undefined,
-  new PersonalIdentityScopeService(new AuthRepository())
+  new PersonalIdentityScopeService(new AuthRepository()),
+  exchangeRequestFeeService,
+  exchangeLedgerService
 );
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
-  exchangeService
+  exchangeService,
+  exchangeRequestFeeService,
+  ledgerService: exchangeLedgerService
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
   new IdentityApplicationPurgeService(

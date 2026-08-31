@@ -154,6 +154,15 @@ const createFixture = async () => {
     ...commonPermissions,
     "exchange:posts:create-intelligence"
   ]);
+  const merchantStaffRole = createRole(3, "merchant_staff", [
+    ...authPermissions,
+    ...commonPermissions,
+    "exchange:posts:create-demand"
+  ]);
+  const merchantStaffWithoutDemandRole = createRole(4, "merchant_staff_limited", [
+    ...authPermissions,
+    ...commonPermissions
+  ]);
   const makeUser = (
     id: number,
     email: string,
@@ -178,7 +187,12 @@ const createFixture = async () => {
         id: id + 10,
         userId: id,
         type: identityType,
-        scopeType: identityType === "customer" ? "customer_profile" : "technician_profile",
+        scopeType:
+          identityType === "customer"
+            ? "customer_profile"
+            : identityType === "merchant_staff"
+              ? "shop"
+              : "technician_profile",
         scopeId: id + 20,
         displayName: email,
         isDefault: true,
@@ -190,7 +204,14 @@ const createFixture = async () => {
   });
   const users = [
     makeUser(7, "customer@example.test", "customer", customerRole),
-    makeUser(8, "technician@example.test", "technician", technicianRole)
+    makeUser(8, "technician@example.test", "technician", technicianRole),
+    makeUser(9, "merchant-staff@example.test", "merchant_staff", merchantStaffRole),
+    makeUser(
+      10,
+      "merchant-staff-limited@example.test",
+      "merchant_staff",
+      merchantStaffWithoutDemandRole
+    )
   ];
   const service = {
     listPosts: jest.fn(async () => ({ list: [post], total: 1, page: 1, page_size: 20 })),
@@ -279,6 +300,8 @@ describe("formal Exchange routes", () => {
     const { app, login, service } = await createFixture();
     const customerToken = await login("customer@example.test");
     const technicianToken = await login("technician@example.test");
+    const merchantStaffToken = await login("merchant-staff@example.test");
+    const limitedMerchantStaffToken = await login("merchant-staff-limited@example.test");
     const demandBody = {
       type: "demand",
       title: post.title,
@@ -323,11 +346,23 @@ describe("formal Exchange routes", () => {
       .expect(403);
     await request(app)
       .post("/api/v1/exchange/posts")
+      .set("Authorization", `Bearer ${merchantStaffToken}`)
+      .set("Idempotency-Key", "publish-demand-0003")
+      .send(demandBody)
+      .expect(201);
+    await request(app)
+      .post("/api/v1/exchange/posts")
+      .set("Authorization", `Bearer ${limitedMerchantStaffToken}`)
+      .set("Idempotency-Key", "publish-demand-0004")
+      .send(demandBody)
+      .expect(403);
+    await request(app)
+      .post("/api/v1/exchange/posts")
       .set("Authorization", `Bearer ${customerToken}`)
       .set("Idempotency-Key", "short")
       .send(demandBody)
       .expect(400);
-    expect(service.publish).toHaveBeenCalledTimes(1);
+    expect(service.publish).toHaveBeenCalledTimes(2);
   });
 
   it("exposes comments, like, unlike, share, and withdrawal without deferred routes", async () => {

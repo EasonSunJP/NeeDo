@@ -45,7 +45,7 @@ import type {
   AffiliatePlatformFeeRepositoryPort,
   AffiliatePlatformFeeService
 } from "./services/affiliate-platform-fee.service";
-import type { LedgerRepositoryPort } from "./services/ledger.service";
+import type { LedgerRepositoryPort, LedgerService } from "./services/ledger.service";
 import type { IdentityApplicationRepositoryPort } from "./services/identity-application.service";
 import type { IdentityApplicationService } from "./services/identity-application.service";
 import type { IdentityApplicationMediaRepositoryPort } from "./services/identity-application-media.service";
@@ -150,6 +150,7 @@ import type { VerificationChallengeStore } from "./services/auth-verification-ch
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import type { ExchangeService } from "./services/exchange.service";
+import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
   SseRealtimeEventGateway,
   type RealtimeEventGatewayPort
@@ -249,6 +250,8 @@ export interface AppDependencies {
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
   exchangeService?: ExchangeService;
+  exchangeRequestFeeService?: ExchangeRequestFeeService;
+  ledgerService?: LedgerService;
 }
 
 const createDefaultAppDependencies = (): AppDependencies => ({

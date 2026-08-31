@@ -3,7 +3,8 @@ import { env } from "../src/config/env";
 
 interface OpenApiSchema {
   enum?: string[];
-  oneOf?: Array<{ $ref: string }>;
+  required?: string[];
+  oneOf?: Array<{ $ref?: string; type?: string }>;
   properties: Record<string, OpenApiSchema>;
 }
 
@@ -132,5 +133,55 @@ describe("formal Exchange OpenAPI contract", () => {
     expect(JSON.stringify({ paths: exchangePaths, schemas: exchangeSchemas })).not.toMatch(
       /authorUserId|authorIdentityId|actorUserId|actorIdentityId/
     );
+  });
+
+  it("documents the complete formal Request publication and response contract", () => {
+    const schemas = document().components.schemas;
+    const publish = schemas.ExchangeDemandPublishRequest;
+    expect(publish.required).toEqual(
+      expect.arrayContaining([
+        "targetProviderCount",
+        "matchMode",
+        "budgetMode",
+        "budgetMaxJpy",
+        "addressLine1"
+      ])
+    );
+    expect(publish.required).not.toContain("budgetMinJpy");
+    expect(publish.properties).not.toHaveProperty("areaLabel");
+    expect(publish.properties.matchMode.enum).toEqual(["quick", "selective"]);
+    expect(publish.properties.budgetMode.enum).toEqual(["total", "per_provider"]);
+    expect(publish.properties).toEqual(
+      expect.objectContaining({
+        addressLine1: expect.objectContaining({ minLength: 1, maxLength: 255 }),
+        addressLine2: expect.objectContaining({ type: ["string", "null"] }),
+        addressLine3: expect.objectContaining({ type: ["string", "null"] }),
+        addressLine2Public: { type: "boolean", default: false },
+        addressLine3Public: { type: "boolean", default: false },
+        publisherIdentityPublic: { type: "boolean", default: false }
+      })
+    );
+
+    const demand = schemas.ExchangeDemand;
+    expect(demand.required).toEqual(
+      expect.arrayContaining([
+        "targetProviderCount",
+        "targetProviderLimitSnapshot",
+        "publisherCapacitySource",
+        "membershipLevelSnapshot",
+        "matchMode",
+        "budgetMode",
+        "budgetMinJpy",
+        "budgetMaxJpy",
+        "address"
+      ])
+    );
+    expect(demand.properties.address).toEqual({
+      $ref: "#/components/schemas/ExchangeRequestAddress"
+    });
+    expect(schemas.ExchangePost.properties.publisher.oneOf).toEqual([
+      { $ref: "#/components/schemas/ExchangeActor" },
+      { type: "null" }
+    ]);
   });
 });

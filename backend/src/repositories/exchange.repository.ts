@@ -16,6 +16,7 @@ import type {
   ExchangeCommentRepositoryInput,
   ExchangeLikeRepositoryInput,
   ExchangeMutationResult,
+  ExchangePublicationRecord,
   ExchangePublishRepositoryInput,
   ExchangeRepositoryPort,
   ExchangeShareRepositoryInput,
@@ -165,8 +166,20 @@ type ExchangePostRecord = Prisma.ExchangePostGetPayload<{
 const isServiceAreaList = (value: Prisma.JsonValue): value is string[] =>
   Array.isArray(value) && value.every((area) => typeof area === "string");
 
+type ExchangePrismaClient = PrismaClient | Prisma.TransactionClient;
+
 export class ExchangePostRepository implements ExchangeRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(private readonly client: ExchangePrismaClient = prisma) {}
+
+  public runInTransaction<T>(
+    handler: (repository: ExchangeRepositoryPort, transactionClient?: unknown) => Promise<T>,
+    transactionClient?: unknown
+  ): Promise<T> {
+    return this.withClientTransaction(
+      (transaction) => handler(new ExchangePostRepository(transaction), transaction),
+      transactionClient as ExchangePrismaClient | undefined
+    );
+  }
 
   public async resolveActor(input: ExchangeActorLookup): Promise<ExchangeActorRecord | null> {
     const identity = await this.client.userIdentity.findFirst({
@@ -328,112 +341,115 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     );
   }
 
-  public async publishPost(
-    input: ExchangePublishRepositoryInput
-  ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
-    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
-    try {
-      return await this.client.$transaction(async (transaction) => {
-        const existing = await transaction.exchangePost.findUnique({
-          where: { idempotencyKey: input.idempotencyKey },
-          include: postInclude(ownerIdentityId)
-        });
-        if (existing) {
-          return {
-            kind: "replayed",
-            value: this.mapPost(existing, ownerIdentityId, input.now)
-          };
-        }
+  public async findPostByIdempotencyKey(
+    idempotencyKey: string,
+    ownerIdentityId: number,
+    now: Date
+  ): Promise<ExchangePublicationRecord | null> {
+    const existing = await this.client.exchangePost.findFirst({
+      where: { idempotencyKey, ownerIdentityId, deletedAt: null },
+      include: postInclude(ownerIdentityId)
+    });
+    if (!existing) return null;
 
-        const created = await transaction.exchangePost.create({
-          data: {
-            authorUserId: input.actor.userId,
-            authorIdentityId: input.actor.identityId,
-            ownerIdentityId,
-            publisherPublicId: input.actor.publicId,
-            publisherIdentityType: input.actor.identityType,
-            publisherDisplayName: input.actor.displayName,
-            publisherAvatarUrl: input.actor.avatarUrl,
-            type: typeToDatabase[input.input.type],
-            status: DatabaseExchangePostStatus.PUBLISHED,
-            title: input.input.title,
-            detail: input.input.detail,
-            contentLocale: localeToDatabase[input.input.contentLocale],
-            areaLabel:
-              input.input.type === "demand" ? input.input.addressLine1 : input.input.areaLabel,
-            serviceStartAt: input.input.serviceStartAt,
-            serviceEndAt: input.input.serviceEndAt,
-            expiresAt: input.input.expiresAt,
-            idempotencyKey: input.idempotencyKey,
-            createdAt: input.now,
-            updatedAt: input.now,
-            ...(input.input.type === "demand"
-              ? (() => {
-                  if (!input.capacity) {
-                    throw new Error("error.exchange.request_capacity_missing");
-                  }
-                  return {
-                    demand: {
-                      create: {
-                        targetProviderCount: input.input.targetProviderCount,
-                        targetProviderLimitSnapshot: input.capacity.targetProviderLimit,
-                        publisherCapacitySource: capacitySourceToDatabase[input.capacity.source],
-                        membershipLevelSnapshot: input.capacity.membershipLevel,
-                        matchMode: matchModeToDatabase[input.input.matchMode],
-                        budgetMode: budgetModeToDatabase[input.input.budgetMode],
-                        budgetMinJpy: input.input.budgetMinJpy,
-                        budgetMaxJpy: input.input.budgetMaxJpy,
-                        addressLine1: input.input.addressLine1,
-                        addressLine2: input.input.addressLine2,
-                        addressLine3: input.input.addressLine3,
-                        addressLine2Public: input.input.addressLine2Public,
-                        addressLine3Public: input.input.addressLine3Public,
-                        publisherIdentityPublic: input.input.publisherIdentityPublic
-                      }
-                    }
-                  };
-                })()
-              : {
-                  intelligence: {
-                    create: {
-                      serviceMode: serviceModeToDatabase[input.input.serviceMode],
-                      addressLabel: input.input.addressLabel,
-                      serviceAreas: input.input.serviceAreas,
-                      originalPriceJpy: input.input.originalPriceJpy,
-                      campaignPriceJpy: input.input.campaignPriceJpy
-                    }
-                  }
-                })
-          },
-          include: postInclude(ownerIdentityId)
-        });
-        await transaction.auditLog.create({
-          data: toAuditLogCreateData({ ...input.audit, targetId: created.id })
-        });
-        return {
-          kind: "success",
-          value: this.mapPost(created, ownerIdentityId, input.now)
-        };
-      });
-    } catch (error) {
-      if (!this.isUniqueConflict(error)) throw error;
-      const existing = await this.client.exchangePost.findUnique({
-        where: { idempotencyKey: input.idempotencyKey },
-        include: postInclude(ownerIdentityId)
-      });
-      if (!existing) throw error;
-      return {
-        kind: "replayed",
-        value: this.mapPost(existing, ownerIdentityId, input.now)
-      };
+    return {
+      ownerIdentityId: existing.ownerIdentityId,
+      payloadFingerprint: existing.payloadFingerprint,
+      value: this.mapPost(existing, ownerIdentityId, now)
+    };
+  }
+
+  public async createPost(input: ExchangePublishRepositoryInput): Promise<{ id: number }> {
+    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
+    const capacity = input.capacity;
+    if (input.input.type === "demand" && !capacity) {
+      throw new Error("error.exchange.request_capacity_missing");
     }
+    const created = await this.client.exchangePost.create({
+      data: {
+        authorUserId: input.actor.userId,
+        authorIdentityId: input.actor.identityId,
+        ownerIdentityId,
+        publisherPublicId: input.actor.publicId,
+        publisherIdentityType: input.actor.identityType,
+        publisherDisplayName: input.actor.displayName,
+        publisherAvatarUrl: input.actor.avatarUrl,
+        type: typeToDatabase[input.input.type],
+        status: DatabaseExchangePostStatus.PUBLISHED,
+        title: input.input.title,
+        detail: input.input.detail,
+        contentLocale: localeToDatabase[input.input.contentLocale],
+        areaLabel: input.input.type === "demand" ? input.input.addressLine1 : input.input.areaLabel,
+        serviceStartAt: input.input.serviceStartAt,
+        serviceEndAt: input.input.serviceEndAt,
+        expiresAt: input.input.expiresAt,
+        idempotencyKey: input.idempotencyKey,
+        payloadFingerprint: input.payloadFingerprint,
+        createdAt: input.now,
+        updatedAt: input.now,
+        ...(input.input.type === "demand"
+          ? {
+              demand: {
+                create: {
+                  targetProviderCount: input.input.targetProviderCount,
+                  targetProviderLimitSnapshot: capacity!.targetProviderLimit,
+                  publisherCapacitySource: capacitySourceToDatabase[capacity!.source],
+                  membershipLevelSnapshot: capacity!.membershipLevel,
+                  matchMode: matchModeToDatabase[input.input.matchMode],
+                  budgetMode: budgetModeToDatabase[input.input.budgetMode],
+                  budgetMinJpy: input.input.budgetMinJpy,
+                  budgetMaxJpy: input.input.budgetMaxJpy,
+                  addressLine1: input.input.addressLine1,
+                  addressLine2: input.input.addressLine2,
+                  addressLine3: input.input.addressLine3,
+                  addressLine2Public: input.input.addressLine2Public,
+                  addressLine3Public: input.input.addressLine3Public,
+                  publisherIdentityPublic: input.input.publisherIdentityPublic
+                }
+              }
+            }
+          : {
+              intelligence: {
+                create: {
+                  serviceMode: serviceModeToDatabase[input.input.serviceMode],
+                  addressLabel: input.input.addressLabel,
+                  serviceAreas: input.input.serviceAreas,
+                  originalPriceJpy: input.input.originalPriceJpy,
+                  campaignPriceJpy: input.input.campaignPriceJpy
+                }
+              }
+            })
+      },
+      select: { id: true }
+    });
+
+    return created;
+  }
+
+  public async createAudit(
+    input: Parameters<ExchangeRepositoryPort["createAudit"]>[0]
+  ): Promise<void> {
+    await this.client.auditLog.create({ data: toAuditLogCreateData(input) });
+  }
+
+  public async findPostByIdOrThrow(
+    postId: number,
+    viewerIdentityId: number,
+    now: Date
+  ): Promise<ExchangePostPayload> {
+    const row = await this.client.exchangePost.findFirstOrThrow({
+      where: { id: postId, deletedAt: null },
+      include: postInclude(viewerIdentityId)
+    });
+
+    return this.mapPost(row, viewerIdentityId, now);
   }
 
   public withdrawPost(
     input: ExchangeWithdrawRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
-    return this.client.$transaction(async (transaction) => {
+    return this.withClientTransaction(async (transaction) => {
       const current = await transaction.exchangePost.findFirst({
         where: { id: input.postId, deletedAt: null },
         include: postInclude(ownerIdentityId)
@@ -475,7 +491,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     input: ExchangeCommentRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeCommentPayload>> {
     try {
-      return await this.client.$transaction(async (transaction) => {
+      return await this.withClientTransaction(async (transaction) => {
         const existing = await transaction.exchangeComment.findUnique({
           where: { idempotencyKey: input.idempotencyKey }
         });
@@ -516,7 +532,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     input: ExchangeLikeRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
-    return this.client.$transaction(async (transaction) => {
+    return this.withClientTransaction(async (transaction) => {
       const availability = await this.postAvailability(transaction, input.postId, input.now);
       if (availability !== "available") return { kind: availability };
       const existing = await transaction.exchangeLike.findUnique({
@@ -570,7 +586,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     try {
-      return await this.client.$transaction(async (transaction) => {
+      return await this.withClientTransaction(async (transaction) => {
         const replay = await transaction.exchangeShare.findFirst({
           where: {
             OR: [
@@ -609,7 +625,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       });
     } catch (error) {
       if (!this.isUniqueConflict(error)) throw error;
-      return this.client.$transaction(async (transaction) => ({
+      return this.withClientTransaction(async (transaction) => ({
         kind: "replayed" as const,
         value: await this.countInteractions(transaction, input.postId)
       }));
@@ -617,7 +633,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   }
 
   public expireDue(now: Date, batchSize: number): Promise<number> {
-    return this.client.$transaction(async (transaction) => {
+    return this.withClientTransaction(async (transaction) => {
       const due = await transaction.exchangePost.findMany({
         where: {
           status: DatabaseExchangePostStatus.PUBLISHED,
@@ -764,7 +780,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   }
 
   private async postAvailability(
-    transaction: Prisma.TransactionClient,
+    transaction: ExchangePrismaClient,
     postId: number,
     now: Date
   ): Promise<"available" | "not_found" | "unavailable"> {
@@ -786,7 +802,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   }
 
   private async countInteractions(
-    transaction: Prisma.TransactionClient,
+    transaction: ExchangePrismaClient,
     postId: number
   ): Promise<ExchangeInteractionCounts> {
     const where = { postId, deletedAt: null };
@@ -796,6 +812,21 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       transaction.exchangeShare.count({ where })
     ]);
     return { comments, likes, shares };
+  }
+
+  private withClientTransaction<T>(
+    handler: (transaction: ExchangePrismaClient) => Promise<T>,
+    transactionClient?: ExchangePrismaClient
+  ): Promise<T> {
+    if (transactionClient) return handler(transactionClient);
+    if (this.canStartTransaction(this.client)) {
+      return this.client.$transaction((transaction) => handler(transaction));
+    }
+    return handler(this.client);
+  }
+
+  private canStartTransaction(client: ExchangePrismaClient): client is PrismaClient {
+    return "$transaction" in client && typeof client.$transaction === "function";
   }
 
   private isUniqueConflict(error: unknown): boolean {

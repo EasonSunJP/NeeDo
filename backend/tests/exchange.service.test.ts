@@ -6,6 +6,8 @@ import type {
   ExchangeInteractionCounts,
   ExchangePostPayload
 } from "../src/types/exchange.types";
+import { AppError } from "../src/utils/app-error";
+import { ERROR_CODES } from "../src/constants/error-codes";
 
 const now = new Date("2026-08-30T03:00:00.000Z");
 
@@ -115,19 +117,33 @@ const demandInput = {
   publisherIdentityPublic: false
 };
 
-const createFeeService = () => ({
-  resolveCurrent: jest.fn(async () => ({
+const createFeeService = () => {
+  const resolveCurrent = jest.fn(async () => ({
     ruleSetId: 11,
     ruleSetVersion: 3,
     ruleId: 13,
     amountNdp: 1_000,
     effectiveFrom: null,
     effectiveTo: null
-  }))
+  }));
+  const transactionService = {
+    resolveCurrent,
+    recordPublicationCalculation: jest.fn(async () => 81)
+  };
+  return {
+    resolveCurrent,
+    withTransactionClient: jest.fn(() => transactionService),
+    transactionService
+  };
+};
+
+const createLedgerService = () => ({
+  freezeExchangeRequestPublication: jest.fn(async () => undefined)
 });
 
-const createRepository = () =>
-  ({
+const createRepository = () => {
+  const repository = {
+    runInTransaction: jest.fn(),
     resolveActor: jest.fn(async () => actor),
     listPosts: jest.fn(async () => ({ list: [post], total: 1, page: 1, page_size: 20 })),
     findPostById: jest.fn(async () => post),
@@ -137,7 +153,10 @@ const createRepository = () =>
       page: 1,
       page_size: 20
     })),
-    publishPost: jest.fn(async () => ({ kind: "success" as const, value: post })),
+    findPostByIdempotencyKey: jest.fn(async () => null),
+    createPost: jest.fn(async () => ({ id: post.id })),
+    createAudit: jest.fn(async () => undefined),
+    findPostByIdOrThrow: jest.fn(async () => post),
     withdrawPost: jest.fn(async () => ({
       kind: "success" as const,
       value: { ...post, status: "withdrawn" as const }
@@ -146,7 +165,12 @@ const createRepository = () =>
     setLike: jest.fn(async () => ({ kind: "success" as const, value: counts })),
     recordShare: jest.fn(async () => ({ kind: "success" as const, value: counts })),
     expireDue: jest.fn(async () => 0)
-  }) as unknown as jest.Mocked<ExchangeRepositoryPort>;
+  } as unknown as jest.Mocked<ExchangeRepositoryPort>;
+  repository.runInTransaction.mockImplementation(async (handler, transactionClient) =>
+    handler(repository, transactionClient ?? { transaction: "request-publication" })
+  );
+  return repository;
+};
 
 describe("ExchangeService", () => {
   it("resolves and verifies the active identity for every request", async () => {
@@ -334,24 +358,36 @@ describe("ExchangeService", () => {
 
   it("allows customers to publish demand and rejects forged intelligence fields", async () => {
     const repository = createRepository();
-    const service = new ExchangeService(repository, () => now);
+    const feeService = createFeeService();
+    const ledgerService = createLedgerService();
+    const service = new ExchangeService(
+      repository,
+      () => now,
+      undefined,
+      feeService,
+      ledgerService
+    );
 
     await expect(service.publish(access, demandInput, "publish-demand-0001")).resolves.toEqual(
       post
     );
-    expect(repository.publishPost).toHaveBeenCalledWith(
+    expect(repository.createPost).toHaveBeenCalledWith(
       expect.objectContaining({
         actor,
         input: demandInput,
         idempotencyKey: "publish-demand-0001",
-        now,
-        audit: expect.objectContaining({
-          actorId: 7,
-          action: "exchange.post.publish",
-          targetType: "ExchangePost"
-        })
+        payloadFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+        now
       })
     );
+    expect(repository.createAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 7,
+        action: "exchange.post.publish",
+        targetType: "ExchangePost"
+      })
+    );
+    expect(ledgerService.freezeExchangeRequestPublication).toHaveBeenCalledTimes(1);
 
     await expect(
       service.publish(
@@ -369,7 +405,7 @@ describe("ExchangeService", () => {
         "forged-publish-001"
       )
     ).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
-    expect(repository.publishPost).toHaveBeenCalledTimes(1);
+    expect(repository.createPost).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a Request target above the publisher's effective membership limit", async () => {
@@ -382,8 +418,256 @@ describe("ExchangeService", () => {
       message: "error.exchange.request_target_limit",
       statusCode: 409
     });
-    expect(repository.publishPost).not.toHaveBeenCalled();
+    expect(repository.createPost).not.toHaveBeenCalled();
   });
+
+  it("aborts Request publication when the wallet fee cannot be frozen", async () => {
+    const repository = createRepository();
+    const transactionRepository = createRepository();
+    const transactionClient = { transaction: "request-publication" };
+    repository.runInTransaction.mockImplementation(async (handler) =>
+      handler(transactionRepository, transactionClient)
+    );
+    transactionRepository.findPostByIdempotencyKey.mockResolvedValue(null);
+    transactionRepository.createPost.mockResolvedValue({ id: 41 });
+    const transactionFeeService = {
+      resolveCurrent: jest.fn(async () => ({
+        ruleSetId: 11,
+        ruleSetVersion: 3,
+        ruleId: 13,
+        amountNdp: 1_000,
+        effectiveFrom: null,
+        effectiveTo: null
+      })),
+      recordPublicationCalculation: jest.fn(async () => 81)
+    };
+    const feeService = {
+      ...createFeeService(),
+      withTransactionClient: jest.fn(() => transactionFeeService)
+    };
+    const ledger = {
+      freezeExchangeRequestPublication: jest.fn(async () =>
+        Promise.reject(
+          new AppError({
+            code: ERROR_CODES.WALLET_INSUFFICIENT_AVAILABLE,
+            message: "error.wallet.insufficient_available",
+            statusCode: 409
+          })
+        )
+      )
+    };
+    const service = new ExchangeService(repository, () => now, undefined, feeService, ledger);
+
+    await expect(service.publish(access, demandInput, "publish-demand-0001")).rejects.toMatchObject(
+      { message: "error.wallet.insufficient_available" }
+    );
+    expect(ledger.freezeExchangeRequestPublication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exchangePostId: 41,
+        actorUserId: 7,
+        currency: "TEST_NDP",
+        feeCalculationLogId: 81
+      }),
+      { transactionClient }
+    );
+    expect(transactionRepository.createAudit).not.toHaveBeenCalled();
+    expect(transactionRepository.findPostByIdOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("replays the exact Request payload without charging twice", async () => {
+    const repository = createRepository();
+    const transactionRepository = createRepository();
+    const transactionClient = { transaction: "request-publication" };
+    let storedFingerprint: string | null = null;
+    repository.runInTransaction.mockImplementation(async (handler) =>
+      handler(transactionRepository, transactionClient)
+    );
+    transactionRepository.findPostByIdempotencyKey.mockImplementation(async () =>
+      storedFingerprint
+        ? { ownerIdentityId: 17, payloadFingerprint: storedFingerprint, value: post }
+        : null
+    );
+    transactionRepository.createPost.mockImplementation(async (input) => {
+      storedFingerprint = input.payloadFingerprint;
+      return { id: 41 };
+    });
+    transactionRepository.findPostByIdOrThrow.mockResolvedValue(post);
+    const transactionFeeService = {
+      resolveCurrent: jest.fn(async () => ({
+        ruleSetId: 11,
+        ruleSetVersion: 3,
+        ruleId: 13,
+        amountNdp: 1_000,
+        effectiveFrom: null,
+        effectiveTo: null
+      })),
+      recordPublicationCalculation: jest.fn(async () => 81)
+    };
+    const feeService = {
+      ...createFeeService(),
+      withTransactionClient: jest.fn(() => transactionFeeService)
+    };
+    const ledger = { freezeExchangeRequestPublication: jest.fn(async () => undefined) };
+    const service = new ExchangeService(repository, () => now, undefined, feeService, ledger);
+
+    await expect(service.publish(access, demandInput, "publish-demand-0001")).resolves.toEqual(
+      post
+    );
+    await expect(service.publish(access, demandInput, "publish-demand-0001")).resolves.toEqual(
+      post
+    );
+    expect(storedFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(transactionRepository.createPost).toHaveBeenCalledTimes(1);
+    expect(transactionFeeService.recordPublicationCalculation).toHaveBeenCalledTimes(1);
+    expect(ledger.freezeExchangeRequestPublication).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a reused idempotency key with a different Request payload", async () => {
+    const repository = createRepository();
+    const transactionRepository = createRepository();
+    repository.runInTransaction.mockImplementation(async (handler) =>
+      handler(transactionRepository, { transaction: "request-publication" })
+    );
+    transactionRepository.findPostByIdempotencyKey.mockResolvedValue({
+      ownerIdentityId: 17,
+      payloadFingerprint: "different",
+      value: post
+    });
+    const feeService = {
+      ...createFeeService(),
+      withTransactionClient: jest.fn()
+    };
+    const ledger = { freezeExchangeRequestPublication: jest.fn() };
+    const service = new ExchangeService(repository, () => now, undefined, feeService, ledger);
+
+    await expect(service.publish(access, demandInput, "publish-demand-0001")).rejects.toMatchObject(
+      {
+        statusCode: 409,
+        message: "error.exchange.idempotency_conflict"
+      }
+    );
+    expect(transactionRepository.createPost).not.toHaveBeenCalled();
+    expect(ledger.freezeExchangeRequestPublication).not.toHaveBeenCalled();
+  });
+
+  it("returns the winning concurrent publication after a duplicate-key race", async () => {
+    const repository = createRepository();
+    const transactionRepository = createRepository();
+    let payloadFingerprint: string | null = null;
+    repository.runInTransaction.mockImplementation(async (handler) =>
+      handler(transactionRepository, { transaction: "request-publication" })
+    );
+    transactionRepository.createPost.mockImplementation(async (input) => {
+      payloadFingerprint = input.payloadFingerprint;
+      throw { code: "P2002" };
+    });
+    repository.findPostByIdempotencyKey.mockImplementation(async () => ({
+      ownerIdentityId: 17,
+      payloadFingerprint,
+      value: post
+    }));
+    const ledger = createLedgerService();
+    const service = new ExchangeService(
+      repository,
+      () => now,
+      undefined,
+      createFeeService(),
+      ledger
+    );
+
+    await expect(service.publish(access, demandInput, "publish-demand-0001")).resolves.toEqual(
+      post
+    );
+    expect(payloadFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(repository.findPostByIdempotencyKey).toHaveBeenCalledWith(
+      "publish-demand-0001",
+      17,
+      now
+    );
+    expect(ledger.freezeExchangeRequestPublication).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when no Request fee version is effective", async () => {
+    const repository = createRepository();
+    const feeService = createFeeService();
+    feeService.transactionService.resolveCurrent.mockRejectedValueOnce(
+      new AppError({
+        code: ERROR_CODES.EXCHANGE_REQUEST_FEE_UNAVAILABLE,
+        message: "error.exchange.request_fee_unavailable",
+        statusCode: 503
+      })
+    );
+    const ledger = createLedgerService();
+    const service = new ExchangeService(repository, () => now, undefined, feeService, ledger);
+
+    await expect(service.publish(access, demandInput, "publish-demand-0001")).rejects.toMatchObject(
+      {
+        statusCode: 503,
+        message: "error.exchange.request_fee_unavailable"
+      }
+    );
+    expect(repository.createPost).not.toHaveBeenCalled();
+    expect(ledger.freezeExchangeRequestPublication).not.toHaveBeenCalled();
+  });
+
+  it.each(["merchant", "merchant_owner", "merchant_staff"] as const)(
+    "publishes a formal shop Request for %s against the shop NDP wallet",
+    async (identityType) => {
+      const repository = createRepository();
+      repository.resolveActor.mockResolvedValue({
+        ...actor,
+        identityType,
+        scopeType: "shop",
+        scopeId: 81,
+        isTestAccount: false,
+        customerMembership: null,
+        shopScope: { shopId: 81, status: "published" }
+      });
+      const ledger = createLedgerService();
+      const service = new ExchangeService(
+        repository,
+        () => now,
+        undefined,
+        createFeeService(),
+        ledger
+      );
+      const merchantAccess = {
+        ...access,
+        currentIdentityType: identityType,
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 81
+      };
+
+      await service.publish(
+        merchantAccess,
+        { ...demandInput, targetProviderCount: 20 },
+        `publish-${identityType}-demand`
+      );
+
+      expect(repository.createPost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          capacity: {
+            source: "shop_merchant",
+            membershipLevel: null,
+            targetProviderLimit: 20,
+            payerOwnerType: "shop",
+            payerOwnerId: 81,
+            currency: "NDP"
+          }
+        })
+      );
+      expect(ledger.freezeExchangeRequestPublication).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payerType: "shop",
+          payerId: 81,
+          walletOwnerType: "shop",
+          walletOwnerId: 81,
+          currency: "NDP"
+        }),
+        expect.any(Object)
+      );
+    }
+  );
 
   it("shares demand ownership between customer and affiliate while preserving the publisher identity", async () => {
     const repository = createRepository();
@@ -405,7 +689,13 @@ describe("ExchangeService", () => {
         scopeId: 27
       }))
     };
-    const service = new ExchangeService(repository, () => now, scopeResolver);
+    const service = new ExchangeService(
+      repository,
+      () => now,
+      scopeResolver,
+      createFeeService(),
+      createLedgerService()
+    );
     const affiliateAccess = {
       ...access,
       currentIdentityId: 18,
@@ -418,7 +708,7 @@ describe("ExchangeService", () => {
     await service.publish(affiliateAccess, demandInput, "affiliate-demand-001");
     await service.listPosts(affiliateAccess, { type: "demand", page: 1, pageSize: 20 });
 
-    expect(repository.publishPost).toHaveBeenCalledWith(
+    expect(repository.createPost).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: expect.objectContaining({
           identityId: 18,
@@ -442,9 +732,10 @@ describe("ExchangeService", () => {
     async (identityType) => {
       const repository = createRepository();
       repository.resolveActor.mockResolvedValueOnce({ ...actor, identityType });
-      repository.publishPost.mockResolvedValueOnce({
-        kind: "success",
-        value: { ...post, type: "intelligence", demand: null }
+      repository.findPostByIdOrThrow.mockResolvedValueOnce({
+        ...post,
+        type: "intelligence",
+        demand: null
       });
       const service = new ExchangeService(repository, () => now);
 

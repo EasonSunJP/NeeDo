@@ -22,6 +22,8 @@ import type {
 import { exchangeIdempotencyKeySchema } from "../validators/exchange.validators";
 import { resolveEffectiveCustomerMembershipLevel } from "./customer-membership.service";
 import type { ExchangeRequestFeeService } from "./exchange-request-fee.service";
+import type { LedgerService } from "./ledger.service";
+import { sha256StableJson } from "../utils/stable-json";
 
 export interface ExchangeActorLookup {
   userId: number;
@@ -70,8 +72,28 @@ export interface ExchangePublishRepositoryInput {
   input: PublishExchangePostBody;
   capacity?: ExchangePublisherCapacity;
   idempotencyKey: string;
-  audit: AuditLogCreateInput;
+  payloadFingerprint: string;
   now: Date;
+}
+
+export interface ExchangePublicationRecord {
+  ownerIdentityId: number;
+  payloadFingerprint: string | null;
+  value: ExchangePostPayload;
+}
+
+interface ExchangeRequestFeePublicationPort {
+  resolveCurrent: ExchangeRequestFeeService["resolveCurrent"];
+  withTransactionClient(
+    transactionClient: unknown
+  ): Pick<ExchangeRequestFeeService, "resolveCurrent" | "recordPublicationCalculation">;
+}
+
+interface ExchangeRequestLedgerPublicationPort {
+  freezeExchangeRequestPublication(
+    input: Parameters<LedgerService["freezeExchangeRequestPublication"]>[0],
+    options: Parameters<LedgerService["freezeExchangeRequestPublication"]>[1]
+  ): Promise<unknown>;
 }
 
 export type ExchangeWithdrawRepositoryInput = ExchangeMutationBase;
@@ -87,6 +109,10 @@ export interface ExchangeLikeRepositoryInput extends ExchangeMutationBase {
 export type ExchangeShareRepositoryInput = ExchangeMutationBase;
 
 export interface ExchangeRepositoryPort {
+  runInTransaction<T>(
+    handler: (repository: ExchangeRepositoryPort, transactionClient?: unknown) => Promise<T>,
+    transactionClient?: unknown
+  ): Promise<T>;
   resolveActor(input: ExchangeActorLookup): Promise<ExchangeActorRecord | null>;
   listPosts(input: {
     type: ExchangePostType;
@@ -105,9 +131,18 @@ export interface ExchangeRepositoryPort {
     postId: number,
     input: { page: number; pageSize: number }
   ): Promise<ExchangeCommentPage>;
-  publishPost(
-    input: ExchangePublishRepositoryInput
-  ): Promise<ExchangeMutationResult<ExchangePostPayload>>;
+  findPostByIdempotencyKey(
+    idempotencyKey: string,
+    ownerIdentityId: number,
+    now: Date
+  ): Promise<ExchangePublicationRecord | null>;
+  createPost(input: ExchangePublishRepositoryInput): Promise<{ id: number }>;
+  createAudit(input: AuditLogCreateInput): Promise<void>;
+  findPostByIdOrThrow(
+    postId: number,
+    viewerIdentityId: number,
+    now: Date
+  ): Promise<ExchangePostPayload>;
   withdrawPost(
     input: ExchangeWithdrawRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangePostPayload>>;
@@ -160,7 +195,8 @@ export class ExchangeService {
     private readonly repository: ExchangeRepositoryPort,
     private readonly now: () => Date = () => new Date(),
     private readonly personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">,
-    private readonly exchangeRequestFeeService?: Pick<ExchangeRequestFeeService, "resolveCurrent">
+    private readonly exchangeRequestFeeService?: ExchangeRequestFeePublicationPort,
+    private readonly ledgerService?: ExchangeRequestLedgerPublicationPort
   ) {}
 
   public async getRequestPublicationContext(
@@ -230,27 +266,108 @@ export class ExchangeService {
     key: string
   ): Promise<ExchangePostPayload> {
     const occurredAt = this.now();
-    const actor = await this.resolveActor(access);
-    this.assertCanPublish(actor.identityType, input.type);
-    const capacity =
-      input.type === "demand" ? this.resolvePublisherCapacity(actor, occurredAt) : undefined;
-    if (capacity && input.type === "demand") {
-      this.assertTargetWithinCapacity(input.targetProviderCount, capacity.targetProviderLimit);
-    }
     const idempotencyKey = exchangeIdempotencyKeySchema.parse(key);
-    const result = await this.repository.publishPost({
-      actor,
-      input,
-      ...(capacity ? { capacity } : {}),
-      idempotencyKey,
-      now: occurredAt,
-      audit: this.audit(access, "exchange.post.publish", null, {
-        identityId: actor.identityId,
-        identityType: actor.identityType,
-        postType: input.type
-      })
-    });
-    return this.unwrapMutation(result);
+    try {
+      return await this.repository.runInTransaction(async (repository, transactionClient) => {
+        const actor = await this.resolveActor(access, repository);
+        this.assertCanPublish(actor.identityType, input.type);
+        const capacity =
+          input.type === "demand" ? this.resolvePublisherCapacity(actor, occurredAt) : undefined;
+        if (capacity && input.type === "demand") {
+          this.assertTargetWithinCapacity(input.targetProviderCount, capacity.targetProviderLimit);
+        }
+        const ownerIdentityId = actor.ownerIdentityId ?? actor.identityId;
+        const payloadFingerprint = this.publicationFingerprint(actor, input);
+        const replay = await repository.findPostByIdempotencyKey(
+          idempotencyKey,
+          ownerIdentityId,
+          occurredAt
+        );
+        if (replay) return this.unwrapPublicationReplay(replay, payloadFingerprint);
+
+        if (input.type === "demand") {
+          if (!capacity || !this.exchangeRequestFeeService || !this.ledgerService) {
+            throw this.requestFeeUnavailable();
+          }
+          const feeService =
+            this.exchangeRequestFeeService.withTransactionClient(transactionClient);
+          const fee = await feeService.resolveCurrent(occurredAt);
+          const created = await repository.createPost({
+            actor,
+            input,
+            capacity,
+            idempotencyKey,
+            payloadFingerprint,
+            now: occurredAt
+          });
+          const feeCalculationLogId = await feeService.recordPublicationCalculation({
+            exchangePostId: created.id,
+            payerType: capacity.payerOwnerType,
+            payerId: capacity.payerOwnerId,
+            fee,
+            calculatedAt: occurredAt
+          });
+          await this.ledgerService.freezeExchangeRequestPublication(
+            {
+              exchangePostId: created.id,
+              actorUserId: actor.userId,
+              payerType: capacity.payerOwnerType,
+              payerId: capacity.payerOwnerId,
+              walletOwnerType: capacity.payerOwnerType,
+              walletOwnerId: capacity.payerOwnerId,
+              currency: capacity.currency,
+              fee,
+              feeCalculationLogId,
+              occurredAt
+            },
+            { transactionClient }
+          );
+          await repository.createAudit(
+            this.audit(access, "exchange.post.publish", created.id, {
+              identityId: actor.identityId,
+              identityType: actor.identityType,
+              postType: input.type,
+              capacitySource: capacity.source,
+              targetProviderLimit: capacity.targetProviderLimit,
+              payerOwnerType: capacity.payerOwnerType,
+              payerOwnerId: capacity.payerOwnerId,
+              publicationFeeAmountNdp: fee.amountNdp,
+              publicationFeeCurrency: capacity.currency,
+              publicationFeeRuleSetVersion: fee.ruleSetVersion
+            })
+          );
+          return repository.findPostByIdOrThrow(created.id, ownerIdentityId, occurredAt);
+        }
+
+        const created = await repository.createPost({
+          actor,
+          input,
+          idempotencyKey,
+          payloadFingerprint,
+          now: occurredAt
+        });
+        await repository.createAudit(
+          this.audit(access, "exchange.post.publish", created.id, {
+            identityId: actor.identityId,
+            identityType: actor.identityType,
+            postType: input.type
+          })
+        );
+        return repository.findPostByIdOrThrow(created.id, ownerIdentityId, occurredAt);
+      });
+    } catch (error) {
+      if (!this.isUniqueConflict(error)) throw error;
+      const actor = await this.resolveActor(access);
+      this.assertCanPublish(actor.identityType, input.type);
+      const ownerIdentityId = actor.ownerIdentityId ?? actor.identityId;
+      const replay = await this.repository.findPostByIdempotencyKey(
+        idempotencyKey,
+        ownerIdentityId,
+        occurredAt
+      );
+      if (!replay) throw this.idempotencyConflict();
+      return this.unwrapPublicationReplay(replay, this.publicationFingerprint(actor, input));
+    }
   }
 
   public async withdraw(
@@ -365,7 +482,10 @@ export class ExchangeService {
     return this.unwrapMutation(result);
   }
 
-  private async resolveActor(access: AuthenticatedAccessContext): Promise<ExchangeActorRecord> {
+  private async resolveActor(
+    access: AuthenticatedAccessContext,
+    repository: ExchangeRepositoryPort = this.repository
+  ): Promise<ExchangeActorRecord> {
     if (!access.currentIdentityId || !access.currentIdentityType || !access.currentPublicId) {
       throw this.identityForbidden();
     }
@@ -377,7 +497,7 @@ export class ExchangeService {
       scopeId: access.currentIdentityScopeId ?? null,
       publicId: access.currentPublicId
     };
-    const actor = await this.repository.resolveActor(lookup);
+    const actor = await repository.resolveActor(lookup);
     if (
       !actor ||
       actor.userId !== lookup.userId ||
@@ -392,6 +512,84 @@ export class ExchangeService {
     if (!this.personalIdentityScopeService) return actor;
     const scope = await this.personalIdentityScopeService.resolve(access);
     return { ...actor, ownerIdentityId: scope.identityId };
+  }
+
+  private publicationFingerprint(
+    actor: ExchangeActorRecord,
+    input: PublishExchangePostBody
+  ): string {
+    const authority = {
+      userId: actor.userId,
+      identityId: actor.identityId,
+      scopeType: actor.scopeType,
+      scopeId: actor.scopeId
+    };
+    const common = {
+      type: input.type,
+      title: input.title,
+      detail: input.detail,
+      contentLocale: input.contentLocale,
+      serviceStartAt: input.serviceStartAt.toISOString(),
+      serviceEndAt: input.serviceEndAt.toISOString(),
+      expiresAt: input.expiresAt.toISOString()
+    };
+    const payload =
+      input.type === "demand"
+        ? {
+            ...common,
+            targetProviderCount: input.targetProviderCount,
+            matchMode: input.matchMode,
+            budgetMode: input.budgetMode,
+            budgetMinJpy: input.budgetMinJpy ?? null,
+            budgetMaxJpy: input.budgetMaxJpy,
+            addressLine1: input.addressLine1,
+            addressLine2: input.addressLine2 ?? null,
+            addressLine3: input.addressLine3 ?? null,
+            addressLine2Public: input.addressLine2Public,
+            addressLine3Public: input.addressLine3Public,
+            publisherIdentityPublic: input.publisherIdentityPublic
+          }
+        : {
+            ...common,
+            areaLabel: input.areaLabel,
+            serviceMode: input.serviceMode,
+            addressLabel: input.addressLabel ?? null,
+            serviceAreas: input.serviceAreas,
+            originalPriceJpy: input.originalPriceJpy ?? null,
+            campaignPriceJpy: input.campaignPriceJpy
+          };
+
+    return sha256StableJson({ authority, payload });
+  }
+
+  private unwrapPublicationReplay(
+    replay: ExchangePublicationRecord,
+    payloadFingerprint: string
+  ): ExchangePostPayload {
+    if (replay.payloadFingerprint !== payloadFingerprint) {
+      throw this.idempotencyConflict();
+    }
+    return replay.value;
+  }
+
+  private isUniqueConflict(error: unknown): boolean {
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+  }
+
+  private idempotencyConflict(): AppError {
+    return new AppError({
+      code: ERROR_CODES.EXCHANGE_REQUEST_IDEMPOTENCY_CONFLICT,
+      message: "error.exchange.idempotency_conflict",
+      statusCode: 409
+    });
+  }
+
+  private requestFeeUnavailable(): AppError {
+    return new AppError({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FEE_UNAVAILABLE,
+      message: "error.exchange.request_fee_unavailable",
+      statusCode: 503
+    });
   }
 
   private assertCanPublish(identityType: string, postType: ExchangePostType): void {

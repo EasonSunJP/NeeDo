@@ -20,6 +20,8 @@ const demandRow = {
   serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
   serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
   expiresAt: new Date("2026-08-31T08:30:00.000Z"),
+  idempotencyKey: "publish-demand-0001",
+  payloadFingerprint: "a".repeat(64),
   withdrawnAt: null,
   createdAt: new Date("2026-08-30T02:00:00.000Z"),
   updatedAt: new Date("2026-08-30T02:00:00.000Z"),
@@ -579,12 +581,12 @@ describe("ExchangePostRepository", () => {
     expect(JSON.stringify(result)).not.toContain("authorIdentityId");
   });
 
-  it("publishes the matching subtype and audit in one transaction, then replays by key", async () => {
-    const created = demandRow;
+  it("exposes transaction-bound publication primitives with persisted fingerprint and audit", async () => {
     const transaction = {
       exchangePost: {
-        findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(created),
-        create: jest.fn(async () => created)
+        findFirst: jest.fn(async () => demandRow),
+        findFirstOrThrow: jest.fn(async () => demandRow),
+        create: jest.fn(async () => ({ id: demandRow.id }))
       },
       auditLog: {
         create: jest.fn(async (input: { data: { targetId: number | null } }) => ({
@@ -647,29 +649,36 @@ describe("ExchangePostRepository", () => {
         publisherIdentityPublic: false
       },
       idempotencyKey: "publish-demand-0001",
-      audit: {
-        actorId: 7,
-        action: "exchange.post.publish",
-        targetType: "ExchangePost"
-      },
+      payloadFingerprint: "a".repeat(64),
       now
     };
 
-    await expect(repository.publishPost(input)).resolves.toEqual({
-      kind: "success",
-      value: expect.objectContaining({
-        id: 41,
-        demand:
-          input.input.type === "demand"
-            ? expect.objectContaining({
-                targetProviderCount: 1,
-                matchMode: "quick",
-                budgetMode: "total",
-                budgetMinJpy: 8_000,
-                budgetMaxJpy: 12_000
-              })
-            : null
+    await expect(
+      repository.runInTransaction(async (transactionRepository, transactionClient) => {
+        expect(transactionClient).toBe(transaction);
+        const created = await transactionRepository.createPost(input);
+        await transactionRepository.createAudit({
+          actorId: 7,
+          action: "exchange.post.publish",
+          targetType: "ExchangePost",
+          targetId: created.id
+        });
+        const value = await transactionRepository.findPostByIdOrThrow(created.id, 17, now);
+        const replay = await transactionRepository.findPostByIdempotencyKey(
+          input.idempotencyKey,
+          17,
+          now
+        );
+        return { created, value, replay };
       })
+    ).resolves.toEqual({
+      created: { id: 41 },
+      value: expect.objectContaining({ id: 41 }),
+      replay: {
+        ownerIdentityId: 17,
+        payloadFingerprint: "a".repeat(64),
+        value: expect.objectContaining({ id: 41 })
+      }
     });
     expect(transaction.exchangePost.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -681,6 +690,7 @@ describe("ExchangePostRepository", () => {
           type: "DEMAND",
           status: "PUBLISHED",
           idempotencyKey: "publish-demand-0001",
+          payloadFingerprint: "a".repeat(64),
           demand: {
             create: {
               targetProviderCount: 1,
@@ -700,7 +710,7 @@ describe("ExchangePostRepository", () => {
             }
           }
         }),
-        include: expect.any(Object)
+        select: { id: true }
       })
     );
     expect(transaction.auditLog.create).toHaveBeenCalledWith({
@@ -711,13 +721,17 @@ describe("ExchangePostRepository", () => {
         targetId: 41
       })
     });
-
-    await expect(repository.publishPost(input)).resolves.toEqual({
-      kind: "replayed",
-      value: expect.objectContaining({ id: 41 })
+    expect(transaction.exchangePost.findFirst).toHaveBeenCalledWith({
+      where: {
+        idempotencyKey: "publish-demand-0001",
+        ownerIdentityId: 17,
+        deletedAt: null
+      },
+      include: expect.any(Object)
     });
     expect(transaction.exchangePost.create).toHaveBeenCalledTimes(1);
     expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it("restores a soft-deleted like and returns persisted live counts atomically", async () => {
