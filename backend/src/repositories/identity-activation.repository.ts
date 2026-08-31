@@ -88,6 +88,22 @@ export class IdentityActivationRepository implements IdentityActivationRepositor
           }
         });
 
+        if (
+          input.identityType === "merchant" ||
+          input.identityType === "merchant_owner" ||
+          input.identityType === "merchant_staff" ||
+          input.identityType === "merchant_organization"
+        ) {
+          await transaction.merchantIdentityProfile.create({
+            data: {
+              userId: input.userId,
+              identityId: identity.id,
+              displayName: input.displayName,
+              languages: []
+            }
+          });
+        }
+
         const existingRole = await transaction.userRole.findFirst({
           where: {
             userId: input.userId,

@@ -818,6 +818,19 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/employees/{needoId}/compensation-profile/preview"
     );
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-profile/me");
+    expect(response.body.paths["/api/v1/merchant-profile/me"]).toMatchObject({
+      get: { responses: { "200": expect.any(Object), "403": expect.any(Object) } },
+      patch: { responses: { "200": expect.any(Object), "400": expect.any(Object) } }
+    });
+    expect(response.body.components.schemas.MerchantIdentityProfile).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        publicId: { type: "string", pattern: "^[bB][0-9]{10}$" },
+        displayName: { type: "string" },
+        languages: { type: "array" }
+      }
+    });
     const employeeCompensationSchema = response.body.components.schemas.EmployeeCompensationProfile;
     expect(employeeCompensationSchema.properties).not.toHaveProperty("shopId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("technicianProfileId");

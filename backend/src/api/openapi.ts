@@ -769,6 +769,14 @@ const technicianProfileErrorResponses = {
   "500": { description: "Unexpected technician profile persistence error" }
 };
 
+const merchantProfileErrorResponses = {
+  "400": { description: "Invalid merchant identity self-profile update payload" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing merchant-profile permission or merchant identity scope" },
+  "404": { description: "Merchant identity profile not found in authenticated scope" },
+  "500": { description: "Unexpected merchant profile persistence error" }
+};
+
 const contentAnnouncementErrorResponses = {
   "400": {
     description:
@@ -4448,6 +4456,69 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               ]
             }
           },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
+        }
+      },
+      MerchantIdentityProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "publicId",
+          "userId",
+          "identityId",
+          "displayName",
+          "avatarUrl",
+          "gender",
+          "age",
+          "heightCm",
+          "languages",
+          "bio",
+          "visibility",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          publicId: { type: "string", pattern: "^[bB][0-9]{10}$" },
+          userId: { type: "integer", minimum: 1 },
+          identityId: { type: "integer", minimum: 1 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          gender: { type: "string", enum: ["female", "male", "private"] },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      MerchantIdentityProfileUpdate: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarDataUrl: {
+            type: "string",
+            maxLength: 900000,
+            pattern: "^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+          },
+          gender: { type: "string", enum: ["female", "male", "private"] },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          bio: { type: ["string", "null"], maxLength: 2000 },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
@@ -11559,6 +11630,38 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/TechnicianSelfProfile"
           }),
           ...technicianProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-profile/me`]: {
+      get: {
+        tags: ["Merchant Profile"],
+        summary: "Get the independent profile belonging to the authenticated merchant identity",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current merchant identity profile", {
+            $ref: "#/components/schemas/MerchantIdentityProfile"
+          }),
+          ...merchantProfileErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Merchant Profile"],
+        summary: "Update editable fields on the authenticated merchant identity profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantIdentityProfileUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated current merchant identity profile", {
+            $ref: "#/components/schemas/MerchantIdentityProfile"
+          }),
+          ...merchantProfileErrorResponses
         }
       }
     },

@@ -43,6 +43,7 @@ import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-m
 import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
 import type { ShopMembershipCardAdjustmentRepositoryPort } from "./services/shop-membership-card-adjustment.service";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
+import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
@@ -126,6 +127,7 @@ import { createShopMembershipCardPlanRoutes } from "./routes/shop-membership-car
 import { createShopMembershipCardIssuanceRoutes } from "./routes/shop-membership-card-issuance.routes";
 import { createShopMembershipCardAdjustmentRoutes } from "./routes/shop-membership-card-adjustment.routes";
 import { createTechnicianProfileRoutes } from "./routes/technician-profile.routes";
+import { createMerchantProfileRoutes } from "./routes/merchant-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
@@ -214,6 +216,7 @@ export interface AppDependencies {
   shopMembershipCardIssuanceRepository?: ShopMembershipCardIssuanceRepositoryPort;
   shopMembershipCardAdjustmentRepository?: ShopMembershipCardAdjustmentRepositoryPort;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
+  merchantProfileRepository?: MerchantProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
   platformFeePolicyRepository?: PlatformFeePolicyRepositoryPort;
@@ -356,6 +359,7 @@ export const createApp = (
   apiRouter.use(createShopMembershipCardIssuanceRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipCardAdjustmentRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianProfileRoutes(config, resolvedDependencies));
+  apiRouter.use(createMerchantProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
