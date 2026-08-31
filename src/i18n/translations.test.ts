@@ -37,6 +37,42 @@ describe("translations", () => {
     });
   });
 
+  it("keeps the complete IM translation action labels localized without split-key fallback", () => {
+    const expected = {
+      "隐藏译文": {
+        zh: "隐藏译文",
+        "zh-Hant": "隱藏譯文",
+        ja: "翻訳を隠す",
+        en: "Hide translation",
+        ko: "번역 숨기기",
+      },
+      "显示译文": {
+        zh: "显示译文",
+        "zh-Hant": "顯示譯文",
+        ja: "翻訳を表示",
+        en: "Show translation",
+        ko: "번역 보기",
+      },
+      "多选": {
+        zh: "多选",
+        "zh-Hant": "多選",
+        ja: "複数選択",
+        en: "Multi-select",
+        ko: "다중 선택",
+      },
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+      expect(translateText(source, "zh-Hant")).not.toBe(source);
+      expect(translateText(source, "ja")).not.toBe(source);
+      expect(translateText(source, "en")).not.toBe(source);
+      expect(translateText(source, "ko")).not.toBe(source);
+    }
+  });
+
   it("localizes the complete IM voice recording confirmation flow", () => {
     const voiceKeys = [
       "录制语音",
