@@ -10,6 +10,9 @@ const isoDateSchema = z.union([
   z.string().datetime({ offset: true })
 ]).transform((value) => value instanceof Date ? value : new Date(value));
 const boundedDateRange = <TSchema extends z.ZodTypeAny>(schema: TSchema) => schema;
+const idempotencyKeySchema = z.string().trim().min(16).max(160);
+const fulfillmentReasonSchema = z.string().trim().min(1).max(500);
+const serviceCatalogIdSchema = z.number().int().positive().max(2_147_483_647);
 
 export const availabilityListQuerySchema = z
   .object({
@@ -84,10 +87,84 @@ export const orderConfirmBodySchema = z
   })
   .strict();
 
+export const startServiceBodySchema = z.discriminatedUnion("actor", [
+  z
+    .object({
+      actor: z.literal("customer"),
+      idempotencyKey: idempotencyKeySchema
+    })
+    .strict(),
+  z
+    .object({
+      actor: z.literal("technician"),
+      verificationCode: z.string().regex(/^\d{6}$/),
+      idempotencyKey: idempotencyKeySchema
+    })
+    .strict()
+]);
+
+export const createOrderAddOnBodySchema = z
+  .object({
+    serviceId: serviceCatalogIdSchema,
+    idempotencyKey: idempotencyKeySchema
+  })
+  .strict();
+
+export const endServiceBodySchema = z
+  .object({
+    reason: fulfillmentReasonSchema,
+    idempotencyKey: idempotencyKeySchema
+  })
+  .strict();
+
+export const selectPaymentMethodBodySchema = z.discriminatedUnion("method", [
+  z
+    .object({
+      method: z.literal("cash"),
+      idempotencyKey: idempotencyKeySchema
+    })
+    .strict(),
+  z
+    .object({
+      method: z.literal("ndp"),
+      idempotencyKey: idempotencyKeySchema
+    })
+    .strict(),
+  z
+    .object({
+      method: z.literal("other"),
+      otherMethodCode: z.string().trim().min(1).max(40),
+      otherMethodLabel: z.string().trim().min(1).max(80),
+      idempotencyKey: idempotencyKeySchema
+    })
+    .strict()
+]);
+
+export const payWithNdpBodySchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema
+  })
+  .strict();
+
+export const confirmReceiptBodySchema = z
+  .object({
+    reason: fulfillmentReasonSchema,
+    idempotencyKey: idempotencyKeySchema
+  })
+  .strict();
+
 export const orderListQuerySchema = z.object({
   ...paginationQuerySchema,
   customerUserId: z.coerce.number().int().positive().optional(),
-  status: z.enum(["pending", "confirmed", "inService", "completed", "cancelled"]).optional(),
+  status: z.enum([
+    "pending",
+    "confirmed",
+    "inService",
+    "awaitingCheckout",
+    "awaitingPaymentConfirmation",
+    "completed",
+    "cancelled"
+  ]).optional(),
   from: isoDateSchema.optional(),
   to: isoDateSchema.optional()
 }).superRefine((value, context) => {
@@ -181,6 +258,12 @@ export type AvailabilityListQuery = z.infer<typeof availabilityListQuerySchema>;
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;
 export type OrderIdParams = z.infer<typeof orderIdParamSchema>;
 export type OrderConfirmBody = z.infer<typeof orderConfirmBodySchema>;
+export type StartServiceInput = z.infer<typeof startServiceBodySchema>;
+export type CreateOrderAddOnInput = z.infer<typeof createOrderAddOnBodySchema>;
+export type EndServiceInput = z.infer<typeof endServiceBodySchema>;
+export type SelectPaymentMethodInput = z.infer<typeof selectPaymentMethodBodySchema>;
+export type PayWithNdpInput = z.infer<typeof payWithNdpBodySchema>;
+export type ConfirmReceiptInput = z.infer<typeof confirmReceiptBodySchema>;
 export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 export type OrderCancelBody = z.infer<typeof orderCancelBodySchema>;
 export type ManualPaymentConfirmBody = z.infer<typeof manualPaymentConfirmBodySchema>;

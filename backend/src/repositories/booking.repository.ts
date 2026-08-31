@@ -13,12 +13,14 @@ export type BookingOrderStatusPayload =
   | "pending"
   | "confirmed"
   | "inService"
+  | "awaitingCheckout"
+  | "awaitingPaymentConfirmation"
   | "completed"
   | "cancelled";
 export type BookingOrderTypePayload = "booking" | "request";
 export type ScheduleSlotStatusPayload = "available" | "booked" | "blocked";
 export type BookingFulfillmentMode = "home" | "store";
-export type ServicePaymentMethodPayload = "onsite" | "bank_transfer";
+export type ServicePaymentMethodPayload = "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
 export type ServicePaymentStatusPayload = "pending" | "confirmed" | "refundPending" | "refunded";
 
 export interface AvailabilityListInput extends PaginationInput {
@@ -1895,6 +1897,12 @@ export class BookingRepository implements BookingRepositoryPort {
     if (status === "IN_SERVICE") {
       return "inService";
     }
+    if (status === "AWAITING_CHECKOUT") {
+      return "awaitingCheckout";
+    }
+    if (status === "AWAITING_PAYMENT_CONFIRMATION") {
+      return "awaitingPaymentConfirmation";
+    }
     if (status === "COMPLETED") {
       return "completed";
     }
@@ -1906,11 +1914,21 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   private paymentMethodFromDb(method: string): ServicePaymentMethodPayload {
-    return method === "BANK_TRANSFER" ? "bank_transfer" : "onsite";
+    if (method === "BANK_TRANSFER") return "bank_transfer";
+    if (method === "CASH") return "cash";
+    if (method === "NDP") return "ndp";
+    if (method === "OTHER") return "other";
+    return "onsite";
   }
 
-  private paymentMethodToDb(method: ServicePaymentMethodPayload): "ONSITE" | "BANK_TRANSFER" {
-    return method === "bank_transfer" ? "BANK_TRANSFER" : "ONSITE";
+  private paymentMethodToDb(
+    method: ServicePaymentMethodPayload
+  ): "ONSITE" | "BANK_TRANSFER" | "CASH" | "NDP" | "OTHER" {
+    if (method === "bank_transfer") return "BANK_TRANSFER";
+    if (method === "cash") return "CASH";
+    if (method === "ndp") return "NDP";
+    if (method === "other") return "OTHER";
+    return "ONSITE";
   }
 
   private paymentStatusFromDb(status: string): ServicePaymentStatusPayload {
@@ -1926,6 +1944,12 @@ export class BookingRepository implements BookingRepositoryPort {
     }
     if (status === "inService") {
       return "IN_SERVICE";
+    }
+    if (status === "awaitingCheckout") {
+      return "AWAITING_CHECKOUT";
+    }
+    if (status === "awaitingPaymentConfirmation") {
+      return "AWAITING_PAYMENT_CONFIRMATION";
     }
     if (status === "completed") {
       return "COMPLETED";

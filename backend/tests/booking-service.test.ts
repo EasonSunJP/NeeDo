@@ -4,6 +4,7 @@ import type {
   BookingRepositoryPort,
   ScheduleSlotPayload
 } from "../src/repositories/booking.repository";
+import { BookingRepository } from "../src/repositories/booking.repository";
 import type { BookingLedgerSettlementPort } from "../src/services/ledger.service";
 import type { OrderStatusNotificationPort } from "../src/services/realtime.service";
 import { BookingService } from "../src/services/booking.service";
@@ -139,6 +140,33 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("maps the formal checkout statuses and payment methods without breaking legacy values", () => {
+    const repository = new BookingRepository({} as never) as unknown as {
+      statusFromDb: (status: string) => BookingOrderPayload["status"];
+      statusToDb: (status: BookingOrderPayload["status"]) => string;
+      paymentMethodFromDb: (method: string) => BookingOrderPayload["paymentMethod"];
+      paymentMethodToDb: (method: BookingOrderPayload["paymentMethod"]) => string;
+    };
+
+    expect(repository.statusFromDb("AWAITING_CHECKOUT")).toBe("awaitingCheckout");
+    expect(repository.statusFromDb("AWAITING_PAYMENT_CONFIRMATION")).toBe(
+      "awaitingPaymentConfirmation"
+    );
+    expect(repository.statusToDb("awaitingCheckout")).toBe("AWAITING_CHECKOUT");
+    expect(repository.statusToDb("awaitingPaymentConfirmation")).toBe(
+      "AWAITING_PAYMENT_CONFIRMATION"
+    );
+
+    expect(repository.paymentMethodFromDb("CASH")).toBe("cash");
+    expect(repository.paymentMethodFromDb("NDP")).toBe("ndp");
+    expect(repository.paymentMethodFromDb("OTHER")).toBe("other");
+    expect(repository.paymentMethodToDb("cash")).toBe("CASH");
+    expect(repository.paymentMethodToDb("ndp")).toBe("NDP");
+    expect(repository.paymentMethodToDb("other")).toBe("OTHER");
+    expect(repository.paymentMethodFromDb("ONSITE")).toBe("onsite");
+    expect(repository.paymentMethodFromDb("BANK_TRANSFER")).toBe("bank_transfer");
+  });
+
   it("maps an atomic cross-shop confirmation collision to a non-leaking schedule conflict", async () => {
     const repository = createRepository(makeOrder("pending"));
     repository.transitionOrderWithScheduleGuard = jest
