@@ -10,10 +10,13 @@ import {
   type PlatformMembershipEntitlementCommand
 } from "../domain/platform-membership-entitlement";
 import type {
+  PlatformMembershipBenefitAdministrationPayload,
+  PlatformMembershipBenefitMutationResult,
   PlatformMembershipEntitlementMutationResult,
   PlatformMembershipRepositoryPort,
   PlatformMembershipTierDraftPersistenceInput,
   PlatformMembershipTierMutationResult,
+  PlatformMembershipTierAdministrationPayload,
   PlatformMembershipTierVersionPayload
 } from "../repositories/platform-membership.repository";
 import { AppError } from "../utils/app-error";
@@ -26,6 +29,7 @@ export type PlatformMembershipTierDraftInput =
   PlatformMembershipTierDraftPersistenceInput;
 
 const tierCodeSet = new Set<string>(PLATFORM_MEMBERSHIP_TIER_CODES);
+const benefitCodeSet = new Set<string>(PLATFORM_MEMBERSHIP_BENEFIT_CODES);
 const entitlementSourceSet = new Set<string>(PLATFORM_MEMBERSHIP_ENTITLEMENT_SOURCES);
 const hexColorPattern = /^#[0-9A-Fa-f]{6}$/;
 const themeKeys = [
@@ -74,6 +78,86 @@ export class PlatformMembershipService {
       message: "error.platform_membership.free_version_unavailable",
       statusCode: 500
     });
+  }
+
+  public async listTiersForAdministration(
+    actor: AuthenticatedAccessContext
+  ): Promise<PlatformMembershipTierAdministrationPayload[]> {
+    this.assertOperationsIdentity(actor);
+    const tiers = await this.repository.listTiersForAdministration();
+    if (
+      tiers.length !== PLATFORM_MEMBERSHIP_TIER_CODES.length ||
+      tiers.some((tier, index) => tier.tierCode !== PLATFORM_MEMBERSHIP_TIER_CODES[index])
+    ) {
+      throw this.catalogInvalid();
+    }
+    return tiers;
+  }
+
+  public async getTierDraft(
+    actor: AuthenticatedAccessContext,
+    tierCode: PlatformMembershipTierCodeValue
+  ): Promise<PlatformMembershipTierVersionPayload> {
+    this.assertOperationsIdentity(actor);
+    const normalizedTierCode = this.normalizeTierCode(tierCode);
+    const draft = await this.repository.findTierDraft(normalizedTierCode);
+    if (draft) return draft;
+    throw new AppError({
+      code: ERROR_CODES.NOT_FOUND,
+      message: "error.platform_membership.draft_not_found",
+      statusCode: 404
+    });
+  }
+
+  public async listBenefitsForAdministration(
+    actor: AuthenticatedAccessContext
+  ): Promise<PlatformMembershipBenefitAdministrationPayload[]> {
+    this.assertOperationsIdentity(actor);
+    const benefits = await this.repository.listBenefitsForAdministration();
+    if (
+      benefits.length !== PLATFORM_MEMBERSHIP_BENEFIT_CODES.length ||
+      benefits.some(
+        (benefit, index) => benefit.code !== PLATFORM_MEMBERSHIP_BENEFIT_CODES[index]
+      )
+    ) {
+      throw this.catalogInvalid();
+    }
+    return benefits;
+  }
+
+  public async updateBenefit(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    benefitCode: string,
+    input: { isGloballyEnabled: boolean; expectedLockVersion: number }
+  ): Promise<PlatformMembershipBenefitAdministrationPayload> {
+    this.assertOperationsIdentity(actor);
+    const normalizedBenefitCode = this.normalizeBenefitCode(benefitCode);
+    if (
+      typeof input.isGloballyEnabled !== "boolean" ||
+      !Number.isInteger(input.expectedLockVersion) ||
+      input.expectedLockVersion < 1
+    ) {
+      throw this.validationError();
+    }
+    const result = await this.repository.updateBenefitWithAudit({
+      actorId: actor.userId,
+      benefitCode: normalizedBenefitCode,
+      isGloballyEnabled: input.isGloballyEnabled,
+      expectedLockVersion: input.expectedLockVersion,
+      audit: this.requireAuditFactory().createInput({
+        actor,
+        context,
+        action: "platform.membership_benefit.update",
+        targetType: "PlatformMembershipBenefit",
+        metadata: {
+          benefitCode: normalizedBenefitCode,
+          isGloballyEnabled: input.isGloballyEnabled,
+          expectedLockVersion: input.expectedLockVersion
+        }
+      })
+    });
+    return this.unwrapBenefitMutation(result);
   }
 
   public async changeEntitlement(
@@ -371,6 +455,15 @@ export class PlatformMembershipService {
     throw this.validationError();
   }
 
+  private normalizeBenefitCode(
+    benefitCode: string
+  ): (typeof PLATFORM_MEMBERSHIP_BENEFIT_CODES)[number] {
+    if (benefitCodeSet.has(benefitCode)) {
+      return benefitCode as (typeof PLATFORM_MEMBERSHIP_BENEFIT_CODES)[number];
+    }
+    throw this.validationError();
+  }
+
   private assertOperationsIdentity(actor: AuthenticatedAccessContext): void {
     if (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform") {
       return;
@@ -419,6 +512,26 @@ export class PlatformMembershipService {
     }
     if (result.kind === "version_conflict") throw this.versionConflict();
     throw this.invalidState();
+  }
+
+  private unwrapBenefitMutation(
+    result: PlatformMembershipBenefitMutationResult
+  ): PlatformMembershipBenefitAdministrationPayload {
+    if ("value" in result) return result.value;
+    if (result.kind === "version_conflict") throw this.versionConflict();
+    throw new AppError({
+      code: ERROR_CODES.NOT_FOUND,
+      message: "error.platform_membership.benefit_not_found",
+      statusCode: 404
+    });
+  }
+
+  private catalogInvalid(): AppError {
+    return new AppError({
+      code: ERROR_CODES.INTERNAL,
+      message: "error.platform_membership.catalog_invalid",
+      statusCode: 500
+    });
   }
 
   private versionConflict(): AppError {

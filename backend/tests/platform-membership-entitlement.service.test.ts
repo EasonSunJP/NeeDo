@@ -29,6 +29,8 @@ const changed = {
 const repository = (
   overrides: Partial<jest.Mocked<PlatformMembershipRepositoryPort>> = {}
 ): jest.Mocked<PlatformMembershipRepositoryPort> => ({
+  listTiersForAdministration: jest.fn(),
+  listBenefitsForAdministration: jest.fn(),
   hasActiveCustomerProfile: jest.fn(async (userId: number) => {
     void userId;
     return true;
@@ -42,6 +44,7 @@ const repository = (
     void input;
     return { kind: "changed" as const, value: changed };
   }),
+  updateBenefitWithAudit: jest.fn(),
   ...overrides
 });
 const audit = {

@@ -38,6 +38,7 @@ import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
+import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
 import type { ShopMembershipRepositoryPort } from "./repositories/shop-membership.repository";
 import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-membership-card-plan.repository";
 import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
@@ -130,6 +131,7 @@ import { createShopMembershipCardTopUpRoutes } from "./routes/shop-membership-ca
 import { createTechnicianProfileRoutes } from "./routes/technician-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
+import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
 import { createHealthRoutes } from "./routes/health.routes";
@@ -272,6 +274,17 @@ export interface AppDependencies {
   merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
+  platformMembershipAdministrationService?: Pick<
+    PlatformMembershipService,
+    | "listTiersForAdministration"
+    | "getTierDraft"
+    | "saveTierDraft"
+    | "publishTierVersion"
+    | "listBenefitsForAdministration"
+    | "updateBenefit"
+    | "changeEntitlement"
+  >;
+  platformMembershipRepository?: PlatformMembershipRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
   affiliateMarketplaceRepository?: AffiliateMarketplaceRepositoryPort;
@@ -365,6 +378,7 @@ export const createApp = (
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
+  apiRouter.use(createPlatformMembershipRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderAcceptancePauseRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
