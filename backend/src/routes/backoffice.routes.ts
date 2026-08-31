@@ -101,6 +101,13 @@ export const createBackofficeRoutes = (
     controller.platformOrders
   );
   router.get(
+    "/backoffice/orders/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.orders),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.platformOrder
+  );
+  router.get(
     "/backoffice/schedule",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.schedule),

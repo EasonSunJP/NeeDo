@@ -430,6 +430,64 @@ const createFixture = async (
       page_size: 20,
       input
     })),
+    findOrderById: jest.fn(async ({ id }: { id: number }) =>
+      id === 31
+        ? {
+            id: 31,
+            orderNo: "ND202605250001",
+            status: "cancelled",
+            paymentStatus: "pending" as const,
+            customerUserId: 101,
+            customerProfileId: 201,
+            customerName: "Aya Customer",
+            serviceId: 1,
+            serviceName: "Shiatsu Recovery",
+            shopId: 11,
+            shopName: "Aoyama Care Studio",
+            technicianProfileId: 301,
+            technicianNeedoId: "s0000000301",
+            technicianName: "Mika Tanaka",
+            fulfillmentMode: "store",
+            priceAmount: 8800,
+            currency: "JPY",
+            startsAt: "2026-05-25T01:00:00.000Z",
+            endsAt: "2026-05-25T02:00:00.000Z",
+            note: null,
+            cancelReason: "技师临时无法到达",
+            createdAt: "2026-05-24T23:00:00.000Z",
+            updatedAt: "2026-05-25T04:00:00.000Z",
+            performanceAssessment: {
+              id: 81,
+              bookingOrderId: 31,
+              technicianProfileId: 301,
+              outcome: "technician_cancelled" as const,
+              treatment: "counted" as const,
+              version: 3,
+              currentRevisionId: 93,
+              createdAt: "2026-05-25T02:00:00.000Z",
+              updatedAt: "2026-05-25T04:00:00.000Z"
+            },
+            timelineEvents: [
+              {
+                id: "performance:92",
+                type: "SPECIAL_CANCELLATION_APPLIED" as const,
+                createdAt: "2026-05-25T03:00:00.000Z",
+                actorUserId: 1,
+                publicReason: "不可抗力",
+                internalNote: "后台核验材料 A"
+              },
+              {
+                id: "performance:93",
+                type: "SPECIAL_CANCELLATION_REVOKED" as const,
+                createdAt: "2026-05-25T04:00:00.000Z",
+                actorUserId: 1,
+                publicReason: "用户投诉后复核",
+                internalNote: "投诉工单 C-123"
+              }
+            ]
+          }
+        : null
+    ),
     listSchedule: jest.fn(async () => ({
       list: [{ id: 41, shopId: 11, status: "available" }],
       total: 1,
@@ -1420,6 +1478,47 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .expect(400);
 
     expect(fixture.backofficeRepository.summarizeNdpByCurrency).not.toHaveBeenCalled();
+  });
+
+  it("returns a fresh authorized order-performance detail including immutable internal notes", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/orders/31")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data.performanceAssessment).toMatchObject({
+      outcome: "technician_cancelled",
+      treatment: "counted",
+      version: 3
+    });
+    expect(response.body.data.timelineEvents).toEqual([
+      expect.objectContaining({
+        id: "performance:92",
+        type: "SPECIAL_CANCELLATION_APPLIED",
+        internalNote: "后台核验材料 A"
+      }),
+      expect.objectContaining({
+        id: "performance:93",
+        type: "SPECIAL_CANCELLATION_REVOKED",
+        internalNote: "投诉工单 C-123"
+      })
+    ]);
+    expect(fixture.backofficeRepository.findOrderById).toHaveBeenCalledWith({
+      id: 31,
+      scope: "platform"
+    });
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "backoffice.order.read",
+          targetType: "booking_order",
+          targetId: 31
+        })
+      ])
+    );
   });
 
   it("blocks users without the matching backoffice permission", async () => {

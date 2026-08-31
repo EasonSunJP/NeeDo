@@ -196,6 +196,44 @@ export interface BackofficeOrderPayload {
   updatedAt: string;
 }
 
+export type BackofficeOrderTimelineEventPayload =
+  | {
+      type: "ORDER_STATUS_CHANGED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      fromStatus: string | null;
+      toStatus: string;
+      publicReason: string | null;
+    }
+  | {
+      type:
+        | "TECHNICIAN_CANCEL_CLASSIFIED"
+        | "TECHNICIAN_UNCOMPLETED_CLASSIFIED"
+        | "SPECIAL_CANCELLATION_APPLIED"
+        | "SPECIAL_CANCELLATION_REVOKED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      publicReason: string | null;
+      internalNote: string | null;
+    };
+
+export interface BackofficeOrderDetailPayload extends BackofficeOrderPayload {
+  performanceAssessment: {
+    id: number;
+    bookingOrderId: number;
+    technicianProfileId: number;
+    outcome: "technician_cancelled" | "technician_uncompleted";
+    treatment: "counted" | "special_excluded";
+    version: number;
+    currentRevisionId: number | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  timelineEvents: BackofficeOrderTimelineEventPayload[];
+}
+
 export interface BackofficeScheduleSlotPayload {
   id: number;
   serviceId: number | null;
@@ -548,6 +586,9 @@ export interface BackofficeRepositoryPort {
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
+  findOrderById: (
+    input: BackofficeScope & { id: number }
+  ) => Promise<BackofficeOrderDetailPayload | null>;
   listSchedule: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeScheduleSlotPayload>>;
@@ -837,6 +878,25 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.orders.list", "booking_order");
 
     return this.repository.listOrders({ ...input, scope: "platform" });
+  }
+
+  public async getPlatformOrder(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeOrderDetailPayload> {
+    await this.record(
+      actor,
+      context,
+      "backoffice.order.read",
+      "booking_order",
+      { bookingOrderId: id },
+      id
+    );
+    return this.requireResult(
+      await this.repository.findOrderById({ scope: "platform", id }),
+      "error.order.not_found"
+    );
   }
 
   public async listMerchantOrders(
@@ -1764,12 +1824,14 @@ export class BackofficeService {
     context: AuthRequestContext,
     action: string,
     targetType: string,
-    metadata?: unknown
+    metadata?: unknown,
+    targetId?: number
   ): Promise<void> {
     return this.auditLogService.record({
       actor,
       action,
       targetType,
+      targetId,
       context,
       metadata
     });

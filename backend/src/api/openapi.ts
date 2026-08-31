@@ -4634,6 +4634,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      OperationsOrderTimelineEvent: {
+        oneOf: [
+          { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+          { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" }
+        ],
+        discriminator: { propertyName: "type" }
+      },
       OrderTimelineEvent: {
         oneOf: [
           { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
@@ -4664,6 +4671,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           assessment: { $ref: "#/components/schemas/OrderPerformanceAssessment" },
           replayed: { type: "boolean" }
         }
+      },
+      BackofficeOrderDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/BackofficeBookingSummary" },
+          {
+            type: "object",
+            required: ["performanceAssessment", "timelineEvents"],
+            properties: {
+              performanceAssessment: {
+                anyOf: [
+                  { $ref: "#/components/schemas/OrderPerformanceAssessment" },
+                  { type: "null" }
+                ]
+              },
+              timelineEvents: {
+                type: "array",
+                items: { $ref: "#/components/schemas/OperationsOrderTimelineEvent" }
+              }
+            }
+          }
+        ]
       },
       BookingOrder: {
         type: "object",
@@ -12035,6 +12063,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: orderPerformanceCommandOperation(
         "Revoke a special-cancellation exclusion after operations review"
       )
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}`]: {
+      get: {
+        tags: ["Order Performance"],
+        summary: "Read one fresh operations order detail with performance revisions",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:orders:list",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Operations order detail", {
+            $ref: "#/components/schemas/BackofficeOrderDetail"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.backoffice.order_not_found")
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/confirm`]: {
       post: {

@@ -1244,6 +1244,26 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.components.schemas.OperationsOrderTimelinePerformanceEvent.properties
         .internalNote
     ).toMatchObject({ "x-visibility": "operations-only" });
+    expect(response.body.components.schemas.OperationsOrderTimelineEvent.oneOf).toEqual([
+      { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+      { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" }
+    ]);
+    expect(response.body.components.schemas.BackofficeOrderDetail.allOf[1]).toMatchObject({
+      required: ["performanceAssessment", "timelineEvents"],
+      properties: {
+        timelineEvents: {
+          type: "array",
+          items: { $ref: "#/components/schemas/OperationsOrderTimelineEvent" }
+        }
+      }
+    });
+
+    const backofficeOrderDetail = response.body.paths["/api/v1/backoffice/orders/{id}"].get;
+    expect(backofficeOrderDetail.security).toEqual([{ bearerAuth: [] }]);
+    expect(backofficeOrderDetail["x-permission"]).toBe("backoffice:orders:list");
+    expect(
+      backofficeOrderDetail.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/BackofficeOrderDetail" });
 
     for (const path of [
       "/api/v1/backoffice/orders/{id}/technician-uncompleted",
