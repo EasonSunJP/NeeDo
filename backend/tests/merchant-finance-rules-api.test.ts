@@ -357,6 +357,8 @@ describe("merchant finance rules API", () => {
         name: "Commission 62.5",
         wageMode: "commission",
         commissionRatePercent: 62.5,
+        extensionCommissionRatePercent: 72.5,
+        nominationFeeJpy: 1_800,
         fixedOrderPayJpy: 0,
         guaranteedMinimumJpy: 4200,
         ndpFeeBearer: "technician",
@@ -368,7 +370,9 @@ describe("merchant finance rules API", () => {
     expect(updateResponse.body.data).toMatchObject({
       id: 2,
       name: "Commission 62.5",
-      commissionRatePercent: 62.5
+      commissionRatePercent: 62.5,
+      extensionCommissionRatePercent: 72.5,
+      nominationFeeJpy: 1_800
     });
 
     const previewResponse = await request(fixture.app)

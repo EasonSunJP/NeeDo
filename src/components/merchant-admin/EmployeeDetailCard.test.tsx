@@ -123,6 +123,8 @@ const compensation: EmployeeCompensationResult = {
     dailyRateJpy: 0,
     fixedOrderPayJpy: 0,
     commissionRatePercent: 30,
+    extensionCommissionRatePercent: 35,
+    nominationFeeJpy: 1_000,
     guaranteedMinimumJpy: 0,
     ndpFeeBearer: "shop",
     technicianNdpSharePercent: 0,

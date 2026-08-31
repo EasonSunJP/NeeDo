@@ -119,4 +119,62 @@ describe("CompensationEngine", () => {
       expect.objectContaining({ id: "rating-below-4", amountJpy: 800 })
     ]);
   });
+
+  it("calculates service, extension, and nomination compensation independently", () => {
+    const result = engine.calculate(
+      {
+        ...baseRuleSet,
+        fixedOrderPayJpy: 0,
+        commissionRatePercent: 20,
+        extensionCommissionRatePercent: 60,
+        nominationFeeJpy: 1_500,
+        ndpFeeBearer: "shop"
+      },
+      {
+        baseServiceAmountJpy: 10_000,
+        extensionAmountJpy: 4_000,
+        nominated: true,
+        platformFeeNdp: 0
+      }
+    );
+
+    expect(result).toMatchObject({
+      serviceAmountJpy: 14_000,
+      baseServiceAmountJpy: 10_000,
+      extensionAmountJpy: 4_000,
+      nominated: true,
+      serviceCommissionPayJpy: 2_000,
+      extensionCommissionPayJpy: 2_400,
+      nominationPayJpy: 1_500,
+      commissionPayJpy: 4_400,
+      technicianGrossIncomeJpy: 5_900,
+      technicianNetIncomeJpy: 5_900,
+      shopEstimatedGrossProfitJpy: 8_100
+    });
+  });
+
+  it("keeps aggregate-only historical calculations on the service commission rate", () => {
+    const result = engine.calculate(
+      {
+        ...baseRuleSet,
+        fixedOrderPayJpy: 0,
+        commissionRatePercent: 20,
+        extensionCommissionRatePercent: 60,
+        nominationFeeJpy: 1_500,
+        ndpFeeBearer: "shop"
+      },
+      { serviceAmountJpy: 14_000, platformFeeNdp: 0 }
+    );
+
+    expect(result).toMatchObject({
+      serviceAmountJpy: 14_000,
+      baseServiceAmountJpy: 14_000,
+      extensionAmountJpy: 0,
+      nominated: false,
+      serviceCommissionPayJpy: 2_800,
+      extensionCommissionPayJpy: 0,
+      nominationPayJpy: 0,
+      commissionPayJpy: 2_800
+    });
+  });
 });

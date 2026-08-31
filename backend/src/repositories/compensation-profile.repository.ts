@@ -94,6 +94,8 @@ export class CompensationProfileRepository implements CompensationProfileReposit
           dailyRateJpy: input.dailyRateJpy,
           fixedOrderPayJpy: input.fixedOrderPayJpy,
           commissionRateBps: Math.round(input.commissionRatePercent * 100),
+          extensionCommissionRateBps: Math.round(input.extensionCommissionRatePercent * 100),
+          nominationFeeJpy: input.nominationFeeJpy,
           guaranteedMinimumJpy: input.guaranteedMinimumJpy,
           ndpFeeBearer: input.ndpFeeBearer,
           technicianNdpShareBps: Math.round(input.technicianNdpSharePercent * 100),

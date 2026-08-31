@@ -823,6 +823,42 @@ describe("GET /api/v1/openapi.json", () => {
     expect(employeeCompensationSchema.properties).not.toHaveProperty("technicianProfileId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("createdById");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("updatedById");
+    for (const schemaName of [
+      "ShopFinanceRuleSet",
+      "TechnicianCompensationProfile",
+      "EmployeeCompensationProfile",
+      "CompensationProfileInput"
+    ]) {
+      expect(response.body.components.schemas[schemaName].properties).toEqual(
+        expect.objectContaining({
+          extensionCommissionRatePercent: expect.objectContaining({ type: "number" }),
+          nominationFeeJpy: expect.objectContaining({ type: "integer" })
+        })
+      );
+    }
+    expect(response.body.components.schemas.CompensationPreview.properties).toEqual(
+      expect.objectContaining({
+        baseServiceAmountJpy: expect.objectContaining({ type: "integer" }),
+        extensionAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominationChargeAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominated: expect.objectContaining({ type: "boolean" }),
+        serviceCommissionPayJpy: expect.objectContaining({ type: "integer" }),
+        extensionCommissionPayJpy: expect.objectContaining({ type: "integer" }),
+        nominationPayJpy: expect.objectContaining({ type: "integer" })
+      })
+    );
+    const serviceIncomeReportSchema =
+      response.body.paths[
+        "/api/v1/merchant-admin/finance/orders/{bookingOrderId}/service-income-report"
+      ].put.requestBody.content["application/json"].schema;
+    expect(serviceIncomeReportSchema.properties).toEqual(
+      expect.objectContaining({
+        baseServiceAmountJpy: expect.objectContaining({ type: "integer" }),
+        extensionAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominationChargeAmountJpy: expect.objectContaining({ type: "integer" }),
+        wasTechnicianNominated: expect.objectContaining({ type: "boolean" })
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}");

@@ -22,6 +22,8 @@ export interface EmployeeCompensationProfile {
   dailyRateJpy: number;
   fixedOrderPayJpy: number;
   commissionRatePercent: number;
+  extensionCommissionRatePercent: number;
+  nominationFeeJpy: number;
   guaranteedMinimumJpy: number;
   ndpFeeBearer: ShopFinanceNdpBearer;
   technicianNdpSharePercent: number;

@@ -340,6 +340,8 @@ export class CompensationProfileService {
       dailyRateJpy: input.dailyRateJpy ?? 0,
       fixedOrderPayJpy: input.fixedOrderPayJpy ?? 0,
       commissionRatePercent: input.commissionRatePercent ?? 60,
+      extensionCommissionRatePercent: input.extensionCommissionRatePercent ?? 60,
+      nominationFeeJpy: input.nominationFeeJpy ?? 0,
       guaranteedMinimumJpy: input.guaranteedMinimumJpy ?? 0,
       ndpFeeBearer: input.ndpFeeBearer ?? "shop",
       technicianNdpSharePercent:
