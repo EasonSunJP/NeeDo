@@ -139,8 +139,9 @@ const createFixture = async () => {
     "order:read",
     "order:confirm",
     "order:cancel",
-    "order:start",
-    "order:complete"
+    "order:service:start",
+    "order:add-on:write",
+    "order:service:end"
   ].map(makePermission);
   const role = {
     id: 1,
@@ -624,32 +625,21 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .expect(200);
     expect(confirmResponse.body.data.status).toBe("confirmed");
 
-    const startResponse = await request(fixture.app)
+    await request(fixture.app)
       .post("/api/v1/orders/1/start")
       .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    expect(startResponse.body.data.status).toBe("inService");
+      .expect(404);
 
-    const completeResponse = await request(fixture.app)
+    await request(fixture.app)
       .post("/api/v1/orders/1/complete")
       .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    expect(completeResponse.body.data.status).toBe("completed");
-    expect(
-      completeResponse.body.data.statusHistory.map((entry: { toStatus: string }) => entry.toStatus)
-    ).toEqual(["pending", "confirmed", "inService", "completed"]);
+      .expect(404);
 
     await request(fixture.app)
       .post("/api/v1/orders/1/cancel")
       .set("Authorization", `Bearer ${token}`)
       .send({ reason: "too late" })
-      .expect(409)
-      .expect((response) => {
-        expect(response.body).toMatchObject({
-          code: ERROR_CODES.ORDER_INVALID_TRANSITION,
-          message: "error.order.invalid_transition"
-        });
-      });
+      .expect(200);
 
     const ordersResponse = await request(fixture.app)
       .get("/api/v1/orders?page=1&pageSize=20")
@@ -660,7 +650,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       total: 1,
       page: 1,
       page_size: 20,
-      list: [expect.objectContaining({ id: 1, status: "completed" })]
+      list: [expect.objectContaining({ id: 1, status: "cancelled" })]
     });
   });
 });

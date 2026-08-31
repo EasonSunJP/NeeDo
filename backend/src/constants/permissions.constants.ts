@@ -366,8 +366,27 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("order:read", "订单详情", "api", "order", "查看订单详情与状态历史"),
   createPermission("order:confirm", "确认接单", "api", "order", "服务方确认接单"),
   createPermission("order:cancel", "取消订单", "api", "order", "取消 Booking 订单"),
-  createPermission("order:start", "开始服务", "api", "order", "将订单切换为服务中"),
-  createPermission("order:complete", "完成服务", "api", "order", "将订单切换为已完成"),
+  createPermission(
+    "order:service:start",
+    "开始服务",
+    "api",
+    "order",
+    "订单顾客或指派技师按正式验证码流程开始服务"
+  ),
+  createPermission(
+    "order:add-on:write",
+    "维护追加服务",
+    "api",
+    "order",
+    "订单顾客或指派技师提出并由对方确认追加服务"
+  ),
+  createPermission(
+    "order:service:end",
+    "结束服务",
+    "api",
+    "order",
+    "订单顾客或指派技师结束服务并进入待结账"
+  ),
   createPermission(
     "merchant-admin:order-payment:write",
     "商户线下收款维护",
@@ -1468,6 +1487,9 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "order:list",
   "order:read",
   "order:cancel",
+  "order:service:start",
+  "order:add-on:write",
+  "order:service:end",
   "wallet:read",
   "wallet:ledger:list",
   "wallet:adjustment:create",
@@ -1481,8 +1503,6 @@ const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
   "order:read",
   "order:confirm",
   "order:cancel",
-  "order:start",
-  "order:complete",
   "wallet:read",
   "wallet:ledger:list",
   "wallet:adjustment:create",
@@ -1804,6 +1824,9 @@ export const buildRolePermissionAssignments = (): Record<
     "menu:technician-schedule",
     "technician-profile:read",
     "technician-profile:write",
+    "order:service:start",
+    "order:add-on:write",
+    "order:service:end",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,

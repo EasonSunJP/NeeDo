@@ -137,6 +137,23 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
     createBooking: jest.fn(async () => order),
     listOrders: jest.fn(),
     findOrderById: jest.fn(async () => order),
+    getServiceVerificationCode: jest.fn(async () => "829104"),
+    startService: jest.fn(async () =>
+      order
+        ? { outcome: "ok", order: { ...order, status: "inService" }, applied: true }
+        : { outcome: "not_found" }
+    ),
+    createOrderAddOn: jest.fn(async () =>
+      order ? { outcome: "ok", order, applied: true } : { outcome: "not_found" }
+    ),
+    decideOrderAddOn: jest.fn(async () =>
+      order ? { outcome: "ok", order, applied: true } : { outcome: "not_found" }
+    ),
+    endService: jest.fn(async () =>
+      order
+        ? { outcome: "ok", order: { ...order, status: "awaitingCheckout" }, applied: true }
+        : { outcome: "not_found" }
+    ),
     findScheduleSlotById: jest.fn(async () => scheduleSlot),
     transitionOrder: jest.fn(async (input, options) => {
       if (!order) {
@@ -316,7 +333,14 @@ describe("BookingService state machine", () => {
     });
     expect(repository.createBooking).not.toHaveBeenCalled();
 
-    await expect(service.transitionOrder(actor, 1, "start")).resolves.toMatchObject({
+    await expect(
+      service.startService(
+        actor,
+        1,
+        { actor: "customer", idempotencyKey: "suspended-start-001" },
+        { ip: "127.0.0.1" }
+      )
+    ).resolves.toMatchObject({
       status: "inService"
     });
   });
@@ -589,15 +613,21 @@ describe("BookingService state machine", () => {
     ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
 
     await expect(
-      technicianService.transitionOrder(
+      technicianService.startService(
         {
           userId: 3,
           roles: ["technician"],
+          currentIdentityType: "technician",
           currentIdentityScopeType: "technician_profile",
           currentIdentityScopeId: 17
         },
         1,
-        "start"
+        {
+          actor: "technician",
+          verificationCode: "829104",
+          idempotencyKey: "hidden-technician-01"
+        },
+        { ip: "127.0.0.1" }
       )
     ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
   });
@@ -622,16 +652,15 @@ describe("BookingService state machine", () => {
     const repository = createRepository(makeOrder("confirmed"));
     const service = new BookingService(repository);
 
-    const started = await service.transitionOrder(actor, 1, "start");
+    const started = await service.startService(
+      actor,
+      1,
+      { actor: "customer", idempotencyKey: "formal-customer-start" },
+      { ip: "127.0.0.1" }
+    );
 
     expect(started.status).toBe("inService");
-    expect(repository.transitionOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        fromStatus: "confirmed",
-        toStatus: "inService"
-      }),
-      {}
-    );
+    expect(repository.startService).toHaveBeenCalled();
 
     const completedService = new BookingService(createRepository(makeOrder("completed")));
     await expect(
@@ -706,61 +735,7 @@ describe("BookingService state machine", () => {
     expect(affiliateCheckout.invalidateCancelledBooking).toHaveBeenCalledTimes(1);
   });
 
-  it("composes booking finance and affiliate reward settlement in the completion transaction", async () => {
-    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
-      freezeBookingAcceptance: jest.fn(),
-      releaseBookingHold: jest.fn(),
-      settleBookingCompletion: jest.fn().mockResolvedValue(undefined),
-      compensateCustomerForMerchantCancellation: jest.fn()
-    };
-    const settleCompletedBooking = jest.fn().mockResolvedValue({
-      status: "no_op",
-      reason: "no_attribution"
-    });
-    const affiliateCheckout = {
-      prepareCheckout: jest.fn(),
-      persistAttribution: jest.fn(),
-      invalidateCancelledBooking: jest.fn(),
-      settleCompletedBooking
-    } as unknown as Pick<
-      AffiliateCheckoutService,
-      | "prepareCheckout"
-      | "persistAttribution"
-      | "invalidateCancelledBooking"
-      | "settleCompletedBooking"
-    >;
-    const providerActor = {
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityType: "merchant_owner",
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 1
-    };
-    const repository = createRepository(makeOrder("inService"));
-
-    await new BookingService(
-      repository,
-      ledgerService,
-      undefined,
-      undefined,
-      affiliateCheckout
-    ).transitionOrder(providerActor, 1, "complete");
-
-    expect(ledgerService.settleBookingCompletion).toHaveBeenCalledTimes(1);
-    expect(settleCompletedBooking).toHaveBeenCalledWith({
-      bookingOrderId: 1,
-      customerUserId: 1,
-      shopId: 1,
-      serviceId: 1,
-      actorUserId: 2,
-      transactionClient: expect.anything()
-    });
-    const ledgerContext = ledgerService.settleBookingCompletion.mock.calls[0][1];
-    const affiliateContext = settleCompletedBooking.mock.calls[0][0].transactionClient;
-    expect(affiliateContext).toBe(ledgerContext?.transactionClient);
-  });
-
-  it("settles ledger side effects when confirming, cancelling, and completing booking orders", async () => {
+  it("settles ledger side effects when confirming and cancelling booking orders", async () => {
     const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
       freezeBookingAcceptance: jest.fn(async (input, context) => {
         void input;
@@ -824,20 +799,6 @@ describe("BookingService state machine", () => {
         customerUserId: 1,
         actorUserId: 2,
         insufficientBalanceConfirmation: undefined
-      }),
-      expect.anything()
-    );
-
-    await new BookingService(
-      createRepository(makeOrder("inService")),
-      ledgerService
-    ).transitionOrder(providerActor, 1, "complete");
-    expect(ledgerService.settleBookingCompletion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingOrderId: 1,
-        shopId: 1,
-        customerUserId: 1,
-        actorUserId: 2
       }),
       expect.anything()
     );

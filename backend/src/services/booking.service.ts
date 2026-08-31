@@ -7,6 +7,8 @@ import type {
   BookingOrderPayload,
   BookingOrderStatusPayload,
   BookingRepositoryPort,
+  FulfillmentActorInput,
+  FulfillmentMutationResult,
   ManualPaymentMutationResult,
   ManualPaymentScope,
   OrderAcceptancePausedResult,
@@ -19,6 +21,12 @@ import type {
   ScheduleSlotPayload,
   ScheduleSlotUpdateInput
 } from "../repositories/booking.repository";
+import type {
+  CreateOrderAddOnInput,
+  EndServiceInput,
+  OrderAddOnDecisionInput,
+  StartServiceInput
+} from "../validators/booking.validator";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { AuditLogService } from "./audit-log.service";
 import type { BookingLedgerSettlementPort } from "./ledger.service";
@@ -68,7 +76,7 @@ export interface OrderConfirmInput {
   };
 }
 
-type OrderAction = "confirm" | "cancel" | "start" | "complete";
+type OrderAction = "confirm" | "cancel";
 
 const ORDER_TRANSITIONS = {
   confirm: {
@@ -79,14 +87,6 @@ const ORDER_TRANSITIONS = {
     from: ["pending", "confirmed"],
     to: "cancelled"
   },
-  start: {
-    from: ["confirmed"],
-    to: "inService"
-  },
-  complete: {
-    from: ["inService"],
-    to: "completed"
-  }
 } as const satisfies Record<
   OrderAction,
   { from: readonly BookingOrderStatusPayload[]; to: BookingOrderStatusPayload }
@@ -324,6 +324,15 @@ export class BookingService {
       throw this.notFoundError();
     }
 
+    if (this.isOwningCustomerDetailActor(actor, order)) {
+      const serviceVerificationCode = await this.repository.getServiceVerificationCode?.(order.id);
+      if (!serviceVerificationCode) return order;
+      return {
+        ...order,
+        serviceVerificationCode
+      };
+    }
+
     return order;
   }
 
@@ -341,6 +350,104 @@ export class BookingService {
       reason,
       action === "confirm" ? confirmInput : undefined
     );
+  }
+
+  public async startService(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    input: StartServiceInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    const fulfillmentActor = this.getFulfillmentActor(actor, input.actor);
+    await this.assertFulfillmentOrderAccess(actor, orderId, fulfillmentActor.actor);
+    const result = await this.repository.startService({
+      ...fulfillmentActor,
+      orderId,
+      verificationCode: input.actor === "technician" ? input.verificationCode : null,
+      idempotencyKey: input.idempotencyKey,
+      requestContext: this.fulfillmentRequestContext(context)
+    });
+    const mutation = this.requireFulfillmentMutation(result);
+    if (mutation.applied) {
+      await this.notifyOrderStatusChangedBestEffort({
+        actorUserId: actor.userId,
+        orderId: mutation.order.id,
+        orderNo: mutation.order.orderNo,
+        fromStatus: "confirmed",
+        toStatus: "inService",
+        serviceName: mutation.order.serviceName,
+        recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
+      });
+    }
+    return mutation.order;
+  }
+
+  public async createOrderAddOn(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    input: CreateOrderAddOnInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    const fulfillmentActor = this.getFulfillmentActor(actor);
+    await this.assertFulfillmentOrderAccess(actor, orderId, fulfillmentActor.actor);
+    const result = await this.repository.createOrderAddOn({
+      ...fulfillmentActor,
+      orderId,
+      serviceId: input.serviceId,
+      idempotencyKey: input.idempotencyKey,
+      requestContext: this.fulfillmentRequestContext(context)
+    });
+    return this.requireFulfillmentMutation(result).order;
+  }
+
+  public async acceptOrderAddOn(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    addOnId: number,
+    input: OrderAddOnDecisionInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    return this.decideOrderAddOn(actor, orderId, addOnId, "accept", input, context);
+  }
+
+  public async rejectOrderAddOn(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    addOnId: number,
+    input: OrderAddOnDecisionInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    return this.decideOrderAddOn(actor, orderId, addOnId, "reject", input, context);
+  }
+
+  public async endService(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    input: EndServiceInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    const fulfillmentActor = this.getFulfillmentActor(actor);
+    await this.assertFulfillmentOrderAccess(actor, orderId, fulfillmentActor.actor);
+    const result = await this.repository.endService({
+      ...fulfillmentActor,
+      orderId,
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+      requestContext: this.fulfillmentRequestContext(context)
+    });
+    const mutation = this.requireFulfillmentMutation(result);
+    if (mutation.applied) {
+      await this.notifyOrderStatusChangedBestEffort({
+        actorUserId: actor.userId,
+        orderId: mutation.order.id,
+        orderNo: mutation.order.orderNo,
+        fromStatus: "inService",
+        toStatus: "awaitingCheckout",
+        serviceName: mutation.order.serviceName,
+        recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
+      });
+    }
+    return mutation.order;
   }
 
   public async confirmManualPayment(
@@ -466,6 +573,115 @@ export class BookingService {
     });
 
     return next;
+  }
+
+  private async decideOrderAddOn(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    addOnId: number,
+    decision: "accept" | "reject",
+    input: OrderAddOnDecisionInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    const fulfillmentActor = this.getFulfillmentActor(actor);
+    await this.assertFulfillmentOrderAccess(actor, orderId, fulfillmentActor.actor);
+    const result = await this.repository.decideOrderAddOn({
+      ...fulfillmentActor,
+      orderId,
+      addOnId,
+      decision,
+      idempotencyKey: input.idempotencyKey,
+      requestContext: this.fulfillmentRequestContext(context)
+    });
+    return this.requireFulfillmentMutation(result).order;
+  }
+
+  private getFulfillmentActor(
+    actor: AuthenticatedBookingActor,
+    requestedActor?: "customer" | "technician"
+  ): Omit<FulfillmentActorInput, "requestContext"> {
+    const actorType =
+      actor.currentIdentityScopeType === "technician_profile" &&
+      actor.currentIdentityScopeId &&
+      actor.currentIdentityType === "technician"
+        ? "technician"
+        : this.isCustomerFulfillmentIdentity(actor)
+          ? "customer"
+          : null;
+    if (!actorType || (requestedActor && requestedActor !== actorType)) {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.auth.identity_forbidden",
+        statusCode: 403
+      });
+    }
+    return {
+      actorUserId: actor.userId,
+      actor: actorType,
+      technicianProfileId:
+        actorType === "technician" ? (actor.currentIdentityScopeId ?? null) : null
+    };
+  }
+
+  private async assertFulfillmentOrderAccess(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    participant: "customer" | "technician"
+  ): Promise<void> {
+    const order = await this.repository.findOrderById(orderId);
+    const allowed =
+      order?.technicianProfileId &&
+      (participant === "customer"
+        ? order.customerUserId === actor.userId
+        : order.technicianProfileId === actor.currentIdentityScopeId);
+    if (!allowed) throw this.notFoundError();
+  }
+
+  private isCustomerFulfillmentIdentity(actor: AuthenticatedBookingActor): boolean {
+    if (!actor.currentIdentityType) return actor.roles.includes("customer");
+    return ["customer", "user", "u"].includes(actor.currentIdentityType);
+  }
+
+  private isOwningCustomerDetailActor(
+    actor: AuthenticatedBookingActor,
+    order: BookingOrderPayload
+  ): boolean {
+    return this.isCustomerFulfillmentIdentity(actor) && order.customerUserId === actor.userId;
+  }
+
+  private fulfillmentRequestContext(context: AuthRequestContext) {
+    return { ip: context.ip, userAgent: context.userAgent };
+  }
+
+  private requireFulfillmentMutation(
+    result: FulfillmentMutationResult
+  ): Extract<FulfillmentMutationResult, { outcome: "ok" }> {
+    if (result.outcome === "ok") return result;
+    if (result.outcome === "not_found" || result.outcome === "forbidden") {
+      throw this.notFoundError();
+    }
+    if (result.outcome === "verification_failed") {
+      throw new AppError({
+        code: ERROR_CODES.VERIFICATION_CODE_INVALID,
+        message: "error.order.verification_code_invalid",
+        statusCode: 400
+      });
+    }
+    if (result.outcome === "invalid_service") {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.order.add_on_service_invalid",
+        statusCode: 400
+      });
+    }
+    if (result.outcome === "conflict") {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency.key_reused",
+        statusCode: 409
+      });
+    }
+    throw this.invalidTransitionError();
   }
 
   private async notifyOrderStatusChangedBestEffort(
@@ -659,18 +875,6 @@ export class BookingService {
         })
       );
     }
-    if (action === "complete" && this.affiliateCheckoutService) {
-      actions.push((context) =>
-        this.affiliateCheckoutService!.settleCompletedBooking({
-          bookingOrderId: order.id,
-          customerUserId: order.customerUserId,
-          shopId: order.shopId,
-          serviceId: order.serviceId,
-          actorUserId: actor.userId,
-          transactionClient: context.transactionClient
-        }).then(() => undefined)
-      );
-    }
     return actions.length === 0
       ? {}
       : {
@@ -708,27 +912,6 @@ export class BookingService {
               customerUserId: order.customerUserId,
               actorUserId: actor.userId,
               insufficientBalanceConfirmation: confirmInput?.insufficientBalanceConfirmation
-            },
-            { transactionClient: context.transactionClient }
-          ).then(() => undefined)
-      };
-    }
-
-    if (action === "complete") {
-      return {
-        settle: (context) =>
-          this.ledgerService!.settleBookingCompletion(
-            {
-              bookingOrderId: order.id,
-              orderType: order.orderType,
-              shopId: order.shopId,
-              technicianProfileId: order.technicianProfileId,
-              serviceId: order.serviceId,
-              serviceAmountJpy: this.moneyToInteger(order.priceAmount),
-              scheduledStartAt: order.startsAt,
-              completedAt: new Date(),
-              customerUserId: order.customerUserId,
-              actorUserId: actor.userId
             },
             { transactionClient: context.transactionClient }
           ).then(() => undefined)

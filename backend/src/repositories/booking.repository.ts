@@ -1,9 +1,12 @@
 import {
   BookingOrderStatus as DatabaseBookingOrderStatus,
+  OrderServiceEventType as DatabaseOrderServiceEventType,
   Prisma,
   ServicePaymentMethod as DatabaseServicePaymentMethod,
   type PrismaClient
 } from "@prisma/client";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { env } from "../config/env";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import type {
@@ -12,7 +15,37 @@ import type {
 } from "../services/affiliate-checkout.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
-import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
+import {
+  isRetryableTransactionConflict,
+  runWithTransactionConflictRetry
+} from "../utils/transaction-conflict-retry";
+
+const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
+const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
+
+export const deriveOrderServiceVerificationCode = (orderId: number): string => {
+  const digest = createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
+    .update(SERVICE_CODE_DOMAIN)
+    .update(String(orderId))
+    .digest();
+  return String(digest.readUInt32BE(0) % 1_000_000).padStart(6, "0");
+};
+
+const hashOrderServiceVerificationCode = (orderId: number, code: string): string =>
+  createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
+    .update(SERVICE_HASH_DOMAIN)
+    .update(String(orderId))
+    .update("\u0000")
+    .update(code)
+    .digest("base64url");
+
+const serviceVerificationCodeMatches = (orderId: number, actualCode: string): boolean => {
+  const expected = Buffer.from(
+    hashOrderServiceVerificationCode(orderId, deriveOrderServiceVerificationCode(orderId))
+  );
+  const actual = Buffer.from(hashOrderServiceVerificationCode(orderId, actualCode));
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+};
 
 export type BookingOrderStatusPayload =
   | "pending"
@@ -310,6 +343,32 @@ export interface OrderStatusHistoryPayload {
   createdAt: Date;
 }
 
+export type OrderAddOnStatusPayload = "proposed" | "accepted" | "rejected";
+export type FulfillmentParticipant = "customer" | "technician";
+
+export interface OrderAddOnPayload {
+  id: number;
+  serviceId: number;
+  status: OrderAddOnStatusPayload;
+  serviceNameSnapshot: string;
+  priceAmountJpy: number;
+  currency: "JPY";
+  durationMinutes: number;
+  serviceSnapshot: unknown;
+  proposedBy: FulfillmentParticipant;
+  proposedAt: Date;
+  resolvedBy: FulfillmentParticipant | null;
+  resolvedAt: Date | null;
+  resolutionReason: string | null;
+}
+
+export interface OrderServiceSessionPayload {
+  startedAt: Date | null;
+  expectedEndsAt: Date | null;
+  endedAt: Date | null;
+  addOns: OrderAddOnPayload[];
+}
+
 export interface BookingOrderPayload {
   id: number;
   orderNo: string;
@@ -350,10 +409,62 @@ export interface BookingOrderPayload {
   note: string | null;
   cancelReason: string | null;
   affiliate: AffiliateCheckoutSummary | null;
+  serviceSession?: OrderServiceSessionPayload | null;
+  serviceVerificationCode?: string;
   createdAt: Date;
   updatedAt: Date;
   statusHistory: OrderStatusHistoryPayload[];
 }
+
+export interface FulfillmentRequestContext {
+  ip: string;
+  userAgent?: string | null;
+}
+
+export interface FulfillmentActorInput {
+  actorUserId: number;
+  actor: FulfillmentParticipant;
+  technicianProfileId: number | null;
+  requestContext: FulfillmentRequestContext;
+}
+
+export interface StartServiceRepositoryInput extends FulfillmentActorInput {
+  orderId: number;
+  verificationCode: string | null;
+  idempotencyKey: string;
+}
+
+export interface CreateOrderAddOnRepositoryInput extends FulfillmentActorInput {
+  orderId: number;
+  serviceId: number;
+  idempotencyKey: string;
+}
+
+export interface DecideOrderAddOnRepositoryInput extends FulfillmentActorInput {
+  orderId: number;
+  addOnId: number;
+  decision: "accept" | "reject";
+  idempotencyKey: string;
+}
+
+export interface EndServiceRepositoryInput extends FulfillmentActorInput {
+  orderId: number;
+  reason: string;
+  idempotencyKey: string;
+}
+
+export type FulfillmentMutationResult =
+  | { outcome: "ok"; order: BookingOrderPayload; applied: boolean }
+  | {
+      outcome:
+        | "not_found"
+        | "forbidden"
+        | "invalid_transition"
+        | "verification_failed"
+        | "invalid_service"
+        | "unresolved_add_on"
+        | "conflict";
+    };
 
 export type ManualPaymentMutationResult =
   | { outcome: "ok"; order: BookingOrderPayload; applied: boolean }
@@ -377,6 +488,15 @@ export interface BookingRepositoryPort {
   isShopSuspended?: (shopId: number) => Promise<boolean>;
   listOrders: (input: OrderListInput) => Promise<PaginatedResponse<BookingOrderPayload>>;
   findOrderById: (id: number) => Promise<BookingOrderPayload | null>;
+  getServiceVerificationCode: (orderId: number) => Promise<string>;
+  startService: (input: StartServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
+  createOrderAddOn: (
+    input: CreateOrderAddOnRepositoryInput
+  ) => Promise<FulfillmentMutationResult>;
+  decideOrderAddOn: (
+    input: DecideOrderAddOnRepositoryInput
+  ) => Promise<FulfillmentMutationResult>;
+  endService: (input: EndServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
   transitionOrder: (
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
@@ -418,6 +538,14 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
     technicianService: true;
     shop: true;
     technicianProfile: true;
+    serviceSession: {
+      include: {
+        addOns: {
+          where: { deletedAt: null };
+          orderBy: [{ proposedAt: "asc" }, { id: "asc" }];
+        };
+      };
+    };
     statusHistory: {
       orderBy: {
         createdAt: "asc";
@@ -1168,6 +1296,375 @@ export class BookingRepository implements BookingRepositoryPort {
     return order ? this.mapOrder(order) : null;
   }
 
+  public async getServiceVerificationCode(orderId: number): Promise<string> {
+    return deriveOrderServiceVerificationCode(orderId);
+  }
+
+  public startService(input: StartServiceRepositoryInput): Promise<FulfillmentMutationResult> {
+    const now = new Date();
+    return this.runFulfillmentTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      const replay = await this.resolveFulfillmentReplay(
+        tx,
+        current,
+        input,
+        DatabaseOrderServiceEventType.SERVICE_STARTED,
+        null
+      );
+      if (replay) return replay;
+      if (!current) return { outcome: "not_found" };
+      if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
+      if (current.status !== DatabaseBookingOrderStatus.CONFIRMED) {
+        return { outcome: "invalid_transition" };
+      }
+      if (
+        input.actor === "technician" &&
+        (!input.verificationCode ||
+          !serviceVerificationCodeMatches(current.id, input.verificationCode))
+      ) {
+        return { outcome: "verification_failed" };
+      }
+
+      const bookedDurationMinutes = Math.round(
+        (current.endsAt.getTime() - current.startsAt.getTime()) / 60_000
+      );
+      const durationMinutes =
+        current.serviceDurationSnapshot && current.serviceDurationSnapshot > 0
+          ? current.serviceDurationSnapshot
+          : bookedDurationMinutes;
+      if (!Number.isSafeInteger(durationMinutes) || durationMinutes <= 0) {
+        return { outcome: "invalid_service" };
+      }
+
+      const verificationHash = hashOrderServiceVerificationCode(
+        current.id,
+        deriveOrderServiceVerificationCode(current.id)
+      );
+      const existingSession = await tx.orderServiceSession.findUnique({
+        where: { bookingOrderId: current.id }
+      });
+      if (existingSession?.deletedAt || existingSession?.startedAt) {
+        return { outcome: "invalid_transition" };
+      }
+      if (existingSession && !this.constantTimeTextEquals(existingSession.verificationHash, verificationHash)) {
+        return { outcome: "conflict" };
+      }
+
+      const expectedEndsAt = new Date(now.getTime() + durationMinutes * 60_000);
+      const session = existingSession
+        ? await tx.orderServiceSession.update({
+            where: { id: existingSession.id },
+            data: {
+              verificationHash,
+              startedByUserId: input.actorUserId,
+              startedAt: now,
+              expectedEndsAt
+            }
+          })
+        : await tx.orderServiceSession.create({
+            data: {
+              bookingOrderId: current.id,
+              verificationHash,
+              startedByUserId: input.actorUserId,
+              startedAt: now,
+              expectedEndsAt
+            }
+          });
+      const updated = await tx.bookingOrder.updateMany({
+        where: {
+          id: current.id,
+          deletedAt: null,
+          status: DatabaseBookingOrderStatus.CONFIRMED
+        },
+        data: { status: DatabaseBookingOrderStatus.IN_SERVICE, updatedAt: now }
+      });
+      if (updated.count !== 1) return { outcome: "invalid_transition" };
+      await tx.orderStatusHistory.create({
+        data: {
+          bookingOrderId: current.id,
+          fromStatus: DatabaseBookingOrderStatus.CONFIRMED,
+          toStatus: DatabaseBookingOrderStatus.IN_SERVICE,
+          actorUserId: input.actorUserId,
+          reason: "service_started",
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      await tx.orderServiceEvent.create({
+        data: {
+          bookingOrderId: current.id,
+          serviceSessionId: session.id,
+          eventType: DatabaseOrderServiceEventType.SERVICE_STARTED,
+          actorUserId: input.actorUserId,
+          idempotencyKey: input.idempotencyKey,
+          metadata: this.fulfillmentEventMetadata(input),
+          occurredAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      return this.fulfillmentSuccess(tx, current.id, true);
+    });
+  }
+
+  public createOrderAddOn(
+    input: CreateOrderAddOnRepositoryInput
+  ): Promise<FulfillmentMutationResult> {
+    const now = new Date();
+    return this.runFulfillmentTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      const replay = await this.resolveFulfillmentReplay(
+        tx,
+        current,
+        input,
+        DatabaseOrderServiceEventType.ADD_ON_PROPOSED,
+        null
+      );
+      if (replay) return replay;
+      if (!current) return { outcome: "not_found" };
+      if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
+      if (current.status !== DatabaseBookingOrderStatus.IN_SERVICE) {
+        return { outcome: "invalid_transition" };
+      }
+      const session = current.serviceSession;
+      if (!session || session.deletedAt || !session.startedAt || session.endedAt) {
+        return { outcome: "invalid_transition" };
+      }
+
+      const service = await tx.service.findFirst({
+        where: {
+          id: input.serviceId,
+          shopId: current.shopId,
+          status: "published",
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true
+        }
+      });
+      const priceAmountJpy = service ? Number(service.priceAmount.toString()) : Number.NaN;
+      if (
+        !service ||
+        service.currency !== "JPY" ||
+        !Number.isSafeInteger(priceAmountJpy) ||
+        priceAmountJpy < 0 ||
+        !Number.isSafeInteger(service.durationMinutes) ||
+        service.durationMinutes <= 0
+      ) {
+        return { outcome: "invalid_service" };
+      }
+
+      const addOn = await tx.orderAddOn.create({
+        data: {
+          bookingOrderId: current.id,
+          serviceSessionId: session.id,
+          serviceId: service.id,
+          status: "PROPOSED",
+          serviceNameSnapshot: service.name,
+          priceAmountJpy,
+          currency: "JPY",
+          durationMinutes: service.durationMinutes,
+          serviceSnapshotJson: {
+            serviceId: service.id,
+            name: service.name,
+            description: service.description,
+            priceAmountJpy,
+            currency: "JPY",
+            durationMinutes: service.durationMinutes
+          },
+          proposedByUserId: input.actorUserId,
+          proposedAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      await tx.orderServiceEvent.create({
+        data: {
+          bookingOrderId: current.id,
+          serviceSessionId: session.id,
+          orderAddOnId: addOn.id,
+          eventType: DatabaseOrderServiceEventType.ADD_ON_PROPOSED,
+          actorUserId: input.actorUserId,
+          idempotencyKey: input.idempotencyKey,
+          metadata: this.fulfillmentEventMetadata(input, { serviceId: service.id }),
+          occurredAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      return this.fulfillmentSuccess(tx, current.id, true);
+    });
+  }
+
+  public decideOrderAddOn(
+    input: DecideOrderAddOnRepositoryInput
+  ): Promise<FulfillmentMutationResult> {
+    const now = new Date();
+    const eventType =
+      input.decision === "accept"
+        ? DatabaseOrderServiceEventType.ADD_ON_ACCEPTED
+        : DatabaseOrderServiceEventType.ADD_ON_REJECTED;
+    return this.runFulfillmentTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      const replay = await this.resolveFulfillmentReplay(
+        tx,
+        current,
+        input,
+        eventType,
+        input.addOnId
+      );
+      if (replay) return replay;
+      if (!current) return { outcome: "not_found" };
+      if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
+      if (current.status !== DatabaseBookingOrderStatus.IN_SERVICE || !current.serviceSession) {
+        return { outcome: "invalid_transition" };
+      }
+      await tx.$queryRaw`
+        SELECT id FROM order_add_ons
+        WHERE id = ${input.addOnId} AND booking_order_id = ${current.id} AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+      const addOn = await tx.orderAddOn.findFirst({
+        where: {
+          id: input.addOnId,
+          bookingOrderId: current.id,
+          serviceSessionId: current.serviceSession.id,
+          deletedAt: null
+        }
+      });
+      if (!addOn) return { outcome: "not_found" };
+      if (addOn.status !== "PROPOSED") return { outcome: "invalid_transition" };
+      if (addOn.proposedByUserId === input.actorUserId) return { outcome: "forbidden" };
+      const expectedEndsAt = current.serviceSession.expectedEndsAt;
+      if (input.decision === "accept" && !expectedEndsAt) {
+        return { outcome: "invalid_transition" };
+      }
+
+      const update = await tx.orderAddOn.updateMany({
+        where: { id: addOn.id, status: "PROPOSED", deletedAt: null },
+        data:
+          input.decision === "accept"
+            ? {
+                status: "ACCEPTED",
+                acceptedByUserId: input.actorUserId,
+                acceptedAt: now,
+                updatedAt: now
+              }
+            : {
+                status: "REJECTED",
+                rejectedByUserId: input.actorUserId,
+                rejectedAt: now,
+                updatedAt: now
+              }
+      });
+      if (update.count !== 1) return { outcome: "invalid_transition" };
+      if (input.decision === "accept" && expectedEndsAt) {
+        await tx.orderServiceSession.update({
+          where: { id: current.serviceSession.id },
+          data: {
+            expectedEndsAt: new Date(
+              expectedEndsAt.getTime() + addOn.durationMinutes * 60_000
+            ),
+            updatedAt: now
+          }
+        });
+      }
+      await tx.orderServiceEvent.create({
+        data: {
+          bookingOrderId: current.id,
+          serviceSessionId: current.serviceSession.id,
+          orderAddOnId: addOn.id,
+          eventType,
+          actorUserId: input.actorUserId,
+          idempotencyKey: input.idempotencyKey,
+          metadata: this.fulfillmentEventMetadata(input, { decision: input.decision }),
+          occurredAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      return this.fulfillmentSuccess(tx, current.id, true);
+    });
+  }
+
+  public endService(input: EndServiceRepositoryInput): Promise<FulfillmentMutationResult> {
+    const now = new Date();
+    return this.runFulfillmentTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      const replay = await this.resolveFulfillmentReplay(
+        tx,
+        current,
+        input,
+        DatabaseOrderServiceEventType.SERVICE_ENDED,
+        null
+      );
+      if (replay) return replay;
+      if (!current) return { outcome: "not_found" };
+      if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
+      if (current.status !== DatabaseBookingOrderStatus.IN_SERVICE || !current.serviceSession) {
+        return { outcome: "invalid_transition" };
+      }
+      const proposedCount = await tx.orderAddOn.count({
+        where: {
+          bookingOrderId: current.id,
+          serviceSessionId: current.serviceSession.id,
+          status: "PROPOSED",
+          deletedAt: null
+        }
+      });
+      if (proposedCount > 0) return { outcome: "unresolved_add_on" };
+
+      await tx.orderServiceSession.update({
+        where: { id: current.serviceSession.id },
+        data: { endedByUserId: input.actorUserId, endedAt: now, updatedAt: now }
+      });
+      const updated = await tx.bookingOrder.updateMany({
+        where: {
+          id: current.id,
+          status: DatabaseBookingOrderStatus.IN_SERVICE,
+          deletedAt: null
+        },
+        data: { status: DatabaseBookingOrderStatus.AWAITING_CHECKOUT, updatedAt: now }
+      });
+      if (updated.count !== 1) return { outcome: "invalid_transition" };
+      await tx.orderStatusHistory.create({
+        data: {
+          bookingOrderId: current.id,
+          fromStatus: DatabaseBookingOrderStatus.IN_SERVICE,
+          toStatus: DatabaseBookingOrderStatus.AWAITING_CHECKOUT,
+          actorUserId: input.actorUserId,
+          reason: input.reason,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      await tx.orderServiceEvent.create({
+        data: {
+          bookingOrderId: current.id,
+          serviceSessionId: current.serviceSession.id,
+          eventType: DatabaseOrderServiceEventType.SERVICE_ENDED,
+          actorUserId: input.actorUserId,
+          idempotencyKey: input.idempotencyKey,
+          reason: input.reason,
+          metadata: this.fulfillmentEventMetadata(input),
+          occurredAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      return this.fulfillmentSuccess(tx, current.id, true);
+    });
+  }
+
   public async transitionOrder(
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
@@ -1795,12 +2292,141 @@ export class BookingRepository implements BookingRepositoryPort {
     };
   }
 
+  private async runFulfillmentTransaction(
+    mutation: (transaction: Prisma.TransactionClient) => Promise<FulfillmentMutationResult>
+  ): Promise<FulfillmentMutationResult> {
+    const operation = () => this.client.$transaction((transaction) => mutation(transaction));
+    try {
+      return await runWithTransactionConflictRetry(operation);
+    } catch (error) {
+      if (isRetryableTransactionConflict(error)) return { outcome: "conflict" };
+      if (!this.isPrismaUniqueConflict(error)) throw error;
+      try {
+        return await runWithTransactionConflictRetry(operation);
+      } catch (replayedError) {
+        if (
+          isRetryableTransactionConflict(replayedError) ||
+          this.isPrismaUniqueConflict(replayedError)
+        ) {
+          return { outcome: "conflict" };
+        }
+        throw replayedError;
+      }
+    }
+  }
+
+  private isPrismaUniqueConflict(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const candidate = error as { code?: unknown };
+    return candidate.code === "P2002";
+  }
+
+  private async lockFulfillmentOrder(
+    transaction: Prisma.TransactionClient,
+    orderId: number
+  ): Promise<void> {
+    await transaction.$queryRaw`
+      SELECT id FROM booking_orders
+      WHERE id = ${orderId} AND deleted_at IS NULL
+      FOR UPDATE
+    `;
+  }
+
+  private findFulfillmentOrder(
+    transaction: Prisma.TransactionClient,
+    orderId: number
+  ): Promise<OrderRecord | null> {
+    return transaction.bookingOrder.findFirst({
+      where: { id: orderId, deletedAt: null },
+      include: this.orderInclude()
+    });
+  }
+
+  private fulfillmentActorMatches(
+    order: OrderRecord,
+    input: FulfillmentActorInput
+  ): boolean {
+    if (!order.technicianProfileId || !order.technicianProfile) return false;
+    if (input.actor === "customer") {
+      return input.technicianProfileId === null && order.customerUserId === input.actorUserId;
+    }
+    return (
+      input.technicianProfileId === order.technicianProfileId &&
+      order.technicianProfile.userId === input.actorUserId
+    );
+  }
+
+  private async resolveFulfillmentReplay(
+    transaction: Prisma.TransactionClient,
+    current: OrderRecord | null,
+    input: FulfillmentActorInput & { idempotencyKey: string },
+    eventType: DatabaseOrderServiceEventType,
+    orderAddOnId: number | null
+  ): Promise<FulfillmentMutationResult | null> {
+    const event = await transaction.orderServiceEvent.findUnique({
+      where: { idempotencyKey: input.idempotencyKey }
+    });
+    if (!event) return null;
+    if (
+      event.bookingOrderId !== current?.id ||
+      event.eventType !== eventType ||
+      event.actorUserId !== input.actorUserId ||
+      (orderAddOnId !== null && event.orderAddOnId !== orderAddOnId)
+    ) {
+      return { outcome: "conflict" };
+    }
+    return current
+      ? { outcome: "ok", order: this.mapOrder(current), applied: false }
+      : { outcome: "not_found" };
+  }
+
+  private async fulfillmentSuccess(
+    transaction: Prisma.TransactionClient,
+    orderId: number,
+    applied: boolean
+  ): Promise<FulfillmentMutationResult> {
+    const order = await this.findFulfillmentOrder(transaction, orderId);
+    return order
+      ? { outcome: "ok", order: this.mapOrder(order), applied }
+      : { outcome: "not_found" };
+  }
+
+  private fulfillmentEventMetadata(
+    input: FulfillmentActorInput,
+    extra: Record<string, string | number> = {}
+  ): Prisma.InputJsonObject {
+    return {
+      actor: input.actor,
+      requestIp: input.requestContext.ip,
+      ...(input.requestContext.userAgent
+        ? { requestUserAgent: input.requestContext.userAgent }
+        : {}),
+      ...extra
+    };
+  }
+
+  private constantTimeTextEquals(left: string, right: string): boolean {
+    const leftBuffer = Buffer.from(left);
+    const rightBuffer = Buffer.from(right);
+    return (
+      leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
+    );
+  }
+
   private orderInclude() {
     return {
       service: true,
       technicianService: true,
       shop: true,
       technicianProfile: true,
+      serviceSession: {
+        include: {
+          addOns: {
+            where: { deletedAt: null },
+            orderBy: [{ proposedAt: "asc" as const }, { id: "asc" as const }]
+          }
+        }
+      },
       statusHistory: {
         where: { deletedAt: null },
         orderBy: { createdAt: "asc" as const }
@@ -1904,6 +2530,49 @@ export class BookingRepository implements BookingRepositoryPort {
             rewardAllocatedNdp: order.affiliateAttributions[0].rewardAllocatedNdp,
             attributionStatus:
               order.affiliateAttributions[0].status.toLowerCase() as AffiliateCheckoutSummary["attributionStatus"]
+          }
+        : null,
+      serviceSession: order.serviceSession
+        ? {
+            startedAt: order.serviceSession.startedAt,
+            expectedEndsAt: order.serviceSession.expectedEndsAt,
+            endedAt: order.serviceSession.endedAt,
+            addOns: order.serviceSession.addOns.map((addOn) => {
+              const accepted = addOn.status === "ACCEPTED";
+              const rejected = addOn.status === "REJECTED";
+              const resolvedByUserId = accepted
+                ? addOn.acceptedByUserId
+                : rejected
+                  ? addOn.rejectedByUserId
+                  : null;
+              return {
+                id: addOn.id,
+                serviceId: addOn.serviceId,
+                status: addOn.status.toLowerCase() as OrderAddOnStatusPayload,
+                serviceNameSnapshot: addOn.serviceNameSnapshot,
+                priceAmountJpy: addOn.priceAmountJpy,
+                currency: "JPY" as const,
+                durationMinutes: addOn.durationMinutes,
+                serviceSnapshot: addOn.serviceSnapshotJson,
+                proposedBy:
+                  addOn.proposedByUserId === order.customerUserId
+                    ? ("customer" as const)
+                    : ("technician" as const),
+                proposedAt: addOn.proposedAt,
+                resolvedBy:
+                  resolvedByUserId === null
+                    ? null
+                    : resolvedByUserId === order.customerUserId
+                      ? ("customer" as const)
+                      : ("technician" as const),
+                resolvedAt: accepted
+                  ? addOn.acceptedAt
+                  : rejected
+                    ? addOn.rejectedAt
+                    : null,
+                resolutionReason: addOn.resolutionReason
+              };
+            })
           }
         : null,
       createdAt: order.createdAt,

@@ -21,12 +21,17 @@ import { AffiliateLinkTokenService } from "../services/affiliate-link-token.serv
 import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  createOrderAddOnBodySchema,
+  endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
   orderConfirmBodySchema,
+  orderAddOnDecisionBodySchema,
+  orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  startServiceBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotListQuerySchema,
   scheduleSlotUpdateBodySchema
@@ -39,8 +44,9 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   getOrder: "order:read",
   confirm: "order:confirm",
   cancel: "order:cancel",
-  start: "order:start",
-  complete: "order:complete",
+  serviceStart: "order:service:start",
+  addOnWrite: "order:add-on:write",
+  serviceEnd: "order:service:end",
   merchantPaymentWrite: "merchant-admin:order-payment:write",
   backofficePaymentWrite: "backoffice:order-payment:write",
   scheduleList: "schedule:slots:list",
@@ -130,18 +136,39 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     controller.cancelOrder
   );
   router.post(
-    "/orders/:id/start",
+    "/orders/:id/service/start",
     authenticate(),
-    authorize(BOOKING_ROUTE_PERMISSIONS.start),
-    validateRequest({ params: orderIdParamSchema }),
-    controller.startOrder
+    authorize(BOOKING_ROUTE_PERMISSIONS.serviceStart),
+    validateRequest({ params: orderIdParamSchema, body: startServiceBodySchema }),
+    controller.startService
   );
   router.post(
-    "/orders/:id/complete",
+    "/orders/:id/add-ons",
     authenticate(),
-    authorize(BOOKING_ROUTE_PERMISSIONS.complete),
-    validateRequest({ params: orderIdParamSchema }),
-    controller.completeOrder
+    authorize(BOOKING_ROUTE_PERMISSIONS.addOnWrite),
+    validateRequest({ params: orderIdParamSchema, body: createOrderAddOnBodySchema }),
+    controller.createOrderAddOn
+  );
+  router.post(
+    "/orders/:id/add-ons/:addOnId/accept",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.addOnWrite),
+    validateRequest({ params: orderAddOnIdParamsSchema, body: orderAddOnDecisionBodySchema }),
+    controller.acceptOrderAddOn
+  );
+  router.post(
+    "/orders/:id/add-ons/:addOnId/reject",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.addOnWrite),
+    validateRequest({ params: orderAddOnIdParamsSchema, body: orderAddOnDecisionBodySchema }),
+    controller.rejectOrderAddOn
+  );
+  router.post(
+    "/orders/:id/service/end",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.serviceEnd),
+    validateRequest({ params: orderIdParamSchema, body: endServiceBodySchema }),
+    controller.endService
   );
   router.post(
     "/merchant-admin/orders/:id/payment/confirm",

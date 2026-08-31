@@ -4,12 +4,17 @@ import { successResponse } from "../utils/api-response";
 import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  createOrderAddOnBodySchema,
+  endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
   orderConfirmBodySchema,
+  orderAddOnDecisionBodySchema,
+  orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  startServiceBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotListQuerySchema,
   scheduleSlotUpdateBodySchema
@@ -149,7 +154,7 @@ export class BookingController {
     }
   };
 
-  public startOrder = async (
+  public startService = async (
     request: Request,
     response: Response,
     next: NextFunction
@@ -159,10 +164,11 @@ export class BookingController {
         .status(200)
         .json(
           successResponse(
-            await this.bookingService.transitionOrder(
+            await this.bookingService.startService(
               this.getActor(response),
               this.getOrderId(request),
-              "start"
+              startServiceBodySchema.parse(request.body),
+              getRequestContext(request)
             )
           )
         );
@@ -171,7 +177,7 @@ export class BookingController {
     }
   };
 
-  public completeOrder = async (
+  public createOrderAddOn = async (
     request: Request,
     response: Response,
     next: NextFunction
@@ -181,13 +187,81 @@ export class BookingController {
         .status(200)
         .json(
           successResponse(
-            await this.bookingService.transitionOrder(
+            await this.bookingService.createOrderAddOn(
               this.getActor(response),
               this.getOrderId(request),
-              "complete"
+              createOrderAddOnBodySchema.parse(request.body),
+              getRequestContext(request)
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public acceptOrderAddOn = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const params = orderAddOnIdParamsSchema.parse(request.params);
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.acceptOrderAddOn(
+            this.getActor(response),
+            params.id,
+            params.addOnId,
+            orderAddOnDecisionBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public rejectOrderAddOn = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const params = orderAddOnIdParamsSchema.parse(request.params);
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.rejectOrderAddOn(
+            this.getActor(response),
+            params.id,
+            params.addOnId,
+            orderAddOnDecisionBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public endService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.endService(
+            this.getActor(response),
+            this.getOrderId(request),
+            endServiceBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }
