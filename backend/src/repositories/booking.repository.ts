@@ -21,6 +21,10 @@ import {
   isRetryableTransactionConflict,
   runWithTransactionConflictRetry
 } from "../utils/transaction-conflict-retry";
+import {
+  calculateOrderCheckoutSnapshot,
+  OrderCheckoutSnapshotError
+} from "./order-checkout-calculation";
 
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
@@ -2953,81 +2957,22 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   private calculateCheckout(current: OrderRecord, rate: CheckoutRateSnapshotInput) {
-    const maxInt = 2_147_483_647;
-    if (current.currency !== "JPY") throw new CheckoutTransactionAbort("invalid_snapshot");
-    const baseAmountJpy = current.affiliateAttributions[0]
-      ? current.affiliateAttributions[0].originalPriceJpy
-      : this.exactJpyInteger(current.servicePriceSnapshot ?? current.priceAmount);
-    const discountAmountJpy = current.affiliateAttributions[0]?.customerDiscountJpy ?? 0;
-    const accepted =
-      current.serviceSession?.addOns.filter(
-        (addOn) => addOn.status === "ACCEPTED" && addOn.deletedAt === null
-      ) ?? [];
-    for (const addOn of accepted) {
-      if (addOn.currency !== "JPY") throw new CheckoutTransactionAbort("invalid_snapshot");
-      this.assertPersistedInt(addOn.priceAmountJpy, maxInt);
-    }
-    this.assertPersistedInt(baseAmountJpy, maxInt);
-    this.assertPersistedInt(discountAmountJpy, maxInt);
-    this.assertPersistedInt(rate.ndpUnits, maxInt);
-    this.assertPersistedInt(rate.jpyUnits, maxInt);
-    this.assertPersistedInt(rate.ruleId, maxInt);
-    this.assertPersistedInt(rate.version, maxInt);
-    if (rate.ndpUnits === 0 || rate.jpyUnits === 0 || rate.ruleId === 0 || rate.version === 0) {
-      throw new CheckoutTransactionAbort("invalid_snapshot");
-    }
-    const affiliate = current.affiliateAttributions[0];
-    if (
-      affiliate &&
-      (affiliate.finalPriceJpy < 0 ||
-        affiliate.originalPriceJpy - affiliate.customerDiscountJpy !== affiliate.finalPriceJpy)
-    ) {
-      throw new CheckoutTransactionAbort("invalid_snapshot");
-    }
-    const addOnTotal = accepted.reduce((total, addOn) => total + BigInt(addOn.priceAmountJpy), 0n);
-    const checkoutAmount = BigInt(baseAmountJpy) + addOnTotal - BigInt(discountAmountJpy);
-    if (checkoutAmount < 0n || checkoutAmount > BigInt(maxInt) || addOnTotal > BigInt(maxInt)) {
-      throw new CheckoutTransactionAbort("invalid_snapshot");
-    }
-    const payable =
-      (checkoutAmount * BigInt(rate.ndpUnits) + BigInt(rate.jpyUnits) - 1n) /
-      BigInt(rate.jpyUnits);
-    if (payable > BigInt(maxInt)) throw new CheckoutTransactionAbort("invalid_snapshot");
-    const addOnAmountJpy = Number(addOnTotal);
-    const checkoutAmountJpy = Number(checkoutAmount);
-    const rateSnapshot = {
-      ruleId: rate.ruleId,
-      publicId: rate.publicId,
-      version: rate.version,
-      ndpUnits: rate.ndpUnits,
-      jpyUnits: rate.jpyUnits,
-      effectiveFrom: rate.effectiveFrom.toISOString()
-    };
-    return {
-      baseAmountJpy,
-      addOnAmountJpy,
-      discountAmountJpy,
-      checkoutAmountJpy,
-      payableNdp: Number(payable),
-      rate: rateSnapshot,
-      calculation: {
-        formula: "base_plus_accepted_add_ons_minus_discount" as const,
-        baseAmountJpy,
-        acceptedAddOnIds: accepted.map((addOn) => addOn.id),
-        addOnAmountJpy,
-        discountAmountJpy,
-        checkoutAmountJpy,
-        rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" as const
+    try {
+      return calculateOrderCheckoutSnapshot(
+        {
+          currency: current.currency,
+          servicePrice: (current.servicePriceSnapshot ?? current.priceAmount).toString(),
+          addOns: current.serviceSession?.addOns ?? [],
+          affiliateAttribution: current.affiliateAttributions[0] ?? null
+        },
+        rate
+      );
+    } catch (error) {
+      if (error instanceof OrderCheckoutSnapshotError) {
+        throw new CheckoutTransactionAbort("invalid_snapshot");
       }
-    };
-  }
-
-  private exactJpyInteger(value: DecimalLike | number): number {
-    const text = typeof value === "number" ? String(value) : value.toString();
-    if (!/^\d+(?:\.0+)?$/.test(text)) throw new CheckoutTransactionAbort("invalid_snapshot");
-    const parsed = Number(text);
-    if (!Number.isSafeInteger(parsed)) throw new CheckoutTransactionAbort("invalid_snapshot");
-    return parsed;
+      throw error;
+    }
   }
 
   private assertPersistedInt(value: number, maxInt: number): void {

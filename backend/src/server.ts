@@ -15,6 +15,7 @@ import { IdentityApplicationPurgeRepository } from "./repositories/identity-appl
 import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
+import { OrderServiceExpiryRepository } from "./repositories/order-service-expiry.repository";
 import { RealtimeRepository } from "./repositories/realtime.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
@@ -26,6 +27,7 @@ import { IdentityApplicationPurgeService } from "./services/identity-application
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
 import { RedisAuthSessionStore } from "./services/auth-session.store";
 import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-outbox.service";
+import { OrderServiceExpiryService } from "./services/order-service-expiry.service";
 import { ExchangeService } from "./services/exchange.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
@@ -41,6 +43,7 @@ import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worke
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
 import { MerchantShopAuditOutboxWorker } from "./workers/merchant-shop-audit-outbox.worker";
+import { OrderServiceExpiryWorker } from "./workers/order-service-expiry.worker";
 
 const realtimeEventGateway = new SseRealtimeEventGateway({
   eventBus: new RedisRealtimeEventBus({
@@ -163,6 +166,16 @@ const bookingUserRewardExpiryWorker = new BookingUserRewardExpiryWorker(
   env.BOOKING_USER_REWARD_EXPIRY_INTERVAL_MS,
   env.BOOKING_USER_REWARD_EXPIRY_BATCH_SIZE
 );
+const orderServiceExpiryWorker = new OrderServiceExpiryWorker(
+  new OrderServiceExpiryService(
+    new OrderServiceExpiryRepository(undefined, ({ orderId, code, message }) => {
+      logger.error({ orderId, code, message }, "Order service expiry candidate failed");
+    })
+  ),
+  logger,
+  env.ORDER_SERVICE_EXPIRY_INTERVAL_MS,
+  env.ORDER_SERVICE_EXPIRY_BATCH_SIZE
+);
 const exchangePostExpiryWorker = new ExchangePostExpiryWorker(
   exchangeService,
   logger,
@@ -209,6 +222,7 @@ const server = app.listen(env.PORT, () => {
   identityApplicationPurgeWorker.start();
   affiliateTaskExpiryWorker.start();
   bookingUserRewardExpiryWorker.start();
+  orderServiceExpiryWorker.start();
   if (env.EXCHANGE_EXPIRY_WORKER_ENABLED) {
     exchangePostExpiryWorker.start();
   }
@@ -232,6 +246,7 @@ const shutdown = createShutdownHandler({
       logger.error({ error }, "Realtime gateway shutdown failed");
     });
     bookingUserRewardExpiryWorker.stop();
+    orderServiceExpiryWorker.stop();
     exchangePostExpiryWorker.stop();
     contentPublicationWorker.stop();
     affiliateAllianceInvitationExpiryWorker.stop();
