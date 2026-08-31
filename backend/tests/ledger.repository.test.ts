@@ -620,4 +620,117 @@ describe("LedgerRepository transaction mapping", () => {
       select: { isTestAccount: true }
     });
   });
+
+  it.each([
+    ["NDP", "PENDING"],
+    ["TEST_NDP", "TEST_ONLY"]
+  ] as const)("persists %s Request reconciliation with %s status", async (currency, status) => {
+    const create = jest.fn().mockResolvedValue({ id: 1 });
+    const repository = new LedgerRepository({ financeReconciliation: { create } } as never);
+
+    await repository.createExchangeRequestReconciliation({
+      transactionId: 401,
+      referenceId: 71,
+      currency,
+      expectedAmount: 1_000,
+      actualAmount: 1_000
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        transactionId: 401,
+        referenceType: "exchange_request",
+        referenceId: 71,
+        status,
+        currency,
+        expectedAmount: 1_000,
+        actualAmount: 1_000,
+        differenceAmount: 0
+      }
+    });
+  });
+
+  it("completes a Request hold with the exact captured amount", async () => {
+    const financialUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    const holdUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    const at = new Date("2026-08-31T06:00:00.000Z");
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 301,
+      exchangePostId: 71,
+      payerType: "user",
+      payerId: 41,
+      walletOwnerType: "USER",
+      walletOwnerId: 41,
+      currency: "TEST_NDP",
+      feeRuleSetId: 51,
+      feeRuleSetVersion: 3,
+      feeRuleId: 52,
+      feeCalculationLogId: 81,
+      walletHoldId: 201,
+      amountNdp: 1_000,
+      state: "CAPTURED",
+      capturedAt: at,
+      releasedAt: null,
+      createdAt: at,
+      updatedAt: at
+    });
+    const repository = new LedgerRepository({
+      exchangeRequestFinancial: { updateMany: financialUpdate, findFirst },
+      walletHold: { updateMany: holdUpdate }
+    } as never);
+
+    await expect(
+      repository.completeExchangeRequestFinancial({
+        financialId: 301,
+        walletHoldId: 201,
+        expectedState: "held",
+        state: "captured",
+        amountNdp: 1_000,
+        occurredAt: at,
+        transactionId: 401
+      })
+    ).resolves.toMatchObject({ state: "captured", amountNdp: 1_000 });
+    expect(holdUpdate).toHaveBeenCalledWith({
+      where: { id: 201, status: "active", deletedAt: null },
+      data: expect.objectContaining({
+        status: "captured",
+        capturedAmountNdp: { increment: 1_000 },
+        capturedAt: at
+      })
+    });
+  });
+
+  it("preserves a shop wallet owner returned by the MySQL financial row lock", async () => {
+    const at = new Date("2026-08-31T06:00:00.000Z");
+    const queryRaw = jest.fn().mockResolvedValue([
+      {
+        id: 302,
+        exchangePostId: 72,
+        payerType: "shop",
+        payerId: 9,
+        walletOwnerType: "shop",
+        walletOwnerId: 9,
+        currency: "TEST_NDP",
+        feeRuleSetId: 51,
+        feeRuleSetVersion: 3,
+        feeRuleId: 52,
+        feeCalculationLogId: 82,
+        walletHoldId: 202,
+        amountNdp: 1_000,
+        state: "held",
+        capturedAt: null,
+        releasedAt: null,
+        createdAt: at,
+        updatedAt: at
+      }
+    ]);
+    const repository = new LedgerRepository({ $queryRaw: queryRaw } as never);
+
+    await expect(repository.lockExchangeRequestFinancialByPostId(72)).resolves.toMatchObject({
+      payerType: "shop",
+      walletOwnerType: "shop",
+      walletOwnerId: 9,
+      state: "held"
+    });
+  });
 });

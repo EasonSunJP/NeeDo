@@ -8,6 +8,7 @@ describe("TestNdpProvisioningRepository", () => {
         create: jest.fn(async () => ({ id: 301 }))
       },
       walletLedger: { create: jest.fn(async () => ({ id: 401 })) },
+      financeReconciliation: { create: jest.fn(async () => ({ id: 451 })) },
       auditLog: { create: jest.fn(async () => ({ id: 501 })) }
     };
     const repository = new TestNdpProvisioningRepository(client as never);
@@ -73,6 +74,7 @@ describe("TestNdpProvisioningRepository", () => {
     const client = {
       ledgerTransaction: { create: jest.fn(async () => ({ id: 302 })) },
       walletLedger: { create: jest.fn() },
+      financeReconciliation: { create: jest.fn(async () => ({ id: 452 })) },
       auditLog: { create: jest.fn(async () => ({ id: 502 })) }
     };
     const repository = new TestNdpProvisioningRepository(client as never);
@@ -91,5 +93,52 @@ describe("TestNdpProvisioningRepository", () => {
     });
     expect(client.walletLedger.create).not.toHaveBeenCalled();
     expect(client.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("records scoped shop funding as Test-only finance evidence", async () => {
+    const client = {
+      wallet: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      ledgerTransaction: { create: jest.fn(async () => ({ id: 303 })) },
+      walletLedger: { create: jest.fn(async () => ({ id: 403 })) },
+      financeReconciliation: { create: jest.fn(async () => ({ id: 453 })) },
+      auditLog: { create: jest.fn(async () => ({ id: 503 })) }
+    };
+    const repository = new TestNdpProvisioningRepository(client as never);
+
+    await expect(
+      repository.createShopCalibration({
+        idempotencyKey: "exchange-request-shop-test-ndp-v1:shop:9:calibrate",
+        actorUserId: 41,
+        shopId: 9,
+        walletId: 91,
+        amount: 80_000,
+        direction: "available_credit",
+        availableDelta: 80_000,
+        currency: "TEST_NDP",
+        frozenBalance: 0,
+        targetAvailableBalance: 100_000
+      })
+    ).resolves.toMatchObject({
+      status: "applied",
+      userId: 41,
+      shopId: 9,
+      availableBalance: 100_000
+    });
+    expect(client.financeReconciliation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        transactionId: 303,
+        referenceType: "exchange_request_test_shop_funding",
+        referenceId: 9,
+        status: "TEST_ONLY",
+        currency: "TEST_NDP"
+      })
+    });
+    expect(client.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: 41,
+        action: "test_ndp.shop.calibrate",
+        targetType: "ledger_transaction"
+      })
+    });
   });
 });

@@ -5,6 +5,8 @@ import type {
   FinanceReconciliationListInput,
   FinanceReconciliationPayload,
   FinanceReconciliationStatus,
+  ExchangeRequestFinancialPayload,
+  ExchangeRequestFreezeInput,
   LedgerRepositoryPort,
   LedgerTransactionClient,
   LedgerTransactionListInput,
@@ -22,6 +24,7 @@ import type {
   WalletAdjustmentStatus,
   WalletAdjustmentType,
   WalletHoldPayload,
+  WalletHoldFeeType,
   WalletHoldStatus,
   WalletLookupInput,
   WalletOwnerType,
@@ -57,6 +60,9 @@ type FinanceReconciliationRecord = Prisma.FinanceReconciliationGetPayload<{
 }>;
 
 type WalletHoldRecord = Prisma.WalletHoldGetPayload<Record<string, never>>;
+type ExchangeRequestFinancialRecord = Prisma.ExchangeRequestFinancialGetPayload<
+  Record<string, never>
+>;
 type WalletAdjustmentRequestRecord = Prisma.WalletAdjustmentRequestGetPayload<
   Record<string, never>
 >;
@@ -103,6 +109,26 @@ type LockedWalletRow = {
   currency: string;
   availableBalance: number;
   frozenBalance: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+type LockedExchangeRequestFinancialRow = {
+  id: number;
+  exchangePostId: number;
+  payerType: string;
+  payerId: number;
+  walletOwnerType: string;
+  walletOwnerId: number;
+  currency: string;
+  feeRuleSetId: number;
+  feeRuleSetVersion: number;
+  feeRuleId: number;
+  feeCalculationLogId: number;
+  walletHoldId: number;
+  amountNdp: number;
+  state: string;
+  capturedAt: Date | null;
+  releasedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -235,6 +261,232 @@ export class LedgerRepository implements LedgerRepositoryPort {
     });
 
     return wallet ? this.mapWallet(wallet) : null;
+  }
+
+  public async findExchangeRequestFinancialByPostId(
+    exchangePostId: number
+  ): Promise<ExchangeRequestFinancialPayload | null> {
+    const financial = await this.client.exchangeRequestFinancial.findFirst({
+      where: { exchangePostId, deletedAt: null }
+    });
+
+    return financial ? this.mapExchangeRequestFinancial(financial) : null;
+  }
+
+  public async lockExchangeRequestFinancialByPostId(
+    exchangePostId: number
+  ): Promise<ExchangeRequestFinancialPayload | null> {
+    const rows = await this.client.$queryRaw<LockedExchangeRequestFinancialRow[]>(
+      Prisma.sql`SELECT
+          id,
+          exchange_post_id AS exchangePostId,
+          payer_type AS payerType,
+          payer_id AS payerId,
+          wallet_owner_type AS walletOwnerType,
+          wallet_owner_id AS walletOwnerId,
+          currency,
+          fee_rule_set_id AS feeRuleSetId,
+          fee_rule_set_version AS feeRuleSetVersion,
+          fee_rule_id AS feeRuleId,
+          fee_calculation_log_id AS feeCalculationLogId,
+          wallet_hold_id AS walletHoldId,
+          amount_ndp AS amountNdp,
+          state,
+          captured_at AS capturedAt,
+          released_at AS releasedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM exchange_request_financials
+        WHERE exchange_post_id = ${exchangePostId}
+          AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const financial = rows[0];
+
+    return financial ? this.mapExchangeRequestFinancial(financial) : null;
+  }
+
+  public async findWalletHoldByExchangePostId(
+    exchangePostId: number
+  ): Promise<WalletHoldPayload | null> {
+    const hold = await this.client.walletHold.findFirst({
+      where: { exchangePostId, deletedAt: null }
+    });
+
+    return hold ? this.mapWalletHold(hold) : null;
+  }
+
+  public async createExchangeRequestFreezeEvidence(input: {
+    freeze: ExchangeRequestFreezeInput;
+    walletId: number;
+    availableBalanceAfter: number;
+    frozenBalanceAfter: number;
+  }): Promise<ExchangeRequestFinancialPayload> {
+    const { freeze } = input;
+    const transaction = await this.createTransaction({
+      idempotencyKey: `exchange-request:${freeze.exchangePostId}:freeze`,
+      type: "exchange_request_publication_freeze",
+      referenceType: "exchange_request",
+      referenceId: freeze.exchangePostId,
+      actorUserId: freeze.actorUserId,
+      amount: freeze.fee.amountNdp,
+      currency: freeze.currency,
+      metadata: {
+        payerType: freeze.payerType,
+        payerId: freeze.payerId,
+        walletOwnerType: freeze.walletOwnerType,
+        walletOwnerId: freeze.walletOwnerId,
+        walletId: input.walletId,
+        feeRuleSetId: freeze.fee.ruleSetId,
+        feeRuleSetVersion: freeze.fee.ruleSetVersion,
+        feeRuleId: freeze.fee.ruleId,
+        feeCalculationLogId: freeze.feeCalculationLogId
+      }
+    });
+    if (freeze.fee.amountNdp > 0) {
+      await this.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: input.walletId,
+        direction: "freeze",
+        amount: freeze.fee.amountNdp,
+        availableDelta: -freeze.fee.amountNdp,
+        frozenDelta: freeze.fee.amountNdp,
+        availableBalanceAfter: input.availableBalanceAfter,
+        frozenBalanceAfter: input.frozenBalanceAfter,
+        reason: "exchange_request_publication_freeze"
+      });
+    }
+    const hold = await this.client.walletHold.create({
+      data: {
+        ownerType: this.ownerTypeToDb(freeze.walletOwnerType),
+        ownerId: freeze.walletOwnerId,
+        bookingOrderId: null,
+        exchangePostId: freeze.exchangePostId,
+        feeType: "exchange_request_publication_fee",
+        holdAmountNdp: freeze.fee.amountNdp,
+        currency: freeze.currency,
+        status: "active",
+        idempotencyKey: `exchange-request:${freeze.exchangePostId}:hold`,
+        calculationLogId: freeze.feeCalculationLogId,
+        metadata: {
+          payerType: freeze.payerType,
+          payerId: freeze.payerId,
+          walletId: input.walletId,
+          feeRuleSetVersion: freeze.fee.ruleSetVersion
+        }
+      }
+    });
+    const financial = await this.client.exchangeRequestFinancial.create({
+      data: {
+        exchangePostId: freeze.exchangePostId,
+        payerType: freeze.payerType,
+        payerId: freeze.payerId,
+        walletOwnerType: this.ownerTypeToDb(freeze.walletOwnerType),
+        walletOwnerId: freeze.walletOwnerId,
+        currency: freeze.currency,
+        feeRuleSetId: freeze.fee.ruleSetId,
+        feeRuleSetVersion: freeze.fee.ruleSetVersion,
+        feeRuleId: freeze.fee.ruleId,
+        feeCalculationLogId: freeze.feeCalculationLogId,
+        walletHoldId: hold.id,
+        amountNdp: freeze.fee.amountNdp,
+        state: "HELD"
+      }
+    });
+    await this.createExchangeRequestReconciliation({
+      transactionId: transaction.id,
+      referenceId: freeze.exchangePostId,
+      currency: freeze.currency,
+      expectedAmount: freeze.fee.amountNdp,
+      actualAmount: freeze.fee.amountNdp
+    });
+    await this.createAuditLog({
+      actorUserId: freeze.actorUserId,
+      action: "ledger.exchange_request_publication.freeze",
+      targetType: "ledger_transaction",
+      targetId: transaction.id,
+      metadata: {
+        exchangePostId: freeze.exchangePostId,
+        financialId: financial.id,
+        walletHoldId: hold.id,
+        amount: freeze.fee.amountNdp,
+        currency: freeze.currency
+      }
+    });
+
+    return this.mapExchangeRequestFinancial(financial);
+  }
+
+  public async completeExchangeRequestFinancial(input: {
+    financialId: number;
+    walletHoldId: number;
+    expectedState: "held";
+    state: "captured" | "released";
+    amountNdp: number;
+    occurredAt: Date;
+    transactionId: number;
+  }): Promise<ExchangeRequestFinancialPayload | null> {
+    const financialUpdate = await this.client.exchangeRequestFinancial.updateMany({
+      where: {
+        id: input.financialId,
+        state: "HELD",
+        deletedAt: null
+      },
+      data: {
+        state: input.state === "captured" ? "CAPTURED" : "RELEASED",
+        capturedAt: input.state === "captured" ? input.occurredAt : null,
+        releasedAt: input.state === "released" ? input.occurredAt : null
+      }
+    });
+    if (financialUpdate.count !== 1) return null;
+
+    const holdUpdate = await this.client.walletHold.updateMany({
+      where: {
+        id: input.walletHoldId,
+        status: "active",
+        deletedAt: null
+      },
+      data: {
+        status: input.state,
+        capturedAmountNdp:
+          input.state === "captured" ? { increment: input.amountNdp } : undefined,
+        releasedAmountNdp:
+          input.state === "released" ? { increment: input.amountNdp } : undefined,
+        capturedAt: input.state === "captured" ? input.occurredAt : null,
+        releasedAt: input.state === "released" ? input.occurredAt : null,
+        metadata: {
+          terminalTransactionId: input.transactionId,
+          terminalState: input.state
+        }
+      }
+    });
+    if (holdUpdate.count !== 1) return null;
+    const financial = await this.client.exchangeRequestFinancial.findFirst({
+      where: { id: input.financialId, deletedAt: null }
+    });
+
+    return financial ? this.mapExchangeRequestFinancial(financial) : null;
+  }
+
+  public async createExchangeRequestReconciliation(input: {
+    transactionId: number;
+    referenceId: number;
+    currency: LedgerCurrency;
+    expectedAmount: number;
+    actualAmount: number;
+  }): Promise<void> {
+    await this.client.financeReconciliation.create({
+      data: {
+        transactionId: input.transactionId,
+        referenceType: "exchange_request",
+        referenceId: input.referenceId,
+        status: input.currency === "TEST_NDP" ? "TEST_ONLY" : "PENDING",
+        currency: input.currency,
+        expectedAmount: input.expectedAmount,
+        actualAmount: input.actualAmount,
+        differenceAmount: input.actualAmount - input.expectedAmount
+      }
+    });
   }
 
   public async createTransaction(input: {
@@ -497,7 +749,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     ownerType: WalletOwnerType;
     ownerId: number;
     bookingOrderId: number;
-    feeType: FeeType;
+    feeType: WalletHoldFeeType;
     holdAmountNdp: number;
     currency: LedgerCurrency;
     status: WalletHoldStatus;
@@ -1233,6 +1485,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       ownerType: this.ownerTypeFromDb(hold.ownerType),
       ownerId: hold.ownerId,
       bookingOrderId: hold.bookingOrderId,
+      exchangePostId: hold.exchangePostId,
       feeType: this.feeTypeFromDb(hold.feeType),
       holdAmountNdp: hold.holdAmountNdp,
       capturedAmountNdp: hold.capturedAmountNdp,
@@ -1246,6 +1499,39 @@ export class LedgerRepository implements LedgerRepositoryPort {
       releasedAt: hold.releasedAt,
       createdAt: hold.createdAt,
       updatedAt: hold.updatedAt
+    };
+  }
+
+  private mapExchangeRequestFinancial(
+    financial: ExchangeRequestFinancialRecord | LockedExchangeRequestFinancialRow
+  ): ExchangeRequestFinancialPayload {
+    const walletOwnerType = this.ownerTypeFromDb(financial.walletOwnerType);
+    if (walletOwnerType !== "user" && walletOwnerType !== "shop") {
+      throw new Error("Invalid Exchange Request wallet owner");
+    }
+    if (financial.payerType !== "user" && financial.payerType !== "shop") {
+      throw new Error("Invalid Exchange Request payer");
+    }
+
+    return {
+      id: financial.id,
+      exchangePostId: financial.exchangePostId,
+      payerType: financial.payerType,
+      payerId: financial.payerId,
+      walletOwnerType,
+      walletOwnerId: financial.walletOwnerId,
+      currency: LedgerCurrencyService.fromStored(financial.currency),
+      feeRuleSetId: financial.feeRuleSetId,
+      feeRuleSetVersion: financial.feeRuleSetVersion,
+      feeRuleId: financial.feeRuleId,
+      feeCalculationLogId: financial.feeCalculationLogId,
+      walletHoldId: financial.walletHoldId,
+      amountNdp: financial.amountNdp,
+      state: this.exchangeRequestFinancialStateFromDb(financial.state),
+      capturedAt: financial.capturedAt,
+      releasedAt: financial.releasedAt,
+      createdAt: financial.createdAt,
+      updatedAt: financial.updatedAt
     };
   }
 
@@ -1339,16 +1625,16 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private ownerTypeFromDb(ownerType: string): WalletOwnerType {
-    if (ownerType === "ALLIANCE") {
+    if (ownerType === "ALLIANCE" || ownerType === "alliance") {
       return "alliance";
     }
-    if (ownerType === "MERCHANT_ACCOUNT") {
+    if (ownerType === "MERCHANT_ACCOUNT" || ownerType === "merchant_account") {
       return "merchant_account";
     }
-    if (ownerType === "SHOP") {
+    if (ownerType === "SHOP" || ownerType === "shop") {
       return "shop";
     }
-    if (ownerType === "PLATFORM") {
+    if (ownerType === "PLATFORM" || ownerType === "platform") {
       return "platform";
     }
 
@@ -1356,6 +1642,15 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeToDb(type: LedgerTransactionType) {
+    if (type === "exchange_request_publication_freeze") {
+      return "EXCHANGE_REQUEST_PUBLICATION_FREEZE" as const;
+    }
+    if (type === "exchange_request_publication_capture") {
+      return "EXCHANGE_REQUEST_PUBLICATION_CAPTURE" as const;
+    }
+    if (type === "exchange_request_publication_release") {
+      return "EXCHANGE_REQUEST_PUBLICATION_RELEASE" as const;
+    }
     if (type === "test_balance_calibration") {
       return "TEST_BALANCE_CALIBRATION" as const;
     }
@@ -1397,6 +1692,15 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeFromDb(type: string): LedgerTransactionType {
+    if (type === "EXCHANGE_REQUEST_PUBLICATION_FREEZE") {
+      return "exchange_request_publication_freeze";
+    }
+    if (type === "EXCHANGE_REQUEST_PUBLICATION_CAPTURE") {
+      return "exchange_request_publication_capture";
+    }
+    if (type === "EXCHANGE_REQUEST_PUBLICATION_RELEASE") {
+      return "exchange_request_publication_release";
+    }
     if (type === "TEST_BALANCE_CALIBRATION") {
       return "test_balance_calibration";
     }
@@ -1525,12 +1829,23 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return "pending";
   }
 
-  private feeTypeFromDb(value: string): FeeType {
+  private feeTypeFromDb(value: string): WalletHoldFeeType {
+    if (value === "exchange_request_publication_fee") {
+      return value;
+    }
     if (value === "c_request_dispatch_fee" || value === "user_reward" || value === "penalty") {
       return value;
     }
 
     return "b_platform_fee";
+  }
+
+  private exchangeRequestFinancialStateFromDb(
+    state: string
+  ): ExchangeRequestFinancialPayload["state"] {
+    if (state === "CAPTURED" || state === "captured") return "captured";
+    if (state === "RELEASED" || state === "released") return "released";
+    return "held";
   }
 
   private walletHoldStatus(status: string): WalletHoldStatus {
