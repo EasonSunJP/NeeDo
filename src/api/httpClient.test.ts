@@ -14,6 +14,11 @@ import {
   setStoredRefreshToken
 } from "./httpClient";
 import { clearCachedDeviceFingerprint } from "../lib/deviceFingerprint";
+import {
+  commitRotatedAuthOperation,
+  enqueueAuthRotation,
+  markAuthOperationServerRotated
+} from "../auth/authCredentialCoordinator";
 
 vi.mock("@fingerprintjs/fingerprintjs", () => ({
   default: {
@@ -109,17 +114,23 @@ describe("httpClient auth tokens", () => {
     setAuthTokens({ accessToken: staleToken, refreshToken: "admin-refresh-token" });
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({
-        code: 0,
-        message: "success",
-        data: { accessToken: alignedToken, expiresIn: 900 }
-      }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { updated: true } }));
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: { accessToken: alignedToken, expiresIn: 900 }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: { updated: true } })
+      );
 
-    await expect(httpClient.request<{ updated: boolean }>("/im/messages/1/reactions", {
-      body: { emoji: "😂" },
-      method: "PUT"
-    })).resolves.toEqual({ updated: true });
+    await expect(
+      httpClient.request<{ updated: boolean }>("/im/messages/1/reactions", {
+        body: { emoji: "😂" },
+        method: "PUT"
+      })
+    ).resolves.toEqual({ updated: true });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -142,16 +153,20 @@ describe("httpClient auth tokens", () => {
     setExpectedAuthUserId(1);
     setAuthTokens({ accessToken: mismatchedToken, refreshToken: "admin-refresh-token" });
     setAuthExpiredHandler(onAuthExpired);
-    const fetchMock = vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
-      code: 0,
-      message: "success",
-      data: { accessToken: mismatchedToken, expiresIn: 900 }
-    }));
+    const fetchMock = vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: { accessToken: mismatchedToken, expiresIn: 900 }
+      })
+    );
 
-    await expect(httpClient.request("/im/messages/1/reactions", {
-      body: { emoji: "😂" },
-      method: "PUT"
-    })).rejects.toMatchObject({
+    await expect(
+      httpClient.request("/im/messages/1/reactions", {
+        body: { emoji: "😂" },
+        method: "PUT"
+      })
+    ).rejects.toMatchObject({
       code: 401,
       message: "error.auth.session_mismatch",
       status: 401
@@ -174,7 +189,9 @@ describe("httpClient auth tokens", () => {
     });
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ code: 40003, message: "error.auth.token_invalid", data: null }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 40003, message: "error.auth.token_invalid", data: null }, 401)
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           code: 0,
@@ -185,7 +202,13 @@ describe("httpClient auth tokens", () => {
           }
         })
       )
-      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [], total: 0, page: 1, pageSize: 20 } }));
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: { list: [], total: 0, page: 1, pageSize: 20 }
+        })
+      );
 
     const result = await httpClient.request<{ list: unknown[] }>("/users", {
       query: { page: 1, pageSize: 20 }
@@ -246,12 +269,14 @@ describe("httpClient auth tokens", () => {
       jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
     );
 
-    await expect(httpClient.request("/auth/merchant-shop/switch", {
-      auth: true,
-      body: { refreshToken: "stale-refresh", shopPublicId: "shop0000000012" },
-      method: "POST",
-      unauthorizedPolicy: "caller"
-    })).rejects.toMatchObject({
+    await expect(
+      httpClient.request("/auth/merchant-shop/switch", {
+        auth: true,
+        body: { refreshToken: "stale-refresh", shopPublicId: "shop0000000012" },
+        method: "POST",
+        unauthorizedPolicy: "caller"
+      })
+    ).rejects.toMatchObject({
       code: 40105,
       message: "error.auth.token_invalid",
       status: 401
@@ -263,7 +288,7 @@ describe("httpClient auth tokens", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each([0, 900.5, 901])(
+  it.each([0, 600, 900.5, 901])(
     "does not persist a refresh response with an invalid backend TTL (%s)",
     async (expiresIn) => {
       setStoredRefreshToken("refresh-token");
@@ -290,9 +315,10 @@ describe("httpClient auth tokens", () => {
     });
     let resolveRefresh: ((response: Response) => void) | undefined;
     const fetchMock = vi.mocked(fetch).mockImplementationOnce(
-      () => new Promise<Response>((resolve) => {
-        resolveRefresh = resolve;
-      })
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRefresh = resolve;
+        })
     );
 
     const firstRefresh = refreshStoredAccessToken();
@@ -301,14 +327,16 @@ describe("httpClient auth tokens", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    resolveRefresh?.(jsonResponse({
-      code: 0,
-      message: "success",
-      data: {
-        accessToken: "fresh-access-token",
-        expiresIn: 900
-      }
-    }));
+    resolveRefresh?.(
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: {
+          accessToken: "fresh-access-token",
+          expiresIn: 900
+        }
+      })
+    );
 
     await expect(Promise.all([firstRefresh, secondRefresh])).resolves.toEqual([
       { accessToken: "fresh-access-token", expiresIn: 900 },
@@ -316,6 +344,272 @@ describe("httpClient auth tokens", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getAccessToken()).toBe("fresh-access-token");
+  });
+
+  it("retries a stale 401 once with the current credential version without refreshing or clearing", async () => {
+    setAuthTokens({
+      accessToken: "session-a-access",
+      refreshToken: "session-a-refresh"
+    });
+    const onAuthExpired = vi.fn();
+    setAuthExpiredHandler(onAuthExpired);
+    let resolveSessionARequest: ((response: Response) => void) | undefined;
+    const fetchMock = vi
+      .mocked(fetch)
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveSessionARequest = resolve;
+          })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: { owner: "session-b" } })
+      );
+
+    const request = httpClient.request<{ owner: string }>("/users/current");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    setAuthTokens({
+      accessToken: "session-b-access",
+      refreshToken: "session-b-refresh"
+    });
+    resolveSessionARequest?.(
+      jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    await expect(request).resolves.toEqual({ owner: "session-b" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/users/current",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer session-b-access" })
+      })
+    );
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/v1/auth/refresh")).toBe(false);
+    expect(getAccessToken()).toBe("session-b-access");
+    expect(getStoredRefreshToken()).toBe("session-b-refresh");
+    expect(onAuthExpired).not.toHaveBeenCalled();
+  });
+
+  it("does not publish another expiration when an old 401 arrives after terminal logout", async () => {
+    setAuthTokens({
+      accessToken: "session-a-access",
+      refreshToken: "session-a-refresh"
+    });
+    const onAuthExpired = vi.fn();
+    setAuthExpiredHandler(onAuthExpired);
+    let resolveSessionARequest: ((response: Response) => void) | undefined;
+    vi.mocked(fetch).mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveSessionARequest = resolve;
+        })
+    );
+
+    const request = httpClient.request("/users/current");
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    clearAuthTokens();
+    resolveSessionARequest?.(
+      jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    await expect(request).rejects.toMatchObject({ status: 401 });
+    expect(getAccessToken()).toBeNull();
+    expect(getStoredRefreshToken()).toBeNull();
+    expect(onAuthExpired).not.toHaveBeenCalled();
+  });
+
+  it("does not let a stale subject-alignment refresh clear a newer login", async () => {
+    const sessionAToken = accessTokenForSubject(81);
+    setAuthTokens({ accessToken: sessionAToken, refreshToken: "session-a-refresh" });
+    setExpectedAuthUserId(1);
+    const onAuthExpired = vi.fn();
+    setAuthExpiredHandler(onAuthExpired);
+    let resolveRefresh!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRefresh = resolve;
+        })
+    );
+
+    const request = httpClient.request("/users/current");
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    setAuthTokens({
+      accessToken: accessTokenForSubject(2),
+      refreshToken: "session-b-refresh"
+    });
+    setExpectedAuthUserId(2);
+    resolveRefresh(
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: { accessToken: accessTokenForSubject(1), expiresIn: 900 }
+      })
+    );
+
+    await expect(request).rejects.toMatchObject({ message: "error.auth.operation_superseded" });
+    expect(getAccessToken()).toBe(accessTokenForSubject(2));
+    expect(getStoredRefreshToken()).toBe("session-b-refresh");
+    expect(onAuthExpired).not.toHaveBeenCalled();
+  });
+
+  it("does not share a stale refresh singleflight across credential versions", async () => {
+    setAuthTokens({ accessToken: "session-a-access", refreshToken: "session-a-refresh" });
+    let resolveSessionARefresh!: (response: Response) => void;
+    const fetchMock = vi
+      .mocked(fetch)
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveSessionARefresh = resolve;
+          })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: { accessToken: "session-b-fresh-access", expiresIn: 900 }
+        })
+      );
+
+    const sessionARefresh = refreshStoredAccessToken();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    setAuthTokens({ accessToken: "session-b-access", refreshToken: "session-b-refresh" });
+    await expect(refreshStoredAccessToken()).resolves.toEqual({
+      accessToken: "session-b-fresh-access",
+      expiresIn: 900
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    resolveSessionARefresh(
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: { accessToken: "session-a-late-access", expiresIn: 900 }
+      })
+    );
+    await expect(sessionARefresh).rejects.toMatchObject({
+      message: "error.auth.operation_superseded"
+    });
+    expect(getAccessToken()).toBe("session-b-fresh-access");
+    expect(getStoredRefreshToken()).toBe("session-b-refresh");
+  });
+
+  it("does not refresh or clear an old 401 while a credential rotation owns the session", async () => {
+    setAuthTokens({ accessToken: "session-a-access", refreshToken: "session-a-refresh" });
+    let resolveOldRequest!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveOldRequest = resolve;
+        })
+    );
+    const oldRequest = httpClient.request("/protected");
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+    let releaseRotation!: () => void;
+    let signalRotationStarted!: () => void;
+    const rotationStarted = new Promise<void>((resolve) => {
+      signalRotationStarted = resolve;
+    });
+    const rotationGate = new Promise<void>((resolve) => {
+      releaseRotation = resolve;
+    });
+    const rotation = enqueueAuthRotation("switch", async (operation) => {
+      signalRotationStarted();
+      await rotationGate;
+      const rotated = { accessToken: "session-b-access", refreshToken: "session-b-refresh" };
+      expect(markAuthOperationServerRotated(operation, rotated)).toBe(true);
+      expect(
+        commitRotatedAuthOperation(operation, { expectedUserId: 2, persistClient: () => true })
+      ).toBe(true);
+    });
+    await rotationStarted;
+
+    resolveOldRequest(
+      jsonResponse({ code: 40105, message: "error.auth.token_invalid", data: null }, 401)
+    );
+    await expect(oldRequest).rejects.toMatchObject({
+      message: "error.auth.operation_superseded"
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(getStoredRefreshToken()).toBe("session-a-refresh");
+
+    releaseRotation();
+    await rotation;
+    expect(getAccessToken()).toBe("session-b-access");
+    expect(getStoredRefreshToken()).toBe("session-b-refresh");
+  });
+
+  it("retries a stale CSV 401 with the current credential even when the old owner had no refresh token", async () => {
+    setAuthTokens({ accessToken: "session-a-access" });
+    let resolveSessionA!: (response: Response) => void;
+    const fetchMock = vi
+      .mocked(fetch)
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveSessionA = resolve;
+          })
+      )
+      .mockResolvedValueOnce(
+        new Response("id\n1", {
+          headers: { "content-type": "text/csv; charset=utf-8" },
+          status: 200
+        })
+      );
+
+    const request = httpClient.requestCsvExport("/merchant-admin/export");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    setAuthTokens({ accessToken: "session-b-access", refreshToken: "session-b-refresh" });
+    resolveSessionA(
+      jsonResponse({ code: 401, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    await expect(request).resolves.toMatchObject({ csv: "id\n1" });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/merchant-admin/export",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer session-b-access" })
+      })
+    );
+  });
+
+  it("retries a stale binary 401 with the current credential", async () => {
+    setAuthTokens({ accessToken: "session-a-access" });
+    let resolveSessionA!: (response: Response) => void;
+    const fetchMock = vi
+      .mocked(fetch)
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveSessionA = resolve;
+          })
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2]), {
+          headers: { "content-type": "image/png" },
+          status: 200
+        })
+      );
+
+    const request = httpClient.requestDataUrl("/media/avatar");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    setAuthTokens({ accessToken: "session-b-access", refreshToken: "session-b-refresh" });
+    resolveSessionA(
+      jsonResponse({ code: 401, message: "error.auth.token_invalid", data: null }, 401)
+    );
+
+    await expect(request).resolves.toBe("data:image/png;base64,AQI=");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/media/avatar",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer session-b-access" })
+      })
+    );
   });
 
   it("aborts hung API requests instead of leaving login actions stuck", async () => {
@@ -331,13 +625,15 @@ describe("httpClient auth tokens", () => {
       });
     });
 
-    const request = httpClient.request("/auth/login", {
-      auth: false,
-      body: {
-        email: "admin@example.com",
-        password: "secret"
-      }
-    }).catch((error: unknown) => error);
+    const request = httpClient
+      .request("/auth/login", {
+        auth: false,
+        body: {
+          email: "admin@example.com",
+          password: "secret"
+        }
+      })
+      .catch((error: unknown) => error);
 
     await vi.advanceTimersByTimeAsync(apiRequestTimeoutMs);
 
@@ -389,8 +685,12 @@ describe("httpClient auth tokens", () => {
 
   it("sends protected application images as raw binary without a JSON content type", async () => {
     setAuthTokens({ accessToken: "applicant-access-token" });
-    const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "portrait.jpg", { type: "image/jpeg" });
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { id: 7 } }));
+    const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "portrait.jpg", {
+      type: "image/jpeg"
+    });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: { id: 7 } })
+    );
 
     await httpClient.request("/identity-applications/3/media", {
       body: file,
@@ -418,7 +718,7 @@ describe("httpClient auth tokens", () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response("shop_name,total_net_pay_jpy\nGINZA Calm Body Lab,12960", {
         headers: {
-          "content-disposition": "attachment; filename=\"merchant-pay-runs-2026-06-04.csv\"",
+          "content-disposition": 'attachment; filename="merchant-pay-runs-2026-06-04.csv"',
           "content-type": "text/csv; charset=utf-8"
         },
         status: 200
@@ -444,16 +744,21 @@ describe("httpClient auth tokens", () => {
 
   it("adds the selected shop scope to requests made during a read-only merchant preview", async () => {
     setAuthTokens({ accessToken: "admin-access-token" });
-    window.sessionStorage.setItem("needo.merchant-admin.read-only-preview", JSON.stringify({
-      version: 1,
-      subjectType: "shop",
-      subjectId: 22,
-      subjectName: "Kichijoji Family Care",
-      selectedShopId: 22,
-      shops: [{ id: 22, name: "Kichijoji Family Care" }],
-      returnTo: "/admin/merchants"
-    }));
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [] } }));
+    window.sessionStorage.setItem(
+      "needo.merchant-admin.read-only-preview",
+      JSON.stringify({
+        version: 1,
+        subjectType: "shop",
+        subjectId: 22,
+        subjectName: "Kichijoji Family Care",
+        selectedShopId: 22,
+        shops: [{ id: 22, name: "Kichijoji Family Care" }],
+        returnTo: "/admin/merchants"
+      })
+    );
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: { list: [] } })
+    );
 
     await httpClient.request("/merchant-admin/orders");
 
@@ -469,20 +774,25 @@ describe("httpClient auth tokens", () => {
 
   it("blocks merchant-preview writes in the client before they reach the network", async () => {
     setAuthTokens({ accessToken: "admin-access-token" });
-    window.sessionStorage.setItem("needo.merchant-admin.read-only-preview", JSON.stringify({
-      version: 1,
-      subjectType: "shop",
-      subjectId: 22,
-      subjectName: "Kichijoji Family Care",
-      selectedShopId: 22,
-      shops: [{ id: 22, name: "Kichijoji Family Care" }],
-      returnTo: "/admin/merchants"
-    }));
+    window.sessionStorage.setItem(
+      "needo.merchant-admin.read-only-preview",
+      JSON.stringify({
+        version: 1,
+        subjectType: "shop",
+        subjectId: 22,
+        subjectName: "Kichijoji Family Care",
+        selectedShopId: 22,
+        shops: [{ id: 22, name: "Kichijoji Family Care" }],
+        returnTo: "/admin/merchants"
+      })
+    );
 
-    await expect(httpClient.request("/merchant-admin/shop", {
-      body: { name: "Must not be saved" },
-      method: "PATCH"
-    })).rejects.toMatchObject({
+    await expect(
+      httpClient.request("/merchant-admin/shop", {
+        body: { name: "Must not be saved" },
+        method: "PATCH"
+      })
+    ).rejects.toMatchObject({
       code: 403,
       message: "error.merchant_preview.read_only",
       status: 403
@@ -507,7 +817,9 @@ describe("httpClient auth tokens", () => {
 
   it("does not expose a public Authorization header on pre-login requests", async () => {
     vi.stubEnv("VITE_API_PUBLIC_AUTHORIZATION", "Bearer public-prelogin-token");
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: { ok: true } })
+    );
 
     await httpClient.request("/login", {
       auth: false,
@@ -537,15 +849,17 @@ describe("httpClient auth tokens", () => {
       })
     );
 
-    await expect(httpClient.requestDataUrl("/captcha", {
-      auth: false,
-      method: "GET",
-      query: {
-        token: "visitor-token",
-        r: "captcha-request"
-      },
-      retryOnUnauthorized: false
-    })).resolves.toBe("data:image/png;base64,AQID");
+    await expect(
+      httpClient.requestDataUrl("/captcha", {
+        auth: false,
+        method: "GET",
+        query: {
+          token: "visitor-token",
+          r: "captcha-request"
+        },
+        retryOnUnauthorized: false
+      })
+    ).resolves.toBe("data:image/png;base64,AQID");
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/captcha?token=visitor-token&r=captcha-request",
@@ -566,7 +880,9 @@ describe("httpClient auth tokens", () => {
     });
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ code: 40003, message: "error.auth.token_invalid", data: null }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 40003, message: "error.auth.token_invalid", data: null }, 401)
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           code: 0,
@@ -613,22 +929,26 @@ describe("httpClient auth tokens", () => {
   });
 
   it("can route legacy captcha requests through a dedicated local proxy base", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
-      code: 0,
-      msg: "success",
-      data: "data:image/png;base64,abc"
-    }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        code: 0,
+        msg: "success",
+        data: "data:image/png;base64,abc"
+      })
+    );
 
-    await expect(httpClient.requestDataUrl("/captcha", {
-      auth: false,
-      baseUrl: "/legacy-auth",
-      method: "GET",
-      query: {
-        token: "visitor-token",
-        r: "captcha-request"
-      },
-      retryOnUnauthorized: false
-    })).resolves.toBe("data:image/png;base64,abc");
+    await expect(
+      httpClient.requestDataUrl("/captcha", {
+        auth: false,
+        baseUrl: "/legacy-auth",
+        method: "GET",
+        query: {
+          token: "visitor-token",
+          r: "captcha-request"
+        },
+        retryOnUnauthorized: false
+      })
+    ).resolves.toBe("data:image/png;base64,abc");
 
     expect(fetch).toHaveBeenCalledWith(
       "/legacy-auth/captcha?token=visitor-token&r=captcha-request",
@@ -640,7 +960,9 @@ describe("httpClient auth tokens", () => {
   });
 
   it("does not attach the device fingerprint header by default", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: { ok: true } })
+    );
 
     await httpClient.request("/login", {
       auth: false,
@@ -665,7 +987,9 @@ describe("httpClient auth tokens", () => {
     vi.stubEnv("VITE_ENABLE_DEVICE_TOKEN_HEADER", "true");
     const { agent } = createFingerprintAgent("legacy-device-token");
     vi.mocked(FingerprintJS.load).mockResolvedValue(agent);
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: { ok: true } })
+    );
 
     await httpClient.request("/login", {
       auth: false,
@@ -690,7 +1014,9 @@ describe("httpClient auth tokens", () => {
     vi.stubEnv("VITE_ENABLE_DEVICE_FINGERPRINT_HEADER", "true");
     const { agent } = createFingerprintAgent("visitor-http-client");
     vi.mocked(FingerprintJS.load).mockResolvedValue(agent);
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: { ok: true } })
+    );
 
     await httpClient.request("/login", {
       auth: false,

@@ -2,7 +2,12 @@
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GoogleCredentialResult, RegistrationStartInput, VerificationChallengeInput, VerificationChallengePayload } from "../api/auth";
+import type {
+  GoogleCredentialResult,
+  RegistrationStartInput,
+  VerificationChallengeInput,
+  VerificationChallengePayload
+} from "../api/auth";
 import { AuthProvider, useAuth, type AuthSession, type PortalScope } from "./AuthProvider";
 import {
   hasRememberedPortalAuthorization,
@@ -12,7 +17,9 @@ import {
 } from "./portalAuthorization";
 import type { AuthMePayload } from "./rbac";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocked = vi.hoisted(() => {
   class MockApiClientError extends Error {
@@ -36,9 +43,28 @@ const mocked = vi.hoisted(() => {
     failNextAccess: false,
     failNextRefresh: false
   };
+  const coordinatorState = {
+    activeLatest: null as number | null,
+    activeRotation: null as number | null,
+    generation: 0,
+    operation: 0,
+    listeners: new Set<() => void>(),
+    revoker: null as
+      | null
+      | ((credentials: {
+          accessToken: string | null;
+          refreshToken: string;
+        }) => void | Promise<void>),
+    tail: Promise.resolve() as Promise<unknown>
+  };
+  const publishCoordinator = () => {
+    coordinatorState.listeners.forEach((listener) => listener());
+  };
 
   return {
     ApiClientError: MockApiClientError,
+    coordinatorState,
+    publishCoordinator,
     tokenState,
     tokenPersistence,
     authApi: {
@@ -72,6 +98,227 @@ const mocked = vi.hoisted(() => {
 });
 
 vi.mock("../api/auth", () => ({ authApi: mocked.authApi }));
+vi.mock("./authCredentialCoordinator", () => ({
+  abandonAuthOperation: (operation: {
+    generation: number;
+    id: number;
+    mode: string;
+    phase: string;
+  }) => {
+    const current =
+      operation.generation === mocked.coordinatorState.generation &&
+      (operation.mode === "latest"
+        ? operation.id === mocked.coordinatorState.activeLatest
+        : operation.id === mocked.coordinatorState.activeRotation);
+    if (!current || operation.phase !== "preflight") return false;
+    if (operation.mode === "latest") mocked.coordinatorState.activeLatest = null;
+    if (operation.mode === "rotation") mocked.coordinatorState.activeRotation = null;
+    operation.phase = "client_committed";
+    return true;
+  },
+  beginLatestAuthOperation: (kind: string) => {
+    mocked.coordinatorState.generation += 1;
+    mocked.coordinatorState.operation += 1;
+    mocked.coordinatorState.activeLatest = mocked.coordinatorState.operation;
+    mocked.coordinatorState.activeRotation = null;
+    mocked.coordinatorState.tail = Promise.resolve();
+    return {
+      generation: mocked.coordinatorState.generation,
+      id: mocked.coordinatorState.operation,
+      kind,
+      mode: "latest",
+      phase: "preflight",
+      serverCredentials: null
+    };
+  },
+  commitExistingAuthOperation: (
+    operation: { generation: number; id: number },
+    expectedUserId: number,
+    persistClient: () => boolean
+  ) => {
+    if (
+      operation.generation !== mocked.coordinatorState.generation ||
+      operation.id !== mocked.coordinatorState.activeRotation ||
+      !persistClient()
+    )
+      return false;
+    mocked.setExpectedAuthUserId(expectedUserId);
+    mocked.coordinatorState.activeRotation = null;
+    return true;
+  },
+  commitRotatedAuthOperation: (
+    operation: {
+      generation: number;
+      id: number;
+      serverCredentials: { accessToken: string | null; refreshToken: string } | null;
+    },
+    input: { expectedUserId: number; persistClient: () => boolean }
+  ) => {
+    if (
+      operation.generation !== mocked.coordinatorState.generation ||
+      (operation.id !== mocked.coordinatorState.activeLatest &&
+        operation.id !== mocked.coordinatorState.activeRotation) ||
+      !operation.serverCredentials
+    )
+      return false;
+    const credentials = operation.serverCredentials;
+    const accessPersisted = !mocked.tokenPersistence.failNextAccess;
+    mocked.tokenPersistence.failNextAccess = false;
+    const refreshPersisted = !mocked.tokenPersistence.failNextRefresh;
+    mocked.tokenPersistence.failNextRefresh = false;
+    const clientPersisted = accessPersisted && refreshPersisted && input.persistClient();
+    if (!clientPersisted) {
+      mocked.coordinatorState.generation += 1;
+      mocked.tokenState.epoch += 1;
+      mocked.tokenState.accessToken = null;
+      mocked.tokenState.refreshToken = null;
+      mocked.tokenState.expectedUserId = null;
+      return false;
+    }
+    mocked.tokenState.epoch += 1;
+    mocked.tokenState.accessToken = credentials.accessToken;
+    mocked.tokenState.refreshToken = credentials.refreshToken;
+    mocked.setExpectedAuthUserId(input.expectedUserId);
+    mocked.coordinatorState.activeLatest = null;
+    mocked.coordinatorState.activeRotation = null;
+    return true;
+  },
+  enqueueAuthRotation: <T>(
+    kind: string,
+    run: (
+      operation: Record<string, unknown>,
+      credentials: { accessToken: string | null; refreshToken: string }
+    ) => Promise<T>
+  ) => {
+    if (mocked.coordinatorState.activeLatest !== null) {
+      return Promise.reject(new Error("error.auth.operation_superseded"));
+    }
+    const generation = mocked.coordinatorState.generation;
+    const execute = mocked.coordinatorState.tail.then(async () => {
+      if (generation !== mocked.coordinatorState.generation || !mocked.tokenState.refreshToken) {
+        throw new Error("error.auth.operation_superseded");
+      }
+      mocked.coordinatorState.operation += 1;
+      mocked.coordinatorState.activeRotation = mocked.coordinatorState.operation;
+      const operation = {
+        generation,
+        id: mocked.coordinatorState.operation,
+        kind,
+        mode: "rotation",
+        phase: "preflight",
+        serverCredentials: null
+      };
+      try {
+        return await run(operation, {
+          accessToken: mocked.tokenState.accessToken,
+          refreshToken: mocked.tokenState.refreshToken
+        });
+      } catch (error) {
+        if (generation !== mocked.coordinatorState.generation) {
+          throw new Error("error.auth.operation_superseded");
+        }
+        throw error;
+      } finally {
+        if (
+          operation.generation === mocked.coordinatorState.generation &&
+          operation.id === mocked.coordinatorState.activeRotation &&
+          operation.phase === "preflight"
+        ) {
+          mocked.coordinatorState.activeRotation = null;
+          operation.phase = "client_committed";
+        }
+      }
+    });
+    mocked.coordinatorState.tail = execute.then(
+      () => undefined,
+      () => undefined
+    );
+    return execute;
+  },
+  getAuthCredentialSnapshot: () => ({
+    accessToken: mocked.tokenState.accessToken,
+    authCredentialEpoch: mocked.tokenState.epoch,
+    credentialVersion: mocked.tokenState.epoch,
+    expectedAuthUserId: mocked.tokenState.expectedUserId,
+    generation: mocked.coordinatorState.generation,
+    operationId: mocked.coordinatorState.operation,
+    phase: "client_committed",
+    refreshToken: mocked.tokenState.refreshToken
+  }),
+  isAuthOperationCurrent: (operation: { generation: number; id: number; mode: string }) =>
+    operation.generation === mocked.coordinatorState.generation &&
+    (operation.mode === "latest"
+      ? operation.id === mocked.coordinatorState.activeLatest
+      : operation.id === mocked.coordinatorState.activeRotation),
+  markAuthOperationServerRotated: (
+    operation: {
+      generation: number;
+      id: number;
+      mode: string;
+      serverCredentials: { accessToken: string | null; refreshToken: string } | null;
+      phase: string;
+    },
+    credentials: { accessToken: string | null; refreshToken: string }
+  ) => {
+    operation.phase = "server_rotated";
+    operation.serverCredentials = credentials;
+    const current =
+      operation.generation === mocked.coordinatorState.generation &&
+      (operation.mode === "latest"
+        ? operation.id === mocked.coordinatorState.activeLatest
+        : operation.id === mocked.coordinatorState.activeRotation);
+    if (!current && mocked.coordinatorState.revoker)
+      void mocked.coordinatorState.revoker(credentials);
+    return current;
+  },
+  rejectAuthOperationAfterServerRotation: (operation: {
+    generation: number;
+    id: number;
+    mode: string;
+    serverCredentials: { accessToken: string | null; refreshToken: string } | null;
+  }) => {
+    const current =
+      operation.generation === mocked.coordinatorState.generation &&
+      (operation.mode === "latest"
+        ? operation.id === mocked.coordinatorState.activeLatest
+        : operation.id === mocked.coordinatorState.activeRotation);
+    if (!current) return false;
+    if (operation.serverCredentials && mocked.coordinatorState.revoker) {
+      void mocked.coordinatorState.revoker(operation.serverCredentials);
+    }
+    mocked.coordinatorState.generation += 1;
+    mocked.tokenState.epoch += 1;
+    mocked.tokenState.accessToken = null;
+    mocked.tokenState.refreshToken = null;
+    mocked.tokenState.expectedUserId = null;
+    mocked.coordinatorState.activeLatest = null;
+    mocked.coordinatorState.activeRotation = null;
+    mocked.publishCoordinator();
+    return true;
+  },
+  subscribeAuthCredentialSnapshot: (listener: () => void) => {
+    mocked.coordinatorState.listeners.add(listener);
+    return () => {
+      mocked.coordinatorState.listeners.delete(listener);
+    };
+  },
+  setAuthCredentialRevoker: (revoker: typeof mocked.coordinatorState.revoker) => {
+    mocked.coordinatorState.revoker = revoker;
+  },
+  terminateAuthImmediately: () => {
+    const credentials = mocked.tokenState.refreshToken
+      ? { accessToken: mocked.tokenState.accessToken, refreshToken: mocked.tokenState.refreshToken }
+      : null;
+    mocked.coordinatorState.generation += 1;
+    mocked.coordinatorState.operation += 1;
+    mocked.coordinatorState.activeLatest = null;
+    mocked.coordinatorState.activeRotation = null;
+    mocked.coordinatorState.tail = Promise.resolve();
+    mocked.clearAuthTokens();
+    mocked.publishCoordinator();
+    return credentials;
+  }
+}));
 vi.mock("../api/httpClient", () => ({
   ApiClientError: mocked.ApiClientError,
   clearAuthTokens: mocked.clearAuthTokens,
@@ -104,17 +351,19 @@ vi.mock("../api/httpClient", () => ({
     }
     return true;
   }),
-  restoreAuthCredentialSnapshot: vi.fn((snapshot: {
-    accessToken: string | null;
-    expectedAuthUserId: number | null;
-    refreshToken: string | null;
-  }) => {
-    mocked.tokenState.epoch += 1;
-    mocked.tokenState.accessToken = snapshot.accessToken;
-    mocked.tokenState.expectedUserId = snapshot.expectedAuthUserId;
-    mocked.tokenState.refreshToken = snapshot.refreshToken;
-    return true;
-  })
+  restoreAuthCredentialSnapshot: vi.fn(
+    (snapshot: {
+      accessToken: string | null;
+      expectedAuthUserId: number | null;
+      refreshToken: string | null;
+    }) => {
+      mocked.tokenState.epoch += 1;
+      mocked.tokenState.accessToken = snapshot.accessToken;
+      mocked.tokenState.expectedUserId = snapshot.expectedAuthUserId;
+      mocked.tokenState.refreshToken = snapshot.refreshToken;
+      return true;
+    }
+  )
 }));
 type ChallengeSuccess = {
   challenge: VerificationChallengePayload;
@@ -130,11 +379,13 @@ type SessionSuccess = {
 };
 
 type Task10AuthContext = ReturnType<typeof useAuth> & {
-  loginWithGoogle: (
-    result: GoogleCredentialResult,
+  authenticateWithGoogleCredential: (
+    input: { credential: string; nonceChallengeId: string },
     requestedPortal?: PortalScope
   ) => Promise<ChallengeSuccess | SessionSuccess | { message: string; ok: false }>;
-  startRegistration: (input: RegistrationStartInput) => Promise<ChallengeSuccess | { message: string; ok: false }>;
+  startRegistration: (
+    input: RegistrationStartInput
+  ) => Promise<ChallengeSuccess | { message: string; ok: false }>;
   verifyGoogleRegistrationOrLink: (
     input: VerificationChallengeInput,
     requestedPortal?: PortalScope
@@ -145,8 +396,7 @@ type Task10AuthContext = ReturnType<typeof useAuth> & {
   switchMerchantShop: (
     shopPublicId: string
   ) => Promise<
-    | { ok: true; session: AuthSession; shopPublicId?: string }
-    | { message: string; ok: false }
+    { ok: true; session: AuthSession; shopPublicId?: string } | { message: string; ok: false }
   >;
 };
 
@@ -256,7 +506,11 @@ const observedAuthenticatedStates: boolean[] = [];
 function Consumer() {
   auth = useAuth() as Task10AuthContext;
   observedAuthenticatedStates.push(auth.isAuthenticated);
-  return createElement("output", { "data-authenticated": String(auth.isAuthenticated) }, auth.session?.loginMethod ?? "none");
+  return createElement(
+    "output",
+    { "data-authenticated": String(auth.isAuthenticated) },
+    auth.session?.loginMethod ?? "none"
+  );
 }
 
 async function renderProvider() {
@@ -268,11 +522,7 @@ async function renderProvider() {
 async function renderProviderInStrictMode() {
   await act(async () => {
     root.render(
-      createElement(
-        StrictMode,
-        null,
-        createElement(AuthProvider, null, createElement(Consumer))
-      )
+      createElement(StrictMode, null, createElement(AuthProvider, null, createElement(Consumer)))
     );
   });
 }
@@ -322,6 +572,14 @@ function persistTokens(accessToken = "access-token", refreshToken = "refresh-tok
   mocked.tokenState.refreshToken = refreshToken;
 }
 
+function formalLoginPayload(
+  me: AuthMePayload,
+  accessToken = "organization-access",
+  refreshToken = "organization-refresh"
+) {
+  return { accessToken, refreshToken, expiresIn: 900, me };
+}
+
 function authenticatedGoogleResult(): Extract<GoogleCredentialResult, { status: "authenticated" }> {
   return {
     accessToken: "google-access-token",
@@ -329,6 +587,17 @@ function authenticatedGoogleResult(): Extract<GoogleCredentialResult, { status: 
     refreshToken: "google-refresh-token",
     status: "authenticated"
   };
+}
+
+function authenticateGoogle(
+  result: GoogleCredentialResult = authenticatedGoogleResult(),
+  requestedPortal: PortalScope = "user"
+) {
+  mocked.authApi.submitGoogleCredential.mockResolvedValueOnce(result);
+  return auth.authenticateWithGoogleCredential(
+    { credential: "google-credential", nonceChallengeId: "nonce-challenge" },
+    requestedPortal
+  );
 }
 
 function withCurrentIdentity(
@@ -404,6 +673,13 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.tokenState.refreshToken = null;
     mocked.tokenPersistence.failNextAccess = false;
     mocked.tokenPersistence.failNextRefresh = false;
+    mocked.coordinatorState.activeLatest = null;
+    mocked.coordinatorState.activeRotation = null;
+    mocked.coordinatorState.generation = 0;
+    mocked.coordinatorState.listeners.clear();
+    mocked.coordinatorState.operation = 0;
+    mocked.coordinatorState.revoker = null;
+    mocked.coordinatorState.tail = Promise.resolve();
     mocked.authApi.logout.mockResolvedValue({});
     mocked.authApi.refresh.mockImplementation(async () => {
       mocked.tokenState.accessToken = "restored-access-token";
@@ -428,13 +704,20 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
   it("purges every legacy plaintext credential record during auth bootstrap without touching unrelated storage", async () => {
     window.localStorage.setItem("needo.auth.remember-credentials.admin.admin", "admin-secret");
-    window.localStorage.setItem("needo.auth.remember-credentials.admin.merchant-admin", "merchant-secret");
+    window.localStorage.setItem(
+      "needo.auth.remember-credentials.admin.merchant-admin",
+      "merchant-secret"
+    );
     window.localStorage.setItem("needo.auth.portal", "user");
     window.localStorage.setItem("needo.admin.theme", "classic-white-black");
 
     await renderProvider();
 
-    expect(Object.keys(window.localStorage).filter((key) => key.startsWith("needo.auth.remember-credentials."))).toEqual([]);
+    expect(
+      Object.keys(window.localStorage).filter((key) =>
+        key.startsWith("needo.auth.remember-credentials.")
+      )
+    ).toEqual([]);
     expect(window.localStorage.getItem("needo.auth.portal")).toBe("user");
     expect(window.localStorage.getItem("needo.admin.theme")).toBe("classic-white-black");
   });
@@ -444,7 +727,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     await renderProvider();
     persistTokens("google-access-token", "google-refresh-token");
 
-    const result = await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    const result = await invoke(() => authenticateGoogle());
 
     expect(result).toMatchObject({
       ok: true,
@@ -469,10 +752,12 @@ describe("AuthProvider formal registration and Google sessions", () => {
     await renderProvider();
     persistTokens("google-access-token", "google-refresh-token");
 
-    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    await invoke(() => authenticateGoogle());
 
     expect(window.sessionStorage.getItem("needo.auth.portal")).toBe("user");
-    expect(window.sessionStorage.getItem("needo.auth.session")).toContain('"needoId":"u0000000007"');
+    expect(window.sessionStorage.getItem("needo.auth.session")).toContain(
+      '"needoId":"u0000000007"'
+    );
     expect(window.localStorage.getItem("needo.auth.portal")).toBeNull();
     expect(window.localStorage.getItem("needo.auth.session")).toBeNull();
   });
@@ -481,7 +766,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.authApi.me.mockResolvedValue(customerMe);
     await renderProvider();
     persistTokens("google-access-token", "google-refresh-token");
-    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    await invoke(() => authenticateGoogle());
     const alignedSession = auth.session;
 
     const switched = await invoke(() => auth.switchPortal("user"));
@@ -496,7 +781,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.authApi.me.mockResolvedValue(multiPortalMe);
     await renderProvider();
     persistTokens("google-access-token", "google-refresh-token");
-    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    await invoke(() => authenticateGoogle());
     const customerSession = auth.session;
     mocked.tokenState.epoch += 1;
     mocked.tokenState.accessToken = null;
@@ -512,7 +797,9 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("fails closed when a role grants portal access without a matching target identity", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: inconsistentAdminMe });
+    mocked.authApi.loginFormal.mockResolvedValue(
+      formalLoginPayload(inconsistentAdminMe, "admin-access", "admin-refresh")
+    );
     await renderProvider();
     persistTokens("admin-access", "admin-refresh");
     await invoke(() => auth.loginWithFormalPassword("admin", "admin@example.com", "secret"));
@@ -610,7 +897,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     await renderProvider();
     persistTokens("google-access-token", "google-refresh-token");
 
-    const result = await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    const result = await invoke(() => authenticateGoogle());
 
     expect(result).toEqual({ ok: false, message: "error.auth.google_api_unavailable" });
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
@@ -621,7 +908,9 @@ describe("AuthProvider formal registration and Google sessions", () => {
     await renderProvider();
     persistTokens("stale-access", "stale-refresh");
 
-    const result = await invoke(() => auth.loginWithGoogle({ status: "verification_required", ...challenge }, "user"));
+    const result = await invoke(() =>
+      authenticateGoogle({ status: "verification_required", ...challenge })
+    );
 
     expect(result).toEqual({
       ok: true,
@@ -640,7 +929,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     rememberPortalAuthorization(storedCustomerSession(), "remembered-refresh");
     await renderProvider();
 
-    await invoke(() => auth.loginWithGoogle({ status: "verification_required", ...challenge }, "user"));
+    await invoke(() => authenticateGoogle({ status: "verification_required", ...challenge }));
 
     expect(hasRememberedPortalAuthorization("user")).toBe(false);
   });
@@ -658,7 +947,12 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.authApi.me.mockResolvedValue(customerMe);
     await renderProvider();
 
-    const result = await invoke(() => auth.verifyGoogleRegistrationOrLink({ challengeId: challenge.challengeId, otp: "123456" }, "user"));
+    const result = await invoke(() =>
+      auth.verifyGoogleRegistrationOrLink(
+        { challengeId: challenge.challengeId, otp: "123456" },
+        "user"
+      )
+    );
 
     expect(result).toMatchObject({
       ok: true,
@@ -723,7 +1017,9 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.authApi.startRegistration.mockResolvedValue(challenge);
     await renderProvider();
 
-    await invoke(() => auth.startRegistration({ email: "new@example.com", password: "Password.2026!" }));
+    await invoke(() =>
+      auth.startRegistration({ email: "new@example.com", password: "Password.2026!" })
+    );
 
     expect(hasRememberedPortalAuthorization("user")).toBe(false);
   });
@@ -752,11 +1048,34 @@ describe("AuthProvider formal registration and Google sessions", () => {
     });
     await renderProvider();
 
-    const result = await invoke(() => auth.verifyRegistration({ challengeId: challenge.challengeId, otp: "123456" }));
+    const result = await invoke(() =>
+      auth.verifyRegistration({ challengeId: challenge.challengeId, otp: "123456" })
+    );
 
     expect(result).toEqual({ ok: false, message: "error.auth.portal_forbidden" });
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
     expect(auth.session).toBeNull();
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "registration-access",
+      refreshToken: "registration-refresh"
+    });
+  });
+
+  it("closes a malformed Google verification operation instead of leaving a latest-operation lock", async () => {
+    await renderProvider();
+    const malformed = {
+      status: "verification_required" as const,
+      challengeId: "",
+      cooldownSeconds: 60,
+      expiresIn: 600,
+      maskedEmail: "u***@example.com"
+    };
+
+    const result = await invoke(() => authenticateGoogle(malformed));
+
+    expect(result).toEqual({ ok: false, message: "error.auth.google_api_unavailable" });
+    expect(auth.session).toBeNull();
+    expect(mocked.coordinatorState.activeLatest).toBeNull();
   });
 
   it("normalizes provider errors and clears tokens when post-token session completion fails", async () => {
@@ -767,22 +1086,28 @@ describe("AuthProvider formal registration and Google sessions", () => {
     await renderProvider();
     persistTokens("google-access-token", "google-refresh-token");
 
-    const result = await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult()));
+    const result = await invoke(() => authenticateGoogle());
 
     expect(result).toEqual({
       ok: false,
       message: "error.auth.google_api_unavailable"
     });
-    expect(mocked.clearAuthTokens).toHaveBeenCalled();
     expect(mocked.tokenState).toMatchObject({
       accessToken: null,
       refreshToken: null
     });
     expect(auth.session).toBeNull();
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "google-access-token",
+      refreshToken: "google-refresh-token"
+    });
   });
 
   it("rejects an otherwise complete stored session from the previous auth version", async () => {
-    window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession({ authVersion: 5 })));
+    window.sessionStorage.setItem(
+      "needo.auth.session",
+      JSON.stringify(storedCustomerSession({ authVersion: 5 }))
+    );
 
     await renderProvider();
 
@@ -801,7 +1126,10 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("rejects a current-version stored session with the retired gmail login method", async () => {
-    window.sessionStorage.setItem("needo.auth.session", JSON.stringify({ ...storedCustomerSession(), loginMethod: "gmail" }));
+    window.sessionStorage.setItem(
+      "needo.auth.session",
+      JSON.stringify({ ...storedCustomerSession(), loginMethod: "gmail" })
+    );
 
     await renderProvider();
 
@@ -820,7 +1148,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   it("keeps a refresh-backed session private and retryable during a transient restore outage", async () => {
     window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
     mocked.tokenState.refreshToken = "stored-retry-refresh";
-    mocked.authApi.refresh.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    mocked.authApi.refreshWithCredentials.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
     await renderProvider();
     await waitFor(() => expect(auth.isRestoring).toBe(false));
@@ -830,8 +1158,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(mocked.tokenState.refreshToken).toBe("stored-retry-refresh");
     expect(mocked.clearAuthTokens).not.toHaveBeenCalled();
 
-    mocked.authApi.refresh.mockImplementationOnce(async () => {
-      mocked.tokenState.accessToken = "restored-after-retry-access";
+    mocked.authApi.refreshWithCredentials.mockImplementationOnce(async () => {
       return { accessToken: "restored-after-retry-access", expiresIn: 900 };
     });
     mocked.authApi.me.mockResolvedValue(customerMe);
@@ -846,7 +1173,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   it("treats a missing refresh route during deployment recovery as retryable instead of expiring the session", async () => {
     window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
     mocked.tokenState.refreshToken = "stored-deployment-refresh";
-    mocked.authApi.refresh.mockRejectedValueOnce(
+    mocked.authApi.refreshWithCredentials.mockRejectedValueOnce(
       new mocked.ApiClientError("error.resource_not_found", 404, 404)
     );
 
@@ -861,7 +1188,9 @@ describe("AuthProvider formal registration and Google sessions", () => {
   it("fails closed with retry for an unclassified restore error", async () => {
     window.sessionStorage.setItem("needo.auth.session", JSON.stringify(storedCustomerSession()));
     mocked.tokenState.refreshToken = "stored-unknown-error-refresh";
-    mocked.authApi.refresh.mockRejectedValueOnce(new Error("proxy response unavailable"));
+    mocked.authApi.refreshWithCredentials.mockRejectedValueOnce(
+      new Error("proxy response unavailable")
+    );
 
     await renderProvider();
     await waitFor(() => expect(auth.isRestoring).toBe(false));
@@ -881,8 +1210,51 @@ describe("AuthProvider formal registration and Google sessions", () => {
     await renderProvider();
     await waitFor(() => expect(auth.isRestoring).toBe(false));
 
-    expect(mocked.authApi.refresh).toHaveBeenCalledTimes(1);
+    expect(mocked.authApi.refreshWithCredentials).toHaveBeenCalledTimes(1);
     expect(auth.session?.loginMethod).toBe("google");
+  });
+
+  it("does not trust stored portal or login metadata from another authenticated user", async () => {
+    window.sessionStorage.setItem(
+      "needo.auth.session",
+      JSON.stringify(
+        storedCustomerSession({
+          id: 999,
+          loginMethod: "google",
+          portal: "merchant"
+        })
+      )
+    );
+    window.sessionStorage.setItem("needo.auth.portal", "merchant");
+    mocked.tokenState.refreshToken = "stored-other-user-refresh";
+    mocked.authApi.me.mockResolvedValue(customerMe);
+
+    await renderProvider();
+    await waitFor(() => expect(auth.isRestoring).toBe(false));
+
+    expect(auth.session).toMatchObject({
+      id: customerMe.id,
+      loginMethod: "password",
+      portal: "user"
+    });
+  });
+
+  it("publishes anonymous state when the coordinator terminates credentials externally", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(customerMe));
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+    expect(auth.session?.id).toBe(customerMe.id);
+
+    await act(async () => {
+      mocked.tokenState.accessToken = null;
+      mocked.tokenState.refreshToken = null;
+      mocked.tokenState.expectedUserId = null;
+      mocked.tokenState.epoch += 1;
+      mocked.publishCoordinator();
+    });
+
+    expect(auth.session).toBeNull();
+    expect(auth.isAuthenticated).toBe(false);
   });
 
   it("deduplicates refresh-backed restoration during StrictMode effect replay", async () => {
@@ -893,7 +1265,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     await renderProviderInStrictMode();
     await waitFor(() => expect(auth.isRestoring).toBe(false));
 
-    expect(mocked.authApi.refresh).toHaveBeenCalledTimes(1);
+    expect(mocked.authApi.refreshWithCredentials).toHaveBeenCalledTimes(1);
     expect(mocked.authApi.me).toHaveBeenCalledTimes(1);
     expect(auth.isAuthenticated).toBe(true);
   });
@@ -908,13 +1280,13 @@ describe("AuthProvider formal registration and Google sessions", () => {
     });
     await renderProvider();
     persistTokens("google-access", "google-refresh");
-    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    await invoke(() => authenticateGoogle());
 
     const switched = await invoke(() => auth.switchPortal("technician"));
 
     expect(mocked.authApi.switchIdentity).toHaveBeenCalledWith(
       technicianIdentity.id,
-      { accessToken: "google-access", refreshToken: "google-refresh" },
+      { accessToken: "google-access-token", refreshToken: "google-refresh-token" },
       { expectedIdentityId: technicianIdentity.id, expectedUserId: customerMe.id }
     );
     expect(switched).toMatchObject({
@@ -930,16 +1302,12 @@ describe("AuthProvider formal registration and Google sessions", () => {
   it("keeps the O identity selected by prefixed login instead of replacing it with B", async () => {
     const organizationMe: AuthMePayload = {
       ...withCurrentIdentity(customerMe, merchantOrganizationIdentity),
-      identities: [
-        customerIdentity,
-        merchantStoreIdentity,
-        merchantOrganizationIdentity
-      ],
+      identities: [customerIdentity, merchantStoreIdentity, merchantOrganizationIdentity],
       roles: ["customer", "merchant_owner"],
       permissions: ["page:client-app", "page:merchant-app"],
       menus: ["menu:client-app", "menu:merchant-app"]
     };
-    mocked.authApi.loginFormal.mockResolvedValue({ me: organizationMe });
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(organizationMe));
     await renderProvider();
     persistTokens("organization-access", "organization-refresh");
 
@@ -961,7 +1329,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.authApi.me.mockResolvedValueOnce(customerMe);
     await renderProvider();
     persistTokens("google-access", "google-refresh");
-    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    await invoke(() => authenticateGoogle());
     const incompleteMe = { ...customerMe } as Partial<AuthMePayload>;
     delete incompleteMe.needoId;
     mocked.authApi.me.mockResolvedValueOnce(incompleteMe);
@@ -976,52 +1344,62 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.authApi.me.mockResolvedValue(multiPortalMe);
     await renderProvider();
     persistTokens("google-access", "google-refresh");
-    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    await invoke(() => authenticateGoogle());
     const incompleteMe = {
       ...withCurrentIdentity(multiPortalMe, technicianIdentity)
     } as Partial<AuthMePayload>;
     delete incompleteMe.emailVerifiedAt;
     mocked.authApi.switchIdentity.mockImplementation(async () => ({
-        accessToken: "switched-access",
-        expiresIn: 900,
-        refreshToken: "switched-refresh",
-        me: incompleteMe
-      }));
-    const previousSession = auth.session;
-
+      accessToken: "switched-access",
+      expiresIn: 900,
+      refreshToken: "switched-refresh",
+      me: incompleteMe
+    }));
     const switched = await invoke(() => auth.switchPortal("technician"));
 
     expect(switched).toEqual({ ok: false, message: "error.api" });
-    expect(mocked.tokenState).toMatchObject({ accessToken: "google-access", refreshToken: "google-refresh" });
-    expect(auth.session).toBe(previousSession);
+    expect(mocked.tokenState).toMatchObject({
+      accessToken: null,
+      refreshToken: null
+    });
+    expect(auth.session).toBeNull();
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "switched-access",
+      refreshToken: "switched-refresh"
+    });
   });
 
   it("clears switched tokens when refreshSession receives an incomplete switched identity", async () => {
     mocked.authApi.me.mockResolvedValue(multiPortalMe);
     await renderProvider();
     persistTokens("google-access", "google-refresh");
-    await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
+    await invoke(() => authenticateGoogle());
     const incompleteMe = {
       ...withCurrentIdentity(multiPortalMe, technicianIdentity)
     } as Partial<AuthMePayload>;
     delete incompleteMe.needoId;
     mocked.authApi.switchIdentity.mockImplementation(async () => ({
-        accessToken: "switched-access",
-        expiresIn: 900,
-        refreshToken: "switched-refresh",
-        me: incompleteMe
-      }));
-    const previousSession = auth.session;
-
+      accessToken: "switched-access",
+      expiresIn: 900,
+      refreshToken: "switched-refresh",
+      me: incompleteMe
+    }));
     const refreshed = await invoke(() => auth.refreshSession("technician"));
 
     expect(refreshed).toEqual({ ok: false, message: "error.api" });
-    expect(mocked.tokenState).toMatchObject({ accessToken: "google-access", refreshToken: "google-refresh" });
-    expect(auth.session).toBe(previousSession);
+    expect(mocked.tokenState).toMatchObject({
+      accessToken: null,
+      refreshToken: null
+    });
+    expect(auth.session).toBeNull();
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "switched-access",
+      refreshToken: "switched-refresh"
+    });
   });
 
   it("atomically persists a server-confirmed merchant shop selection and remembered authorization", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     mocked.authApi.switchMerchantShop.mockImplementation(async (shopPublicId: string) => {
       return {
         accessToken: "shop-b-access",
@@ -1033,13 +1411,9 @@ describe("AuthProvider formal registration and Google sessions", () => {
     });
     await renderProvider();
     persistTokens("organization-access", "organization-refresh");
-    await invoke(() =>
-      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
-    );
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
 
-    const switched = await invoke(() =>
-      auth.switchMerchantShop("shop0000000012")
-    );
+    const switched = await invoke(() => auth.switchMerchantShop("shop0000000012"));
 
     expect(switched).toMatchObject({
       ok: true,
@@ -1052,9 +1426,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
       refreshToken: "shop-b-refresh"
     });
     expect(readRememberedPortalRefreshToken("merchant")).toBe("shop-b-refresh");
-    expect(readRememberedPortalSession("merchant")?.merchantShopPublicId).toBe(
-      "shop0000000012"
-    );
+    expect(readRememberedPortalSession("merchant")?.merchantShopPublicId).toBe("shop0000000012");
   });
 
   it("does not trust a remembered merchant shop public ID without a switch response", async () => {
@@ -1087,21 +1459,17 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(readRememberedPortalSession("merchant")?.merchantShopPublicId).toBeUndefined();
   });
 
-  it("leaves tokens, session, and selected shop unchanged when a merchant shop switch fails", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+  it("leaves the current session unchanged on a preflight shop failure and allows a later switch", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     mocked.authApi.switchMerchantShop.mockRejectedValue(
       new Error("error.auth.merchant_shop_forbidden")
     );
     await renderProvider();
     persistTokens("organization-access", "organization-refresh");
-    await invoke(() =>
-      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
-    );
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
     const previousSession = auth.session;
 
-    const switched = await invoke(() =>
-      auth.switchMerchantShop("shop0000000012")
-    );
+    const switched = await invoke(() => auth.switchMerchantShop("shop0000000012"));
 
     expect(switched).toEqual({
       ok: false,
@@ -1112,14 +1480,22 @@ describe("AuthProvider formal registration and Google sessions", () => {
       accessToken: "organization-access",
       refreshToken: "organization-refresh"
     });
-    expect(readRememberedPortalRefreshToken("merchant")).toBe(
-      "organization-refresh"
-    );
+    expect(readRememberedPortalRefreshToken("merchant")).toBe("organization-refresh");
     expect(readRememberedPortalSession("merchant")?.merchantShopPublicId).toBeUndefined();
+
+    mocked.authApi.switchMerchantShop.mockResolvedValueOnce({
+      accessToken: "shop-access",
+      refreshToken: "shop-refresh",
+      expiresIn: 900,
+      me: merchantOrganizationMe,
+      shopPublicId: "shop0000000012"
+    });
+    const retried = await invoke(() => auth.switchMerchantShop("shop0000000012"));
+    expect(retried).toMatchObject({ ok: true, shopPublicId: "shop0000000012" });
   });
 
-  it("rolls back rotated tokens when a merchant shop switch response is invalid", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+  it("fails closed and revokes rotated tokens when a merchant shop switch response is invalid", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     mocked.authApi.switchMerchantShop.mockImplementation(async () => {
       return {
         accessToken: "invalid-access",
@@ -1131,26 +1507,95 @@ describe("AuthProvider formal registration and Google sessions", () => {
     });
     await renderProvider();
     persistTokens("organization-access", "organization-refresh");
-    await invoke(() =>
-      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
-    );
-    const previousSession = auth.session;
-
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
     const switched = await invoke(() => auth.switchMerchantShop("shop0000000012"));
 
     expect(switched).toEqual({ ok: false, message: "error.api" });
-    expect(auth.session).toBe(previousSession);
+    expect(auth.session).toBeNull();
     expect(mocked.tokenState).toMatchObject({
-      accessToken: "organization-access",
-      refreshToken: "organization-refresh"
+      accessToken: null,
+      refreshToken: null
     });
-    expect(readRememberedPortalRefreshToken("merchant")).toBe(
-      "organization-refresh"
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "invalid-access",
+      refreshToken: "invalid-refresh"
+    });
+    expect(readRememberedPortalRefreshToken("merchant")).toBeNull();
+  });
+
+  it("fails closed and revokes an invalid identity-switch 200 response", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(multiPortalMe));
+    mocked.authApi.switchIdentity.mockResolvedValue({
+      accessToken: "invalid-identity-access",
+      refreshToken: "invalid-identity-refresh",
+      expiresIn: 900,
+      me: multiPortalMe
+    });
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+
+    const switched = await invoke(() => auth.switchPortal("technician"));
+
+    expect(switched).toEqual({ ok: false, message: "error.api" });
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "invalid-identity-access",
+      refreshToken: "invalid-identity-refresh"
+    });
+  });
+
+  it("revokes the newest malformed pair when login completion itself switches identity", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(multiPortalMe));
+    const malformed = new Error("error.api");
+    malformed.name = "AuthRotatedResponseError";
+    Object.assign(malformed, {
+      rotatedCredentials: {
+        accessToken: "invalid-login-switch-access",
+        refreshToken: "invalid-login-switch-refresh"
+      }
+    });
+    mocked.authApi.switchIdentity.mockRejectedValue(malformed);
+    await renderProvider();
+
+    const result = await invoke(() =>
+      auth.loginWithFormalPassword("technician", "u0000000007", "secret")
     );
+
+    expect(result).toEqual({ ok: false, message: "error.api" });
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "invalid-login-switch-access",
+      refreshToken: "invalid-login-switch-refresh"
+    });
+  });
+
+  it("fails closed when refreshSession receives an invalid rotated identity response", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(multiPortalMe));
+    mocked.authApi.me.mockResolvedValue(multiPortalMe);
+    mocked.authApi.switchIdentity.mockResolvedValue({
+      accessToken: "invalid-refresh-access",
+      refreshToken: "invalid-refresh-refresh",
+      expiresIn: 900,
+      me: multiPortalMe
+    });
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+
+    const refreshed = await invoke(() => auth.refreshSession("technician"));
+
+    expect(refreshed).toEqual({ ok: false, message: "error.api" });
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "invalid-refresh-access",
+      refreshToken: "invalid-refresh-refresh"
+    });
   });
 
   it("serializes concurrent shop switches and gives the second request the first response refresh token", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     const shopA = createDeferred<{
       accessToken: string;
       refreshToken: string;
@@ -1171,9 +1616,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     });
     await renderProvider();
     persistTokens("organization-access", "organization-refresh");
-    await invoke(() =>
-      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
-    );
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
 
     let first!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
     let second!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
@@ -1225,8 +1668,8 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(readRememberedPortalRefreshToken("merchant")).toBe("shop-b-refresh");
   });
 
-  it("serializes logout after a shop switch and logs out with the rotated refresh token", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+  it("logs out locally immediately even while a rotation request is hung", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     const pendingSwitch = createDeferred<{
       accessToken: string;
       refreshToken: string;
@@ -1237,9 +1680,157 @@ describe("AuthProvider formal registration and Google sessions", () => {
     mocked.authApi.switchMerchantShop.mockImplementation(() => pendingSwitch.promise);
     await renderProvider();
     persistTokens("organization-access", "organization-refresh");
-    await invoke(() =>
-      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
-    );
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
+
+    let switching!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
+    act(() => {
+      switching = auth.switchMerchantShop("shop0000000012");
+    });
+    await waitFor(() => expect(mocked.authApi.switchMerchantShop).toHaveBeenCalledTimes(1));
+
+    let loggingOut!: ReturnType<Task10AuthContext["logout"]>;
+    act(() => {
+      loggingOut = auth.logout();
+    });
+
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "organization-access",
+      refreshToken: "organization-refresh"
+    });
+
+    await act(async () => {
+      pendingSwitch.resolve({
+        accessToken: "late-access",
+        refreshToken: "late-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId: "shop0000000012"
+      });
+      await Promise.all([switching, loggingOut]);
+    });
+    expect(auth.session).toBeNull();
+  });
+
+  it("keeps the latest of two out-of-order login responses", async () => {
+    const firstLogin = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+    }>();
+    const secondLogin = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+    }>();
+    const secondIdentity = {
+      ...merchantOrganizationIdentity,
+      id: 61,
+      publicId: "o0000000061",
+      scopeId: 51
+    };
+    const secondMe: AuthMePayload = {
+      ...merchantOrganizationMe,
+      id: 8,
+      needoId: "u0000000008",
+      primaryPublicId: "u0000000008",
+      activeIdentityId: secondIdentity.id,
+      activePublicId: secondIdentity.publicId,
+      email: "merchant-b@example.com",
+      currentIdentity: secondIdentity,
+      identities: [secondIdentity],
+      identityAvailability: [
+        {
+          kind: "merchant",
+          state: "active",
+          identityId: secondIdentity.id,
+          applicationId: null,
+          rejectionReason: null
+        }
+      ]
+    };
+    mocked.authApi.loginFormal
+      .mockImplementationOnce(() => firstLogin.promise)
+      .mockImplementationOnce(() => secondLogin.promise);
+    await renderProvider();
+
+    let first!: ReturnType<Task10AuthContext["loginWithFormalPassword"]>;
+    let second!: ReturnType<Task10AuthContext["loginWithFormalPassword"]>;
+    act(() => {
+      first = auth.loginWithFormalPassword("merchant", "merchant-a", "secret");
+      second = auth.loginWithFormalPassword("merchant", "merchant-b", "secret");
+    });
+    await act(async () => {
+      secondLogin.resolve({
+        accessToken: "session-b-access",
+        refreshToken: "session-b-refresh",
+        expiresIn: 900,
+        me: secondMe
+      });
+      await second;
+    });
+    await act(async () => {
+      firstLogin.resolve({
+        accessToken: "session-a-access",
+        refreshToken: "session-a-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe
+      });
+      await first;
+    });
+
+    expect(auth.session).toMatchObject({ id: 8, email: "merchant-b@example.com" });
+  });
+
+  it("does not let a late login response revive a terminal logout", async () => {
+    const pendingLogin = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+    }>();
+    mocked.authApi.loginFormal.mockImplementationOnce(() => pendingLogin.promise);
+    await renderProvider();
+
+    let loggingIn!: ReturnType<Task10AuthContext["loginWithFormalPassword"]>;
+    act(() => {
+      loggingIn = auth.loginWithFormalPassword("merchant", "merchant-a", "secret");
+    });
+    act(() => {
+      void auth.logout();
+    });
+    expect(auth.session).toBeNull();
+
+    await act(async () => {
+      pendingLogin.resolve({
+        accessToken: "late-access",
+        refreshToken: "late-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe
+      });
+      await loggingIn;
+    });
+
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+  });
+
+  it("serializes logout after a shop switch and logs out with the rotated refresh token", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
+    const pendingSwitch = createDeferred<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      me: AuthMePayload;
+      shopPublicId: string;
+    }>();
+    mocked.authApi.switchMerchantShop.mockImplementation(() => pendingSwitch.promise);
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
 
     let switching!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
     act(() => {
@@ -1264,13 +1855,13 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
     expect(hasRememberedPortalAuthorization("merchant")).toBe(false);
     expect(mocked.authApi.logout).toHaveBeenCalledWith({
-      accessToken: "stale-access",
-      refreshToken: "stale-refresh"
+      accessToken: "organization-access",
+      refreshToken: "organization-refresh"
     });
   });
 
   it("serializes identity switch after shop switch and uses the rotated refresh token", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     const pendingSwitch = createDeferred<{
       accessToken: string;
       refreshToken: string;
@@ -1280,16 +1871,14 @@ describe("AuthProvider formal registration and Google sessions", () => {
     }>();
     mocked.authApi.switchMerchantShop.mockImplementation(() => pendingSwitch.promise);
     mocked.authApi.switchIdentity.mockImplementation(async () => ({
-        accessToken: "technician-access",
-        refreshToken: "technician-refresh",
-        expiresIn: 900,
-        me: withCurrentIdentity(merchantOrganizationMe, technicianIdentity)
-      }));
+      accessToken: "technician-access",
+      refreshToken: "technician-refresh",
+      expiresIn: 900,
+      me: withCurrentIdentity(merchantOrganizationMe, technicianIdentity)
+    }));
     await renderProvider();
     persistTokens("organization-access", "organization-refresh");
-    await invoke(() =>
-      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
-    );
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
 
     let switching!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
     act(() => {
@@ -1327,7 +1916,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   });
 
   it("treats a late transition 401 as superseded after a newer login without clearing the new session", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     const pendingSwitch = createDeferred<never>();
     mocked.authApi.switchMerchantShop.mockImplementationOnce(() => pendingSwitch.promise);
     await renderProvider();
@@ -1342,7 +1931,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
     mocked.authApi.loginFormal.mockImplementationOnce(async () => {
       persistTokens("new-user-access", "new-user-refresh");
-      return { me: customerMe };
+      return formalLoginPayload(customerMe, "new-user-access", "new-user-refresh");
     });
     const relogged = await invoke(() =>
       auth.loginWithFormalPassword("user", "u0000000007", "secret")
@@ -1364,8 +1953,47 @@ describe("AuthProvider formal registration and Google sessions", () => {
     });
   });
 
+  it("revokes malformed rotated credentials that arrive after logout supersedes the switch", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
+    const pendingSwitch = createDeferred<never>();
+    mocked.authApi.switchMerchantShop.mockImplementationOnce(() => pendingSwitch.promise);
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
+
+    let switching!: ReturnType<Task10AuthContext["switchMerchantShop"]>;
+    act(() => {
+      switching = auth.switchMerchantShop("shop0000000012");
+    });
+    await waitFor(() => expect(mocked.authApi.switchMerchantShop).toHaveBeenCalledTimes(1));
+    await invoke(() => auth.logout());
+
+    const malformed = new Error("error.api");
+    malformed.name = "AuthRotatedResponseError";
+    Object.assign(malformed, {
+      rotatedCredentials: {
+        accessToken: "late-invalid-access",
+        refreshToken: "late-invalid-refresh"
+      }
+    });
+    await act(async () => {
+      pendingSwitch.reject(malformed);
+      await switching;
+    });
+
+    await expect(switching).resolves.toEqual({
+      ok: false,
+      message: "error.auth.operation_superseded"
+    });
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "late-invalid-access",
+      refreshToken: "late-invalid-refresh"
+    });
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+  });
+
   it("serializes refreshSession after a shop switch and preserves only the same confirmed merchant scope", async () => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
     const pendingSwitch = createDeferred<{
       accessToken: string;
       refreshToken: string;
@@ -1414,51 +2042,85 @@ describe("AuthProvider formal registration and Google sessions", () => {
     ["tab session", "needo.auth.session:session"],
     ["remembered session", "needo.auth.portal-session.merchant.v1:local"],
     ["remembered refresh", "needo.auth.portal-refresh-token.merchant.v1:local"]
-  ])("rolls back the complete auth snapshot when %s persistence is rejected", async (_label, stage) => {
-    mocked.authApi.loginFormal.mockResolvedValue({ me: merchantOrganizationMe });
-    mocked.authApi.switchMerchantShop.mockResolvedValue({
-      accessToken: "shop-access",
-      refreshToken: "shop-refresh",
-      expiresIn: 900,
-      me: merchantOrganizationMe,
-      shopPublicId: "shop0000000012"
-    });
-    await renderProvider();
-    persistTokens("organization-access", "organization-refresh");
-    await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
-    const previousSession = auth.session;
-    const previousStorage = captureAuthStorageForTest();
-    let storageSpy: ReturnType<typeof vi.spyOn> | null = null;
-
-    if (stage === "access") {
-      mocked.tokenPersistence.failNextAccess = true;
-    } else if (stage === "refresh") {
-      mocked.tokenPersistence.failNextRefresh = true;
-    } else {
-      const [targetKey, targetKind] = stage.split(":");
-      const originalSetItem = Storage.prototype.setItem;
-      let rejected = false;
-      storageSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
-        this: Storage,
-        key,
-        value
-      ) {
-        const isTargetStorage = targetKind === "session"
-          ? this === window.sessionStorage
-          : this === window.localStorage;
-        if (!rejected && key === targetKey && isTargetStorage) {
-          rejected = true;
-          throw new DOMException("storage rejected", "QuotaExceededError");
-        }
-        return originalSetItem.call(this, key, value);
+  ])(
+    "rolls back the complete auth snapshot when %s persistence is rejected",
+    async (_label, stage) => {
+      mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(merchantOrganizationMe));
+      mocked.authApi.switchMerchantShop.mockResolvedValue({
+        accessToken: "shop-access",
+        refreshToken: "shop-refresh",
+        expiresIn: 900,
+        me: merchantOrganizationMe,
+        shopPublicId: "shop0000000012"
       });
+      await renderProvider();
+      persistTokens("organization-access", "organization-refresh");
+      await invoke(() => auth.loginWithFormalPassword("merchant", "o5831047296", "secret"));
+      const previousStorage = captureAuthStorageForTest();
+      let storageSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+      if (stage === "access") {
+        mocked.tokenPersistence.failNextAccess = true;
+      } else if (stage === "refresh") {
+        mocked.tokenPersistence.failNextRefresh = true;
+      } else {
+        const [targetKey, targetKind] = stage.split(":");
+        const originalSetItem = Storage.prototype.setItem;
+        let rejected = false;
+        storageSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+          this: Storage,
+          key,
+          value
+        ) {
+          const isTargetStorage =
+            targetKind === "session"
+              ? this === window.sessionStorage
+              : this === window.localStorage;
+          if (!rejected && key === targetKey && isTargetStorage) {
+            rejected = true;
+            throw new DOMException("storage rejected", "QuotaExceededError");
+          }
+          return originalSetItem.call(this, key, value);
+        });
+      }
+
+      const switched = await invoke(() => auth.switchMerchantShop("shop0000000012"));
+      storageSpy?.mockRestore();
+
+      expect(switched).toEqual({ ok: false, message: "error.auth.reauth_required" });
+      expect(auth.session).toBeNull();
+      expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+      expect(captureAuthStorageForTest()).not.toEqual(previousStorage);
     }
+  );
 
-    const switched = await invoke(() => auth.switchMerchantShop("shop0000000012"));
-    storageSpy?.mockRestore();
+  it("fails closed when an existing-session persistence failure cannot be rolled back", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(customerMe));
+    mocked.authApi.me.mockResolvedValue(customerMe);
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+    const originalSetItem = Storage.prototype.setItem;
+    const storageSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key,
+      value
+    ) {
+      if (this === window.sessionStorage && key === "needo.auth.session") {
+        throw new DOMException("storage rejected", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    });
 
-    expect(switched).toEqual({ ok: false, message: "error.auth.storage_unavailable" });
-    expect(auth.session).toBe(previousSession);
-    expect(captureAuthStorageForTest()).toEqual(previousStorage);
+    const refreshed = await invoke(() => auth.refreshSession());
+    storageSpy.mockRestore();
+
+    expect(refreshed).toEqual({ ok: false, message: "error.auth.reauth_required" });
+    expect(auth.session).toBeNull();
+    expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
+    expect(window.sessionStorage.getItem("needo.auth.session")).toBeNull();
+    expect(mocked.authApi.logout).toHaveBeenCalledWith({
+      accessToken: "organization-access",
+      refreshToken: "organization-refresh"
+    });
   });
 });

@@ -2,7 +2,7 @@ import type { TokenPairPayload } from "../api/auth";
 import type { IdentityAvailability } from "../features/identity-applications/model";
 import type { AuthIdentityPayload, AuthMePayload } from "./rbac";
 
-export const formalAccessTokenMaxTtlSeconds = 15 * 60;
+export const formalAccessTokenTtlSeconds = 900;
 
 const needoPublicIdPattern = /^(?:u|needo)\d{10}$/;
 const identityPublicIdPattern = /^(?:u|s|b|o|needo)\d{10}$/;
@@ -11,20 +11,20 @@ const merchantAccountIdentityTypes = new Set([
   "merchant_organization",
   "merchant_owner",
   "o",
-  "owner",
+  "owner"
 ]);
 const identityKinds = new Set<IdentityAvailability["kind"]>([
   "customer",
   "technician",
   "merchant",
-  "affiliate",
+  "affiliate"
 ]);
 const identityAvailabilityStates = new Set<IdentityAvailability["state"]>([
   "active",
   "available_to_apply",
   "draft",
   "pending",
-  "rejected",
+  "rejected"
 ]);
 
 function isPositiveInteger(value: unknown): value is number {
@@ -39,24 +39,53 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
-function isIsoDateTimeOrNull(value: unknown): value is string | null {
+function isRfc3339DateTimeOrNull(value: unknown): value is string | null {
+  if (value === null) return true;
+  if (typeof value !== "string") return false;
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(
+      value
+    );
+  if (!match) return false;
+  const [
+    ,
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    offsetHourText,
+    offsetMinuteText
+  ] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const offsetHour = offsetHourText === undefined ? 0 : Number(offsetHourText);
+  const offsetMinute = offsetMinuteText === undefined ? 0 : Number(offsetMinuteText);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return (
-    value === null ||
-    (typeof value === "string" &&
-      value.length > 0 &&
-      Number.isFinite(Date.parse(value)))
+    year >= 1 &&
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysInMonth &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59
   );
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return (
-    Array.isArray(value) && value.every((item) => typeof item === "string")
-  );
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
-export function isFormalAuthIdentityPayload(
-  value: unknown,
-): value is AuthIdentityPayload {
+export function isFormalAuthIdentityPayload(value: unknown): value is AuthIdentityPayload {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -66,20 +95,16 @@ export function isFormalAuthIdentityPayload(
   return (
     isPositiveInteger(identity.id) &&
     (identity.publicId === null ||
-      (typeof identity.publicId === "string" &&
-        identityPublicIdPattern.test(identity.publicId))) &&
+      (typeof identity.publicId === "string" && identityPublicIdPattern.test(identity.publicId))) &&
     (identity.scopeType === null ||
-      (typeof identity.scopeType === "string" &&
-        identity.scopeType.length > 0)) &&
+      (typeof identity.scopeType === "string" && identity.scopeType.length > 0)) &&
     isNullablePositiveInteger(identity.scopeId) &&
     typeof identity.type === "string" &&
     identity.type.length > 0
   );
 }
 
-function isFormalIdentityAvailability(
-  value: unknown,
-): value is IdentityAvailability {
+function isFormalIdentityAvailability(value: unknown): value is IdentityAvailability {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -88,9 +113,7 @@ function isFormalIdentityAvailability(
 
   return (
     identityKinds.has(availability.kind as IdentityAvailability["kind"]) &&
-    identityAvailabilityStates.has(
-      availability.state as IdentityAvailability["state"],
-    ) &&
+    identityAvailabilityStates.has(availability.state as IdentityAvailability["state"]) &&
     isNullablePositiveInteger(availability.identityId) &&
     isNullablePositiveInteger(availability.applicationId) &&
     isNullableString(availability.rejectionReason)
@@ -112,11 +135,10 @@ export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
     needoPublicIdPattern.test(me.primaryPublicId) &&
     isPositiveInteger(me.activeIdentityId) &&
     (me.activePublicId === null ||
-      (typeof me.activePublicId === "string" &&
-        identityPublicIdPattern.test(me.activePublicId))) &&
+      (typeof me.activePublicId === "string" && identityPublicIdPattern.test(me.activePublicId))) &&
     typeof me.email === "string" &&
     emailPattern.test(me.email) &&
-    isIsoDateTimeOrNull(me.emailVerifiedAt) &&
+    isRfc3339DateTimeOrNull(me.emailVerifiedAt) &&
     typeof me.hasPassword === "boolean" &&
     typeof me.username === "string" &&
     me.username.length > 0 &&
@@ -127,7 +149,16 @@ export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
     Array.isArray(me.identities) &&
     me.identities.length > 0 &&
     me.identities.every(isFormalAuthIdentityPayload) &&
-    me.identities.some((identity) => identity.id === me.currentIdentity?.id) &&
+    new Set(me.identities.map((identity) => identity.id)).size === me.identities.length &&
+    me.identities.filter((identity) => identity.id === me.currentIdentity?.id).length === 1 &&
+    me.identities.some(
+      (identity) =>
+        identity.id === me.currentIdentity?.id &&
+        identity.publicId === me.currentIdentity.publicId &&
+        identity.type === me.currentIdentity.type &&
+        identity.scopeType === me.currentIdentity.scopeType &&
+        identity.scopeId === me.currentIdentity.scopeId
+    ) &&
     me.activeIdentityId === me.currentIdentity?.id &&
     me.activePublicId === me.currentIdentity?.publicId &&
     Array.isArray(me.identityAvailability) &&
@@ -138,10 +169,7 @@ export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
   );
 }
 
-export function requireFormalAuthMePayload(
-  value: unknown,
-  errorKey = "error.api",
-): AuthMePayload {
+export function requireFormalAuthMePayload(value: unknown, errorKey = "error.api"): AuthMePayload {
   if (!isFormalAuthMePayload(value)) {
     throw new Error(errorKey);
   }
@@ -161,13 +189,12 @@ export function isFormalTokenPair(value: unknown): value is TokenPairPayload {
     tokens.accessToken.length > 0 &&
     typeof tokens.refreshToken === "string" &&
     tokens.refreshToken.length > 0 &&
-    isPositiveInteger(tokens.expiresIn) &&
-    tokens.expiresIn <= formalAccessTokenMaxTtlSeconds
+    tokens.expiresIn === formalAccessTokenTtlSeconds
   );
 }
 
 export function requireFormalTokenPair<TPayload extends TokenPairPayload>(
-  value: unknown,
+  value: unknown
 ): TPayload {
   if (!isFormalTokenPair(value)) {
     throw new Error("error.api");
@@ -188,8 +215,7 @@ export function requireFormalRefreshPayload(value: unknown): {
   if (
     typeof payload.accessToken !== "string" ||
     payload.accessToken.length === 0 ||
-    !isPositiveInteger(payload.expiresIn) ||
-    payload.expiresIn > formalAccessTokenMaxTtlSeconds
+    payload.expiresIn !== formalAccessTokenTtlSeconds
   ) {
     throw new Error("error.api");
   }
@@ -198,25 +224,20 @@ export function requireFormalRefreshPayload(value: unknown): {
 }
 
 export type AuthTransitionValidationContext = {
-  expectedIdentityId?: number;
-  expectedUserId?: number;
+  expectedIdentityId: number;
+  expectedUserId: number;
 };
 
 export function requireFormalSwitchIdentityPayload<
-  TPayload extends TokenPairPayload & { me: AuthMePayload },
->(value: unknown, context: AuthTransitionValidationContext = {}): TPayload {
+  TPayload extends TokenPairPayload & { me: AuthMePayload }
+>(value: unknown, context: AuthTransitionValidationContext): TPayload {
   if (!isFormalTokenPair(value) || !("me" in value)) {
     throw new Error("error.api");
   }
 
   const payload = value as Partial<TPayload>;
   const me = requireFormalAuthMePayload(payload.me);
-  if (
-    (context.expectedUserId !== undefined &&
-      me.id !== context.expectedUserId) ||
-    (context.expectedIdentityId !== undefined &&
-      me.currentIdentity.id !== context.expectedIdentityId)
-  ) {
+  if (me.id !== context.expectedUserId || me.currentIdentity.id !== context.expectedIdentityId) {
     throw new Error("error.api");
   }
 
@@ -227,11 +248,11 @@ export function requireFormalSwitchMerchantShopPayload<
   TPayload extends TokenPairPayload & {
     me: AuthMePayload;
     shopPublicId: string;
-  },
+  }
 >(
   value: unknown,
   requestedShopPublicId: string,
-  context: Required<AuthTransitionValidationContext>,
+  context: AuthTransitionValidationContext
 ): TPayload {
   const payload = requireFormalSwitchIdentityPayload<TPayload>(value, context);
   if (

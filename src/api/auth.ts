@@ -5,16 +5,10 @@ import {
   requireFormalTokenPair,
   requireFormalSwitchIdentityPayload,
   requireFormalSwitchMerchantShopPayload,
-  type AuthTransitionValidationContext,
+  type AuthTransitionValidationContext
 } from "../auth/authContract";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
-import {
-  clearAuthTokens,
-  getStoredRefreshToken,
-  httpClient,
-  refreshStoredAccessToken,
-  setAuthTokens,
-} from "./httpClient";
+import { httpClient } from "./httpClient";
 
 export type TokenPairPayload = {
   accessToken: string;
@@ -108,6 +102,38 @@ export type AuthTransitionCredentials = {
   refreshToken: string;
 };
 
+export class AuthRotatedResponseError extends Error {
+  public readonly rotatedCredentials: AuthTransitionCredentials | null;
+
+  public constructor(error: unknown, rotatedCredentials: AuthTransitionCredentials | null) {
+    super(error instanceof Error ? error.message : "error.api");
+    this.name = "AuthRotatedResponseError";
+    this.rotatedCredentials = rotatedCredentials;
+  }
+}
+
+function readRotatedCredentials(value: unknown): AuthTransitionCredentials | null {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as { accessToken?: unknown; refreshToken?: unknown };
+  return typeof payload.accessToken === "string" &&
+    payload.accessToken.length > 0 &&
+    typeof payload.refreshToken === "string" &&
+    payload.refreshToken.length > 0
+    ? { accessToken: payload.accessToken, refreshToken: payload.refreshToken }
+    : null;
+}
+
+function validateRotatedResponse<TPayload>(
+  value: unknown,
+  validate: (payload: unknown) => TPayload
+) {
+  try {
+    return validate(value);
+  } catch (error) {
+    throw new AuthRotatedResponseError(error, readRotatedCredentials(value));
+  }
+}
+
 // Transitional types used only by the untouched pre-verification registration page.
 // Tasks 10 and 11 remove these consumers; the compatibility calls below fail closed.
 export type RegistrationAccountType = "customer" | "technician";
@@ -154,7 +180,7 @@ export const authEndpointPaths = {
   switchIdentity: "/auth/switch-identity",
   switchMerchantShop: "/auth/merchant-shop/switch",
   logout: "/auth/logout",
-  me: "/auth/me",
+  me: "/auth/me"
 } as const;
 
 function createCaptchaRequestId() {
@@ -184,15 +210,8 @@ function createLegacyAuthHeaders(headers?: Record<string, string>) {
 
   return {
     ...(authorization ? { Authorization: authorization } : {}),
-    ...(headers ?? {}),
+    ...(headers ?? {})
   };
-}
-
-function persistTokenPair(tokens: TokenPairPayload) {
-  setAuthTokens({
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken,
-  });
 }
 
 function rejectLegacyOtp(): Promise<never> {
@@ -218,23 +237,17 @@ function assertGoogleInitialization(payload: GoogleAuthInitialization) {
 }
 
 export const authApi = {
-  async login(
-    loginIdentifier: string,
-    password: string,
-    _legacyCaptchaCode?: string,
-  ) {
-    const tokens = await httpClient.request<AuthLoginPayload>(
-      authEndpointPaths.login,
-      {
-        auth: false,
-        body: { loginIdentifier, password },
-        method: "POST",
-        retryOnUnauthorized: false,
-      },
+  async login(loginIdentifier: string, password: string, _legacyCaptchaCode?: string) {
+    void _legacyCaptchaCode;
+    const tokens = await httpClient.request<AuthLoginPayload>(authEndpointPaths.login, {
+      auth: false,
+      body: { loginIdentifier, password },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+    const validated = validateRotatedResponse(tokens, (payload) =>
+      requireFormalTokenPair<AuthLoginPayload>(payload)
     );
-    const validated = requireFormalTokenPair<AuthLoginPayload>(tokens);
-    persistTokenPair(validated);
-
     return validated;
   },
 
@@ -244,15 +257,12 @@ export const authApi = {
   },
 
   async startRegistration(input: RegistrationStartInput) {
-    return httpClient.request<VerificationChallengePayload>(
-      authEndpointPaths.register,
-      {
-        auth: false,
-        body: { email: input.email, password: input.password },
-        method: "POST",
-        retryOnUnauthorized: false,
-      },
-    );
+    return httpClient.request<VerificationChallengePayload>(authEndpointPaths.register, {
+      auth: false,
+      body: { email: input.email, password: input.password },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
   },
 
   async verifyRegistration(input: VerificationChallengeInput) {
@@ -262,16 +272,16 @@ export const authApi = {
         auth: false,
         body: input,
         method: "POST",
-        retryOnUnauthorized: false,
-      },
+        retryOnUnauthorized: false
+      }
     );
-    const validated = requireFormalTokenPair<VerifiedRegistrationPayload>(tokens);
-    if (!/^u\d{10}$/.test(validated.needoId)) {
-      throw new Error("error.api");
-    }
-    persistTokenPair(validated);
-
-    return validated;
+    return validateRotatedResponse(tokens, (payload) => {
+      const validated = requireFormalTokenPair<VerifiedRegistrationPayload>(payload);
+      if (!/^u\d{10}$/.test(validated.needoId)) {
+        throw new Error("error.api");
+      }
+      return validated;
+    });
   },
 
   async initializeGoogleLogin() {
@@ -281,8 +291,8 @@ export const authApi = {
         auth: false,
         body: {},
         method: "POST",
-        retryOnUnauthorized: false,
-      },
+        retryOnUnauthorized: false
+      }
     );
 
     return assertGoogleInitialization(initialization);
@@ -295,13 +305,16 @@ export const authApi = {
         auth: false,
         body: input,
         method: "POST",
-        retryOnUnauthorized: false,
-      },
+        retryOnUnauthorized: false
+      }
     );
 
     if (result.status === "authenticated") {
-      const validated = requireFormalTokenPair<Extract<GoogleCredentialResult, { status: "authenticated" }>>(result);
-      persistTokenPair(validated);
+      const validated = validateRotatedResponse(result, (payload) =>
+        requireFormalTokenPair<Extract<GoogleCredentialResult, { status: "authenticated" }>>(
+          payload
+        )
+      );
       return validated;
     }
 
@@ -315,27 +328,24 @@ export const authApi = {
         auth: false,
         body: input,
         method: "POST",
-        retryOnUnauthorized: false,
-      },
+        retryOnUnauthorized: false
+      }
     );
-    const validated = requireFormalTokenPair<VerifiedGoogleRegistrationPayload>(tokens);
-    if (validated.needoId !== undefined && !/^u\d{10}$/.test(validated.needoId)) {
-      throw new Error("error.api");
-    }
-    persistTokenPair(validated);
-
-    return validated;
+    return validateRotatedResponse(tokens, (payload) => {
+      const validated = requireFormalTokenPair<VerifiedGoogleRegistrationPayload>(payload);
+      if (validated.needoId !== undefined && !/^u\d{10}$/.test(validated.needoId)) {
+        throw new Error("error.api");
+      }
+      return validated;
+    });
   },
 
   async getGoogleLinkStatus() {
-    return httpClient.request<GoogleLinkStatus>(
-      authEndpointPaths.googleLinkStatus,
-      {
-        auth: true,
-        method: "GET",
-        retryOnUnauthorized: true,
-      },
-    );
+    return httpClient.request<GoogleLinkStatus>(authEndpointPaths.googleLinkStatus, {
+      auth: true,
+      method: "GET",
+      retryOnUnauthorized: true
+    });
   },
 
   async initializeGoogleLink() {
@@ -345,8 +355,8 @@ export const authApi = {
         auth: true,
         body: {},
         method: "POST",
-        retryOnUnauthorized: false,
-      },
+        retryOnUnauthorized: false
+      }
     );
 
     return assertGoogleInitialization(initialization);
@@ -359,33 +369,27 @@ export const authApi = {
         auth: true,
         body: input,
         method: "POST",
-        retryOnUnauthorized: false,
-      },
+        retryOnUnauthorized: false
+      }
     );
   },
 
   async verifyGoogleLink(input: VerificationChallengeInput) {
-    return httpClient.request<GoogleLinkVerifiedPayload>(
-      authEndpointPaths.googleLinkVerify,
-      {
-        auth: true,
-        body: input,
-        method: "POST",
-        retryOnUnauthorized: false,
-      },
-    );
+    return httpClient.request<GoogleLinkVerifiedPayload>(authEndpointPaths.googleLinkVerify, {
+      auth: true,
+      body: input,
+      method: "POST",
+      retryOnUnauthorized: false
+    });
   },
 
   async startGoogleUnlink() {
-    return httpClient.request<VerificationChallengePayload>(
-      authEndpointPaths.googleUnlinkStart,
-      {
-        auth: true,
-        body: {},
-        method: "POST",
-        retryOnUnauthorized: false,
-      },
-    );
+    return httpClient.request<VerificationChallengePayload>(authEndpointPaths.googleUnlinkStart, {
+      auth: true,
+      body: {},
+      method: "POST",
+      retryOnUnauthorized: false
+    });
   },
 
   async verifyGoogleUnlink(input: VerificationChallengeInput) {
@@ -395,39 +399,31 @@ export const authApi = {
         auth: true,
         body: input,
         method: "POST",
-        retryOnUnauthorized: false,
-      },
+        retryOnUnauthorized: false
+      }
     );
     if (!result || result.signedOut !== true) {
       throw new Error("error.api");
     }
-    clearAuthTokens();
-
     return result;
   },
 
   async startPasswordSetup(input: PasswordSetupInput) {
-    return httpClient.request<VerificationChallengePayload>(
-      authEndpointPaths.passwordSetupStart,
-      {
-        auth: true,
-        body: { password: input.password },
-        method: "POST",
-        retryOnUnauthorized: false,
-      },
-    );
+    return httpClient.request<VerificationChallengePayload>(authEndpointPaths.passwordSetupStart, {
+      auth: true,
+      body: { password: input.password },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
   },
 
   async verifyPasswordSetup(input: VerificationChallengeInput) {
-    return httpClient.request<PasswordSetupVerifiedPayload>(
-      authEndpointPaths.passwordSetupVerify,
-      {
-        auth: true,
-        body: input,
-        method: "POST",
-        retryOnUnauthorized: false,
-      },
-    );
+    return httpClient.request<PasswordSetupVerifiedPayload>(authEndpointPaths.passwordSetupVerify, {
+      auth: true,
+      body: input,
+      method: "POST",
+      retryOnUnauthorized: false
+    });
   },
 
   async fetchCaptcha() {
@@ -440,55 +436,49 @@ export const authApi = {
       method: "GET",
       query: {
         token: deviceToken,
-        r: createCaptchaRequestId(),
+        r: createCaptchaRequestId()
       },
-      retryOnUnauthorized: false,
+      retryOnUnauthorized: false
     });
   },
 
   /** @deprecated Task 11 replaces the pre-verification registration page. */
-  async register(
-    _input: RegisterAccountInput,
-  ): Promise<RegisteredAccountPayload> {
+  async register(_input: RegisterAccountInput): Promise<RegisteredAccountPayload> {
+    void _input;
     throw new Error("error.auth.registration_verification_required");
   },
 
   /** @deprecated Task 10 removes the obsolete generic OTP consumer. */
   async sendOtp(_email: string) {
+    void _email;
     return rejectLegacyOtp();
   },
 
   /** @deprecated Task 10 removes the obsolete generic OTP consumer. */
   async verifyOtp(_email: string, _otp: string) {
+    void _email;
+    void _otp;
     return rejectLegacyOtp();
   },
 
-  async refresh() {
-    return refreshStoredAccessToken();
-  },
-
   async refreshWithCredentials(refreshToken: string) {
-    const refreshed = await httpClient.request<RefreshPayload>(
-      authEndpointPaths.refresh,
-      {
-        auth: false,
-        body: { refreshToken },
-        method: "POST",
-        retryOnUnauthorized: false,
-        unauthorizedPolicy: "caller",
-      },
-    );
+    const refreshed = await httpClient.request<RefreshPayload>(authEndpointPaths.refresh, {
+      auth: false,
+      body: { refreshToken },
+      method: "POST",
+      retryOnUnauthorized: false,
+      unauthorizedPolicy: "caller"
+    });
 
     return requireFormalRefreshPayload(refreshed);
   },
 
   async switchIdentity(
     identityId: number,
-    credentials?: AuthTransitionCredentials,
-    validation: AuthTransitionValidationContext = {},
+    credentials: AuthTransitionCredentials,
+    validation: AuthTransitionValidationContext
   ) {
-    const refreshToken = credentials?.refreshToken ?? getStoredRefreshToken();
-    if (!refreshToken) {
+    if (!credentials.refreshToken) {
       throw new Error("error.auth.refresh_missing");
     }
 
@@ -496,29 +486,30 @@ export const authApi = {
       authEndpointPaths.switchIdentity,
       {
         auth: true,
-        body: { refreshToken, identityId },
-        ...(credentials?.accessToken
+        body: { refreshToken: credentials.refreshToken, identityId },
+        ...(credentials.accessToken
           ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
           : {}),
         method: "POST",
         retryOnUnauthorized: false,
-        unauthorizedPolicy: "caller",
-      },
+        unauthorizedPolicy: "caller"
+      }
     );
 
-    return requireFormalSwitchIdentityPayload<SwitchIdentityPayload>(switched, {
-      ...validation,
-      expectedIdentityId: validation.expectedIdentityId ?? identityId,
-    });
+    return validateRotatedResponse(switched, (payload) =>
+      requireFormalSwitchIdentityPayload<SwitchIdentityPayload>(payload, {
+        ...validation,
+        expectedIdentityId: identityId
+      })
+    );
   },
 
   async switchMerchantShop(
     shopPublicId: string,
-    credentials?: AuthTransitionCredentials,
-    validation?: Required<AuthTransitionValidationContext>,
+    credentials: AuthTransitionCredentials,
+    validation: AuthTransitionValidationContext
   ) {
-    const refreshToken = credentials?.refreshToken ?? getStoredRefreshToken();
-    if (!refreshToken) {
+    if (!credentials.refreshToken) {
       throw new Error("error.auth.refresh_missing");
     }
 
@@ -526,63 +517,53 @@ export const authApi = {
       authEndpointPaths.switchMerchantShop,
       {
         auth: true,
-        body: { refreshToken, shopPublicId },
-        ...(credentials?.accessToken
+        body: { refreshToken: credentials.refreshToken, shopPublicId },
+        ...(credentials.accessToken
           ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
           : {}),
         method: "POST",
         retryOnUnauthorized: false,
-        unauthorizedPolicy: "caller",
-      },
+        unauthorizedPolicy: "caller"
+      }
     );
 
-    if (!validation) {
-      const me = requireFormalAuthMePayload(switched.me);
-      validation = {
-        expectedUserId: me.id,
-        expectedIdentityId: me.currentIdentity.id,
-      };
-    }
-
-    return requireFormalSwitchMerchantShopPayload<SwitchMerchantShopPayload>(
-      switched,
-      shopPublicId,
-      validation,
+    return validateRotatedResponse(switched, (payload) =>
+      requireFormalSwitchMerchantShopPayload<SwitchMerchantShopPayload>(
+        payload,
+        shopPublicId,
+        validation
+      )
     );
   },
 
-  async logout(credentials?: AuthTransitionCredentials) {
-    const refreshToken = credentials?.refreshToken ?? getStoredRefreshToken();
-    if (!refreshToken) {
+  async logout(credentials: AuthTransitionCredentials) {
+    if (!credentials.refreshToken) {
       return {};
     }
 
-    return httpClient.request<Record<string, never>>(
-      authEndpointPaths.logout,
-      {
-        auth: true,
-        body: { refreshToken },
-        ...(credentials?.accessToken
-          ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
-          : {}),
-        method: "POST",
-        retryOnUnauthorized: false,
-        unauthorizedPolicy: "caller",
-      },
-    );
+    return httpClient.request<Record<string, never>>(authEndpointPaths.logout, {
+      auth: true,
+      body: { refreshToken: credentials.refreshToken },
+      ...(credentials.accessToken
+        ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
+        : {}),
+      method: "POST",
+      retryOnUnauthorized: false,
+      unauthorizedPolicy: "caller"
+    });
   },
 
-  async me(credentials?: AuthTransitionCredentials) {
+  async me(credentials: AuthTransitionCredentials) {
     const me = await httpClient.request<AuthMePayload>(authEndpointPaths.me, {
       auth: true,
-      ...(credentials?.accessToken
+      ...(credentials.accessToken
         ? { headers: { Authorization: `Bearer ${credentials.accessToken}` } }
         : {}),
       method: "GET",
-      retryOnUnauthorized: credentials ? false : true,
-      ...(credentials ? { unauthorizedPolicy: "caller" as const } : {}),
+      retryOnUnauthorized: false,
+      unauthorizedPolicy: "caller"
     });
 
     return requireFormalAuthMePayload(me);
-  },
+  }
 };

@@ -210,8 +210,10 @@ export type TechnicianRankingPeriod =
   | "all";
 export type TechnicianRankingSortBy = "revenue" | "completedOrders" | "workingDays";
 
-export interface TechnicianRankingQuery
-  extends Record<string, string | number | boolean | null | undefined> {
+export interface TechnicianRankingQuery extends Record<
+  string,
+  string | number | boolean | null | undefined
+> {
   period?: TechnicianRankingPeriod;
   from?: string;
   to?: string;
@@ -242,8 +244,7 @@ export interface BackofficeTechnicianRankingRowPayload {
   workingDayCount: number;
 }
 
-export interface BackofficeTechnicianRankingPayload
-  extends PaginatedApiPayload<BackofficeTechnicianRankingRowPayload> {
+export interface BackofficeTechnicianRankingPayload extends PaginatedApiPayload<BackofficeTechnicianRankingRowPayload> {
   summary: {
     technicianCount: number;
     completedServiceAmountJpy: number;
@@ -361,8 +362,7 @@ export interface BackofficeAuditEventPayload {
   metadata: Record<string, unknown> | null;
 }
 
-export type BackofficeCustomerTimelinePayload =
-  PaginatedApiPayload<BackofficeAuditEventPayload>;
+export type BackofficeCustomerTimelinePayload = PaginatedApiPayload<BackofficeAuditEventPayload>;
 
 export interface BackofficeTechnicianDetailPayload extends BackofficeTechnicianPayload {
   bio: string | null;
@@ -439,12 +439,26 @@ export interface BackofficeShopCreateInput {
   isRecommended?: boolean;
 }
 
-export type BackofficeShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone" | "isRecommended">>;
-export type MerchantShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">> & {
+export type BackofficeShopUpdateInput = Partial<
+  Pick<
+    BackofficeShopCreateInput,
+    "name" | "description" | "city" | "address" | "phone" | "isRecommended"
+  >
+>;
+export type MerchantShopUpdateInput = Partial<
+  Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">
+> & {
   avatarDataUrl?: string;
 };
-export type BackofficeTechnicianUpdateInput = Partial<Pick<BackofficeTechnicianPayload, "displayName" | "city" | "serviceArea" | "employmentType" | "employmentStartedAt">> & { shopId?: number | null; isRecommended?: boolean };
-export type BackofficeCustomerUpdateInput = Partial<Pick<BackofficeCustomerPayload, "displayName" | "city" | "isPublic">> & { bio?: string | null };
+export type BackofficeTechnicianUpdateInput = Partial<
+  Pick<
+    BackofficeTechnicianPayload,
+    "displayName" | "city" | "serviceArea" | "employmentType" | "employmentStartedAt"
+  >
+> & { shopId?: number | null; isRecommended?: boolean };
+export type BackofficeCustomerUpdateInput = Partial<
+  Pick<BackofficeCustomerPayload, "displayName" | "city" | "isPublic">
+> & { bio?: string | null };
 
 export interface BackofficeCustomerMembershipGrantInput {
   membershipLevel: string;
@@ -463,7 +477,16 @@ export interface BackofficeCustomerMembershipGrantPayload {
   membershipExpiresAt: string | null;
   membershipGrantedBy: { needoId: string; username: string };
 }
-export type BackofficeServiceCreateInput = Pick<BackofficeServicePayload, "categoryId" | "name" | "city" | "serviceMode" | "priceAmount" | "durationMinutes"> & Partial<Pick<BackofficeServicePayload, "technicianProfileId" | "description" | "status" | "isRecommended" | "sortOrder">>;
+export type BackofficeServiceCreateInput = Pick<
+  BackofficeServicePayload,
+  "categoryId" | "name" | "city" | "serviceMode" | "priceAmount" | "durationMinutes"
+> &
+  Partial<
+    Pick<
+      BackofficeServicePayload,
+      "technicianProfileId" | "description" | "status" | "isRecommended" | "sortOrder"
+    >
+  >;
 export type BackofficeServiceUpdateInput = Partial<BackofficeServiceCreateInput>;
 
 export interface BackofficeDashboardPayload {
@@ -502,9 +525,7 @@ export interface BackofficeDashboardPayload {
     memberDataStatus: "not_available";
     completedCustomerCount: number;
   };
-  scope:
-    | { kind: "platform"; shopPublicId: null }
-    | { kind: "shop"; shopPublicId: string };
+  scope: { kind: "platform"; shopPublicId: null } | { kind: "shop"; shopPublicId: string };
 }
 
 export interface PaginatedApiPayload<TItem> {
@@ -528,8 +549,10 @@ export type AffiliatePublisherType = "merchant_account" | "shop";
 export type AffiliateDiscountType = "none" | "fixed_jpy" | "percent";
 export type AffiliateServiceScopeMode = "all_current_services" | "selected_services";
 
-export interface BackofficeAffiliateTaskQuery
-  extends Record<string, string | number | boolean | null | undefined> {
+export interface BackofficeAffiliateTaskQuery extends Record<
+  string,
+  string | number | boolean | null | undefined
+> {
   page?: number;
   pageSize?: number;
   status?: AffiliateTaskStatus;
@@ -628,7 +651,8 @@ type ListQuery = {
   categoryId?: number;
 };
 
-const scopePrefix = (scope: BackofficeScope) => (scope === "merchant-admin" ? "/merchant-admin" : "/backoffice");
+const scopePrefix = (scope: BackofficeScope) =>
+  scope === "merchant-admin" ? "/merchant-admin" : "/backoffice";
 
 function serializeDashboardQuery(scope: BackofficeScope, query: DashboardQuery): DashboardQuery {
   const periods = new Set<DashboardPeriod>([
@@ -665,7 +689,8 @@ function isNonNegativeInteger(value: unknown): value is number {
 }
 
 function requireManageableMerchantShopsPage(
-  value: unknown
+  value: unknown,
+  expectedPage: number
 ): PaginatedApiPayload<ManageableMerchantShopPayload> {
   if (!value || typeof value !== "object") {
     throw new Error("error.api");
@@ -676,9 +701,11 @@ function requireManageableMerchantShopsPage(
     !Array.isArray(page.list) ||
     !isNonNegativeInteger(page.total) ||
     !isNonNegativeInteger(page.page) ||
-    page.page < 1 ||
+    page.page !== expectedPage ||
     !isNonNegativeInteger(page.page_size) ||
     page.page_size < 1 ||
+    page.page_size > 100 ||
+    page.list.length > page.page_size ||
     !page.list.every((shop) =>
       Boolean(
         shop &&
@@ -686,8 +713,11 @@ function requireManageableMerchantShopsPage(
         typeof shop.publicId === "string" &&
         /^shop\d{10}$/.test(shop.publicId) &&
         typeof shop.name === "string" &&
+        shop.name.trim().length > 0 &&
         typeof shop.city === "string" &&
+        shop.city.trim().length > 0 &&
         typeof shop.status === "string" &&
+        shop.status.trim().length > 0 &&
         typeof shop.selected === "boolean"
       )
     )
@@ -710,17 +740,13 @@ function requireManageableMerchantShopsPage(
 }
 
 export const backofficeRealDataApi = {
-  dashboard(
-    scope: BackofficeScope,
-    query: DashboardQuery,
-    options?: { signal?: AbortSignal }
-  ) {
+  dashboard(scope: BackofficeScope, query: DashboardQuery, options?: { signal?: AbortSignal }) {
     return httpClient.request<BackofficeDashboardPayload>(`${scopePrefix(scope)}/dashboard`, {
       query: serializeDashboardQuery(scope, query),
       ...(options?.signal ? { signal: options.signal } : {})
     });
   },
-  async manageableMerchantShops(page = 1, pageSize = 20) {
+  async manageableMerchantShops(page = 1, pageSize = 20, options?: { signal?: AbortSignal }) {
     if (
       !Number.isInteger(page) ||
       page < 1 ||
@@ -733,40 +759,57 @@ export const backofficeRealDataApi = {
 
     const payload = await httpClient.request<PaginatedApiPayload<ManageableMerchantShopPayload>>(
       "/merchant-admin/manageable-shops",
-      { query: { page, page_size: pageSize } }
+      {
+        query: { page, page_size: pageSize },
+        ...(options?.signal ? { signal: options.signal } : {})
+      }
     );
-    return requireManageableMerchantShopsPage(payload);
+    return requireManageableMerchantShopsPage(payload, page);
   },
   orders(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<PaginatedApiPayload<BackofficeOrderPayload>>(`${scopePrefix(scope)}/orders`, {
-      query
-    });
-  },
-  schedule(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<PaginatedApiPayload<BackofficeScheduleSlotPayload>>(`${scopePrefix(scope)}/schedule`, {
-      query
-    });
-  },
-  financeSettlements(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<PaginatedApiPayload<BackofficeFinanceSettlementPayload>>(`${scopePrefix(scope)}/finance/settlements`, {
-      query
-    });
-  },
-  ndpSummary(query: { date?: string } = {}) {
-    return httpClient.request<BackofficeNdpSummaryPayload>(
-      "/backoffice/finance/ndp-summary",
-      { query }
+    return httpClient.request<PaginatedApiPayload<BackofficeOrderPayload>>(
+      `${scopePrefix(scope)}/orders`,
+      {
+        query
+      }
     );
   },
-  exportFinanceSettlements(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<CsvExportPayload>(`${scopePrefix(scope)}/finance/settlements/export`, {
+  schedule(scope: BackofficeScope, query?: ListQuery) {
+    return httpClient.request<PaginatedApiPayload<BackofficeScheduleSlotPayload>>(
+      `${scopePrefix(scope)}/schedule`,
+      {
+        query
+      }
+    );
+  },
+  financeSettlements(scope: BackofficeScope, query?: ListQuery) {
+    return httpClient.request<PaginatedApiPayload<BackofficeFinanceSettlementPayload>>(
+      `${scopePrefix(scope)}/finance/settlements`,
+      {
+        query
+      }
+    );
+  },
+  ndpSummary(query: { date?: string } = {}) {
+    return httpClient.request<BackofficeNdpSummaryPayload>("/backoffice/finance/ndp-summary", {
       query
     });
   },
+  exportFinanceSettlements(scope: BackofficeScope, query?: ListQuery) {
+    return httpClient.request<CsvExportPayload>(
+      `${scopePrefix(scope)}/finance/settlements/export`,
+      {
+        query
+      }
+    );
+  },
   technicians(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<PaginatedApiPayload<BackofficeTechnicianPayload>>(`${scopePrefix(scope)}/technicians`, {
-      query
-    });
+    return httpClient.request<PaginatedApiPayload<BackofficeTechnicianPayload>>(
+      `${scopePrefix(scope)}/technicians`,
+      {
+        query
+      }
+    );
   },
   technicianRankings(query?: TechnicianRankingQuery) {
     return httpClient.request<BackofficeTechnicianRankingPayload>(
@@ -803,54 +846,89 @@ export const backofficeRealDataApi = {
     );
   },
   shops(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<PaginatedApiPayload<BackofficeShopPayload>>(`${scopePrefix(scope)}/shops`, {
-      query
-    });
+    return httpClient.request<PaginatedApiPayload<BackofficeShopPayload>>(
+      `${scopePrefix(scope)}/shops`,
+      {
+        query
+      }
+    );
   },
   merchantShop() {
     return httpClient.request<PaginatedApiPayload<BackofficeShopPayload>>("/merchant-admin/shop");
   },
   updateMerchantShop(input: MerchantShopUpdateInput) {
-    return httpClient.request<BackofficeShopPayload>("/merchant-admin/shop", { body: input, method: "PATCH" });
+    return httpClient.request<BackofficeShopPayload>("/merchant-admin/shop", {
+      body: input,
+      method: "PATCH"
+    });
   },
   createShop(input: BackofficeShopCreateInput) {
-    return httpClient.request<BackofficeShopPayload>("/backoffice/shops", { body: input, method: "POST" });
+    return httpClient.request<BackofficeShopPayload>("/backoffice/shops", {
+      body: input,
+      method: "POST"
+    });
   },
   updateShop(id: number, input: BackofficeShopUpdateInput) {
-    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}`, { body: input, method: "PATCH" });
+    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}`, {
+      body: input,
+      method: "PATCH"
+    });
   },
   approveShop(id: number) {
-    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}/approve`, { method: "POST" });
+    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}/approve`, {
+      method: "POST"
+    });
   },
   deleteShop(id: number) {
-    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}`, { method: "DELETE" });
+    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}`, {
+      method: "DELETE"
+    });
   },
   updateTechnician(scope: BackofficeScope, id: number, input: BackofficeTechnicianUpdateInput) {
-    return httpClient.request<BackofficeTechnicianPayload>(`${scopePrefix(scope)}/technicians/${id}`, { body: input, method: "PATCH" });
+    return httpClient.request<BackofficeTechnicianPayload>(
+      `${scopePrefix(scope)}/technicians/${id}`,
+      { body: input, method: "PATCH" }
+    );
   },
   approveTechnician(scope: BackofficeScope, id: number, input: { shopId?: number } = {}) {
-    return httpClient.request<BackofficeTechnicianPayload>(`${scopePrefix(scope)}/technicians/${id}/approve`, { body: input, method: "POST" });
+    return httpClient.request<BackofficeTechnicianPayload>(
+      `${scopePrefix(scope)}/technicians/${id}/approve`,
+      { body: input, method: "POST" }
+    );
   },
   deleteTechnician(scope: BackofficeScope, id: number) {
-    return httpClient.request<BackofficeTechnicianPayload>(`${scopePrefix(scope)}/technicians/${id}`, { method: "DELETE" });
+    return httpClient.request<BackofficeTechnicianPayload>(
+      `${scopePrefix(scope)}/technicians/${id}`,
+      { method: "DELETE" }
+    );
   },
   technician(scope: BackofficeScope, id: number) {
-    return httpClient.request<BackofficeTechnicianDetailPayload>(`${scopePrefix(scope)}/technicians/${id}`);
+    return httpClient.request<BackofficeTechnicianDetailPayload>(
+      `${scopePrefix(scope)}/technicians/${id}`
+    );
   },
   customers(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<PaginatedApiPayload<BackofficeCustomerPayload>>(`${scopePrefix(scope)}/customers`, { query });
+    return httpClient.request<PaginatedApiPayload<BackofficeCustomerPayload>>(
+      `${scopePrefix(scope)}/customers`,
+      { query }
+    );
   },
   customer(scope: BackofficeScope, id: number) {
-    return httpClient.request<BackofficeCustomerDetailPayload>(`${scopePrefix(scope)}/customers/${id}`);
+    return httpClient.request<BackofficeCustomerDetailPayload>(
+      `${scopePrefix(scope)}/customers/${id}`
+    );
   },
   customerTimeline(scope: BackofficeScope, id: number, page = 1, pageSize = 10) {
     return httpClient.request<BackofficeCustomerTimelinePayload>(
       `${scopePrefix(scope)}/customers/${id}/timeline`,
-      { query: { page, pageSize } },
+      { query: { page, pageSize } }
     );
   },
   updateCustomer(id: number, input: BackofficeCustomerUpdateInput) {
-    return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, { body: input, method: "PATCH" });
+    return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, {
+      body: input,
+      method: "PATCH"
+    });
   },
   assignCustomerMembership(id: number, input: BackofficeCustomerMembershipGrantInput) {
     return httpClient.request<BackofficeCustomerMembershipGrantPayload>(
@@ -859,20 +937,33 @@ export const backofficeRealDataApi = {
     );
   },
   deleteCustomer(id: number) {
-    return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, { method: "DELETE" });
+    return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, {
+      method: "DELETE"
+    });
   },
   services(scope: BackofficeScope, query?: ListQuery) {
-    return httpClient.request<PaginatedApiPayload<BackofficeServicePayload>>(`${scopePrefix(scope)}/services`, { query });
+    return httpClient.request<PaginatedApiPayload<BackofficeServicePayload>>(
+      `${scopePrefix(scope)}/services`,
+      { query }
+    );
   },
   createService(scope: BackofficeScope, input: BackofficeServiceCreateInput, shopId?: number) {
-    const path = scope === "merchant-admin" ? "/merchant-admin/services" : `/backoffice/shops/${shopId}/services`;
+    const path =
+      scope === "merchant-admin"
+        ? "/merchant-admin/services"
+        : `/backoffice/shops/${shopId}/services`;
     return httpClient.request<BackofficeServicePayload>(path, { body: input, method: "POST" });
   },
   updateService(scope: BackofficeScope, id: number, input: BackofficeServiceUpdateInput) {
-    return httpClient.request<BackofficeServicePayload>(`${scopePrefix(scope)}/services/${id}`, { body: input, method: "PATCH" });
+    return httpClient.request<BackofficeServicePayload>(`${scopePrefix(scope)}/services/${id}`, {
+      body: input,
+      method: "PATCH"
+    });
   },
   deleteService(scope: BackofficeScope, id: number) {
-    return httpClient.request<BackofficeServicePayload>(`${scopePrefix(scope)}/services/${id}`, { method: "DELETE" });
+    return httpClient.request<BackofficeServicePayload>(`${scopePrefix(scope)}/services/${id}`, {
+      method: "DELETE"
+    });
   }
 };
 
@@ -928,7 +1019,12 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
     orderCount: 0,
     income: 0,
     skills: [],
-    serviceAreas: row.serviceArea ? row.serviceArea.split(",").map((item) => item.trim()).filter(Boolean) : [],
+    serviceAreas: row.serviceArea
+      ? row.serviceArea
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [],
     acceptRate: 0,
     cancelRate: 0,
     reviewCount: 0,
@@ -981,7 +1077,13 @@ function normalizeOrderStatus(status: string): OrderStatus {
     return "inService";
   }
 
-  if (status === "confirmed" || status === "inService" || status === "completed" || status === "cancelled" || status === "pending") {
+  if (
+    status === "confirmed" ||
+    status === "inService" ||
+    status === "completed" ||
+    status === "cancelled" ||
+    status === "pending"
+  ) {
     return status as OrderStatus;
   }
 

@@ -4,7 +4,7 @@ import {
   type BackofficeDashboardPayload,
   type DashboardPlatformGlobalNdpPair,
   type DashboardQuery,
-  type ManageableMerchantShopPayload,
+  type ManageableMerchantShopPayload
 } from "./backofficeRealData";
 import { httpClient } from "./httpClient";
 
@@ -19,11 +19,11 @@ describe("formal dashboard frontend API contract", () => {
     vi.mocked(httpClient.request).mockResolvedValueOnce({});
 
     await backofficeRealDataApi.dashboard("backoffice", {
-      period: "last7days",
+      period: "last7days"
     });
 
     expect(httpClient.request).toHaveBeenCalledWith("/backoffice/dashboard", {
-      query: { period: "last7days" },
+      query: { period: "last7days" }
     });
   });
 
@@ -32,14 +32,14 @@ describe("formal dashboard frontend API contract", () => {
       period: "custom",
       from: "2026-08-01",
       to: "2026-08-31",
-      city: "Tokyo",
+      city: "Tokyo"
     };
     vi.mocked(httpClient.request).mockResolvedValueOnce({});
 
     await backofficeRealDataApi.dashboard("backoffice", query);
 
     expect(httpClient.request).toHaveBeenCalledWith("/backoffice/dashboard", {
-      query,
+      query
     });
   });
 
@@ -51,13 +51,13 @@ describe("formal dashboard frontend API contract", () => {
       to: "2026-08-31",
       city: "Tokyo",
       shopId: "999",
-      unknown: "must-not-leave-client",
+      unknown: "must-not-leave-client"
     } as DashboardQuery & { shopId: string; unknown: string };
 
     await backofficeRealDataApi.dashboard("backoffice", untrustedQuery);
 
     expect(httpClient.request).toHaveBeenCalledWith("/backoffice/dashboard", {
-      query: { period: "month", city: "Tokyo" },
+      query: { period: "month", city: "Tokyo" }
     });
   });
 
@@ -65,14 +65,14 @@ describe("formal dashboard frontend API contract", () => {
     expect(() =>
       backofficeRealDataApi.dashboard("backoffice", {
         period: "custom",
-        from: "2026-08-01",
-      }),
+        from: "2026-08-01"
+      })
     ).toThrow("error.dashboard.custom_range_required");
     expect(() =>
       backofficeRealDataApi.dashboard("merchant-admin", {
         period: "custom",
-        to: "2026-08-31",
-      }),
+        to: "2026-08-31"
+      })
     ).toThrow("error.dashboard.custom_range_required");
     expect(httpClient.request).not.toHaveBeenCalled();
   });
@@ -84,21 +84,18 @@ describe("formal dashboard frontend API contract", () => {
       from: "2026-08-01",
       to: "2026-08-31",
       city: "Osaka",
-      shopId: "999",
+      shopId: "999"
     } as DashboardQuery & { shopId: string };
 
     await backofficeRealDataApi.dashboard("merchant-admin", untrustedQuery);
 
-    expect(httpClient.request).toHaveBeenCalledWith(
-      "/merchant-admin/dashboard",
-      {
-        query: {
-          period: "custom",
-          from: "2026-08-01",
-          to: "2026-08-31",
-        },
-      },
-    );
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/dashboard", {
+      query: {
+        period: "custom",
+        from: "2026-08-01",
+        to: "2026-08-31"
+      }
+    });
   });
 
   it("forwards the caller abort signal without adding it to the query", async () => {
@@ -108,16 +105,13 @@ describe("formal dashboard frontend API contract", () => {
     await backofficeRealDataApi.dashboard(
       "merchant-admin",
       { period: "last7days" },
-      { signal: controller.signal },
+      { signal: controller.signal }
     );
 
-    expect(httpClient.request).toHaveBeenCalledWith(
-      "/merchant-admin/dashboard",
-      {
-        query: { period: "last7days" },
-        signal: controller.signal,
-      },
-    );
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/dashboard", {
+      query: { period: "last7days" },
+      signal: controller.signal
+    });
   });
 
   it("uses strict backend pagination names for manageable merchant shops", async () => {
@@ -128,25 +122,26 @@ describe("formal dashboard frontend API contract", () => {
           name: "Aoyama Care Studio",
           city: "Tokyo",
           status: "published",
-          selected: true,
-        },
+          selected: true
+        }
       ],
-      total: 1,
+      total: 51,
       page: 2,
-      page_size: 50,
+      page_size: 50
     };
     vi.mocked(httpClient.request).mockResolvedValueOnce(page);
 
+    const controller = new AbortController();
     await expect(
-      backofficeRealDataApi.manageableMerchantShops(2, 50),
+      backofficeRealDataApi.manageableMerchantShops(2, 50, {
+        signal: controller.signal
+      })
     ).resolves.toEqual(page);
 
-    expect(httpClient.request).toHaveBeenCalledWith(
-      "/merchant-admin/manageable-shops",
-      {
-        query: { page: 2, page_size: 50 },
-      },
-    );
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/manageable-shops", {
+      query: { page: 2, page_size: 50 },
+      signal: controller.signal
+    });
   });
 
   it("projects manageable shops to the locked safe fields", async () => {
@@ -159,35 +154,65 @@ describe("formal dashboard frontend API contract", () => {
           name: "Aoyama Care Studio",
           city: "Tokyo",
           status: "published",
-          selected: true,
-        },
+          selected: true
+        }
       ],
       total: 1,
       page: 1,
-      page_size: 20,
+      page_size: 20
     });
 
-    await expect(
-      backofficeRealDataApi.manageableMerchantShops(),
-    ).resolves.toEqual({
+    await expect(backofficeRealDataApi.manageableMerchantShops()).resolves.toEqual({
       list: [
         {
           publicId: "shop0000000011",
           name: "Aoyama Care Studio",
           city: "Tokyo",
           status: "published",
-          selected: true,
-        },
+          selected: true
+        }
       ],
       total: 1,
       page: 1,
-      page_size: 20,
+      page_size: 20
     });
   });
 
   it.each([
     [{ list: [], total: 0, page: 0, page_size: 20 }],
     [{ list: [], total: 0, page: 1, page_size: 0 }],
+    [{ list: [], total: 0, page: 2, page_size: 20 }],
+    [{ list: [], total: 0, page: 1, page_size: 101 }],
+    [
+      {
+        list: [
+          {
+            publicId: "shop0000000011",
+            name: "",
+            city: "Tokyo",
+            status: "published",
+            selected: true
+          }
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20
+      }
+    ],
+    [
+      {
+        list: Array.from({ length: 2 }, (_, index) => ({
+          publicId: `shop${String(index + 1).padStart(10, "0")}`,
+          name: `Shop ${index + 1}`,
+          city: "Tokyo",
+          status: "published",
+          selected: index === 0
+        })),
+        total: 2,
+        page: 1,
+        page_size: 1
+      }
+    ],
     [
       {
         list: [
@@ -196,13 +221,13 @@ describe("formal dashboard frontend API contract", () => {
             name: "Aoyama Care Studio",
             city: "Tokyo",
             status: "published",
-            selected: true,
-          },
+            selected: true
+          }
         ],
         total: 1,
         page: 1,
-        page_size: 20,
-      },
+        page_size: 20
+      }
     ],
     [
       {
@@ -211,38 +236,33 @@ describe("formal dashboard frontend API contract", () => {
             publicId: "shop0000000011",
             name: "Aoyama Care Studio",
             city: "Tokyo",
-            status: "published",
-          },
+            status: "published"
+          }
         ],
         total: 1,
         page: 1,
-        page_size: 20,
-      },
-    ],
-  ])(
-    "rejects an unsafe manageable-shop page without exposing partial fields",
-    async (page) => {
-      vi.mocked(httpClient.request).mockResolvedValueOnce(page);
+        page_size: 20
+      }
+    ]
+  ])("rejects an unsafe manageable-shop page without exposing partial fields", async (page) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce(page);
 
-      await expect(
-        backofficeRealDataApi.manageableMerchantShops(),
-      ).rejects.toThrow("error.api");
-    },
-  );
+    await expect(backofficeRealDataApi.manageableMerchantShops(1, 20)).rejects.toThrow("error.api");
+  });
 
   it.each([
     [0, 20],
     [1, 0],
     [1, 101],
-    [1.5, 20],
+    [1.5, 20]
   ])(
     "rejects invalid manageable-shop pagination before the request (%s, %s)",
     async (page, pageSize) => {
-      await expect(
-        backofficeRealDataApi.manageableMerchantShops(page, pageSize),
-      ).rejects.toThrow("error.pagination.invalid");
+      await expect(backofficeRealDataApi.manageableMerchantShops(page, pageSize)).rejects.toThrow(
+        "error.pagination.invalid"
+      );
       expect(httpClient.request).not.toHaveBeenCalled();
-    },
+    }
   );
 
   it("matches the locked nullable merchant finance and public shop DTO", () => {
@@ -264,9 +284,7 @@ describe("formal dashboard frontend API contract", () => {
     >().toEqualTypeOf<string>();
     expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty("metrics");
     expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty("orders");
-    expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty(
-      "technicians",
-    );
+    expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty("technicians");
     expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty("shops");
   });
 });

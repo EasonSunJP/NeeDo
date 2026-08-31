@@ -33,8 +33,8 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain("shopPublicId: resolvedShopPublicId");
     expect(source).toContain("credentialEpoch");
     expect(source).not.toContain("unselected");
-    expect(source).not.toContain("readOnlyPreview?.selectedShopId ?? \"current-shop\"");
-    expect(source).not.toContain("session?.loggedInAt ?? \"no-session\"");
+    expect(source).not.toContain('readOnlyPreview?.selectedShopId ?? "current-shop"');
+    expect(source).not.toContain('session?.loggedInAt ?? "no-session"');
     expect(source).toContain('period: "last7days"');
     expect(source).toContain("loadMerchantAdminDashboard(dashboardOwner, dashboardQuery)");
     expect(source).toContain("invalidateMerchantAdminDashboard(dashboardOwner, dashboardQuery)");
@@ -44,7 +44,15 @@ describe("MerchantAdminLayout formal shop summary", () => {
   it("resolves a server-confirmed selected shop before requesting or caching dashboard data", () => {
     expect(source).toContain("session?.merchantShopPublicId");
     expect(source).toContain("resolvedShop?.ownerKey === shopResolutionOwnerKey");
-    expect(source).toContain("backofficeRealDataApi.manageableMerchantShops(page, pageSize)");
+    expect(source).toContain("subscribeAuthCredentialSnapshot");
+    expect(source).toContain("useSyncExternalStore");
+    expect(source).toContain("backofficeRealDataApi.manageableMerchantShops(page, pageSize, {");
+    expect(source).toContain("signal: controller.signal");
+    expect(source).toContain("controller.abort()");
+    expect(source).toContain(
+      "const totalPages = Math.ceil(manageable.total / manageable.page_size)"
+    );
+    expect(source).toContain("if (page >= totalPages)");
     expect(source).toContain("manageable.list.find((shop) => shop.selected)");
     expect(source).toContain("if (!dashboardOwner)");
     expect(source.indexOf("manageableMerchantShops")).toBeLessThan(
@@ -92,7 +100,7 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain('title: "用户管理"');
     expect(source).toContain('to: "/merchant-admin/people?module=users"');
     expect(source).not.toContain('title: "人员与顾客"');
-    expect(source).not.toContain('module=customers');
+    expect(source).not.toContain("module=customers");
     expect(source).toContain('children: ["预约处理", "改期", "联系用户"]');
     expect(source.match(/placeholder="搜索订单、用户、员工/g)?.length).toBe(2);
     expect(source).not.toContain("联系顾客");
