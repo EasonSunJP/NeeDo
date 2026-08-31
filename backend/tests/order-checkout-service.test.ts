@@ -239,7 +239,15 @@ const createRepositoryHarness = (options: { affiliateInvalid?: boolean; overflow
       }
     })
   };
-  return { repository: new BookingRepository(client), order, events, histories, audits, get checkout() { return checkout; } };
+  return {
+    repository: new BookingRepository(client),
+    order,
+    events,
+    histories,
+    audits,
+    transaction: client.$transaction,
+    get checkout() { return checkout; }
+  };
 };
 
 const rate = { ruleId: 7, publicId: "00000000-0000-4000-8000-000000000007", version: 3, ndpUnits: 3, jpyUnits: 2, effectiveFrom: new Date("2026-08-01T00:00:00.000Z"), resolvedAt: new Date("2026-09-01T10:00:00.000Z") };
@@ -349,6 +357,34 @@ describe("formal checkout repository state", () => {
     expect(operations.checkout.receiptConfirmedAt).toBeNull();
   });
 
+  it("rejects an unknown receipt evidence value before opening a transaction or writing", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-invalid-evidence-select-1" });
+    const transactionCount = h.transaction.mock.calls.length;
+    const eventCount = h.events.length;
+    const historyCount = h.histories.length;
+
+    await expect(
+      (h.repository.confirmCheckoutReceipt as any)(
+        {
+          orderId: 41,
+          actorUserId: 202,
+          technicianProfileId: 702,
+          reason: "cash received",
+          idempotencyKey: "checkout-invalid-evidence-1",
+          evidence: "unknown_receipt_evidence"
+        },
+        completionOptions
+      )
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+    expect(h.transaction).toHaveBeenCalledTimes(transactionCount);
+    expect(h.events).toHaveLength(eventCount);
+    expect(h.histories).toHaveLength(historyCount);
+    expect(h.checkout.receiptConfirmedAt).toBeNull();
+    expect(h.order.status).toBe("AWAITING_PAYMENT_CONFIRMATION");
+  });
+
   it("does not move awaiting payment confirmation back to awaiting checkout", async () => {
     const h = createRepositoryHarness();
     await h.repository.getOrCreateCheckout({ ...customerInput, rate });
@@ -425,32 +461,50 @@ describe("formal checkout repository state", () => {
     ).resolves.toEqual({ outcome: "invalid_snapshot" });
   });
 
-  it("requires matching persisted operations audit before projecting override evidence", async () => {
-    const h = createRepositoryHarness();
-    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
-    await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-ops-evidence-select-1" });
-    await h.repository.confirmCheckoutReceipt(
-      {
-        orderId: 41,
-        actorUserId: 303,
-        technicianProfileId: null,
-        reason: "verified receipt",
-        idempotencyKey: "checkout-ops-evidence-receipt-1",
-        evidence: "operations_receipt_override",
-        audit: {
-          actorId: 303,
-          action: "backoffice.order.checkout.receipt_override",
-          targetType: "BookingOrder",
-          targetId: 41,
-          metadata: { reason: "verified receipt" }
-        }
-      },
-      { settle: async () => undefined, settleAffiliate: async () => undefined }
-    );
-    h.audits.splice(0);
+  it("requires exact persisted operations audit method and integer checkout amount", async () => {
+    let sequence = 0;
+    const createCompletedOperationsReceipt = async () => {
+      sequence += 1;
+      const h = createRepositoryHarness();
+      await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+      await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: `checkout-ops-evidence-select-${sequence}` });
+      await h.repository.confirmCheckoutReceipt(
+        {
+          orderId: 41,
+          actorUserId: 303,
+          technicianProfileId: null,
+          reason: "verified receipt",
+          idempotencyKey: `checkout-ops-evidence-receipt-${sequence}`,
+          evidence: "operations_receipt_override",
+          audit: {
+            actorId: 303,
+            action: "backoffice.order.checkout.receipt_override",
+            targetType: "BookingOrder",
+            targetId: 41,
+            metadata: { reason: "verified receipt" }
+          }
+        },
+        completionOptions
+      );
+      return h;
+    };
 
+    const missing = await createCompletedOperationsReceipt();
+    missing.audits.splice(0);
     await expect(
-      h.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+      missing.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+
+    const methodMismatch = await createCompletedOperationsReceipt();
+    methodMismatch.audits[0].metadata.selectedMethod = "other";
+    await expect(
+      methodMismatch.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+
+    const amountMismatch = await createCompletedOperationsReceipt();
+    amountMismatch.audits[0].metadata.checkoutAmountJpy = "10200";
+    await expect(
+      amountMismatch.repository.getOrCreateCheckout({ ...customerInput, rate: null })
     ).resolves.toEqual({ outcome: "invalid_snapshot" });
   });
 

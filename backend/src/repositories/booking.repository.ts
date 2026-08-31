@@ -2089,6 +2089,9 @@ export class BookingRepository implements BookingRepositoryPort {
     input: ConfirmCheckoutReceiptRepositoryInput,
     options: CheckoutReceiptOptions
   ): Promise<CheckoutMutationResult> {
+    const validEvidence =
+      input.evidence === "technician_receipt_confirmation" ||
+      input.evidence === "operations_receipt_override";
     const hasAudit = Object.prototype.hasOwnProperty.call(input, "audit");
     const validAudit =
       input.evidence === "operations_receipt_override" &&
@@ -2102,6 +2105,7 @@ export class BookingRepository implements BookingRepositoryPort {
       !options ||
       typeof options.settle !== "function" ||
       typeof options.settleAffiliate !== "function" ||
+      !validEvidence ||
       (input.evidence === "operations_receipt_override" ? !validAudit : hasAudit)
     ) {
       return Promise.resolve({ outcome: "invalid_snapshot" });
@@ -3188,7 +3192,9 @@ export class BookingRepository implements BookingRepositoryPort {
       audit.targetId !== current.id ||
       auditMetadata.orderId !== current.id ||
       auditMetadata.checkoutId !== checkout.id ||
-      auditMetadata.reason !== checkout.receiptConfirmationReason
+      auditMetadata.reason !== checkout.receiptConfirmationReason ||
+      auditMetadata.selectedMethod !== servicePaymentMethodFromDb(checkout.paymentMethod) ||
+      auditMetadata.checkoutAmountJpy !== checkout.checkoutAmountJpy
     ) {
       throw new CheckoutTransactionAbort("invalid_snapshot");
     }
