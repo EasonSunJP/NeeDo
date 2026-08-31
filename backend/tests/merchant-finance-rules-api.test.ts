@@ -288,6 +288,29 @@ const createFixture = async () => {
       updatedById: actorUserId
     }))
   } as unknown as jest.Mocked<MerchantFinanceRulesRepositoryPort>;
+  const merchantShopContextRepository = {
+    listManageableShops: jest.fn(
+      async (input: { identityScopeId: number; page: number; pageSize: number }) => ({
+        list:
+          input.page === 1
+            ? [
+                {
+                  publicId: `shop${String(input.identityScopeId).padStart(10, "0")}`,
+                  name: "Authenticated shop",
+                  city: "Tokyo",
+                  status: "published",
+                  selected: true
+                }
+              ]
+            : [],
+        total: 1,
+        page: input.page,
+        page_size: input.pageSize
+      })
+    ),
+    resolveShop: jest.fn(),
+    resolveDefaultShop: jest.fn()
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository,
@@ -295,7 +318,8 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
-    merchantFinanceRulesRepository
+    merchantFinanceRulesRepository,
+    merchantShopContextRepository
   } as never);
   const login = async (email: string) => {
     const response = await request(app)

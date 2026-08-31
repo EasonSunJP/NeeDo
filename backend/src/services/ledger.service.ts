@@ -3,6 +3,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { AuthenticatedAccessContext } from "./auth.service";
+import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
 import type {
   FeeCalculationResult,
   FeeCalculationService,
@@ -3139,8 +3140,8 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     ownerType: WalletOwnerType;
     ownerId: number;
   } {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return { ownerType: "shop", ownerId: actor.currentIdentityScopeId };
+    if (hasMerchantShopScope(actor)) {
+      return { ownerType: "shop", ownerId: requireMerchantShopId(actor) };
     }
     if (
       actor.currentIdentityScopeType === "platform" ||
@@ -3161,8 +3162,8 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     ownerType: WalletOwnerType;
     ownerId: number;
   } {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return { ownerType: "shop", ownerId: actor.currentIdentityScopeId };
+    if (hasMerchantShopScope(actor)) {
+      return { ownerType: "shop", ownerId: requireMerchantShopId(actor) };
     }
 
     return { ownerType: "user", ownerId: actor.userId };

@@ -55,7 +55,12 @@ describe("BookingService schedule scope", () => {
   it("derives merchant shop scope and records schedule mutations", async () => {
     const repo = repository();
     const service = new BookingService(repo, undefined, undefined, audit);
-    const merchant = actor({ currentIdentityScopeType: "shop", currentIdentityScopeId: 11, roles: ["merchant_owner"] });
+    const merchant = actor({
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11,
+      roles: ["merchant_owner"]
+    });
 
     await service.createScheduleSlot(merchant, {
       serviceId: 20,
@@ -92,7 +97,12 @@ describe("BookingService schedule scope", () => {
     const unscoped = actor({ roles: ["merchant_owner"] });
     await expect(new BookingService(repository(), undefined, undefined, audit).listScheduleSlots(unscoped, { from: slot.startsAt, to: slot.endsAt, page: 1, pageSize: 20 })).rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN });
 
-    const merchant = actor({ currentIdentityScopeType: "shop", currentIdentityScopeId: 11, roles: ["merchant_owner"] });
+    const merchant = actor({
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11,
+      roles: ["merchant_owner"]
+    });
     await expect(new BookingService(repository("conflict"), undefined, undefined, audit).createScheduleSlot(merchant, {
       serviceId: 20,
       technicianProfileId: 31,

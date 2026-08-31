@@ -2,6 +2,10 @@ import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import {
+  MerchantShopContextRepository,
+  type MerchantShopContextRepositoryPort
+} from "../src/repositories/merchant-shop-context.repository";
 
 interface StoredValue {
   value: string;
@@ -119,7 +123,11 @@ const makePermission = (code: string, index: number) => ({
   deletedAt: null
 });
 
-const createFixture = async () => {
+const createFixture = async (
+  options: {
+    merchantShopContextRepository?: MerchantShopContextRepositoryPort;
+  } = {}
+) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const auditLogs: unknown[] = [];
   const backofficePermissions = [
@@ -145,14 +153,18 @@ const createFixture = async () => {
     "merchant-admin:technicians:list",
     "merchant-admin:technicians:write",
     "merchant-admin:customers:list",
+    "merchant-admin:services:list",
     "merchant-admin:shop:read",
     "merchant-admin:shop:write",
     "menu:dashboard",
     "page:dashboard"
   ].map(makePermission);
-  const readOnlyPermissions = ["auth:me", "auth:refresh", "auth:logout", "backoffice:merchant-accounts:read"].map((code, index) =>
-    makePermission(code, 100 + index)
-  );
+  const readOnlyPermissions = [
+    "auth:me",
+    "auth:refresh",
+    "auth:logout",
+    "backoffice:merchant-accounts:read"
+  ].map((code, index) => makePermission(code, 100 + index));
   const adminRole = {
     id: 1,
     name: "Admin",
@@ -317,23 +329,100 @@ const createFixture = async () => {
       auditLogs.push(entry);
     })
   };
+  const merchantShopContextRepository = {
+    listManageableShops: jest.fn(
+      async (input: {
+        identityScopeType: string;
+        identityScopeId: number;
+        selectedShopPublicId: string | null;
+        page: number;
+        pageSize: number;
+      }) => ({
+        list:
+          input.page === 1
+            ? [
+                {
+                  publicId: "shop0000000011",
+                  name: "Aoyama Care Studio",
+                  city: "Tokyo",
+                  status: "published",
+                  selected: true
+                }
+              ]
+            : [],
+        total: 1,
+        page: input.page,
+        page_size: input.pageSize
+      })
+    ),
+    resolveShop: jest.fn(),
+    resolveDefaultShop: jest.fn()
+  };
   const backofficeRepository = {
-    getDashboard: jest.fn(async () => ({
-      metrics: [{ label: "今日订单", value: "2", change: "真实数据库", tone: "good" }],
-      orders: [{ id: 31, orderNo: "ND202605250001", status: "pending", shopId: 11 }],
-      schedule: { total: 2, available: 1, booked: 1 },
-      finance: {
-        estimatedServiceGmvJpy: 8800,
-        platformNdpRevenue: 700,
-        requestFeeNdpRevenue: 300,
-        userRewardNdpCost: 100,
-        pendingHoldNdp: 0,
-        campaignDiscountNdp: 0,
-        unknownOrUnreportedServiceAmountJpy: 8800
-      },
-      technicians: [{ id: 7, displayName: "Mika Tanaka", shopId: 11 }],
-      shops: [{ id: 11, name: "Aoyama Care Studio", status: "published" }]
-    })),
+    getDashboard: jest.fn(
+      async (input: {
+        scope: { kind: "platform" } | { kind: "shop"; shopId: number };
+        window: { buckets: Array<{ key: string; label: string }> };
+      }) => ({
+        current: {
+          availableScheduleSlots: 8,
+          activeTechnicians: 6,
+          registeredTechnicians: 10,
+          shopCount: input.scope.kind === "platform" ? 4 : null,
+          newCustomers: input.scope.kind === "platform" ? 3 : null,
+          pendingOrders: 2,
+          serviceGmvJpy: 8_800,
+          completedCustomerCount: 2
+        },
+        previous: {
+          availableScheduleSlots: 5,
+          activeTechnicians: 4,
+          registeredTechnicians: 8,
+          shopCount: input.scope.kind === "platform" ? 3 : null,
+          newCustomers: input.scope.kind === "platform" ? 2 : null,
+          serviceGmvJpy: 7_000,
+          completedCustomerCount: 1
+        },
+        buckets: input.window.buckets.map((bucket) => ({
+          ...bucket,
+          orderCount: 0,
+          serviceGmvJpy: 0,
+          shopCount: input.scope.kind === "platform" ? 4 : 0,
+          registeredTechnicianCount: 10,
+          scheduleTotalHours: 0,
+          scheduleAvailableHours: 0,
+          scheduleBookedHours: 0
+        })),
+        finance: {
+          platformNetRevenue: { ndp: 900, testNdp: 90 },
+          frozen: { ndp: 500, testNdp: 50 },
+          userReward: { ndp: 100, testNdp: 20 },
+          walletStock: input.scope.kind === "platform" ? { ndp: 5_000, testNdp: 500 } : null,
+          withdrawn: input.scope.kind === "platform" ? { ndp: 200, testNdp: 0 } : null,
+          shopNdpCost:
+            input.scope.kind === "shop"
+              ? { totalNdp: 500, platformNdp: 400, userRewardNdp: 100 }
+              : null,
+          bucketPlatformNetRevenueNdp: new Map(),
+          bucketFrozenNdp: new Map(),
+          bucketShopEstimatedGrossProfitJpy: new Map()
+        },
+        merchant:
+          input.scope.kind === "shop"
+            ? {
+                publicId: "shop0000000011",
+                name: "Aoyama Care Studio",
+                city: "Tokyo",
+                address: "Aoyama 1-1",
+                status: "published",
+                activeTechnicianCount: 6,
+                billing: null,
+                wallet: null
+              }
+            : null,
+        availableCities: input.scope.kind === "platform" ? ["Osaka", "Tokyo"] : []
+      })
+    ),
     listOrders: jest.fn(async (input: unknown) => ({
       list: [{ id: 31, orderNo: "ND202605250001", status: "pending", shopId: 11 }],
       total: 1,
@@ -420,6 +509,8 @@ const createFixture = async () => {
       page: 1,
       page_size: 20
     })),
+    listCustomers: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
+    listServices: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
     listCustomerTimeline: jest.fn(async (input: { page: number; pageSize: number }) => ({
       list: [
         {
@@ -435,21 +526,23 @@ const createFixture = async () => {
       page: input.page,
       page_size: input.pageSize
     })),
-    assignCustomerMembership: jest.fn(async (input: {
-      membershipLevel: string;
-      durationUnit: "forever" | "day" | "month";
-      durationValue: number | null;
-      startsAt: Date;
-      expiresAt: Date | null;
-    }) => ({
-      membershipLevel: input.membershipLevel,
-      membershipGrantMode: "operator_complimentary",
-      membershipDurationUnit: input.durationUnit,
-      membershipDurationValue: input.durationValue,
-      membershipStartsAt: input.startsAt.toISOString(),
-      membershipExpiresAt: input.expiresAt?.toISOString() ?? null,
-      membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" }
-    })),
+    assignCustomerMembership: jest.fn(
+      async (input: {
+        membershipLevel: string;
+        durationUnit: "forever" | "day" | "month";
+        durationValue: number | null;
+        startsAt: Date;
+        expiresAt: Date | null;
+      }) => ({
+        membershipLevel: input.membershipLevel,
+        membershipGrantMode: "operator_complimentary",
+        membershipDurationUnit: input.durationUnit,
+        membershipDurationValue: input.durationValue,
+        membershipStartsAt: input.startsAt.toISOString(),
+        membershipExpiresAt: input.expiresAt?.toISOString() ?? null,
+        membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" }
+      })
+    ),
     listTechnicianRankings: jest.fn(async () => ({
       list: [
         {
@@ -516,7 +609,9 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
-    backofficeRepository
+    backofficeRepository,
+    merchantShopContextRepository:
+      options.merchantShopContextRepository ?? merchantShopContextRepository
   } as never);
   const login = async (email: string) => {
     const response = await request(app)
@@ -527,10 +622,101 @@ const createFixture = async () => {
     return response.body.data.accessToken as string;
   };
 
-  return { app, auditLogs, backofficeRepository, login };
+  return { app, auditLogs, backofficeRepository, merchantShopContextRepository, login };
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
+  it("lists only safe manageable-shop fields with strict pagination, permission, and audit", async () => {
+    const fixture = await createFixture();
+    const merchantToken = await fixture.login("merchant@example.com");
+    const response = await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops?page=1&page_size=10")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual({
+      list: [
+        {
+          publicId: "shop0000000011",
+          name: "Aoyama Care Studio",
+          city: "Tokyo",
+          status: "published",
+          selected: true
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    expect(fixture.merchantShopContextRepository.listManageableShops).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identityScopeType: "shop",
+        identityScopeId: 11,
+        selectedShopPublicId: null,
+        page: 1,
+        pageSize: 10
+      })
+    );
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "merchant_admin.manageable_shops.read" })
+      ])
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops?pageSize=10")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(400);
+    await request(fixture.app).get("/api/v1/merchant-admin/manageable-shops").expect(401);
+
+    const viewerToken = await fixture.login("viewer@example.com");
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403);
+  });
+
+  it("returns the real direct-shop repository row as selected without a token selection", async () => {
+    const findFirst = jest.fn(async () => ({
+      name: "Aoyama Care Studio",
+      city: "Tokyo",
+      status: "published",
+      publicIdentifier: { publicId: "shop0000000011" }
+    }));
+    const contextRepository = new MerchantShopContextRepository({
+      shop: { findFirst }
+    } as never);
+    const fixture = await createFixture({ merchantShopContextRepository: contextRepository });
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/manageable-shops?page=1&page_size=10")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toEqual({
+          list: [
+            {
+              publicId: "shop0000000011",
+              name: "Aoyama Care Studio",
+              city: "Tokyo",
+              status: "published",
+              selected: true
+            }
+          ],
+          total: 1,
+          page: 1,
+          page_size: 10
+        });
+      });
+
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 11, deletedAt: null })
+      })
+    );
+  });
+
   it("assigns an audited complimentary user membership through the write permission", async () => {
     const fixture = await createFixture();
     const adminToken = await fixture.login("admin@example.com");
@@ -563,9 +749,11 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         grantedById: expect.any(Number)
       })
     );
-    expect(fixture.auditLogs).toEqual(expect.arrayContaining([
-      expect.objectContaining({ action: "backoffice.customer.membership.assign" })
-    ]));
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "backoffice.customer.membership.assign" })
+      ])
+    );
 
     await request(fixture.app)
       .put("/api/v1/backoffice/customers/44/membership")
@@ -779,7 +967,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
           rank: 1,
           technicianProfileId: 7,
           userId: 17,
-          displayName: '=SUM(1,1)',
+          displayName: "=SUM(1,1)",
           email: "mika@example.com",
           avatarUrl: null,
           shopId: 11,
@@ -1031,37 +1219,160 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     expect(response.body.data.content.replace(/^\uFEFF/, "").split("\n")).toHaveLength(5_001);
   });
 
-  it("serves the operations dashboard from the repository and records an audit log", async () => {
+  it("serves the named operations dashboard from one aggregate call and records filter metadata", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");
 
     const response = await request(fixture.app)
-      .get("/api/v1/backoffice/dashboard")
+      .get("/api/v1/backoffice/dashboard?period=custom&from=2026-05-19&to=2026-05-25&city=Tokyo")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(response.body.data.metrics[0]).toMatchObject({
-      label: "今日订单",
-      value: "2"
+    expect(response.body.data).toMatchObject({
+      filter: {
+        period: "custom",
+        from: "2026-05-19",
+        to: "2026-05-25",
+        timeZone: "Asia/Tokyo",
+        granularity: "day",
+        city: "Tokyo",
+        availableCities: ["Osaka", "Tokyo"]
+      },
+      summary: {
+        availableScheduleSlots: { current: 8, previous: 5, changeRatePercent: 60 },
+        activeTechnicians: { current: 6, previous: 4, changeRatePercent: 50 },
+        registeredTechnicians: { current: 10, previous: 8, changeRatePercent: 25 },
+        shopCount: { current: 4, previous: 3, changeRatePercent: 33.33 },
+        newCustomers: { current: 3, previous: 2, changeRatePercent: 50 },
+        pendingOrders: 2,
+        serviceGmvJpy: 8_800
+      },
+      series: { buckets: expect.any(Array) },
+      finance: {
+        userReward: { ndp: 100, testNdp: 20 },
+        walletStock: expect.objectContaining({
+          ndp: 5_000,
+          cityFilterApplied: false,
+          scopeLabel: "platform_global"
+        }),
+        withdrawn: expect.objectContaining({ testNdp: 0 })
+      },
+      shop: null,
+      membership: null,
+      scope: { kind: "platform", shopPublicId: null }
     });
-    expect(response.body.data.finance).toMatchObject({
-      estimatedServiceGmvJpy: 8800,
-      platformNdpRevenue: 700,
-      requestFeeNdpRevenue: 300,
-      userRewardNdpCost: 100
-    });
-    expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledWith({
-      scope: "platform"
-    });
+    expect(response.body.data).not.toHaveProperty("metrics");
+    expect(response.body.data).not.toHaveProperty("orders");
+    expect(response.body.data).not.toHaveProperty("technicians");
+    expect(response.body.data).not.toHaveProperty("shops");
+    expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledTimes(1);
+    expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { kind: "platform" },
+        city: "Tokyo",
+        window: expect.objectContaining({
+          period: "custom",
+          fromDate: "2026-05-19",
+          toDate: "2026-05-25"
+        })
+      })
+    );
     expect(fixture.auditLogs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           actorId: 1,
           action: "backoffice.dashboard.read",
-          targetType: "backoffice_dashboard"
+          targetType: "backoffice_dashboard",
+          metadata: {
+            period: "custom",
+            from: "2026-05-19",
+            to: "2026-05-25",
+            city: "Tokyo",
+            shopId: null
+          }
         })
       ])
     );
+  });
+
+  it("returns the merchant dashboard without platform-global wallet data", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("merchant@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard?period=last7days")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      summary: { shopCount: null, newCustomers: null },
+      finance: {
+        walletStock: null,
+        withdrawn: null,
+        shopNdpCost: { totalNdp: 500, platformNdp: 400, userRewardNdp: 100 }
+      },
+      shop: { publicId: "shop0000000011" },
+      membership: {
+        memberCount: null,
+        memberDataStatus: "not_available",
+        completedCustomerCount: 2
+      },
+      scope: { kind: "shop", shopPublicId: "shop0000000011" }
+    });
+    expect(fixture.backofficeRepository.getDashboard).toHaveBeenLastCalledWith(
+      expect.objectContaining({ scope: { kind: "shop", shopId: 11 }, city: null })
+    );
+  });
+
+  it("strictly rejects dashboard query parameters before aggregate access", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard?shopId=11")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard?unknown=value")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard?city=Tokyo")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard?shopId=11")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(400);
+
+    expect(fixture.backofficeRepository.getDashboard).not.toHaveBeenCalled();
+  });
+
+  it("keeps dashboard authentication and permission failures stable", async () => {
+    const fixture = await createFixture();
+    const viewerToken = await fixture.login("viewer@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard")
+      .expect(401)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.TOKEN_INVALID));
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard")
+      .expect(401)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.TOKEN_INVALID));
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/dashboard")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
+
+    expect(fixture.backofficeRepository.getDashboard).not.toHaveBeenCalled();
   });
 
   it("reports formal and Test NDP separately while keeping settlement formal-only", async () => {
@@ -1131,7 +1442,6 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     expect(fixture.backofficeRepository.summarizeNdpByCurrency).not.toHaveBeenCalled();
   });
 
-
   it("scopes merchant-admin orders and exports to the authenticated shop", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("merchant@example.com");
@@ -1170,6 +1480,33 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         })
       ])
     );
+  });
+
+  it.each([
+    ["orders", "listOrders"],
+    ["schedule", "listSchedule"],
+    ["finance/settlements", "listFinanceSettlements"],
+    ["finance/settlements/export", "exportFinanceSettlements"],
+    ["technicians", "listTechnicians"],
+    ["customers", "listCustomers"],
+    ["services", "listServices"]
+  ] as const)("rejects client shop scope on merchant-admin %s", async (path, repositoryMethod) => {
+    const fixture = await createFixture();
+    const token = await fixture.login("merchant@example.com");
+    const method = (fixture.backofficeRepository as unknown as Record<string, jest.Mock>)[
+      repositoryMethod
+    ];
+    method.mockClear();
+
+    await request(fixture.app)
+      .get(`/api/v1/merchant-admin/${path}?shopId=22`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.VALIDATION);
+      });
+
+    expect(method).not.toHaveBeenCalled();
   });
 
   it("lets an operations administrator preview a selected shop through merchant-admin reads", async () => {

@@ -1,5 +1,5 @@
 import type { PortalScope } from "./portal";
-import type { IdentityAvailability, IdentityKind } from "../features/identity-applications/model";
+import type { IdentityAvailability } from "../features/identity-applications/model";
 
 export const authSessionVersion = 7;
 
@@ -13,7 +13,7 @@ export function isLoginMethod(value: unknown): value is LoginMethod {
 
 export type AuthIdentityPayload = {
   id: number;
-  publicId?: string | null;
+  publicId: string | null;
   scopeId: number | null;
   scopeType: string | null;
   type: string;
@@ -22,21 +22,22 @@ export type AuthIdentityPayload = {
 export type AuthMePayload = {
   id: number;
   needoId: string;
-  primaryPublicId?: string;
-  activeIdentityId?: number;
-  activePublicId?: string | null;
+  primaryPublicId: string;
+  activeIdentityId: number;
+  activePublicId: string | null;
   email: string;
   emailVerifiedAt: string | null;
   hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  isTestAccount: boolean;
   currentIdentity: AuthIdentityPayload;
   identities: AuthIdentityPayload[];
   roles: string[];
   permissions: string[];
   menus: string[];
-  identityAvailability?: IdentityAvailability[];
+  identityAvailability: IdentityAvailability[];
 };
 
 export type AuthSession = {
@@ -46,6 +47,7 @@ export type AuthSession = {
   primaryPublicId: string;
   activeIdentityId: number;
   activePublicId: string | null;
+  merchantShopPublicId?: string;
   username: string;
   email: string;
   emailVerifiedAt: string | null;
@@ -162,27 +164,6 @@ export function resolveAllowedPortals(me: AuthMePayload): PortalScope[] {
   return uniquePortals([...identityPortals, ...rolePortals]);
 }
 
-const identityTypesByKind: Record<IdentityKind, string[]> = {
-  customer: ["customer", "user"],
-  technician: ["technician"],
-  merchant: ["merchant", "merchant_organization", "merchant_owner", "merchant_staff", "o", "owner"],
-  affiliate: ["affiliate", "broker", "scout", "business"]
-};
-
-function deriveIdentityAvailability(me: AuthMePayload): IdentityAvailability[] {
-  return (Object.keys(identityTypesByKind) as IdentityKind[]).map((kind) => {
-    const identity = me.identities.find((item) => identityTypesByKind[kind].includes(item.type));
-
-    return {
-      kind,
-      state: identity ? "active" : "available_to_apply",
-      identityId: identity?.id ?? null,
-      applicationId: null,
-      rejectionReason: null
-    };
-  });
-}
-
 function getScopedIdentityId(me: AuthMePayload, type: string | string[]) {
   const types = Array.isArray(type) ? type : [type];
   const identity = me.identities.find((item) => types.includes(item.type));
@@ -214,9 +195,9 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     authVersion: authSessionVersion,
     id: me.id,
     needoId: me.needoId,
-    primaryPublicId: me.primaryPublicId ?? me.needoId,
+    primaryPublicId: me.primaryPublicId,
     activeIdentityId: me.currentIdentity.id,
-    activePublicId: me.currentIdentity.publicId ?? null,
+    activePublicId: me.currentIdentity.publicId,
     username: me.username,
     email: me.email,
     emailVerifiedAt: me.emailVerifiedAt,
@@ -234,7 +215,7 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     menus: me.menus,
     currentIdentity: me.currentIdentity,
     identities: me.identities,
-    identityAvailability: me.identityAvailability ?? deriveIdentityAvailability(me)
+    identityAvailability: me.identityAvailability
   });
 }
 

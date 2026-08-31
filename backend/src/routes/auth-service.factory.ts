@@ -6,6 +6,7 @@ import { RedisAuthSessionStore } from "../services/auth-session.store";
 import { AuthService } from "../services/auth.service";
 import { RedisVerificationChallengeStore } from "../services/auth-verification-challenge.store";
 import { GoogleCredentialVerifierService } from "../services/google-credential-verifier.service";
+import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
 
 export const createAuthServiceForRoutes = (
   config: AppConfig,
@@ -18,5 +19,7 @@ export const createAuthServiceForRoutes = (
     dependencies.otpDeliveryClient ?? new WebhookOtpDeliveryClient(config),
     dependencies.verificationChallengeStore ?? new RedisVerificationChallengeStore(),
     dependencies.testOnlyAllowLegacyAuthAdapters ?? false,
-    dependencies.googleCredentialVerifier ?? new GoogleCredentialVerifierService(undefined, config)
+    dependencies.googleCredentialVerifier ?? new GoogleCredentialVerifierService(undefined, config),
+    dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),
+    dependencies.merchantShopAuditOutboxTrigger
   );

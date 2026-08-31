@@ -201,6 +201,13 @@ const createFixture = () => {
   const loginLogs: unknown[] = [];
   const auditLogs: unknown[] = [];
   const bindings = new Map<string, GoogleBindingRecord>();
+  const merchantShopContextRepository = {
+    listManageableShops: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 1 })),
+    resolveShop: jest.fn(async () => null),
+    resolveDefaultShop: jest.fn(async ({ merchantAccountId }: { merchantAccountId: number }) =>
+      merchantAccountId === 41 ? { shopId: 11, shopPublicId: "shop0000000001" } : null
+    )
+  };
   const verifier: GoogleCredentialVerifierPort = {
     verify: jest.fn(async () => ({
       subject: "google-subject-1",
@@ -313,7 +320,8 @@ const createFixture = () => {
     },
     challengeStore as never,
     false,
-    verifier
+    verifier,
+    merchantShopContextRepository
   );
   return {
     service,
@@ -325,11 +333,99 @@ const createFixture = () => {
     auditLogs,
     users,
     bindings,
-    sessionStore
+    sessionStore,
+    merchantShopContextRepository
   };
 };
 
 describe("formal Google sign-in service", () => {
+  it("accepts merchant_owner account scope and signs its deterministic shop on Google login", async () => {
+    const fixture = createFixture();
+    fixture.users[0].identities = [
+      {
+        id: 10,
+        userId: 1,
+        type: "merchant_owner",
+        scopeType: "merchant_account",
+        scopeId: 41,
+        displayName: "Google Merchant",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ];
+    fixture.bindings.set("google-subject-1", {
+      id: 1,
+      userId: 1,
+      provider: "google",
+      providerSubject: "google-subject-1",
+      providerEmail: "existing@example.com",
+      providerEmailVerifiedAt: new Date(),
+      lastUsedAt: null,
+      deletedAt: null,
+      user: fixture.users[0]
+    });
+
+    const init = await fixture.service.initializeGoogleLogin();
+    const result = await fixture.service.submitGoogleCredential(
+      { credential: "provider-credential", nonceChallengeId: init.nonceChallengeId },
+      context
+    );
+    if (result.status !== "authenticated") throw new Error("expected authenticated Google login");
+
+    const payload = JSON.parse(
+      Buffer.from(result.accessToken.split(".")[1], "base64url").toString("utf8")
+    );
+    expect(payload).toMatchObject({
+      currentIdentityId: 10,
+      merchantShopPublicId: "shop0000000001"
+    });
+    expect(fixture.merchantShopContextRepository.resolveDefaultShop).toHaveBeenCalledWith(
+      expect.objectContaining({ merchantAccountId: 41 })
+    );
+  });
+
+  it("rejects a linked Google identity whose non-merchant type claims merchant-account scope", async () => {
+    const fixture = createFixture();
+    fixture.users[0].identities = [
+      {
+        id: 10,
+        userId: 1,
+        type: "customer",
+        scopeType: "merchant_account",
+        scopeId: 41,
+        displayName: "Malformed Google Merchant",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ];
+    fixture.bindings.set("google-subject-1", {
+      id: 1,
+      userId: 1,
+      provider: "google",
+      providerSubject: "google-subject-1",
+      providerEmail: "existing@example.com",
+      providerEmailVerifiedAt: new Date(),
+      lastUsedAt: null,
+      deletedAt: null,
+      user: fixture.users[0]
+    });
+    const init = await fixture.service.initializeGoogleLogin();
+
+    await expect(
+      fixture.service.submitGoogleCredential(
+        { credential: "provider-credential", nonceChallengeId: init.nonceChallengeId },
+        context
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.identity.forbidden",
+      statusCode: 403
+    });
+    expect(fixture.sessionStore.refresh.size).toBe(0);
+  });
+
   it("initializes a public client nonce and authenticates an active linked subject", async () => {
     const fixture = createFixture();
     fixture.bindings.set("google-subject-1", {

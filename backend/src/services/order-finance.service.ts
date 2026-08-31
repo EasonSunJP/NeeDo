@@ -8,6 +8,7 @@ import type {
 } from "./compensation-engine.service";
 import { CompensationEngine } from "./compensation-engine.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertMerchantShopId } from "./merchant-shop-scope";
 
 export type ServiceIncomeStatus = "unreported" | "reported" | "confirmed";
 export type OrderFinanceType = "booking" | "request";
@@ -515,15 +516,7 @@ export class OrderFinanceService {
   }
 
   private assertMerchantShopScope(actor: AuthenticatedAccessContext, shopId: number): void {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId === shopId) {
-      return;
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    assertMerchantShopId(actor, shopId);
   }
 
   private async record(

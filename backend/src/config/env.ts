@@ -209,6 +209,17 @@ const envSchema = z
     AUTH_GOOGLE_CREDENTIAL_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
     AUTH_VERIFICATION_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
     AUTH_GOOGLE_NONCE_TTL_SECONDS: z.coerce.number().int().positive().max(600),
+    AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_INTERVAL_MS: z.coerce.number().int().min(1_000).default(5_000),
+    AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_DRAIN_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .default(3_000),
+    AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_SHUTDOWN_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .default(1_000),
     GOOGLE_AUTH_CLIENT_ID: z.string().trim().min(1),
     GOOGLE_AUTH_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive(),
     AFFILIATE_LINK_SECRET: z.string().min(32),

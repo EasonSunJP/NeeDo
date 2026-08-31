@@ -1,4 +1,5 @@
 import { BackofficeService } from "../src/services/backoffice.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 describe("BackofficeService merchant technician employment", () => {
   it("forwards persisted employment fields inside the authenticated shop scope", async () => {
@@ -6,7 +7,8 @@ describe("BackofficeService merchant technician employment", () => {
     const record = jest.fn(async () => undefined);
     const service = new BackofficeService(
       { updateTechnician } as never,
-      { record } as never
+      { record } as never,
+      createDirectShopContextRepository()
     );
 
     await service.updateMerchantTechnician(

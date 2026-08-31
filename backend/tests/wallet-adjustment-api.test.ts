@@ -1,6 +1,7 @@
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 class InMemorySessionStore {
   private readonly values = new Map<string, string>();
@@ -228,7 +229,8 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemorySessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    ledgerRepository
+    ledgerRepository,
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 11 })
   } as never);
   const login = async (email: string) => {
     const response = await request(app)

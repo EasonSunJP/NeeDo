@@ -131,6 +131,13 @@ export const EXCHANGE_PERMISSIONS = {
 
 export const SYSTEM_PERMISSIONS = [
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
+  createPermission(
+    "auth:me:read",
+    "读取当前商家店铺范围",
+    "api",
+    "auth",
+    "读取并切换当前商家账号已授权的正式店铺范围"
+  ),
   createPermission("auth:refresh", "刷新访问令牌", "api", "auth", "使用刷新令牌续期访问令牌"),
   createPermission("auth:logout", "退出登录", "api", "auth", "退出登录并吊销会话"),
   createPermission(
@@ -1419,6 +1426,7 @@ const EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES = [
 
 const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
   "auth:me",
+  "auth:me:read",
   "auth:refresh",
   "auth:logout",
   "auth:google:read",

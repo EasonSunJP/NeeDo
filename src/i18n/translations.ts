@@ -1,6 +1,7 @@
 import { identityApplicationTranslations } from "../features/identity-applications/i18n";
 import { affiliateProfileTranslations } from "../features/affiliate-profile/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
+import { dashboardTranslations } from "../features/dashboard/dashboardTranslations";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -1076,7 +1077,6 @@ export const translations: TranslationMap = {
   "当前身份没有读取数据中心的权限": { "zh-Hant": "目前身分沒有讀取資料中心的權限", ja: "現在のアカウントにはデータセンターを表示する権限がありません", en: "The current identity cannot read the data center", ko: "현재 계정에는 데이터 센터를 볼 권한이 없습니다" },
   "数据中心服务暂时不可用，请稍后重试": { "zh-Hant": "資料中心服務暫時無法使用，請稍後再試", ja: "データセンターは一時的に利用できません。しばらくしてからもう一度お試しください", en: "The data center is temporarily unavailable. Try again later", ko: "데이터 센터를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요" },
   "数据加载失败，请检查网络后重试": { "zh-Hant": "資料載入失敗，請檢查網路後再試", ja: "データの読み込みに失敗しました。ネットワークを確認してもう一度お試しください", en: "Data failed to load. Check your connection and try again", ko: "데이터를 불러오지 못했습니다. 네트워크를 확인한 후 다시 시도하세요" },
-  "历史全屏图表尚未启用": { "zh-Hant": "歷史全螢幕圖表尚未啟用", ja: "履歴フルスクリーンチャートはまだ利用できません", en: "Historical full-screen charts are not yet enabled", ko: "과거 전체 화면 차트는 아직 활성화되지 않았습니다" },
   "库存和评价数据接口尚未启用": { "zh-Hant": "庫存與評價資料介面尚未啟用", ja: "在庫・レビューのデータ API はまだ利用できません", en: "Inventory and review data APIs are not yet enabled", ko: "재고 및 리뷰 데이터 API는 아직 활성화되지 않았습니다" },
   "搜索当前数据集": { "zh-Hant": "搜尋目前資料集", ja: "現在のデータセットを検索", en: "Search the current dataset", ko: "현재 데이터 세트 검색" },
   "输入名称、邮箱、订单号或店铺关键词": { "zh-Hant": "輸入名稱、信箱、訂單號或店鋪關鍵字", ja: "名前、メール、注文番号、店舗のキーワードを入力", en: "Enter a name, email, order number, or shop keyword", ko: "이름, 이메일, 주문 번호 또는 매장 키워드 입력" },
@@ -4606,12 +4606,10 @@ export const translations: TranslationMap = {
   "返回动态": { "zh-Hant": "返回動態", ja: "戻るフィード", en: "ReturnFeed", ko: "반품피드" },
   "返回动态首页": { "zh-Hant": "返回動態首頁", ja: "フィードホームへ戻る", en: "Back to Feed Home", ko: "피드 홈으로 돌아가기" },
   "返回动态页": { "zh-Hant": "返回動態頁", ja: "フィードへ戻る", en: "Back to Feed", ko: "피드로 돌아가기" },
-  "返回分析中心": { "zh-Hant": "返回分析中心", ja: "分析センターに戻る", en: "Return to Analysis Center", ko: "분석 센터로 돌아가기" },
   "返回公告列表": { "zh-Hant": "返回公告列表", ja: "戻るお知らせリスト", en: "ReturnNoticeList", ko: "반품공지목록" },
   "返回扫码": { "zh-Hant": "返回掃碼", ja: "戻る扫码", en: "Return", ko: "반품" },
   "返回首页": { "zh-Hant": "返回首頁", ja: "ホームに戻る", en: "Return home", ko: "홈으로 돌아가기" },
   "返回数据大盘": { "zh-Hant": "返回數據大盤", ja: "戻るデータダッシュボード", en: "ReturnData dashboard", ko: "반품데이터 대시보드" },
-  "返回数据中心": { "zh-Hant": "返回數據中心", ja: "戻るデータセンター", en: "ReturnData Center", ko: "반품데이터 센터" },
   "返回通讯录": { "zh-Hant": "返回通訊錄", ja: "戻る連絡先", en: "ReturnContacts", ko: "반품연락처" },
   "返回通知列表": { "zh-Hant": "返回通知列表", ja: "戻る通知リスト", en: "ReturnNotification List", ko: "반품알림 목록" },
   "返回统计数据": { "zh-Hant": "返回統计數據", ja: "戻る統計データ", en: "ReturnStatistics", ko: "반품통계 데이터" },
@@ -4695,7 +4693,6 @@ export const translations: TranslationMap = {
   "分散休息优先": { "zh-Hant": "分散休息優先", ja: "分散休憩中优先", en: "On Break", ko: "휴식 중" },
   "分体拆洗": { "zh-Hant": "分離拆洗", ja: "分解と清掃", en: "Disassembly and cleaning", ko: "분해 및 청소" },
   "分析": { "zh-Hant": "分析", ja: "分析", en: "Analytics", ko: "분석" },
-  "分析中心": { "zh-Hant": "分析中心", ja: "分析センター", en: "Analysis Center", ko: "분석 센터" },
   "分享": { "zh-Hant": "分享", ja: "シェア", en: "Share", ko: "공유" },
   "分享当前页面": { "zh-Hant": "分享當前頁面", ja: "このページを共有する", en: "Share this page", ko: "이 페이지를 공유하세요" },
   "分享今天的动态": { "zh-Hant": "分享今天的動態", ja: "今日の投稿を共有", en: "Share Today's Post", ko: "오늘 게시물 공유" },
@@ -9439,7 +9436,6 @@ export const translations: TranslationMap = {
   "商户端日程、通讯录、信息、我的页面去掉重复页头，PC 后台入口已归位到更合理的位置。": { "zh-Hant": "店鋪 App行程、通訊錄、資訊、我的頁面去掉重複頁頭，PC 後台入口已歸位到更合理的位置。", ja: "店舗のカレンダー、連絡先、メッセージ、およびマイページに関する重複したヘッダーが削除され、PC管理のエントリがより論理的…", en: "The duplicate headers for the merchant's calendar, contacts, messages, and my page have been removed, and the PC admin entry has been moved to a more logical location.", ko: "매장 캘린더, 연락처, 메시지 및 내 페이지의 중복된 헤더가 제거되었으며, PC 관리자 항목이 보다 논리적인 위치로 이동되었습니다." },
   "商户端日程与后台调度中心共用同一套排班数据和步骤状态，手机端只改布局，不砍能力。": { "zh-Hant": "店鋪 App行程與後台調度中心共用同一套排班資料與步驟狀態，手機端只改佈局，不砍能力。", ja: "店舗は、管理画面の管理センターとスケジュールデータおよび配送状況を共有します。モバイルアプリでは、レイアウトのみが変更され、機能は一切低下しません。", en: "Merchants share the same scheduling data and step status with the back-end management center. On the mobile app, only the layout is changed, without any reduction in capabilities.", ko: "매장는 관리자 관리 센터와 동일한 일정 데이터 및 단계 상태를 공유합니다. 모바일 앱에서는 레이아웃만 변경될 뿐 기능은 전혀 줄어들지 않습니다." },
   "商户端数据中心的财务详情页在手机全屏查看时，相关订单区域的异常黑色背景已清理，标题和信息按钮恢复与其它页面一致的组件尺寸。": { "zh-Hant": "店鋪 App數據中心的財務详情頁在手機全屏查看時，相關訂單區域的異常黑色背景已清理，標題和信息按鈕恢複與其它頁面一致的組件尺寸。", ja: "データセンター・店舗側・店舗・確認は完了しました。", en: "Data center Store App merchant view details has been completed.", ko: "데이터 센터 가맹점 앱 가맹점 보기 상세이(가) 완료되었습니다." },
-  "商户端头像入口不再只是简单收入卡片，已改为可筛选、可钻取、可导出的经营驾驶舱，并新增商户后台 /merchant-admin/analytics 路由。": { "zh-Hant": "店鋪 App頭像入口不再只是簡單收入卡片，已改為可篩選、可钻取、可導出的經營驾驶舱，並新增店鋪管理後台 /merchant-admin/analytics 路由。", ja: "店舗側・店舗・絞り込み・入口は完了しました。／関連項目／輸出可能の運営驾驶舱、して新規店舗管理画面／merchant-admin／関連項目に関する説明です。", en: "Merchant app merchant filter entry card has been completed. / Other / Store Admin New merchants Exportable Merchant Add. / merchant-admin / Other.", ko: "가맹점 앱 가맹점 필터 입구 카드이(가) 완료되었습니다. / 기타 / 매장 관리 화면 신규 매장 수출 가능 가맹점 추가 / merchant-admin" },
   "商户端行程": { "zh-Hant": "店鋪 App行程", ja: "店舗側スケジュール", en: "Store AppJourney", ko: "가맹점 앱여행" },
   "商户端也保留客户端基础设置，UI 风格和语言会同步到全端。": { "zh-Hant": "店鋪 App也保留客戶端基礎設置，UI 風格和語言會同步到全端。", ja: "店舗側も基本的なクライアント設定を保持し、UIのスタイルと言語はすべてのプラットフォームで同期されます。", en: "The merchant side also retains the basic client settings, and the UI style and language will be synchronized across all platforms.", ko: "매장 앱에서는 기본적인 고객 설정이 유지되며, UI 스타일과 언어는 모든 플랫폼에서 동기화됩니다." },
   "商户端原有的经营开关保留，但页面结构、样式和交互统一复用了设置子页模块。": { "zh-Hant": "店鋪 App原有的經營開關保留，但頁面結構、樣式和互動統一重複使用了設定子頁模組。", ja: "店舗向けの元のビジネス切り替え機能は維持されますが、ページ構造、スタイル、および操作性は、設定サブページモジュールから…", en: "The original merchant switch for merchants is retained, but the page structure, style and interaction are uniformly reused from the settings subpage module.", ko: "매장용 기존 비즈니스 전환 기능은 유지되지만, 페이지 구조, 스타일 및 상호 작용 방식은 설정 하위 페이지 모듈에서 그대로 재사용…" },
@@ -10256,13 +10252,10 @@ export const translations: TranslationMap = {
   "熟练等级": { "zh-Hant": "熟練等級", ja: "熟练学年", en: "Grade", ko: "등급" },
   "属性": { "zh-Hant": "屬性", ja: "財産", en: "Property", ko: "재산" },
   "数据": { "zh-Hant": "資料", ja: "データ", en: "Data", ko: "데이터" },
-  "数据 / 经营驾驶舱": { "zh-Hant": "數據 / 經營驾驶舱", ja: "データ／運営驾驶舱", en: "Data / Operations", ko: "데이터 / 운영" },
   "数据表横向滚动区域": { "zh-Hant": "數據表橫向滾動區域", ja: "データ表横向滚动エリア", en: "Data Area", ko: "데이터 지역" },
   "数据大盘": { "zh-Hant": "資料大磁碟", ja: "データダッシュボード", en: "Data dashboard", ko: "데이터 대시보드" },
   "数据大盘菜单": { "zh-Hant": "數據大盤選單", ja: "データダッシュボードメニュー", en: "Data dashboardMenu", ko: "데이터 대시보드메뉴" },
   "数据大盘说明": { "zh-Hant": "數據大盤說明", ja: "データ大盘説明", en: "Data dashboardNotes", ko: "데이터 대시보드설명" },
-  "数据大屏": { "zh-Hant": "數據大螢幕", ja: "データダッシュボード", en: "Data dashboard", ko: "데이터 대시보드" },
-  "数据大屏说明": { "zh-Hant": "數據大屏說明", ja: "データ大屏説明", en: "Data dashboardNotes", ko: "데이터 대시보드설명" },
   "数据待补齐": { "zh-Hant": "數據待補齊", ja: "データ待补齐", en: "Data", ko: "데이터" },
   "数据导出": { "zh-Hant": "數據導出", ja: "データエクスポート", en: "DataExport", ko: "데이터내보내기" },
   "数据分析": { "zh-Hant": "數據分析", ja: "分析", en: "Analytics", ko: "데이터 분석" },
@@ -14939,6 +14932,7 @@ export const translations: TranslationMap = {
   ...authTrustGatewayTranslations,
   ...affiliateProfileTranslations,
   ...affiliateMarketplaceTranslations,
+  ...dashboardTranslations,
 };
 
 export function getTranslationLookupCandidates(language: Language): TargetLanguage[] {

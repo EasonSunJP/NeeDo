@@ -12,11 +12,10 @@ import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreen
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
-import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import {
   SettingsDetailPage,
-  SettingsArrow,
   SettingsHomePage,
   SettingsListItem,
   SettingsRadioListPage,
@@ -41,7 +40,7 @@ import {
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { formatCustomerCreditScore } from "../../shared/profile-card/customerProfileLabels";
-import { updateCustomerEntity, updateStoreEntity, useEntityStore } from "../../state/entityStore";
+import { updateStoreEntity, useEntityStore } from "../../state/entityStore";
 import { selectHomeLocationManually } from "../../state/homeLocationStore";
 import { updateHomeLayoutConfig, useHomeLayoutStore, type HomeLocationOption } from "../../state/homeLayoutStore";
 import { getNeedoPetAssetProgress, preloadNeedoPetAssets, useNeedoPetAssetReadiness, type NeedoPetAssetReadiness } from "../../state/needoPetAssets";
@@ -430,10 +429,6 @@ type SettingsNavigationState = {
   settingsSwitchedFromPortal?: boolean;
   settingsPortalTarget?: UnifiedSettingsPortal;
 };
-
-function useSettingsPortalRedirect(portal: UnifiedSettingsPortal) {
-  return useSettingsPortalRedirectWithOptions(portal);
-}
 
 function useSettingsPortalRedirectWithOptions(
   portal: UnifiedSettingsPortal,
@@ -1855,8 +1850,9 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             subtitle={t("清除当前登录会话并返回对应登录入口")}
             title={t(isBusinessPortal ? "退出账号" : "退出登录")}
             onClick={() => {
-              logout();
-              navigate(getPortalEntry(portal), { replace: true });
+              void logout().then((result) => {
+                if (result.ok) navigate(getPortalEntry(portal), { replace: true });
+              });
             }}
             value={t("退出")}
           />
@@ -2514,7 +2510,7 @@ function TechnicianProfileSettingsPage({
     }
   };
 
-  const chipClassName = (active: boolean, _tone: "primary" | "accent" | "warm" = "primary") =>
+  const chipClassName = (active: boolean) =>
     cn(
       "rounded-full border px-3 py-2 text-xs font-black transition",
       active
@@ -2651,7 +2647,7 @@ function TechnicianProfileSettingsPage({
             <div className="flex flex-wrap gap-2">
               {paymentOptions.map((option) => (
                 <button
-                  className={chipClassName(draft.paymentMethods.includes(option), "primary")}
+                  className={chipClassName(draft.paymentMethods.includes(option))}
                   key={option}
                   onClick={() => setDraft((current) => ({ ...current, paymentMethods: togglePaymentMethod(current.paymentMethods, option) }))}
                   type="button"
@@ -2696,7 +2692,7 @@ function TechnicianProfileSettingsPage({
                 <div className="flex flex-wrap gap-2">
                   {group.items.map((area) => (
                     <button
-                      className={chipClassName(draft.serviceAreas.includes(area), "primary")}
+                      className={chipClassName(draft.serviceAreas.includes(area))}
                       key={`${group.title}-${area}`}
                       onClick={() => setDraft((current) => ({ ...current, serviceAreas: toggleValue(current.serviceAreas, area) }))}
                       type="button"
@@ -2717,7 +2713,7 @@ function TechnicianProfileSettingsPage({
                 <div className="flex flex-wrap gap-2">
                   {group.items.map((area) => (
                     <button
-                      className={chipClassName(draft.serviceAreas.includes(area), "primary")}
+                      className={chipClassName(draft.serviceAreas.includes(area))}
                       key={`${group.title}-${area}`}
                       onClick={() => setDraft((current) => ({ ...current, serviceAreas: toggleValue(current.serviceAreas, area) }))}
                       type="button"
@@ -2738,7 +2734,7 @@ function TechnicianProfileSettingsPage({
                 <div className="flex flex-wrap gap-2">
                   {group.tags.map((tag) => (
                     <button
-                      className={chipClassName(draft.profileTags.includes(tag), "primary")}
+                      className={chipClassName(draft.profileTags.includes(tag))}
                       key={tag}
                       onClick={() => setDraft((current) => ({ ...current, profileTags: toggleValue(current.profileTags, tag) }))}
                       type="button"
@@ -3422,17 +3418,16 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
   const { language } = useI18n();
   const { logout, refreshSession, session } = useAuth();
   const [searchParams] = useSearchParams();
-  const { customers, stores } = useEntityStore();
+  const { customers } = useEntityStore();
   const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
-  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const t = (source: string) => translateText(source, language);
   const handleSessionRefresh = async () => {
     const result = await refreshSession(portal);
     if (!result.ok) throw new Error(result.message);
   };
   const handleSignedOut = async () => {
-    await logout();
-    navigate(`/login/${portal}`, { replace: true });
+    const result = await logout();
+    if (result.ok) navigate(`/login/${portal}`, { replace: true });
   };
 
   return (

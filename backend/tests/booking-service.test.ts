@@ -474,6 +474,7 @@ describe("BookingService state machine", () => {
       {
         userId: 2,
         roles: ["merchant_owner"],
+        currentIdentityType: "merchant_owner",
         currentIdentityScopeType: "shop",
         currentIdentityScopeId: 11
       },
@@ -514,6 +515,7 @@ describe("BookingService state machine", () => {
         {
           userId: 2,
           roles: ["merchant_owner"],
+          currentIdentityType: "merchant_owner",
           currentIdentityScopeType: "shop",
           currentIdentityScopeId: 11
         },
@@ -665,6 +667,7 @@ describe("BookingService state machine", () => {
     const providerActor = {
       userId: 2,
       roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
       currentIdentityScopeType: "shop",
       currentIdentityScopeId: 1
     };
@@ -718,6 +721,7 @@ describe("BookingService state machine", () => {
     const providerActor = {
       userId: 2,
       roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
       currentIdentityScopeType: "shop",
       currentIdentityScopeId: 1
     };
@@ -831,6 +835,7 @@ describe("BookingService state machine", () => {
       {
         userId: 2,
         roles: ["merchant_owner"],
+        currentIdentityType: "merchant_owner",
         currentIdentityScopeType: "shop",
         currentIdentityScopeId: 1
       },

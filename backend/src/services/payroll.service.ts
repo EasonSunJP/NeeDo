@@ -12,6 +12,7 @@ import type {
 } from "../validators/payroll.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertMerchantShopId, requireMerchantShopId } from "./merchant-shop-scope";
 import type {
   CompensationPreviewPayload,
   CompensationRuleSet
@@ -1472,25 +1473,11 @@ export class PayrollService {
   }
 
   private assertMerchantShopScope(actor: AuthenticatedAccessContext, shopId: number): void {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId === shopId) {
-      return;
-    }
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    assertMerchantShopId(actor, shopId);
   }
 
   private getMerchantShopId(actor: AuthenticatedAccessContext): number {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return actor.currentIdentityScopeId;
-    }
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    return requireMerchantShopId(actor);
   }
 
   private getTechnicianProfileId(actor: AuthenticatedAccessContext): number {

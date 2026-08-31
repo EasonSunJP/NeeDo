@@ -1,10 +1,7 @@
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
-import {
-  IM_PRIVACY_TTL_MAX_SECONDS,
-  IM_PRIVACY_TTL_MIN_SECONDS
-} from "../constants/im-privacy";
+import { IM_PRIVACY_TTL_MAX_SECONDS, IM_PRIVACY_TTL_MIN_SECONDS } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { PRISMA_INT_MAX } from "../constants/database";
 
@@ -1256,6 +1253,40 @@ const merchantPreviewShopHeaderParameter = {
   schema: { type: "integer", minimum: 1 }
 };
 
+const dashboardPeriodQueryParameter = {
+  name: "period",
+  in: "query",
+  required: false,
+  schema: { $ref: "#/components/schemas/DashboardPeriod" }
+};
+
+const dashboardFromQueryParameter = {
+  name: "from",
+  in: "query",
+  required: false,
+  description: "Inclusive Tokyo calendar date; allowed only when period=custom",
+  schema: { type: "string", format: "date" }
+};
+
+const dashboardToQueryParameter = {
+  name: "to",
+  in: "query",
+  required: false,
+  description: "Inclusive Tokyo calendar date; allowed only when period=custom",
+  schema: { type: "string", format: "date" }
+};
+
+const dashboardQueryParameters = [
+  dashboardPeriodQueryParameter,
+  dashboardFromQueryParameter,
+  dashboardToQueryParameter
+];
+
+const dashboardErrorResponses = {
+  "400": { description: "error.validation — strict dashboard query validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" }
+};
+
 const billingProfileRequestBody = {
   required: true,
   content: {
@@ -1297,6 +1328,296 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     schemas: {
       ...shopMembershipCardPlanOpenApiSchemas,
+      DashboardPeriod: {
+        type: "string",
+        enum: ["today", "last7days", "last30days", "week", "month", "year", "custom"],
+        default: "last7days"
+      },
+      DashboardMetricComparison: {
+        type: "object",
+        additionalProperties: false,
+        required: ["current", "previous", "changeRatePercent"],
+        properties: {
+          current: { type: "number" },
+          previous: { type: "number" },
+          changeRatePercent: { type: ["number", "null"] }
+        }
+      },
+      DashboardNdpPair: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ndp", "testNdp"],
+        properties: {
+          ndp: { type: "integer" },
+          testNdp: { type: "integer" }
+        }
+      },
+      DashboardPlatformGlobalNdpPair: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ndp", "testNdp", "cityFilterApplied", "scopeLabel"],
+        properties: {
+          ndp: { type: "integer" },
+          testNdp: { type: "integer" },
+          cityFilterApplied: { type: "boolean", const: false },
+          scopeLabel: { type: "string", const: "platform_global" }
+        }
+      },
+      DashboardBucket: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "key",
+          "label",
+          "orderCount",
+          "serviceGmvJpy",
+          "platformNetRevenueNdp",
+          "frozenNdp",
+          "shopCount",
+          "registeredTechnicianCount",
+          "shopEstimatedGrossProfitJpy",
+          "scheduleTotalHours",
+          "scheduleAvailableHours",
+          "scheduleBookedHours"
+        ],
+        properties: {
+          key: { type: "string", minLength: 1 },
+          label: { type: "string", minLength: 1 },
+          orderCount: { type: "integer", minimum: 0 },
+          serviceGmvJpy: { type: "integer", minimum: 0 },
+          platformNetRevenueNdp: { type: "integer" },
+          frozenNdp: { type: "integer", minimum: 0 },
+          shopCount: { type: "integer", minimum: 0 },
+          registeredTechnicianCount: { type: "integer", minimum: 0 },
+          shopEstimatedGrossProfitJpy: { type: "integer" },
+          scheduleTotalHours: { type: "number", minimum: 0 },
+          scheduleAvailableHours: { type: "number", minimum: 0 },
+          scheduleBookedHours: { type: "number", minimum: 0 }
+        }
+      },
+      DashboardShopSnapshot: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "name", "city", "address", "status", "billing", "wallet"],
+        properties: {
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          name: { type: "string" },
+          city: { type: "string" },
+          address: { type: "string" },
+          status: { type: "string" },
+          billing: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["cadence", "state", "trialEndsAt", "paidThrough"],
+                properties: {
+                  cadence: { type: "string", enum: ["monthly", "annual", "free"] },
+                  state: { type: "string", enum: ["trial", "paid", "free", "overdue"] },
+                  trialEndsAt: { type: ["string", "null"], format: "date-time" },
+                  paidThrough: { type: ["string", "null"], format: "date-time" }
+                }
+              },
+              { type: "null" }
+            ]
+          },
+          wallet: {
+            type: "object",
+            additionalProperties: false,
+            required: ["status", "currency", "availableBalance", "frozenBalance"],
+            properties: {
+              status: { type: "string", enum: ["available", "not_opened"] },
+              currency: { type: "string", const: "NDP" },
+              availableBalance: { type: ["integer", "null"] },
+              frozenBalance: { type: ["integer", "null"] }
+            }
+          }
+        }
+      },
+      DashboardMembership: {
+        type: "object",
+        additionalProperties: false,
+        required: ["memberCount", "memberDataStatus", "completedCustomerCount"],
+        properties: {
+          memberCount: { type: "null" },
+          memberDataStatus: { type: "string", const: "not_available" },
+          completedCustomerCount: { type: "integer", minimum: 0 }
+        }
+      },
+      ManageableMerchantShop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "name", "city", "status", "selected"],
+        properties: {
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          name: { type: "string", minLength: 1 },
+          city: { type: "string", minLength: 1 },
+          status: { type: "string", minLength: 1 },
+          selected: { type: "boolean" }
+        }
+      },
+      ManageableMerchantShopPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ManageableMerchantShop" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      Dashboard: {
+        type: "object",
+        additionalProperties: false,
+        required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"],
+        properties: {
+          filter: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "period",
+              "from",
+              "to",
+              "previousFrom",
+              "previousTo",
+              "timeZone",
+              "granularity",
+              "city",
+              "availableCities"
+            ],
+            properties: {
+              period: { $ref: "#/components/schemas/DashboardPeriod" },
+              from: { type: "string", format: "date" },
+              to: { type: "string", format: "date" },
+              previousFrom: { type: "string", format: "date" },
+              previousTo: { type: "string", format: "date" },
+              timeZone: { type: "string", const: "Asia/Tokyo" },
+              granularity: { type: "string", enum: ["hour", "day", "month"] },
+              city: { type: ["string", "null"] },
+              availableCities: { type: "array", items: { type: "string" } }
+            }
+          },
+          summary: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "availableScheduleSlots",
+              "activeTechnicians",
+              "registeredTechnicians",
+              "shopCount",
+              "newCustomers",
+              "pendingOrders",
+              "serviceGmvJpy"
+            ],
+            properties: {
+              availableScheduleSlots: { $ref: "#/components/schemas/DashboardMetricComparison" },
+              activeTechnicians: { $ref: "#/components/schemas/DashboardMetricComparison" },
+              registeredTechnicians: { $ref: "#/components/schemas/DashboardMetricComparison" },
+              shopCount: {
+                oneOf: [
+                  { $ref: "#/components/schemas/DashboardMetricComparison" },
+                  { type: "null" }
+                ]
+              },
+              newCustomers: {
+                oneOf: [
+                  { $ref: "#/components/schemas/DashboardMetricComparison" },
+                  { type: "null" }
+                ]
+              },
+              pendingOrders: { type: "integer", minimum: 0 },
+              serviceGmvJpy: { type: "integer", minimum: 0 }
+            }
+          },
+          series: {
+            type: "object",
+            additionalProperties: false,
+            required: ["buckets"],
+            properties: {
+              buckets: {
+                type: "array",
+                items: { $ref: "#/components/schemas/DashboardBucket" }
+              }
+            }
+          },
+          finance: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "platformNetRevenue",
+              "frozen",
+              "userReward",
+              "walletStock",
+              "withdrawn",
+              "shopNdpCost"
+            ],
+            properties: {
+              platformNetRevenue: { $ref: "#/components/schemas/DashboardNdpPair" },
+              frozen: { $ref: "#/components/schemas/DashboardNdpPair" },
+              userReward: { $ref: "#/components/schemas/DashboardNdpPair" },
+              walletStock: {
+                oneOf: [
+                  { $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" },
+                  { type: "null" }
+                ]
+              },
+              withdrawn: {
+                oneOf: [
+                  { $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" },
+                  { type: "null" }
+                ]
+              },
+              shopNdpCost: {
+                oneOf: [
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["totalNdp", "platformNdp", "userRewardNdp"],
+                    properties: {
+                      totalNdp: { type: "integer" },
+                      platformNdp: { type: "integer" },
+                      userRewardNdp: { type: "integer" }
+                    }
+                  },
+                  { type: "null" }
+                ]
+              }
+            }
+          },
+          shop: {
+            oneOf: [{ $ref: "#/components/schemas/DashboardShopSnapshot" }, { type: "null" }]
+          },
+          membership: {
+            oneOf: [{ $ref: "#/components/schemas/DashboardMembership" }, { type: "null" }]
+          },
+          scope: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["kind", "shopPublicId"],
+                properties: {
+                  kind: { type: "string", const: "platform" },
+                  shopPublicId: { type: "null" }
+                }
+              },
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["kind", "shopPublicId"],
+                properties: {
+                  kind: { type: "string", const: "shop" },
+                  shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+                }
+              }
+            ]
+          }
+        }
+      },
       ExchangeActor: {
         type: "object",
         additionalProperties: false,
@@ -2103,10 +2424,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
-            requesterUserId: { type: "integer" },
-            requesterIdentityId: { type: "integer" },
-            targetUserId: { type: "integer" },
-            targetIdentityId: { type: "integer" },
+          requesterUserId: { type: "integer" },
+          requesterIdentityId: { type: "integer" },
+          targetUserId: { type: "integer" },
+          targetIdentityId: { type: "integer" },
           requester: { $ref: "#/components/schemas/RealtimeParticipant" },
           target: { $ref: "#/components/schemas/RealtimeParticipant" },
           status: { type: "string", enum: ["pending", "accepted", "rejected", "expired"] },
@@ -2269,7 +2590,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       SocialProfileSummary: {
         type: "object",
         additionalProperties: false,
-        required: ["userId", "identityId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
+        required: [
+          "userId",
+          "identityId",
+          "username",
+          "displayName",
+          "avatarUrl",
+          "entityType",
+          "joinedAt"
+        ],
         properties: {
           userId: { type: "integer" },
           identityId: { type: "integer" },
@@ -3116,6 +3445,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           me: { $ref: "#/components/schemas/AuthMe" }
         }
       },
+      SwitchMerchantShopResponse: {
+        type: "object",
+        additionalProperties: false,
+        required: ["accessToken", "refreshToken", "expiresIn", "me", "shopPublicId"],
+        properties: {
+          accessToken: { type: "string" },
+          refreshToken: { type: "string" },
+          expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] },
+          me: { $ref: "#/components/schemas/AuthMe" },
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+        }
+      },
       RefreshTokenResponse: {
         type: "object",
         required: ["accessToken", "expiresIn"],
@@ -3687,10 +4028,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       TechnicianSelfProfile: {
         type: "object",
         required: [
-          "id", "publicId", "userId", "shopId", "displayName", "avatarUrl", "bio", "city",
-          "age", "heightCm", "languages", "serviceAreas", "profileTags", "canServeForeigners",
-          "bidBudgetMinJpy", "bidBudgetMaxJpy", "paymentMethods", "visibility",
-          "employmentType", "yearsExperience", "createdAt", "updatedAt"
+          "id",
+          "publicId",
+          "userId",
+          "shopId",
+          "displayName",
+          "avatarUrl",
+          "bio",
+          "city",
+          "age",
+          "heightCm",
+          "languages",
+          "serviceAreas",
+          "profileTags",
+          "canServeForeigners",
+          "bidBudgetMinJpy",
+          "bidBudgetMaxJpy",
+          "paymentMethods",
+          "visibility",
+          "employmentType",
+          "yearsExperience",
+          "createdAt",
+          "updatedAt"
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
@@ -3711,7 +4070,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
           paymentMethods: {
             type: "array",
-            items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] }
+            items: {
+              type: "string",
+              enum: [
+                "platform",
+                "offline",
+                "prepay",
+                "cash",
+                "paypay",
+                "paypal",
+                "wechatpay",
+                "alipay"
+              ]
+            }
           },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
           employmentType: { type: "string", enum: ["independent", "full_time", "temporary"] },
@@ -3733,14 +4104,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
-          languages: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", maxLength: 40 } },
+          languages: {
+            type: "array",
+            minItems: 1,
+            maxItems: 10,
+            items: { type: "string", maxLength: 40 }
+          },
           bio: { type: ["string", "null"], maxLength: 2000 },
-          serviceAreas: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 80 } },
+          serviceAreas: {
+            type: "array",
+            minItems: 1,
+            maxItems: 20,
+            items: { type: "string", maxLength: 80 }
+          },
           profileTags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
-          paymentMethods: { type: "array", minItems: 1, maxItems: 8, items: { type: "string", enum: ["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"] } },
+          paymentMethods: {
+            type: "array",
+            minItems: 1,
+            maxItems: 8,
+            items: {
+              type: "string",
+              enum: [
+                "platform",
+                "offline",
+                "prepay",
+                "cash",
+                "paypay",
+                "paypal",
+                "wechatpay",
+                "alipay"
+              ]
+            }
+          },
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
@@ -5759,16 +6157,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           evaluatedAt: { type: "string", format: "date-time" },
           current: {
-            oneOf: [
-              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/AffiliatePlatformFeeRule" }, { type: "null" }]
           },
           nextScheduled: {
-            oneOf: [
-              { $ref: "#/components/schemas/AffiliatePlatformFeeRule" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/AffiliatePlatformFeeRule" }, { type: "null" }]
           },
           latestVersion: { type: "integer", minimum: 0 }
         }
@@ -9517,6 +9909,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/auth/merchant-shop/switch`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Switch the active shop for a merchant-account identity and rotate the token pair",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          {
+            refreshToken: { type: "string", minLength: 1, maxLength: 8192 },
+            shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+          },
+          ["refreshToken", "shopPublicId"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Rotated token pair scoped to the requested active shop", {
+            $ref: "#/components/schemas/SwitchMerchantShopResponse"
+          }),
+          "400": { description: "error.validation — strict request validation failed" },
+          "401": {
+            description: "error.auth.token_invalid — access or refresh session validation failed"
+          },
+          "403": {
+            description:
+              "error.forbidden or error.identity.forbidden — permission, identity, membership, account, or shop denial"
+          }
+        }
+      }
+    },
     [`${config.API_PREFIX}/auth/logout`]: {
       post: {
         tags: ["Auth"],
@@ -11411,8 +11830,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Backoffice"],
         summary: "Operations dashboard from real database aggregates",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          ...dashboardQueryParameters,
+          {
+            name: "city",
+            in: "query",
+            required: false,
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          }
+        ],
         responses: {
-          "200": { description: "Operations dashboard payload" },
+          "200": jsonDataResponse("Operations dashboard payload", {
+            $ref: "#/components/schemas/Dashboard"
+          }),
+          ...dashboardErrorResponses,
           "403": { description: "Missing backoffice dashboard permission" }
         }
       }
@@ -11944,10 +12375,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Merchant Admin"],
         summary: "Merchant dashboard scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
-        parameters: [merchantPreviewShopHeaderParameter],
+        parameters: [merchantPreviewShopHeaderParameter, ...dashboardQueryParameters],
         responses: {
-          "200": { description: "Merchant dashboard payload" },
+          "200": jsonDataResponse("Merchant dashboard payload", {
+            $ref: "#/components/schemas/Dashboard"
+          }),
+          ...dashboardErrorResponses,
           "403": { description: "Missing merchant scope or permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/manageable-shops`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Paginated public-safe shops manageable by the authenticated merchant identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "page",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, default: 1 }
+          },
+          {
+            name: "page_size",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated manageable merchant shops", {
+            $ref: "#/components/schemas/ManageableMerchantShopPage"
+          }),
+          "400": { description: "error.validation — strict pagination validation failed" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing merchant-admin dashboard permission or shop scope" }
         }
       }
     },

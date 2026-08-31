@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setAuthEnvelopeLockAdapter } from "./authEnvelope";
 import {
   forgetAllRememberedPortalAuthorizations,
   forgetRememberedPortalAuthorization,
@@ -70,7 +71,12 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
     ],
     identityAvailability: [
       {
-        kind: portal === "business" ? "affiliate" : portal === "merchant" || portal === "technician" ? portal : "customer",
+        kind:
+          portal === "business"
+            ? "affiliate"
+            : portal === "merchant" || portal === "technician"
+              ? portal
+              : "customer",
         state: "active",
         identityId: 90,
         applicationId: null,
@@ -85,18 +91,21 @@ describe("remembered portal authorization", () => {
     vi.stubGlobal("window", {
       localStorage: createStorage()
     });
+    setAuthEnvelopeLockAdapter({
+      request: async (_name, _options, callback) => callback()
+    });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("stores refresh tokens and sessions per frontend identity", () => {
+  it("stores refresh tokens and sessions per frontend identity", async () => {
     const userSession = createSession("user");
     const technicianSession = createSession("technician");
 
-    rememberPortalAuthorization(userSession, "user-refresh-token");
-    rememberPortalAuthorization(technicianSession, "technician-refresh-token");
+    await rememberPortalAuthorization(userSession, "user-refresh-token");
+    await rememberPortalAuthorization(technicianSession, "technician-refresh-token");
 
     expect(readRememberedPortalRefreshToken("user")).toBe("user-refresh-token");
     expect(readRememberedPortalRefreshToken("technician")).toBe("technician-refresh-token");
@@ -106,24 +115,24 @@ describe("remembered portal authorization", () => {
     expect(hasRememberedPortalAuthorization("technician")).toBe(true);
   });
 
-  it("does not treat a session without a refresh token as restorable authorization", () => {
-    rememberPortalAuthorization(createSession("merchant"), null);
+  it("does not treat a session without a refresh token as restorable authorization", async () => {
+    await rememberPortalAuthorization(createSession("merchant"), null);
 
-    expect(readRememberedPortalSession("merchant")?.portal).toBe("merchant");
+    expect(readRememberedPortalSession("merchant")).toBeNull();
     expect(readRememberedPortalRefreshToken("merchant")).toBeNull();
     expect(hasRememberedPortalAuthorization("merchant")).toBe(false);
   });
 
-  it("can forget one portal without clearing the others", () => {
-    rememberPortalAuthorization(createSession("user"), "user-refresh-token");
-    rememberPortalAuthorization(createSession("merchant"), "merchant-refresh-token");
+  it("can forget one portal without clearing the others", async () => {
+    await rememberPortalAuthorization(createSession("user"), "user-refresh-token");
+    await rememberPortalAuthorization(createSession("merchant"), "merchant-refresh-token");
 
-    forgetRememberedPortalAuthorization("merchant");
+    await forgetRememberedPortalAuthorization("merchant");
 
     expect(hasRememberedPortalAuthorization("user")).toBe(true);
     expect(hasRememberedPortalAuthorization("merchant")).toBe(false);
 
-    forgetAllRememberedPortalAuthorizations();
+    await forgetAllRememberedPortalAuthorizations();
 
     expect(hasRememberedPortalAuthorization("user")).toBe(false);
   });

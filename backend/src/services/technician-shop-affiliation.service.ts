@@ -4,6 +4,7 @@ import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { IdentifierAllocator, PublicIdentifierRecord } from "./public-identifier.service";
+import { requireMerchantShopId } from "./merchant-shop-scope";
 
 export type EmployeeRelationshipType = "exclusive" | "partner";
 export type EmployeeCurrentWorkStatus = "active" | "on_leave" | "suspended";
@@ -132,9 +133,7 @@ export interface EmployeeScheduleRedactedEvent extends EmployeeScheduleEventBase
   isEditable: false;
 }
 
-export type EmployeeScheduleEvent =
-  | EmployeeScheduleVisibleEvent
-  | EmployeeScheduleRedactedEvent;
+export type EmployeeScheduleEvent = EmployeeScheduleVisibleEvent | EmployeeScheduleRedactedEvent;
 
 export interface EmployeeScheduleProjection {
   employee: {
@@ -208,7 +207,7 @@ export class TechnicianShopAffiliationService {
     input: MerchantEmployeeListInput
   ): Promise<PaginatedResponse<MerchantEmployeePayload>> {
     const shopId = this.requireMerchantShopScope(actor);
-    const result = await this.repository.listCurrentShopEmployees({ shopId, ...input });
+    const result = await this.repository.listCurrentShopEmployees({ ...input, shopId });
     await this.auditLogService.record({
       actor,
       action: "merchant_admin.employee_affiliation.list",
@@ -248,16 +247,13 @@ export class TechnicianShopAffiliationService {
   ): Promise<EmployeeScheduleProjection> {
     const shopId = this.requireMerchantShopScope(actor);
     const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
-    const employee = await this.repository.findCurrentShopEmployee(
-      shopId,
-      technicianIdentityId
-    );
+    const employee = await this.repository.findCurrentShopEmployee(shopId, technicianIdentityId);
     if (!employee) throw this.notFound();
 
     const events = await this.repository.listCurrentShopEmployeeSchedule({
+      ...input,
       shopId,
-      technicianIdentityId,
-      ...input
+      technicianIdentityId
     });
     if (!events) throw this.notFound();
 
@@ -298,9 +294,9 @@ export class TechnicianShopAffiliationService {
     if (!employee) throw this.notFound();
 
     return this.repository.listCurrentShopEmployeeTimeline({
+      ...input,
       affiliationId: employee.affiliation.id,
-      shopId,
-      ...input
+      shopId
     });
   }
 
@@ -342,10 +338,10 @@ export class TechnicianShopAffiliationService {
     this.assertMutationDates(input);
     const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
     const result = await this.repository.upsertCurrentAffiliation({
+      ...input,
       shopId,
       technicianIdentityId,
-      actorUserId: actor.userId,
-      ...input
+      actorUserId: actor.userId
     });
     if (result === "not_found") throw this.notFound();
     if (result === "exclusive_conflict") throw this.exclusiveConflict();
@@ -412,14 +408,7 @@ export class TechnicianShopAffiliationService {
   }
 
   private requireMerchantShopScope(actor: AuthenticatedAccessContext): number {
-    if (
-      actor.currentIdentityScopeType === "shop" &&
-      typeof actor.currentIdentityScopeId === "number" &&
-      actor.currentIdentityScopeId > 0
-    ) {
-      return actor.currentIdentityScopeId;
-    }
-    throw this.forbidden();
+    return requireMerchantShopId(actor);
   }
 
   private assertMutationDates(input: EmployeeAffiliationMutationInput): void {

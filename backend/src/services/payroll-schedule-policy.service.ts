@@ -13,6 +13,7 @@ import type {
 } from "../validators/payroll-schedule-policy.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface PayrollSchedulePolicyRepositoryPort {
   findActiveShopPolicy: (
@@ -279,17 +280,7 @@ export class PayrollSchedulePolicyService {
   }
 
   private requireShopScope(actor: AuthenticatedAccessContext): number {
-    if (
-      actor.currentIdentityScopeType === "shop" &&
-      typeof actor.currentIdentityScopeId === "number"
-    ) {
-      return actor.currentIdentityScopeId;
-    }
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    return requireMerchantShopId(actor);
   }
 
   private async requireCurrentAffiliation(shopId: number, needoId: string) {

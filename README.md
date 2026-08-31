@@ -530,9 +530,11 @@ The official-notice list and compose routes are explicit delivery capability gat
 
 The operations support route is an explicit support-case capability gate. It does not publish unverified hard-coded email, LINE, phone or hours, and it does not expose inert copy/on-call actions as working support. Activation requires persisted tickets, messages, attachments and on-call policies; audited assignment, SLA, escalation, resolution, close and reopen states; tenant RBAC, PII masking, attachment authorization, delivery receipts, search, pagination, SLA aggregates and exports. Official contact channels must come from reviewed versioned configuration.
 
-The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
+The operations and merchant overview/analytics surfaces are now each a single formal “数据大盘”. Operations uses `/admin` and `GET /api/v1/backoffice/dashboard`; merchant uses `/merchant-admin` and `GET /api/v1/merchant-admin/dashboard`. The old `/admin/analytics` and `/merchant-admin/analytics` routes and their duplicate pages are retired. Both APIs accept the strict Tokyo-calendar periods `today | last7days | last30days | week | month | year | custom`; only `custom` accepts inclusive `from`/`to` dates, with a maximum of 366 days. Operations alone accepts an exact persisted `city`; merchant requests cannot submit `city` or `shopId`.
 
-The shared merchant-admin shell now follows the same authenticated scope. Its account name, shop status, pending-order count, avatar, and service GMV come from the active session and `/api/v1/merchant-admin/dashboard`; it shows a retryable error state instead of falling back to demo shop or order data. The shell is also the single dashboard resource owner for the merchant overview and analytics pages: requests are isolated by account, active identity, and preview shop, concurrent StrictMode loads share one in-flight request, recent route transitions reuse the resolved payload for five seconds, and manual retry invalidates the scoped entry before reloading.
+The named Dashboard payload contains `filter`, comparison `summary`, `series.buckets`, separated formal/Test NDP `finance`, `shop`, `membership`, and signed `scope`. Operations shows five core metrics and three trend pairs; platform wallet stock and withdrawals remain explicitly platform-global and are not changed by the city filter. Merchant shows the real shop/billing/current-wallet card, four core metrics, order/GMV and profit trends, schedule-hour bars, NDP cost split, and frozen NDP. `shopEstimatedGrossProfitJpy` is service GMV minus technician gross income minus the shop-borne NDP amount; technician gross income is base pay plus commission plus minimum-guarantee adjustment plus bonus minus deduction. Membership is intentionally `{ memberCount:null, memberDataStatus:"not_available", completedCustomerCount }` until the membership-card data source exists: the large value stays unavailable while the small “利用者数” is the real distinct count of customers with at least one completed order in the selected period.
+
+The shared merchant-admin shell is the single shop-scoped Dashboard resource owner. Requests are isolated by account, active identity, signed shop, query, and preview scope; stale requests cannot replace a newer shop/query result. A multi-shop merchant loads `GET /api/v1/merchant-admin/manageable-shops` and switches through `POST /api/v1/auth/merchant-shop/switch`. The backend revalidates active membership and RBAC, rotates both tokens, revokes the old session credentials, signs the selected public shop ID, and writes `auth.merchant_shop.switch`; every merchant service then follows the same resolved shop. Single-shop identities cannot use the list to broaden their scope. Exact fields, formulas, Tokyo boundaries, city exceptions, RBAC, audit actions, and the no-migration boundary are documented in `docs/backoffice-real-data.md`.
 
 The operations and merchant inventory routes are explicit production capability gates. They do not render sample stock, low-stock alerts, replenishment suggestions, purchase drafts, or browser-local inventory mutations. Activation requires formal item, location, and stock-movement tables; transactional purchase, transfer, count, receipt, and issue state machines; idempotency, inventory locking, RBAC, and audit evidence; plus alert, aggregate, and export contracts.
 
@@ -546,8 +548,8 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。
 - 端侧移动应用：用户端、商户端、技师端共享白天 / 黑夜两套视觉主题，客户端主题与语言设置集中在统一的设置中心。
-- 运营后台：Dashboard、Analytics、Data Center、Orders、Field Jobs、CRM、Marketing、Finance、Reviews、Merchants、Roles、Travel Settings。
-- 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、门店设置。
+- 运营后台：数据大盘、Data Center、Orders、Field Jobs、CRM、Marketing、Finance、Reviews、Merchants、Roles、Travel Settings。
+- 店铺后台：数据大盘、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
 - Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班、用户正式预约列表/详情、线下收款和 NDP 充值提现审核已迁移到 API/Prisma，禁止新增正式业务 mock。
 - 多语言：用户端与后台端支持日本語、English、한국어、繁體中文、简体中文五语切换，语言偏好会保存在本地；正式公告、规则和预约/联盟营销等可发布内容使用独立的服务端语言版本。
@@ -2031,7 +2033,7 @@ npm test
 ### 新菜单结构
 
 - 店铺后台
-  - 门店总览
+  - 数据大盘
   - 订单中心
   - 调度中心
     - 排班当前周期确认
@@ -2042,19 +2044,19 @@ npm test
   - 技师管理 / 用户管理 / 评价中心
   - 门店设置
 - 运营后台
-  - 数据大盘 / 分析中心 / 数据中心
+  - 数据大盘 / 数据中心
   - 技师管理与审核
   - 订单 / 财务 / 营销 / 风控
   - 店铺与商家管理
   - 系统设置与权限管理
 
-当前正式化边界：运营后台“数据大盘”与“分析中心”只读取受权限保护的数据库聚合。分析中心先提供当前财务、供给、订单、店铺和技师快照；复购、留存、渠道、评价、城市和排行榜等历史趋势在时间序列聚合 API 完成前明确禁用，不生成演示折线或虚构增长率。
+运营后台唯一“数据大盘”读取受 `backoffice:dashboard:read` 保护的正式数据库聚合，使用服务端东京日期分桶和具名比较字段，不生成演示折线或虚构增长率。旧分析页、旧数据大屏入口和旧 Dashboard 预览 payload 已退役。
 
 “数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
 
 独立“评价中心”同样采用能力门禁：Review 表与 migration、分页搜索 RBAC API、回复和风控审计日志完成前，只展示明确的上线条件，不展示模拟评分、评价内容、回复状态、差评预警或敏感评价数字。
 
-商户后台“经营驾驶舱”已按当前登录店铺隔离读取正式聚合，只显示当前财务、供给、订单与技师快照。复购、留存、渠道、评价、员工排行、同比和环比在店铺级时间序列合同完成前明确禁用，不再复用演示经营仪表盘。
+商户后台唯一“数据大盘”按当前签名店铺隔离读取正式聚合；多店切换通过服务端 membership 校验和 token 轮换，不依赖客户端 `shopId`。会员卡功能尚未接通时保留 `memberCount=null`，但期间内完成订单的去重利用者数仍来自正式 API；不再复用旧经营驾驶舱或浏览器演示指标。
 
 商户后台“订单中心”已接入按当前店铺强制隔离的服务端分页、正式订单状态机、线下收款确认和退款接口。取消订单、确认收款和确认退款采用二次点击确认；冲突、越权、网络失败和空数据都有明确状态，不再跳转到 mock 消息或调度流程。
 
