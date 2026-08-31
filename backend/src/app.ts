@@ -50,7 +50,7 @@ import type {
   AffiliatePlatformFeeRepositoryPort,
   AffiliatePlatformFeeService
 } from "./services/affiliate-platform-fee.service";
-import type { LedgerRepositoryPort } from "./services/ledger.service";
+import type { LedgerRepositoryPort, LedgerService } from "./services/ledger.service";
 import type { IdentityApplicationRepositoryPort } from "./services/identity-application.service";
 import type { IdentityApplicationService } from "./services/identity-application.service";
 import type { IdentityApplicationMediaRepositoryPort } from "./services/identity-application-media.service";
@@ -155,6 +155,7 @@ import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
+import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
@@ -165,6 +166,7 @@ import type { VerificationChallengeStore } from "./services/auth-verification-ch
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import type { ExchangeService } from "./services/exchange.service";
+import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
   SseRealtimeEventGateway,
   type RealtimeEventGatewayPort
@@ -286,6 +288,8 @@ export interface AppDependencies {
   imVoiceStorage?: ImVoiceStoragePort;
   imVoiceMessageService?: ImVoiceMessageService;
   exchangeService?: ExchangeService;
+  exchangeRequestFeeService?: ExchangeRequestFeeService;
+  ledgerService?: LedgerService;
 }
 
 const createDefaultAppDependencies = (): AppDependencies => ({
@@ -385,6 +389,7 @@ export const createApp = (
   apiRouter.use(createImMessageTranslationRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
+  apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));

@@ -222,10 +222,16 @@ const upsertSimulationPost = async (
       create: {
         postId: record.id,
         ...post.demand,
+        addressLine1: post.areaLabel,
         createdAt,
         updatedAt: createdAt
       },
-      update: { ...post.demand, deletedAt: null, updatedAt: createdAt }
+      update: {
+        ...post.demand,
+        addressLine1: post.areaLabel,
+        deletedAt: null,
+        updatedAt: createdAt
+      }
     });
   } else if (post.intelligence) {
     await transaction.exchangeDemand.deleteMany({ where: { postId: record.id } });

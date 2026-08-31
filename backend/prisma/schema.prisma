@@ -185,6 +185,9 @@ enum LedgerTransactionType {
   AFFILIATE_REWARD_REVERSAL            @map("affiliate_reward_reversal")
   AFFILIATE_REWARD_RECOVERY            @map("affiliate_reward_recovery")
   TEST_BALANCE_CALIBRATION             @map("test_balance_calibration")
+  EXCHANGE_REQUEST_PUBLICATION_FREEZE  @map("exchange_request_publication_freeze")
+  EXCHANGE_REQUEST_PUBLICATION_CAPTURE @map("exchange_request_publication_capture")
+  EXCHANGE_REQUEST_PUBLICATION_RELEASE @map("exchange_request_publication_release")
 
   @@map("ledger_transaction_type")
 }
@@ -659,6 +662,35 @@ enum ExchangeServiceMode {
   FLEXIBLE @map("flexible")
 
   @@map("exchange_service_mode")
+}
+
+enum ExchangeMatchMode {
+  QUICK     @map("quick")
+  SELECTIVE @map("selective")
+
+  @@map("exchange_match_mode")
+}
+
+enum ExchangeBudgetMode {
+  TOTAL        @map("total")
+  PER_PROVIDER @map("per_provider")
+
+  @@map("exchange_budget_mode")
+}
+
+enum ExchangePublisherCapacitySource {
+  CUSTOMER_MEMBERSHIP @map("customer_membership")
+  SHOP_MERCHANT       @map("shop_merchant")
+
+  @@map("exchange_publisher_capacity_source")
+}
+
+enum ExchangeRequestFinancialState {
+  HELD     @map("held")
+  CAPTURED @map("captured")
+  RELEASED @map("released")
+
+  @@map("exchange_request_financial_state")
 }
 
 enum CarouselScene {
@@ -2807,19 +2839,23 @@ model ExchangePost {
   serviceEndAt          DateTime           @map("service_end_at")
   expiresAt             DateTime           @map("expires_at")
   idempotencyKey        String             @unique @map("idempotency_key") @db.VarChar(191)
+  payloadFingerprint    String?            @map("payload_fingerprint") @db.Char(64)
   withdrawnAt           DateTime?          @map("withdrawn_at")
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
   deletedAt             DateTime?          @map("deleted_at")
 
-  author         User                  @relation("ExchangePostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
-  authorIdentity UserIdentity          @relation("ExchangePostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
-  ownerIdentity  UserIdentity          @relation("ExchangePostOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
-  demand         ExchangeDemand?
-  intelligence   ExchangeIntelligence?
-  comments       ExchangeComment[]
-  likes          ExchangeLike[]
-  shares         ExchangeShare[]
+  author             User                      @relation("ExchangePostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorIdentity     UserIdentity              @relation("ExchangePostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+  ownerIdentity      UserIdentity              @relation("ExchangePostOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
+  demand             ExchangeDemand?
+  intelligence       ExchangeIntelligence?
+  comments           ExchangeComment[]
+  likes              ExchangeLike[]
+  shares             ExchangeShare[]
+  feeCalculationLogs FeeCalculationLog[]
+  walletHolds        WalletHold[]
+  requestFinancial   ExchangeRequestFinancial?
 
   @@index([type, status, expiresAt, createdAt])
   @@index([authorUserId, createdAt])
@@ -2831,13 +2867,25 @@ model ExchangePost {
 }
 
 model ExchangeDemand {
-  id           Int       @id @default(autoincrement())
-  postId       Int       @unique @map("post_id")
-  budgetMinJpy Int       @map("budget_min_jpy")
-  budgetMaxJpy Int       @map("budget_max_jpy")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  id                          Int                             @id @default(autoincrement())
+  postId                      Int                             @unique @map("post_id")
+  targetProviderCount         Int                             @default(1) @map("target_provider_count")
+  targetProviderLimitSnapshot Int                             @default(1) @map("target_provider_limit_snapshot")
+  publisherCapacitySource     ExchangePublisherCapacitySource @default(CUSTOMER_MEMBERSHIP) @map("publisher_capacity_source")
+  membershipLevelSnapshot     String?                         @map("membership_level_snapshot") @db.VarChar(50)
+  matchMode                   ExchangeMatchMode               @default(QUICK) @map("match_mode")
+  budgetMode                  ExchangeBudgetMode              @default(TOTAL) @map("budget_mode")
+  budgetMinJpy                Int?                            @map("budget_min_jpy")
+  budgetMaxJpy                Int                             @map("budget_max_jpy")
+  addressLine1                String                          @map("address_line_1") @db.VarChar(255)
+  addressLine2                String?                         @map("address_line_2") @db.VarChar(255)
+  addressLine3                String?                         @map("address_line_3") @db.VarChar(255)
+  addressLine2Public          Boolean                         @default(false) @map("address_line_2_public")
+  addressLine3Public          Boolean                         @default(false) @map("address_line_3_public")
+  publisherIdentityPublic     Boolean                         @default(false) @map("publisher_identity_public")
+  createdAt                   DateTime                        @default(now()) @map("created_at")
+  updatedAt                   DateTime                        @updatedAt @map("updated_at")
+  deletedAt                   DateTime?                       @map("deleted_at")
 
   post ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
 
@@ -3498,7 +3546,8 @@ model PlatformFeeRuleSet {
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
 
-  rules PlatformFeeRule[]
+  rules                     PlatformFeeRule[]
+  exchangeRequestFinancials ExchangeRequestFinancial[]
 
   @@unique([familyCode, version], map: "platform_fee_rule_sets_family_version_key")
   @@index([status])
@@ -3592,9 +3641,10 @@ model PlatformFeeRule {
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  ruleSet     PlatformFeeRuleSet      @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
-  tiers       PlatformFeeTier[]
-  timeWindows PlatformFeeTimeWindow[]
+  ruleSet                   PlatformFeeRuleSet         @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
+  tiers                     PlatformFeeTier[]
+  timeWindows               PlatformFeeTimeWindow[]
+  exchangeRequestFinancials ExchangeRequestFinancial[]
 
   @@index([ruleSetId])
   @@index([feeType])
@@ -3692,6 +3742,7 @@ model FeeCampaign {
 model FeeCalculationLog {
   id                  Int       @id @default(autoincrement())
   bookingOrderId      Int?      @map("booking_order_id")
+  exchangePostId      Int?      @map("exchange_post_id")
   calculationStage    String    @map("calculation_stage") @db.VarChar(40)
   feeType             String    @map("fee_type") @db.VarChar(60)
   payerType           String    @map("payer_type") @db.VarChar(40)
@@ -3709,9 +3760,12 @@ model FeeCalculationLog {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  bookingOrder BookingOrder? @relation(fields: [bookingOrderId], references: [id], onDelete: SetNull)
+  bookingOrder             BookingOrder?             @relation(fields: [bookingOrderId], references: [id], onDelete: SetNull)
+  exchangePost             ExchangePost?             @relation(fields: [exchangePostId], references: [id], onDelete: SetNull)
+  exchangeRequestFinancial ExchangeRequestFinancial?
 
   @@index([bookingOrderId])
+  @@index([exchangePostId])
   @@index([calculationStage])
   @@index([feeType])
   @@index([payerType, payerId])
@@ -3724,7 +3778,8 @@ model WalletHold {
   id                Int             @id @default(autoincrement())
   ownerType         WalletOwnerType @map("owner_type")
   ownerId           Int             @map("owner_id")
-  bookingOrderId    Int             @map("booking_order_id")
+  bookingOrderId    Int?            @map("booking_order_id")
+  exchangePostId    Int?            @unique @map("exchange_post_id")
   feeType           String          @map("fee_type") @db.VarChar(60)
   holdAmountNdp     Int             @default(0) @map("hold_amount_ndp")
   capturedAmountNdp Int             @default(0) @map("captured_amount_ndp")
@@ -3740,7 +3795,9 @@ model WalletHold {
   updatedAt         DateTime        @updatedAt @map("updated_at")
   deletedAt         DateTime?       @map("deleted_at")
 
-  bookingOrder BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  bookingOrder             BookingOrder?             @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangePost             ExchangePost?             @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangeRequestFinancial ExchangeRequestFinancial?
 
   @@index([ownerType, ownerId])
   @@index([bookingOrderId])
@@ -3749,6 +3806,42 @@ model WalletHold {
   @@index([currency, status], map: "wallet_holds_currency_status_idx")
   @@index([deletedAt])
   @@map("wallet_holds")
+}
+
+model ExchangeRequestFinancial {
+  id                  Int                           @id @default(autoincrement())
+  exchangePostId      Int                           @unique @map("exchange_post_id")
+  payerType           String                        @map("payer_type") @db.VarChar(20)
+  payerId             Int                           @map("payer_id")
+  walletOwnerType     WalletOwnerType               @map("wallet_owner_type")
+  walletOwnerId       Int                           @map("wallet_owner_id")
+  currency            String                        @db.VarChar(10)
+  feeRuleSetId        Int                           @map("fee_rule_set_id")
+  feeRuleSetVersion   Int                           @map("fee_rule_set_version")
+  feeRuleId           Int                           @map("fee_rule_id")
+  feeCalculationLogId Int                           @unique @map("fee_calculation_log_id")
+  walletHoldId        Int                           @unique @map("wallet_hold_id")
+  amountNdp           Int                           @map("amount_ndp")
+  state               ExchangeRequestFinancialState @default(HELD)
+  capturedAt          DateTime?                     @map("captured_at")
+  releasedAt          DateTime?                     @map("released_at")
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
+  deletedAt           DateTime?                     @map("deleted_at")
+
+  exchangePost      ExchangePost       @relation(fields: [exchangePostId], references: [id], onDelete: Restrict)
+  feeRuleSet        PlatformFeeRuleSet @relation(fields: [feeRuleSetId], references: [id], onDelete: Restrict)
+  feeRule           PlatformFeeRule    @relation(fields: [feeRuleId], references: [id], onDelete: Restrict)
+  feeCalculationLog FeeCalculationLog  @relation(fields: [feeCalculationLogId], references: [id], onDelete: Restrict)
+  walletHold        WalletHold         @relation(fields: [walletHoldId], references: [id], onDelete: Restrict)
+
+  @@index([payerType, payerId, createdAt])
+  @@index([walletOwnerType, walletOwnerId, currency], map: "exchange_request_financials_wallet_owner_idx")
+  @@index([state, createdAt])
+  @@index([feeRuleSetId])
+  @@index([feeRuleId])
+  @@index([deletedAt])
+  @@map("exchange_request_financials")
 }
 
 model OrderFinancial {

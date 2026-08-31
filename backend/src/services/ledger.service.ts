@@ -14,6 +14,7 @@ import type {
   BookingPlatformFeePolicySnapshot,
   PlatformFeePolicyService
 } from "./platform-fee-policy.service";
+import type { ExchangeRequestFeeSnapshot } from "./exchange-request-fee.service";
 import { LedgerCurrencyService, type LedgerCurrency } from "./ledger-currency.service";
 
 export type { LedgerCurrency } from "./ledger-currency.service";
@@ -44,11 +45,16 @@ export type LedgerTransactionType =
   | "affiliate_reward_settlement"
   | "affiliate_reward_reversal"
   | "affiliate_reward_recovery"
-  | "test_balance_calibration";
+  | "test_balance_calibration"
+  | "exchange_request_publication_freeze"
+  | "exchange_request_publication_capture"
+  | "exchange_request_publication_release";
 export type LedgerTransactionStatus = "applied";
 export type FinanceReconciliationStatus = "pending" | "exported" | "test_only";
 export type LedgerTransactionClient = unknown;
 export type WalletHoldStatus = "active" | "captured" | "released" | "partially_captured";
+export type WalletHoldFeeType = FeeType | "exchange_request_publication_fee";
+export type ExchangeRequestFinancialState = "held" | "captured" | "released";
 export type OrderFinancialSettlementStatus =
   | "pending"
   | "holding"
@@ -189,8 +195,9 @@ export interface WalletHoldPayload {
   id: number;
   ownerType: WalletOwnerType;
   ownerId: number;
-  bookingOrderId: number;
-  feeType: FeeType;
+  bookingOrderId: number | null;
+  exchangePostId?: number | null;
+  feeType: WalletHoldFeeType;
   holdAmountNdp: number;
   capturedAmountNdp: number;
   releasedAmountNdp: number;
@@ -203,6 +210,45 @@ export interface WalletHoldPayload {
   releasedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ExchangeRequestFinancialPayload {
+  id: number;
+  exchangePostId: number;
+  payerType: "user" | "shop";
+  payerId: number;
+  walletOwnerType: Extract<WalletOwnerType, "user" | "shop">;
+  walletOwnerId: number;
+  currency: LedgerCurrency;
+  feeRuleSetId: number;
+  feeRuleSetVersion: number;
+  feeRuleId: number;
+  feeCalculationLogId: number;
+  walletHoldId: number;
+  amountNdp: number;
+  state: ExchangeRequestFinancialState;
+  capturedAt: Date | null;
+  releasedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ExchangeRequestFreezeInput {
+  exchangePostId: number;
+  actorUserId: number;
+  payerType: "user" | "shop";
+  payerId: number;
+  walletOwnerType: Extract<WalletOwnerType, "user" | "shop">;
+  walletOwnerId: number;
+  currency: LedgerCurrency;
+  fee: ExchangeRequestFeeSnapshot;
+  feeCalculationLogId: number;
+  occurredAt: Date;
+}
+
+export interface ExchangeRequestTerminalInput {
+  exchangePostId: number;
+  actorUserId: number;
 }
 
 export interface OrderFinancialUpsertInput {
@@ -443,7 +489,7 @@ export interface LedgerRepositoryPort {
     ownerType: WalletOwnerType;
     ownerId: number;
     bookingOrderId: number;
-    feeType: FeeType;
+    feeType: WalletHoldFeeType;
     holdAmountNdp: number;
     currency: LedgerCurrency;
     status: WalletHoldStatus;
@@ -451,6 +497,37 @@ export interface LedgerRepositoryPort {
     calculationLogId: number | null;
     metadata?: unknown;
   }) => Promise<WalletHoldPayload>;
+  findExchangeRequestFinancialByPostId?: (
+    exchangePostId: number
+  ) => Promise<ExchangeRequestFinancialPayload | null>;
+  lockExchangeRequestFinancialByPostId?: (
+    exchangePostId: number
+  ) => Promise<ExchangeRequestFinancialPayload | null>;
+  findWalletHoldByExchangePostId?: (
+    exchangePostId: number
+  ) => Promise<WalletHoldPayload | null>;
+  createExchangeRequestFreezeEvidence?: (input: {
+    freeze: ExchangeRequestFreezeInput;
+    walletId: number;
+    availableBalanceAfter: number;
+    frozenBalanceAfter: number;
+  }) => Promise<ExchangeRequestFinancialPayload>;
+  completeExchangeRequestFinancial?: (input: {
+    financialId: number;
+    walletHoldId: number;
+    expectedState: "held";
+    state: Extract<ExchangeRequestFinancialState, "captured" | "released">;
+    amountNdp: number;
+    occurredAt: Date;
+    transactionId: number;
+  }) => Promise<ExchangeRequestFinancialPayload | null>;
+  createExchangeRequestReconciliation?: (input: {
+    transactionId: number;
+    referenceId: number;
+    currency: LedgerCurrency;
+    expectedAmount: number;
+    actualAmount: number;
+  }) => Promise<void>;
   updateWalletHold?: (input: {
     id: number;
     capturedAmountNdp?: number;
@@ -585,6 +662,229 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       "resolveForBookingSettlement"
     >
   ) {}
+
+  public freezeExchangeRequestPublication(
+    input: ExchangeRequestFreezeInput,
+    context: LedgerMutationContext = {}
+  ): Promise<ExchangeRequestFinancialPayload> {
+    return this.repository.runInTransaction(async (repository) => {
+      this.assertExchangeRequestLedgerRepository(repository);
+      this.assertExchangeRequestFreezeInput(input);
+      const replay = await repository.findExchangeRequestFinancialByPostId!(input.exchangePostId);
+      if (replay) {
+        this.assertExchangeRequestFreezeReplay(replay, input);
+        return replay;
+      }
+
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: input.walletOwnerType,
+        ownerId: input.walletOwnerId,
+        currency: input.currency
+      });
+      LedgerCurrencyService.assertSameCurrency(input.currency, [wallet.currency]);
+      const updatedWallet =
+        input.fee.amountNdp === 0
+          ? wallet
+          : await repository.applyWalletDelta({
+              walletId: wallet.id,
+              availableDelta: -input.fee.amountNdp,
+              frozenDelta: input.fee.amountNdp,
+              requireAvailableAtLeast: input.fee.amountNdp
+            });
+      if (!updatedWallet) {
+        throw this.insufficientAvailableError();
+      }
+
+      return repository.createExchangeRequestFreezeEvidence!({
+        freeze: input,
+        walletId: wallet.id,
+        availableBalanceAfter: updatedWallet.availableBalance,
+        frozenBalanceAfter: updatedWallet.frozenBalance
+      });
+    }, context.transactionClient);
+  }
+
+  public captureExchangeRequestPublication(
+    input: ExchangeRequestTerminalInput,
+    context: LedgerMutationContext = {}
+  ): Promise<ExchangeRequestFinancialPayload> {
+    return this.completeExchangeRequestPublication("captured", input, context);
+  }
+
+  public releaseExchangeRequestPublication(
+    input: ExchangeRequestTerminalInput,
+    context: LedgerMutationContext = {}
+  ): Promise<ExchangeRequestFinancialPayload> {
+    return this.completeExchangeRequestPublication("released", input, context);
+  }
+
+  private completeExchangeRequestPublication(
+    targetState: Extract<ExchangeRequestFinancialState, "captured" | "released">,
+    input: ExchangeRequestTerminalInput,
+    context: LedgerMutationContext
+  ): Promise<ExchangeRequestFinancialPayload> {
+    return this.repository.runInTransaction(async (repository) => {
+      this.assertExchangeRequestLedgerRepository(repository);
+      if (!Number.isSafeInteger(input.exchangePostId) || input.exchangePostId <= 0) {
+        throw this.walletMutationError();
+      }
+      const financial = await repository.lockExchangeRequestFinancialByPostId!(
+        input.exchangePostId
+      );
+      if (!financial) {
+        throw this.exchangeRequestFinancialConflictError();
+      }
+      if (financial.state === targetState) {
+        return financial;
+      }
+      if (financial.state !== "held") {
+        throw this.exchangeRequestFinancialConflictError();
+      }
+
+      const hold = await repository.findWalletHoldByExchangePostId!(input.exchangePostId);
+      if (
+        !hold ||
+        hold.id !== financial.walletHoldId ||
+        hold.status !== "active" ||
+        hold.feeType !== "exchange_request_publication_fee" ||
+        hold.currency !== financial.currency ||
+        hold.holdAmountNdp !== financial.amountNdp ||
+        hold.capturedAmountNdp !== 0 ||
+        hold.releasedAmountNdp !== 0
+      ) {
+        throw this.exchangeRequestFinancialConflictError();
+      }
+
+      const payerWallet = await repository.getOrCreateWallet({
+        ownerType: financial.walletOwnerType,
+        ownerId: financial.walletOwnerId,
+        currency: financial.currency
+      });
+      LedgerCurrencyService.assertSameCurrency(financial.currency, [payerWallet.currency]);
+      const amount = financial.amountNdp;
+      const payerAfter =
+        amount === 0
+          ? payerWallet
+          : await repository.applyWalletDelta({
+              walletId: payerWallet.id,
+              availableDelta: targetState === "released" ? amount : 0,
+              frozenDelta: -amount,
+              requireFrozenAtLeast: amount
+            });
+      if (!payerAfter) {
+        throw this.insufficientFrozenError();
+      }
+
+      const platformWallet =
+        targetState === "captured"
+          ? await repository.getOrCreateWallet({
+              ownerType: "platform",
+              ownerId: PLATFORM_WALLET_OWNER_ID,
+              currency: financial.currency
+            })
+          : null;
+      if (platformWallet) {
+        LedgerCurrencyService.assertSameCurrency(financial.currency, [platformWallet.currency]);
+      }
+      const platformAfter =
+        platformWallet && amount > 0
+          ? await repository.applyWalletDelta({
+              walletId: platformWallet.id,
+              availableDelta: amount,
+              frozenDelta: 0
+            })
+          : platformWallet;
+      if (platformWallet && !platformAfter) {
+        throw this.walletMutationError();
+      }
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey: `exchange-request:${input.exchangePostId}:${
+          targetState === "captured" ? "capture" : "release"
+        }`,
+        type:
+          targetState === "captured"
+            ? "exchange_request_publication_capture"
+            : "exchange_request_publication_release",
+        referenceType: "exchange_request",
+        referenceId: input.exchangePostId,
+        actorUserId: input.actorUserId,
+        amount,
+        currency: financial.currency,
+        metadata: {
+          financialId: financial.id,
+          walletHoldId: hold.id,
+          payerWalletId: payerWallet.id,
+          platformWalletId: platformWallet?.id ?? null
+        }
+      });
+      if (amount > 0) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: payerWallet.id,
+          direction: targetState === "captured" ? "frozen_debit" : "unfreeze",
+          amount,
+          availableDelta: targetState === "released" ? amount : 0,
+          frozenDelta: -amount,
+          availableBalanceAfter: payerAfter.availableBalance,
+          frozenBalanceAfter: payerAfter.frozenBalance,
+          reason:
+            targetState === "captured"
+              ? "exchange_request_publication_capture"
+              : "exchange_request_publication_release"
+        });
+        if (platformWallet && platformAfter) {
+          await repository.createLedgerEntry({
+            transactionId: transaction.id,
+            walletId: platformWallet.id,
+            direction: "available_credit",
+            amount,
+            availableDelta: amount,
+            frozenDelta: 0,
+            availableBalanceAfter: platformAfter.availableBalance,
+            frozenBalanceAfter: platformAfter.frozenBalance,
+            reason: "exchange_request_publication_platform_income"
+          });
+        }
+      }
+
+      const completed = await repository.completeExchangeRequestFinancial!({
+        financialId: financial.id,
+        walletHoldId: hold.id,
+        expectedState: "held",
+        state: targetState,
+        amountNdp: amount,
+        occurredAt: this.now(),
+        transactionId: transaction.id
+      });
+      if (!completed) {
+        throw this.exchangeRequestFinancialConflictError();
+      }
+      await repository.createExchangeRequestReconciliation!({
+        transactionId: transaction.id,
+        referenceId: input.exchangePostId,
+        currency: financial.currency,
+        expectedAmount: amount,
+        actualAmount: amount
+      });
+      await repository.createAuditLog({
+        actorUserId: input.actorUserId,
+        action: `ledger.exchange_request_publication.${
+          targetState === "captured" ? "capture" : "release"
+        }`,
+        targetType: "ledger_transaction",
+        targetId: transaction.id,
+        metadata: {
+          exchangePostId: input.exchangePostId,
+          amount,
+          currency: financial.currency,
+          financialState: targetState
+        }
+      });
+
+      return completed;
+    }, context.transactionClient);
+  }
 
   public freezeAffiliateTaskBudget(
     input: FreezeAffiliateTaskBudgetInput,
@@ -2899,6 +3199,74 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     }
 
     return this.repository.exportFinanceReconciliation(input);
+  }
+
+  private assertExchangeRequestLedgerRepository(repository: LedgerRepositoryPort): void {
+    if (
+      !repository.findExchangeRequestFinancialByPostId ||
+      !repository.lockExchangeRequestFinancialByPostId ||
+      !repository.findWalletHoldByExchangePostId ||
+      !repository.createExchangeRequestFreezeEvidence ||
+      !repository.completeExchangeRequestFinancial ||
+      !repository.createExchangeRequestReconciliation
+    ) {
+      throw this.repositoryUnavailableError();
+    }
+  }
+
+  private assertExchangeRequestFreezeInput(input: ExchangeRequestFreezeInput): void {
+    if (
+      !Number.isSafeInteger(input.exchangePostId) ||
+      input.exchangePostId <= 0 ||
+      !Number.isSafeInteger(input.actorUserId) ||
+      input.actorUserId <= 0 ||
+      !Number.isSafeInteger(input.payerId) ||
+      input.payerId <= 0 ||
+      !Number.isSafeInteger(input.walletOwnerId) ||
+      input.walletOwnerId <= 0 ||
+      !Number.isSafeInteger(input.feeCalculationLogId) ||
+      input.feeCalculationLogId <= 0 ||
+      !Number.isSafeInteger(input.fee.amountNdp) ||
+      input.fee.amountNdp < 0 ||
+      !Number.isSafeInteger(input.fee.ruleSetId) ||
+      input.fee.ruleSetId <= 0 ||
+      !Number.isSafeInteger(input.fee.ruleSetVersion) ||
+      input.fee.ruleSetVersion <= 0 ||
+      !Number.isSafeInteger(input.fee.ruleId) ||
+      input.fee.ruleId <= 0 ||
+      !(input.occurredAt instanceof Date) ||
+      !Number.isFinite(input.occurredAt.getTime())
+    ) {
+      throw this.walletMutationError();
+    }
+  }
+
+  private assertExchangeRequestFreezeReplay(
+    replay: ExchangeRequestFinancialPayload,
+    input: ExchangeRequestFreezeInput
+  ): void {
+    if (
+      replay.payerType !== input.payerType ||
+      replay.payerId !== input.payerId ||
+      replay.walletOwnerType !== input.walletOwnerType ||
+      replay.walletOwnerId !== input.walletOwnerId ||
+      replay.currency !== input.currency ||
+      replay.feeRuleSetId !== input.fee.ruleSetId ||
+      replay.feeRuleSetVersion !== input.fee.ruleSetVersion ||
+      replay.feeRuleId !== input.fee.ruleId ||
+      replay.feeCalculationLogId !== input.feeCalculationLogId ||
+      replay.amountNdp !== input.fee.amountNdp
+    ) {
+      throw this.exchangeRequestFinancialConflictError();
+    }
+  }
+
+  private exchangeRequestFinancialConflictError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT,
+      message: "error.exchange.request_financial_state_conflict",
+      statusCode: 409
+    });
   }
 
   private async recordFinanceAndAudit(

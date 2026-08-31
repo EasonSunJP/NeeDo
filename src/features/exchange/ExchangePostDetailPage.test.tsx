@@ -53,7 +53,24 @@ const demandPost: ExchangePost = {
   publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8000, budgetMaxJpy: 12000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8000,
+    budgetMaxJpy: 12000,
+    address: {
+      line1: "東京都千代田区丸の内 1-1",
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "owner"
+    }
+  },
   intelligence: null
 };
 
@@ -142,6 +159,44 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it("renders a redacted publisher without reconstructing private identity", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({ ...demandPost, publisher: null });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.textContent).toContain("发布者已隐藏身份");
+    expect(document.body.textContent).not.toContain("测试客户 41");
+    expect(document.body.textContent).not.toContain("u0000000041");
+  });
+
+  it("renders only the Request address lines projected by the server", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      publisher: null,
+      demand: {
+        ...demandPost.demand!,
+        budgetMinJpy: null,
+        address: {
+          line1: "東京都港区六本木 3-2-1",
+          line2: "Prince Tower 12F",
+          line3: null,
+          line2GenerallyVisible: true,
+          line3GenerallyVisible: false,
+          disclosure: "general"
+        }
+      }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.textContent).toContain("東京都港区六本木 3-2-1");
+    expect(document.body.textContent).toContain("Prince Tower 12F");
+    expect(document.body.textContent).not.toContain("测试客户 41");
+    expect(document.body.textContent).not.toContain("u0000000041");
+    expect(document.body.textContent).toContain("¥12,000");
+    expect(document.body.textContent).not.toContain("¥0–¥12,000");
   });
 
   it("restores the approved full-screen intelligence detail composition with formal fields", async () => {

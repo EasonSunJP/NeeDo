@@ -9,7 +9,11 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { ExchangePostRepository } from "../repositories/exchange.repository";
+import { ExchangeRequestFeeRepository } from "../repositories/exchange-request-fee.repository";
+import { LedgerRepository } from "../repositories/ledger.repository";
+import { ExchangeRequestFeeService } from "../services/exchange-request-fee.service";
 import { ExchangeService } from "../services/exchange.service";
+import { LedgerService } from "../services/ledger.service";
 import { AppError } from "../utils/app-error";
 import {
   createExchangeCommentSchema,
@@ -54,11 +58,16 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
   );
-  const service = dependencies.exchangeService ??
+  const service =
+    dependencies.exchangeService ??
     new ExchangeService(
       new ExchangePostRepository(),
       undefined,
-      dependencies.personalIdentityScopeService
+      dependencies.personalIdentityScopeService,
+      dependencies.exchangeRequestFeeService ??
+        new ExchangeRequestFeeService(new ExchangeRequestFeeRepository()),
+      dependencies.ledgerService ??
+        new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository())
     );
   const controller = new ExchangeController(service);
 
@@ -68,6 +77,12 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
     createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.postList),
     validateRequest({ query: exchangeListQuerySchema }),
     controller.listPosts
+  );
+  router.get(
+    "/exchange/request-publication-context",
+    authenticate(),
+    createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.createDemand),
+    controller.getRequestPublicationContext
   );
   router.get(
     "/exchange/posts/:id",

@@ -25,7 +25,17 @@ const demandPost: ExchangePost = {
   publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8000, budgetMaxJpy: 12000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8000,
+    budgetMaxJpy: 12000,
+    address: { line1: "東京都千代田区", line2: null, line3: null, line2GenerallyVisible: false, line3GenerallyVisible: false, disclosure: "owner" }
+  },
   intelligence: null
 };
 
@@ -96,6 +106,18 @@ describe("ExchangeFeedPage", () => {
     expect(markup).toContain('data-no-i18n="true"');
     expect(markup).toContain('data-post-id="41"');
     expect(markup).toContain("转发");
+  });
+
+  it("renders a provider-visible Request when the server redacts its publisher", () => {
+    const markup = renderFeed(
+      { posts: [{ ...demandPost, publisher: null }] },
+      "merchant"
+    );
+
+    expect(markup).toContain("发布者已隐藏身份");
+    expect(markup).toContain("東京駅附近寻找中文口译");
+    expect(markup).not.toContain("测试客户 41");
+    expect(markup).not.toContain("u0000000041");
   });
 
   it("shows distinct loading, empty, permission, authentication, and unavailable states", () => {

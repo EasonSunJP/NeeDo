@@ -6,7 +6,7 @@ describe("ExchangePostExpiryWorker", () => {
     jest.restoreAllMocks();
   });
 
-  it("uses safe defaults, starts immediately, and schedules the configured interval", async () => {
+  it("delegates bounded terminal settlement immediately and on the configured interval", async () => {
     expect(env.EXCHANGE_EXPIRY_WORKER_ENABLED).toBe(true);
     expect(env.EXCHANGE_EXPIRY_INTERVAL_MS).toBe(300_000);
     expect(env.EXCHANGE_EXPIRY_BATCH_SIZE).toBe(100);

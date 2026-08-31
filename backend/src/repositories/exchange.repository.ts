@@ -1,10 +1,14 @@
 import {
   ContentLocale,
+  ExchangeBudgetMode as DatabaseExchangeBudgetMode,
+  ExchangeMatchMode as DatabaseExchangeMatchMode,
   ExchangePostStatus as DatabaseExchangePostStatus,
   ExchangePostType as DatabaseExchangePostType,
+  ExchangePublisherCapacitySource as DatabaseExchangePublisherCapacitySource,
+  ExchangeRequestFinancialState as DatabaseExchangeRequestFinancialState,
   ExchangeServiceMode as DatabaseExchangeServiceMode
 } from "@prisma/client";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { ContentLocaleCode } from "../constants/content-locales";
 import { prisma } from "../prisma/client";
 import type {
@@ -13,20 +17,25 @@ import type {
   ExchangeCommentRepositoryInput,
   ExchangeLikeRepositoryInput,
   ExchangeMutationResult,
+  ExchangePublicationRecord,
   ExchangePublishRepositoryInput,
   ExchangeRepositoryPort,
   ExchangeShareRepositoryInput,
-  ExchangeWithdrawRepositoryInput
+  ExchangeTerminalPostRecord
 } from "../services/exchange.service";
 import type {
   ExchangeCommentPage,
   ExchangeCommentPayload,
+  ExchangeBudgetMode,
+  ExchangeCustomerMembershipLevel,
   ExchangeInteractionCounts,
   ExchangeListInput,
+  ExchangeMatchMode,
   ExchangePostPage,
   ExchangePostPayload,
   ExchangePostStatus,
   ExchangePostType,
+  ExchangePublisherCapacitySource,
   ExchangeServiceMode
 } from "../types/exchange.types";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -46,6 +55,15 @@ const statusFromDatabase: Record<DatabaseExchangePostStatus, ExchangePostStatus>
   [DatabaseExchangePostStatus.PUBLISHED]: "published",
   [DatabaseExchangePostStatus.WITHDRAWN]: "withdrawn",
   [DatabaseExchangePostStatus.EXPIRED]: "expired"
+};
+
+const requestFinancialStateFromDatabase: Record<
+  DatabaseExchangeRequestFinancialState,
+  NonNullable<ExchangeTerminalPostRecord["requestFinancial"]>["state"]
+> = {
+  [DatabaseExchangeRequestFinancialState.HELD]: "held",
+  [DatabaseExchangeRequestFinancialState.CAPTURED]: "captured",
+  [DatabaseExchangeRequestFinancialState.RELEASED]: "released"
 };
 
 const serviceModeFromDatabase: Record<DatabaseExchangeServiceMode, ExchangeServiceMode> = {
@@ -76,6 +94,63 @@ const serviceModeToDatabase: Record<ExchangeServiceMode, DatabaseExchangeService
   flexible: DatabaseExchangeServiceMode.FLEXIBLE
 };
 
+const matchModeFromDatabase: Record<DatabaseExchangeMatchMode, ExchangeMatchMode> = {
+  [DatabaseExchangeMatchMode.QUICK]: "quick",
+  [DatabaseExchangeMatchMode.SELECTIVE]: "selective"
+};
+
+const matchModeToDatabase: Record<ExchangeMatchMode, DatabaseExchangeMatchMode> = {
+  quick: DatabaseExchangeMatchMode.QUICK,
+  selective: DatabaseExchangeMatchMode.SELECTIVE
+};
+
+const budgetModeFromDatabase: Record<DatabaseExchangeBudgetMode, ExchangeBudgetMode> = {
+  [DatabaseExchangeBudgetMode.TOTAL]: "total",
+  [DatabaseExchangeBudgetMode.PER_PROVIDER]: "per_provider"
+};
+
+const budgetModeToDatabase: Record<ExchangeBudgetMode, DatabaseExchangeBudgetMode> = {
+  total: DatabaseExchangeBudgetMode.TOTAL,
+  per_provider: DatabaseExchangeBudgetMode.PER_PROVIDER
+};
+
+const capacitySourceFromDatabase: Record<
+  DatabaseExchangePublisherCapacitySource,
+  ExchangePublisherCapacitySource
+> = {
+  [DatabaseExchangePublisherCapacitySource.CUSTOMER_MEMBERSHIP]: "customer_membership",
+  [DatabaseExchangePublisherCapacitySource.SHOP_MERCHANT]: "shop_merchant"
+};
+
+const capacitySourceToDatabase: Record<
+  ExchangePublisherCapacitySource,
+  DatabaseExchangePublisherCapacitySource
+> = {
+  customer_membership: DatabaseExchangePublisherCapacitySource.CUSTOMER_MEMBERSHIP,
+  shop_merchant: DatabaseExchangePublisherCapacitySource.SHOP_MERCHANT
+};
+
+const PERSONAL_DEMAND_IDENTITIES = new Set([
+  "customer",
+  "user",
+  "u",
+  "scout",
+  "affiliate",
+  "alliance_marketing"
+]);
+
+const SHOP_MERCHANT_IDENTITIES = new Set(["merchant", "merchant_owner", "merchant_staff"]);
+
+const membershipLevelSnapshotFromDatabase = (
+  value: string | null
+): ExchangeCustomerMembershipLevel | null => {
+  if (value === null) return null;
+  if (value === "standard" || value === "silver" || value === "gold" || value === "black") {
+    return value;
+  }
+  throw new Error("error.exchange.invalid_membership_snapshot");
+};
+
 const postInclude = (viewerIdentityId: number) =>
   ({
     demand: { where: { deletedAt: null } },
@@ -101,8 +176,20 @@ type ExchangePostRecord = Prisma.ExchangePostGetPayload<{
 const isServiceAreaList = (value: Prisma.JsonValue): value is string[] =>
   Array.isArray(value) && value.every((area) => typeof area === "string");
 
+type ExchangePrismaClient = PrismaClient | Prisma.TransactionClient;
+
 export class ExchangePostRepository implements ExchangeRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(private readonly client: ExchangePrismaClient = prisma) {}
+
+  public runInTransaction<T>(
+    handler: (repository: ExchangeRepositoryPort, transactionClient?: unknown) => Promise<T>,
+    transactionClient?: unknown
+  ): Promise<T> {
+    return this.withClientTransaction(
+      (transaction) => handler(new ExchangePostRepository(transaction), transaction),
+      transactionClient as ExchangePrismaClient | undefined
+    );
+  }
 
   public async resolveActor(input: ExchangeActorLookup): Promise<ExchangeActorRecord | null> {
     const identity = await this.client.userIdentity.findFirst({
@@ -124,16 +211,56 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         scopeId: true,
         displayName: true,
         publicIdentifier: { select: { publicId: true, status: true, deletedAt: true } },
-        user: { select: { username: true, avatarUrl: true, needoId: true } }
+        user: {
+          select: {
+            username: true,
+            avatarUrl: true,
+            needoId: true,
+            isTestAccount: true,
+            customerProfile: {
+              select: {
+                id: true,
+                membershipLevel: true,
+                membershipGrantMode: true,
+                membershipStartsAt: true,
+                membershipExpiresAt: true,
+                deletedAt: true
+              }
+            }
+          }
+        }
       }
     });
     if (!identity) return null;
+    const customerProfile = identity.user.customerProfile;
+    if (
+      PERSONAL_DEMAND_IDENTITIES.has(identity.type) &&
+      (!customerProfile || customerProfile.deletedAt !== null)
+    ) {
+      return null;
+    }
+    if (
+      ["customer", "user", "u"].includes(identity.type) &&
+      (identity.scopeType !== "customer_profile" || identity.scopeId !== customerProfile?.id)
+    ) {
+      return null;
+    }
+    let shopScope: ExchangeActorRecord["shopScope"] = null;
+    if (SHOP_MERCHANT_IDENTITIES.has(identity.type) && identity.scopeType === "shop") {
+      if (!identity.scopeId) return null;
+      const shop = await this.client.shop.findFirst({
+        where: { id: identity.scopeId, status: "published", deletedAt: null },
+        select: { id: true, status: true }
+      });
+      if (!shop) return null;
+      shopScope = { shopId: shop.id, status: shop.status };
+    }
     const directPublicId =
-      identity.publicIdentifier?.status === "ACTIVE" &&
-      identity.publicIdentifier.deletedAt === null
+      identity.publicIdentifier?.status === "ACTIVE" && identity.publicIdentifier.deletedAt === null
         ? identity.publicIdentifier.publicId
         : null;
-    const effectivePublicId = directPublicId ??
+    const effectivePublicId =
+      directPublicId ??
       (["customer", "user", "u"].includes(identity.type) ? identity.user.needoId : null);
     if (effectivePublicId !== input.publicId) return null;
     return {
@@ -144,7 +271,19 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       scopeId: identity.scopeId,
       publicId: effectivePublicId,
       displayName: identity.displayName ?? identity.user.username,
-      avatarUrl: identity.user.avatarUrl
+      avatarUrl: identity.user.avatarUrl,
+      isTestAccount: identity.user.isTestAccount,
+      customerMembership:
+        customerProfile && customerProfile.deletedAt === null
+          ? {
+              profileId: customerProfile.id,
+              membershipLevel: customerProfile.membershipLevel,
+              membershipGrantMode: customerProfile.membershipGrantMode,
+              membershipStartsAt: customerProfile.membershipStartsAt,
+              membershipExpiresAt: customerProfile.membershipExpiresAt
+            }
+          : null,
+      shopScope
     };
   }
 
@@ -212,136 +351,175 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     );
   }
 
-  public async publishPost(
-    input: ExchangePublishRepositoryInput
-  ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
-    const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
-    try {
-      return await this.client.$transaction(async (transaction) => {
-        const existing = await transaction.exchangePost.findUnique({
-          where: { idempotencyKey: input.idempotencyKey },
-          include: postInclude(ownerIdentityId)
-        });
-        if (existing) {
-          return {
-            kind: "replayed",
-            value: this.mapPost(existing, ownerIdentityId, input.now)
-          };
-        }
+  public async findPostByIdempotencyKey(
+    idempotencyKey: string,
+    ownerIdentityId: number,
+    now: Date
+  ): Promise<ExchangePublicationRecord | null> {
+    const existing = await this.client.exchangePost.findFirst({
+      where: { idempotencyKey, ownerIdentityId, deletedAt: null },
+      include: postInclude(ownerIdentityId)
+    });
+    if (!existing) return null;
 
-        const created = await transaction.exchangePost.create({
-          data: {
-            authorUserId: input.actor.userId,
-            authorIdentityId: input.actor.identityId,
-            ownerIdentityId,
-            publisherPublicId: input.actor.publicId,
-            publisherIdentityType: input.actor.identityType,
-            publisherDisplayName: input.actor.displayName,
-            publisherAvatarUrl: input.actor.avatarUrl,
-            type: typeToDatabase[input.input.type],
-            status: DatabaseExchangePostStatus.PUBLISHED,
-            title: input.input.title,
-            detail: input.input.detail,
-            contentLocale: localeToDatabase[input.input.contentLocale],
-            areaLabel: input.input.areaLabel,
-            serviceStartAt: input.input.serviceStartAt,
-            serviceEndAt: input.input.serviceEndAt,
-            expiresAt: input.input.expiresAt,
-            idempotencyKey: input.idempotencyKey,
-            createdAt: input.now,
-            updatedAt: input.now,
-            ...(input.input.type === "demand"
-              ? {
-                  demand: {
-                    create: {
-                      budgetMinJpy: input.input.budgetMinJpy,
-                      budgetMaxJpy: input.input.budgetMaxJpy
-                    }
-                  }
-                }
-              : {
-                  intelligence: {
-                    create: {
-                      serviceMode: serviceModeToDatabase[input.input.serviceMode],
-                      addressLabel: input.input.addressLabel,
-                      serviceAreas: input.input.serviceAreas,
-                      originalPriceJpy: input.input.originalPriceJpy,
-                      campaignPriceJpy: input.input.campaignPriceJpy
-                    }
-                  }
-                })
-          },
-          include: postInclude(ownerIdentityId)
-        });
-        await transaction.auditLog.create({
-          data: toAuditLogCreateData({ ...input.audit, targetId: created.id })
-        });
-        return {
-          kind: "success",
-          value: this.mapPost(created, ownerIdentityId, input.now)
-        };
-      });
-    } catch (error) {
-      if (!this.isUniqueConflict(error)) throw error;
-      const existing = await this.client.exchangePost.findUnique({
-        where: { idempotencyKey: input.idempotencyKey },
-        include: postInclude(ownerIdentityId)
-      });
-      if (!existing) throw error;
-      return {
-        kind: "replayed",
-        value: this.mapPost(existing, ownerIdentityId, input.now)
-      };
-    }
+    return {
+      ownerIdentityId: existing.ownerIdentityId,
+      payloadFingerprint: existing.payloadFingerprint,
+      value: this.mapPost(existing, ownerIdentityId, now)
+    };
   }
 
-  public withdrawPost(
-    input: ExchangeWithdrawRepositoryInput
-  ): Promise<ExchangeMutationResult<ExchangePostPayload>> {
+  public async createPost(input: ExchangePublishRepositoryInput): Promise<{ id: number }> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
-    return this.client.$transaction(async (transaction) => {
-      const current = await transaction.exchangePost.findFirst({
-        where: { id: input.postId, deletedAt: null },
-        include: postInclude(ownerIdentityId)
-      });
-      if (!current) return { kind: "not_found" };
-      if (current.ownerIdentityId !== ownerIdentityId) return { kind: "forbidden" };
-      if (current.status === DatabaseExchangePostStatus.WITHDRAWN) {
-        return {
-          kind: "replayed",
-          value: this.mapPost(current, ownerIdentityId, input.now)
-        };
-      }
-      if (
-        current.status !== DatabaseExchangePostStatus.PUBLISHED ||
-        current.expiresAt.getTime() <= input.now.getTime()
-      ) {
-        return { kind: "unavailable" };
-      }
-      const updated = await transaction.exchangePost.update({
-        where: { id: current.id },
-        data: {
-          status: DatabaseExchangePostStatus.WITHDRAWN,
-          withdrawnAt: input.now,
-          updatedAt: input.now
-        },
-        include: postInclude(ownerIdentityId)
-      });
-      await transaction.auditLog.create({
-        data: toAuditLogCreateData({ ...input.audit, targetId: updated.id })
-      });
-      return {
-        kind: "success",
-        value: this.mapPost(updated, ownerIdentityId, input.now)
-      };
+    const capacity = input.capacity;
+    if (input.input.type === "demand" && !capacity) {
+      throw new Error("error.exchange.request_capacity_missing");
+    }
+    const created = await this.client.exchangePost.create({
+      data: {
+        authorUserId: input.actor.userId,
+        authorIdentityId: input.actor.identityId,
+        ownerIdentityId,
+        publisherPublicId: input.actor.publicId,
+        publisherIdentityType: input.actor.identityType,
+        publisherDisplayName: input.actor.displayName,
+        publisherAvatarUrl: input.actor.avatarUrl,
+        type: typeToDatabase[input.input.type],
+        status: DatabaseExchangePostStatus.PUBLISHED,
+        title: input.input.title,
+        detail: input.input.detail,
+        contentLocale: localeToDatabase[input.input.contentLocale],
+        areaLabel: input.input.type === "demand" ? input.input.addressLine1 : input.input.areaLabel,
+        serviceStartAt: input.input.serviceStartAt,
+        serviceEndAt: input.input.serviceEndAt,
+        expiresAt: input.input.expiresAt,
+        idempotencyKey: input.idempotencyKey,
+        payloadFingerprint: input.payloadFingerprint,
+        createdAt: input.now,
+        updatedAt: input.now,
+        ...(input.input.type === "demand"
+          ? {
+              demand: {
+                create: {
+                  targetProviderCount: input.input.targetProviderCount,
+                  targetProviderLimitSnapshot: capacity!.targetProviderLimit,
+                  publisherCapacitySource: capacitySourceToDatabase[capacity!.source],
+                  membershipLevelSnapshot: capacity!.membershipLevel,
+                  matchMode: matchModeToDatabase[input.input.matchMode],
+                  budgetMode: budgetModeToDatabase[input.input.budgetMode],
+                  budgetMinJpy: input.input.budgetMinJpy,
+                  budgetMaxJpy: input.input.budgetMaxJpy,
+                  addressLine1: input.input.addressLine1,
+                  addressLine2: input.input.addressLine2,
+                  addressLine3: input.input.addressLine3,
+                  addressLine2Public: input.input.addressLine2Public,
+                  addressLine3Public: input.input.addressLine3Public,
+                  publisherIdentityPublic: input.input.publisherIdentityPublic
+                }
+              }
+            }
+          : {
+              intelligence: {
+                create: {
+                  serviceMode: serviceModeToDatabase[input.input.serviceMode],
+                  addressLabel: input.input.addressLabel,
+                  serviceAreas: input.input.serviceAreas,
+                  originalPriceJpy: input.input.originalPriceJpy,
+                  campaignPriceJpy: input.input.campaignPriceJpy
+                }
+              }
+            })
+      },
+      select: { id: true }
     });
+
+    return created;
+  }
+
+  public async createAudit(
+    input: Parameters<ExchangeRepositoryPort["createAudit"]>[0]
+  ): Promise<void> {
+    await this.client.auditLog.create({ data: toAuditLogCreateData(input) });
+  }
+
+  public async findPostByIdOrThrow(
+    postId: number,
+    viewerIdentityId: number,
+    now: Date
+  ): Promise<ExchangePostPayload> {
+    const row = await this.client.exchangePost.findFirstOrThrow({
+      where: { id: postId, deletedAt: null },
+      include: postInclude(viewerIdentityId)
+    });
+
+    return this.mapPost(row, viewerIdentityId, now);
+  }
+
+  public async lockPostForMutation(postId: number): Promise<ExchangeTerminalPostRecord | null> {
+    const locked = await this.client.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`SELECT id
+        FROM exchange_posts
+        WHERE id = ${postId}
+          AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    if (!locked[0]) return null;
+    const post = await this.client.exchangePost.findFirst({
+      where: { id: postId, deletedAt: null },
+      select: {
+        id: true,
+        authorUserId: true,
+        ownerIdentityId: true,
+        type: true,
+        status: true,
+        expiresAt: true,
+        requestFinancial: { select: { state: true } }
+      }
+    });
+    if (!post) return null;
+    return {
+      id: post.id,
+      authorUserId: post.authorUserId,
+      ownerIdentityId: post.ownerIdentityId,
+      type: typeFromDatabase[post.type],
+      status: statusFromDatabase[post.status],
+      expiresAt: post.expiresAt,
+      requestFinancial: post.requestFinancial
+        ? { state: requestFinancialStateFromDatabase[post.requestFinancial.state] }
+        : null
+    };
+  }
+
+  public async markWithdrawnIfPublished(postId: number, now: Date): Promise<boolean> {
+    const updated = await this.client.exchangePost.updateMany({
+      where: { id: postId, status: DatabaseExchangePostStatus.PUBLISHED, deletedAt: null },
+      data: {
+        status: DatabaseExchangePostStatus.WITHDRAWN,
+        withdrawnAt: now,
+        updatedAt: now
+      }
+    });
+    return updated.count === 1;
+  }
+
+  public async markExpiredIfPublished(postId: number, now: Date): Promise<boolean> {
+    const updated = await this.client.exchangePost.updateMany({
+      where: {
+        id: postId,
+        status: DatabaseExchangePostStatus.PUBLISHED,
+        expiresAt: { lte: now },
+        deletedAt: null
+      },
+      data: { status: DatabaseExchangePostStatus.EXPIRED, updatedAt: now }
+    });
+    return updated.count === 1;
   }
 
   public async createComment(
     input: ExchangeCommentRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeCommentPayload>> {
     try {
-      return await this.client.$transaction(async (transaction) => {
+      return await this.withClientTransaction(async (transaction) => {
         const existing = await transaction.exchangeComment.findUnique({
           where: { idempotencyKey: input.idempotencyKey }
         });
@@ -382,7 +560,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     input: ExchangeLikeRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
-    return this.client.$transaction(async (transaction) => {
+    return this.withClientTransaction(async (transaction) => {
       const availability = await this.postAvailability(transaction, input.postId, input.now);
       if (availability !== "available") return { kind: availability };
       const existing = await transaction.exchangeLike.findUnique({
@@ -436,7 +614,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   ): Promise<ExchangeMutationResult<ExchangeInteractionCounts>> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     try {
-      return await this.client.$transaction(async (transaction) => {
+      return await this.withClientTransaction(async (transaction) => {
         const replay = await transaction.exchangeShare.findFirst({
           where: {
             OR: [
@@ -475,51 +653,25 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       });
     } catch (error) {
       if (!this.isUniqueConflict(error)) throw error;
-      return this.client.$transaction(async (transaction) => ({
+      return this.withClientTransaction(async (transaction) => ({
         kind: "replayed" as const,
         value: await this.countInteractions(transaction, input.postId)
       }));
     }
   }
 
-  public expireDue(now: Date, batchSize: number): Promise<number> {
-    return this.client.$transaction(async (transaction) => {
-      const due = await transaction.exchangePost.findMany({
-        where: {
-          status: DatabaseExchangePostStatus.PUBLISHED,
-          expiresAt: { lte: now },
-          deletedAt: null
-        },
-        orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
-        take: Math.max(1, Math.floor(batchSize)),
-        select: { id: true }
-      });
-      if (due.length === 0) return 0;
-      let expired = 0;
-      for (const { id } of due) {
-        const updated = await transaction.exchangePost.updateMany({
-          where: {
-            id,
-            status: DatabaseExchangePostStatus.PUBLISHED,
-            expiresAt: { lte: now },
-            deletedAt: null
-          },
-          data: { status: DatabaseExchangePostStatus.EXPIRED, updatedAt: now }
-        });
-        if (updated.count !== 1) continue;
-        expired += 1;
-        await transaction.auditLog.create({
-          data: toAuditLogCreateData({
-            actorId: null,
-            action: "exchange.post.expire",
-            targetType: "ExchangePost",
-            targetId: id,
-            metadata: { expiredAt: now.toISOString() }
-          })
-        });
-      }
-      return expired;
+  public async listDuePostIds(now: Date, batchSize: number): Promise<number[]> {
+    const due = await this.client.exchangePost.findMany({
+      where: {
+        status: DatabaseExchangePostStatus.PUBLISHED,
+        expiresAt: { lte: now },
+        deletedAt: null
+      },
+      orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+      take: Math.max(1, Math.floor(batchSize)),
+      select: { id: true }
     });
+    return due.map(({ id }) => id);
   }
 
   private mapPost(
@@ -531,6 +683,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       row.status === DatabaseExchangePostStatus.PUBLISHED &&
       row.expiresAt.getTime() <= now.getTime();
     const status = expired ? "expired" : statusFromDatabase[row.status];
+    const ownerView = row.ownerIdentityId === viewerIdentityId;
     const intelligence = row.intelligence
       ? (() => {
           if (!isServiceAreaList(row.intelligence.serviceAreas)) {
@@ -546,6 +699,30 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         })()
       : null;
 
+    const demand = row.demand
+      ? {
+          targetProviderCount: row.demand.targetProviderCount,
+          targetProviderLimitSnapshot: row.demand.targetProviderLimitSnapshot,
+          publisherCapacitySource: capacitySourceFromDatabase[row.demand.publisherCapacitySource],
+          membershipLevelSnapshot: membershipLevelSnapshotFromDatabase(
+            row.demand.membershipLevelSnapshot
+          ),
+          matchMode: matchModeFromDatabase[row.demand.matchMode],
+          budgetMode: budgetModeFromDatabase[row.demand.budgetMode],
+          budgetMinJpy: row.demand.budgetMinJpy,
+          budgetMaxJpy: row.demand.budgetMaxJpy,
+          address: {
+            line1: row.demand.addressLine1,
+            line2: ownerView || row.demand.addressLine2Public ? row.demand.addressLine2 : null,
+            line3: ownerView || row.demand.addressLine3Public ? row.demand.addressLine3 : null,
+            line2GenerallyVisible: row.demand.addressLine2Public,
+            line3GenerallyVisible: row.demand.addressLine3Public,
+            disclosure: ownerView ? ("owner" as const) : ("general" as const)
+          }
+        }
+      : null;
+    const showPublisher = !row.demand || ownerView || row.demand.publisherIdentityPublic;
+
     return {
       id: row.id,
       type: typeFromDatabase[row.type],
@@ -558,12 +735,14 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       serviceEndAt: row.serviceEndAt.toISOString(),
       expiresAt: row.expiresAt.toISOString(),
       publishedAt: row.createdAt.toISOString(),
-      publisher: {
-        publicId: row.publisherPublicId,
-        identityType: row.publisherIdentityType,
-        displayName: row.publisherDisplayName,
-        avatarUrl: row.publisherAvatarUrl
-      },
+      publisher: showPublisher
+        ? {
+            publicId: row.publisherPublicId,
+            identityType: row.publisherIdentityType,
+            displayName: row.publisherDisplayName,
+            avatarUrl: row.publisherAvatarUrl
+          }
+        : null,
       counts: {
         comments: row._count.comments,
         likes: row._count.likes,
@@ -571,14 +750,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       },
       viewer: {
         liked: row.likes.length > 0,
-        canWithdraw: row.ownerIdentityId === viewerIdentityId && status === "published"
+        canWithdraw: ownerView && status === "published"
       },
-      demand: row.demand
-        ? {
-            budgetMinJpy: row.demand.budgetMinJpy,
-            budgetMaxJpy: row.demand.budgetMaxJpy
-          }
-        : null,
+      demand,
       intelligence
     };
   }
@@ -608,7 +782,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   }
 
   private async postAvailability(
-    transaction: Prisma.TransactionClient,
+    transaction: ExchangePrismaClient,
     postId: number,
     now: Date
   ): Promise<"available" | "not_found" | "unavailable"> {
@@ -630,7 +804,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   }
 
   private async countInteractions(
-    transaction: Prisma.TransactionClient,
+    transaction: ExchangePrismaClient,
     postId: number
   ): Promise<ExchangeInteractionCounts> {
     const where = { postId, deletedAt: null };
@@ -640,6 +814,21 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       transaction.exchangeShare.count({ where })
     ]);
     return { comments, likes, shares };
+  }
+
+  private withClientTransaction<T>(
+    handler: (transaction: ExchangePrismaClient) => Promise<T>,
+    transactionClient?: ExchangePrismaClient
+  ): Promise<T> {
+    if (transactionClient) return handler(transactionClient);
+    if (this.canStartTransaction(this.client)) {
+      return this.client.$transaction((transaction) => handler(transaction));
+    }
+    return handler(this.client);
+  }
+
+  private canStartTransaction(client: ExchangePrismaClient): client is PrismaClient {
+    return "$transaction" in client && typeof client.$transaction === "function";
   }
 
   private isUniqueConflict(error: unknown): boolean {

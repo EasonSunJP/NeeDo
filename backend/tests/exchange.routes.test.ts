@@ -3,6 +3,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import type { ExchangeService } from "../src/services/exchange.service";
 import type { ExchangePostPayload } from "../src/types/exchange.types";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 class InMemoryAuthSessionStore {
   private readonly values = new Map<string, string>();
@@ -84,7 +85,24 @@ const post: ExchangePostPayload = {
   },
   counts: { comments: 4, likes: 21, shares: 5 },
   viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8_000, budgetMaxJpy: 12_000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8_000,
+    budgetMaxJpy: 12_000,
+    address: {
+      line1: "渋谷区",
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "owner"
+    }
+  },
   intelligence: null
 };
 
@@ -137,6 +155,15 @@ const createFixture = async () => {
     ...commonPermissions,
     "exchange:posts:create-intelligence"
   ]);
+  const merchantStaffRole = createRole(3, "merchant_staff", [
+    ...authPermissions,
+    ...commonPermissions
+  ]);
+  const merchantStaffScopedDemandRole = createRole(4, "merchant_staff_scoped_demand", [
+    ...authPermissions,
+    ...commonPermissions,
+    "exchange:posts:create-demand"
+  ]);
   const makeUser = (
     id: number,
     email: string,
@@ -161,7 +188,12 @@ const createFixture = async () => {
         id: id + 10,
         userId: id,
         type: identityType,
-        scopeType: identityType === "customer" ? "customer_profile" : "technician_profile",
+        scopeType:
+          identityType === "customer"
+            ? "customer_profile"
+            : identityType === "merchant_staff"
+              ? "shop"
+              : "technician_profile",
         scopeId: id + 20,
         displayName: email,
         isDefault: true,
@@ -173,10 +205,24 @@ const createFixture = async () => {
   });
   const users = [
     makeUser(7, "customer@example.test", "customer", customerRole),
-    makeUser(8, "technician@example.test", "technician", technicianRole)
+    makeUser(8, "technician@example.test", "technician", technicianRole),
+    makeUser(9, "merchant-staff@example.test", "merchant_staff", merchantStaffRole),
+    makeUser(
+      10,
+      "merchant-staff-scoped-demand@example.test",
+      "merchant_staff",
+      merchantStaffScopedDemandRole
+    )
   ];
   const service = {
     listPosts: jest.fn(async () => ({ list: [post], total: 1, page: 1, page_size: 20 })),
+    getRequestPublicationContext: jest.fn(async () => ({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel: "gold",
+      maxTargetProviderCount: 5,
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
+    })),
     getPost: jest.fn(async () => post),
     publish: jest.fn(async () => post),
     withdraw: jest.fn(async () => ({ ...post, status: "withdrawn" as const })),
@@ -206,6 +252,7 @@ const createFixture = async () => {
       createLoginLog: jest.fn(async () => undefined),
       createAuditLog: jest.fn(async () => undefined)
     },
+    merchantShopContextRepository: createDirectShopContextRepository(),
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
@@ -262,17 +309,27 @@ describe("formal Exchange routes", () => {
     const { app, login, service } = await createFixture();
     const customerToken = await login("customer@example.test");
     const technicianToken = await login("technician@example.test");
+    const merchantStaffToken = await login("merchant-staff@example.test");
+    const scopedMerchantStaffToken = await login("merchant-staff-scoped-demand@example.test");
     const demandBody = {
       type: "demand",
       title: post.title,
       detail: post.detail,
       contentLocale: "ja",
-      areaLabel: post.areaLabel,
       serviceStartAt: "2026-08-31T09:00:00+09:00",
       serviceEndAt: "2026-08-31T10:00:00+09:00",
       expiresAt: "2026-08-31T08:30:00Z",
+      targetProviderCount: 1,
+      matchMode: "quick",
+      budgetMode: "total",
       budgetMinJpy: 8_000,
-      budgetMaxJpy: 12_000
+      budgetMaxJpy: 12_000,
+      addressLine1: post.areaLabel,
+      addressLine2: null,
+      addressLine3: null,
+      addressLine2Public: false,
+      addressLine3Public: false,
+      publisherIdentityPublic: false
     };
 
     await request(app)
@@ -298,11 +355,62 @@ describe("formal Exchange routes", () => {
       .expect(403);
     await request(app)
       .post("/api/v1/exchange/posts")
+      .set("Authorization", `Bearer ${merchantStaffToken}`)
+      .set("Idempotency-Key", "publish-demand-0003")
+      .send(demandBody)
+      .expect(403);
+    await request(app)
+      .post("/api/v1/exchange/posts")
+      .set("Authorization", `Bearer ${scopedMerchantStaffToken}`)
+      .set("Idempotency-Key", "publish-demand-0004")
+      .send(demandBody)
+      .expect(201);
+    await request(app)
+      .post("/api/v1/exchange/posts")
       .set("Authorization", `Bearer ${customerToken}`)
       .set("Idempotency-Key", "short")
       .send(demandBody)
       .expect(400);
-    expect(service.publish).toHaveBeenCalledTimes(1);
+    expect(service.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes a demand publication context only to the exact publish permission", async () => {
+    const { app, login, service } = await createFixture();
+    const customerToken = await login("customer@example.test");
+    const merchantStaffToken = await login("merchant-staff@example.test");
+    const scopedMerchantStaffToken = await login("merchant-staff-scoped-demand@example.test");
+
+    const response = await request(app)
+      .get("/api/v1/exchange/request-publication-context")
+      .set("Authorization", `Bearer ${customerToken}`)
+      .expect(200);
+    expect(response.body.data).toEqual({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel: "gold",
+      maxTargetProviderCount: 5,
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
+    });
+    expect(JSON.stringify(response.body.data)).not.toMatch(/ruleSetId|ruleId|walletBalance/);
+    expect(service.getRequestPublicationContext).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7 })
+    );
+
+    await request(app)
+      .get("/api/v1/exchange/request-publication-context")
+      .set("Authorization", `Bearer ${merchantStaffToken}`)
+      .expect(403);
+    const scopedMerchantStaffResponse = await request(app)
+      .get("/api/v1/exchange/request-publication-context")
+      .set("Authorization", `Bearer ${scopedMerchantStaffToken}`)
+      .expect(200);
+    expect(scopedMerchantStaffResponse.body.data).toEqual({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel: "gold",
+      maxTargetProviderCount: 5,
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 3 }
+    });
   });
 
   it("exposes comments, like, unlike, share, and withdrawal without deferred routes", async () => {

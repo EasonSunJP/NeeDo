@@ -129,6 +129,11 @@ export const EXCHANGE_PERMISSIONS = {
   shareCreate: "exchange:shares:create"
 } as const;
 
+export const EXCHANGE_REQUEST_FEE_PERMISSIONS = {
+  read: "backoffice:exchange-request-fee:read",
+  write: "backoffice:exchange-request-fee:write"
+} as const;
+
 export const SYSTEM_PERMISSIONS = [
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
   createPermission(
@@ -1403,6 +1408,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "exchange",
     "记录当前账号已完成的正式分享"
+  ),
+  createPermission(
+    EXCHANGE_REQUEST_FEE_PERMISSIONS.read,
+    "需求发布费用读取",
+    "api",
+    "exchange",
+    "读取需求发布费用的当前规则与版本历史"
+  ),
+  createPermission(
+    EXCHANGE_REQUEST_FEE_PERMISSIONS.write,
+    "需求发布费用版本管理",
+    "api",
+    "exchange",
+    "创建需求发布费用的乐观锁版本"
   )
 ] as const satisfies readonly SystemPermissionDefinition[];
 
@@ -1429,6 +1448,15 @@ const EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES = [
   ...EXCHANGE_COMMON_PERMISSION_CODES,
   EXCHANGE_PERMISSIONS.createIntelligence,
   EXCHANGE_PERMISSIONS.withdrawOwn
+] as const satisfies readonly SystemPermissionCode[];
+
+const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [
+  EXCHANGE_REQUEST_FEE_PERMISSIONS.read
+] as const satisfies readonly SystemPermissionCode[];
+
+const EXCHANGE_REQUEST_FEE_WRITE_PERMISSION_CODES = [
+  ...EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES,
+  EXCHANGE_REQUEST_FEE_PERMISSIONS.write
 ] as const satisfies readonly SystemPermissionCode[];
 
 const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
@@ -1742,6 +1770,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
+    ...EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES,
     ...CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES,
     ...OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES,
     "page:backoffice-membership-reward-fee",
@@ -1766,6 +1795,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FINANCE_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FEE_RULE_WRITE_PERMISSION_CODES,
+    ...EXCHANGE_REQUEST_FEE_WRITE_PERMISSION_CODES,
     "backoffice:finance:list",
     "backoffice:finance:export",
     "backoffice:finance-order:read",
@@ -1790,6 +1820,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
+    EXCHANGE_PERMISSIONS.createDemand,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
@@ -1846,6 +1877,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
+    ...EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES,
     ...CONTENT_PUBLICATION_READ_PERMISSION_CODES
   ]
 });

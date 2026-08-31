@@ -1087,7 +1087,28 @@ const exchangeErrorResponses = {
     description: "error.forbidden or error.identity.forbidden — denied permission or identity"
   },
   "404": { description: "error.exchange.post_not_found — post does not exist" },
-  "409": { description: "error.exchange.post_unavailable — post is withdrawn or expired" }
+  "409": {
+    description:
+      "error.exchange.post_unavailable, error.exchange.idempotency_conflict, error.exchange.request_target_limit, or error.wallet.insufficient_available"
+  }
+};
+
+const exchangeRequestFeeErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description: "error.forbidden or error.identity.forbidden — denied permission or identity"
+  },
+  "404": {
+    description: "error.exchange.post_not_found — referenced Exchange resource is unavailable"
+  },
+  "409": {
+    description: "error.exchange.request_fee_version_conflict — the expected fee version is stale"
+  },
+  "503": {
+    description:
+      "error.exchange.request_fee_unavailable — no valid Request publication fee is effective"
+  }
 };
 
 const exchangeIdempotencyKeyParameter = {
@@ -1113,6 +1134,8 @@ const exchangeOperation = (
 
 const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
   const base = `${config.API_PREFIX}/exchange/posts`;
+  const contextBase = `${config.API_PREFIX}/exchange/request-publication-context`;
+  const feeBase = `${config.API_PREFIX}/backoffice/exchange-request-fee`;
   const postId = idPathParameter("id");
   const pageParameters = [
     { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
@@ -1162,7 +1185,11 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             "201": jsonDataResponse("Persisted Exchange post", {
               $ref: "#/components/schemas/ExchangePost"
             }),
-            ...exchangeErrorResponses
+            ...exchangeErrorResponses,
+            "503": {
+              description:
+                "error.exchange.request_fee_unavailable — no valid Request publication fee is effective"
+            }
           }
         }
       )
@@ -1190,7 +1217,10 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             "200": jsonDataResponse("Withdrawn Exchange post", {
               $ref: "#/components/schemas/ExchangePost"
             }),
-            ...exchangeErrorResponses
+            ...exchangeErrorResponses,
+            "409": {
+              description: `${exchangeErrorResponses["409"].description}; error.exchange.request_financial_state_conflict — Request publication fee is no longer held`
+            }
           }
         }
       )
@@ -1246,6 +1276,62 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
           ...exchangeErrorResponses
         }
       })
+    },
+    [contextBase]: {
+      get: exchangeOperation(
+        "Read the active identity's Request publication capacity and fee",
+        "exchange:posts:create-demand",
+        {
+          responses: {
+            "200": jsonDataResponse("Publication capacity, membership and current Request fee", {
+              $ref: "#/components/schemas/ExchangeRequestPublicationContext"
+            }),
+            ...exchangeRequestFeeErrorResponses
+          }
+        }
+      )
+    },
+    [`${feeBase}/current`]: {
+      get: exchangeOperation(
+        "Read the current Request publication fee",
+        "backoffice:exchange-request-fee:read",
+        {
+          responses: {
+            "200": jsonDataResponse("Current Request publication fee", {
+              $ref: "#/components/schemas/ExchangeRequestFeeVersion"
+            }),
+            ...exchangeRequestFeeErrorResponses
+          }
+        }
+      )
+    },
+    [`${feeBase}/versions`]: {
+      get: exchangeOperation(
+        "List Request publication fee versions",
+        "backoffice:exchange-request-fee:read",
+        {
+          parameters: pageParameters,
+          responses: {
+            "200": jsonDataResponse("Paginated Request publication fee versions", {
+              $ref: "#/components/schemas/ExchangeRequestFeeVersionPage"
+            }),
+            ...exchangeRequestFeeErrorResponses
+          }
+        }
+      ),
+      post: exchangeOperation(
+        "Create a Request publication fee version",
+        "backoffice:exchange-request-fee:write",
+        {
+          requestBody: body("ExchangeRequestFeeVersionCreateRequest"),
+          responses: {
+            "201": jsonDataResponse("Created Request publication fee version", {
+              $ref: "#/components/schemas/ExchangeRequestFeeVersion"
+            }),
+            ...exchangeRequestFeeErrorResponses
+          }
+        }
+      )
     }
   };
 };
@@ -1346,7 +1432,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   },
   servers: [
     {
-      url: config.API_PREFIX
+      url: "/"
     }
   ],
   components: {
@@ -1682,10 +1768,126 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ExchangeDemand: {
         type: "object",
         additionalProperties: false,
-        required: ["budgetMinJpy", "budgetMaxJpy"],
+        required: [
+          "targetProviderCount",
+          "targetProviderLimitSnapshot",
+          "publisherCapacitySource",
+          "membershipLevelSnapshot",
+          "matchMode",
+          "budgetMode",
+          "budgetMinJpy",
+          "budgetMaxJpy",
+          "address"
+        ],
         properties: {
-          budgetMinJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
-          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+          targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
+          targetProviderLimitSnapshot: { type: "integer", minimum: 1, maximum: 20 },
+          publisherCapacitySource: {
+            type: "string",
+            enum: ["customer_membership", "shop_merchant"]
+          },
+          membershipLevelSnapshot: {
+            type: ["string", "null"],
+            enum: ["standard", "silver", "gold", "black", null]
+          },
+          matchMode: { type: "string", enum: ["quick", "selective"] },
+          budgetMode: { type: "string", enum: ["total", "per_provider"] },
+          budgetMinJpy: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 1000000000
+          },
+          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          address: { $ref: "#/components/schemas/ExchangeRequestAddress" }
+        }
+      },
+      ExchangeRequestAddress: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "line1",
+          "line2",
+          "line3",
+          "line2GenerallyVisible",
+          "line3GenerallyVisible",
+          "disclosure"
+        ],
+        properties: {
+          line1: { type: "string", minLength: 1, maxLength: 255 },
+          line2: { type: ["string", "null"], minLength: 1, maxLength: 255 },
+          line3: { type: ["string", "null"], minLength: 1, maxLength: 255 },
+          line2GenerallyVisible: { type: "boolean" },
+          line3GenerallyVisible: { type: "boolean" },
+          disclosure: { type: "string", enum: ["owner", "general"] }
+        }
+      },
+      ExchangeRequestDemand: {
+        allOf: [{ $ref: "#/components/schemas/ExchangeDemand" }]
+      },
+      ExchangeRequestPublicationFee: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountNdp", "currency", "ruleSetVersion"],
+        properties: {
+          amountNdp: { type: "integer", minimum: 0, maximum: 1000000000 },
+          currency: { type: "string", enum: ["NDP", "TEST_NDP"] },
+          ruleSetVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      ExchangeRequestPublicationContext: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "canPublish",
+          "capacitySource",
+          "membershipLevel",
+          "maxTargetProviderCount",
+          "publicationFee"
+        ],
+        properties: {
+          canPublish: { type: "boolean" },
+          capacitySource: { type: "string", enum: ["customer_membership", "shop_merchant"] },
+          membershipLevel: {
+            type: ["string", "null"],
+            enum: ["standard", "silver", "gold", "black", null]
+          },
+          maxTargetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
+          publicationFee: { $ref: "#/components/schemas/ExchangeRequestPublicationFee" }
+        }
+      },
+      ExchangeRequestFeeVersion: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountNdp", "ruleSetVersion", "effectiveFrom", "effectiveTo"],
+        properties: {
+          amountNdp: { type: "integer", minimum: 0, maximum: 1000000000 },
+          ruleSetVersion: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ExchangeRequestFeeVersionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ExchangeRequestFeeVersion" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ExchangeRequestFeeVersionCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["amountNdp", "effectiveFrom", "expectedCurrentVersion"],
+        properties: {
+          amountNdp: { type: "integer", minimum: 0, maximum: 1000000000 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          expectedCurrentVersion: { type: "integer", minimum: 1 }
         }
       },
       ExchangeIntelligence: {
@@ -1749,7 +1951,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceEndAt: { type: "string", format: "date-time" },
           expiresAt: { type: "string", format: "date-time" },
           publishedAt: { type: "string", format: "date-time" },
-          publisher: { $ref: "#/components/schemas/ExchangeActor" },
+          publisher: {
+            oneOf: [{ $ref: "#/components/schemas/ExchangeActor" }, { type: "null" }]
+          },
           counts: { $ref: "#/components/schemas/ExchangeInteractionCounts" },
           viewer: { $ref: "#/components/schemas/ExchangeViewerState" },
           demand: {
@@ -1802,12 +2006,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "title",
           "detail",
           "contentLocale",
-          "areaLabel",
           "serviceStartAt",
           "serviceEndAt",
           "expiresAt",
-          "budgetMinJpy",
-          "budgetMaxJpy"
+          "targetProviderCount",
+          "matchMode",
+          "budgetMode",
+          "budgetMaxJpy",
+          "addressLine1"
         ],
         properties: {
           type: { type: "string", enum: ["demand"] },
@@ -1824,12 +2030,35 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             example: "午後のイベント前に、自然なアップスタイルを希望します。"
           },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
-          areaLabel: { type: "string", minLength: 1, maxLength: 120 },
           serviceStartAt: { type: "string", format: "date-time" },
           serviceEndAt: { type: "string", format: "date-time" },
           expiresAt: { type: "string", format: "date-time" },
-          budgetMinJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
-          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+          targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
+          matchMode: { type: "string", enum: ["quick", "selective"] },
+          budgetMode: { type: "string", enum: ["total", "per_provider"] },
+          budgetMinJpy: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 1000000000,
+            default: null
+          },
+          budgetMaxJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine2: {
+            type: ["string", "null"],
+            minLength: 1,
+            maxLength: 255,
+            default: null
+          },
+          addressLine3: {
+            type: ["string", "null"],
+            minLength: 1,
+            maxLength: 255,
+            default: null
+          },
+          addressLine2Public: { type: "boolean", default: false },
+          addressLine3Public: { type: "boolean", default: false },
+          publisherIdentityPublic: { type: "boolean", default: false }
         }
       },
       ExchangeIntelligencePublishRequest: {

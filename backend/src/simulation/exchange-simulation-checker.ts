@@ -169,7 +169,8 @@ export const checkFormalExchangeSimulation = async (
       assert(post.demand && !post.demand.deletedAt, `Demand ${post.id} subtype is missing.`);
       assert(!post.intelligence, `Demand ${post.id} has mixed subtype data.`);
       assert(
-        post.demand.budgetMinJpy <= post.demand.budgetMaxJpy,
+        post.demand.budgetMinJpy === null ||
+          post.demand.budgetMinJpy <= post.demand.budgetMaxJpy,
         `Demand ${post.id} budget is invalid.`
       );
     } else {
