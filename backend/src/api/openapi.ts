@@ -1038,7 +1038,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   },
   servers: [
     {
-      url: config.API_PREFIX
+      url: "/"
     }
   ],
   components: {

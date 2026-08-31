@@ -4,6 +4,18 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("uses a root server when versioned paths already include the API prefix", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      servers: Array<{ url: string }>;
+      paths: Record<string, unknown>;
+    };
+    const loginPath = "/api/v1/auth/login";
+
+    expect(document.servers).toEqual([{ url: "/" }]);
+    expect(document.paths).toHaveProperty(loginPath);
+    expect(`${document.servers[0].url.replace(/\/$/, "")}${loginPath}`).toBe(loginPath);
+  });
+
   it("describes the health endpoint with the versioned API prefix", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
 
