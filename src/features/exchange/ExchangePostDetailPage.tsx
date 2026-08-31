@@ -75,7 +75,9 @@ function formatCountdown(expiresAt: string, nowMs: number, language: Language) {
 
 function priceLabel(post: ExchangePost) {
   if (post.type === "demand" && post.demand) {
-    return `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
+    return post.demand.budgetMinJpy === null
+      ? formatJpy(post.demand.budgetMaxJpy)
+      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
   }
   return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
 }
@@ -155,8 +157,13 @@ function publisherIdentityLabel(identityType: string, language: Language) {
 }
 
 function PublisherCard({ post, language }: { post: ExchangePost; language: Language }) {
-  const areas = post.intelligence?.serviceAreas ?? [post.areaLabel];
-  const address = post.intelligence?.addressLabel || post.areaLabel;
+  const areas = post.intelligence?.serviceAreas ?? [];
+  const intelligenceAddress = post.intelligence?.addressLabel || post.areaLabel;
+  const requestAddressLines = post.demand
+    ? [post.demand.address.line1, post.demand.address.line2, post.demand.address.line3].filter(
+        (line): line is string => line !== null
+      )
+    : [];
   const publisherName = post.publisher?.displayName ?? exchangeText("publisherHidden", language);
   return (
     <section className={`${detailCardClassName} overflow-hidden p-0`} data-no-i18n="true">
@@ -184,12 +191,20 @@ function PublisherCard({ post, language }: { post: ExchangePost; language: Langu
             </div>
           </div>
         </div>
-        <p className="mt-4 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{address}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {areas.map((area) => (
-            <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--client-muted)]" key={area}>{area}</span>
-          ))}
-        </div>
+        {post.demand ? (
+          <div className="mt-4 grid gap-1 text-xs font-semibold leading-5 text-[color:var(--client-muted)]" data-testid="exchange-request-address">
+            {requestAddressLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}
+          </div>
+        ) : (
+          <>
+            <p className="mt-4 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{intelligenceAddress}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {areas.map((area) => (
+                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--client-muted)]" key={area}>{area}</span>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

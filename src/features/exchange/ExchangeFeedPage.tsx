@@ -73,7 +73,9 @@ function formatJpy(value: number) {
 
 function priceLabel(post: ExchangePost) {
   if (post.type === "demand" && post.demand) {
-    return `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
+    return post.demand.budgetMinJpy === null
+      ? formatJpy(post.demand.budgetMaxJpy)
+      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
   }
   return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
 }

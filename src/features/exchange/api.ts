@@ -4,6 +4,7 @@ import type {
   ExchangeInteractionCounts,
   ExchangeListInput,
   ExchangePost,
+  ExchangeRequestPublicationContext,
   Paginated,
   PaginationInput,
   PublishExchangePostInput
@@ -24,6 +25,10 @@ export function listExchangePosts(input: ExchangeListInput): Promise<Paginated<E
 
 export function getExchangePost(postId: string, signal?: AbortSignal): Promise<ExchangePost> {
   return httpClient.request<ExchangePost>(`/exchange/posts/${postId}`, { signal });
+}
+
+export function getRequestPublicationContext(): Promise<ExchangeRequestPublicationContext> {
+  return httpClient.request<ExchangeRequestPublicationContext>("/exchange/request-publication-context");
 }
 
 export function publishExchangePost(input: PublishExchangePostInput, key: string): Promise<ExchangePost> {

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { publishExchangePost } from "./api";
+import { getRequestPublicationContext, publishExchangePost } from "./api";
 import { ExchangeComposer } from "./ExchangeComposer";
 import type { ExchangePost } from "./types";
 
@@ -11,7 +11,10 @@ vi.mock("../../theme/ClientThemeProvider", () => ({
   getClientThemeClassName: () => "client-theme-dark-green",
   useClientTheme: () => ({ theme: "dark-green", isNight: true })
 }));
-vi.mock("./api", () => ({ publishExchangePost: vi.fn() }));
+vi.mock("./api", () => ({
+  getRequestPublicationContext: vi.fn(),
+  publishExchangePost: vi.fn()
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -101,6 +104,13 @@ describe("ExchangeComposer approved shared shell", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.clearAllMocks();
+    vi.mocked(getRequestPublicationContext).mockResolvedValue({
+      canPublish: true,
+      capacitySource: "customer_membership",
+      membershipLevel: "standard",
+      maxTargetProviderCount: 1,
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 1 }
+    });
     vi.stubGlobal("crypto", { randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
   });
 

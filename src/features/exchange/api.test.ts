@@ -4,6 +4,7 @@ import { httpClient } from "../../api/httpClient";
 import {
   createExchangeComment,
   getExchangePost,
+  getRequestPublicationContext,
   likeExchangePost,
   listExchangeComments,
   listExchangePosts,
@@ -36,7 +37,24 @@ const formalPost = {
   },
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8000, budgetMaxJpy: 12000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8000,
+    budgetMaxJpy: 12000,
+    address: {
+      line1: "東京都千代田区",
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "owner"
+    }
+  },
   intelligence: null
 } satisfies ExchangePost;
 
@@ -77,25 +95,73 @@ describe("formal Exchange API client", () => {
     });
   });
 
+  it("loads Request publication authority from the dedicated authenticated route", async () => {
+    const context = {
+      canPublish: true,
+      capacitySource: "customer_membership" as const,
+      membershipLevel: "gold" as const,
+      maxTargetProviderCount: 3,
+      publicationFee: { amountNdp: 1000, currency: "TEST_NDP" as const, ruleSetVersion: 1 }
+    };
+    vi.mocked(httpClient.request).mockResolvedValueOnce(context);
+
+    await expect(getRequestPublicationContext()).resolves.toEqual(context);
+    expect(httpClient.request).toHaveBeenCalledWith("/exchange/request-publication-context");
+  });
+
   it("publishes each subtype without client-controlled actor fields", async () => {
     await publishExchangePost({
       type: "demand",
       title: formalPost.title,
       detail: formalPost.detail,
       contentLocale: "zh-CN",
-      areaLabel: formalPost.areaLabel,
       serviceStartAt: formalPost.serviceStartAt,
       serviceEndAt: formalPost.serviceEndAt,
       expiresAt: formalPost.expiresAt,
+      targetProviderCount: 1,
+      matchMode: "quick",
+      budgetMode: "total",
       budgetMinJpy: 8000,
-      budgetMaxJpy: 12000
+      budgetMaxJpy: 12000,
+      addressLine1: formalPost.areaLabel,
+      addressLine2: null,
+      addressLine3: null,
+      addressLine2Public: false,
+      addressLine3Public: false,
+      publisherIdentityPublic: false
     }, "exchange-publish-0001");
 
     expect(httpClient.request).toHaveBeenCalledWith("/exchange/posts", {
-      body: expect.not.objectContaining({ authorUserId: expect.anything(), authorIdentityId: expect.anything() }),
+      body: {
+        type: "demand",
+        title: formalPost.title,
+        detail: formalPost.detail,
+        contentLocale: "zh-CN",
+        serviceStartAt: formalPost.serviceStartAt,
+        serviceEndAt: formalPost.serviceEndAt,
+        expiresAt: formalPost.expiresAt,
+        targetProviderCount: 1,
+        matchMode: "quick",
+        budgetMode: "total",
+        budgetMinJpy: 8000,
+        budgetMaxJpy: 12000,
+        addressLine1: formalPost.areaLabel,
+        addressLine2: null,
+        addressLine3: null,
+        addressLine2Public: false,
+        addressLine3Public: false,
+        publisherIdentityPublic: false
+      },
       headers: { "Idempotency-Key": "exchange-publish-0001" },
       method: "POST"
     });
+    expect(vi.mocked(httpClient.request).mock.calls[0]?.[1]?.body).not.toEqual(
+      expect.objectContaining({
+        areaLabel: expect.anything(),
+        authorUserId: expect.anything(),
+        authorIdentityId: expect.anything()
+      })
+    );
   });
 
   it("uses idempotency headers for every formal mutation route", async () => {

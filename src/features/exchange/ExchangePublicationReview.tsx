@@ -7,7 +7,12 @@ export function ExchangePublicationReview({
   typeLabel: string;
   rows: Array<{ label: string; value: string }>;
   detail: string;
-  publicationFee?: { amountNdp: number; currency: "NDP" | "TEST_NDP" };
+  publicationFee?: {
+    amountNdp: number;
+    currency: "NDP" | "TEST_NDP";
+    label: string;
+    notice: string;
+  };
 }) {
   return (
     <section
@@ -27,9 +32,13 @@ export function ExchangePublicationReview({
         <p className="whitespace-pre-wrap text-sm font-semibold leading-6 text-[color:var(--client-text)]">{detail}</p>
       </div>
       {publicationFee ? (
-        <p className="mt-3 rounded-xl border border-[color:var(--client-primary)] p-3 text-sm font-black text-[color:var(--client-text)]">
-          {publicationFee.amountNdp.toLocaleString()} {publicationFee.currency}
-        </p>
+        <div className="mt-3 rounded-xl border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] p-3 text-[color:var(--client-text)]">
+          <p className="text-xs font-black text-[color:var(--client-muted)]">{publicationFee.label}</p>
+          <p className="mt-1 text-lg font-black">
+            {publicationFee.amountNdp.toLocaleString()} {publicationFee.currency === "TEST_NDP" ? "Test NDP" : "NDP"}
+          </p>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{publicationFee.notice}</p>
+        </div>
       ) : null}
     </section>
   );

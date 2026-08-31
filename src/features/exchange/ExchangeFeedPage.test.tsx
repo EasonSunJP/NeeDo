@@ -25,7 +25,17 @@ const demandPost: ExchangePost = {
   publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8000, budgetMaxJpy: 12000 },
+  demand: {
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8000,
+    budgetMaxJpy: 12000,
+    address: { line1: "東京都千代田区", line2: null, line3: null, line2GenerallyVisible: false, line3GenerallyVisible: false, disclosure: "owner" }
+  },
   intelligence: null
 };
 

@@ -1,5 +1,6 @@
 import type {
   ExchangeContentLocale,
+  ExchangeRequestPublicationContext,
   ExchangeServiceMode,
   PublishExchangeDemandInput,
   PublishExchangeIntelligenceInput
@@ -12,6 +13,9 @@ export type ExchangeComposerErrorKey =
   | "invalidPrice"
   | "targetProviderLimit"
   | "contextFailed"
+  | "requestFeeUnavailable"
+  | "requestNotAllowed"
+  | "insufficientFunds"
   | "publishFailed";
 
 export function combineLocalDateTime(date: string, time: string): string | null {
@@ -38,47 +42,67 @@ export function optionalMoney(value: string): { valid: true; value: number | nul
   return amount === null ? { valid: false } : { valid: true, value: amount };
 }
 
-export type DemandComposerDraft = {
+export type RequestComposerDraft = {
   contentLocale: ExchangeContentLocale;
   title: string;
   detail: string;
-  areaLabel: string;
   serviceStartDate: string;
   serviceStartTime: string;
   serviceEndDate: string;
   serviceEndTime: string;
   expiresDate: string;
   expiresTime: string;
+  targetProviderCount: string;
+  matchMode: "quick" | "selective";
+  budgetMode: "total" | "per_provider";
   budgetMinJpy: string;
   budgetMaxJpy: string;
+  addressLine1: string;
+  addressLine2: string;
+  addressLine3: string;
+  addressLine2Public: boolean;
+  addressLine3Public: boolean;
+  publisherIdentityPublic: boolean;
 };
 
-export function normalizeDemandDraft(
-  draft: DemandComposerDraft
+export function normalizeRequestDraft(
+  draft: RequestComposerDraft,
+  context: ExchangeRequestPublicationContext
 ): { ok: true; value: PublishExchangeDemandInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
+  const targetProviderCount = Number(draft.targetProviderCount);
+  const budgetMinimum = optionalMoney(draft.budgetMinJpy);
+  const budgetMaxJpy = requiredMoney(draft.budgetMaxJpy);
   const serviceStartAt = combineLocalDateTime(draft.serviceStartDate, draft.serviceStartTime);
   const serviceEndAt = combineLocalDateTime(draft.serviceEndDate, draft.serviceEndTime);
   const expiresAt = combineLocalDateTime(draft.expiresDate, draft.expiresTime);
-  const budgetMinJpy = requiredMoney(draft.budgetMinJpy);
-  const budgetMaxJpy = requiredMoney(draft.budgetMaxJpy);
   if (
     !draft.title.trim()
     || !draft.detail.trim()
-    || !draft.areaLabel.trim()
+    || !draft.addressLine1.trim()
     || !serviceStartAt
     || !serviceEndAt
     || !expiresAt
-    || budgetMinJpy === null
     || budgetMaxJpy === null
   ) {
     return { ok: false, errorKey: "required" };
   }
+  if (!budgetMinimum.valid) return { ok: false, errorKey: "invalidBudget" };
+  const budgetMinJpy = budgetMinimum.value;
+  if (
+    !Number.isInteger(targetProviderCount)
+    || targetProviderCount < 1
+    || targetProviderCount > context.maxTargetProviderCount
+  ) {
+    return { ok: false, errorKey: "targetProviderLimit" };
+  }
   if (!(serviceStartAt < serviceEndAt && serviceEndAt <= expiresAt)) {
     return { ok: false, errorKey: "invalidWindow" };
   }
-  if (budgetMinJpy > budgetMaxJpy) {
+  if (budgetMinJpy !== null && budgetMinJpy > budgetMaxJpy) {
     return { ok: false, errorKey: "invalidBudget" };
   }
+  const addressLine2 = nullableTrim(draft.addressLine2);
+  const addressLine3 = nullableTrim(draft.addressLine3);
   return {
     ok: true,
     value: {
@@ -86,12 +110,20 @@ export function normalizeDemandDraft(
       title: draft.title.trim(),
       detail: draft.detail.trim(),
       contentLocale: draft.contentLocale,
-      areaLabel: draft.areaLabel.trim(),
       serviceStartAt,
       serviceEndAt,
       expiresAt,
+      targetProviderCount,
+      matchMode: draft.matchMode,
+      budgetMode: draft.budgetMode,
       budgetMinJpy,
-      budgetMaxJpy
+      budgetMaxJpy,
+      addressLine1: draft.addressLine1.trim(),
+      addressLine2,
+      addressLine3,
+      addressLine2Public: addressLine2 !== null && draft.addressLine2Public,
+      addressLine3Public: addressLine3 !== null && draft.addressLine3Public,
+      publisherIdentityPublic: draft.publisherIdentityPublic
     }
   };
 }
