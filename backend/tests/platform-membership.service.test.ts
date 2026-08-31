@@ -51,6 +51,9 @@ const repository = (
     void occurredAt;
     return membership("free", 1);
   }),
+  findTierDraft: jest.fn(),
+  saveTierDraftWithAudit: jest.fn(),
+  publishTierDraftWithAudit: jest.fn(),
   ...overrides
 });
 
