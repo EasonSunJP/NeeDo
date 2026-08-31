@@ -98,6 +98,14 @@ describe("portal identity switching boundaries", () => {
 });
 
 describe("production route chunk boundaries", () => {
+  it("mounts one operations data dashboard route and removes the legacy analytics route", () => {
+    expect(appSource.match(/path="\/admin" element=/g)).toHaveLength(1);
+    expect(appSource).toContain('path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)}');
+    expect(appSource).not.toContain('import { AnalyticsPage } from "./pages/admin/AnalyticsPage";');
+    expect(appSource).not.toContain('path="/admin/analytics"');
+    expect(appSource).not.toContain("<AnalyticsPage />");
+  });
+
   it("loads the large technician portal only after entering a technician route", () => {
     expect(appSource).not.toContain('import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";');
     expect(appSource).toContain('lazy(() => import("./pages/mobile/TechnicianPortalPage")');

@@ -10,7 +10,6 @@ import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, i
 import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
-import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
 import { AffiliateAdminPage } from "./pages/admin/AffiliateAdminPage";
 import { AffiliateFeeRulesPage } from "./pages/admin/AffiliateFeeRulesPage";
 import { AffiliateNoticeCarouselPage } from "./pages/admin/AffiliateNoticeCarouselPage";
@@ -1377,7 +1376,6 @@ export default function App() {
 
               <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
-              <Route path="/admin/analytics" element={protect("admin", <AnalyticsPage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
               <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications" element={protect("admin", <AdminNotificationsPage />)} />

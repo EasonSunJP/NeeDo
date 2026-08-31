@@ -1,32 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiClientError } from "../../api/httpClient";
 import {
   backofficeRealDataApi,
-  mapBackofficeOrder,
   type BackofficeDashboardPayload,
-  type BackofficeShopPayload,
-  type BackofficeTechnicianPayload
+  type DashboardQuery
 } from "../../api/backofficeRealData";
+import { ApiClientError } from "../../api/httpClient";
 import { AdminLayout } from "../../components/admin/AdminLayout";
-import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
-import { DataTable } from "../../components/ui/DataTable";
-import { MetricCard } from "../../components/ui/MetricCard";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { statusLabel, yen } from "../../lib/utils";
-import type { Order } from "../../types/domain";
+import { DualAxisLineChart } from "../../features/dashboard/DashboardCharts";
+import { DashboardFilterBar, type DashboardFilterValue } from "../../features/dashboard/DashboardFilterBar";
+import { DashboardMetricCard } from "../../features/dashboard/DashboardMetricCard";
+import { useI18n } from "../../i18n/I18nProvider";
+import { translateTextForContext } from "../../i18n/translations";
 
-function DashboardTableHeader({ title, to }: { title: string; to: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <h2 className="text-lg font-bold">{title}</h2>
-      <Link className="rounded-lg border border-line bg-white px-3 py-2 text-xs font-black text-moss" to={to}>
-        更多
-      </Link>
-    </div>
-  );
-}
+const defaultQuery: DashboardQuery = { period: "last7days" };
 
 function describeDashboardError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -38,177 +27,227 @@ function describeDashboardError(error: unknown) {
 }
 
 export function DashboardPage() {
+  const { language } = useI18n();
+  const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
   const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
+  const [query, setQuery] = useState<DashboardQuery>(defaultQuery);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
-  const realOrders = useMemo<Order[]>(
-    () => dashboard ? dashboard.orders.map(mapBackofficeOrder) : [],
-    [dashboard]
-  );
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    let activeRequest = true;
+    const controller = new AbortController();
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setLoadStatus("loading");
     setLoadError("");
-    backofficeRealDataApi.dashboard("backoffice", { period: "last7days" })
+
+    void backofficeRealDataApi.dashboard("backoffice", query, { signal: controller.signal })
       .then((payload) => {
-        if (!activeRequest) return;
+        if (controller.signal.aborted || requestId !== requestIdRef.current) return;
         setDashboard(payload);
         setLoadStatus("success");
       })
       .catch((error: unknown) => {
-        if (!activeRequest) return;
-        setDashboard(null);
+        if (controller.signal.aborted || requestId !== requestIdRef.current) return;
         setLoadError(describeDashboardError(error));
         setLoadStatus("error");
       });
+
     return () => {
-      activeRequest = false;
+      controller.abort();
     };
-  }, [revision]);
+  }, [query, revision]);
+
+  const headlineMetrics = dashboard
+    ? [
+        {
+          accent: "blue" as const,
+          comparison: dashboard.summary.availableScheduleSlots,
+          icon: "◇",
+          title: t("可排班"),
+          unit: "slots" as const
+        },
+        {
+          accent: "green" as const,
+          comparison: dashboard.summary.activeTechnicians,
+          icon: "●",
+          title: t("活跃技师"),
+          unit: "people" as const
+        },
+        {
+          accent: "purple" as const,
+          comparison: dashboard.summary.registeredTechnicians,
+          icon: "◎",
+          title: t("注册技师"),
+          unit: "people" as const
+        },
+        {
+          accent: "cyan" as const,
+          comparison: dashboard.summary.shopCount,
+          icon: "▦",
+          statusMessage: dashboard.summary.shopCount ? undefined : t("店铺数据暂不可用"),
+          title: t("店铺数"),
+          unit: "count" as const
+        },
+        {
+          accent: "orange" as const,
+          comparison: dashboard.summary.newCustomers,
+          icon: "+",
+          statusMessage: dashboard.summary.newCustomers ? undefined : t("用户数据暂不可用"),
+          title: t("新增用户"),
+          unit: "people" as const
+        }
+      ]
+    : [];
+
+  const ndpCards = dashboard
+    ? [
+        {
+          accent: "purple" as const,
+          testNdp: dashboard.finance.userReward.testNdp,
+          title: t("用户奖励 NDP"),
+          unit: "ndp" as const,
+          value: dashboard.finance.userReward.ndp
+        },
+        {
+          accent: "blue" as const,
+          note: t("钱包存量为平台全量口径，不受城市筛选影响"),
+          statusMessage: dashboard.finance.walletStock ? undefined : t("平台钱包存量暂不可用"),
+          testNdp: dashboard.finance.walletStock?.testNdp,
+          title: t("存量 NDP"),
+          unit: "ndp" as const,
+          value: dashboard.finance.walletStock?.ndp
+        },
+        {
+          accent: "green" as const,
+          note: t("提现金额为平台全量口径，不受城市筛选影响"),
+          statusMessage: dashboard.finance.withdrawn ? undefined : t("平台提现数据暂不可用"),
+          testNdp: dashboard.finance.withdrawn?.testNdp,
+          title: t("提现 NDP"),
+          unit: "ndp" as const,
+          value: dashboard.finance.withdrawn?.ndp
+        }
+      ]
+    : [];
+
+  function applyFilter(value: DashboardFilterValue) {
+    setQuery(value);
+  }
+
+  function resetFilter() {
+    setQuery({ ...defaultQuery });
+  }
 
   return (
     <AdminLayout>
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <div aria-busy={loadStatus === "loading"} className="min-w-0 space-y-5">
+        <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-bold text-moss">NeeDo 指挥中心</p>
+            <p className="text-xs font-bold text-moss">{t("NeeDo 指挥中心")}</p>
             <TitleWithInfo
               as="h1"
               className="mt-1"
-              info="平台经营指标、订单、排班、财务、店铺和技师均来自当前数据库聚合。"
-              label="数据大盘说明"
-              title="数据大盘"
+              info={t("平台经营指标、订单、排班、财务、店铺和技师均来自当前数据库聚合。")}
+              label={t("数据大盘说明")}
+              title={t("数据大盘")}
               titleClassName="text-3xl font-black"
               variant="paper"
             />
           </div>
           <div className="flex gap-2">
-            <Link className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-bold" to="/admin/orders">处理订单</Link>
-            <Link className="rounded-lg bg-moss px-4 py-2 text-sm font-bold text-white" to="/admin/finance">财务对账</Link>
+            <Link className="rounded-xl border border-line bg-white px-4 py-2 text-sm font-black text-ink transition hover:border-moss focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40" to="/admin/orders">
+              {t("处理订单")}
+            </Link>
+            <Link className="rounded-xl bg-moss px-4 py-2 text-sm font-black text-white transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/50" to="/admin/finance">
+              {t("财务对账")}
+            </Link>
           </div>
-        </div>
+        </header>
 
-        {loadStatus === "loading" ? (
-          <section className="rounded-lg border border-line bg-white px-5 py-10 text-center shadow-panel" aria-live="polite">
-            <p className="text-sm font-black text-ink">正在加载真实经营数据</p>
+        <DashboardFilterBar
+          cities={dashboard?.filter.availableCities ?? []}
+          loading={loadStatus === "loading"}
+          onApply={applyFilter}
+          onReset={resetFilter}
+          value={query}
+        />
+
+        {loadStatus === "loading" && !dashboard ? (
+          <section aria-live="polite" className="rounded-2xl border border-line bg-white px-5 py-12 text-center shadow-panel">
+            <p className="text-sm font-black text-ink">{t("正在加载真实经营数据")}</p>
           </section>
+        ) : null}
+
+        {loadStatus === "loading" && dashboard ? (
+          <p aria-live="polite" className="rounded-xl border border-line bg-white px-4 py-3 text-xs font-black text-ink/55 shadow-panel">
+            {t("正在更新经营数据，当前仍显示上次成功结果")}
+          </p>
         ) : null}
 
         {loadStatus === "error" ? (
-          <section className="rounded-lg border border-coral/30 bg-coral/5 px-5 py-8 text-center shadow-panel" role="alert">
-            <h2 className="text-lg font-black text-ink">经营数据加载失败</h2>
-            <p className="mt-2 text-sm font-bold text-ink/55">{loadError}</p>
-            <Button className="mt-4" onClick={() => setRevision((current) => current + 1)}>重新加载经营数据</Button>
+          <section className="rounded-2xl border border-coral/30 bg-coral/5 px-5 py-6 text-center shadow-panel" role="alert">
+            <h2 className="text-lg font-black text-ink">{t("经营数据加载失败")}</h2>
+            <p className="mt-2 text-sm font-bold text-ink/55">{t(loadError)}</p>
+            {dashboard ? (
+              <p className="mt-2 text-xs font-bold text-ink/45">{t("以下仍显示上次成功结果")}</p>
+            ) : null}
+            <Button className="mt-4" onClick={() => setRevision((current) => current + 1)}>
+              {t("重新加载经营数据")}
+            </Button>
           </section>
         ) : null}
 
-        {loadStatus === "success" && dashboard ? (
+        {dashboard ? (
           <>
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {dashboard.metrics.map((metric) => <MetricCard dense key={metric.label} metric={metric} />)}
+            <section aria-label={t("核心经营数据")} className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {headlineMetrics.map((metric) => (
+                <DashboardMetricCard key={metric.title} {...metric} />
+              ))}
             </section>
 
-            <div className="grid gap-5 xl:grid-cols-2">
-              <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-                <h2 className="font-bold">正式排班库存</h2>
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  {[
-                    ["总时段", dashboard.schedule.total],
-                    ["可预约", dashboard.schedule.available],
-                    ["已占用", dashboard.schedule.booked]
-                  ].map(([label, value]) => (
-                    <div className="rounded-lg bg-paper px-3 py-4" key={label}>
-                      <p className="text-xs font-bold text-ink/45">{label}</p>
-                      <strong className="mt-1 block text-xl text-ink">{value}</strong>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="font-bold">真实财务汇总</h2>
-                  <Link className="text-xs font-black text-moss" to="/admin/finance">查看对账</Link>
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {[
-                    ["服务 GMV", yen(dashboard.finance.estimatedServiceGmvJpy)],
-                    ["平台 NDP 收入", `${dashboard.finance.platformNdpRevenue.toLocaleString("ja-JP")} NDP`],
-                    ["用户奖励成本", `${dashboard.finance.userRewardNdpCost.toLocaleString("ja-JP")} NDP`],
-                    ["待处理冻结", `${dashboard.finance.pendingHoldNdp.toLocaleString("ja-JP")} NDP`],
-                    ["请求费收入", `${dashboard.finance.requestFeeNdpRevenue.toLocaleString("ja-JP")} NDP`],
-                    ["未上报服务收入", yen(dashboard.finance.unknownOrUnreportedServiceAmountJpy)]
-                  ].map(([label, value]) => (
-                    <div className="rounded-lg bg-paper px-3 py-3" key={label}>
-                      <p className="text-[11px] font-bold text-ink/45">{label}</p>
-                      <strong className="mt-1 block text-base text-ink">{value}</strong>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <section className="space-y-3">
-              <DashboardTableHeader title="真实订单" to="/admin/orders" />
-              {realOrders.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-line bg-white px-5 py-8 text-center text-sm font-black text-ink/55">当前没有真实订单</div>
-              ) : (
-                <DataTable<Order>
-                  columns={[
-                    { key: "no", title: "订单", render: (row) => row.orderNo },
-                    { key: "customer", title: "客户", render: (row) => row.customerName },
-                    { key: "item", title: "服务", render: (row) => row.itemName },
-                    { key: "store", title: "店铺", render: (row) => row.storeName ?? "--" },
-                    { key: "time", title: "预约时间", render: (row) => row.bookedAt },
-                    { key: "status", title: "状态", render: (row) => <Badge tone="yellow">{statusLabel(row.status)}</Badge> },
-                    { key: "amount", title: "金额", render: (row) => yen(row.amount) }
-                  ]}
-                  footerPlacement="inline"
-                  pageSize={10}
-                  rows={realOrders.slice(0, 10)}
-                />
-              )}
-            </section>
-
-            <div className="grid gap-5 xl:grid-cols-2">
-              <section className="space-y-3">
-                <DashboardTableHeader title="店铺审核与经营状态" to="/admin/merchants" />
-                <DataTable<BackofficeShopPayload>
-                  columns={[
-                    { key: "name", title: "店铺", render: (row) => row.name },
-                    { key: "city", title: "城市", render: (row) => row.city },
-                    { key: "owner", title: "负责人账号", render: (row) => row.ownerEmail ?? "未绑定" },
-                    { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "published" ? "green" : "yellow"}>{row.status}</Badge> }
-                  ]}
-                  footerPlacement="inline"
-                  pageSize={8}
-                  rows={dashboard.shops}
-                />
-              </section>
-
-              <section className="space-y-3">
-                <DashboardTableHeader title="真实技师档案" to="/admin/technicians" />
-                <DataTable<BackofficeTechnicianPayload>
-                  columns={[
-                    { key: "name", title: "技师", render: (row) => row.displayName },
-                    { key: "store", title: "门店", render: (row) => row.shopName ?? "未绑定" },
-                    { key: "city", title: "城市", render: (row) => row.city },
-                    { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "published" ? "green" : "neutral"}>{row.status}</Badge> }
-                  ]}
-                  footerPlacement="inline"
-                  pageSize={8}
-                  rows={dashboard.technicians}
-                />
-              </section>
-            </div>
-
-            <section className="rounded-lg border border-line bg-paper px-5 py-4">
-              <h2 className="font-black text-ink">尚未启用的运营模块</h2>
-              <p className="mt-2 text-sm font-bold leading-6 text-ink/55">
-                城市趋势、现场工单、风控评分和商家健康分尚未具备正式聚合接口，因此本正式看板不展示演示指标。相关接口完成并通过权限与口径验收后再启用。
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs font-bold text-ink/45">
+              <p>
+                {t("当前范围")} <span data-no-i18n>{dashboard.filter.from}</span> – <span data-no-i18n>{dashboard.filter.to}</span>
               </p>
+              <p>
+                {t("上期范围")} <span data-no-i18n>{dashboard.filter.previousFrom}</span> – <span data-no-i18n>{dashboard.filter.previousTo}</span>
+              </p>
+            </div>
+
+            <section aria-label={t("平台经营趋势")} className="grid min-w-0 gap-5 xl:grid-cols-3">
+              <DualAxisLineChart
+                buckets={dashboard.series.buckets}
+                description={t("订单与服务金额趋势")}
+                left={{ key: "orderCount", label: t("订单总量"), unit: t("单") }}
+                right={{ key: "serviceGmvJpy", label: t("服务 GMV"), unit: "JPY" }}
+                title={t("订单总量和服务 GMV")}
+              />
+              <DualAxisLineChart
+                buckets={dashboard.series.buckets}
+                description={t("正式 NDP 净收入与期末冻结趋势")}
+                left={{ key: "platformNetRevenueNdp", label: t("NDP 净收入"), unit: "NDP" }}
+                right={{ key: "frozenNdp", label: t("冻结 NDP"), unit: "NDP" }}
+                title={t("NDP 收入和冻结 NDP 量")}
+              />
+              <DualAxisLineChart
+                buckets={dashboard.series.buckets}
+                description={t("累计店铺与注册技师趋势")}
+                left={{ key: "shopCount", label: t("店铺数"), unit: t("个") }}
+                right={{ key: "registeredTechnicianCount", label: t("注册技师数"), unit: t("人") }}
+                title={t("店铺数量和技师数量")}
+              />
+            </section>
+
+            <p className="rounded-xl bg-paper px-4 py-3 text-xs font-bold leading-5 text-ink/50">
+              {t("趋势图仅展示正式 NDP；Test NDP 在汇总卡中单独显示。")}
+            </p>
+
+            <section aria-label={t("NDP 汇总")} className="grid min-w-0 gap-3 md:grid-cols-3">
+              {ndpCards.map((card) => (
+                <DashboardMetricCard key={card.title} {...card} />
+              ))}
             </section>
           </>
         ) : null}

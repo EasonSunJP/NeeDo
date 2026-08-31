@@ -3,6 +3,15 @@ import source from "./AdminLayout.tsx?raw";
 import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
+  it("exposes exactly one operations data dashboard entry", () => {
+    expect(source.match(/label: "数据大盘"/g)).toHaveLength(1);
+    expect(source).toContain('{ label: "数据大盘", to: "/admin"');
+    expect(source).not.toContain('to: "/admin/analytics"');
+    expect(source).not.toContain("分析中心");
+    expect(source).not.toContain("数据大屏");
+    expect(source).not.toContain("module=big-screen");
+  });
+
   it("does not render the obstructive bottom-left operations notice", () => {
     expect(source).not.toContain("东京城市组");
     expect(source).not.toContain("19 个待审核商家，36 个工单需要运营介入。");
