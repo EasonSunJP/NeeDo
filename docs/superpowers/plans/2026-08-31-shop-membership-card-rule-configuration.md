@@ -239,9 +239,9 @@ Every rule includes this strict shared scope:
 ```ts
 const scopeSchema = z.object({
   servicePublicIds: z.array(z.string().uuid()).max(100).default([]),
-  categoryPublicIds: z.array(z.string().uuid()).max(100).default([]),
+  categoryCodes: z.array(z.string().trim().min(1).max(100)).max(100).default([]),
   excludedServicePublicIds: z.array(z.string().uuid()).max(100).default([]),
-  excludedCategoryPublicIds: z.array(z.string().uuid()).max(100).default([]),
+  excludedCategoryCodes: z.array(z.string().trim().min(1).max(100)).max(100).default([]),
   activeFrom: z.string().datetime().nullable().default(null),
   activeTo: z.string().datetime().nullable().default(null)
 }).strict();
@@ -266,7 +266,7 @@ Plan-level `caps` are strict non-negative nullable integers: `perOrderNdp`, `per
 
 - [ ] **Step 4: Implement deterministic evaluation**
 
-`MembershipRewardPreviewFacts` contains server-supplied `eligibleAmountJpy`, service/category public IDs, completion/spend/history counters, birthday month, scheduled ISO time, and already rewarded daily/monthly/lifetime totals. Return ordered rule hits with `ruleIndex`, `kind`, `basis`, and `rewardNdp`; then apply the smallest remaining cap. Use checked integer helpers and throw `error.shop_membership_card_plan.amount_out_of_range` before exceeding `Number.MAX_SAFE_INTEGER`.
+`MembershipRewardPreviewFacts` contains server-supplied `eligibleAmountJpy`, service public ID, category code, completion/spend/history counters, birthday month, scheduled ISO time, and already rewarded daily/monthly/lifetime totals. Return ordered rule hits with `ruleIndex`, `kind`, `basis`, and `rewardNdp`; then apply the smallest remaining cap. Use checked integer helpers and throw `error.shop_membership_card_plan.amount_out_of_range` before exceeding `Number.MAX_SAFE_INTEGER`.
 
 - [ ] **Step 5: Run tests and commit**
 
@@ -417,7 +417,7 @@ Expected: FAIL because routes and schemas are absent.
 
 - [ ] **Step 3: Implement strict validators and thin controllers**
 
-Validators reuse `membershipRewardRuleListSchema`, use UUID params, `pageSize <= 100`, `.strict()` on every object, and convert ISO timestamps only after Zod validation. Preview body contains only authoritative scenario inputs (`eligibleAmountJpy`, service/category public IDs, scheduledAt, historical counters) and never actor/shop/rate fields.
+Validators reuse `membershipRewardRuleListSchema`, use UUID params, `pageSize <= 100`, `.strict()` on every object, and convert ISO timestamps only after Zod validation. Preview body contains only authoritative scenario inputs (`eligibleAmountJpy`, service public ID, category code, scheduledAt, historical counters) and never actor/shop/rate fields.
 
 Controllers call the service, return `successResponse`, and do not access Prisma, calculate reward, inspect permissions, or derive shop scope.
 

@@ -132,4 +132,44 @@ describe("ShopMembershipRepository", () => {
       expect.objectContaining({ data: expect.objectContaining({ customerProfileId: 41 }) })
     );
   });
+
+  it("maps immutable issuance snapshots into merchant and customer-safe card reads", async () => {
+    const { client } = prismaClient();
+    client.shopMembershipCard.findMany.mockResolvedValue([{
+      id: 81,
+      publicId: "00000000-0000-4000-8000-000000000481",
+      cardNo: "NMC-00112233445566778899AABB",
+      name: "青山储值会员卡",
+      type: "STORED_VALUE",
+      status: "ACTIVE",
+      principalBalanceJpy: 10_000,
+      bonusBalanceJpy: 0,
+      remainingUses: null,
+      totalUses: null,
+      initialPrincipalJpy: 10_000,
+      initialUses: null,
+      issuanceSource: "OFFLINE_PAID",
+      platformFeeRateBpsSnapshot: 1_000,
+      issuedAt: new Date("2026-08-31T03:00:00.000Z"),
+      expiresAt: new Date("2026-09-30T03:00:00.000Z"),
+      frozenAt: null,
+      plan: { publicId: "00000000-0000-4000-8000-000000000402" },
+      planVersion: { publicId: "00000000-0000-4000-8000-000000000403", version: 3 },
+      membership: { publicId: membership.publicId, customerProfile: { displayName: "王小美", user: { needoId: "u0000000041" } } }
+    } as never]);
+    client.shopMembershipCard.count.mockResolvedValue(1);
+    const repository = new ShopMembershipRepository(client as unknown as PrismaClient);
+
+    await expect(repository.listCards(71, { page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{
+        initialPrincipalJpy: 10_000,
+        initialUses: null,
+        issuanceSource: "offline_paid",
+        platformFeeRateBpsSnapshot: 1_000,
+        planPublicId: "00000000-0000-4000-8000-000000000402",
+        planVersionPublicId: "00000000-0000-4000-8000-000000000403",
+        planVersion: 3
+      }]
+    });
+  });
 });

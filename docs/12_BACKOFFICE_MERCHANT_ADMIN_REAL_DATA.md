@@ -203,3 +203,43 @@ Migration 为 `20260829150000_employee_schedule_privacy`，为 `availabilities` 
 读取要求 `page:backoffice-affiliate-fee-rule`，创建要求 `button:backoffice-affiliate-fee-rule-create`。接口继续要求运营全局或平台身份，创建事务同时写入不可变审计。店铺搜索不扩大财务角色的一般店铺管理权限；历史列表通过同一查询投影店铺名称与城市，避免 N+1 和已下架店铺标签丢失。
 
 本微步骤复用现有 `affiliate_platform_fee_rules` 及其版本、审计和任务快照模型，没有新增 schema 或 migration。浏览器验收只检查读取、筛选、店铺选择、校验和确认页，不提交新的真实费率版本；写入行为由隔离的 API、Service 与 Repository 测试验证。
+
+## 15. 2026-08-31 会员卡方案与 NDP 返点规则
+
+商户会员中心保留现有“已发会员卡”页面，并新增“卡方案”工作区。会员入口及相关页面均显示 `TEST` 角标，提醒当前能力仍处于本地测试阶段。方案工作区沿用既有暗色视觉系统，按“卡种与有效期 → 初始发卡范围 → 基础返点 → 叠加奖励 → 范围与上限 → 试算发布”组织，支持储值卡、次卡、权益卡，不新增平行 mock 数据。
+
+店铺可以设定发卡时允许的初始金额或次数范围；实际给客人发卡、后续调额/调次及客户同意流程留给后续独立微步骤。本页不提供折扣、礼物、赠送服务或赠送次数选项，所有权益统一为 NDP 返点。
+
+正式商户接口：
+
+- `GET/POST /api/v1/merchant-admin/shop-membership-card-plans`
+- `GET /api/v1/merchant-admin/shop-membership-card-plans/:publicId`
+- `PATCH /api/v1/merchant-admin/shop-membership-card-plans/:publicId/draft`
+- `POST /api/v1/merchant-admin/shop-membership-card-plans/:publicId/preview`
+- `POST /api/v1/merchant-admin/shop-membership-card-plans/:publicId/publish`
+- `POST /api/v1/merchant-admin/shop-membership-card-plans/:publicId/retire`
+
+读取、维护、发布分别要求 `shop.member.card_plan.view`、`shop.member.card_plan.manage`、`shop.member.card_plan.publish`。店铺范围只取当前 JWT 的 `shop` 身份；草稿使用乐观锁，发布版本不可变，跨店公开 ID 返回不存在。创建、编辑、发布和停用写入审计。
+
+运营后台新增 `/pf-admin.html#/admin/finance/membership-reward-fee`，展示当前费率、下一生效版本和分页历史，并在具备写权限时创建不可变费率版本：
+
+- `GET /api/v1/backoffice/membership-reward-fee-policy`
+- `POST /api/v1/backoffice/membership-reward-fee-policy/versions`
+
+读取要求 `page:backoffice-membership-reward-fee`，创建要求 `button:backoffice-membership-reward-fee-create`。页面明确展示“客户返点 + 平台费 = 店铺总扣除”；默认平台费为 10%，发布方案时保存费率快照，之后运营变更费率不会回写旧方案。
+
+新增表为 `membership_reward_fee_policy_versions`、`shop_membership_card_plans`、`shop_membership_card_plan_versions`、`shop_membership_reward_rules`；migration 为 `20260831150000_shop_membership_card_rule_configuration` 和 UTC 时间纠正 `20260831151000_membership_reward_fee_policy_utc_bootstrap`。本地真实数据库回滚验收已验证十类规则、RBAC 店铺边界、1000/100/1100 试算、费率快照和审计，且未改变现有会员卡、钱包或账本数据。
+
+## 16. 2026-08-31 会员卡正式发卡
+
+“已发会员卡”工具栏新增 `开卡 TEST`。具备 `shop.member.card.issue` 的店铺负责人或管理员可在同一移动端弹层中选择当前店铺有效会员、仍启用的当前已发布方案，并按方案卡型录入最终初始金额或次数。线下已付款须填写业务参考号或说明；历史补卡和人工发放须填写说明。无权限账号仍可查看卡片，但不显示开卡按钮。
+
+正式接口：
+
+- `POST /api/v1/merchant-admin/shop-memberships/:membershipPublicId/cards`
+- 权限：`shop.member.card.issue`
+- 请求：`planPublicId`、类型对应的 `initialPrincipalJpy` / `initialUses`、`issuanceSource`、可空参考号/说明和必填 `idempotencyKey`。
+
+服务端按当前 JWT 店铺范围再次校验会员、方案和当前发布版本，计算有效期并保存方案版本、费率、来源、初始值和操作人快照。会员卡、审计和用户通知在同一事务中提交。商户发卡成功后刷新真实卡列表；用户个人中心的店铺会员详情显示当前金额/次数、初始值、方案版本、开卡时间、来源、有效期和平台费率快照，且明确说明“开卡不会自动产生 NDP”。业务参考号和内部说明不返回用户端卡片读取合同。
+
+Migration 为 `20260831160000_shop_membership_card_issuance`。本地 `needo_dev` 已验证物理列、CHECK、外键、幂等唯一索引和默认 RBAC；回滚式正式数据流验证三种卡型、审计、通知、幂等重放、内容冲突以及钱包/NDP 账本零变化。充值、核销、退款和发卡后的金额/次数调整及客户同意仍保持后续独立微步骤，不在本页面提供假操作。
