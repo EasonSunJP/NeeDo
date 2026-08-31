@@ -75,4 +75,25 @@ describe("platform membership persistence schema", () => {
     expect(migration).toContain("`benefit`.`code` IN ('ndp_experience', 'member_sign_in')");
     expect(migration).not.toContain("INSERT INTO `platform_membership_entitlements`");
   });
+
+  it("uses an additive lock migration for concurrent entitlement changes", () => {
+    const entitlementModel = schema.match(/model PlatformMembershipEntitlement \{([\s\S]*?)\n\}/)?.[1];
+    const lockMigration = readFileSync(
+      resolve(
+        process.cwd(),
+        "prisma/migrations/20260901183000_platform_membership_entitlement_lock/migration.sql"
+      ),
+      "utf8"
+    );
+
+    expect(entitlementModel).toContain("lockVersion");
+    expect(entitlementModel).toContain("changeKind");
+    expect(entitlementModel).toContain("billingMonths");
+    expect(entitlementModel).toContain("experienceValueNdp");
+    expect(lockMigration).toContain("ADD COLUMN `lock_version` INTEGER NOT NULL DEFAULT 1");
+    expect(schema).toContain("platformMembershipLockVersion");
+    expect(lockMigration).toContain("ADD COLUMN `platform_membership_lock_version` INTEGER NOT NULL DEFAULT 1");
+    expect(lockMigration).toContain("ADD COLUMN `experience_value_ndp` INTEGER NOT NULL DEFAULT 0");
+    expect(lockMigration).toContain("platform_membership_entitlements_lock_version_chk");
+  });
 });

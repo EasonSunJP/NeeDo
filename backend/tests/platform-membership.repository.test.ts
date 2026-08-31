@@ -48,8 +48,12 @@ describe("PlatformMembershipRepository", () => {
         supersededAt: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: at } }],
         tierVersion: expect.objectContaining({
-          status: PlatformMembershipVersionStatus.PUBLISHED,
-          effectiveFrom: { lte: at }
+          status: {
+            in: [
+              PlatformMembershipVersionStatus.PUBLISHED,
+              PlatformMembershipVersionStatus.ARCHIVED
+            ]
+          }
         })
       })
     }));
