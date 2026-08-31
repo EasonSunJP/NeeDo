@@ -360,13 +360,14 @@
 - “转发”页不再发布到公共时间线，也不再维护失效的快速转发/引用转发按钮；它加载正式联系人候选，支持搜索和多选，并把动态卡片发给所选好友。聊天消息模型、会话摘要和气泡共同识别 `social-post-card`，可从卡片返回原动态。
 - 互动请求失败不再产生 optimistic 计数；原确认状态保留。所有三端继续复用 Social provider 与同一详情/时间线组件，本切片没有复制三套 UI。
 
-### 自动化与待授权验收边界
+### 自动化与本地正式验收
 
 - 聚焦前端回归覆盖权威映射、正式 provider、好友转发页、详情浏览、个人中心收藏入口、IM 正式消息解析和翻译质量：8 个功能文件、145 项通过，独立 i18n quality 1 项通过。最终前端全量使用 `npm test -- --testTimeout=20000`，265 个文件、1,689 项通过；默认 5 秒上限的前一轮只有既有 `ReactionCatalog` 1 项在满负载下超时，该文件随后独立 3/3 通过。没有修改该组件、断言或生产超时。
 - 聚焦后端 Social/Realtime/OpenAPI 回归为 6 个 suites、47 项通过。最终后端全量使用 `npm test -- --testTimeout=20000`，339 个 suites、2,290 项通过，另有 10 个 suites、38 项按既有配置跳过；默认 5 秒上限曾使两个 bcrypt 密集认证用例在满负载下超时，未修改 bcrypt rounds、限流或认证代码。
 - `npm --prefix backend run lint`、`npm --prefix backend run build`、根目录 `npm run lint`、`npm run i18n:audit` 与 Prisma schema validate 均退出 `0`。正式 `npm run verify:production-build` 检查 8 个 HTML 与 25 个 assets 通过；页面专属五语文案留在懒加载的 `SocialFavoritesPage` / `SocialRepostPage` chunk，`i18n` chunk 为 3,703,450 bytes，没有提高 3,704,096 bytes 预算。
-- 当前 `needo_dev` 的只读 Prisma 状态显示最后共同 migration 为 `20260831123000_shop_membership_permissions`，待应用 `20260831150000_social_post_interactions`；数据库另有仓库不存在的 `20260830300000_exchange_request_publication` 两条历史（一条 rolled back、一条 finished）。`information_schema` 中四张新互动表均不存在。因 migration history 分叉，本轮未执行 `migrate deploy`、未手写 SQL、未修改数据库历史。
-- 当前也未执行会产生点赞、收藏、浏览或好友消息的浏览器动作。必须先独立协调并解决上述 migration 分叉，再获得临时正式数据写入授权；之后确认端口与工作树归属，验证点赞/取消、同身份唯一浏览、个人中心收藏持久化、双账号好友卡片投递、重复 Idempotency-Key、SSE、刷新、移动端溢出和 console，并清理临时互动与消息。未完成这些步骤前不得标记真实页面/数据验收通过。
+- 2026-08-31 再检查时，`needo_dev` 已存在成功的 `20260831150000_social_post_interactions` 记录，其 checksum `408ae19a...` 与当前仓库 migration 一致；此前因 MySQL 64 字符标识符上限失败的长索引版本保留为 rolled-back 记录。四张互动表、外键、短名称幂等唯一索引和五类角色授权均与当前 migration 一致，`prisma migrate status` 报告仓库 80 个 migration 全部已应用。本次没有手改 `_prisma_migrations` 或执行原始 DDL；数据库中仍有与本 Social 切片无关、当前 checkout 不包含的历史记录，不把它们解释或复制回仓库。
+- 本地正式数据验收使用 `sim.customer.100@needo.local` 的 customer identity、动态 `64774` 和一个既有双向好友会话。真实 API 验证了点赞/取消及刷新持久化、收藏分页添加/移除、同身份两次浏览只累计一次、好友收到 `social-post-card`、重复同一 `Idempotency-Key` 不重复计数或消息、发送方互动 SSE 与接收方消息 SSE。验收脚本随后按精确 ID 删除 interaction/share/message/audit，并恢复 conversation 与 participant 的未读、last-read、隐藏状态和时间戳；复查所有 marker 为零、动态计数回到基线。
+- 440×956 浏览器验收确认：详情首次进入从 1 次浏览变为 2，刷新仍为 2；用户中心 `/me/favorites` 收藏后可见且刷新持久；转发页加载 12 位正式好友，选择后发送按钮启用、取消后禁用；动态、收藏和转发页均无横向溢出且 console error 为零。浏览器产生的临时 bookmark/view 及对应 audit 已按精确 ID 清理，时间线恢复未收藏与原计数。
 
 ---
 
