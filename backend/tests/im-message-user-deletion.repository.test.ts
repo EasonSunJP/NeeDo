@@ -4,17 +4,27 @@ import { RealtimeRepository } from "../src/repositories/realtime.repository";
 describe("RealtimeRepository identity-only message deletion", () => {
   it("persists an idempotent viewer tombstone without changing the shared message", async () => {
     const participantCreatedAt = new Date("2026-08-30T00:00:00.000Z");
-    const participantFindFirst = jest.fn(async () => ({ createdAt: participantCreatedAt }));
-    const messageFindFirst = jest.fn(async () => ({ id: 41 }));
+    const participantFindFirst = jest.fn(async () => ({
+      createdAt: participantCreatedAt,
+      clearedThroughMessageId: null
+    }));
+    const messageFindMany = jest.fn(async () => [{ id: 41 }]);
     const deletionUpsert = jest.fn(async () => ({ id: 91 }));
+    const commandFindUnique = jest.fn(async () => null);
+    const commandCreate = jest.fn(async () => ({ id: 92 }));
     const auditCreate = jest.fn(async () => ({ id: 12 }));
     const transaction = {
       conversationParticipant: { findFirst: participantFindFirst },
-      message: { findFirst: messageFindFirst },
+      message: { findMany: messageFindMany },
+      imMessageBatchDeleteCommand: {
+        findUnique: commandFindUnique,
+        create: commandCreate
+      },
       messageUserDeletion: { upsert: deletionUpsert },
       auditLog: { create: auditCreate }
     };
     const client = {
+      imMessageBatchDeleteCommand: { findUnique: commandFindUnique },
       $transaction: async (operation: (tx: typeof transaction) => unknown) => operation(transaction)
     } as unknown as PrismaClient;
     const repository = new RealtimeRepository(client);
@@ -35,12 +45,12 @@ describe("RealtimeRepository identity-only message deletion", () => {
         deletedAt: null,
         conversation: { deletedAt: null }
       },
-      select: { createdAt: true }
+      select: { createdAt: true, clearedThroughMessageId: true }
     });
 
-    expect(messageFindFirst).toHaveBeenCalledWith({
+    expect(messageFindMany).toHaveBeenCalledWith({
       where: {
-        id: 41,
+        id: { in: [41] },
         conversationId: 3,
         createdAt: { gte: participantCreatedAt },
         deletedAt: null,
@@ -59,13 +69,28 @@ describe("RealtimeRepository identity-only message deletion", () => {
     expect(auditCreate).toHaveBeenCalledWith({
       data: {
         actorId: 7,
-        action: "im.message.deleted_for_user",
-        targetType: "Message",
-        targetId: 41,
+        action: "im.messages.deleted_for_user",
+        targetType: "Conversation",
+        targetId: 3,
         ip: null,
         userAgent: null,
-        metadata: { conversationId: 3 }
+        metadata: { conversationId: 3, count: 1, messageIds: [41] }
       }
+    });
+    expect(commandCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        conversationId: 3,
+        ownerUserId: 7,
+        ownerIdentityId: 70,
+        idempotencyKey: expect.any(String),
+        requestFingerprint: expect.any(String),
+        resultJson: {
+          conversationId: 3,
+          messageIds: [41],
+          count: 1,
+          deleted: true
+        }
+      })
     });
   });
 
@@ -75,9 +100,16 @@ describe("RealtimeRepository identity-only message deletion", () => {
     const auditCreate = jest.fn();
     const transaction = {
       conversationParticipant: {
-        findFirst: jest.fn(async () => ({ createdAt: participantCreatedAt }))
+        findFirst: jest.fn(async () => ({
+          createdAt: participantCreatedAt,
+          clearedThroughMessageId: null
+        }))
       },
-      message: { findFirst: jest.fn(async () => null) },
+      message: { findMany: jest.fn(async () => []) },
+      imMessageBatchDeleteCommand: {
+        findUnique: jest.fn(),
+        create: jest.fn()
+      },
       messageUserDeletion: { upsert: deletionUpsert },
       auditLog: { create: auditCreate }
     };

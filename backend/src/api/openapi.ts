@@ -1464,6 +1464,99 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           data: { type: "null" }
         }
       },
+      ImChatRecordSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "title", "preview", "senderCount", "itemCount", "createdAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          title: { type: "string", maxLength: 255 },
+          preview: { type: "string", maxLength: 500 },
+          senderCount: { type: "integer", minimum: 1, maximum: 100 },
+          itemCount: { type: "integer", minimum: 1, maximum: 100 },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      ImChatRecordItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id", "position", "senderDisplayName", "senderAvatarUrl",
+          "messageType", "content", "metadata", "sentAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          position: { type: "integer", minimum: 1, maximum: 100 },
+          senderDisplayName: { type: "string", maxLength: 100 },
+          senderAvatarUrl: { type: ["string", "null"] },
+          messageType: { type: "string" },
+          content: { type: ["string", "null"] },
+          metadata: { type: ["object", "null"], additionalProperties: true },
+          sentAt: { type: "string", format: "date-time" }
+        }
+      },
+      ImChatRecordItemPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size", "nextCursor"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ImChatRecordItem" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 },
+          nextCursor: { type: ["integer", "null"], minimum: 1 }
+        }
+      },
+      ImChatRecordFavorite: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "bundlePublicId", "title", "preview", "senderCount", "itemCount", "createdAt"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          bundlePublicId: { type: "string", format: "uuid" },
+          title: { type: "string", maxLength: 255 },
+          preview: { type: "string", maxLength: 500 },
+          senderCount: { type: "integer", minimum: 1, maximum: 100 },
+          itemCount: { type: "integer", minimum: 1, maximum: 100 },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      ImChatRecordFavoritePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ImChatRecordFavorite" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ImChatRecordCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "messageIds", "sourceConversationId"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          messageIds: {
+            type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
+            items: { type: "integer", minimum: 1 }
+          },
+          sourceConversationId: { type: "integer", minimum: 1 }
+        }
+      },
+      ImBatchDeleteRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["messageIds", "idempotencyKey"],
+        properties: {
+          messageIds: {
+            type: "array", minItems: 1, maxItems: 100, uniqueItems: true,
+            items: { type: "integer", minimum: 1 }
+          },
+          idempotencyKey: { type: "string", format: "uuid" }
+        }
+      },
       RealtimeParticipant: {
         type: "object",
         required: ["userId", "needoId", "username", "avatarUrl"],
@@ -13711,6 +13804,157 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": { description: "Schedule slot soft-deleted" },
           "404": { description: "Slot not found for current technician" },
           "409": { description: "Slot has an active booking" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{targetConversationId}/chat-records`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Create an immutable chat-record delivery",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "targetConversationId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } } }
+        },
+        responses: {
+          "201": { description: "Created or exactly replayed chat-record delivery" },
+          "400": { description: "Strict validation failed" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:forward permission" },
+          "404": { description: "Target conversation not found for the active identity" },
+          "409": { description: "Source unavailable or idempotency key reused with changed payload" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/chat-records/{publicId}`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Read an authorized chat-record summary",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": jsonDataResponse("Authorized chat-record summary", { $ref: "#/components/schemas/ImChatRecordSummary" }),
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:list permission" },
+          "404": { description: "Bundle missing or unavailable to the active identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/chat-records/{publicId}/items`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Cursor-paginated immutable chat-record items",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "beforePosition", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Authorized chat-record item page", { $ref: "#/components/schemas/ImChatRecordItemPage" }),
+          "400": { description: "Invalid cursor or page size" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:list permission" },
+          "404": { description: "Bundle missing or unavailable to the active identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/chat-records/{publicId}/media/{checksumSha256}`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Stream one authorized immutable chat-record media snapshot",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "checksumSha256", in: "path", required: true, schema: { type: "string", pattern: "^[a-f0-9]{64}$" } }
+        ],
+        responses: {
+          "200": {
+            description: "Authorized snapshot bytes",
+            headers: {
+              ETag: { schema: { type: "string" } },
+              "Cache-Control": { schema: { type: "string", enum: ["private, max-age=31536000, immutable"] } }
+            },
+            content: {
+              "image/jpeg": { schema: { type: "string", format: "binary" } },
+              "image/png": { schema: { type: "string", format: "binary" } },
+              "image/webp": { schema: { type: "string", format: "binary" } },
+              "audio/webm": { schema: { type: "string", format: "binary" } },
+              "audio/mp4": { schema: { type: "string", format: "binary" } },
+              "audio/ogg": { schema: { type: "string", format: "binary" } }
+            }
+          },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:list permission" },
+          "404": { description: "Media missing or unavailable to the active identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/chat-record-favorites`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Create an immutable chat-record favorite",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ImChatRecordCommand" } } }
+        },
+        responses: {
+          "201": { description: "Created or exactly replayed chat-record favorite" },
+          "400": { description: "Strict validation failed" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:favorite permission" },
+          "409": { description: "Source unavailable or idempotency key reused with changed payload" }
+        }
+      },
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Paginated favorites for the active identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Active identity favorite page", { $ref: "#/components/schemas/ImChatRecordFavoritePage" }),
+          "400": { description: "Invalid pagination" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:favorite permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/chat-record-favorites/{favoriteId}`]: {
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Remove one favorite owned by the active identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "favoriteId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        responses: {
+          "200": { description: "Favorite removed" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:favorite permission" },
+          "404": { description: "Favorite missing or owned by another identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/delete-for-me`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Atomically delete up to 100 messages for the active identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "conversationId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ImBatchDeleteRequest" } } }
+        },
+        responses: {
+          "200": { description: "Atomic deletion result or exact replay" },
+          "400": { description: "Strict validation failed" },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": { description: "Missing message:list permission" },
+          "404": { description: "Conversation or any requested message unavailable" },
+          "409": { description: "Idempotency key reused with changed payload" }
         }
       }
     },

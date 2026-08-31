@@ -105,6 +105,9 @@ export interface ChatRecordItemPayload {
 
 export interface ChatRecordItemPage {
   list: ChatRecordItemPayload[];
+  total: number;
+  page: number;
+  pageSize: number;
   nextCursor: number | null;
 }
 
@@ -525,15 +528,30 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
     beforePosition?: number;
     pageSize: number;
   }): Promise<ChatRecordItemPage> {
-    const rows = await this.client.imChatRecordItem.findMany({
+    const activeWhere = { bundleId: input.bundleId, deletedAt: null };
+    const rowsQuery = this.client.imChatRecordItem.findMany({
       where: {
-        bundleId: input.bundleId,
-        deletedAt: null,
+        ...activeWhere,
         ...(input.beforePosition === undefined ? {} : { position: { lt: input.beforePosition } })
       },
       orderBy: { position: "desc" },
       take: input.pageSize
     });
+    const totalQuery = this.client.imChatRecordItem.count({ where: activeWhere });
+    let rows;
+    let total;
+    let consumed = 0;
+    if (input.beforePosition === undefined) {
+      [rows, total] = await this.client.$transaction([rowsQuery, totalQuery]);
+    } else {
+      [rows, total, consumed] = await this.client.$transaction([
+        rowsQuery,
+        totalQuery,
+        this.client.imChatRecordItem.count({
+          where: { ...activeWhere, position: { gte: input.beforePosition } }
+        })
+      ]);
+    }
     return {
       list: [...rows].reverse().map((item) => ({
         id: item.id,
@@ -545,6 +563,9 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
         metadata: item.metadataSnapshot,
         sentAt: item.sentAtSnapshot
       })),
+      total,
+      page: Math.floor(consumed / input.pageSize) + 1,
+      pageSize: input.pageSize,
       nextCursor: rows.length === input.pageSize ? (rows.at(-1)?.position ?? null) : null
     };
   }

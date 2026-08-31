@@ -114,7 +114,13 @@ const repositoryFixture = (): jest.Mocked<ImChatRecordRepositoryPort> => ({
     }
   })),
   getBundle: jest.fn(async () => null),
-  listItems: jest.fn(async () => ({ list: [], nextCursor: null })),
+  listItems: jest.fn(async () => ({
+    list: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+    nextCursor: null
+  })),
   listFavorites: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
   removeFavorite: jest.fn(async () => false),
   resolveAuthorizedMedia: jest.fn(async () => null)
@@ -161,6 +167,42 @@ const createFixture = () => {
 };
 
 describe("ImChatRecordService", () => {
+  it("preserves repository-derived first and subsequent cursor page metadata", async () => {
+    const fixture = createFixture();
+    fixture.repository.getBundle.mockResolvedValue({
+      id: 501,
+      publicId: "11111111-1111-4111-8111-111111111111",
+      title: "A",
+      preview: "A: message 1",
+      senderCount: 1,
+      itemCount: 3,
+      createdAt: now
+    });
+    fixture.repository.listItems
+      .mockResolvedValueOnce({ list: [], total: 3, page: 1, pageSize: 2, nextCursor: 5 })
+      .mockResolvedValueOnce({ list: [], total: 3, page: 2, pageSize: 2, nextCursor: null });
+
+    await expect(
+      fixture.service.listItems(auth, "11111111-1111-4111-8111-111111111111", { pageSize: 2 })
+    ).resolves.toMatchObject({ total: 3, page: 1, pageSize: 2, nextCursor: 5 });
+    await expect(
+      fixture.service.listItems(auth, "11111111-1111-4111-8111-111111111111", {
+        beforePosition: 5,
+        pageSize: 2
+      })
+    ).resolves.toMatchObject({ total: 3, page: 2, pageSize: 2, nextCursor: null });
+    expect(fixture.repository.listItems).toHaveBeenNthCalledWith(1, {
+      bundleId: 501,
+      beforePosition: undefined,
+      pageSize: 2
+    });
+    expect(fixture.repository.listItems).toHaveBeenNthCalledWith(2, {
+      bundleId: 501,
+      beforePosition: 5,
+      pageSize: 2
+    });
+  });
+
   it.each(replayUnavailableCases)(
     "returns an exact favorite replay before checking %s mutable source state",
     async (_state, sourceOverride) => {

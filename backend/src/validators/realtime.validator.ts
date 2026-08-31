@@ -4,6 +4,7 @@ import {
   IM_PRIVACY_TTL_MIN_SECONDS
 } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
+import { messageIdsSchema } from "./im-chat-record.validator";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -144,6 +145,13 @@ export const messageReactionBodySchema = z.object({
 export const messageRecallBodySchema = z.object({
   mode: z.literal("standard")
 });
+
+export const messageBatchDeleteBodySchema = z
+  .object({
+    messageIds: messageIdsSchema,
+    idempotencyKey: z.string().uuid()
+  })
+  .strict();
 
 export const contactListQuerySchema = z.object({
   ...paginationQuerySchema

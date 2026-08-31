@@ -102,6 +102,7 @@ import {
   RealtimeRepository,
   type RealtimeRepositoryPort
 } from "./repositories/realtime.repository";
+import type { ImChatRecordRepositoryPort } from "./repositories/im-chat-record.repository";
 import type { RoleRepositoryPort } from "./repositories/role.repository";
 import type { UserRepositoryPort } from "./repositories/user.repository";
 import type { TestAccountRepositoryPort } from "./repositories/test-account.repository";
@@ -126,6 +127,7 @@ import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
 import { createImMediaRoutes } from "./routes/im-media.routes";
+import { createImChatRecordRoutes } from "./routes/im-chat-record.routes";
 import { createImVoiceMessageRoutes } from "./routes/im-voice-message.routes";
 import { createContentMediaRoutes } from "./routes/content-media.routes";
 import { createSocialMediaRoutes } from "./routes/social-media.routes";
@@ -160,6 +162,8 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import type { ImChatRecordMediaStoragePort } from "./services/im-chat-record-media.storage";
+import type { ImChatRecordService } from "./services/im-chat-record.service";
 import type { ImVoiceDurationProbePort } from "./services/im-voice-duration-probe";
 import type { ImVoiceStoragePort } from "./services/im-voice.storage";
 import type { ImVoiceMessageService } from "./services/im-voice-message.service";
@@ -255,6 +259,9 @@ export interface AppDependencies {
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  imChatRecordRepository?: ImChatRecordRepositoryPort;
+  imChatRecordMediaStorage?: ImChatRecordMediaStoragePort;
+  imChatRecordService?: ImChatRecordService;
   imVoiceDurationProbe?: ImVoiceDurationProbePort;
   imVoiceStorage?: ImVoiceStoragePort;
   imVoiceMessageService?: ImVoiceMessageService;
@@ -351,6 +358,7 @@ export const createApp = (
   apiRouter.use(createImMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createImVoiceMessageRoutes(config, resolvedDependencies));
   apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createImChatRecordRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));

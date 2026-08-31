@@ -793,6 +793,52 @@ describe("ImChatRecordRepository", () => {
     expect(count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
+  it("derives first and subsequent cursor pages from active rows despite soft-deleted gaps", async () => {
+    const row = (id: number, position: number) => ({
+      id,
+      position,
+      senderDisplayNameSnapshot: `Sender ${id}`,
+      senderAvatarSnapshot: null,
+      messageType: "text",
+      contentSnapshot: `message ${id}`,
+      metadataSnapshot: null,
+      sentAtSnapshot: now
+    });
+    const findMany = jest
+      .fn<() => Promise<ReturnType<typeof row>[]>>()
+      .mockResolvedValueOnce([row(705, 7), row(704, 5)])
+      .mockResolvedValueOnce([row(703, 3)]);
+    const count = jest
+      .fn<() => Promise<number>>()
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2);
+    const repository = new ImChatRecordRepository({
+      imChatRecordItem: { findMany, count },
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations))
+    } as never);
+
+    await expect(repository.listItems({ bundleId: 501, pageSize: 2 })).resolves.toMatchObject({
+      total: 3,
+      page: 1,
+      pageSize: 2,
+      nextCursor: 5,
+      list: [{ position: 5 }, { position: 7 }]
+    });
+    await expect(
+      repository.listItems({ bundleId: 501, beforePosition: 5, pageSize: 2 })
+    ).resolves.toMatchObject({
+      total: 3,
+      page: 2,
+      pageSize: 2,
+      nextCursor: null,
+      list: [{ position: 3 }]
+    });
+    expect(count).toHaveBeenNthCalledWith(3, {
+      where: { bundleId: 501, deletedAt: null, position: { gte: 5 } }
+    });
+  });
+
   it.each([
     ["creator", { createdByIdentityId: 71, favorites: [], deliveries: [] }],
     ["favorite", { createdByIdentityId: 999, favorites: [{ id: 1 }], deliveries: [] }],

@@ -97,7 +97,7 @@ describe("IM chat-record persistence", () => {
 
     expectedBackRelations.forEach(([model, field, type, relation]) => {
       const relationPattern = relation ? `\\s+@relation\\("${relation}"\\)` : "";
-      expect(modelBody(model)).toMatch(new RegExp(`${field}\\s+${type.replace(/[?\[\]]/g, "\\$&")}${relationPattern}`));
+      expect(modelBody(model)).toMatch(new RegExp(`${field}\\s+${type.replace(/[?[\]]/g, "\\$&")}${relationPattern}`));
     });
     [
       'sourceMessage  Message?           @relation("ImChatRecordSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)',

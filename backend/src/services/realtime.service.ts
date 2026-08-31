@@ -11,6 +11,7 @@ import type {
   CreateSocialPostInput,
   FriendRequestListInput,
   DirectorySearchInput,
+  DeleteMessagesForUserInput,
   ListMessagesInput,
   MessageReactionMutationInput,
   NotificationListInput,
@@ -332,6 +333,20 @@ export class RealtimeService implements OrderStatusNotificationPort {
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const deleted = await this.repository.deleteMessageForUser({
+      ...input,
+      userId: auth.userId,
+      identityId: scope.identityId
+    });
+    if (!deleted) throw this.notFoundError("error.realtime.message_not_found");
+    return deleted;
+  }
+
+  public async deleteMessagesForUser(
+    auth: AuthenticatedAccessContext,
+    input: Omit<DeleteMessagesForUserInput, "userId" | "identityId">
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const deleted = await this.repository.deleteMessagesForUser({
       ...input,
       userId: auth.userId,
       identityId: scope.identityId

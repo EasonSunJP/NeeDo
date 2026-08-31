@@ -10,6 +10,7 @@ import {
   SocialPostVisibility
 } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
+import { createHash, randomUUID } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import {
   compareMessageReactionCategories,
@@ -413,6 +414,22 @@ export interface DeleteMessageForUserPayload {
   deleted: true;
 }
 
+export interface DeleteMessagesForUserInput {
+  conversationId: number;
+  messageIds: number[];
+  idempotencyKey: string;
+  userId: number;
+  identityId?: number;
+}
+
+export interface DeleteMessagesForUserPayload {
+  conversationId: number;
+  messageIds: number[];
+  count: number;
+  deleted: true;
+  replayed: boolean;
+}
+
 export interface UpdateConversationPreferencesInput {
   conversationId: number;
   userId: number;
@@ -564,6 +581,9 @@ export interface RealtimeRepositoryPort {
   deleteMessageForUser: (
     input: DeleteMessageForUserInput
   ) => Promise<DeleteMessageForUserPayload | null>;
+  deleteMessagesForUser: (
+    input: DeleteMessagesForUserInput
+  ) => Promise<DeleteMessagesForUserPayload | null>;
   setMessageReaction: (
     input: MessageReactionMutationInput
   ) => Promise<MessageReactionMutationOutcome>;
@@ -1601,67 +1621,134 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   public async deleteMessageForUser(
     input: DeleteMessageForUserInput
   ): Promise<DeleteMessageForUserPayload | null> {
-    return this.client.$transaction(async (tx) => {
+    const result = await this.deleteMessagesForUser({
+      ...input,
+      messageIds: [input.messageId],
+      idempotencyKey: randomUUID()
+    });
+    if (!result) return null;
+    return {
+      conversationId: result.conversationId,
+      messageId: input.messageId,
+      deleted: true
+    };
+  }
+
+  public async deleteMessagesForUser(
+    input: DeleteMessagesForUserInput
+  ): Promise<DeleteMessagesForUserPayload | null> {
+    const identityId = input.identityId ?? input.userId;
+    const messageIds = [...new Set(input.messageIds)].sort((left, right) => left - right);
+    const requestFingerprint = createHash("sha256")
+      .update(JSON.stringify({ conversationId: input.conversationId, messageIds }))
+      .digest("hex");
+
+    try {
+      return await this.client.$transaction(async (tx) => {
       const participant = await tx.conversationParticipant.findFirst({
         where: {
           conversationId: input.conversationId,
-          identityId: input.identityId ?? input.userId,
+          identityId,
           deletedAt: null,
           conversation: { deletedAt: null }
         },
-        select: { createdAt: true }
+        select: { createdAt: true, clearedThroughMessageId: true }
       });
       if (!participant) return null;
-      const message = await tx.message.findFirst({
+      const messages = await tx.message.findMany({
         where: {
-          id: input.messageId,
+          id: {
+            in: messageIds,
+            ...(participant.clearedThroughMessageId
+              ? { gt: participant.clearedThroughMessageId }
+              : {})
+          },
           conversationId: input.conversationId,
           createdAt: { gte: participant.createdAt },
           deletedAt: null,
           conversation: {
             deletedAt: null,
             participants: {
-              some: { identityId: input.identityId ?? input.userId, deletedAt: null }
+              some: { identityId, deletedAt: null }
             }
           }
         },
         select: { id: true }
       });
-      if (!message) return null;
+      if (messages.length !== messageIds.length) return null;
 
-      await tx.messageUserDeletion.upsert({
+      const existing = await tx.imMessageBatchDeleteCommand.findUnique({
         where: {
-          identityId_messageId: {
-            identityId: input.identityId ?? input.userId,
-            messageId: input.messageId
+          ownerIdentityId_idempotencyKey: {
+            ownerIdentityId: identityId,
+            idempotencyKey: input.idempotencyKey
           }
-        },
-        create: {
+        }
+      });
+      if (existing) {
+        return this.resolveBatchDeleteReplay(existing, requestFingerprint);
+      }
+
+      for (const messageId of messageIds) {
+        await tx.messageUserDeletion.upsert({
+          where: { identityId_messageId: { identityId, messageId } },
+          create: {
+            conversationId: input.conversationId,
+            messageId,
+            userId: input.userId,
+            identityId
+          },
+          update: { deletedAt: null }
+        });
+      }
+
+      const storedResult = {
+        conversationId: input.conversationId,
+        messageIds,
+        count: messageIds.length,
+        deleted: true as const
+      };
+      await tx.imMessageBatchDeleteCommand.create({
+        data: {
           conversationId: input.conversationId,
-          messageId: input.messageId,
-          userId: input.userId,
-          identityId: input.identityId ?? input.userId
-        },
-        update: { deletedAt: null }
+          ownerUserId: input.userId,
+          ownerIdentityId: identityId,
+          idempotencyKey: input.idempotencyKey,
+          requestFingerprint,
+          resultJson: storedResult
+        }
       });
       await tx.auditLog.create({
         data: {
           actorId: input.userId,
-          action: "im.message.deleted_for_user",
-          targetType: "Message",
-          targetId: input.messageId,
+          action: "im.messages.deleted_for_user",
+          targetType: "Conversation",
+          targetId: input.conversationId,
           ip: null,
           userAgent: null,
-          metadata: { conversationId: input.conversationId }
+          metadata: {
+            conversationId: input.conversationId,
+            count: messageIds.length,
+            messageIds
+          }
         }
       });
 
-      return {
-        conversationId: input.conversationId,
-        messageId: input.messageId,
-        deleted: true
-      };
-    });
+        return { ...storedResult, replayed: false };
+      });
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) throw error;
+      const existing = await this.client.imMessageBatchDeleteCommand.findUnique({
+        where: {
+          ownerIdentityId_idempotencyKey: {
+            ownerIdentityId: identityId,
+            idempotencyKey: input.idempotencyKey
+          }
+        }
+      });
+      if (!existing) throw error;
+      return this.resolveBatchDeleteReplay(existing, requestFingerprint);
+    }
   }
 
   public async setMessageReaction(
@@ -4596,6 +4683,47 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return "system";
+  }
+
+  private resolveBatchDeleteReplay(
+    command: { requestFingerprint: string; resultJson: unknown },
+    requestFingerprint: string
+  ): DeleteMessagesForUserPayload {
+    if (command.requestFingerprint !== requestFingerprint) {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency_key_reused",
+        statusCode: 409
+      });
+    }
+    const result = this.jsonRecord(command.resultJson);
+    const conversationId = result?.conversationId;
+    const messageIds = this.jsonPositiveIntegerArray(result?.messageIds);
+    const count = result?.count;
+    if (
+      !Number.isSafeInteger(conversationId) ||
+      (conversationId as number) <= 0 ||
+      messageIds.length === 0 ||
+      count !== messageIds.length ||
+      result?.deleted !== true
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.internal",
+        statusCode: 500
+      });
+    }
+    return {
+      conversationId: conversationId as number,
+      messageIds,
+      count: messageIds.length,
+      deleted: true,
+      replayed: true
+    };
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 
   private socialPostConflict(message: string): AppError {
