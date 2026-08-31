@@ -61,6 +61,20 @@ export class ImChatRecordService {
   ) {
     const scope = await this.personalIdentityScope.resolve(auth);
     const normalizedIds = this.normalizeCommand(command);
+    const requestFingerprint = this.fingerprint({
+      commandType: "favorite",
+      createdByIdentityId: scope.identityId,
+      createdByUserId: auth.userId,
+      messageIds: normalizedIds,
+      sourceConversationId: command.sourceConversationId
+    });
+    const preflight = await this.repository.preflightCommand({
+      commandType: "favorite",
+      createdByIdentityId: scope.identityId,
+      idempotencyKey: command.idempotencyKey,
+      requestFingerprint
+    });
+    if (preflight?.commandType === "favorite") return preflight.result;
     const currentTime = this.now();
     const prepared = await this.prepareItems(
       command.sourceConversationId,
@@ -71,13 +85,7 @@ export class ImChatRecordService {
     const input: CreateChatRecordFavoritePersistenceInput = {
       commandType: "favorite",
       idempotencyKey: command.idempotencyKey,
-      requestFingerprint: this.fingerprint({
-        commandType: "favorite",
-        createdByIdentityId: scope.identityId,
-        createdByUserId: auth.userId,
-        messageIds: normalizedIds,
-        sourceConversationId: command.sourceConversationId
-      }),
+      requestFingerprint,
       publicId: this.createPublicId(),
       createdByUserId: auth.userId,
       createdByIdentityId: scope.identityId,
@@ -91,7 +99,9 @@ export class ImChatRecordService {
     };
 
     try {
-      return await this.repository.createFavorite(input);
+      const result = await this.repository.createFavorite(input);
+      if (result.replayed) await this.compensate(prepared.clones);
+      return result;
     } catch (error) {
       await this.compensate(prepared.clones);
       throw error;
@@ -108,6 +118,21 @@ export class ImChatRecordService {
     if (!Number.isInteger(command.targetConversationId) || command.targetConversationId <= 0) {
       throw this.validation("error.im.chat_record_target_invalid");
     }
+    const requestFingerprint = this.fingerprint({
+      commandType: "delivery",
+      createdByIdentityId: scope.identityId,
+      createdByUserId: auth.userId,
+      messageIds: normalizedIds,
+      sourceConversationId: command.sourceConversationId,
+      targetConversationId: command.targetConversationId
+    });
+    const preflight = await this.repository.preflightCommand({
+      commandType: "delivery",
+      createdByIdentityId: scope.identityId,
+      idempotencyKey: command.idempotencyKey,
+      requestFingerprint
+    });
+    if (preflight?.commandType === "delivery") return preflight.result;
     const currentTime = this.now();
     const prepared = await this.prepareItems(
       command.sourceConversationId,
@@ -118,14 +143,7 @@ export class ImChatRecordService {
     const input: CreateChatRecordDeliveryPersistenceInput = {
       commandType: "delivery",
       idempotencyKey: command.idempotencyKey,
-      requestFingerprint: this.fingerprint({
-        commandType: "delivery",
-        createdByIdentityId: scope.identityId,
-        createdByUserId: auth.userId,
-        messageIds: normalizedIds,
-        sourceConversationId: command.sourceConversationId,
-        targetConversationId: command.targetConversationId
-      }),
+      requestFingerprint,
       publicId: this.createPublicId(),
       createdByUserId: auth.userId,
       createdByIdentityId: scope.identityId,
@@ -142,6 +160,7 @@ export class ImChatRecordService {
     let result;
     try {
       result = await this.repository.createDelivery(input);
+      if (result.replayed) await this.compensate(prepared.clones);
     } catch (error) {
       await this.compensate(prepared.clones);
       throw error;

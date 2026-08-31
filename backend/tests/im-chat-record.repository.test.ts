@@ -190,6 +190,70 @@ describe("ImChatRecordRepository", () => {
     ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
   });
 
+  it("preflights exact delivery and favorite replays before any source transaction", async () => {
+    const deliveryReplay = {
+      ...bundle,
+      createdByIdentityId: 71,
+      deliveries: [
+        {
+          message,
+          conversation: { participants: [{ userId: 41, identityId: 71 }] }
+        }
+      ],
+      favorites: []
+    };
+    const favoriteReplay = {
+      ...bundle,
+      createdByIdentityId: 71,
+      deliveries: [],
+      favorites: [{ id: 601, createdAt: now }]
+    };
+    const replays = [deliveryReplay, favoriteReplay];
+    const findUnique = jest.fn(async () => replays.shift() ?? null);
+    const repository = new ImChatRecordRepository({
+      imChatRecordBundle: { findUnique }
+    } as never);
+
+    await expect(
+      repository.preflightCommand({
+        commandType: "delivery",
+        createdByIdentityId: 71,
+        idempotencyKey: "delivery-key",
+        requestFingerprint: "a".repeat(64)
+      })
+    ).resolves.toMatchObject({ commandType: "delivery", result: { replayed: true } });
+    await expect(
+      repository.preflightCommand({
+        commandType: "favorite",
+        createdByIdentityId: 71,
+        idempotencyKey: "favorite-key",
+        requestFingerprint: "a".repeat(64)
+      })
+    ).resolves.toMatchObject({ commandType: "favorite", result: { replayed: true } });
+    expect(findUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it("preflight rejects changed idempotency reuse without reading mutable source state", async () => {
+    const findUnique = jest.fn(async () => ({
+      ...bundle,
+      createdByIdentityId: 71,
+      deliveries: [],
+      favorites: [{ id: 601, createdAt: now }]
+    }));
+    const repository = new ImChatRecordRepository({
+      imChatRecordBundle: { findUnique }
+    } as never);
+
+    await expect(
+      repository.preflightCommand({
+        commandType: "favorite",
+        createdByIdentityId: 71,
+        idempotencyKey: "favorite-key",
+        requestFingerprint: "b".repeat(64)
+      })
+    ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
+  });
+
   it("recovers the winning exact replay after a concurrent unique-key race", async () => {
     const replay = {
       ...bundle,
@@ -395,7 +459,7 @@ describe("ImChatRecordRepository", () => {
         ownerUserId: 41,
         ownerIdentityId: 71,
         checksumSha256: "c".repeat(64),
-        url: ""
+        url: `/api/v1/im/chat-records/${bundle.publicId}/media/${"c".repeat(64)}`
       })
     });
     expect(tx.imChatRecordFavorite.create).toHaveBeenCalledWith({

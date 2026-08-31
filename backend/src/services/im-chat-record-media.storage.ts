@@ -153,7 +153,13 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
       for (const attempt of attempts.sort((left, right) => left.name.localeCompare(right.name))) {
         if (!attempt.isDirectory() || !/^[0-9a-f-]{36}$/u.test(attempt.name)) continue;
         const fileKey = `${checksumSha256}/${attempt.name}/${checksumSha256}.${metadata.extension}`;
-        const bytes = await readFile(this.targetPath(fileKey));
+        let bytes: Buffer;
+        try {
+          bytes = await readFile(this.targetPath(fileKey));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") continue;
+          throw error;
+        }
         if (
           createHash("sha256").update(bytes).digest("hex") === checksumSha256 &&
           metadata.matches(bytes)

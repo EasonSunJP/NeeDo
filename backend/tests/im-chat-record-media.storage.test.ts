@@ -1,4 +1,4 @@
-import { access, mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
@@ -73,6 +73,36 @@ describe("ImChatRecordMediaFileStorage", () => {
       await expect(
         storage.read(successfulAttempt.checksumSha256, "image/png")
       ).resolves.toMatchObject({ bytes: png });
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it("continues to an alternate same-checksum copy when an earlier attempt disappears", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "needo-chat-record-media-disappeared-"));
+    const source = join(parent, "im");
+    const target = join(parent, "records");
+    await mkdir(source);
+    await writeFile(join(source, "source.png"), png);
+    const storage = new ImChatRecordMediaFileStorage({
+      directory: target,
+      sourceRoots: [{ directory: source, publicBaseUrl: "/media/im" }]
+    });
+
+    try {
+      const copies = await Promise.all([
+        storage.clone("/media/im/source.png", "image/png"),
+        storage.clone("/media/im/source.png", "image/png")
+      ]);
+      const [disappeared, alternate] = copies.sort((left, right) =>
+        left.fileKey.localeCompare(right.fileKey)
+      );
+      await unlink(join(target, disappeared!.fileKey));
+
+      await expect(storage.read(alternate!.checksumSha256, "image/png")).resolves.toMatchObject({
+        bytes: png,
+        checksumSha256: alternate!.checksumSha256
+      });
     } finally {
       await rm(parent, { recursive: true, force: true });
     }

@@ -47,7 +47,27 @@ const titleCases: ReadonlyArray<readonly [readonly string[], "single" | "pair" |
   [["A", "B", "C"], "group"]
 ];
 
+const replayUnavailableCases: ReadonlyArray<readonly [string, Partial<ChatRecordSourceMessage>]> = [
+  ["recalled", { recalledAt: now }],
+  ["expired", { expiresAt: now }],
+  ["deleted", { deletedAt: now }],
+  [
+    "source-media-missing",
+    {
+      metadata: {
+        needoMessageType: "image",
+        needoMessageExt: {
+          fileSize: 16,
+          mimeType: "image/png",
+          url: "/media/im/missing.png"
+        }
+      }
+    }
+  ]
+];
+
 const repositoryFixture = (): jest.Mocked<ImChatRecordRepositoryPort> => ({
+  preflightCommand: jest.fn(async () => null),
   readSourceMessages: jest.fn(async () => []),
   createDelivery: jest.fn(async (input) => ({
     replayed: false,
@@ -141,6 +161,144 @@ const createFixture = () => {
 };
 
 describe("ImChatRecordService", () => {
+  it.each(replayUnavailableCases)(
+    "returns an exact favorite replay before checking %s mutable source state",
+    async (_state, sourceOverride) => {
+      const fixture = createFixture();
+      const replay = {
+        replayed: true,
+        favorite: {
+          id: 601,
+          bundlePublicId: "11111111-1111-4111-8111-111111111111",
+          title: "A",
+          preview: "A: message 1",
+          senderCount: 1,
+          itemCount: 1,
+          createdAt: now
+        }
+      };
+      fixture.repository.preflightCommand.mockResolvedValue({
+        commandType: "favorite",
+        result: replay
+      });
+      fixture.repository.readSourceMessages.mockResolvedValue([
+        sourceMessage(1, "A", sourceOverride)
+      ]);
+      fixture.mediaStorage.clone.mockRejectedValue(new Error("media missing"));
+
+      await expect(
+        fixture.service.createFavorite(auth, context, {
+          idempotencyKey: "favorite-replay",
+          messageIds: [1],
+          sourceConversationId: 91
+        })
+      ).resolves.toEqual(replay);
+
+      expect(fixture.repository.preflightCommand).toHaveBeenCalledWith({
+        commandType: "favorite",
+        createdByIdentityId: 71,
+        idempotencyKey: "favorite-replay",
+        requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      });
+      expect(fixture.repository.readSourceMessages).not.toHaveBeenCalled();
+      expect(fixture.mediaStorage.clone).not.toHaveBeenCalled();
+      expect(fixture.repository.createFavorite).not.toHaveBeenCalled();
+      expect(fixture.mediaStorage.delete).not.toHaveBeenCalled();
+    }
+  );
+
+  it("returns an exact delivery replay before mutable source reads and realtime publication", async () => {
+    const fixture = createFixture();
+    const replay = {
+      ...(await repositoryFixture().createDelivery({
+        createdByUserId: 41,
+        items: [{}],
+        previewSnapshot: "A: message 1",
+        publicId: "11111111-1111-4111-8111-111111111111",
+        senderNamesSnapshot: ["A"],
+        targetConversationId: 99,
+        titleSnapshot: "A"
+      } as never)),
+      replayed: true
+    };
+    fixture.repository.preflightCommand.mockResolvedValue({
+      commandType: "delivery",
+      result: replay
+    });
+
+    await expect(
+      fixture.service.createDelivery(auth, context, {
+        idempotencyKey: "delivery-replay",
+        messageIds: [1],
+        sourceConversationId: 91,
+        targetConversationId: 99
+      })
+    ).resolves.toEqual(replay);
+
+    expect(fixture.repository.readSourceMessages).not.toHaveBeenCalled();
+    expect(fixture.repository.createDelivery).not.toHaveBeenCalled();
+    expect(fixture.eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("returns changed-payload idempotency conflict before unavailable source state", async () => {
+    const fixture = createFixture();
+    fixture.repository.preflightCommand.mockRejectedValue(
+      Object.assign(new Error("error.idempotency_key_reused"), { statusCode: 409 })
+    );
+    fixture.repository.readSourceMessages.mockRejectedValue(new Error("source unavailable"));
+
+    await expect(
+      fixture.service.createFavorite(auth, context, {
+        idempotencyKey: "reused-key",
+        messageIds: [2],
+        sourceConversationId: 91
+      })
+    ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
+    expect(fixture.repository.readSourceMessages).not.toHaveBeenCalled();
+    expect(fixture.mediaStorage.clone).not.toHaveBeenCalled();
+  });
+
+  it("compensates every private clone when a concurrent P2002 winner returns a replay", async () => {
+    const fixture = createFixture();
+    fixture.repository.readSourceMessages.mockResolvedValue([
+      sourceMessage(1, "A", {
+        metadata: {
+          needoMessageType: "image",
+          needoMessageExt: {
+            fileSize: 16,
+            mimeType: "image/png",
+            url: "/media/im/source.png"
+          }
+        }
+      })
+    ]);
+    fixture.repository.createFavorite.mockImplementation(async (input) => ({
+      replayed: true,
+      favorite: {
+        id: 602,
+        bundlePublicId: "22222222-2222-4222-8222-222222222222",
+        title: input.titleSnapshot,
+        preview: input.previewSnapshot,
+        senderCount: input.senderNamesSnapshot.length,
+        itemCount: input.items.length,
+        createdAt: now
+      }
+    }));
+
+    await expect(
+      fixture.service.createFavorite(auth, context, {
+        idempotencyKey: "p2002-loser",
+        messageIds: [1],
+        sourceConversationId: 91
+      })
+    ).resolves.toMatchObject({ replayed: true, favorite: { id: 602 } });
+
+    expect(fixture.mediaStorage.clone).toHaveBeenCalledTimes(1);
+    expect(fixture.mediaStorage.delete).toHaveBeenCalledWith(
+      `${"a".repeat(64)}/11111111-1111-4111-8111-111111111111/${"a".repeat(64)}.png`
+    );
+  });
+
   it.each(titleCases)("derives %s sender title kind", async (names, titleKind) => {
     const fixture = createFixture();
     fixture.repository.readSourceMessages.mockResolvedValue(

@@ -137,6 +137,17 @@ export interface ChatRecordFavoriteCreationPayload {
   favorite: ChatRecordFavoritePayload;
 }
 
+export interface ChatRecordCommandPreflightInput {
+  commandType: ChatRecordCommandType;
+  createdByIdentityId: number;
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
+export type ChatRecordCommandPreflightResult =
+  | { commandType: "delivery"; result: ChatRecordDeliveryPayload }
+  | { commandType: "favorite"; result: ChatRecordFavoriteCreationPayload };
+
 export interface AuthorizedChatRecordMedia {
   publicId: string;
   checksumSha256: string;
@@ -145,6 +156,9 @@ export interface AuthorizedChatRecordMedia {
 }
 
 export interface ImChatRecordRepositoryPort {
+  preflightCommand(
+    input: ChatRecordCommandPreflightInput
+  ): Promise<ChatRecordCommandPreflightResult | null>;
   readSourceMessages(input: {
     conversationId: number;
     identityId: number;
@@ -298,6 +312,23 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
       hiddenForViewer: false,
       disappearing: message.privacyPolicyVersionAtSend !== null
     }));
+  }
+
+  public async preflightCommand(
+    input: ChatRecordCommandPreflightInput
+  ): Promise<ChatRecordCommandPreflightResult | null> {
+    const replay = await this.findCommandReplay(this.client, input);
+    if (!replay) return null;
+    if (input.commandType === "delivery") {
+      return {
+        commandType: "delivery",
+        result: this.toDeliveryReplay(replay, input.requestFingerprint)
+      };
+    }
+    return {
+      commandType: "favorite",
+      result: this.toFavoriteReplay(replay, input.requestFingerprint)
+    };
   }
 
   public async createDelivery(
@@ -613,7 +644,10 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
 
   private findCommandReplay(
     transaction: TransactionClient | PrismaClient,
-    input: CreateChatRecordPersistenceBase
+    input: Pick<
+      ChatRecordCommandPreflightInput,
+      "commandType" | "createdByIdentityId" | "idempotencyKey"
+    >
   ) {
     return transaction.imChatRecordBundle.findUnique({
       where: {
@@ -701,7 +735,7 @@ export class ImChatRecordRepository implements ImChatRecordRepositoryPort {
             entityId: item.id,
             ownerUserId: input.createdByUserId,
             ownerIdentityId: input.createdByIdentityId,
-            url: "",
+            url: `/api/v1/im/chat-records/${input.publicId}/media/${source.media.checksumSha256}`,
             mimeType: source.media.mimeType,
             usageType: "im_chat_record",
             sortOrder: source.position,
