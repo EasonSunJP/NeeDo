@@ -24,6 +24,7 @@ describe("backend shutdown", () => {
     shutdown("SIGINT");
     shutdown("SIGTERM");
 
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(stopWorker).toHaveBeenCalledTimes(1);
     expect(closeServer).toHaveBeenCalledTimes(1);
 
@@ -34,5 +35,30 @@ describe("backend shutdown", () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
     expect(exit).toHaveBeenCalledWith(0);
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("waits for the bounded worker stop before closing shared dependencies", async () => {
+    let finishWorker: (() => void) | undefined;
+    const stopWorker = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWorker = resolve;
+        })
+    );
+    const closeServer = jest.fn();
+    const shutdown = createShutdownHandler({
+      closeServer,
+      disconnect: jest.fn(async () => undefined),
+      exit: jest.fn(),
+      logger: { error: jest.fn(), info: jest.fn() },
+      stopWorker
+    });
+
+    shutdown("SIGTERM");
+    await Promise.resolve();
+    expect(closeServer).not.toHaveBeenCalled();
+    finishWorker?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(closeServer).toHaveBeenCalledTimes(1);
   });
 });

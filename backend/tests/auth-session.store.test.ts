@@ -555,4 +555,38 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     expect(client.values.has("auth:v2:login:account:fail:7")).toBe(false);
     expect(client.values.has("auth:v2:login:account:lock:7")).toBe(false);
   });
+
+  it("rejects non-exact audit ACK and DLQ script responses", async () => {
+    let evalCount = 0;
+    const client = {
+      isOpen: true,
+      withCommandOptions: jest.fn(function (this: unknown) {
+        return this;
+      }),
+      eval: jest.fn(async () => {
+        evalCount += 1;
+        return evalCount === 1 ? ["rejected"] : ["ok", "unexpected"];
+      })
+    };
+    const store = new RedisAuthSessionStore(() => client as never);
+
+    await expect(
+      store.acknowledgeMerchantShopSwitchAuditOutbox({
+        kind: "completion",
+        streamId: "1-0",
+        auditId: 91,
+        operationId: "operation-91",
+        status: "completed",
+        deliveryCount: 1
+      })
+    ).rejects.toMatchObject({ code: 50301 });
+    await expect(
+      store.deadLetterMerchantShopSwitchAuditOutbox({
+        kind: "poison",
+        streamId: "2-0",
+        reason: "invalid_completion_event",
+        deliveryCount: 1
+      })
+    ).rejects.toMatchObject({ code: 50301 });
+  });
 });

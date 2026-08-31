@@ -11,6 +11,11 @@ export interface RedisEnvConfig {
 
 export type RedisClient = ReturnType<typeof createClient>;
 
+interface RedisClientRuntimeOptions {
+  disableOfflineQueue?: boolean;
+  commandsQueueMaxLength?: number;
+}
+
 export interface RedisHealthClient {
   isOpen: boolean;
   connect: () => Promise<unknown>;
@@ -55,9 +60,13 @@ const createReconnectStrategy =
     );
   };
 
-export const createRedisClient = (config: RedisEnvConfig = env): RedisClient =>
+export const createRedisClient = (
+  config: RedisEnvConfig = env,
+  options: RedisClientRuntimeOptions = {}
+): RedisClient =>
   createClient({
     url: config.REDIS_URL,
+    ...options,
     socket: {
       connectTimeout: config.REDIS_CONNECT_TIMEOUT_MS,
       reconnectStrategy: createReconnectStrategy(config)

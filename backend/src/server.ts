@@ -66,9 +66,33 @@ const authSessionStore = new RedisAuthSessionStore(undefined, {
   }
 });
 const merchantShopAuditOutboxWorker = new MerchantShopAuditOutboxWorker(
-  new MerchantShopAuditOutboxService(authRepository, authSessionStore),
+  () => {
+    const redisClient = createRedisClient(env, {
+      disableOfflineQueue: true,
+      commandsQueueMaxLength: 100
+    });
+    redisClient.on("error", (error) => {
+      logger.error({ error }, "Merchant shop audit outbox Redis connection error");
+    });
+    const sessionStore = new RedisAuthSessionStore(() => redisClient, {
+      onSecurityEvent: (event) => {
+        logger.error(event, "Merchant shop audit outbox receipt post-state mismatch");
+      }
+    });
+    return {
+      service: new MerchantShopAuditOutboxService(authRepository, sessionStore),
+      destroy: () => {
+        if (redisClient.isOpen) redisClient.destroy();
+      }
+    };
+  },
   logger,
-  env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_INTERVAL_MS
+  env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_INTERVAL_MS,
+  1_000,
+  {
+    drainTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_DRAIN_TIMEOUT_MS,
+    shutdownTimeoutMs: env.AUTH_MERCHANT_SHOP_AUDIT_OUTBOX_SHUTDOWN_TIMEOUT_MS
+  }
 );
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
@@ -177,7 +201,7 @@ const shutdown = createShutdownHandler({
   },
   exit: (code) => process.exit(code),
   logger,
-  stopWorker: () => {
+  stopWorker: async () => {
     void realtimeEventGateway.close().catch((error) => {
       logger.error({ error }, "Realtime gateway shutdown failed");
     });
@@ -189,7 +213,7 @@ const shutdown = createShutdownHandler({
     friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
-    merchantShopAuditOutboxWorker.stop();
+    await merchantShopAuditOutboxWorker.stop();
   }
 });
 

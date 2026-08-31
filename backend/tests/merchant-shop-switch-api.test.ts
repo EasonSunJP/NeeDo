@@ -91,9 +91,12 @@ class SessionStore {
     return { status: "committed" as const };
   }
   public async readMerchantShopSwitchAuditOutbox() {
-    return this.merchantShopAuditOutbox
-      .filter((entry) => !entry.acknowledged)
-      .map((entry) => ({ ...entry, kind: "completion" as const }));
+    return {
+      items: this.merchantShopAuditOutbox
+        .filter((entry) => !entry.acknowledged)
+        .map((entry) => ({ ...entry, kind: "completion" as const, deliveryCount: 1 })),
+      nextPendingCursor: "0-0"
+    };
   }
   public async acknowledgeMerchantShopSwitchAuditOutbox(input: { streamId: string }) {
     const event = this.merchantShopAuditOutbox.find((entry) => entry.streamId === input.streamId);

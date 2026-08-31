@@ -388,23 +388,32 @@ describeRedis("Redis auth-store Lua integration", () => {
       status: "completed"
     });
 
-    await expect(sessionStore.readMerchantShopSwitchAuditOutbox()).resolves.toEqual([
-      {
-        kind: "completion",
-        streamId: String(event?.id),
-        auditId: 91002,
-        operationId,
-        status: "completed"
-      }
-    ]);
+    await expect(
+      sessionStore.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" })
+    ).resolves.toEqual({
+      items: [
+        {
+          kind: "completion",
+          streamId: String(event?.id),
+          auditId: 91002,
+          operationId,
+          status: "completed",
+          deliveryCount: 1
+        }
+      ],
+      nextPendingCursor: "0-0"
+    });
     await sessionStore.acknowledgeMerchantShopSwitchAuditOutbox({
       kind: "completion",
       streamId: String(event?.id),
       auditId: 91002,
       operationId,
-      status: "completed"
+      status: "completed",
+      deliveryCount: 1
     });
-    await expect(sessionStore.readMerchantShopSwitchAuditOutbox()).resolves.toEqual([]);
+    await expect(
+      sessionStore.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" })
+    ).resolves.toEqual({ items: [], nextPendingCursor: "0-0" });
     await expect(client!.xLen(switchOutboxKey)).resolves.toBe(outboxLengthBefore);
     await expect(client!.hGet(switchReceiptKey(operationId), "auditState")).resolves.toBe(
       "completed"
@@ -499,12 +508,16 @@ describeRedis("Redis auth-store Lua integration", () => {
       status: "completed"
     });
 
-    await expect(firstConsumer.readMerchantShopSwitchAuditOutbox()).resolves.toEqual([
-      expect.objectContaining({ kind: "completion", streamId: completionId })
-    ]);
-    await expect(takeoverConsumer.readMerchantShopSwitchAuditOutbox()).resolves.toEqual([
-      expect.objectContaining({ kind: "completion", streamId: completionId })
-    ]);
+    await expect(
+      firstConsumer.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" })
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ kind: "completion", streamId: completionId })]
+    });
+    await expect(
+      takeoverConsumer.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" })
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ kind: "completion", streamId: completionId })]
+    });
 
     const completeAudit = jest
       .fn<Promise<boolean>, []>()
@@ -547,6 +560,118 @@ describeRedis("Redis auth-store Lua integration", () => {
         })
       })
     ]);
+  });
+
+  it("walks more than one pending batch fairly, wraps the claim cursor, and bounds deterministic failures", async () => {
+    const outboxKey = `${switchOutboxKey}:cursor`;
+    const deadLetterKey = `${outboxKey}:dlq`;
+    const group = `${marker}-cursor-group`;
+    extraKeys.push(outboxKey, deadLetterKey);
+    const sourceConsumer = new RedisAuthSessionStore(() => client!, {
+      merchantShopAuditOutboxKey: outboxKey,
+      merchantShopAuditDeadLetterKey: deadLetterKey,
+      merchantShopAuditGroup: group,
+      merchantShopAuditConsumer: `${marker}-cursor-source`,
+      merchantShopAuditClaimIdleMs: 60_000,
+      merchantShopAuditBatchSize: 2
+    });
+    const takeoverConsumer = new RedisAuthSessionStore(() => client!, {
+      merchantShopAuditOutboxKey: outboxKey,
+      merchantShopAuditDeadLetterKey: deadLetterKey,
+      merchantShopAuditGroup: group,
+      merchantShopAuditConsumer: `${marker}-cursor-takeover`,
+      merchantShopAuditClaimIdleMs: 0,
+      merchantShopAuditBatchSize: 2
+    });
+    const ids = await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        client!.xAdd(outboxKey, "*", {
+          auditId: String(93_001 + index),
+          operationId: `${marker}-cursor-${index}`,
+          status: "completed"
+        })
+      )
+    );
+    await sourceConsumer.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" });
+    await sourceConsumer.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" });
+    await sourceConsumer.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" });
+
+    const completeAudit = jest.fn(async (input: { auditId: number }) => input.auditId !== 93_001);
+    const service = new MerchantShopAuditOutboxService(
+      { completeMerchantShopSwitchAudit: completeAudit as never },
+      takeoverConsumer,
+      { maxPagesPerDrain: 1, maxDeliveryAttempts: 3 }
+    );
+
+    await expect(service.drain()).resolves.toMatchObject({ read: 2, completed: 1, failed: 1 });
+    await expect(service.drain()).resolves.toMatchObject({ read: 2, completed: 2, failed: 0 });
+    await expect(service.drain()).resolves.toMatchObject({ read: 1, completed: 1, failed: 0 });
+    await expect(client!.xRange(outboxKey, "-", "+")).resolves.toEqual([
+      expect.objectContaining({ id: ids[0] })
+    ]);
+    await expect(service.drain()).resolves.toMatchObject({
+      read: 1,
+      completed: 0,
+      failed: 0,
+      deadLettered: 1,
+      streamLength: 0,
+      pendingCount: 0,
+      deadLetterLength: 1
+    });
+    expect(completeAudit.mock.calls.map(([input]) => input.auditId)).toEqual([
+      93_001, 93_002, 93_003, 93_004, 93_005, 93_001
+    ]);
+  });
+
+  it("keeps messages pending when ACK or DLQ preconditions reject with WRONGTYPE", async () => {
+    const outboxKey = `${switchOutboxKey}:strict-response`;
+    const deadLetterKey = `${outboxKey}:dlq`;
+    const group = `${marker}-strict-response-group`;
+    const operationId = `${marker}-strict-response`;
+    const receiptKey = switchReceiptKey(operationId);
+    extraKeys.push(outboxKey, deadLetterKey, receiptKey);
+    const store = new RedisAuthSessionStore(() => client!, {
+      merchantShopAuditOutboxKey: outboxKey,
+      merchantShopAuditDeadLetterKey: deadLetterKey,
+      merchantShopAuditGroup: group,
+      merchantShopAuditConsumer: `${marker}-strict-response-consumer`,
+      merchantShopAuditClaimIdleMs: 0
+    });
+    const streamId = await client!.xAdd(outboxKey, "*", {
+      auditId: "94001",
+      operationId,
+      status: "completed"
+    });
+    const page = await store.readMerchantShopSwitchAuditOutbox({ pendingCursor: "0-0" });
+    const event = page.items[0];
+    expect(event).toMatchObject({ kind: "completion", streamId });
+    if (!event || event.kind !== "completion") throw new Error("completion event was not read");
+
+    await client!.set(receiptKey, "wrong-type");
+    await expect(store.acknowledgeMerchantShopSwitchAuditOutbox(event)).rejects.toMatchObject({
+      code: 50301,
+      statusCode: 503
+    });
+    await expect(store.getMerchantShopSwitchAuditOutboxStats()).resolves.toMatchObject({
+      streamLength: 1,
+      pendingCount: 1
+    });
+
+    await client!.set(deadLetterKey, "wrong-type");
+    await expect(
+      store.deadLetterMerchantShopSwitchAuditOutbox({
+        kind: "poison",
+        streamId,
+        reason: "invalid_completion_event",
+        deliveryCount: event.deliveryCount
+      })
+    ).rejects.toMatchObject({ code: 50301, statusCode: 503 });
+    await expect(store.getMerchantShopSwitchAuditOutboxStats()).rejects.toMatchObject({
+      code: 50301,
+      statusCode: 503
+    });
+    await expect(client!.xLen(outboxKey)).resolves.toBe(1);
+    await expect(client!.xPending(outboxKey, group)).resolves.toMatchObject({ pending: 1 });
   });
 
   it("reacquires Redis after a real connection failure and bounds continuous uncertainty", async () => {

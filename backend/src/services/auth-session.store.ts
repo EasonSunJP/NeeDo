@@ -28,12 +28,14 @@ export interface MerchantShopSwitchAuditOutboxEvent {
   auditId: number;
   operationId: string;
   status: "completed";
+  deliveryCount: number;
 }
 
 export interface MerchantShopSwitchAuditPoisonEvent {
   kind: "poison";
   streamId: string;
   reason: string;
+  deliveryCount: number;
 }
 
 export type MerchantShopSwitchAuditOutboxItem =
@@ -44,6 +46,19 @@ export interface MerchantShopSwitchAuditOutboxStats {
   streamLength: number;
   pendingCount: number;
   deadLetterLength: number;
+}
+
+export interface MerchantShopSwitchAuditOutboxCommandOptions {
+  abortSignal?: AbortSignal;
+}
+
+export interface MerchantShopSwitchAuditOutboxReadOptions extends MerchantShopSwitchAuditOutboxCommandOptions {
+  pendingCursor: string;
+}
+
+export interface MerchantShopSwitchAuditOutboxReadPage {
+  items: MerchantShopSwitchAuditOutboxItem[];
+  nextPendingCursor: string;
 }
 
 export interface AuthSessionStore {
@@ -93,14 +108,20 @@ export interface AuthSessionStore {
     auditId: number;
     receiptTtlSeconds: number;
   }) => Promise<MerchantShopSwitchCommitResult>;
-  readMerchantShopSwitchAuditOutbox?: () => Promise<MerchantShopSwitchAuditOutboxItem[]>;
+  readMerchantShopSwitchAuditOutbox?: (
+    options: MerchantShopSwitchAuditOutboxReadOptions
+  ) => Promise<MerchantShopSwitchAuditOutboxReadPage>;
   acknowledgeMerchantShopSwitchAuditOutbox?: (
-    event: MerchantShopSwitchAuditOutboxEvent
+    event: MerchantShopSwitchAuditOutboxEvent,
+    options?: MerchantShopSwitchAuditOutboxCommandOptions
   ) => Promise<void>;
   deadLetterMerchantShopSwitchAuditOutbox?: (
-    event: MerchantShopSwitchAuditPoisonEvent
+    event: MerchantShopSwitchAuditPoisonEvent,
+    options?: MerchantShopSwitchAuditOutboxCommandOptions
   ) => Promise<void>;
-  getMerchantShopSwitchAuditOutboxStats?: () => Promise<MerchantShopSwitchAuditOutboxStats>;
+  getMerchantShopSwitchAuditOutboxStats?: (
+    options?: MerchantShopSwitchAuditOutboxCommandOptions
+  ) => Promise<MerchantShopSwitchAuditOutboxStats>;
   completeGoogleUnlink?: (input: {
     userId: number;
     challengeId: string;
@@ -370,69 +391,99 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     throw this.redisUnavailableError(lastError);
   }
 
-  public async readMerchantShopSwitchAuditOutbox(): Promise<MerchantShopSwitchAuditOutboxItem[]> {
-    const client = await this.connect();
+  public async readMerchantShopSwitchAuditOutbox(
+    options: MerchantShopSwitchAuditOutboxReadOptions
+  ): Promise<MerchantShopSwitchAuditOutboxReadPage> {
+    const client = await this.connectMerchantShopAuditOutbox(options.abortSignal);
     try {
-      await this.withRedisUnavailableGuard(() =>
-        client.xGroupCreate(this.merchantShopAuditOutboxKey, this.merchantShopAuditGroup, "0", {
-          MKSTREAM: true
-        })
-      );
+      await client.xGroupCreate(this.merchantShopAuditOutboxKey, this.merchantShopAuditGroup, "0", {
+        MKSTREAM: true
+      });
     } catch (error) {
-      if (!this.isBusyGroupError(error)) throw error;
+      if (!this.isBusyGroupError(error)) throw this.redisUnavailableError(error);
     }
 
-    const claimed = await this.withRedisUnavailableGuard(() =>
-      client.xAutoClaim(
+    try {
+      const claimed = await client.xAutoClaim(
         this.merchantShopAuditOutboxKey,
         this.merchantShopAuditGroup,
         this.merchantShopAuditConsumer,
         this.merchantShopAuditClaimIdleMs,
-        "0-0",
+        options.pendingCursor,
         { COUNT: this.merchantShopAuditBatchSize }
-      )
-    );
-    const pending = claimed.messages.flatMap((message) =>
-      message
-        ? [{ id: String(message.id), message: message.message as Record<string, string> }]
-        : []
-    );
-    const fresh = await this.readMerchantShopSwitchAuditMessages(client, ">");
-    const messages = [...pending, ...fresh];
-    return messages.map(({ id, message }): MerchantShopSwitchAuditOutboxItem => {
-      const auditId = Number.parseInt(message.auditId ?? "", 10);
-      if (
-        !Number.isSafeInteger(auditId) ||
-        auditId <= 0 ||
-        !message.operationId ||
-        message.status !== "completed"
-      ) {
-        return { kind: "poison", streamId: id, reason: "invalid_completion_event" };
-      }
+      );
+      const pending = claimed.messages.flatMap((message) =>
+        message
+          ? [{ id: String(message.id), message: message.message as Record<string, string> }]
+          : []
+      );
+      const fresh = await this.readMerchantShopSwitchAuditMessages(client, ">");
+      const messages = [...pending, ...fresh];
+      const deliveryCounts = await Promise.all(
+        messages.map(async ({ id }) => {
+          const entries = await client.xPendingRange(
+            this.merchantShopAuditOutboxKey,
+            this.merchantShopAuditGroup,
+            id,
+            id,
+            1
+          );
+          return Math.max(1, Number(entries[0]?.deliveriesCounter ?? 1));
+        })
+      );
       return {
-        kind: "completion",
-        streamId: id,
-        auditId,
-        operationId: message.operationId,
-        status: "completed" as const
+        items: messages.map(({ id, message }, index): MerchantShopSwitchAuditOutboxItem => {
+          const deliveryCount = deliveryCounts[index] ?? 1;
+          const auditId = Number.parseInt(message.auditId ?? "", 10);
+          if (
+            !Number.isSafeInteger(auditId) ||
+            auditId <= 0 ||
+            !message.operationId ||
+            message.status !== "completed"
+          ) {
+            return {
+              kind: "poison",
+              streamId: id,
+              reason: "invalid_completion_event",
+              deliveryCount
+            };
+          }
+          return {
+            kind: "completion",
+            streamId: id,
+            auditId,
+            operationId: message.operationId,
+            status: "completed" as const,
+            deliveryCount
+          };
+        }),
+        nextPendingCursor: String(claimed.nextId)
       };
-    });
+    } catch (error) {
+      throw this.redisUnavailableError(error);
+    }
   }
 
   public async acknowledgeMerchantShopSwitchAuditOutbox(
-    event: MerchantShopSwitchAuditOutboxEvent
+    event: MerchantShopSwitchAuditOutboxEvent,
+    options: MerchantShopSwitchAuditOutboxCommandOptions = {}
   ): Promise<void> {
-    await this.eval(
+    const response = await this.evalMerchantShopAuditOutbox(
       MERCHANT_SHOP_SWITCH_AUDIT_ACK_LUA,
       [this.merchantShopAuditOutboxKey, this.merchantShopSwitchReceiptKey(event.operationId)],
-      [this.merchantShopAuditGroup, event.streamId, event.operationId]
+      [this.merchantShopAuditGroup, event.streamId, event.operationId],
+      options.abortSignal
     );
+    if (!this.isExactOkResponse(response)) {
+      throw this.redisUnavailableError(new Error("Audit ACK rejected"));
+    }
   }
 
   public async deadLetterMerchantShopSwitchAuditOutbox(
-    event: MerchantShopSwitchAuditPoisonEvent
+    event: MerchantShopSwitchAuditPoisonEvent,
+    options: MerchantShopSwitchAuditOutboxCommandOptions = {}
   ): Promise<void> {
-    const response = await this.eval(
+    const response = await this.evalMerchantShopAuditOutbox(
       MERCHANT_SHOP_SWITCH_AUDIT_DEAD_LETTER_LUA,
       [this.merchantShopAuditOutboxKey, this.merchantShopAuditDeadLetterKey],
       [
@@ -440,21 +491,28 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         event.streamId,
         event.reason,
         String(this.merchantShopAuditDeadLetterMaxLength)
-      ]
+      ],
+      options.abortSignal
     );
-    if (response[0] !== "ok") throw this.redisUnavailableError(new Error("DLQ write rejected"));
+    if (!this.isExactOkResponse(response)) {
+      throw this.redisUnavailableError(new Error("DLQ write rejected"));
+    }
   }
 
-  public async getMerchantShopSwitchAuditOutboxStats(): Promise<MerchantShopSwitchAuditOutboxStats> {
-    const client = await this.connect();
-    const [streamLength, pending, deadLetterLength] = await Promise.all([
-      this.withRedisUnavailableGuard(() => client.xLen(this.merchantShopAuditOutboxKey)),
-      this.withRedisUnavailableGuard(() =>
-        client.xPending(this.merchantShopAuditOutboxKey, this.merchantShopAuditGroup)
-      ),
-      this.withRedisUnavailableGuard(() => client.xLen(this.merchantShopAuditDeadLetterKey))
-    ]);
-    return { streamLength, pendingCount: pending.pending, deadLetterLength };
+  public async getMerchantShopSwitchAuditOutboxStats(
+    options: MerchantShopSwitchAuditOutboxCommandOptions = {}
+  ): Promise<MerchantShopSwitchAuditOutboxStats> {
+    const client = await this.connectMerchantShopAuditOutbox(options.abortSignal);
+    try {
+      const [streamLength, pending, deadLetterLength] = await Promise.all([
+        client.xLen(this.merchantShopAuditOutboxKey),
+        client.xPending(this.merchantShopAuditOutboxKey, this.merchantShopAuditGroup),
+        client.xLen(this.merchantShopAuditDeadLetterKey)
+      ]);
+      return { streamLength, pendingCount: pending.pending, deadLetterLength };
+    } catch (error) {
+      throw this.redisUnavailableError(error);
+    }
   }
 
   public async completeGoogleUnlink(input: {
@@ -557,6 +615,39 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     return Array.isArray(response) ? response.map((value) => String(value)) : [];
   }
 
+  private async connectMerchantShopAuditOutbox(abortSignal?: AbortSignal): Promise<RedisClient> {
+    const client = this.getClient();
+    try {
+      if (abortSignal?.aborted) throw abortSignal.reason;
+      if (!client.isOpen) await client.connect();
+      return client.withCommandOptions({
+        abortSignal,
+        timeout: this.operationTimeoutMs
+      }) as RedisClient;
+    } catch (error) {
+      throw this.redisUnavailableError(error);
+    }
+  }
+
+  private async evalMerchantShopAuditOutbox(
+    script: string,
+    keys: string[],
+    args: string[],
+    abortSignal?: AbortSignal
+  ): Promise<string[]> {
+    const client = await this.connectMerchantShopAuditOutbox(abortSignal);
+    try {
+      const response = await client.eval(script, { keys, arguments: args });
+      return Array.isArray(response) ? response.map((value) => String(value)) : [];
+    } catch (error) {
+      throw this.redisUnavailableError(error);
+    }
+  }
+
+  private isExactOkResponse(response: string[]): boolean {
+    return response.length === 1 && response[0] === "ok";
+  }
+
   private async evalWithTimeout(
     script: string,
     keys: string[],
@@ -582,13 +673,11 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     client: RedisClient,
     id: "0" | ">"
   ): Promise<Array<{ id: string; message: Record<string, string> }>> {
-    const response = await this.withRedisUnavailableGuard(() =>
-      client.xReadGroup(
-        this.merchantShopAuditGroup,
-        this.merchantShopAuditConsumer,
-        { key: this.merchantShopAuditOutboxKey, id },
-        { COUNT: this.merchantShopAuditBatchSize }
-      )
+    const response = await client.xReadGroup(
+      this.merchantShopAuditGroup,
+      this.merchantShopAuditConsumer,
+      { key: this.merchantShopAuditOutboxKey, id },
+      { COUNT: this.merchantShopAuditBatchSize }
     );
     const streams = response as Array<{
       name: string;
