@@ -70,6 +70,7 @@ export class ExchangeClaimController {
           await this.service.withdrawClaim(
             getAuthenticatedAccess(response),
             claimId,
+            this.idempotencyKey(response),
             getRequestContext(request)
           )
         )

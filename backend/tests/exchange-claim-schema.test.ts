@@ -13,6 +13,13 @@ describe("Exchange selective claim persistence contract", () => {
     "prisma/migrations/20260901100000_exchange_selective_claim/migration.sql"
   );
   const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+  const withdrawalMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260901130000_exchange_claim_withdraw_idempotency/migration.sql"
+  );
+  const withdrawalMigration = existsSync(withdrawalMigrationPath)
+    ? readFileSync(withdrawalMigrationPath, "utf8")
+    : "";
 
   const modelBlock = (name: string): string => {
     const match = schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`));
@@ -50,8 +57,20 @@ describe("Exchange selective claim persistence contract", () => {
     expect(claim).toMatch(/activeKey\s+String\?\s+@unique/);
     expect(claim).toMatch(/idempotencyKey\s+String\s+@unique/);
     expect(claim).toMatch(/payloadFingerprint\s+String\s+@map\("payload_fingerprint"\)/);
+    expect(claim).toMatch(/withdrawalIdempotencyKey\s+String\?\s+@unique/);
+    expect(claim).toMatch(
+      /withdrawalPayloadFingerprint\s+String\?\s+@map\("withdrawal_payload_fingerprint"\)/
+    );
     expect(claim).toMatch(/deletedAt\s+DateTime\?/);
     expect(claim).toMatch(/@@map\("exchange_claims"\)/);
+  });
+
+  it("adds a retry-safe withdrawal idempotency pair without rewriting the applied claim migration", () => {
+    expect(withdrawalMigration).toContain("ALTER TABLE `exchange_claims`");
+    expect(withdrawalMigration).toContain("withdrawal_idempotency_key");
+    expect(withdrawalMigration).toContain("withdrawal_payload_fingerprint");
+    expect(withdrawalMigration).toContain("exchange_claims_withdrawal_idem_pair");
+    expect(withdrawalMigration).toContain("UNIQUE INDEX");
   });
 
   it("adds restrictive relations, checks and bounded indexes in the migration", () => {

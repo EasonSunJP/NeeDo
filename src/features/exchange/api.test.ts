@@ -217,7 +217,7 @@ describe("formal Exchange API client", () => {
     );
     await listReceivedExchangeClaims("41", { page: 3, pageSize: 5, signal });
     await getMyExchangeClaim("41", signal);
-    await withdrawExchangeClaim("73");
+    await withdrawExchangeClaim("73", "exchange-claim-withdraw-0001");
 
     expect(httpClient.request).toHaveBeenNthCalledWith(1, "/exchange/posts/41/claim-options", {
       query: {
@@ -242,6 +242,7 @@ describe("formal Exchange API client", () => {
       signal
     });
     expect(httpClient.request).toHaveBeenNthCalledWith(5, "/exchange/claims/73/withdraw", {
+      headers: { "Idempotency-Key": "exchange-claim-withdraw-0001" },
       method: "POST"
     });
   });

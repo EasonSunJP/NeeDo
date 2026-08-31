@@ -93,6 +93,8 @@ export interface ExchangeClaimLockedRecord {
   exchangePostId: number;
   claimantIdentityId: number;
   status: ExchangeClaimPayload["status"];
+  withdrawalIdempotencyKey: string | null;
+  withdrawalPayloadFingerprint: string | null;
   claim: ExchangeClaimPayload;
 }
 
@@ -345,6 +347,10 @@ export class ExchangeClaimRepository {
       FOR UPDATE
     `);
     if (!locked[0]) return null;
+    return this.findRequest(postId);
+  }
+
+  public async findRequest(postId: number): Promise<ExchangeClaimRequestRecord | null> {
     const row = await this.client.exchangePost.findFirst({
       where: { id: postId, deletedAt: null },
       select: {
@@ -501,12 +507,40 @@ export class ExchangeClaimRepository {
         service: { select: { name: true, durationMinutes: true, shopId: true } },
         technicianService: {
           select: { name: true, durationMinutes: true, shopId: true, technicianId: true }
+        },
+        technicianProfile: {
+          select: {
+            technicianShopAffiliations: {
+              where: {
+                workStatus: TechnicianShopWorkStatus.ACTIVE,
+                activeKey: { not: null },
+                startsAt: { lte: now },
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+                deletedAt: null
+              },
+              select: { shopId: true }
+            }
+          }
         }
       }
     });
-    if (!row || row.technicianProfileId === null || row.bookedCount >= row.capacity) return null;
+    if (
+      !row ||
+      row.technicianProfileId === null ||
+      !row.technicianProfile ||
+      row.bookedCount >= row.capacity
+    ) {
+      return null;
+    }
     const selectedService = row.service ?? row.technicianService;
     if (!selectedService) return null;
+    if (
+      !row.technicianProfile.technicianShopAffiliations.some(
+        (affiliation) => affiliation.shopId === row.shopId
+      )
+    ) {
+      return null;
+    }
     if (row.service && row.service.shopId !== row.shopId) return null;
     if (
       row.technicianService &&
@@ -610,8 +644,8 @@ export class ExchangeClaimRepository {
   public async findIdempotent(
     idempotencyKey: string
   ): Promise<{ claim: ExchangeClaimPayload; fingerprint: string } | null> {
-    const row = await this.client.exchangeClaim.findUnique({
-      where: { idempotencyKey },
+    const row = await this.client.exchangeClaim.findFirst({
+      where: { idempotencyKey, deletedAt: null },
       include: claimInclude
     });
     return row
@@ -686,6 +720,8 @@ export class ExchangeClaimRepository {
       exchangePostId: row.exchangePostId,
       claimantIdentityId: row.claimantIdentityId,
       status: claim.status,
+      withdrawalIdempotencyKey: row.withdrawalIdempotencyKey,
+      withdrawalPayloadFingerprint: row.withdrawalPayloadFingerprint,
       claim
     };
   }
@@ -693,7 +729,9 @@ export class ExchangeClaimRepository {
   public async withdraw(
     claimId: number,
     claimantIdentityId: number,
-    now: Date
+    now: Date,
+    withdrawalIdempotencyKey: string,
+    withdrawalPayloadFingerprint: string
   ): Promise<ExchangeClaimPayload | null> {
     const updated = await this.client.exchangeClaim.updateMany({
       where: {
@@ -707,6 +745,8 @@ export class ExchangeClaimRepository {
         activeKey: null,
         withdrawnAt: now,
         terminalAt: now,
+        withdrawalIdempotencyKey,
+        withdrawalPayloadFingerprint,
         updatedAt: now
       }
     });

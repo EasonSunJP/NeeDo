@@ -81,8 +81,9 @@ export function getMyExchangeClaim(
   });
 }
 
-export function withdrawExchangeClaim(claimId: string): Promise<ExchangeClaim> {
+export function withdrawExchangeClaim(claimId: string, key: string): Promise<ExchangeClaim> {
   return httpClient.request<ExchangeClaim>(`/exchange/claims/${claimId}/withdraw`, {
+    headers: idempotencyHeaders(key),
     method: "POST"
   });
 }

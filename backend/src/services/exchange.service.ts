@@ -135,13 +135,15 @@ export interface ExchangeRepositoryPort {
     page: number;
     pageSize: number;
     viewerIdentityId: number;
+    claimProviderUserId?: number;
     authorIdentityId?: number;
     now: Date;
   }): Promise<ExchangePostPage>;
   findPostById(
     postId: number,
     viewerIdentityId: number,
-    now: Date
+    now: Date,
+    claimProviderUserId?: number
   ): Promise<ExchangePostPayload | null>;
   listComments(
     postId: number,
@@ -270,6 +272,9 @@ export class ExchangeService {
     const page = await this.repository.listPosts({
       ...input,
       viewerIdentityId: ownerIdentityId,
+      ...(CLAIM_PROVIDER_IDENTITIES.has(actor.identityType)
+        ? { claimProviderUserId: actor.userId }
+        : {}),
       ...(privateAuthorIdentityId ? { authorIdentityId: privateAuthorIdentityId } : {}),
       now: this.now()
     });
@@ -284,7 +289,8 @@ export class ExchangeService {
     const post = await this.repository.findPostById(
       postId,
       actor.ownerIdentityId ?? actor.identityId,
-      this.now()
+      this.now(),
+      CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) ? actor.userId : undefined
     );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
@@ -872,7 +878,10 @@ export class ExchangeService {
       viewer: {
         ...post.viewer,
         canClaim:
-          selectiveLiveDemand && CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) && !ownerView,
+          selectiveLiveDemand &&
+          CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) &&
+          !ownerView &&
+          post.viewer.canClaim,
         canViewClaims: selectiveLiveDemand && ownerView
       }
     };

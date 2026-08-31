@@ -332,6 +332,7 @@ describe("ExchangeService", () => {
       page: 1,
       pageSize: 20,
       viewerIdentityId: 17,
+      claimProviderUserId: 7,
       now
     });
 
@@ -352,7 +353,7 @@ describe("ExchangeService", () => {
     const repository = createRepository();
     const selectivePost = {
       ...post,
-      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false },
+      viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false },
       demand: { ...post.demand!, matchMode: "selective" as const }
     };
     repository.resolveActor.mockResolvedValue({
@@ -383,6 +384,9 @@ describe("ExchangeService", () => {
         { viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false } }
       ]
     });
+    expect(repository.listPosts).toHaveBeenCalledWith(
+      expect.objectContaining({ claimProviderUserId: 7 })
+    );
 
     repository.resolveActor.mockResolvedValue(actor);
     repository.findPostById.mockResolvedValue({

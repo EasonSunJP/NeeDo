@@ -182,6 +182,47 @@ describe("ExchangeClaimPanel", () => {
     );
   });
 
+  it("rotates the create idempotency key when the normalized payload changes", async () => {
+    vi.mocked(globalThis.crypto.randomUUID)
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000001")
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000002");
+    vi.mocked(createExchangeClaim).mockRejectedValue(new Error("error.exchange.claim_time_conflict"));
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("GINZA Calm Body Lab"));
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-option-id="91"]')!.click());
+    const quote = document.body.querySelector<HTMLInputElement>('input[name="claimQuoteAmountJpy"]')!;
+    await act(async () => changeInput(quote, "15000"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!.click());
+    await waitFor(() => expect(createExchangeClaim).toHaveBeenCalledTimes(1));
+
+    await act(async () => changeInput(quote, "16000"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!.click());
+    await waitFor(() => expect(createExchangeClaim).toHaveBeenCalledTimes(2));
+
+    const createMock = vi.mocked(createExchangeClaim);
+    expect(createMock.mock.calls[0]?.[2]).toBe("00000000-0000-4000-8000-000000000001");
+    expect(createMock.mock.calls[1]?.[2]).toBe("00000000-0000-4000-8000-000000000002");
+  });
+
+  it("clears the previous Request claim and form state when post id changes", async () => {
+    vi.mocked(getMyExchangeClaim)
+      .mockResolvedValueOnce(activeClaim)
+      .mockResolvedValueOnce(null);
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={post} />));
+    await waitFor(() => expect(document.body.textContent).toContain("抢单已提交"));
+
+    const nextPost = { ...post, id: 42, title: "另一条正式需求" };
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={nextPost} />));
+    await waitFor(() => expect(listExchangeClaimOptions).toHaveBeenCalledWith(
+      "42",
+      expect.objectContaining({ page: 1, pageSize: 20 })
+    ));
+
+    expect(document.body.textContent).not.toContain("抢单已提交");
+    expect(document.body.querySelector('[data-action="submit-claim"]')).not.toBeNull();
+  });
+
   it("loads the persisted own claim after refresh and withdraws with confirmation", async () => {
     vi.mocked(getMyExchangeClaim).mockResolvedValue(activeClaim);
     vi.mocked(withdrawExchangeClaim).mockResolvedValue({
@@ -198,6 +239,6 @@ describe("ExchangeClaimPanel", () => {
     await waitFor(() => expect(document.body.textContent).toContain("已撤回"));
 
     expect(globalThis.confirm).toHaveBeenCalled();
-    expect(withdrawExchangeClaim).toHaveBeenCalledWith("73");
+    expect(withdrawExchangeClaim).toHaveBeenCalledWith("73", "exchange-claim-ui-0001");
   });
 });

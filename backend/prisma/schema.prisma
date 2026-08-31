@@ -2927,6 +2927,8 @@ model ExchangeClaim {
   activeKey           String?             @unique(map: "exchange_claims_active_key_key") @map("active_key") @db.VarChar(191)
   idempotencyKey      String              @unique(map: "exchange_claims_idempotency_key_key") @map("idempotency_key") @db.VarChar(191)
   payloadFingerprint  String              @map("payload_fingerprint") @db.Char(64)
+  withdrawalIdempotencyKey      String?   @unique(map: "exchange_claims_withdrawal_idempotency_key_key") @map("withdrawal_idempotency_key") @db.VarChar(191)
+  withdrawalPayloadFingerprint  String?   @map("withdrawal_payload_fingerprint") @db.Char(64)
   withdrawnAt         DateTime?           @map("withdrawn_at")
   terminalAt          DateTime?           @map("terminal_at")
   createdAt           DateTime            @default(now()) @map("created_at")

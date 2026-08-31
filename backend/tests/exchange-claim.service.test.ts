@@ -124,6 +124,7 @@ const createRepository = (overrides: Partial<ExchangeClaimRepositoryPort> = {}) 
   const repository: ExchangeClaimRepositoryPort = {
     runInTransaction: jest.fn(async (handler) => handler(repository)),
     listOptions: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
+    findRequest: jest.fn(async () => request),
     findOptionCandidate: jest.fn(async () => ({ technicianProfileId: 81 })),
     lockRequest: jest.fn(async () => request),
     lockTechnician: jest.fn(async () => true),
@@ -140,6 +141,8 @@ const createRepository = (overrides: Partial<ExchangeClaimRepositoryPort> = {}) 
       exchangePostId: 41,
       claimantIdentityId: 17,
       status: "active" as const,
+      withdrawalIdempotencyKey: null,
+      withdrawalPayloadFingerprint: null,
       claim
     })),
     create: jest.fn(async () => claim),
@@ -191,6 +194,22 @@ describe("ExchangeClaimService", () => {
         shopId: 11
       })
     );
+  });
+
+  it("rejects option reads when the provider identity belongs to the Request author user", async () => {
+    const repository = createRepository({
+      findRequest: jest.fn(async () => ({ ...request, authorUserId: merchantActor.userId }))
+    });
+    const service = new ExchangeClaimService(
+      repository,
+      { resolveActor: jest.fn(async () => merchantActor) },
+      () => now
+    );
+
+    await expect(
+      service.listOptions(merchantAccess, 41, { page: 1, page_size: 20 })
+    ).rejects.toMatchObject({ code: 40311 });
+    expect(repository.listOptions).not.toHaveBeenCalled();
   });
 
   it("creates a selective claim with request-technician-slot locks, soft conflict checks and audit", async () => {
@@ -413,6 +432,8 @@ describe("ExchangeClaimService", () => {
           exchangePostId: 41,
           claimantIdentityId: 17,
           status: "active" as const,
+          withdrawalIdempotencyKey: null,
+          withdrawalPayloadFingerprint: null,
           claim
         };
       }),
@@ -437,9 +458,63 @@ describe("ExchangeClaimService", () => {
 
     await expect(service.getMine(merchantAccess, 41)).resolves.toEqual(claim);
     await expect(
-      service.withdrawClaim(merchantAccess, 301, requestContext)
+      service.withdrawClaim(
+        merchantAccess,
+        301,
+        "claim-withdraw-key-0001",
+        requestContext
+      )
     ).resolves.toMatchObject({ id: 301, status: "withdrawn" });
     expect(events).toEqual(["lock-request", "lock-claim", "withdraw", "audit"]);
+    expect(repository.withdraw).toHaveBeenCalledWith(
+      301,
+      17,
+      now,
+      "claim-withdraw-key-0001",
+      expect.stringMatching(/^[a-f0-9]{64}$/u)
+    );
+  });
+
+  it("replays an identical withdrawal key without repeating mutation or audit", async () => {
+    const withdrawnClaim = {
+      ...claim,
+      status: "withdrawn" as const,
+      withdrawnAt: now.toISOString(),
+      terminalAt: now.toISOString()
+    };
+    const firstRepository = createRepository();
+    const actorResolver = { resolveActor: jest.fn(async () => merchantActor) };
+    const firstService = new ExchangeClaimService(firstRepository, actorResolver, () => now);
+    await firstService.withdrawClaim(
+      merchantAccess,
+      301,
+      "claim-withdraw-key-0002",
+      requestContext
+    );
+    const fingerprint = (firstRepository.withdraw as jest.Mock).mock.calls[0]?.[4] as string;
+    const replayRepository = createRepository({
+      findMineById: jest.fn(async () => withdrawnClaim),
+      lockClaim: jest.fn(async () => ({
+        id: 301,
+        exchangePostId: 41,
+        claimantIdentityId: 17,
+        status: "withdrawn" as const,
+        withdrawalIdempotencyKey: "claim-withdraw-key-0002",
+        withdrawalPayloadFingerprint: fingerprint,
+        claim: withdrawnClaim
+      }))
+    });
+
+    await expect(
+      new ExchangeClaimService(replayRepository, actorResolver, () => now).withdrawClaim(
+        merchantAccess,
+        301,
+        "claim-withdraw-key-0002",
+        requestContext
+      )
+    ).resolves.toEqual(withdrawnClaim);
+    expect(replayRepository.withdraw).not.toHaveBeenCalled();
+    expect(replayRepository.createAudit).not.toHaveBeenCalled();
   });
 
   it("lists claims only through the request owner identity scope", async () => {

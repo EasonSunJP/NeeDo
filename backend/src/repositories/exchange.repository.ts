@@ -310,7 +310,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      rows.map((row) => this.mapPost(row, input.viewerIdentityId, input.now)),
+      rows.map((row) =>
+        this.mapPost(row, input.viewerIdentityId, input.now, input.claimProviderUserId)
+      ),
       total,
       pagination
     );
@@ -319,14 +321,15 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   public async findPostById(
     postId: number,
     viewerIdentityId: number,
-    now: Date
+    now: Date,
+    claimProviderUserId?: number
   ): Promise<ExchangePostPayload | null> {
     const row = await this.client.exchangePost.findFirst({
       where: { id: postId, deletedAt: null },
       include: postInclude(viewerIdentityId)
     });
 
-    return row ? this.mapPost(row, viewerIdentityId, now) : null;
+    return row ? this.mapPost(row, viewerIdentityId, now, claimProviderUserId) : null;
   }
 
   public async listComments(
@@ -702,13 +705,16 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   private mapPost(
     row: ExchangePostRecord,
     viewerIdentityId: number,
-    now: Date
+    now: Date,
+    claimProviderUserId?: number
   ): ExchangePostPayload {
     const expired =
       row.status === DatabaseExchangePostStatus.PUBLISHED &&
       row.expiresAt.getTime() <= now.getTime();
     const status = expired ? "expired" : statusFromDatabase[row.status];
     const ownerView = row.ownerIdentityId === viewerIdentityId;
+    const claimableByProviderUser =
+      claimProviderUserId !== undefined && row.authorUserId !== claimProviderUserId;
     const intelligence = row.intelligence
       ? (() => {
           if (!isServiceAreaList(row.intelligence.serviceAreas)) {
@@ -776,7 +782,11 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       viewer: {
         liked: row.likes.length > 0,
         canWithdraw: ownerView && status === "published",
-        canClaim: false,
+        canClaim:
+          claimableByProviderUser &&
+          status === "published" &&
+          Boolean(row.demand) &&
+          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE,
         canViewClaims: false
       },
       demand,

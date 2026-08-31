@@ -65,6 +65,16 @@ describe("Exchange selective claim OpenAPI", () => {
         })
       ])
     );
+    expect(document.paths["/api/v1/exchange/claims/{claimId}/withdraw"].post.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Idempotency-Key",
+          in: "header",
+          required: true,
+          schema: { type: "string", minLength: 16, maxLength: 191 }
+        })
+      ])
+    );
     expect(document.paths["/api/v1/exchange/posts/{id}/claims"].get.parameters).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "page_size" })])
     );

@@ -140,17 +140,34 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
   const [submitError, setSubmitError] = useState<ExchangeTextKey | null>(null);
   const [withdrawPending, setWithdrawPending] = useState(false);
   const [withdrawError, setWithdrawError] = useState(false);
-  const idempotencyKeyRef = useRef<string | null>(null);
+  const activePostIdRef = useRef(post.id);
+  const createAttemptRef = useRef<{ signature: string; key: string } | null>(null);
+  const withdrawAttemptRef = useRef<{ claimId: number; key: string } | null>(null);
 
   useEffect(() => {
+    activePostIdRef.current = post.id;
     const controller = new AbortController();
+    setClaim(null);
+    setOptions([]);
+    setPage(1);
+    setTotal(0);
     setLoading(true);
+    setLoadingMore(false);
     setReadError(false);
+    setSelectedSlotId(null);
+    setQuote("");
+    setMessage("");
+    setSubmitPending(false);
+    setSubmitError(null);
+    setWithdrawPending(false);
+    setWithdrawError(false);
+    createAttemptRef.current = null;
+    withdrawAttemptRef.current = null;
     void getMyExchangeClaim(String(post.id), controller.signal)
       .then(async (mine) => {
         if (controller.signal.aborted) return;
+        setClaim(mine);
         if (mine) {
-          setClaim(mine);
           return;
         }
         const result = await listExchangeClaimOptions(String(post.id), {
@@ -174,6 +191,7 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
 
   async function loadMore() {
     if (loadingMore || options.length >= total) return;
+    const requestedPostId = post.id;
     setLoadingMore(true);
     setReadError(false);
     try {
@@ -181,13 +199,14 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
         page: page + 1,
         pageSize: 20
       });
+      if (activePostIdRef.current !== requestedPostId) return;
       setOptions((current) => [...current, ...next.list]);
       setPage(next.page);
       setTotal(next.total);
     } catch {
-      setReadError(true);
+      if (activePostIdRef.current === requestedPostId) setReadError(true);
     } finally {
-      setLoadingMore(false);
+      if (activePostIdRef.current === requestedPostId) setLoadingMore(false);
     }
   }
 
@@ -198,40 +217,54 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
       setSubmitError("claimRequired");
       return;
     }
-    const key = idempotencyKeyRef.current ?? globalThis.crypto.randomUUID();
-    idempotencyKeyRef.current = key;
+    const payload = {
+      scheduleSlotId: selectedSlotId,
+      quoteAmountJpy,
+      message: message.trim() || null
+    };
+    const signature = JSON.stringify(payload);
+    const attempt =
+      createAttemptRef.current?.signature === signature
+        ? createAttemptRef.current
+        : { signature, key: globalThis.crypto.randomUUID() };
+    createAttemptRef.current = attempt;
+    const submittedPostId = post.id;
     setSubmitPending(true);
     setSubmitError(null);
     try {
-      const created = await createExchangeClaim(
-        String(post.id),
-        {
-          scheduleSlotId: selectedSlotId,
-          quoteAmountJpy,
-          message: message.trim() || null
-        },
-        key
-      );
+      const created = await createExchangeClaim(String(submittedPostId), payload, attempt.key);
+      if (activePostIdRef.current !== submittedPostId) return;
       setClaim(created);
-      idempotencyKeyRef.current = null;
+      createAttemptRef.current = null;
     } catch (error) {
+      if (activePostIdRef.current !== submittedPostId) return;
       const keyForError = error instanceof Error ? errorTextKeys[error.message] : undefined;
       setSubmitError(keyForError ?? "claimFailed");
     } finally {
-      setSubmitPending(false);
+      if (activePostIdRef.current === submittedPostId) setSubmitPending(false);
     }
   }
 
   async function withdraw() {
     if (!claim || claim.status !== "active" || withdrawPending || !globalThis.confirm(t("claimConfirmWithdraw"))) return;
+    const targetClaimId = claim.id;
+    const requestedPostId = post.id;
+    const attempt =
+      withdrawAttemptRef.current?.claimId === targetClaimId
+        ? withdrawAttemptRef.current
+        : { claimId: targetClaimId, key: globalThis.crypto.randomUUID() };
+    withdrawAttemptRef.current = attempt;
     setWithdrawPending(true);
     setWithdrawError(false);
     try {
-      setClaim(await withdrawExchangeClaim(String(claim.id)));
+      const withdrawn = await withdrawExchangeClaim(String(targetClaimId), attempt.key);
+      if (activePostIdRef.current !== requestedPostId) return;
+      setClaim(withdrawn);
+      withdrawAttemptRef.current = null;
     } catch {
-      setWithdrawError(true);
+      if (activePostIdRef.current === requestedPostId) setWithdrawError(true);
     } finally {
-      setWithdrawPending(false);
+      if (activePostIdRef.current === requestedPostId) setWithdrawPending(false);
     }
   }
 

@@ -95,6 +95,7 @@ export const createExchangeClaimRoutes = (
     authenticate(),
     createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.claimWithdrawOwn),
     validateRequest({ params: exchangeClaimIdParamSchema }),
+    validateIdempotencyKey,
     controller.withdraw
   );
 

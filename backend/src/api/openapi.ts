@@ -1375,7 +1375,7 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
         "Withdraw the active provider identity's pre-match claim",
         "exchange:claims:withdraw-own",
         {
-          parameters: [idPathParameter("claimId")],
+          parameters: [idPathParameter("claimId"), exchangeIdempotencyKeyParameter],
           responses: {
             "200": jsonDataResponse("Withdrawn Exchange claim", {
               $ref: "#/components/schemas/ExchangeClaim"

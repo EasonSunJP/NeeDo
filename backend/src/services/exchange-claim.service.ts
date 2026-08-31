@@ -31,6 +31,7 @@ export interface ExchangeClaimRepositoryPort {
     handler: (repository: ExchangeClaimRepositoryPort) => Promise<T>
   ): Promise<T>;
   listOptions(input: ExchangeClaimOptionListInput): Promise<ExchangeClaimOptionPage>;
+  findRequest(postId: number): Promise<ExchangeClaimRequestRecord | null>;
   findOptionCandidate(
     scheduleSlotId: number,
     scope: ExchangeClaimProviderScope
@@ -77,7 +78,9 @@ export interface ExchangeClaimRepositoryPort {
   withdraw(
     claimId: number,
     claimantIdentityId: number,
-    now: Date
+    now: Date,
+    withdrawalIdempotencyKey: string,
+    withdrawalPayloadFingerprint: string
   ): Promise<ExchangeClaimPayload | null>;
   createAudit(input: AuditLogCreateInput): Promise<void>;
 }
@@ -111,6 +114,8 @@ export class ExchangeClaimService {
   ): Promise<ExchangeClaimOptionPage> {
     const actor = await this.resolveActor(access);
     const scope = this.providerScope(access, actor);
+    const request = await this.repository.findRequest(postId);
+    this.assertRequestClaimable(request, actor, this.now());
     return this.repository.listOptions({
       postId,
       scope,
@@ -250,40 +255,66 @@ export class ExchangeClaimService {
   public async withdrawClaim(
     access: AuthenticatedAccessContext,
     claimId: number,
+    rawIdempotencyKey: string,
     context: AuthRequestContext
   ): Promise<ExchangeClaimPayload> {
+    const idempotencyKey = exchangeIdempotencyKeySchema.parse(rawIdempotencyKey);
     const actor = await this.resolveActor(access);
     this.providerScope(access, actor);
     const mine = await this.repository.findMineById(claimId, actor.identityId);
     if (!mine) throw this.claimNotFound();
     const at = this.now();
-    return this.repository.runInTransaction(async (repository) => {
-      const request = await repository.lockRequest(mine.exchangePostId);
-      if (
-        !request ||
-        request.type !== "demand" ||
-        request.status !== "published" ||
-        request.expiresAt <= at
-      ) {
-        throw this.invalidState();
-      }
-      const locked = await repository.lockClaim(claimId);
-      if (!locked || locked.claimantIdentityId !== actor.identityId) {
-        throw this.claimNotFound();
-      }
-      if (locked.status !== "active") throw this.invalidState();
-      const withdrawn = await repository.withdraw(claimId, actor.identityId, at);
-      if (!withdrawn) throw this.invalidState();
-      await repository.createAudit(
-        this.audit(access, context, "exchange.claim.withdraw", claimId, {
-          exchangePostId: locked.exchangePostId,
-          claimantIdentityId: actor.identityId,
-          technicianProfileId: locked.claim.technician.profileId,
-          scheduleSlotId: locked.claim.scheduleSlotId
-        })
-      );
-      return withdrawn;
+    const fingerprint = sha256StableJson({
+      actor: { userId: actor.userId, identityId: actor.identityId },
+      claimId
     });
+    try {
+      return await this.repository.runInTransaction(async (repository) => {
+        const request = await repository.lockRequest(mine.exchangePostId);
+        const locked = await repository.lockClaim(claimId);
+        if (!locked || locked.claimantIdentityId !== actor.identityId) {
+          throw this.claimNotFound();
+        }
+        if (
+          locked.status === "withdrawn" &&
+          locked.withdrawalIdempotencyKey === idempotencyKey
+        ) {
+          if (locked.withdrawalPayloadFingerprint !== fingerprint) {
+            throw this.idempotencyConflict();
+          }
+          return locked.claim;
+        }
+        if (
+          !request ||
+          request.type !== "demand" ||
+          request.status !== "published" ||
+          request.expiresAt <= at ||
+          locked.status !== "active"
+        ) {
+          throw this.invalidState();
+        }
+        const withdrawn = await repository.withdraw(
+          claimId,
+          actor.identityId,
+          at,
+          idempotencyKey,
+          fingerprint
+        );
+        if (!withdrawn) throw this.invalidState();
+        await repository.createAudit(
+          this.audit(access, context, "exchange.claim.withdraw", claimId, {
+            exchangePostId: locked.exchangePostId,
+            claimantIdentityId: actor.identityId,
+            technicianProfileId: locked.claim.technician.profileId,
+            scheduleSlotId: locked.claim.scheduleSlotId
+          })
+        );
+        return withdrawn;
+      });
+    } catch (error) {
+      if (this.isUniqueConflict(error)) throw this.idempotencyConflict();
+      throw error;
+    }
   }
 
   private async resolveActor(access: AuthenticatedAccessContext): Promise<ExchangeActorRecord> {

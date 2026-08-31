@@ -230,6 +230,7 @@ describe("formal Exchange claim routes", () => {
     await request(app)
       .post("/api/v1/exchange/claims/301/withdraw")
       .set(auth)
+      .set("Idempotency-Key", "claim-withdraw-route-0001")
       .expect(200);
 
     expect(service.createClaim).toHaveBeenCalledWith(
@@ -243,6 +244,27 @@ describe("formal Exchange claim routes", () => {
       page: 1,
       page_size: 20
     });
+    expect(service.withdrawClaim).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentIdentityType: "merchant_staff" }),
+      301,
+      "claim-withdraw-route-0001",
+      expect.objectContaining({ ip: expect.any(String) })
+    );
+  });
+
+  it("requires a valid idempotency key for withdrawal", async () => {
+    const { app, login, service } = await createFixture();
+    const token = await login("claim-enabled@example.test");
+    const endpoint = "/api/v1/exchange/claims/301/withdraw";
+    const auth = { Authorization: `Bearer ${token}` };
+
+    await request(app).post(endpoint).set(auth).expect(400);
+    await request(app)
+      .post(endpoint)
+      .set(auth)
+      .set("Idempotency-Key", "short")
+      .expect(400);
+    expect(service.withdrawClaim).not.toHaveBeenCalled();
   });
 
   it("rejects invalid create bodies and missing or short idempotency keys", async () => {

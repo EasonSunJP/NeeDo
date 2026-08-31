@@ -469,6 +469,24 @@ describe("ExchangePostRepository", () => {
     expect(JSON.stringify(result)).not.toMatch(/phone|email|phoneNumber/i);
   });
 
+  it("never grants claim capability to another provider identity of the author user", async () => {
+    const selectiveRow = {
+      ...demandRow,
+      demand: { ...demandRow.demand, matchMode: "SELECTIVE" }
+    };
+    const findFirst = jest.fn(async () => selectiveRow);
+    const repository = new ExchangePostRepository({
+      exchangePost: { findFirst }
+    } as never);
+
+    await expect(repository.findPostById(41, 99, now, 7)).resolves.toMatchObject({
+      viewer: { canClaim: false }
+    });
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: true }
+    });
+  });
+
   it("derives an expired status at read time and disables withdrawal", async () => {
     const expiredRow = {
       ...demandRow,

@@ -37,6 +37,8 @@ const claimRow = {
   activeKey: "request:41:technician:81",
   idempotencyKey: "claim-key-00000001",
   payloadFingerprint: "a".repeat(64),
+  withdrawalIdempotencyKey: null,
+  withdrawalPayloadFingerprint: null,
   withdrawnAt: null,
   terminalAt: null,
   createdAt: now,
@@ -194,7 +196,10 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         startsAt: new Date("2026-09-02T01:00:00.000Z"),
         endsAt: new Date("2026-09-02T02:00:00.000Z"),
         service: { name: "ヘアセット", durationMinutes: 60, shopId: 11 },
-        technicianService: null
+        technicianService: null,
+        technicianProfile: {
+          technicianShopAffiliations: [{ shopId: 11 }]
+        }
       }))
     };
     const exchangeClaim = {
@@ -318,13 +323,48 @@ describe("ExchangeClaimRepository mutation primitives", () => {
             durationMinutes: 60,
             shopId: 99
           },
-          technicianService: null
+          technicianService: null,
+          technicianProfile: {
+            technicianShopAffiliations: [{ shopId: 11 }]
+          }
         }))
       }
     } as unknown as PrismaClient);
 
     await expect(
       repository.lockOption(91, { kind: "merchant", shopId: 11 }, now)
+    ).resolves.toBeNull();
+  });
+
+  it("rejects a technician slot when only another shop affiliation remains active", async () => {
+    const repository = new ExchangeClaimRepository({
+      $queryRaw: jest.fn(async () => [{ id: 91 }]),
+      scheduleSlot: {
+        findFirst: jest.fn(async () => ({
+          id: 91,
+          shopId: 11,
+          technicianProfileId: 81,
+          serviceId: 501,
+          technicianServiceId: null,
+          startsAt: new Date("2026-09-02T01:00:00.000Z"),
+          endsAt: new Date("2026-09-02T02:00:00.000Z"),
+          capacity: 1,
+          bookedCount: 0,
+          service: { name: "Former shop service", durationMinutes: 60, shopId: 11 },
+          technicianService: null,
+          technicianProfile: {
+            technicianShopAffiliations: [{ shopId: 12 }]
+          }
+        }))
+      }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.lockOption(
+        91,
+        { kind: "technician", technicianProfileId: 81 },
+        now
+      )
     ).resolves.toBeNull();
   });
 
@@ -369,7 +409,6 @@ describe("ExchangeClaimRepository mutation primitives", () => {
 
   it("scopes idempotent, own and owner reads and releases the active key on withdraw", async () => {
     let withdrawn = false;
-    const findUnique = jest.fn(async () => claimRow);
     const findFirst = jest.fn(async () =>
       withdrawn
         ? {
@@ -391,7 +430,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     const auditCreate = jest.fn(async () => ({ id: 1 }));
     const repository = new ExchangeClaimRepository({
       $queryRaw: queryRaw,
-      exchangeClaim: { findUnique, findFirst, findMany, count, updateMany },
+      exchangeClaim: { findFirst, findMany, count, updateMany },
       auditLog: { create: auditCreate }
     } as unknown as PrismaClient);
 
@@ -418,7 +457,15 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       claimantIdentityId: 17,
       status: "active"
     });
-    await expect(repository.withdraw(301, 17, now)).resolves.toMatchObject({
+    await expect(
+      repository.withdraw(
+        301,
+        17,
+        now,
+        "claim-withdraw-key-0001",
+        "b".repeat(64)
+      )
+    ).resolves.toMatchObject({
       id: 301,
       status: "withdrawn"
     });
@@ -430,8 +477,8 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       metadata: { exchangePostId: 41 }
     });
 
-    expect(findUnique).toHaveBeenCalledWith({
-      where: { idempotencyKey: "claim-key-00000001" },
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { idempotencyKey: "claim-key-00000001", deletedAt: null },
       include: expect.any(Object)
     });
     expect(findFirst).toHaveBeenCalledWith(
@@ -462,6 +509,8 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         activeKey: null,
         withdrawnAt: now,
         terminalAt: now,
+        withdrawalIdempotencyKey: "claim-withdraw-key-0001",
+        withdrawalPayloadFingerprint: "b".repeat(64),
         updatedAt: now
       }
     });

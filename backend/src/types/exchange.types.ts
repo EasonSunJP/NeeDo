@@ -112,6 +112,7 @@ export interface ExchangeListInput {
   page: number;
   pageSize: number;
   viewerIdentityId: number;
+  claimProviderUserId?: number;
   authorIdentityId?: number;
   now: Date;
 }
