@@ -2,7 +2,11 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import type { CarouselSceneCode } from "../src/services/carousel-publication.service";
+import type {
+  CarouselSceneCode,
+  CarouselTarget,
+  PublishedCarouselTarget
+} from "../src/services/carousel-publication.service";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const LOCAL_DATABASES = new Set(["needo_dev", "needo_test"]);
@@ -23,7 +27,7 @@ interface BackofficeCarouselParityScene {
       isEnabled: boolean;
       visibleFrom: Date | null;
       visibleUntil: Date | null;
-      target: { type: string };
+      target: PublishedCarouselTarget;
       translations: Partial<
         Record<
           CarouselParityLocale,
@@ -44,7 +48,7 @@ interface PublicCarouselParityProjection {
   locale: CarouselParityLocale;
   releaseVersion: number | null;
   slides: ReadonlyArray<{
-    target: { type: string };
+    target: PublishedCarouselTarget;
     title: string;
     caption: string | null;
     imageAltText: string;
@@ -94,8 +98,17 @@ export const assertBackofficePublicCarouselParity = (
     const translation = slide.translations[locale];
     assert(projection, `carousel parity mismatch for ${locale} slide ${index} order`);
     assert(translation, `carousel parity mismatch for ${locale} slide ${index} translation`);
+    assert(
+      slide.target.type === projection.target.type,
+      `carousel parity mismatch for ${locale} slide ${index} target type`
+    );
+    if (slide.target.type !== "none") {
+      assert(
+        projection.target.type !== "none" && projection.target.publicId === slide.target.publicId,
+        `carousel parity mismatch for ${locale} slide ${index} target identity`
+      );
+    }
     for (const [field, expected, actual] of [
-      ["target", slide.target.type, projection.target.type],
       ["title", translation.title, projection.title],
       ["caption", translation.caption, projection.caption],
       ["imageAltText", translation.imageAltText, projection.imageAltText],
@@ -916,6 +929,48 @@ const main = async (): Promise<void> => {
       }
     );
     const backofficeUserScene = await carouselService.getBackofficeScene(USER_SCENE, operatorActor);
+    const canonicalUserHomeTarget = (target: CarouselTarget): PublishedCarouselTarget => {
+      switch (target.type) {
+        case "none":
+          return target;
+        case "shop":
+          assert(
+            target.shopId === shop.id,
+            "USER_HOME checker fixture did not retain the expected shop target"
+          );
+          return { type: "shop", publicId: shopPublicIdentifier.publicId };
+        case "technician":
+          assert(
+            target.technicianProfileId === technicianProfile.id,
+            "USER_HOME checker fixture did not retain the expected technician target"
+          );
+          return { type: "technician", publicId: technicianPublicIdentifier.publicId };
+        case "service":
+          assert(
+            target.serviceId === serviceRecord.id,
+            "USER_HOME checker fixture did not retain the expected service target"
+          );
+          return { type: "service", publicId: serviceRecord.publicId };
+        case "affiliate_announcement":
+          throw new Error("USER_HOME checker fixture cannot contain an affiliate announcement target");
+      }
+    };
+    const canonicalBackofficeUserScene: BackofficeCarouselParityScene = {
+      scene: backofficeUserScene.scene,
+      published: backofficeUserScene.published
+        ? {
+            version: backofficeUserScene.published.version,
+            slides: backofficeUserScene.published.slides.map((slide) => ({
+              sortOrder: slide.sortOrder,
+              isEnabled: slide.isEnabled,
+              visibleFrom: slide.visibleFrom,
+              visibleUntil: slide.visibleUntil,
+              target: canonicalUserHomeTarget(slide.target),
+              translations: slide.translations
+            }))
+          }
+        : null
+    };
 
     for (const locale of CONTENT_LOCALES) {
       const userProjection = await carouselService.getPublishedScene(
@@ -924,7 +979,7 @@ const main = async (): Promise<void> => {
         affiliateActor,
         clock
       );
-      assertBackofficePublicCarouselParity(backofficeUserScene, userProjection, clock);
+      assertBackofficePublicCarouselParity(canonicalBackofficeUserScene, userProjection, clock);
       const affiliateProjection = await carouselService.getPublishedScene(
         AFFILIATE_SCENE,
         locale,

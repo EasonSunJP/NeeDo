@@ -19,7 +19,7 @@ describe("backoffice and public published carousel parity", () => {
           isEnabled: true,
           visibleFrom: null,
           visibleUntil: null,
-          target: { type: "service" as const, serviceId: 28 },
+          target: { type: "service" as const, publicId: "s0000000028" },
           translations: {
             ja: {
               title: "サービス",
@@ -34,7 +34,7 @@ describe("backoffice and public published carousel parity", () => {
           isEnabled: true,
           visibleFrom: null,
           visibleUntil: null,
-          target: { type: "shop" as const, shopId: 14 },
+          target: { type: "shop" as const, publicId: "shop0000000014" },
           translations: {
             ja: {
               title: "店舗",
@@ -49,7 +49,7 @@ describe("backoffice and public published carousel parity", () => {
           isEnabled: false,
           visibleFrom: null,
           visibleUntil: null,
-          target: { type: "technician" as const, technicianProfileId: 9 },
+          target: { type: "technician" as const, publicId: "t0000000009" },
           translations: {
             ja: {
               title: "無効な技師",
@@ -101,6 +101,15 @@ describe("backoffice and public published carousel parity", () => {
     expect(() =>
       assertBackofficePublicCarouselParity(backofficeScene(), projection, checkedAt)
     ).toThrow("ja slide 1 title");
+  });
+
+  it("identifies a same-type public target redirect by canonical target identity", () => {
+    const projection = publicProjection();
+    projection.slides[0]!.target.publicId = "shop0000000099";
+
+    expect(() =>
+      assertBackofficePublicCarouselParity(backofficeScene(), projection, checkedAt)
+    ).toThrow("ja slide 0 target identity");
   });
 });
 
