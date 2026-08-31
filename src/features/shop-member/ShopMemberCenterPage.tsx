@@ -167,7 +167,7 @@ function OverviewView({ data, onEnroll, canEnroll }: { data: ShopMembershipOverv
         {data.recentActivities.length ? <div className="relative mt-4 space-y-3 before:absolute before:bottom-4 before:left-[9px] before:top-4 before:w-px before:bg-[color:var(--client-line)]">{data.recentActivities.map((activity) => <div className="relative flex gap-3" key={activity.id}><span className="relative z-10 mt-1 h-[19px] w-[19px] shrink-0 rounded-full border-4 border-[color:var(--client-surface)] bg-[color:var(--client-primary)]" /><div className={cn(insetClassName, "min-w-0 flex-1 px-3 py-2.5")}><strong className="text-sm">{activity.customerDisplayName}</strong><p className="mt-0.5 text-xs font-semibold text-[color:var(--client-muted)]">开通店铺会员 · {formatDate(activity.occurredAt, true)}</p></div></div>)}</div> : <p className="mt-4 rounded-[22px] border border-dashed border-[color:var(--client-line)] px-4 py-7 text-center text-sm font-bold text-[color:var(--client-muted)]">当前店铺暂无会员活动</p>}
       </section>
 
-      <section className={panelClassName}><h2 className="text-base font-black">后续独立开放</h2><p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">金额与次数调整已采用客户 72 小时确认流程；充值、核销、退款仍会分别接入独立状态机与账本。调整不会自动发放 NDP。</p></section>
+      <section className={panelClassName}><h2 className="text-base font-black">后续独立开放</h2><p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">金额与次数调整已采用客户 72 小时确认流程；充值已接入正式数据库、审计与通知，核销和退款仍会分别作为独立步骤。上述操作均不会自动发放 NDP。</p></section>
     </div>
   );
 }

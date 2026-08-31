@@ -11,6 +11,7 @@ describe("shop membership feature translations", () => {
       expect(entry.en?.trim()).toBeTruthy();
       expect(entry.ko?.trim()).toBeTruthy();
     }
+    expect(JSON.stringify(shopMembershipTranslations)).not.toContain("充值、核销、退款仍");
   });
 
   it("registers feature-local translations with the shared runtime translator", () => {
@@ -30,5 +31,8 @@ describe("shop membership feature translations", () => {
     expect(translateText("会员卡充值", "ja")).toBe("会員カードチャージ");
     expect(translateText("充值记录", "en")).toBe("Top-up history");
     expect(translateText("shop_membership.card_topup.created.title", "ko")).toBe("회원 카드 충전 완료");
+    expect(translateText("金额与次数调整已采用客户 72 小时确认流程；充值已接入正式数据库、审计与通知，核销和退款仍会分别作为独立步骤。上述操作均不会自动发放 NDP。", "en")).toBe(
+      "Amount and usage changes use 72-hour customer confirmation. Top-up now uses the formal database, audit, and notifications. Redemption and refunds remain separate steps. None of these actions automatically award NDP."
+    );
   });
 });

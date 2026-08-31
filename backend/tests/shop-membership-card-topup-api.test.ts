@@ -169,7 +169,12 @@ describe("shop membership card top-up API", () => {
   });
 
   it("returns shop-scoped merchant history and customer-owned history", async () => {
-    const merchant = fixture("merchant", ["shop.member.card.topup.create"]);
+    const merchant = fixture("merchant", ["shop.member.view"]);
+    await request(merchant.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .send(createBody)
+      .expect(403);
     const merchantPage = await request(merchant.app)
       .get(`${merchantListPath}?page=1&pageSize=20&cardPublicId=${cardPublicId}`)
       .set("Authorization", `Bearer ${merchant.token}`)

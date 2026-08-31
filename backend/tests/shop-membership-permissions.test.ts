@@ -4,6 +4,7 @@ import {
 } from "../src/constants/permissions.constants";
 import { SHOP_MEMBERSHIP_ROUTE_PERMISSIONS } from "../src/routes/shop-membership.routes";
 import { SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS } from "../src/routes/shop-membership-card-issuance.routes";
+import { SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS } from "../src/routes/shop-membership-card-topup.routes";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -25,6 +26,11 @@ describe("shop membership permissions", () => {
     });
     expect(SYSTEM_PERMISSION_CODES).toEqual(expect.arrayContaining(membershipPermissions));
     expect(SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS).toEqual({ issue: "shop.member.card.issue" });
+    expect(SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS).toEqual({
+      create: "shop.member.card.topup.create",
+      merchantRead: "shop.member.view",
+      customerRead: "customer-profile:read"
+    });
   });
 
   it("grants all membership controls to owners and read-only access to staff", () => {

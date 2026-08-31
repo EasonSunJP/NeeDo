@@ -23,6 +23,8 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain("<CardTopUpDialog");
     expect(source).toContain("<CardTopUpHistory");
     expect(source).toContain('hasPermission("shop.member.card.topup.create")');
+    expect(source).toContain("充值已接入正式数据库、审计与通知");
+    expect(source).not.toContain("充值、核销、退款仍会分别接入");
   });
 
   it("splits issued cards from card plans and uses exact plan permissions", () => {

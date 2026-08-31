@@ -18,6 +18,7 @@ import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 export const SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS = {
   create: "shop.member.card.topup.create",
+  merchantRead: "shop.member.view",
   customerRead: "customer-profile:read"
 } as const;
 
@@ -40,7 +41,7 @@ export const createShopMembershipCardTopUpRoutes = (config: AppConfig, dependenc
   router.get(
     "/merchant-admin/shop-membership-card-top-ups",
     authenticate(),
-    createAuthorizeMiddleware(SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS.create),
+    createAuthorizeMiddleware(SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS.merchantRead),
     validateRequest({ query: shopMembershipCardTopUpListQuerySchema }),
     controller.merchantList
   );
