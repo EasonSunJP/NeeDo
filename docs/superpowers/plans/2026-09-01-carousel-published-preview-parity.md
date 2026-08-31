@@ -126,55 +126,47 @@ git add src/features/content-publication/CarouselReleasePreview.tsx src/features
 git commit -m "feat: show published carousel without a draft"
 ```
 
-### Task 2: Lock published-release cloning and public parity
+### Task 2: Prove backoffice and public published-release parity
 
 **Files:**
-- Modify: `src/features/content-publication/LocalizedCarouselEditor.test.tsx`
 - Modify: `backend/tests/localized-carousel-publication-flow-script.test.ts`
 - Modify: `backend/scripts/check-localized-carousel-publication-flow.ts`
 - Test: `backend/tests/localized-carousel-publication-flow-script.test.ts`
 
 **Interfaces:**
-- Consumes: existing `rollbackCarousel(scene, sourceReleaseId, body)` and public `GET /api/v1/content/carousels/user-home`
-- Produces: proof that source release ID equals `sceneState.published.releaseId` and public/backoffice slide projections match
+- Consumes: existing `CarouselPublicationService.getBackofficeScene()` and `getPublishedScene()` projections
+- Produces: `assertBackofficePublicCarouselParity(...)` plus real-database proof that the public `USER_HOME` projection matches the active backoffice published release in every locale
 
-- [ ] **Step 1: Add the clone-source frontend test**
+- [ ] **Step 1: Add the failing parity-contract test**
 
-```tsx
-await user.type(screen.getByRole("textbox", { name: /reason/i }), "prepare v5");
-await user.click(screen.getByRole("button", { name: /create new draft/i }));
-expect(api.rollbackCarousel).toHaveBeenCalledWith("user-home", 404, expect.objectContaining({
-  reason: "prepare v5"
-}));
-```
+Import `assertBackofficePublicCarouselParity` from the checker and add fixtures whose published release and public projection match on release version, slide order, target, title, caption, image alt text and image URL. Add one mismatch case and assert the error identifies the locale and field.
 
-- [ ] **Step 2: Run it and verify it fails if history order selects a different release**
+- [ ] **Step 2: Run the checker test and verify RED**
 
-Run: `npm test -- src/features/content-publication/LocalizedCarouselEditor.test.tsx`
+Run: `cd backend && npm test -- localized-carousel-publication-flow-script.test.ts`
 
-Expected: FAIL when history order differs from the active published release.
+Expected: FAIL because `assertBackofficePublicCarouselParity` does not exist.
 
-- [ ] **Step 3: Select the clone source from scene state**
+- [ ] **Step 3: Implement and use the exact parity assertion**
 
-```ts
-const source = sceneState.published ?? history.list.find((release) => release.status === "published");
-setDraftSourceReleaseId(source ? String(source.releaseId) : "");
-```
+After republishing the cloned user-home release, read the backoffice scene once and the public scene for each locale. Compare `releaseVersion`, enabled/visible slide order, target, title, caption, image alt text and image URL for the same locale. Keep the helper pure and exported so the Jest contract test can cover matching and mismatching fixtures without a live database.
 
-Extend the flow check to fetch both endpoints and compare `releaseVersion`, slide order, target, title, caption, image alt and image URL for the same locale.
-
-- [ ] **Step 4: Run frontend and backend flow tests**
-
-Run: `npm test -- src/features/content-publication/LocalizedCarouselEditor.test.tsx`
+- [ ] **Step 4: Run the backend flow-contract test**
 
 Run: `cd backend && npm test -- localized-carousel-publication-flow-script.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit parity enforcement**
+- [ ] **Step 5: Run the existing frontend clone regression**
+
+Run: `npm test -- src/features/content-publication/LocalizedCarouselEditor.test.tsx`
+
+Expected: PASS, confirming the prior task still clones `sceneState.published.releaseId` and requires a reason even when history is empty.
+
+- [ ] **Step 6: Commit parity enforcement**
 
 ```bash
-git add src/features/content-publication/LocalizedCarouselEditor.tsx src/features/content-publication/LocalizedCarouselEditor.test.tsx backend/scripts/check-localized-carousel-publication-flow.ts backend/tests/localized-carousel-publication-flow-script.test.ts
+git add backend/scripts/check-localized-carousel-publication-flow.ts backend/tests/localized-carousel-publication-flow-script.test.ts
 git commit -m "test: enforce carousel publication parity"
 ```
 
