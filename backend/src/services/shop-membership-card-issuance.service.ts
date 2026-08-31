@@ -35,7 +35,7 @@ export interface ShopMembershipCardIssuanceContext {
     customerNeedoId: string;
     customerDisplayName: string;
   };
-  shop: { internalId: number; publicId: string; shopNo: string | null; name: string };
+  shop: { internalId: number; shopNo: string | null; name: string };
   plan: { internalId: number; publicId: string };
   version: {
     internalId: number;
