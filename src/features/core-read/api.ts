@@ -125,6 +125,7 @@ export type CoreCustomerProfile = {
 };
 
 type CustomerProfileViewSource = Omit<CoreCustomerProfile, "reviewSummary"> & {
+  level?: number;
   reviewSummary?: CoreReviewSummary;
 };
 
@@ -427,6 +428,7 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
     points: 0,
     couponCount: 0,
     memberLevel: customer.membershipLevel,
+    experienceLevel: customer.level,
     tags: uniqueStrings([customer.city, ...(customer.reviewSummary?.highlights ?? [])]).slice(0, 6),
     ltv: 0,
     orderCount: reviewCount,

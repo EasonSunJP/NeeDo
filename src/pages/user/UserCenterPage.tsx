@@ -626,7 +626,7 @@ function CompleteUserCenterPage({
   const usageCount = Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0);
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
-  const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
+  const levelLabel = getCustomerLevelLabel(currentCustomer.experienceLevel);
   const membershipSurface = getThemeProfileSurfaceClassNames();
   const savedProfilePrivacy = getPersistedUserProfilePrivacy(formalData.profile.visibility);
   const activeProfilePrivacy = isEditingProfile && profilePrivacyDraft ? profilePrivacyDraft : savedProfilePrivacy;

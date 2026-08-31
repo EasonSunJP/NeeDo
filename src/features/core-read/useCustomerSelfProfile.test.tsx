@@ -16,6 +16,7 @@ const profile: CustomerSelfProfile = {
   bio: null,
   avatarUrl: null,
   membershipLevel: "free",
+  level: 1,
   gender: "private",
   age: null,
   heightCm: null,

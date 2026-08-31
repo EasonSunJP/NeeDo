@@ -24,6 +24,28 @@ const profile = {
 };
 
 describe("CustomerProfileRepository", () => {
+  it("maps the current customer level from the formal experience account", async () => {
+    const client = {
+      customerProfile: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...profile,
+          user: {
+            avatarBootstrapUrl: null,
+            avatarUrl: null,
+            experienceAccount: { currentLevel: 72, deletedAt: null },
+            needoId: "u5314672018"
+          }
+        })
+      }
+    } as unknown as PrismaClient;
+    const repository = new CustomerProfileRepository(client);
+
+    await expect(repository.findMine(81, 464)).resolves.toMatchObject({
+      level: 72,
+      publicId: "u5314672018"
+    });
+  });
+
   it("uses the account avatar when the customer profile has no active avatar media", async () => {
     const accountAvatarUrl = "/images/generated/profiles/ai-profile-41.jpg";
     const client = {

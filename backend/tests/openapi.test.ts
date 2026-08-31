@@ -1281,9 +1281,15 @@ describe("GET /api/v1/openapi.json", () => {
         "languages",
         "bio",
         "visibility",
-        "membershipLevel"
+        "membershipLevel",
+        "level"
       ])
     );
+    expect(response.body.components.schemas.CustomerSelfProfile.properties.level).toEqual({
+      type: "integer",
+      minimum: 1,
+      maximum: 100
+    });
     expect(response.body.paths).toHaveProperty("/media/customer-avatars/{filename}");
   });
 

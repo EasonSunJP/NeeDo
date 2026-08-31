@@ -81,6 +81,7 @@ const savedProfile: CustomerSelfProfile = {
   isPublic: false,
   languages: ["日本語"],
   membershipLevel: "standard",
+  level: 1,
   updatedAt: "2026-08-26T00:00:00.000Z",
   userId: 12,
   visibility: "network" as const
@@ -348,6 +349,15 @@ describe("UserCenterPage inline profile editing", () => {
 
     expect(levelLabel).toBeDefined();
     expect(levelLabel?.parentElement?.children).toHaveLength(1);
+  });
+
+  it("shows the formal experience-account level instead of deriving Lv from the credit score", async () => {
+    testState.getMine.mockResolvedValueOnce({ ...savedProfile, level: 72 });
+
+    await renderUserCenter();
+
+    expect(Array.from(container.querySelectorAll("span")).some((element) => element.textContent === "Lv.72")).toBe(true);
+    expect(Array.from(container.querySelectorAll("span")).some((element) => element.textContent === "Lv.1")).toBe(false);
   });
 
   it("uses the server-returned profile after one disabled formal save", async () => {

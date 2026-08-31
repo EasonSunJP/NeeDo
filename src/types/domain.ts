@@ -91,6 +91,7 @@ export interface Customer {
   points?: number;
   couponCount?: number;
   memberLevel: string;
+  experienceLevel?: number;
   tags: string[];
   ltv: number;
   orderCount: number;

@@ -19,6 +19,7 @@ const updatedProfile: CustomerProfilePayload = {
   displayName: "松尾 雄大",
   city: "Tokyo",
   membershipLevel: "standard",
+  level: 72,
   avatarUrl: null,
   gender: "private",
   age: null,
