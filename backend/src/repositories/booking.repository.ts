@@ -459,15 +459,19 @@ export interface PayCheckoutWithNdpRepositoryInput extends CheckoutActorInput {
   idempotencyKey: string;
 }
 
-export interface ConfirmCheckoutReceiptRepositoryInput extends CheckoutActorInput {
+export type ConfirmCheckoutReceiptRepositoryInput = CheckoutActorInput & {
   reason: string;
   idempotencyKey: string;
-  evidence: Extract<
-    CheckoutPaymentEvidence,
-    "technician_receipt_confirmation" | "operations_receipt_override"
-  >;
-  audit?: AuditLogCreateInput;
-}
+} & (
+    | {
+        evidence: "technician_receipt_confirmation";
+        audit?: never;
+      }
+    | {
+        evidence: "operations_receipt_override";
+        audit: AuditLogCreateInput;
+      }
+  );
 
 export type CheckoutMutationFailure =
   | "not_found"
@@ -489,13 +493,13 @@ export interface CheckoutNdpPaymentOptions {
   debit: (
     context: CheckoutMutationContext & { idempotencyKey: string }
   ) => Promise<{ transactionId: number }>;
-  settle?: (context: CheckoutMutationContext) => Promise<void>;
-  settleAffiliate?: (context: CheckoutMutationContext) => Promise<void>;
+  settle: (context: CheckoutMutationContext) => Promise<void>;
+  settleAffiliate: (context: CheckoutMutationContext) => Promise<void>;
 }
 
 export interface CheckoutReceiptOptions {
-  settle?: (context: CheckoutMutationContext) => Promise<void>;
-  settleAffiliate?: (context: CheckoutMutationContext) => Promise<void>;
+  settle: (context: CheckoutMutationContext) => Promise<void>;
+  settleAffiliate: (context: CheckoutMutationContext) => Promise<void>;
 }
 
 export interface BookingOrderPayload {
@@ -642,7 +646,7 @@ export interface BookingRepositoryPort {
   ) => Promise<CheckoutMutationResult>;
   confirmCheckoutReceipt: (
     input: ConfirmCheckoutReceiptRepositoryInput,
-    options?: CheckoutReceiptOptions
+    options: CheckoutReceiptOptions
   ) => Promise<CheckoutMutationResult>;
   transitionOrder: (
     input: OrderTransitionRepositoryInput,
@@ -1848,7 +1852,7 @@ export class BookingRepository implements BookingRepositoryPort {
           checkout: this.mapCheckout(
             existing,
             current.status,
-            await this.resolveStoredCheckoutEvidence(tx, existing)
+            await this.resolveStoredCheckoutEvidence(tx, current, existing)
           ),
           applied: false
         };
@@ -1924,10 +1928,7 @@ export class BookingRepository implements BookingRepositoryPort {
         return { outcome: "not_found" };
       }
       if (!current.serviceSession) return { outcome: "invalid_state" };
-      if (
-        current.status !== DatabaseBookingOrderStatus.AWAITING_CHECKOUT &&
-        current.status !== DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION
-      ) {
+      if (current.status !== DatabaseBookingOrderStatus.AWAITING_CHECKOUT) {
         return { outcome: "invalid_state" };
       }
       if (checkout.paymentMethod || checkout.ledgerTransactionId || checkout.receiptConfirmedAt) {
@@ -1999,6 +2000,14 @@ export class BookingRepository implements BookingRepositoryPort {
     input: PayCheckoutWithNdpRepositoryInput,
     options: CheckoutNdpPaymentOptions
   ): Promise<CheckoutMutationResult> {
+    if (
+      !options ||
+      typeof options.debit !== "function" ||
+      typeof options.settle !== "function" ||
+      typeof options.settleAffiliate !== "function"
+    ) {
+      return Promise.resolve({ outcome: "invalid_snapshot" });
+    }
     return this.runCheckoutTransaction(async (tx) => {
       await this.lockFulfillmentOrder(tx, input.orderId);
       const current = await this.findFulfillmentOrder(tx, input.orderId);
@@ -2064,8 +2073,8 @@ export class BookingRepository implements BookingRepositoryPort {
         metadata: { paymentEvidence: "ndp_ledger", ledgerTransactionId: debit.transactionId }
       });
       const context = { transactionClient: tx, order: this.mapOrder(current), checkout: before };
-      await options.settle?.(context);
-      await options.settleAffiliate?.(context);
+      await options.settle(context);
+      await options.settleAffiliate(context);
       const next = await tx.orderCheckout.findUnique({ where: { id: checkout.id } });
       if (!next) throw new CheckoutTransactionAbort("conflict");
       return {
@@ -2078,8 +2087,25 @@ export class BookingRepository implements BookingRepositoryPort {
 
   public confirmCheckoutReceipt(
     input: ConfirmCheckoutReceiptRepositoryInput,
-    options: CheckoutReceiptOptions = {}
+    options: CheckoutReceiptOptions
   ): Promise<CheckoutMutationResult> {
+    const hasAudit = Object.prototype.hasOwnProperty.call(input, "audit");
+    const validAudit =
+      input.evidence === "operations_receipt_override" &&
+      hasAudit &&
+      input.audit &&
+      input.audit.actorId === input.actorUserId &&
+      input.audit.action === "backoffice.order.checkout.receipt_override" &&
+      input.audit.targetType === "BookingOrder" &&
+      input.audit.targetId === input.orderId;
+    if (
+      !options ||
+      typeof options.settle !== "function" ||
+      typeof options.settleAffiliate !== "function" ||
+      (input.evidence === "operations_receipt_override" ? !validAudit : hasAudit)
+    ) {
+      return Promise.resolve({ outcome: "invalid_snapshot" });
+    }
     return this.runCheckoutTransaction(async (tx) => {
       await this.lockFulfillmentOrder(tx, input.orderId);
       const current = await this.findFulfillmentOrder(tx, input.orderId);
@@ -2114,6 +2140,7 @@ export class BookingRepository implements BookingRepositoryPort {
       ) {
         return { outcome: "invalid_state" };
       }
+      const before = this.mapCheckout(checkout, current.status);
       const now = new Date();
       await tx.orderCheckout.update({
         where: { id: checkout.id },
@@ -2153,11 +2180,10 @@ export class BookingRepository implements BookingRepositoryPort {
         reason: input.reason.trim(),
         metadata: { paymentEvidence: input.evidence, reason: input.reason.trim() }
       });
-      const before = this.mapCheckout(checkout, current.status);
       const context = { transactionClient: tx, order: this.mapOrder(current), checkout: before };
-      await options.settle?.(context);
-      await options.settleAffiliate?.(context);
-      if (input.audit) {
+      await options.settle(context);
+      await options.settleAffiliate(context);
+      if (input.evidence === "operations_receipt_override") {
         const auditMetadata =
           input.audit.metadata &&
           typeof input.audit.metadata === "object" &&
@@ -3059,7 +3085,7 @@ export class BookingRepository implements BookingRepositoryPort {
       checkout: this.mapCheckout(
         checkout,
         current.status,
-        expectation.paymentEvidence
+        await this.resolveStoredCheckoutEvidence(transaction, current, checkout)
       ),
       applied: false
     };
@@ -3067,10 +3093,43 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private async resolveStoredCheckoutEvidence(
     transaction: Prisma.TransactionClient,
+    current: OrderRecord,
     checkout: CheckoutRecord
   ): Promise<CheckoutPaymentEvidence | undefined> {
-    if (checkout.ledgerTransactionId) return "ndp_ledger";
-    if (!checkout.receiptConfirmedAt) return undefined;
+    if (checkout.bookingOrderId !== current.id) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    if (checkout.ledgerTransactionId) {
+      if (
+        current.status !== DatabaseBookingOrderStatus.COMPLETED ||
+        checkout.paymentMethod !== DatabaseServicePaymentMethod.NDP ||
+        checkout.receiptConfirmedAt ||
+        checkout.receiptConfirmedById ||
+        checkout.receiptConfirmationReason
+      ) {
+        throw new CheckoutTransactionAbort("invalid_snapshot");
+      }
+      return "ndp_ledger";
+    }
+    if (!checkout.receiptConfirmedAt) {
+      if (
+        current.status === DatabaseBookingOrderStatus.COMPLETED ||
+        checkout.receiptConfirmedById ||
+        checkout.receiptConfirmationReason
+      ) {
+        throw new CheckoutTransactionAbort("invalid_snapshot");
+      }
+      return undefined;
+    }
+    if (
+      current.status !== DatabaseBookingOrderStatus.COMPLETED ||
+      !checkout.receiptConfirmedById ||
+      !checkout.receiptConfirmationReason ||
+      (checkout.paymentMethod !== DatabaseServicePaymentMethod.CASH &&
+        checkout.paymentMethod !== DatabaseServicePaymentMethod.OTHER)
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
     const event = await transaction.orderServiceEvent.findFirst({
       where: {
         bookingOrderId: checkout.bookingOrderId,
@@ -3084,9 +3143,56 @@ export class BookingRepository implements BookingRepositoryPort {
       event?.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
         ? (event.metadata as Record<string, unknown>)
         : {};
-    return metadata.paymentEvidence === "operations_receipt_override"
-      ? "operations_receipt_override"
-      : "technician_receipt_confirmation";
+    const evidence = metadata.paymentEvidence;
+    if (
+      !event ||
+      (evidence !== "operations_receipt_override" &&
+        evidence !== "technician_receipt_confirmation") ||
+      event.bookingOrderId !== current.id ||
+      event.orderCheckoutId !== checkout.id ||
+      event.actorUserId !== checkout.receiptConfirmedById ||
+      event.reason !== checkout.receiptConfirmationReason ||
+      metadata.reason !== checkout.receiptConfirmationReason
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    if (evidence === "technician_receipt_confirmation") {
+      if (
+        !current.technicianProfileId ||
+        !current.technicianProfile ||
+        current.technicianProfile.userId !== checkout.receiptConfirmedById
+      ) {
+        throw new CheckoutTransactionAbort("invalid_snapshot");
+      }
+      return evidence;
+    }
+    const audit = await transaction.auditLog.findFirst({
+      where: {
+        actorId: checkout.receiptConfirmedById,
+        action: "backoffice.order.checkout.receipt_override",
+        targetType: "BookingOrder",
+        targetId: current.id,
+        deletedAt: null
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    const auditMetadata =
+      audit?.metadata && typeof audit.metadata === "object" && !Array.isArray(audit.metadata)
+        ? (audit.metadata as Record<string, unknown>)
+        : {};
+    if (
+      !audit ||
+      audit.actorId !== checkout.receiptConfirmedById ||
+      audit.action !== "backoffice.order.checkout.receipt_override" ||
+      audit.targetType !== "BookingOrder" ||
+      audit.targetId !== current.id ||
+      auditMetadata.orderId !== current.id ||
+      auditMetadata.checkoutId !== checkout.id ||
+      auditMetadata.reason !== checkout.receiptConfirmationReason
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    return evidence;
   }
 
   private async persistCheckoutCompletionEvidence(
@@ -3184,11 +3290,24 @@ export class BookingRepository implements BookingRepositoryPort {
     ) {
       throw new CheckoutTransactionAbort("invalid_snapshot");
     }
-    const paymentEvidence: CheckoutPaymentEvidence | null = evidenceOverride ?? (checkout.ledgerTransactionId
-      ? "ndp_ledger"
-      : checkout.receiptConfirmedAt
-        ? "technician_receipt_confirmation"
-        : null);
+    if (
+      evidenceOverride === "ndp_ledger" &&
+      (!checkout.ledgerTransactionId || checkout.receiptConfirmedAt)
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    if (
+      (evidenceOverride === "technician_receipt_confirmation" ||
+        evidenceOverride === "operations_receipt_override") &&
+      (!checkout.receiptConfirmedAt || checkout.ledgerTransactionId)
+    ) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    if (evidenceOverride === undefined && checkout.receiptConfirmedAt) {
+      throw new CheckoutTransactionAbort("invalid_snapshot");
+    }
+    const paymentEvidence: CheckoutPaymentEvidence | null =
+      evidenceOverride ?? (checkout.ledgerTransactionId ? "ndp_ledger" : null);
     return {
       id: checkout.id,
       orderId: checkout.bookingOrderId,

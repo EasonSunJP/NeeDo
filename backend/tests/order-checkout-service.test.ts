@@ -116,6 +116,37 @@ describe("formal order checkout service", () => {
       rate: expect.objectContaining({ ruleId: 8, resolvedAt: captured })
     }));
   });
+
+  it("keeps a committed NDP payment successful when the post-commit order lookup fails", async () => {
+    const checkout = {
+      id: 9,
+      orderId: 41,
+      status: "completed",
+      paymentMethod: "ndp",
+      paymentEvidence: "ndp_ledger"
+    };
+    const repository = {
+      payCheckoutWithNdp: jest.fn(async () => ({ outcome: "ok", applied: true, checkout })),
+      findOrderById: jest.fn(async () => {
+        throw new Error("post-commit order lookup unavailable");
+      })
+    };
+    const ledger = {
+      debitCheckoutPayment: jest.fn(async () => ({ transactionId: 91 })),
+      settleBookingCompletion: jest.fn(async () => undefined)
+    };
+    const service = new BookingService(repository as never, ledger as never);
+
+    await expect(
+      service.payCheckoutWithNdp(
+        customer,
+        41,
+        { idempotencyKey: "checkout-service-best-effort-1" },
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).resolves.toBe(checkout);
+    expect(repository.findOrderById).toHaveBeenCalledWith(41);
+  });
 });
 
 const decimal = (value: number) => ({
@@ -180,7 +211,18 @@ const createRepositoryHarness = (options: { affiliateInvalid?: boolean; overflow
     },
     orderStatusHistory: { create: jest.fn(async ({ data }: any) => { histories.push(data); order.statusHistory.push({ id: histories.length + 10, deletedAt: null, ...data }); return data; }) },
     orderFinancial: { findUnique: jest.fn(async () => null), update: jest.fn(async () => null), upsert: jest.fn(async () => null) },
-    auditLog: { create: jest.fn(async ({ data }: any) => { if (options.auditFailure) throw new Error("audit failed"); audits.push(data); return data; }) }
+    auditLog: {
+      findFirst: jest.fn(async ({ where }: any) =>
+        [...audits].reverse().find((audit) =>
+          audit.actorId === where.actorId &&
+          audit.action === where.action &&
+          audit.targetType === where.targetType &&
+          audit.targetId === where.targetId &&
+          !audit.deletedAt
+        ) ?? null
+      ),
+      create: jest.fn(async ({ data }: any) => { if (options.auditFailure) throw new Error("audit failed"); audits.push({ id: audits.length + 1, deletedAt: null, ...data }); return data; })
+    }
   };
   const client: any = {
     $transaction: jest.fn(async (handler: (value: any) => Promise<unknown>) => {
@@ -202,6 +244,10 @@ const createRepositoryHarness = (options: { affiliateInvalid?: boolean; overflow
 
 const rate = { ruleId: 7, publicId: "00000000-0000-4000-8000-000000000007", version: 3, ndpUnits: 3, jpyUnits: 2, effectiveFrom: new Date("2026-08-01T00:00:00.000Z"), resolvedAt: new Date("2026-09-01T10:00:00.000Z") };
 const customerInput = { orderId: 41, actorUserId: 101, technicianProfileId: null };
+const completionOptions = {
+  settle: async () => undefined,
+  settleAffiliate: async () => undefined
+};
 
 describe("formal checkout repository state", () => {
   it("creates one immutable affiliate/add-on/rate snapshot with BigInt ceil and supports only exact participants", async () => {
@@ -234,6 +280,89 @@ describe("formal checkout repository state", () => {
     });
   });
 
+  it("fails closed before writes when completion hooks or evidence-specific audit are missing", async () => {
+    const ndp = createRepositoryHarness();
+    await ndp.repository.getOrCreateCheckout({ ...customerInput, rate });
+    const debit = jest.fn(async () => ({ transactionId: 91 }));
+    await expect(
+      ndp.repository.payCheckoutWithNdp(
+        { ...customerInput, idempotencyKey: "checkout-hooks-required-1" },
+        { debit } as any
+      )
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+    expect(debit).not.toHaveBeenCalled();
+    expect(ndp.order.status).toBe("AWAITING_CHECKOUT");
+    expect(ndp.events.some((event) => event.idempotencyKey === "checkout-hooks-required-1")).toBe(false);
+
+    const technician = createRepositoryHarness();
+    await technician.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await technician.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-hooks-select-1" });
+    await expect(
+      (technician.repository.confirmCheckoutReceipt as any)({
+        orderId: 41,
+        actorUserId: 202,
+        technicianProfileId: 702,
+        reason: "cash received",
+        idempotencyKey: "checkout-hooks-required-2",
+        evidence: "technician_receipt_confirmation"
+      })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+    expect(technician.checkout.receiptConfirmedAt).toBeNull();
+
+    const operations = createRepositoryHarness();
+    await operations.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await operations.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-audit-select-required-1" });
+    await expect(
+      (operations.repository.confirmCheckoutReceipt as any)(
+        {
+          orderId: 41,
+          actorUserId: 303,
+          technicianProfileId: null,
+          reason: "verified receipt",
+          idempotencyKey: "checkout-audit-required-1",
+          evidence: "operations_receipt_override"
+        },
+        { settle: async () => undefined, settleAffiliate: async () => undefined }
+      )
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+    expect(operations.checkout.receiptConfirmedAt).toBeNull();
+
+    await expect(
+      (operations.repository.confirmCheckoutReceipt as any)(
+        {
+          orderId: 41,
+          actorUserId: 202,
+          technicianProfileId: 702,
+          reason: "cash received",
+          idempotencyKey: "checkout-technician-audit-forbidden-1",
+          evidence: "technician_receipt_confirmation",
+          audit: {
+            actorId: 202,
+            action: "backoffice.order.checkout.receipt_override",
+            targetType: "BookingOrder",
+            targetId: 41
+          }
+        },
+        { settle: async () => undefined, settleAffiliate: async () => undefined }
+      )
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+    expect(operations.checkout.receiptConfirmedAt).toBeNull();
+  });
+
+  it("does not move awaiting payment confirmation back to awaiting checkout", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-no-backward-select-1" });
+    h.checkout.paymentMethod = null;
+    h.checkout.paymentSelectedAt = null;
+
+    await expect(
+      h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "ndp", idempotencyKey: "checkout-no-backward-select-2" })
+    ).resolves.toEqual({ outcome: "invalid_state" });
+    expect(h.order.status).toBe("AWAITING_PAYMENT_CONFIRMATION");
+    expect(h.events.some((event) => event.idempotencyKey === "checkout-no-backward-select-2")).toBe(false);
+  });
+
   it("selects cash without completing, then exact technician receipt completes once", async () => {
     const h = createRepositoryHarness();
     await h.repository.getOrCreateCheckout({ ...customerInput, rate });
@@ -250,27 +379,102 @@ describe("formal checkout repository state", () => {
     expect(settle).toHaveBeenCalledTimes(1); expect(affiliate).toHaveBeenCalledTimes(1);
   });
 
+  it("fails closed when stored technician receipt evidence is missing, mismatched, or no longer assigned", async () => {
+    let sequence = 0;
+    const createCompletedTechnicianReceipt = async () => {
+      sequence += 1;
+      const h = createRepositoryHarness();
+      await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+      await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: `checkout-evidence-select-${sequence}` });
+      await h.repository.confirmCheckoutReceipt(
+        {
+          orderId: 41,
+          actorUserId: 202,
+          technicianProfileId: 702,
+          reason: "cash received",
+          idempotencyKey: `checkout-evidence-receipt-${sequence}`,
+          evidence: "technician_receipt_confirmation"
+        },
+        { settle: async () => undefined, settleAffiliate: async () => undefined }
+      );
+      return h;
+    };
+
+    const missingMetadata = await createCompletedTechnicianReceipt();
+    missingMetadata.events.find((event) => event.eventType === "RECEIPT_CONFIRMED").metadata = {};
+    await expect(
+      missingMetadata.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+
+    const mismatchedActor = await createCompletedTechnicianReceipt();
+    mismatchedActor.events.find((event) => event.eventType === "RECEIPT_CONFIRMED").actorUserId = 999;
+    await expect(
+      mismatchedActor.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+
+    const mismatchedReason = await createCompletedTechnicianReceipt();
+    mismatchedReason.events.find((event) => event.eventType === "RECEIPT_CONFIRMED").reason = "different reason";
+    await expect(
+      mismatchedReason.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+
+    const reassigned = await createCompletedTechnicianReceipt();
+    reassigned.order.technicianProfile.userId = 404;
+    await expect(
+      reassigned.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+  });
+
+  it("requires matching persisted operations audit before projecting override evidence", async () => {
+    const h = createRepositoryHarness();
+    await h.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-ops-evidence-select-1" });
+    await h.repository.confirmCheckoutReceipt(
+      {
+        orderId: 41,
+        actorUserId: 303,
+        technicianProfileId: null,
+        reason: "verified receipt",
+        idempotencyKey: "checkout-ops-evidence-receipt-1",
+        evidence: "operations_receipt_override",
+        audit: {
+          actorId: 303,
+          action: "backoffice.order.checkout.receipt_override",
+          targetType: "BookingOrder",
+          targetId: 41,
+          metadata: { reason: "verified receipt" }
+        }
+      },
+      { settle: async () => undefined, settleAffiliate: async () => undefined }
+    );
+    h.audits.splice(0);
+
+    await expect(
+      h.repository.getOrCreateCheckout({ ...customerInput, rate: null })
+    ).resolves.toEqual({ outcome: "invalid_snapshot" });
+  });
+
   it("rolls back every NDP completion write on settlement failure, then rejects collation-equivalent reuse", async () => {
     const h = createRepositoryHarness();
     await h.repository.getOrCreateCheckout({ ...customerInput, rate });
     await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "ndp", idempotencyKey: "checkout-select-ndp-001" });
     const debit = jest.fn(async () => ({ transactionId: 91 }));
-    const failed = await h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Checkout-Pay-Key-0001" }, { debit, settle: async () => { throw new Error("settlement failed"); } }).catch((error) => error);
+    const failed = await h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Checkout-Pay-Key-0001" }, { debit, settle: async () => { throw new Error("settlement failed"); }, settleAffiliate: completionOptions.settleAffiliate }).catch((error) => error);
     expect(failed).toMatchObject({ message: "settlement failed" });
     expect(h.order.status).toBe("AWAITING_CHECKOUT");
     expect(h.checkout.ledgerTransactionId).toBeNull();
     expect(h.events.some((event) => event.eventType === "NDP_PAYMENT_APPLIED")).toBe(false);
-    const applied = await h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Checkout-Pay-Key-0001" }, { debit, settle: async () => undefined });
+    const applied = await h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Checkout-Pay-Key-0001" }, { debit, ...completionOptions });
     expect(applied).toMatchObject({ outcome: "ok", checkout: { status: "completed", paymentEvidence: "ndp_ledger" } });
-    await expect(h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "checkout-pay-key-0001" }, { debit })).resolves.toEqual({ outcome: "conflict" });
-    await expect(h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Ｃheckout-Pay-Key-0001" }, { debit })).resolves.toEqual({ outcome: "conflict" });
+    await expect(h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "checkout-pay-key-0001" }, { debit, ...completionOptions })).resolves.toEqual({ outcome: "conflict" });
+    await expect(h.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "Ｃheckout-Pay-Key-0001" }, { debit, ...completionOptions })).resolves.toEqual({ outcome: "conflict" });
   });
 
   it("writes operations receipt audit in the same transaction and distinguishes its evidence", async () => {
     const h = createRepositoryHarness();
     await h.repository.getOrCreateCheckout({ ...customerInput, rate });
     await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "other", otherMethodCode: "CARD", otherMethodLabel: "Card terminal", idempotencyKey: "checkout-select-other-01" });
-    const result = await h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 303, technicianProfileId: null, reason: "verified terminal slip", idempotencyKey: "checkout-ops-override-01", evidence: "operations_receipt_override", audit: { actorId: 303, action: "backoffice.order.checkout.receipt_override", targetType: "BookingOrder", targetId: 41, ip: "127.0.0.1", userAgent: null, metadata: { reason: "verified terminal slip" } } }, {});
+    const result = await h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 303, technicianProfileId: null, reason: "verified terminal slip", idempotencyKey: "checkout-ops-override-01", evidence: "operations_receipt_override", audit: { actorId: 303, action: "backoffice.order.checkout.receipt_override", targetType: "BookingOrder", targetId: 41, ip: "127.0.0.1", userAgent: null, metadata: { reason: "verified terminal slip" } } }, completionOptions);
     expect(result).toMatchObject({ outcome: "ok", checkout: { paymentEvidence: "operations_receipt_override" } });
     expect(h.audits).toHaveLength(1);
     expect(h.audits[0].metadata).toEqual(expect.objectContaining({ orderId: 41, checkoutId: 9, selectedMethod: "other", checkoutAmountJpy: 10_200, reason: "verified terminal slip" }));
@@ -280,7 +484,7 @@ describe("formal checkout repository state", () => {
     const h = createRepositoryHarness({ auditFailure: true });
     await h.repository.getOrCreateCheckout({ ...customerInput, rate });
     await h.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-audit-select-01" });
-    await expect(h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 303, technicianProfileId: null, reason: "verified receipt", idempotencyKey: "checkout-audit-failure-1", evidence: "operations_receipt_override", audit: { actorId: 303, action: "backoffice.order.checkout.receipt_override", targetType: "BookingOrder", targetId: 41 } })).rejects.toThrow("audit failed");
+    await expect(h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 303, technicianProfileId: null, reason: "verified receipt", idempotencyKey: "checkout-audit-failure-1", evidence: "operations_receipt_override", audit: { actorId: 303, action: "backoffice.order.checkout.receipt_override", targetType: "BookingOrder", targetId: 41 } }, completionOptions)).rejects.toThrow("audit failed");
     expect(h.order.status).toBe("AWAITING_PAYMENT_CONFIRMATION");
     expect(h.checkout.receiptConfirmedAt).toBeNull();
     expect(h.events.some((event) => event.idempotencyKey === "checkout-audit-failure-1")).toBe(false);
@@ -292,13 +496,13 @@ describe("formal checkout repository state", () => {
 
     const ndp = createRepositoryHarness();
     await ndp.repository.getOrCreateCheckout({ ...customerInput, rate });
-    await ndp.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "checkout-pay-refund-lock" }, { debit: async () => ({ transactionId: 91 }) });
+    await ndp.repository.payCheckoutWithNdp({ ...customerInput, idempotencyKey: "checkout-pay-refund-lock" }, { debit: async () => ({ transactionId: 91 }), ...completionOptions });
     await expect(ndp.repository.refundManualPayment({ scope: "backoffice", orderId: 41, actorUserId: 303, reason: "refund requested" })).resolves.toEqual({ outcome: "invalid_state" });
 
     const cash = createRepositoryHarness();
     await cash.repository.getOrCreateCheckout({ ...customerInput, rate });
     await cash.repository.selectCheckoutPaymentMethod({ ...customerInput, method: "cash", idempotencyKey: "checkout-select-refund-01" });
-    await cash.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 202, technicianProfileId: 702, reason: "cash received", idempotencyKey: "checkout-receipt-refund-1", evidence: "technician_receipt_confirmation" });
+    await cash.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 202, technicianProfileId: 702, reason: "cash received", idempotencyKey: "checkout-receipt-refund-1", evidence: "technician_receipt_confirmation" }, completionOptions);
     await expect(cash.repository.refundManualPayment({ scope: "backoffice", orderId: 41, actorUserId: 303, reason: "cash returned" })).resolves.toMatchObject({ outcome: "ok", order: { paymentStatus: "refunded" } });
   });
 });

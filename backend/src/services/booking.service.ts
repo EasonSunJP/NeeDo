@@ -557,27 +557,30 @@ export class BookingService {
     ) {
       throw this.notFoundError();
     }
+    const actorInput = this.checkoutActorInput(actor, orderId);
+    const repositoryInput = operationsOverride
+      ? {
+          ...actorInput,
+          reason: input.reason,
+          idempotencyKey: input.idempotencyKey,
+          evidence: "operations_receipt_override" as const,
+          audit: this.auditLogService!.createInput!({
+            actor,
+            action: "backoffice.order.checkout.receipt_override",
+            targetType: "BookingOrder",
+            targetId: orderId,
+            context,
+            metadata: { orderId, reason: input.reason }
+          })
+        }
+      : {
+          ...actorInput,
+          reason: input.reason,
+          idempotencyKey: input.idempotencyKey,
+          evidence: "technician_receipt_confirmation" as const
+        };
     const result = await this.repository.confirmCheckoutReceipt(
-      {
-        ...this.checkoutActorInput(actor, orderId),
-        reason: input.reason,
-        idempotencyKey: input.idempotencyKey,
-        evidence: operationsOverride
-          ? "operations_receipt_override"
-          : "technician_receipt_confirmation",
-        ...(operationsOverride
-          ? {
-              audit: this.auditLogService!.createInput!({
-                actor,
-                action: "backoffice.order.checkout.receipt_override",
-                targetType: "BookingOrder",
-                targetId: orderId,
-                context,
-                metadata: { orderId, reason: input.reason }
-              })
-            }
-          : {})
-      },
+      repositoryInput,
       {
         settle: (checkoutContext) => this.settleCheckoutBooking(checkoutContext, actor.userId),
         settleAffiliate: (checkoutContext) =>
@@ -709,18 +712,25 @@ export class BookingService {
     completed: boolean
   ): Promise<void> {
     if (!completed) return;
-    const order = await this.repository.findOrderById(checkout.orderId);
-    if (!order) return;
-    await this.notifyOrderStatusChangedBestEffort({
-      actorUserId: actor.userId,
-      orderId: order.id,
-      orderNo: order.orderNo,
-      fromStatus:
-        checkout.paymentMethod === "ndp" ? "awaitingCheckout" : "awaitingPaymentConfirmation",
-      toStatus: "completed",
-      serviceName: order.serviceName,
-      recipientUserIds: this.resolveOrderNotificationRecipients(actor, order)
-    });
+    try {
+      const order = await this.repository.findOrderById(checkout.orderId);
+      if (!order) return;
+      await this.notifyOrderStatusChangedBestEffort({
+        actorUserId: actor.userId,
+        orderId: order.id,
+        orderNo: order.orderNo,
+        fromStatus:
+          checkout.paymentMethod === "ndp" ? "awaitingCheckout" : "awaitingPaymentConfirmation",
+        toStatus: "completed",
+        serviceName: order.serviceName,
+        recipientUserIds: this.resolveOrderNotificationRecipients(actor, order)
+      });
+    } catch (error) {
+      logger.error(
+        { error, orderId: checkout.orderId },
+        "Checkout completion notification lookup failed after booking commit"
+      );
+    }
   }
 
   public async refundManualPayment(
