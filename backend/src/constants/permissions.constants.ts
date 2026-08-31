@@ -1062,6 +1062,13 @@ export const SYSTEM_PERMISSIONS = [
     "为当前店铺有效储值会员卡登记已确认的线下充值"
   ),
   createPermission(
+    "shop.member.card.redeem",
+    "店铺会员卡核销",
+    "api",
+    "shop-membership",
+    "用当前店铺有效会员卡核销同一客户已完成的正式订单并执行 NDP 返点"
+  ),
+  createPermission(
     "page:backoffice-membership-reward-fee",
     "会员返点平台费读取",
     "page",
@@ -1715,6 +1722,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:customers:list",
   "shop.member.view",
   "shop.member.card_plan.view",
+  "shop.member.card.redeem",
   "merchant-admin:services:list",
   "merchant-admin:services:write",
   "merchant-admin:shop:read",

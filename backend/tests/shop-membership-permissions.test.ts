@@ -5,6 +5,7 @@ import {
 import { SHOP_MEMBERSHIP_ROUTE_PERMISSIONS } from "../src/routes/shop-membership.routes";
 import { SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS } from "../src/routes/shop-membership-card-issuance.routes";
 import { SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS } from "../src/routes/shop-membership-card-topup.routes";
+import { SHOP_MEMBERSHIP_CARD_REDEMPTION_ROUTE_PERMISSIONS } from "../src/routes/shop-membership-card-redemption.routes";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -31,6 +32,12 @@ describe("shop membership permissions", () => {
       merchantRead: "shop.member.view",
       customerRead: "customer-profile:read"
     });
+    expect(SHOP_MEMBERSHIP_CARD_REDEMPTION_ROUTE_PERMISSIONS).toEqual({
+      create: "shop.member.card.redeem",
+      candidates: "shop.member.card.redeem",
+      merchantRead: "shop.member.view",
+      customerRead: "customer-profile:read"
+    });
   });
 
   it("grants all membership controls to owners and read-only access to staff", () => {
@@ -44,6 +51,7 @@ describe("shop membership permissions", () => {
     expect(assignments.merchant_staff).not.toContain("shop.member.operation_log.view");
     expect(assignments.merchant_staff).not.toContain("shop.member.card.adjust.request");
     expect(assignments.merchant_staff).not.toContain("shop.member.card.topup.create");
+    expect(assignments.merchant_staff).toContain("shop.member.card.redeem");
   });
 
   it("deploys the same role grants when migrations run without a seed", () => {
