@@ -174,6 +174,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     const exchangePost = {
       findFirst: jest.fn(async () => ({
         id: 41,
+        authorUserId: 99,
         ownerIdentityId: 21,
         type: "DEMAND",
         status: "PUBLISHED",
@@ -234,6 +235,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       const request = await lockedRepository.lockRequest(41);
       expect(request).toMatchObject({
         id: 41,
+        authorUserId: 99,
         type: "demand",
         status: "published",
         demand: { matchMode: "selective", budgetMinJpy: 10_000, budgetMaxJpy: 30_000 }
@@ -326,6 +328,45 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     ).resolves.toBeNull();
   });
 
+  it("resolves only a provider-scoped technician candidate and detects same-request duplicates", async () => {
+    const slotFindFirst = jest.fn(async () => ({ technicianProfileId: 81 }));
+    const claimFindFirst = jest.fn(async () => ({ id: 301 }));
+    const repository = new ExchangeClaimRepository({
+      scheduleSlot: { findFirst: slotFindFirst },
+      exchangeClaim: { findFirst: claimFindFirst }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.findOptionCandidate(91, { kind: "merchant", shopId: 11 })
+    ).resolves.toEqual({ technicianProfileId: 81 });
+    await expect(
+      repository.findOptionCandidate(91, {
+        kind: "technician",
+        technicianProfileId: 81
+      })
+    ).resolves.toEqual({ technicianProfileId: 81 });
+    await expect(
+      repository.hasActiveClaimForRequestTechnician(41, 81)
+    ).resolves.toBe(true);
+    expect(slotFindFirst).toHaveBeenNthCalledWith(1, {
+      where: { id: 91, shopId: 11, technicianProfileId: { not: null }, deletedAt: null },
+      select: { technicianProfileId: true }
+    });
+    expect(slotFindFirst).toHaveBeenNthCalledWith(2, {
+      where: { id: 91, technicianProfileId: 81, deletedAt: null },
+      select: { technicianProfileId: true }
+    });
+    expect(claimFindFirst).toHaveBeenCalledWith({
+      where: {
+        exchangePostId: 41,
+        technicianProfileId: 81,
+        status: "ACTIVE",
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+  });
+
   it("scopes idempotent, own and owner reads and releases the active key on withdraw", async () => {
     let withdrawn = false;
     const findUnique = jest.fn(async () => claimRow);
@@ -361,6 +402,10 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       fingerprint: "a".repeat(64)
     });
     await expect(repository.findMine(41, 17)).resolves.toMatchObject({
+      id: 301,
+      exchangePostId: 41
+    });
+    await expect(repository.findMineById(301, 17)).resolves.toMatchObject({
       id: 301,
       exchangePostId: 41
     });

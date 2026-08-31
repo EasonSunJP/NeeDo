@@ -46,6 +46,7 @@ export interface ExchangeClaimOptionListInput {
 
 export interface ExchangeClaimRequestRecord {
   id: number;
+  authorUserId: number;
   ownerIdentityId: number;
   type: "demand" | "intelligence";
   status: "published" | "withdrawn" | "expired";
@@ -348,6 +349,7 @@ export class ExchangeClaimRepository {
       where: { id: postId, deletedAt: null },
       select: {
         id: true,
+        authorUserId: true,
         ownerIdentityId: true,
         type: true,
         status: true,
@@ -362,6 +364,7 @@ export class ExchangeClaimRepository {
     if (!row) return null;
     return {
       id: row.id,
+      authorUserId: row.authorUserId,
       ownerIdentityId: row.ownerIdentityId,
       type: row.type === DatabaseExchangePostType.DEMAND ? "demand" : "intelligence",
       status:
@@ -384,6 +387,25 @@ export class ExchangeClaimRepository {
           }
         : null
     };
+  }
+
+  public async findOptionCandidate(
+    scheduleSlotId: number,
+    scope: ExchangeClaimProviderScope
+  ): Promise<{ technicianProfileId: number } | null> {
+    const row = await this.client.scheduleSlot.findFirst({
+      where: {
+        id: scheduleSlotId,
+        ...(scope.kind === "merchant"
+          ? { shopId: scope.shopId, technicianProfileId: { not: null } }
+          : { technicianProfileId: scope.technicianProfileId }),
+        deletedAt: null
+      },
+      select: { technicianProfileId: true }
+    });
+    return row?.technicianProfileId
+      ? { technicianProfileId: row.technicianProfileId }
+      : null;
   }
 
   public async lockTechnician(technicianProfileId: number): Promise<boolean> {
@@ -525,6 +547,22 @@ export class ExchangeClaimRepository {
     return Boolean(row);
   }
 
+  public async hasActiveClaimForRequestTechnician(
+    exchangePostId: number,
+    technicianProfileId: number
+  ): Promise<boolean> {
+    const row = await this.client.exchangeClaim.findFirst({
+      where: {
+        exchangePostId,
+        technicianProfileId,
+        status: DatabaseExchangeClaimStatus.ACTIVE,
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    return Boolean(row);
+  }
+
   public async hasConflictingBooking(
     technicianProfileId: number,
     startsAt: Date,
@@ -588,6 +626,17 @@ export class ExchangeClaimRepository {
     const row = await this.client.exchangeClaim.findFirst({
       where: { exchangePostId, claimantIdentityId, deletedAt: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      include: claimInclude
+    });
+    return row ? this.mapClaim(row) : null;
+  }
+
+  public async findMineById(
+    claimId: number,
+    claimantIdentityId: number
+  ): Promise<ExchangeClaimPayload | null> {
+    const row = await this.client.exchangeClaim.findFirst({
+      where: { id: claimId, claimantIdentityId, deletedAt: null },
       include: claimInclude
     });
     return row ? this.mapClaim(row) : null;
