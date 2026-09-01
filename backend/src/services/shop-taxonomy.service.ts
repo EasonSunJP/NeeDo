@@ -4,6 +4,13 @@ import type {
   ShopTaxonomyQuota,
   ShopTaxonomyQuotaPolicyPort
 } from "./shop-taxonomy-quota.service";
+import type {
+  LocalizedBusinessKeyword,
+  LocalizedServiceCategory,
+  ShopTaxonomyRepositoryPort
+} from "../repositories/shop-taxonomy.repository";
+import type { PaginatedResponse } from "../utils/pagination";
+import type { ShopTaxonomyCatalogQuery } from "../validators/shop-taxonomy.validator";
 
 export interface ShopTaxonomyQualificationPort {
   assertSelectable(input: {
@@ -24,8 +31,22 @@ export type ShopTaxonomySelectionPolicyInput = {
 export class ShopTaxonomyService {
   public constructor(
     private readonly quotaPolicy: ShopTaxonomyQuotaPolicyPort,
-    private readonly qualificationPort: ShopTaxonomyQualificationPort
+    private readonly qualificationPort: ShopTaxonomyQualificationPort,
+    private readonly repository?: ShopTaxonomyRepositoryPort
   ) {}
+
+  public async listCategories(
+    input: ShopTaxonomyCatalogQuery
+  ): Promise<PaginatedResponse<LocalizedServiceCategory>> {
+    return this.requireRepository().listCategories(input);
+  }
+
+  public async listKeywords(
+    categoryId: number,
+    input: ShopTaxonomyCatalogQuery
+  ): Promise<PaginatedResponse<LocalizedBusinessKeyword>> {
+    return this.requireRepository().listKeywords(categoryId, input);
+  }
 
   public async assertSelectionPolicy(
     input: ShopTaxonomySelectionPolicyInput
@@ -68,5 +89,16 @@ export class ShopTaxonomyService {
       statusCode: 400,
       data
     });
+  }
+
+  private requireRepository(): ShopTaxonomyRepositoryPort {
+    if (!this.repository) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.internal_server_error",
+        statusCode: 500
+      });
+    }
+    return this.repository;
   }
 }

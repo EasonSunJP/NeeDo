@@ -37,6 +37,7 @@ import type {
 import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
+import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
@@ -134,6 +135,7 @@ import { createBackofficeRoutes } from "./routes/backoffice.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
+import { createShopTaxonomyRoutes } from "./routes/shop-taxonomy.routes";
 import { createEntityEngagementRoutes } from "./routes/entity-engagement.routes";
 import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createShopMembershipRoutes } from "./routes/shop-membership.routes";
@@ -240,6 +242,7 @@ export interface AppDependencies {
   userRepository?: UserRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
+  shopTaxonomyRepository?: ShopTaxonomyRepositoryPort;
   entityEngagementRepository?: EntityEngagementRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
   shopMembershipRepository?: ShopMembershipRepositoryPort;
@@ -447,6 +450,7 @@ export const createApp = (
   apiRouter.use(createRoleRoutes(config, resolvedDependencies));
   apiRouter.use(createUserRoutes(config, resolvedDependencies));
   apiRouter.use(createCoreReadRoutes(resolvedDependencies));
+  apiRouter.use(createShopTaxonomyRoutes(resolvedDependencies));
   apiRouter.use(createEntityEngagementRoutes(config, resolvedDependencies));
   apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipRoutes(config, resolvedDependencies));
