@@ -4,6 +4,7 @@ import {
   ExchangeMatchEventType,
   ExchangeMatchingStatus as DatabaseExchangeMatchingStatus,
   ExchangePostStatus as DatabaseExchangePostStatus,
+  NotificationType,
   Prisma,
   type PrismaClient
 } from "@prisma/client";
@@ -114,6 +115,7 @@ export interface CompleteExchangeSelectionInput {
   exchangePostId: number;
   selectedClaims: ExchangeMatchingSelectionClaim[];
   selectedClaimIds: number[];
+  unselectedClaims: ExchangeMatchingSelectionClaim[];
   unselectedClaimIds: number[];
   selectedQuoteTotalJpy: number;
   versionBefore: number;
@@ -368,6 +370,40 @@ export class ExchangeMatchingRepository {
           status: "matched"
         }
       }
+    });
+    await this.client.notification.createMany({
+      data: [
+        ...input.selectedClaims.map((claim) => ({
+          recipientUserId: claim.claimantUserId,
+          recipientIdentityId: claim.claimantIdentityId,
+          actorUserId: input.actorUserId,
+          actorIdentityId: input.actorIdentityId,
+          type: NotificationType.SYSTEM,
+          title: "exchange.matching.selected.title",
+          body: "exchange.matching.selected.body",
+          payload: {
+            exchangePostId: input.exchangePostId,
+            exchangeClaimId: claim.id,
+            status: "matched"
+          },
+          createdAt: input.at
+        })),
+        ...input.unselectedClaims.map((claim) => ({
+          recipientUserId: claim.claimantUserId,
+          recipientIdentityId: claim.claimantIdentityId,
+          actorUserId: input.actorUserId,
+          actorIdentityId: input.actorIdentityId,
+          type: NotificationType.SYSTEM,
+          title: "exchange.matching.not_selected.title",
+          body: "exchange.matching.not_selected.body",
+          payload: {
+            exchangePostId: input.exchangePostId,
+            exchangeClaimId: claim.id,
+            status: "not_selected"
+          },
+          createdAt: input.at
+        }))
+      ]
     });
     await this.client.auditLog.create({ data: toAuditLogCreateData(input.audit) });
     const result = await this.findForViewer(input.exchangePostId, input.actorIdentityId);

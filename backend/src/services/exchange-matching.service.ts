@@ -128,15 +128,17 @@ export class ExchangeMatchingService {
           }
         }
 
-        const unselectedClaimIds = activeClaims
-          .map((claim) => claim.id)
-          .filter((claimId) => !selectedClaimIds.includes(claimId));
+        const unselectedClaims = activeClaims.filter(
+          (claim) => !selectedClaimIds.includes(claim.id)
+        );
+        const unselectedClaimIds = unselectedClaims.map((claim) => claim.id);
         const versionAfter = matching!.version + 1;
         const completed = await repository.completeSelection({
           matchingId: matching!.id,
           exchangePostId,
           selectedClaims: exactClaims,
           selectedClaimIds,
+          unselectedClaims,
           unselectedClaimIds,
           selectedQuoteTotalJpy,
           versionBefore: matching!.version,

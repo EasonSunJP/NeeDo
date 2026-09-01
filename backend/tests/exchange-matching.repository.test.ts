@@ -100,6 +100,12 @@ describe("ExchangeMatchingRepository", () => {
           return { id: 81 };
         })
       },
+      notification: {
+        createMany: jest.fn(async () => {
+          events.push("notification");
+          return { count: 2 };
+        })
+      },
       auditLog: {
         create: jest.fn(async () => {
           events.push("audit");
@@ -132,6 +138,24 @@ describe("ExchangeMatchingRepository", () => {
           }
         ],
         selectedClaimIds: [301],
+        unselectedClaims: [
+          {
+            id: 302,
+            exchangePostId: 41,
+            claimantUserId: 9,
+            claimantIdentityId: 19,
+            shopId: 12,
+            technicianProfileId: 82,
+            serviceId: 502,
+            technicianServiceId: null,
+            scheduleSlotId: 92,
+            quoteAmountJpy: 16_000,
+            currency: "JPY",
+            status: "active",
+            estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
+            estimatedEndsAt: new Date("2026-09-02T02:00:00.000Z")
+          }
+        ],
         unselectedClaimIds: [302],
         selectedQuoteTotalJpy: 15_000,
         versionBefore: 3,
@@ -157,8 +181,33 @@ describe("ExchangeMatchingRepository", () => {
       "matching",
       "post",
       "event",
+      "notification",
       "audit"
     ]);
+    expect(client.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          recipientUserId: 8,
+          recipientIdentityId: 18,
+          actorUserId: 7,
+          actorIdentityId: 17,
+          type: "SYSTEM",
+          title: "exchange.matching.selected.title",
+          body: "exchange.matching.selected.body",
+          payload: { exchangePostId: 41, exchangeClaimId: 301, status: "matched" }
+        }),
+        expect.objectContaining({
+          recipientUserId: 9,
+          recipientIdentityId: 19,
+          actorUserId: 7,
+          actorIdentityId: 17,
+          type: "SYSTEM",
+          title: "exchange.matching.not_selected.title",
+          body: "exchange.matching.not_selected.body",
+          payload: { exchangePostId: 41, exchangeClaimId: 302, status: "not_selected" }
+        })
+      ]
+    });
     expect(client).not.toHaveProperty("bookingOrder");
     expect(client).not.toHaveProperty("wallet");
     expect(client).not.toHaveProperty("ledgerTransaction");

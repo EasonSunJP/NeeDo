@@ -160,6 +160,7 @@ describe("ExchangeMatchingService", () => {
         matchingId: 51,
         exchangePostId: 41,
         selectedClaimIds: [301, 302],
+        unselectedClaims: [],
         unselectedClaimIds: [],
         selectedQuoteTotalJpy: 29_000,
         versionBefore: 3,
