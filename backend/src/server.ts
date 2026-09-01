@@ -18,6 +18,8 @@ import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repo
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
 import { RealtimeRepository } from "./repositories/realtime.repository";
+import { PlatformMembershipRepository } from "./repositories/platform-membership.repository";
+import { UserExperienceRepository } from "./repositories/user-experience.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
 import { BookingUserRewardExpiryService } from "./services/booking-user-reward-expiry.service";
@@ -70,6 +72,8 @@ const exchangeService = new ExchangeService(
   exchangeLedgerService
 );
 const authRepository = new AuthRepository();
+const platformMembershipRepository = new PlatformMembershipRepository();
+const userExperienceRepository = new UserExperienceRepository();
 const authSessionStore = new RedisAuthSessionStore(undefined, {
   onSecurityEvent: (event) => {
     logger.error(event, "Merchant shop switch receipt post-state mismatch");
@@ -135,6 +139,8 @@ const app = createApp(env, {
   ledgerService: exchangeLedgerService,
   authRepository,
   authSessionStore,
+  platformMembershipRepository,
+  userExperienceRepository,
   merchantShopAuditOutboxTrigger: merchantShopAuditOutboxWorker
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(

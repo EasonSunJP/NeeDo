@@ -39,6 +39,7 @@ import type { CompensationProfileRepositoryPort } from "./services/compensation-
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
 import type { NdpExperienceCampaignRepositoryPort } from "./domain/ndp-experience-campaign";
@@ -175,6 +176,7 @@ import type { VerificationChallengeStore } from "./services/auth-verification-ch
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import type { PlatformMembershipService } from "./services/platform-membership.service";
+import type { UserExperienceService } from "./services/user-experience.service";
 import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
@@ -282,6 +284,9 @@ export interface AppDependencies {
   merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
+  platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
+  userExperienceService?: Pick<UserExperienceService, "recordEvent">;
+  userExperienceRepository?: UserExperienceRepositoryPort;
   platformMembershipAdministrationService?: Pick<
     PlatformMembershipService,
     | "listTiersForAdministration"
