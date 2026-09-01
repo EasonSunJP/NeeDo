@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   backofficeRealDataApi,
+  type AnalyticsComparisonDirection,
+  type AnalyticsDataStatus,
+  type AnalyticsMetricPayload,
+  type AnalyticsMetricSeries,
   type BackofficeDashboardPayload,
   type DashboardPlatformGlobalNdpPair,
   type DashboardQuery,
@@ -291,5 +295,32 @@ describe("formal dashboard frontend API contract", () => {
     expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty("orders");
     expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty("technicians");
     expectTypeOf<BackofficeDashboardPayload>().not.toHaveProperty("shops");
+  });
+
+  it("matches the locked backend analytics metric and series structures", () => {
+    expectTypeOf<AnalyticsDataStatus>().toEqualTypeOf<
+      "ready" | "not_connected" | "not_available"
+    >();
+    expectTypeOf<AnalyticsComparisonDirection>().toEqualTypeOf<
+      "up" | "down" | "flat" | "unavailable"
+    >();
+    expectTypeOf<AnalyticsMetricPayload>().toEqualTypeOf<{
+      metricKey: string;
+      currentValue: number | null;
+      previousValue: number | null;
+      comparisonPercent: number | null;
+      comparisonDirection: AnalyticsComparisonDirection;
+      unit: "jpy" | "ndp" | "people" | "count";
+      dataStatus: AnalyticsDataStatus;
+      description: string;
+      formula: string;
+      detailRoute: string | null;
+    }>();
+    expectTypeOf<AnalyticsMetricSeries>().toEqualTypeOf<{
+      seriesKey: string;
+      label: string;
+      unit: AnalyticsMetricPayload["unit"];
+      points: Array<{ key: string; label: string; value: number | null }>;
+    }>();
   });
 });

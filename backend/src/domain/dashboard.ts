@@ -4,6 +4,13 @@ import type {
   DashboardWindow
 } from "./dashboard-period";
 
+export type {
+  AnalyticsComparisonDirection,
+  AnalyticsDataStatus,
+  AnalyticsMetricPayload,
+  AnalyticsMetricSeries
+} from "./analytics-metric";
+
 export interface DashboardBucketPayload {
   key: string;
   label: string;

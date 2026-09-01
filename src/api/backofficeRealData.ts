@@ -28,6 +28,30 @@ export interface DashboardMetricComparison {
   changeRatePercent: number | null;
 }
 
+export type AnalyticsDataStatus = "ready" | "not_connected" | "not_available";
+
+export type AnalyticsComparisonDirection = "up" | "down" | "flat" | "unavailable";
+
+export interface AnalyticsMetricPayload {
+  metricKey: string;
+  currentValue: number | null;
+  previousValue: number | null;
+  comparisonPercent: number | null;
+  comparisonDirection: AnalyticsComparisonDirection;
+  unit: "jpy" | "ndp" | "people" | "count";
+  dataStatus: AnalyticsDataStatus;
+  description: string;
+  formula: string;
+  detailRoute: string | null;
+}
+
+export interface AnalyticsMetricSeries {
+  seriesKey: string;
+  label: string;
+  unit: AnalyticsMetricPayload["unit"];
+  points: Array<{ key: string; label: string; value: number | null }>;
+}
+
 export interface DashboardNdpPair {
   ndp: number;
   testNdp: number;
