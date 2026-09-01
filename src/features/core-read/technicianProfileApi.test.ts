@@ -13,12 +13,20 @@ describe("technicianProfileApi", () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
 
     await technicianProfileApi.getMine();
-    await technicianProfileApi.updateMine({ displayName: "彩", visibility: "network" });
+    await technicianProfileApi.updateMine({
+      displayName: "彩",
+      serviceBase: { latitude: 35.6762, longitude: 139.6503 },
+      visibility: "network"
+    });
 
     expect(httpClient.request).toHaveBeenNthCalledWith(1, "/technician-profile/me");
     expect(httpClient.request).toHaveBeenNthCalledWith(2, "/technician-profile/me", {
       method: "PATCH",
-      body: { displayName: "彩", visibility: "network" }
+      body: {
+        displayName: "彩",
+        serviceBase: { latitude: 35.6762, longitude: 139.6503 },
+        visibility: "network"
+      }
     });
   });
 });

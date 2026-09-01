@@ -8,6 +8,13 @@ const avatarDataUrlSchema = z
 const stringList = (maxItems: number, maxLength: number) =>
   z.array(z.string().trim().min(1).max(maxLength)).min(1).max(maxItems);
 
+const technicianServiceBaseSchema = z
+  .object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180)
+  })
+  .strict();
+
 export const technicianProfileVisibilitySchema = z.enum([
   "public",
   "privateAll",
@@ -38,6 +45,7 @@ export const technicianProfileUpdateBodySchema = z
       "wechatpay",
       "alipay"
     ])).min(1).max(8).optional(),
+    serviceBase: technicianServiceBaseSchema.nullable().optional(),
     visibility: technicianProfileVisibilitySchema.optional()
   })
   .strict()

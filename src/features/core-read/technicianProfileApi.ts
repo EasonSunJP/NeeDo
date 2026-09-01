@@ -29,6 +29,7 @@ export type TechnicianSelfProfile = {
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
   paymentMethods: TechnicianProfilePaymentMethod[];
+  serviceBase: { latitude: number; longitude: number } | null;
   visibility: TechnicianProfileVisibility;
   employmentType: "independent" | "full_time" | "temporary";
   yearsExperience: number;
@@ -49,6 +50,7 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
   | "bidBudgetMinJpy"
   | "bidBudgetMaxJpy"
   | "paymentMethods"
+  | "serviceBase"
   | "visibility"
 >> & { avatarDataUrl?: string };
 

@@ -19,6 +19,7 @@ export type TechnicianPaymentMethod =
   | "alipay";
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
 export type TechnicianEmploymentTypePayload = "independent" | "full_time" | "temporary";
+export type TechnicianServiceBase = { latitude: number; longitude: number } | null;
 
 export interface TechnicianProfileMutation {
   displayName?: string;
@@ -32,6 +33,7 @@ export interface TechnicianProfileMutation {
   bidBudgetMinJpy?: number | null;
   bidBudgetMaxJpy?: number | null;
   paymentMethods?: TechnicianPaymentMethod[];
+  serviceBase?: TechnicianServiceBase;
   visibility?: TechnicianProfileVisibility;
   avatar?: { url: string; mimeType: string };
 }
@@ -54,6 +56,7 @@ export interface TechnicianProfilePayload {
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
   paymentMethods: TechnicianPaymentMethod[];
+  serviceBase: TechnicianServiceBase;
   visibility: TechnicianProfileVisibility;
   employmentType: TechnicianEmploymentTypePayload;
   yearsExperience: number;
@@ -170,6 +173,12 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
         ? { bidBudgetMaxJpy: mutation.bidBudgetMaxJpy }
         : {}),
       ...(mutation.paymentMethods !== undefined ? { paymentMethods: mutation.paymentMethods } : {}),
+      ...(mutation.serviceBase !== undefined
+        ? {
+            baseLatitude: mutation.serviceBase?.latitude ?? null,
+            baseLongitude: mutation.serviceBase?.longitude ?? null
+          }
+        : {}),
       ...(mutation.visibility !== undefined ? { visibility: mutation.visibility } : {})
     };
   }
@@ -205,6 +214,13 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       bidBudgetMinJpy: profile.bidBudgetMinJpy,
       bidBudgetMaxJpy: profile.bidBudgetMaxJpy,
       paymentMethods: this.paymentMethodArray(profile.paymentMethods),
+      serviceBase:
+        profile.baseLatitude === null || profile.baseLongitude === null
+          ? null
+          : {
+              latitude: Number(profile.baseLatitude),
+              longitude: Number(profile.baseLongitude)
+            },
       visibility: this.visibility(profile.visibility),
       employmentType: profile.employmentType === "FULL_TIME"
         ? "full_time"

@@ -14,8 +14,20 @@ describe("technician profile self-edit validation", () => {
       bidBudgetMinJpy: 12_000,
       bidBudgetMaxJpy: 28_000,
       paymentMethods: ["platform", "offline", "cash", "paypay"],
+      serviceBase: { latitude: 35.6762, longitude: 139.6503 },
       visibility: "network"
     })).toMatchObject({ displayName: "田中 彩", visibility: "network" });
+  });
+
+  it("accepts a complete service-base coordinate pair or an explicit clear", () => {
+    expect(
+      technicianProfileUpdateBodySchema.parse({
+        serviceBase: { latitude: -90, longitude: 180 }
+      })
+    ).toEqual({ serviceBase: { latitude: -90, longitude: 180 } });
+    expect(technicianProfileUpdateBodySchema.parse({ serviceBase: null })).toEqual({
+      serviceBase: null
+    });
   });
 
   it.each([
@@ -28,7 +40,11 @@ describe("technician profile self-edit validation", () => {
     { bidBudgetMinJpy: 20_000, bidBudgetMaxJpy: 10_000 },
     { paymentMethods: ["crypto"] },
     { visibility: "friends" },
-    { avatarDataUrl: "data:text/plain;base64,SGVsbG8=" }
+    { avatarDataUrl: "data:text/plain;base64,SGVsbG8=" },
+    { serviceBase: { latitude: 35.6762 } },
+    { serviceBase: { longitude: 139.6503 } },
+    { serviceBase: { latitude: 90.0001, longitude: 139.6503 } },
+    { serviceBase: { latitude: 35.6762, longitude: -180.0001 } }
   ])("rejects an invalid self-edit payload: %o", (body) => {
     expect(() => technicianProfileUpdateBodySchema.parse(body)).toThrow();
   });

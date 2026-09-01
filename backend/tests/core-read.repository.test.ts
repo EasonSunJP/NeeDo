@@ -50,6 +50,8 @@ const publishedTechnicianWithoutServices = {
   id: 41,
   displayName: "橘 ひかり",
   city: "Tokyo",
+  baseLatitude: { toString: () => "35.6762000" },
+  baseLongitude: { toString: () => "139.6503000" },
   mediaAssets: [],
   reviewSummary: null,
   user: {
@@ -116,16 +118,20 @@ describe("CoreReadRepository multi-entity search", () => {
   it("searches published technicians directly without requiring a service", async () => {
     const fixture = createRepositoryFixture();
 
-    await expect(fixture.repository.searchTechnicians({
+    const result = await fixture.repository.searchTechnicians({
       entityType: "technician",
       keywords: ["ひかり"],
       categoryIds: [],
       page: 1,
       pageSize: 20
-    })).resolves.toMatchObject({
+    });
+    expect(result).toMatchObject({
       list: [{ displayName: "橘 ひかり", publicId: "s5831047296" }],
       total: 1
     });
+    expect(result.list[0]).not.toHaveProperty("baseLatitude");
+    expect(result.list[0]).not.toHaveProperty("baseLongitude");
+    expect(result.list[0]).not.toHaveProperty("serviceBase");
 
     expect(fixture.technicianFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({

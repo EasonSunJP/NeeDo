@@ -107,6 +107,7 @@ const selfProfile = {
   bidBudgetMinJpy: null,
   bidBudgetMaxJpy: null,
   paymentMethods: ["platform"],
+  serviceBase: null,
   visibility: "public",
   employmentType: "independent",
   yearsExperience: 4,
