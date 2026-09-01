@@ -21,6 +21,7 @@ import {
   assertSelectOnlyGrants,
   compareDashboardValues,
   createSelectOnlyQueryFacade,
+  extractSqlFunctionCalls,
   loadDashboardCheckerAuthority,
   parseDashboardFixtureManifest,
   resolveCheckerWindows,
@@ -59,6 +60,7 @@ const metricNamespace = {
 } as const;
 
 const fixtureMarker = "dashboard-overview-fixture-2026-08";
+const fixtureNamespace = "analytics-task8-immutable-v1";
 
 const identifierKind = {
   booking_order: "order_no",
@@ -87,15 +89,16 @@ const stableNumericId = (value: string): string => String(
 );
 
 const typedIdentity = (namespace: keyof typeof identifierKind, logicalId: string) => {
+  const structuredProvenance = `${fixtureMarker}:${fixtureNamespace}:${namespace}:${logicalId}`;
   const id = identifierKind[namespace] === "numeric_id"
     ? stableNumericId(`${namespace}:${logicalId}`)
-    : `${fixtureMarker}:${logicalId}`;
+    : namespace === "user" ? structuredProvenance : `${fixtureMarker}:${logicalId}`;
   return {
     id,
     identifierKind: identifierKind[namespace],
     provenance: {
       field: provenanceField[namespace],
-      value: provenanceField[namespace] === identifierKind[namespace] ? id : `${fixtureMarker}:${namespace}:${logicalId}`
+      value: provenanceField[namespace] === identifierKind[namespace] ? id : structuredProvenance
     }
   };
 };
@@ -108,7 +111,7 @@ const ref = (
 
 const manifest = (): DashboardFixtureManifest => ({
   version: 2,
-  namespace: "analytics-task8-immutable-v1",
+  namespace: fixtureNamespace,
   marker: fixtureMarker,
   city: "Tokyo",
   windows: {
@@ -184,7 +187,9 @@ const fixtureWitnessRows = (): FixtureWitnessRow[] => Object.entries(manifest().
     resolvedIdentifier: witness.id,
     provenanceField: witness.provenance.field,
     resolvedProvenance: witness.provenance.value,
-    resolvedCount: 1
+    resolvedCount: 1,
+    resolvedReversalState: kind === "reversedFinancialIds" ? "refunded" : null,
+    resolvedReversalReference: kind === "reversedFinancialIds" ? "formal-refund-reference" : null
   })));
 
 const createTempAuthority = (overrides: string[] = []) => {
@@ -368,6 +373,40 @@ describe("zero-write comprehensive dashboard checker", () => {
       city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
     })).toThrow("provenance");
 
+    const shortMarker = manifest();
+    shortMarker.marker = "short";
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(shortMarker), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("marker format");
+
+    const lowEntropyMarker = manifest();
+    lowEntropyMarker.marker = "aaaaaaaaaaaaaaaa-1";
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(lowEntropyMarker), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("marker format");
+
+    const shortNamespace = manifest();
+    shortNamespace.namespace = "x";
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(shortNamespace), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("namespace format");
+
+    for (const invalidProvenance of [
+      `ordinary-${fixtureMarker}:${fixtureNamespace}:booking_order:cancelled`,
+      `${fixtureMarker}:wrong-namespace:booking_order:cancelled`,
+      `${fixtureMarker}:${fixtureNamespace}:`
+    ]) {
+      const candidate = manifest();
+      candidate.witnesses.cancelledOrderIds[0]!.provenance.value = invalidProvenance;
+      expect(() => parseDashboardFixtureManifest(JSON.stringify(candidate), {
+        city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+      })).toThrow("structured provenance");
+    }
+
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(manifest()), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).not.toThrow();
+
     const caseCollision = manifest();
     caseCollision.witnesses.coherentCompletedCheckoutIds = [
       { ...ref("booking_order", "Case-Collision"), id: `${fixtureMarker}:Case-Collision` },
@@ -383,7 +422,7 @@ describe("zero-write comprehensive dashboard checker", () => {
       id: "123",
       provenance: {
         field: "service_snapshot_json.fixtureMarker",
-        value: `${fixtureMarker}:booking_order:123`
+        value: `${fixtureMarker}:${fixtureNamespace}:booking_order:123`
       }
     };
     typedNumericLooking.witnesses.reversedFinancialIds[0] = {
@@ -443,11 +482,12 @@ describe("zero-write comprehensive dashboard checker", () => {
       "-- ; UPDATE users\nWITH x AS (SELECT 1 AS value) SELECT value FROM x",
       "SHOW GRANTS",
       "DESCRIBE users",
-      "EXPLAIN SELECT * FROM users"
+      "EXPLAIN SELECT * FROM users",
+      "SELECT cOnCaT /* reviewed pure function */ ('a', 'b')"
     ]) {
       await expect(facade.$queryRaw(statement)).resolves.toEqual([{ ok: 1 }]);
     }
-    expect(queryRaw).toHaveBeenCalledTimes(7);
+    expect(queryRaw).toHaveBeenCalledTimes(8);
 
     for (const statement of [
       "SELECT 1; DELETE FROM users",
@@ -464,12 +504,22 @@ describe("zero-write comprehensive dashboard checker", () => {
       "SELECT /*+ SET_VAR(sort_buffer_size=16M) */ 1",
       "SELECT GET_LOCK('dashboard', 1)",
       "SELECT RELEASE_LOCK('dashboard')",
+      "SELECT RELEASE_ALL_LOCKS()",
+      "SELECT LAST_INSERT_ID(42)",
+      "SELECT evil_mutating_udf('dashboard')",
+      "SELECT evil_mutating_udf /* hidden call */ ('dashboard')",
+      "SELECT `evil_mutating_udf`()",
+      "SELECT `WHERE`()",
+      "SELECT MASTER_POS_WAIT('binlog.000001', 4)",
       "SELECT @x := 1",
       "SELECT @@session.sql_mode := ''"
     ]) {
       await expect(facade.$queryRaw(statement)).rejects.toThrow("read-only");
     }
-    expect(queryRaw).toHaveBeenCalledTimes(7);
+    expect(queryRaw).toHaveBeenCalledTimes(8);
+    expect(extractSqlFunctionCalls(
+      "SELECT CONCAT('safe(', TRIM(name)), `evil_mutating_udf` FROM users"
+    )).toEqual(["CONCAT", "TRIM"]);
   });
 
   it("calculates independent comparison boundaries and Tokyo half-open windows", () => {
@@ -661,7 +711,9 @@ describe("zero-write comprehensive dashboard checker", () => {
         resolvedIdentifier: `${fixtureMarker}:outside-manifest`,
         provenanceField: "service_snapshot_json.fixtureMarker",
         resolvedProvenance: `${fixtureMarker}:booking_order:outside-manifest`,
-        resolvedCount: 1
+        resolvedCount: 1,
+        resolvedReversalState: null,
+        resolvedReversalReference: null
       }
     ])).toThrow("authorized");
 
@@ -676,6 +728,27 @@ describe("zero-write comprehensive dashboard checker", () => {
     const wrongCanonicalId = fixtureWitnessRows();
     wrongCanonicalId[0] = { ...wrongCanonicalId[0]!, resolvedIdentifier: `${wrongCanonicalId[0]!.resolvedIdentifier} ` };
     expect(() => assertFixtureWitnessRows(manifest(), wrongCanonicalId)).toThrow("identifier");
+
+    for (const invalidState of ["pending", "unknown"]) {
+      const invalidReversal = fixtureWitnessRows() as Array<FixtureWitnessRow & {
+        resolvedReversalState?: string | null;
+        resolvedReversalReference?: string | null;
+      }>;
+      const reversedIndex = invalidReversal.findIndex((row) => row.kind === "reversedFinancialIds");
+      invalidReversal[reversedIndex] = {
+        ...invalidReversal[reversedIndex]!,
+        resolvedReversalState: invalidState,
+        resolvedReversalReference: "formal-refund-reference"
+      };
+      expect(() => assertFixtureWitnessRows(manifest(), invalidReversal)).toThrow("reversal evidence");
+    }
+    const missingReversalReference = fixtureWitnessRows();
+    const reversedIndex = missingReversalReference.findIndex((row) => row.kind === "reversedFinancialIds");
+    missingReversalReference[reversedIndex] = {
+      ...missingReversalReference[reversedIndex]!,
+      resolvedReversalReference: null
+    };
+    expect(() => assertFixtureWitnessRows(manifest(), missingReversalReference)).toThrow("reversal evidence");
   });
 
   it("keeps an independent exact 17-metric order and catches every projection field mutation", () => {
@@ -785,12 +858,37 @@ describe("zero-write comprehensive dashboard checker", () => {
 
     const witnessSql = executed.find((sql) => /fixture_witnesses/iu.test(sql))!;
     const evidenceSql = executed.find((sql) => /independent_evidence/iu.test(sql))!;
+    const generatedFunctionCalls = [...new Set([
+      ...extractSqlFunctionCalls(witnessSql),
+      ...extractSqlFunctionCalls(evidenceSql)
+    ])].sort();
+    expect(generatedFunctionCalls).toEqual([
+      "CAST", "COALESCE", "CONCAT", "CONVERT_TZ", "COUNT", "DATE", "DAY",
+      "JSON_CONTAINS", "JSON_EXTRACT", "JSON_OBJECT", "JSON_UNQUOTE", "LAST_DAY",
+      "MAX", "MIN", "MONTH", "ROUND",
+      "ROW_NUMBER", "SUM", "TIMESTAMP", "TRIM", "YEAR"
+    ]);
     expect(witnessSql).toContain("authorized.identifier_kind");
+    const cancelledSql = witnessSql.match(
+      /authorized\.kind = 'cancelledOrderIds'[\s\S]*?(?=\n\s+OR \(authorized\.kind = 'refundedOrderIds')/iu
+    )?.[0] ?? "";
+    expect(cancelledSql).toContain("booking.payment_confirmed_at >= period.from_inclusive");
+    expect(cancelledSql).toContain("booking.payment_confirmed_at < period.to_exclusive");
+    expect(cancelledSql).toContain("checkout.payment_selected_at <= booking.payment_confirmed_at");
+    expect(cancelledSql).toContain("payment_ledger.reference_type = 'order_checkout_payment'");
+    const reversedSql = witnessSql.match(
+      /authorized\.kind = 'reversedFinancialIds'[\s\S]*?(?=\n\s+OR \(authorized\.kind = 'otherCityOrderIds')/iu
+    )?.[0] ?? "";
+    expect(reversedSql).toContain("financial.settlement_status = 'refunded'");
+    expect(reversedSql).toContain("booking.payment_status = 'refunded'");
+    expect(reversedSql).toMatch(/JSON_CONTAINS\s*\(\s*financial\.money_timeline_json/iu);
+    expect(reversedSql).not.toContain("financial.settlement_status <> 'settled'");
     expect(witnessSql).toContain("BINARY TRIM(booking.order_no) = BINARY authorized.witness_id");
     expect(witnessSql).not.toContain("booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR)");
     expect(witnessSql).toContain("JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))");
     expect(witnessSql).toContain("AS resolvedIdentifier");
     expect(witnessSql).toContain("AS resolvedProvenance");
+    expect(witnessSql).not.toContain("authorized.provenance_value AS resolvedProvenance");
     expect(witnessSql).toContain("AS resolvedCount");
     expect(witnessSql).not.toMatch(/AS fixture_marker|AS allOtherPredicatesSatisfied|1 AS withinAuthoritativeWindow/iu);
     expect(witnessSql).toMatch(/payment_status\s*=\s*'refunded'/iu);

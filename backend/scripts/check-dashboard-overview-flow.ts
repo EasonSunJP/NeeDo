@@ -171,6 +171,8 @@ export interface FixtureWitnessRow {
   provenanceField: WitnessProvenanceField;
   resolvedProvenance: string;
   resolvedCount: number | bigint;
+  resolvedReversalState: string | null;
+  resolvedReversalReference: string | null;
 }
 
 export type IndependentReadyValues = Record<DashboardCheckReadyMetricKey, {
@@ -337,6 +339,17 @@ const requireVisible = (value: unknown, label: string): string => {
   return value.trim();
 };
 
+const structuredAuthorityToken = /^(?=.{16,80}$)(?=.*[a-z])(?=.*\d)[a-z0-9]+(?:[-_][a-z0-9]+)+$/u;
+
+const requireAuthorityToken = (value: unknown, label: "marker" | "namespace"): string => {
+  const token = requireVisible(value, label).normalize("NFKC");
+  const entropyCharacters = new Set(token.replace(/[-_]/gu, ""));
+  if (!structuredAuthorityToken.test(token) || entropyCharacters.size < 6) {
+    throw new Error(`Dashboard fixture ${label} format is invalid`);
+  }
+  return token;
+};
+
 const metricWitnessNamespace: Record<DashboardCheckReadyMetricKey, WitnessNamespace> = {
   gross_revenue: "booking_order",
   discount_amount: "booking_order",
@@ -409,7 +422,8 @@ const requireTypedWitness = (
   candidate: Record<string, unknown>,
   namespace: WitnessNamespace,
   label: string,
-  marker: string
+  marker: string,
+  fixtureNamespace: string
 ): Pick<FixtureWitnessRef, "id" | "identifierKind" | "provenance"> => {
   const expectedIdentifierKind = identifierKindByNamespace[namespace];
   const identifierKind = requireVisible(candidate.identifierKind, `${label}.identifierKind`);
@@ -422,11 +436,20 @@ const requireTypedWitness = (
   const expectedField = provenanceFieldByNamespace[namespace];
   const field = requireVisible(candidate.provenance.field, `${label}.provenance.field`);
   const value = requireVisible(candidate.provenance.value, `${label}.provenance.value`).normalize("NFKC");
-  if (field !== expectedField || !value.includes(marker)) {
-    throw new Error(`Dashboard fixture manifest provenance is invalid: ${label}`);
+  const provenancePrefix = `${marker}:${fixtureNamespace}:${namespace}:`;
+  const suffix = value.slice(provenancePrefix.length);
+  if (
+    field !== expectedField || !value.startsWith(provenancePrefix) ||
+    suffix === "" || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(suffix)
+  ) {
+    throw new Error(`Dashboard fixture manifest structured provenance is invalid: ${label}`);
+  }
+  const id = canonicalWitnessId(candidate.id, expectedIdentifierKind, `${label}.id`);
+  if (namespace === "user" && id !== value) {
+    throw new Error(`Dashboard fixture manifest structured provenance is invalid: ${label}`);
   }
   return {
-    id: canonicalWitnessId(candidate.id, expectedIdentifierKind, `${label}.id`),
+    id,
     identifierKind: expectedIdentifierKind,
     provenance: { field: expectedField, value }
   };
@@ -435,7 +458,8 @@ const requireTypedWitness = (
 const requireFixtureWitnesses = (
   value: unknown,
   label: keyof DashboardFixtureManifest["witnesses"],
-  marker: string
+  marker: string,
+  fixtureNamespace: string
 ): FixtureWitnessRef[] => {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`Dashboard fixture manifest is incomplete: ${label}`);
@@ -452,7 +476,7 @@ const requireFixtureWitnesses = (
     }
     return {
       namespace: namespace as WitnessNamespace,
-      ...requireTypedWitness(candidate, namespace as WitnessNamespace, label, marker),
+      ...requireTypedWitness(candidate, namespace as WitnessNamespace, label, marker, fixtureNamespace),
       period: period as PeriodKey
     };
   });
@@ -467,7 +491,8 @@ const requireMetricWitnesses = (
   value: unknown,
   metricKey: DashboardCheckReadyMetricKey,
   period: PeriodKey,
-  marker: string
+  marker: string,
+  fixtureNamespace: string
 ): MetricWitnessRef[] => {
   const label = `${metricKey}.${period}`;
   if (!Array.isArray(value) || value.length === 0) {
@@ -485,7 +510,7 @@ const requireMetricWitnesses = (
     }
     return {
       namespace: namespace as WitnessNamespace,
-      ...requireTypedWitness(candidate, namespace as WitnessNamespace, label, marker),
+      ...requireTypedWitness(candidate, namespace as WitnessNamespace, label, marker, fixtureNamespace),
       expectation: expectation as MetricWitnessRef["expectation"]
     };
   });
@@ -762,8 +787,8 @@ export function parseDashboardFixtureManifest(
   const rawWindows = raw.windows;
   const rawWitnesses = raw.witnesses;
   const rawReadyMetricWitnesses = raw.readyMetricWitnesses;
-  const namespace = requireVisible(raw.namespace, "namespace");
-  const marker = requireVisible(raw.marker, "marker");
+  const namespace = requireAuthorityToken(raw.namespace, "namespace");
+  const marker = requireAuthorityToken(raw.marker, "marker");
   const city = requireVisible(raw.city, "city");
   if (namespace === marker) throw new Error("Dashboard fixture namespace and marker must be distinct");
   const resolved = resolveCheckerWindows(authority.from, authority.to);
@@ -784,7 +809,10 @@ export function parseDashboardFixtureManifest(
     "compensationProfileIds", "ndpIncomeFinancialIds", "affiliateRewardIds"
   ] as const;
   const witnesses = Object.fromEntries(
-    witnessKeys.map((key) => [key, requireFixtureWitnesses(rawWitnesses[key], key, marker)])
+    witnessKeys.map((key) => [
+      key,
+      requireFixtureWitnesses(rawWitnesses[key], key, marker, namespace)
+    ])
   ) as unknown as DashboardFixtureManifest["witnesses"];
   const fixtureIds = new Set<string>();
   const fixtureProvenance = new Set<string>();
@@ -806,8 +834,8 @@ export function parseDashboardFixtureManifest(
     const family = rawReadyMetricWitnesses[key];
     if (!isObject(family)) throw new Error(`Dashboard fixture manifest is incomplete: ${key}`);
     return [key, {
-      current: requireMetricWitnesses(family.current, key, "current", marker),
-      previous: requireMetricWitnesses(family.previous, key, "previous", marker)
+      current: requireMetricWitnesses(family.current, key, "current", marker, namespace),
+      previous: requireMetricWitnesses(family.previous, key, "previous", marker, namespace)
     }];
   })) as DashboardFixtureManifest["readyMetricWitnesses"];
   const metricUses = new Map<string, Array<{ metricKey: DashboardCheckReadyMetricKey; period: PeriodKey }>>();
@@ -885,7 +913,111 @@ const queryText = (query: unknown): string => {
 };
 
 const sqlWriteKeyword = /\b(?:INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TRUNCATE|CALL|LOAD|HANDLER|DO|SET|USE|GRANT|REVOKE|ANALYZE|OPTIMIZE|REPAIR|FLUSH|KILL|LOCK|UNLOCK|START|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/iu;
-const sqlReadSideEffect = /(?:\b(?:FOR\s+UPDATE|LOCK\s+IN\s+SHARE\s+MODE|INTO\s+(?:OUTFILE|DUMPFILE)|GET_LOCK|RELEASE_LOCK|IS_FREE_LOCK|IS_USED_LOCK|SERVICE_GET_WRITE_LOCKS|SERVICE_RELEASE_LOCKS|SLEEP|BENCHMARK)\b|:=|@{1,2}[A-Za-z_$])/iu;
+const sqlReadSideEffect = /(?:\b(?:FOR\s+UPDATE|LOCK\s+IN\s+SHARE\s+MODE|INTO\s+(?:OUTFILE|DUMPFILE))\b|:=|@{1,2}[A-Za-z_$])/iu;
+
+const checkerSqlFunctions = new Set([
+  "CAST", "COALESCE", "CONCAT", "CONVERT_TZ", "COUNT", "DATE", "DAY",
+  "JSON_CONTAINS", "JSON_EXTRACT", "JSON_OBJECT", "JSON_UNQUOTE", "LAST_DAY",
+  "MAX", "MIN", "MONTH", "ROUND", "ROW_NUMBER", "SUM", "TIMESTAMP", "TRIM", "YEAR"
+]);
+
+const parenthesizedSqlSyntax = new Set([
+  "AND", "AS", "EXISTS", "IN", "NOT", "OR", "OVER", "THEN", "WHEN", "WHERE"
+]);
+
+export function extractSqlFunctionCalls(query: unknown): string[] {
+  const input = queryText(query);
+  const calls: string[] = [];
+  let index = 0;
+  const skipQuoted = (delimiter: "'" | '"'): void => {
+    index += 1;
+    while (index < input.length) {
+      if (input[index] === "\\") {
+        index += 2;
+        continue;
+      }
+      if (input[index] === delimiter) {
+        if (input[index + 1] === delimiter) {
+          index += 2;
+          continue;
+        }
+        index += 1;
+        return;
+      }
+      index += 1;
+    }
+  };
+  const skipTrivia = (start: number): number => {
+    let cursor = start;
+    while (cursor < input.length) {
+      if (/\s/u.test(input[cursor]!)) {
+        cursor += 1;
+        continue;
+      }
+      if (input[cursor] === "/" && input[cursor + 1] === "*") {
+        const close = input.indexOf("*/", cursor + 2);
+        return close < 0 ? input.length : skipTrivia(close + 2);
+      }
+      if (input[cursor] === "#" || (input[cursor] === "-" && input[cursor + 1] === "-" &&
+        Number.isFinite(input.charCodeAt(cursor + 2)) && input.charCodeAt(cursor + 2) <= 0x20)) {
+        const newline = input.slice(cursor).search(/[\r\n]/u);
+        return newline < 0 ? input.length : skipTrivia(cursor + newline + 1);
+      }
+      break;
+    }
+    return cursor;
+  };
+  while (index < input.length) {
+    const character = input[index]!;
+    const next = input[index + 1];
+    if (character === "'" || character === '"') {
+      skipQuoted(character);
+      continue;
+    }
+    if (character === "#" || (character === "-" && next === "-" &&
+      Number.isFinite(input.charCodeAt(index + 2)) && input.charCodeAt(index + 2) <= 0x20)) {
+      const newline = input.slice(index).search(/[\r\n]/u);
+      index = newline < 0 ? input.length : index + newline + 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      const close = input.indexOf("*/", index + 2);
+      index = close < 0 ? input.length : close + 2;
+      continue;
+    }
+    let identifier = "";
+    let quotedIdentifier = false;
+    if (character === "`") {
+      quotedIdentifier = true;
+      index += 1;
+      while (index < input.length) {
+        if (input[index] === "`" && input[index + 1] === "`") {
+          identifier += "`";
+          index += 2;
+        } else if (input[index] === "`") {
+          index += 1;
+          break;
+        } else {
+          identifier += input[index]!;
+          index += 1;
+        }
+      }
+    } else if (/[A-Za-z_]/u.test(character)) {
+      const start = index;
+      index += 1;
+      while (index < input.length && /[A-Za-z0-9_$]/u.test(input[index]!)) index += 1;
+      identifier = input.slice(start, index);
+    } else {
+      index += 1;
+      continue;
+    }
+    const follower = skipTrivia(index);
+    if (input[follower] !== "(") continue;
+    const normalized = identifier.toUpperCase();
+    if (quotedIdentifier || !parenthesizedSqlSyntax.has(normalized)) calls.push(normalized);
+  }
+  return calls;
+}
 
 const lexicalSql = (input: string): string => {
   let output = "";
@@ -997,9 +1129,17 @@ export function assertReadOnlySql(query: unknown): void {
   if (statement === "" || sqlWriteKeyword.test(statement) || sqlReadSideEffect.test(statement)) {
     throw new Error("Dashboard checker read-only facade rejected a non-read-only query");
   }
+  const unsupportedFunctions = extractSqlFunctionCalls(query)
+    .filter((name) => !checkerSqlFunctions.has(name));
+  if (unsupportedFunctions.length > 0) {
+    throw new Error(
+      `Dashboard checker read-only facade rejected unsupported SQL function: ${unsupportedFunctions.join(", ")}`
+    );
+  }
   const words = topLevelWords(statement);
   const first = words[0];
-  if (first === "SELECT" || first === "SHOW" || first === "DESCRIBE") return;
+  if (first === "SELECT" || first === "DESCRIBE") return;
+  if (first === "SHOW" && /^SHOW\s+GRANTS$/iu.test(statement)) return;
   if (first === "WITH") {
     const terminal = words.find((word, index) => index > 0 && [
       "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE"
@@ -1117,6 +1257,20 @@ export function assertFixtureWitnessRows(
     }
     if (row.provenanceField !== witness.provenance.field || row.resolvedProvenance !== witness.provenance.value) {
       throw new Error("Fixture witness persisted provenance does not match immutable authority");
+    }
+    if (
+      row.kind === "reversedFinancialIds" &&
+      (row.resolvedReversalState !== "refunded" ||
+        typeof row.resolvedReversalReference !== "string" ||
+        row.resolvedReversalReference.trim() === "")
+    ) {
+      throw new Error("Fixture witness formal reversal evidence is invalid");
+    }
+    if (
+      row.kind !== "reversedFinancialIds" &&
+      (row.resolvedReversalState !== null || row.resolvedReversalReference !== null)
+    ) {
+      throw new Error("Fixture witness contains unexpected reversal evidence");
     }
     seen.add(key);
   }
@@ -2123,6 +2277,24 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
       WHERE BINARY TRIM(row_user.needo_id) = BINARY authorized.witness_id
         AND BINARY TRIM(row_user.needo_id) = BINARY authorized.provenance_value)
     ELSE 0 END`;
+  const resolvedReversalState = `CASE WHEN authorized.kind = 'reversedFinancialIds' THEN (
+    SELECT MIN(row_reversal.settlement_status)
+    FROM order_financials AS row_reversal
+    INNER JOIN booking_orders AS row_reversal_booking
+      ON row_reversal_booking.id = row_reversal.booking_order_id
+    WHERE CAST(row_reversal.id AS CHAR) = authorized.witness_id
+      AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_reversal_booking.service_snapshot_json, '$.fixtureMarker'))
+        = BINARY authorized.provenance_value
+  ) ELSE NULL END`;
+  const resolvedReversalReference = `CASE WHEN authorized.kind = 'reversedFinancialIds' THEN (
+    SELECT MIN(TRIM(row_reversal_booking.payment_refund_reference))
+    FROM order_financials AS row_reversal
+    INNER JOIN booking_orders AS row_reversal_booking
+      ON row_reversal_booking.id = row_reversal.booking_order_id
+    WHERE CAST(row_reversal.id AS CHAR) = authorized.witness_id
+      AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_reversal_booking.service_snapshot_json, '$.fixtureMarker'))
+        = BINARY authorized.provenance_value
+  ) ELSE NULL END`;
   return `/* dashboard_checker_fixture_witnesses */
     WITH authorized AS (${authorized}), periods AS (${periodBounds})
     SELECT authorized.kind, authorized.witness_namespace AS witnessNamespace,
@@ -2131,7 +2303,9 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
       ${resolvedIdentifier} AS resolvedIdentifier,
       authorized.provenance_field AS provenanceField,
       ${resolvedProvenance} AS resolvedProvenance,
-      ${resolvedCount} AS resolvedCount
+      ${resolvedCount} AS resolvedCount,
+      ${resolvedReversalState} AS resolvedReversalState,
+      ${resolvedReversalReference} AS resolvedReversalReference
     FROM authorized
     INNER JOIN periods AS period ON period.period_key = authorized.period_key
     WHERE
@@ -2165,6 +2339,8 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND booking.status = 'cancelled' AND booking.payment_status = 'confirmed'
           AND booking.payment_refunded_at IS NULL AND booking.payment_refunded_by_id IS NULL
           AND booking.payment_refund_reference IS NULL AND booking.payment_refund_reason IS NULL
+          AND booking.payment_confirmed_at >= period.from_inclusive
+          AND booking.payment_confirmed_at < period.to_exclusive
           AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
           AND ${validCheckoutPaymentEvidencePredicate}))
       OR (authorized.kind = 'refundedOrderIds' AND EXISTS (
@@ -2198,14 +2374,34 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND CAST(financial.id AS CHAR) = authorized.witness_id
           AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
             = BINARY authorized.provenance_value
-          AND financial.settlement_status <> 'settled' AND financial.deleted_at IS NULL
+          AND financial.settlement_status = 'refunded' AND financial.deleted_at IS NULL
+          AND financial.service_income_status = 'confirmed'
           AND financial.ndp_currency = 'NDP'
           AND financial.b_platform_fee_actual_ndp >= 0
           AND financial.c_request_fee_actual_ndp >= 0 AND financial.user_reward_ndp >= 0
           AND booking.payment_confirmed_at >= period.from_inclusive
           AND booking.payment_confirmed_at < period.to_exclusive
           AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
-          AND ${validCompletedCheckoutPredicate}
+          AND ${coherentCheckoutCorePredicate}
+          AND booking.status = 'completed' AND booking.payment_status = 'refunded'
+          AND booking.payment_refunded_at >= booking.payment_confirmed_at
+          AND booking.payment_refunded_by_id IS NOT NULL
+          AND booking.payment_refund_reference IS NOT NULL
+          AND TRIM(booking.payment_refund_reference) <> ''
+          AND booking.payment_refund_reason IS NOT NULL
+          AND TRIM(booking.payment_refund_reason) <> ''
+          AND JSON_CONTAINS(
+            financial.money_timeline_json,
+            JSON_OBJECT(
+              'type', 'manual_payment_refunded',
+              'amountJpy', booking.payment_amount_jpy,
+              'status', 'refunded',
+              'metadata', JSON_OBJECT(
+                'reason', booking.payment_refund_reason,
+                'reference', booking.payment_refund_reference
+              )
+            )
+          ) = 1
           AND ${validCheckoutPaymentEvidencePredicate}))
       OR (authorized.kind = 'otherCityOrderIds' AND EXISTS (
         SELECT 1 FROM booking_orders AS booking
