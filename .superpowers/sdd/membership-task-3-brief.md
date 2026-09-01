@@ -62,6 +62,8 @@ export type RankingEntityType =
   | "technician"
   | "customer";
 
+export const MAX_ANALYTICS_RANKING_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / 10);
+
 export interface AnalyticsRankingInput {
   kind: RankingKind;
   metric: RankingMetric;
@@ -127,7 +129,7 @@ A candidate contributes only when all of the following are coherent:
 1. Booking is non-deleted, `status = completed`, `payment_status = confirmed`, has non-null confirmation actor/time, and every refund field (`payment_refunded_at`, actor, reference and reason) is null. `refund_pending`, `refunded`, cancelled, incomplete and any row with refund residue do not contribute.
 2. Exactly one non-deleted checkout belongs to the booking. Booking `payment_method`, `payment_amount_jpy`, confirmation actor/time/reference/note and checkout evidence agree exactly.
 3. Checkout base/add-on/discount/total/payable values are non-negative signed-INT integers and `base + addOn - discount = checkoutAmount = booking.paymentAmountJpy` without overflow. Base minus discount must also be non-negative.
-4. Checkout has a non-null selected method/time and `paymentSelectedAt <= paymentConfirmedAt`.
+4. Checkout has a non-null selected method/time and `paymentSelectedAt <= paymentConfirmedAt`. Exactly one non-deleted `PAYMENT_METHOD_SELECTED` event must link the same order, service session and checkout; its actor is the booking customer, its `occurredAt` equals `paymentSelectedAt` and is no later than `paymentConfirmedAt`, and its reason is null. For NDP/cash its metadata is exactly `{ method: "ndp" }` or `{ method: "cash" }`; for other it is exactly `{ method: "other", otherMethodCode, otherMethodLabel }`, with code/label equal to the checkout values. Missing, duplicate, cross-order/session/checkout, wrong-actor/time/reason, mismatched value or extra-key selection evidence is contradictory and fails the whole request.
 5. For NDP, the checkout has exactly its one non-deleted applied `BOOKING_COMPLETE_SETTLEMENT` ledger transaction in currency `NDP`, reference type `order_checkout_payment`, reference ID equal to checkout ID, amount equal to `payableNdp`, actor equal to booking confirmation actor, and creation time between selection and confirmation. Booking reference is exactly `checkout:{checkoutId}:ledger:{ledgerId}`; booking note, `otherMethodCode`, `otherMethodLabel`, `otherPaymentReference` and all receipt actor/time/reason fields are null. Exactly one non-deleted `NDP_PAYMENT_APPLIED` event links the same order/session/checkout and actor, has reason `checkout_ndp_payment_applied`, and has exact metadata `{ paymentEvidence: "ndp_ledger", ledgerTransactionId }` for that ledger.
 6. For cash/other, `ledgerTransactionId` is null. Receipt actor/time/reason are non-null, trimmed reason is visible, receipt time is between selection and booking confirmation, and booking actor/note equal the receipt actor/reason. The evidence/reference pair is exact and cannot be crossed: `paymentEvidence = "technician_receipt_confirmation"` requires booking reference `checkout:{checkoutId}:technician-receipt` and the receipt actor must be the exact assigned technician user; `paymentEvidence = "operations_receipt_override"` requires booking reference `checkout:{checkoutId}:operations-receipt` and exactly one non-deleted audit row whose actor is the receipt actor, action is `backoffice.order.checkout.receipt_override`, target type/ID are `BookingOrder`/booking ID, and whose metadata exactly cross-checks `orderId`, `checkoutId`, `selectedMethod`, `checkoutAmountJpy` and trimmed reason. Cash requires `otherMethodCode`, `otherMethodLabel` and `otherPaymentReference` all null. Other requires visible bounded `otherMethodCode`/`otherMethodLabel` exactly matching the selected-method event and requires `otherPaymentReference` null because the formal writer does not populate it. Exactly one non-deleted `RECEIPT_CONFIRMED` event links the same order/session/checkout, actor and reason and has exact metadata `{ paymentEvidence, reason }`. Any stale ledger, receipt, other-method or refund field outside the selected method's exact shape is contradictory evidence, not an ignored value.
 7. Payment/receipt events occur no earlier than selection and no later than booking confirmation. A formal ended, non-deleted service session exists for the order and `endedAt <= paymentConfirmedAt`.
@@ -199,12 +201,12 @@ Path `kind` is strict `service | technician | customer`. Query is strict and acc
 - `metric`: `gmv | completedCount`, default `gmv`;
 - existing dashboard `period/from/to/city` semantics, default `last7days` and maximum custom range 366 inclusive Tokyo calendar days;
 - optional positive integer `categoryId`;
-- `page`: positive integer, default 1;
+- `page`: positive safe integer, default 1, maximum `MAX_ANALYTICS_RANKING_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / 10)`;
 - `pageSize`: positive integer, default 10, maximum 10.
 
 Unknown keys, empty city, non-custom dates, incomplete custom range, invalid IDs/metric/pagination and oversized ranges are 400/`VALIDATION`. Reuse/export the existing dashboard query base/refinement and `resolveDashboardWindow`; do not create a different period implementation.
 
-The response uses the standard envelope and exact `AnalyticsRankingResponse`. `total` is the number of eligible distinct entities after filters, `page_size` echoes the validated page size, list may be empty, and `rank` remains global across later pages. The operations dashboard requests page 1/pageSize 10; later pages remain bounded formal reads, not an unbounded export.
+The validator, OpenAPI and repository all reuse the exported maximum. Before any repository read, reject any page/page-size/offset whose value or `(page - 1) * pageSize` is not a canonical non-negative JavaScript safe integer; an invalid repository input raises the typed incomplete-evidence error without issuing SQL. The response uses the standard envelope and exact `AnalyticsRankingResponse`. `total` is the number of eligible distinct entities after filters, `page_size` echoes the validated page size, list may be empty, and `rank` remains global across later pages. The operations dashboard requests page 1/pageSize 10; later pages remain bounded formal reads, not an unbounded export.
 
 ## RBAC, audit and dependency wiring
 
@@ -234,7 +236,7 @@ Document examples for all three kinds and both metrics plus 400, 401, 403, 404 c
 Tests must inspect generated SQL and bound values rather than source markers alone. Cover:
 
 - NDP, technician cash, operations cash and other-method formal success;
-- missing/duplicate/wrong ledger, event, actor, reference, audit, receipt reason, time order or checkout arithmetic; crossed technician/operations evidence-reference pairs; cash/NDP stale other-method fields; non-null `otherPaymentReference`; OTHER code/label mismatch; and any stale ledger/receipt field for the selected method;
+- missing/duplicate/wrong ledger, event, actor, reference, audit, receipt reason, time order or checkout arithmetic; exact `PAYMENT_METHOD_SELECTED` authority for NDP/cash/other including duplicate/cross-order/session/checkout/wrong-customer/time/reason/metadata-extra-key cases; crossed technician/operations evidence-reference pairs; cash/NDP stale other-method fields; non-null `otherPaymentReference`; OTHER code/label mismatch; and any stale ledger/receipt field for the selected method;
 - pending/cancelled/awaiting/refund-pending/refunded and every individual refund residue;
 - exact `paymentConfirmedAt` lower inclusion/upper exclusion and a misleading `endsAt`;
 - current `shop.city` scope, moved city, exact direct category, inactive/missing category and no descendant expansion;
@@ -243,7 +245,7 @@ Tests must inspect generated SQL and bound values rather than source markers alo
 - affiliate base discount attribution and exact line total reconciliation;
 - unfiltered technician/customer full-order GMV/count and filtered matching-line GMV/distinct-order count;
 - active/test/deleted users, missing assigned technician, deleted/missing service entities and inactive/deleted/missing category rows across the explicit service/filtered technician/filtered customer/unfiltered technician/unfiltered customer eligibility-versus-409 matrix, plus standalone technician services with real public IDs;
-- zero GMV, empty result, more than ten entities, later pages and global ranks;
+- zero GMV, empty result, more than ten entities, later pages and global ranks; maximum safe page acceptance plus oversized/scientific-notation/unsafe-offset rejection at API and repository zero-query boundaries;
 - selected/secondary metric ties, registration tie, numeric-ID tie across service tables and final binary entity-type tie;
 - malformed/duplicate/fractional/negative/unsafe aggregates and canonical numeric parsing.
 
