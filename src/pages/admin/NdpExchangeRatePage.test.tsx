@@ -6,6 +6,9 @@ import { ApiClientError } from "../../api/httpClient";
 import { ndpExchangeRateApi, type NdpExchangeRateOverview } from "../../api/ndpExchangeRate";
 import { classifyNdpExchangeRate, NdpExchangeRatePage } from "./NdpExchangeRatePage";
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
+  .IS_REACT_ACT_ENVIRONMENT = true;
+
 const mocked = vi.hoisted(() => ({ canWrite: true }));
 
 vi.mock("../../api/ndpExchangeRate", () => ({
@@ -19,21 +22,24 @@ vi.mock("../../auth/PermissionGate", () => ({
     mocked.canWrite && permission === "backoffice:ndp-exchange-rate:write" ? <>{children}</> : null
 }));
 
-const rate = (overrides: Record<string, unknown> = {}) => ({
-  ruleId: 1,
-  publicId: "rate-1",
-  version: 1,
-  ndpUnits: 3,
-  jpyUnits: 5,
-  status: "active" as const,
-  effectiveFrom: "2026-08-01T00:00:00.000Z",
-  effectiveTo: "2026-09-01T00:00:00.000Z",
-  reason: "initial",
-  createdById: 91,
-  createdAt: "2026-08-01T00:00:00.000Z",
-  updatedAt: "2026-08-01T00:00:00.000Z",
-  ...overrides
-});
+const rate = (overrides: Record<string, unknown> = {}) => {
+  const version = typeof overrides.version === "number" ? overrides.version : 1;
+  return ({
+    ruleId: 1,
+    publicId: `rate-${version}`,
+    version: 1,
+    ndpUnits: 3,
+    jpyUnits: 5,
+    status: "active" as const,
+    effectiveFrom: "2026-08-01T00:00:00.000Z",
+    effectiveTo: "2026-09-01T00:00:00.000Z",
+    reason: "initial",
+    createdById: 91,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    ...overrides
+  });
+};
 
 const overview = (overrides: Partial<NdpExchangeRateOverview> = {}): NdpExchangeRateOverview => ({
   current: rate({
@@ -71,6 +77,10 @@ function click(buttonText: string) {
   const button = [...document.querySelectorAll("button")].find((item) => item.textContent?.includes(buttonText));
   if (!button) throw new Error(`missing button: ${buttonText}`);
   act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+
+function hasButton(buttonText: string) {
+  return [...document.querySelectorAll("button")].some((item) => item.textContent?.includes(buttonText));
 }
 
 function fill(labelText: string, value: string) {
@@ -303,5 +313,82 @@ describe("NdpExchangeRatePage", () => {
     await flush();
     expect(ndpExchangeRateApi.publish).toHaveBeenCalledTimes(1);
     expect(ndpExchangeRateApi.getOverview).toHaveBeenNthCalledWith(3, { page: 1, pageSize: 20 });
+  });
+
+  it("releases the applied-command projection lock after a fresh read and permits a second deliberate publish", async () => {
+    vi.mocked(ndpExchangeRateApi.getOverview)
+      .mockResolvedValueOnce(overview())
+      .mockResolvedValueOnce(overview({ latestVersion: 4 }))
+      .mockResolvedValueOnce(overview({ latestVersion: 5 }));
+    vi.mocked(ndpExchangeRateApi.publish)
+      .mockResolvedValueOnce(rate({ version: 4 }))
+      .mockResolvedValueOnce(rate({ version: 5 }));
+    await act(async () => { root.render(<NdpExchangeRatePage />); });
+    await flush();
+
+    click("发布新汇率");
+    fill("NDP 数量", "3"); fill("JPY 数量", "5");
+    fill("生效时间", "2030-01-02T03:04"); fill("设置理由", "第一次发布");
+    click("确认发布内容"); click("确认并发布"); await flush();
+
+    expect(ndpExchangeRateApi.publish).toHaveBeenCalledTimes(1);
+    expect(hasButton("发布新汇率")).toBe(true);
+
+    click("发布新汇率");
+    fill("生效时间", "2031-01-02T03:04"); fill("设置理由", "第二次发布");
+    click("确认发布内容"); click("确认并发布"); await flush();
+
+    expect(ndpExchangeRateApi.publish).toHaveBeenCalledTimes(2);
+    expect(ndpExchangeRateApi.publish).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      expectedVersion: 4,
+      reason: "第二次发布"
+    }));
+    expect(vi.mocked(ndpExchangeRateApi.publish).mock.calls[1][0].idempotencyKey)
+      .not.toBe(vi.mocked(ndpExchangeRateApi.publish).mock.calls[0][0].idempotencyKey);
+  });
+
+  it("keeps a version-conflict refresh lock after a failed GET until retry loads a fresh version", async () => {
+    vi.mocked(ndpExchangeRateApi.getOverview)
+      .mockResolvedValueOnce(overview())
+      .mockRejectedValueOnce(new Error("conflict refresh failed"))
+      .mockResolvedValueOnce(overview({ history: { ...overview().history, page: 2 } }))
+      .mockResolvedValueOnce(overview({ latestVersion: 4 }))
+      .mockResolvedValueOnce(overview({ latestVersion: 5 }));
+    vi.mocked(ndpExchangeRateApi.publish)
+      .mockRejectedValueOnce(new ApiClientError("error.ndp_exchange_rate.conflict", 40963, 409))
+      .mockResolvedValueOnce(rate({ version: 5 }));
+    await act(async () => { root.render(<NdpExchangeRatePage />); });
+    await flush();
+
+    click("发布新汇率");
+    fill("NDP 数量", "3"); fill("JPY 数量", "5");
+    fill("生效时间", "2030-01-02T03:04"); fill("设置理由", "冲突后保留");
+    click("确认发布内容"); click("确认并发布"); await flush();
+
+    expect(container.textContent).toContain("版本冲突后最新数据刷新失败");
+    expect(hasButton("发布新汇率")).toBe(false);
+    expect(hasButton("确认发布内容")).toBe(false);
+    expect(hasButton("确认并发布")).toBe(false);
+    expect(ndpExchangeRateApi.publish).toHaveBeenCalledTimes(1);
+
+    click("下一页");
+    await flush();
+    expect(ndpExchangeRateApi.getOverview).toHaveBeenNthCalledWith(3, {
+      page: 2,
+      pageSize: 20
+    });
+    expect(hasButton("确认发布内容")).toBe(false);
+
+    click("重试只读数据");
+    await flush();
+    expect(ndpExchangeRateApi.getOverview).toHaveBeenNthCalledWith(4, { page: 1, pageSize: 20 });
+    expect(hasButton("确认发布内容")).toBe(true);
+
+    click("确认发布内容"); click("确认并发布"); await flush();
+    expect(ndpExchangeRateApi.publish).toHaveBeenCalledTimes(2);
+    expect(ndpExchangeRateApi.publish).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      expectedVersion: 4,
+      reason: "冲突后保留"
+    }));
   });
 });

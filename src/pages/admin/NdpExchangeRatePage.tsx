@@ -12,7 +12,7 @@ import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { languageLocales } from "../../i18n/translations";
+import { languageLocales, translateTextForContext } from "../../i18n/translations";
 
 const pageSize = 20;
 const maxInteger = 2_147_483_647;
@@ -22,6 +22,7 @@ const idempotencyConflictCode = 40961;
 type LoadStatus = "loading" | "ready" | "error";
 type MutationStatus = "idle" | "saving" | "ambiguous";
 type TemporalState = "current" | "scheduled" | "historical";
+type ProjectionLock = "applied" | "conflict" | null;
 
 type Draft = {
   ndpUnits: string;
@@ -145,16 +146,24 @@ export function NdpExchangeRatePage() {
   const [confirmation, setConfirmation] = useState<ConfirmedCommand | null>(null);
   const [mutationStatus, setMutationStatus] = useState<MutationStatus>("idle");
   const [mutationError, setMutationError] = useState("");
-  const [projectionOutOfDate, setProjectionOutOfDate] = useState(false);
+  const [projectionLock, setProjectionLock] = useState<ProjectionLock>(null);
   const [projectionError, setProjectionError] = useState("");
   const retainedCommand = useRef<{ fingerprint: string; key: string } | null>(null);
   const requestId = useRef(0);
   const evaluatedAtAnchor = useRef<string | null>(null);
+  const translate = (source: string) =>
+    translateTextForContext(source, language, { portal: "admin" });
+  const translateTemplate = (source: string, values: Record<string, string>) =>
+    Object.entries(values).reduce(
+      (text, [key, value]) => text.replace(`{${key}}`, value),
+      translate(source)
+    );
 
   const loadOverview = useCallback(async (
     nextPage: number,
     fresh: boolean,
-    projectionOnly = false
+    projectionOnly = false,
+    releaseCommandLock = false
   ) => {
     const currentRequest = ++requestId.current;
     if (!overview || fresh) setLoadStatus("loading");
@@ -170,8 +179,12 @@ export function NdpExchangeRatePage() {
       setPage(result.history.page);
       if (fresh || !evaluatedAtAnchor.current) evaluatedAtAnchor.current = result.evaluatedAt;
       setLoadStatus("ready");
-      setProjectionOutOfDate(false);
-      setProjectionError("");
+      if (releaseCommandLock) {
+        setProjectionLock(null);
+        setProjectionError("");
+        setMutationStatus("idle");
+      }
+      return true;
     } catch (error) {
       if (currentRequest !== requestId.current) return;
       if (projectionOnly) {
@@ -181,6 +194,7 @@ export function NdpExchangeRatePage() {
         setLoadStatus("error");
         setLoadError(errorMessage(error));
       }
+      return false;
     }
   }, [overview]);
 
@@ -192,7 +206,7 @@ export function NdpExchangeRatePage() {
 
   const totalPages = Math.max(1, Math.ceil((overview?.history.total ?? 0) / pageSize));
   const history = overview?.history.list ?? [];
-  const canPrepareCommand = Boolean(overview && !projectionOutOfDate && mutationStatus !== "saving");
+  const canPrepareCommand = Boolean(overview && projectionLock === null && mutationStatus !== "saving");
 
   const openForm = () => {
     setFormOpen(true);
@@ -203,7 +217,7 @@ export function NdpExchangeRatePage() {
   };
 
   const prepareConfirmation = () => {
-    if (!overview) return;
+    if (!overview || !canPrepareCommand) return;
     const command = toPublishCommand(draft, overview.latestVersion);
     if (typeof command === "string") {
       setDraftError(command);
@@ -216,7 +230,7 @@ export function NdpExchangeRatePage() {
   };
 
   const publish = async () => {
-    if (!confirmation || !overview || mutationStatus === "saving" || projectionOutOfDate) return;
+    if (!confirmation || !overview || mutationStatus === "saving" || projectionLock !== null) return;
     const key = retainedCommand.current?.fingerprint === confirmation.fingerprint
       ? retainedCommand.current.key
       : createIdempotencyKey();
@@ -228,17 +242,19 @@ export function NdpExchangeRatePage() {
       retainedCommand.current = null;
       setConfirmation(null);
       setFormOpen(false);
-      setProjectionOutOfDate(true);
+      setProjectionLock("applied");
       evaluatedAtAnchor.current = null;
-      await loadOverview(1, true, true);
+      await loadOverview(1, true, true, true);
     } catch (error) {
       if (error instanceof ApiClientError && error.code === versionConflictCode) {
         retainedCommand.current = null;
         setConfirmation(null);
         setMutationStatus("idle");
         setMutationError("版本或生效时间链已变化，草稿已保留，请重新确认");
+        setProjectionLock("conflict");
+        setProjectionError("");
         evaluatedAtAnchor.current = null;
-        await loadOverview(1, true);
+        await loadOverview(1, true, true, true);
         return;
       }
       setMutationStatus("ambiguous");
@@ -277,8 +293,8 @@ export function NdpExchangeRatePage() {
           <div className="space-y-5">
             {projectionError ? (
               <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                <span>发布已受理，但最新只读数据刷新失败：{projectionError}</span>
-                <Button onClick={() => void loadOverview(1, true, true)} variant="secondary">重试只读数据</Button>
+                <span>{projectionLock === "conflict" ? "版本冲突后最新数据刷新失败：" : "发布已受理，但最新只读数据刷新失败："}{projectionError}</span>
+                <Button onClick={() => void loadOverview(1, true, true, true)} variant="secondary">重试只读数据</Button>
               </section>
             ) : null}
             {mutationError && !confirmation ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{mutationError}</p> : null}
@@ -312,7 +328,7 @@ export function NdpExchangeRatePage() {
                   </label>
                 </div>
                 {draftError ? <p role="alert" className="mt-3 text-sm text-red-700">{draftError}</p> : null}
-                {!confirmation ? <Button className="mt-5" onClick={prepareConfirmation}>确认发布内容</Button> : null}
+                {!confirmation && projectionLock === null ? <Button className="mt-5" onClick={prepareConfirmation}>确认发布内容</Button> : null}
 
                 {confirmation ? (
                   <div className="mt-5 rounded-2xl border border-slate-300 bg-slate-50 p-5">
@@ -336,9 +352,15 @@ export function NdpExchangeRatePage() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
                 <div>
                   <h2 className="text-lg font-bold text-slate-950">不可变版本历史</h2>
-                  <p className="mt-1 text-sm text-slate-500">时间状态以数据评估时间 {formatDate(overview.evaluatedAt, locale)} 为准。</p>
+                  <p className="mt-1 text-sm text-slate-500">{translateTemplate(
+                    "时间状态以数据评估时间 {time} 为准。",
+                    { time: formatDate(overview.evaluatedAt, locale) }
+                  )}</p>
                 </div>
-                <Badge tone="blue">共 {overview.history.total} 个版本</Badge>
+                <Badge tone="blue">{translateTemplate(
+                  "共 {total} 个版本",
+                  { total: String(overview.history.total) }
+                )}</Badge>
               </div>
               {history.length ? (
                 <div className="overflow-x-auto">
@@ -355,7 +377,10 @@ export function NdpExchangeRatePage() {
                 </div>
               ) : <p className="p-8 text-center text-sm text-slate-500">暂无汇率版本记录</p>}
               <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm text-slate-600">
-                <span>第 {page} / {totalPages} 页</span>
+                <span>{translateTemplate(
+                  "第 {current} / {total} 页",
+                  { current: String(page), total: String(totalPages) }
+                )}</span>
                 <div className="flex gap-2"><Button disabled={page <= 1} onClick={() => void loadOverview(page - 1, false)} variant="secondary">上一页</Button><Button disabled={page >= totalPages} onClick={() => void loadOverview(page + 1, false)} variant="secondary">下一页</Button></div>
               </div>
             </section>
