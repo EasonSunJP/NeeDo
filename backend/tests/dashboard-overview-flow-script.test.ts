@@ -1,9 +1,19 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   DASHBOARD_CHECK_METRIC_ORACLE,
   aggregateIndependentEvidence,
+  calculateIndependentNdpIncome,
+  calculateIndependentTechnicianCommission,
+  countIndependentTechnicianOnboarding,
   assertDashboardProjection,
   assertFixtureWitnessRows,
   assertSelectOnlyGrants,
@@ -33,8 +43,27 @@ const readyMetricKeys = [
   "technician_onboarding"
 ] as const;
 
+const metricNamespace = {
+  gross_revenue: "booking_order",
+  discount_amount: "booking_order",
+  dedicated_technician_commission: "booking_order",
+  part_time_technician_commission: "booking_order",
+  marketing_commission: "affiliate_reward",
+  ndp_income: "order_financial",
+  affiliate_platform_income: "affiliate_reward",
+  new_users: "user",
+  new_paid_members: "membership_card",
+  technician_onboarding: "user_identity"
+} as const;
+
+const ref = (
+  namespace: DashboardFixtureManifest["witnesses"]["cancelledOrderIds"][number]["namespace"],
+  id: string,
+  period: "current" | "previous" = "current"
+) => ({ namespace, id, period });
+
 const manifest = (): DashboardFixtureManifest => ({
-  version: 1,
+  version: 2,
   namespace: "analytics-task8-immutable-v1",
   marker: "dashboard-overview-fixture-2026-08",
   city: "Tokyo",
@@ -43,25 +72,43 @@ const manifest = (): DashboardFixtureManifest => ({
     previous: { from: "2026-08-18", to: "2026-08-24" }
   },
   witnesses: {
-    coherentCompletedCheckoutIds: ["order-current", "order-previous"],
-    cancelledOrderIds: ["order-cancelled"],
-    refundedOrderIds: ["order-refunded"],
-    reversedFinancialIds: ["financial-reversed"],
-    otherCityOrderIds: ["order-osaka"],
-    testNdpLedgerIds: ["ledger-test-ndp"],
-    firstPaidMembershipCardIds: ["card-first-paid"],
-    excludedMembershipCardIds: ["card-trial", "card-gift", "card-renewal"],
-    technicianIdentityIds: ["identity-first-technician"],
-    compensationProfileIds: ["profile-dedicated", "profile-part-time"],
-    ndpIncomeFinancialIds: ["financial-ndp-income"],
-    affiliateRewardIds: ["affiliate-settled"]
+    coherentCompletedCheckoutIds: [
+      ref("booking_order", "order-current"),
+      ref("booking_order", "order-previous", "previous")
+    ],
+    cancelledOrderIds: [ref("booking_order", "order-cancelled")],
+    refundedOrderIds: [ref("booking_order", "order-refunded")],
+    reversedFinancialIds: [ref("order_financial", "financial-reversed")],
+    otherCityOrderIds: [ref("booking_order", "order-osaka")],
+    testNdpLedgerIds: [ref("ledger_transaction", "ledger-test-ndp")],
+    firstPaidMembershipCardIds: [ref("membership_card", "card-first-paid")],
+    excludedMembershipCardIds: [
+      ref("membership_card", "card-trial"),
+      ref("membership_card", "card-gift"),
+      ref("membership_card", "card-renewal")
+    ],
+    technicianIdentityIds: [ref("user_identity", "identity-first-technician")],
+    compensationProfileIds: [
+      ref("compensation_profile", "profile-dedicated"),
+      ref("compensation_profile", "profile-part-time")
+    ],
+    ndpIncomeFinancialIds: [ref("order_financial", "financial-ndp-income")],
+    affiliateRewardIds: [ref("affiliate_reward", "affiliate-settled")]
   },
   readyMetricWitnesses: Object.fromEntries(
     readyMetricKeys.map((metricKey, index) => [metricKey, {
-      current: [`${metricKey}-current-${index}`],
-      previous: [`${metricKey}-previous-${index}`]
+      current: [{
+        namespace: metricNamespace[metricKey],
+        id: `${metricKey}-current-${index}`,
+        expectation: "positive"
+      }],
+      previous: [{
+        namespace: metricNamespace[metricKey],
+        id: `${metricKey}-previous-${index}`,
+        expectation: metricKey === "gross_revenue" ? "zero" : "positive"
+      }]
     }])
-  ) as DashboardFixtureManifest["readyMetricWitnesses"]
+  ) as unknown as DashboardFixtureManifest["readyMetricWitnesses"]
 });
 
 const evidenceRows = (): IndependentEvidenceRow[] => readyMetricKeys.flatMap(
@@ -69,21 +116,32 @@ const evidenceRows = (): IndependentEvidenceRow[] => readyMetricKeys.flatMap(
     {
       metricKey,
       period: "current" as const,
-      witnessId: manifest().readyMetricWitnesses[metricKey].current[0]!,
+      witnessNamespace: metricNamespace[metricKey],
+      witnessId: manifest().readyMetricWitnesses[metricKey].current[0]!.id,
       value: (index + 1) * 10
     },
     {
       metricKey,
       period: "previous" as const,
-      witnessId: manifest().readyMetricWitnesses[metricKey].previous[0]!,
+      witnessNamespace: metricNamespace[metricKey],
+      witnessId: manifest().readyMetricWitnesses[metricKey].previous[0]!.id,
       value: index === 0 ? 0 : (index + 1) * 5
     }
   ])
 );
 
 const fixtureWitnessRows = (): FixtureWitnessRow[] => Object.entries(manifest().witnesses)
-  .flatMap(([kind, ids]) => ids.map((witnessId) => ({
-    kind: kind as FixtureWitnessRow["kind"], witnessId
+  .flatMap(([kind, witnesses]) => witnesses.map((witness) => ({
+    kind: kind as FixtureWitnessRow["kind"],
+    witnessNamespace: witness.namespace,
+    witnessId: witness.id,
+    period: witness.period,
+    fixtureNamespace: manifest().namespace,
+    fixtureMarker: manifest().marker,
+    withinAuthoritativeWindow: 1,
+    cityScope: kind === "otherCityOrderIds" ? "other" : "target",
+    allOtherPredicatesSatisfied: 1,
+    intendedPredicateMatched: 1
   })));
 
 const createTempAuthority = (overrides: string[] = []) => {
@@ -164,13 +222,38 @@ describe("zero-write comprehensive dashboard checker", () => {
     })).toThrow("DASHBOARD_OVERVIEW_CHECK_CITY");
   });
 
+  it("rejects symlink manifests and canonical in-repository targets", () => {
+    const authority = createTempAuthority();
+    const repositoryTarget = resolve(backendRoot, "package.json");
+    const symlinkPath = join(authority.directory, "external-link.json");
+    symlinkSync(repositoryTarget, symlinkPath);
+    writeFileSync(authority.envPath, readFileSync(authority.envPath, "utf8").replace(
+      authority.manifestPath,
+      symlinkPath
+    ));
+    expect(() => loadDashboardCheckerAuthority({
+      FORMAL_BACKEND_ENV_FILE: authority.envPath
+    })).toThrow("symlink");
+
+    writeFileSync(authority.envPath, readFileSync(authority.envPath, "utf8").replace(
+      symlinkPath,
+      repositoryTarget
+    ));
+    expect(() => loadDashboardCheckerAuthority({
+      FORMAL_BACKEND_ENV_FILE: authority.envPath
+    })).toThrow("canonical repository root");
+  });
+
   it("validates immutable manifest completeness, unique ids, exclusions, and exact windows", () => {
     expect(parseDashboardFixtureManifest(JSON.stringify(manifest()), {
       city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
     })).toEqual(manifest());
 
     const duplicate = manifest();
-    duplicate.witnesses.cancelledOrderIds = ["same", "same"];
+    duplicate.witnesses.cancelledOrderIds = [
+      ref("booking_order", "same"),
+      ref("booking_order", "same")
+    ];
     expect(() => parseDashboardFixtureManifest(JSON.stringify(duplicate), {
       city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
     })).toThrow("duplicate");
@@ -180,6 +263,25 @@ describe("zero-write comprehensive dashboard checker", () => {
     expect(() => parseDashboardFixtureManifest(JSON.stringify(incomplete), {
       city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
     })).toThrow("incomplete");
+
+    const incompatible = manifest();
+    incompatible.readyMetricWitnesses.new_users.current[0] = {
+      namespace: "booking_order" as never,
+      id: incompatible.readyMetricWitnesses.gross_revenue.current[0]!.id,
+      expectation: "positive"
+    };
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(incompatible), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("namespace");
+
+    const crossPeriod = manifest();
+    crossPeriod.readyMetricWitnesses.gross_revenue.previous[0] = {
+      ...crossPeriod.readyMetricWitnesses.gross_revenue.current[0]!,
+      expectation: "zero"
+    };
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(crossPeriod), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("reuse");
 
     expect(() => parseDashboardFixtureManifest(JSON.stringify(manifest()), {
       city: "Osaka", from: "2026-08-25", to: "2026-08-31"
@@ -210,6 +312,38 @@ describe("zero-write comprehensive dashboard checker", () => {
     expect((facade as unknown as Record<string, unknown>).user).toBeUndefined();
   });
 
+  it("lexes one complete read-only SQL statement and never forwards disguised writes", async () => {
+    const queryRaw = jest.fn(async () => [{ ok: 1 }]);
+    const facade = createSelectOnlyQueryFacade({ $queryRaw: queryRaw });
+    for (const statement of [
+      "SELECT '; DELETE FROM users' AS literal",
+      "SELECT `semi;column` FROM `semi;table`",
+      "/* ; DELETE FROM users */ SELECT 1;",
+      "-- ; UPDATE users\nWITH x AS (SELECT 1 AS value) SELECT value FROM x",
+      "SHOW GRANTS",
+      "DESCRIBE users",
+      "EXPLAIN SELECT * FROM users"
+    ]) {
+      await expect(facade.$queryRaw(statement)).resolves.toEqual([{ ok: 1 }]);
+    }
+    expect(queryRaw).toHaveBeenCalledTimes(7);
+
+    for (const statement of [
+      "SELECT 1; DELETE FROM users",
+      "SELECT 1 /* safe */; /* split */ UPDATE users SET is_active = 0",
+      "WITH x AS (SELECT 1) UPDATE users SET is_active = 0",
+      "WITH x AS (DELETE FROM users RETURNING id) SELECT id FROM x",
+      "WITH x AS (SELECT 1) SELECT * FROM x FOR UPDATE",
+      "SELECT * FROM users INTO OUTFILE '/tmp/users'",
+      "EXPLAIN UPDATE users SET is_active = 0",
+      "SET SESSION TRANSACTION READ WRITE",
+      "LOCK TABLES users WRITE"
+    ]) {
+      await expect(facade.$queryRaw(statement)).rejects.toThrow("read-only");
+    }
+    expect(queryRaw).toHaveBeenCalledTimes(7);
+  });
+
   it("calculates independent comparison boundaries and Tokyo half-open windows", () => {
     expect(compareDashboardValues(null, 1)).toEqual({ percent: null, direction: "unavailable" });
     expect(compareDashboardValues(10, 10)).toEqual({ percent: 0, direction: "flat" });
@@ -232,6 +366,119 @@ describe("zero-write comprehensive dashboard checker", () => {
     });
   });
 
+  it("allocates natural-month base salary once for two bookings on one work day", () => {
+    expect(calculateIndependentTechnicianCommission([
+      {
+        witnessId: "order-a", technicianProfileId: 10, shopId: 20,
+        workDate: "2026-08-25", classification: "dedicated", settledShareJpy: 100,
+        profiles: [{
+          id: 31, status: "archived", wageMode: "base_plus_commission",
+          baseSalaryJpy: 31_000, effectiveFrom: "2026-08-01", effectiveTo: "2026-08-31",
+          deleted: false
+        }]
+      },
+      {
+        witnessId: "order-b", technicianProfileId: 10, shopId: 20,
+        workDate: "2026-08-25", classification: "dedicated", settledShareJpy: 200,
+        profiles: [{
+          id: 31, status: "archived", wageMode: "base_plus_commission",
+          baseSalaryJpy: 31_000, effectiveFrom: "2026-08-01", effectiveTo: "2026-08-31",
+          deleted: false
+        }]
+      }
+    ])).toEqual({ dedicated: 1_300, partTime: 0 });
+
+    const ambiguous = {
+      witnessId: "order-ambiguous", technicianProfileId: 11, shopId: 20,
+      workDate: "2026-08-25", classification: "part_time" as const, settledShareJpy: 0,
+      profiles: [
+        { id: 40, status: "active", wageMode: "commission", baseSalaryJpy: 0, effectiveFrom: null, effectiveTo: null, deleted: false },
+        { id: 41, status: "archived", wageMode: "commission", baseSalaryJpy: 0, effectiveFrom: null, effectiveTo: null, deleted: false }
+      ]
+    };
+    expect(() => calculateIndependentTechnicianCommission([ambiguous])).toThrow("profile");
+    expect(() => calculateIndependentTechnicianCommission([{
+      ...ambiguous,
+      profiles: [{
+        id: 40, status: "active", wageMode: "commission", baseSalaryJpy: -1,
+        effectiveFrom: "2026-09-01", effectiveTo: "2026-08-01", deleted: false
+      }]
+    }])).toThrow("profile");
+  });
+
+  it("attributes NDP platform income and user rewards by their own formal event timestamps", () => {
+    const windows = resolveCheckerWindows("2026-08-25", "2026-08-31");
+    expect(calculateIndependentNdpIncome([
+      {
+        financialId: "prior-payment-current-reward",
+        paymentConfirmedAt: "2026-08-24T10:00:00.000Z",
+        platformFeeNdp: 80,
+        requestFeeNdp: 20,
+        userRewardNdp: 20,
+        userRewardGrantedAt: "2026-08-25T01:00:00.000Z",
+        paymentLedgerValid: true,
+        paymentWalletValid: true,
+        paymentReconciliationValid: true,
+        rewardLedgerValid: true,
+        rewardWalletValid: true
+      },
+      {
+        financialId: "current-payment",
+        paymentConfirmedAt: "2026-08-26T01:00:00.000Z",
+        platformFeeNdp: 30,
+        requestFeeNdp: 0,
+        userRewardNdp: 0,
+        userRewardGrantedAt: null,
+        paymentLedgerValid: true,
+        paymentWalletValid: true,
+        paymentReconciliationValid: true,
+        rewardLedgerValid: true,
+        rewardWalletValid: true
+      }
+    ], windows)).toEqual({ current: 10, previous: 100 });
+
+    const missingEvidence = {
+      financialId: "missing-wallet",
+      paymentConfirmedAt: "2026-08-26T01:00:00.000Z",
+      platformFeeNdp: 30,
+      requestFeeNdp: 0,
+      userRewardNdp: 0,
+      userRewardGrantedAt: null,
+      paymentLedgerValid: true,
+      paymentWalletValid: false,
+      paymentReconciliationValid: true,
+      rewardLedgerValid: true,
+      rewardWalletValid: true
+    };
+    expect(() => calculateIndependentNdpIncome([missingEvidence], windows)).toThrow("evidence");
+    expect(() => calculateIndependentNdpIncome([{
+      ...missingEvidence,
+      paymentWalletValid: true,
+      paymentReconciliationValid: false
+    }], windows)).toThrow("evidence");
+  });
+
+  it("counts first technician activation through an effective affiliation when no direct shop exists", () => {
+    const windows = resolveCheckerWindows("2026-08-25", "2026-08-31");
+    expect(countIndependentTechnicianOnboarding([{
+      identityId: "identity-affiliation-only",
+      userId: 50,
+      activatedAt: "2026-08-26T01:00:00.000Z",
+      firstActivatedAt: "2026-08-26T01:00:00.000Z",
+      identityActive: true,
+      identityDeleted: false,
+      userActive: true,
+      userDeleted: false,
+      testUser: false,
+      profileDeleted: false,
+      directShop: null,
+      affiliations: [{
+        city: "Tokyo", relationshipType: "partner", workStatus: "active",
+        startsAt: "2026-08-01T00:00:00.000Z", endsAt: null, deleted: false
+      }]
+    }], windows, "Tokyo")).toEqual({ current: 1, previous: 0 });
+  });
+
   it("aggregates only exact authorized witnesses and rejects missing, duplicate, unexpected, incomplete, or all-zero facts", () => {
     const result = aggregateIndependentEvidence(manifest(), evidenceRows());
     expect(result.gross_revenue).toEqual({ current: 10, previous: 0 });
@@ -241,9 +488,22 @@ describe("zero-write comprehensive dashboard checker", () => {
     expect(() => aggregateIndependentEvidence(manifest(), [...evidenceRows(), evidenceRows()[0]!])).toThrow("duplicate");
     expect(() => aggregateIndependentEvidence(manifest(), [
       ...evidenceRows(),
-      { metricKey: "gross_revenue", period: "current", witnessId: "not-authorized", value: 1 }
+      {
+        metricKey: "gross_revenue",
+        period: "current",
+        witnessNamespace: "booking_order",
+        witnessId: "not-authorized",
+        value: 1
+      }
     ])).toThrow("authorized");
-    expect(() => aggregateIndependentEvidence(manifest(), evidenceRows().map((row) => ({ ...row, value: 0 })))).toThrow("all-zero");
+    expect(() => aggregateIndependentEvidence(manifest(), evidenceRows().map((row) => ({ ...row, value: 0 })))).toThrow();
+    const accidentalZeros = evidenceRows().map((row, index) => ({
+      ...row,
+      value: index === 0 ? 1 : 0
+    }));
+    expect(() => aggregateIndependentEvidence(manifest(), accidentalZeros)).toThrow(
+      "positive contribution"
+    );
   });
 
   it("requires every positive and exclusion witness to exist in formal rows", () => {
@@ -253,8 +513,36 @@ describe("zero-write comprehensive dashboard checker", () => {
       ...fixtureWitnessRows(), fixtureWitnessRows()[0]!
     ])).toThrow("duplicate");
     expect(() => assertFixtureWitnessRows(manifest(), [
-      ...fixtureWitnessRows(), { kind: "cancelledOrderIds", witnessId: "outside-manifest" }
+      ...fixtureWitnessRows(), {
+        kind: "cancelledOrderIds",
+        witnessNamespace: "booking_order",
+        witnessId: "outside-manifest",
+        period: "current",
+        fixtureNamespace: manifest().namespace,
+        fixtureMarker: manifest().marker,
+        withinAuthoritativeWindow: 1,
+        cityScope: "target",
+        allOtherPredicatesSatisfied: 1,
+        intendedPredicateMatched: 1
+      }
     ])).toThrow("authorized");
+
+    const ineligible = fixtureWitnessRows();
+    ineligible[2] = { ...ineligible[2]!, allOtherPredicatesSatisfied: 0 };
+    expect(() => assertFixtureWitnessRows(manifest(), ineligible)).toThrow("ineligible");
+
+    const outsideWindow = fixtureWitnessRows();
+    outsideWindow[3] = { ...outsideWindow[3]!, withinAuthoritativeWindow: 0 };
+    expect(() => assertFixtureWitnessRows(manifest(), outsideWindow)).toThrow("window");
+
+    const wrongCity = fixtureWitnessRows();
+    const otherCityIndex = wrongCity.findIndex((row) => row.kind === "otherCityOrderIds");
+    wrongCity[otherCityIndex] = { ...wrongCity[otherCityIndex]!, cityScope: "target" };
+    expect(() => assertFixtureWitnessRows(manifest(), wrongCity)).toThrow("city scope");
+
+    const wrongMarker = fixtureWitnessRows();
+    wrongMarker[0] = { ...wrongMarker[0]!, fixtureMarker: "another-fixture" };
+    expect(() => assertFixtureWitnessRows(manifest(), wrongMarker)).toThrow("marker");
   });
 
   it("keeps an independent exact 17-metric order and catches every projection field mutation", () => {
