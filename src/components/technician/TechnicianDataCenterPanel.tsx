@@ -25,7 +25,7 @@ const periodOptions: Array<{ value: TechnicianDataCenterPeriod; label: string }>
 ];
 
 const panelClassName =
-  "rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_92%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_96%,black))] shadow-[var(--client-shadow)]";
+  "technician-data-center-panel rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_92%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_96%,black))] text-[color:var(--client-text)] shadow-[var(--client-shadow)]";
 
 function formatHours(minutes: number) {
   const hours = minutes / 60;
@@ -199,7 +199,7 @@ function DataCenterContent({ data, onOpenModel, onPeriodChange }: {
         <div className="mt-3 space-y-2">
           {data.recentOrders.length ? data.recentOrders.map((order) => (
             <Link className="focus-ring flex min-h-16 items-center justify-between gap-3 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-elevated)_66%,transparent)] px-3 py-2.5" key={order.id} to={`/technician/orders/${order.id}`}>
-              <div className="min-w-0"><p className="truncate text-sm font-black">{order.serviceName}</p><p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">{formatDateTime(order.startsAt)} · {order.shopName} · {order.orderNo}</p></div>
+              <div className="min-w-0"><p className="technician-data-center-primary-text truncate text-sm font-black">{order.serviceName}</p><p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">{formatDateTime(order.startsAt)} · {order.shopName} · {order.orderNo}</p></div>
               <div className="shrink-0 text-right"><strong className="text-sm">{order.recognizedIncomeJpy === null ? "待确认" : yen(order.recognizedIncomeJpy)}</strong><span className="ml-2 text-[color:var(--client-muted)]">›</span></div>
             </Link>
           )) : <p className="rounded-[18px] border border-[color:var(--client-line)] p-5 text-center text-sm font-bold text-[color:var(--client-muted)]">当前没有正式订单记录</p>}

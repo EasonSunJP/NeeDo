@@ -40,6 +40,12 @@ describe("TechnicianDualTrendChart", () => {
 
     const incomeLegend = container.querySelector<HTMLButtonElement>('button[aria-label="隐藏收入趋势"]');
     const workLegend = container.querySelector<HTMLButtonElement>('button[aria-label="隐藏工作趋势"]');
+    expect(container.querySelector("section")?.className).toContain(
+      "text-[color:var(--client-text)]"
+    );
+    expect(container.querySelector("section")?.className).toContain(
+      "technician-data-center-panel"
+    );
     expect(container.querySelector('[data-series="income"]')).not.toBeNull();
     expect(container.querySelector('[data-series="work"]')).not.toBeNull();
     expect(incomeLegend?.getAttribute("aria-pressed")).toBe("true");
