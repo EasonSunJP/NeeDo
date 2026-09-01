@@ -921,7 +921,11 @@ export class ExchangeService {
 
   private assertCanReadPost(actor: ExchangeActorRecord, post: ExchangePostPayload): void {
     if (post.type !== "demand") return;
-    if (post.viewer.canWithdraw || DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)) return;
+    if (
+      post.viewer.canWithdraw ||
+      post.viewer.canViewClaims ||
+      DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)
+    ) return;
     throw this.postNotFound();
   }
 

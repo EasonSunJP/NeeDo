@@ -401,6 +401,20 @@ describe("ExchangeService", () => {
     });
   });
 
+  it("keeps a matched selective Request readable by its owner after reload", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+    const matchedPost = {
+      ...post,
+      status: "matched" as const,
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: true },
+      demand: { ...post.demand!, matchMode: "selective" as const }
+    };
+    repository.findPostById.mockResolvedValue(matchedPost);
+
+    await expect(service.getPost(access, 41)).resolves.toEqual(matchedPost);
+  });
+
   it("returns not found before exposing or mutating another customer's demand interactions", async () => {
     const repository = createRepository();
     repository.findPostById.mockResolvedValue({
