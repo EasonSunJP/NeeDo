@@ -15,6 +15,12 @@ import {
 export class PlatformMembershipController {
   public constructor(private readonly service: PlatformMembershipService) {}
 
+  public getMine = this.handle(async (_request, response) => {
+    response.status(200).json(
+      successResponse(await this.service.getMyMembership(getAuthenticatedAccess(response)))
+    );
+  });
+
   public listTiers = this.handle(async (request, response) => {
     response.status(200).json(
       successResponse(

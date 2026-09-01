@@ -14,6 +14,7 @@ import type {
 } from "../domain/user-experience";
 import type {
   PlatformMembershipBenefitAdministrationPayload,
+  PlatformMembershipLocalizedText,
   PlatformMembershipBenefitMutationResult,
   PlatformMembershipEntitlementMutationResult,
   PlatformMembershipRepositoryPort,
@@ -25,6 +26,7 @@ import type {
 import { AppError } from "../utils/app-error";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { PlatformMembershipBenefitUpdateBody } from "../validators/platform-membership.validator";
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
 
@@ -91,6 +93,26 @@ export class PlatformMembershipService {
     });
   }
 
+  public async getMyMembership(actor: AuthenticatedAccessContext) {
+    const occurredAt = this.now();
+    const [membership, ekycVerified] = await Promise.all([
+      this.resolveMembershipAt(actor.userId, occurredAt),
+      this.repository.hasVerifiedEkycAt(actor.userId, occurredAt)
+    ]);
+    return {
+      tierCode: membership.tierCode,
+      tierVersionPublicId: membership.tierVersionPublicId,
+      multiplier: membership.multiplier,
+      expiresAt: membership.expiresAt?.toISOString() ?? null,
+      ekycVerified,
+      benefits: membership.benefits.map((benefit) => ({
+        code: benefit.code,
+        configuration: benefit.configuration
+      })),
+      theme: membership.theme
+    };
+  }
+
   public async listTiersForAdministration(
     actor: AuthenticatedAccessContext
   ): Promise<PlatformMembershipTierAdministrationPayload[]> {
@@ -140,21 +162,29 @@ export class PlatformMembershipService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
     benefitCode: string,
-    input: { isGloballyEnabled: boolean; expectedLockVersion: number }
+    input: PlatformMembershipBenefitUpdateBody
   ): Promise<PlatformMembershipBenefitAdministrationPayload> {
     this.assertOperationsIdentity(actor);
     const normalizedBenefitCode = this.normalizeBenefitCode(benefitCode);
     if (
       typeof input.isGloballyEnabled !== "boolean" ||
+      !Number.isInteger(input.sortOrder) ||
+      input.sortOrder < 0 ||
+      input.sortOrder > 10_000 ||
       !Number.isInteger(input.expectedLockVersion) ||
       input.expectedLockVersion < 1
     ) {
       throw this.validationError();
     }
+    const nameTranslations = this.normalizeLocalizedText(input.nameTranslations, 120);
+    const descriptionTranslations = this.normalizeLocalizedText(input.descriptionTranslations, 1_000);
     const result = await this.repository.updateBenefitWithAudit({
       actorId: actor.userId,
       benefitCode: normalizedBenefitCode,
       isGloballyEnabled: input.isGloballyEnabled,
+      sortOrder: input.sortOrder,
+      nameTranslations,
+      descriptionTranslations,
       expectedLockVersion: input.expectedLockVersion,
       audit: this.requireAuditFactory().createInput({
         actor,
@@ -164,6 +194,7 @@ export class PlatformMembershipService {
         metadata: {
           benefitCode: normalizedBenefitCode,
           isGloballyEnabled: input.isGloballyEnabled,
+          sortOrder: input.sortOrder,
           expectedLockVersion: input.expectedLockVersion
         }
       })
@@ -482,6 +513,20 @@ export class PlatformMembershipService {
       return benefitCode as (typeof PLATFORM_MEMBERSHIP_BENEFIT_CODES)[number];
     }
     throw this.validationError();
+  }
+
+  private normalizeLocalizedText(
+    value: PlatformMembershipLocalizedText,
+    maxLength: number
+  ): PlatformMembershipLocalizedText {
+    const locales = ["zh", "zh-Hant", "ja", "en", "ko"] as const;
+    const result = {} as PlatformMembershipLocalizedText;
+    for (const locale of locales) {
+      const text = value?.[locale]?.trim();
+      if (!text || text.length > maxLength) throw this.validationError();
+      result[locale] = text;
+    }
+    return result;
   }
 
   private assertOperationsIdentity(actor: AuthenticatedAccessContext): void {

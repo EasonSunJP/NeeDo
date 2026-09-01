@@ -4322,6 +4322,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ].map((key) => [key, { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }])
         )
       },
+      PlatformMembershipSelfProjection: {
+        type: "object",
+        additionalProperties: false,
+        required: ["tierCode", "tierVersionPublicId", "multiplier", "expiresAt", "ekycVerified", "benefits", "theme"],
+        properties: {
+          tierCode: { $ref: "#/components/schemas/PlatformMembershipTierCode" },
+          tierVersionPublicId: { type: "string", format: "uuid" },
+          multiplier: { type: "number", exclusiveMinimum: 0 },
+          expiresAt: { type: ["string", "null"], format: "date-time" },
+          ekycVerified: { type: "boolean" },
+          benefits: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["code", "configuration"],
+              properties: {
+                code: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" },
+                configuration: { type: "object" }
+              }
+            }
+          },
+          theme: { $ref: "#/components/schemas/PlatformMembershipTheme" }
+        }
+      },
       PlatformMembershipTierBenefit: {
         type: "object",
         additionalProperties: false,
@@ -4400,12 +4425,45 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       PlatformMembershipBenefitAdministration: {
         type: "object",
-        required: ["code", "sortOrder", "isGloballyEnabled", "lockVersion"],
+        required: [
+          "code",
+          "sortOrder",
+          "isGloballyEnabled",
+          "nameTranslations",
+          "descriptionTranslations",
+          "lockVersion"
+        ],
         properties: {
           code: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" },
           sortOrder: { type: "integer", minimum: 0 },
           isGloballyEnabled: { type: "boolean" },
+          nameTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedName" },
+          descriptionTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedDescription" },
           lockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      PlatformMembershipLocalizedName: {
+        type: "object",
+        additionalProperties: false,
+        required: ["zh", "zh-Hant", "ja", "en", "ko"],
+        properties: {
+          zh: { type: "string", minLength: 1, maxLength: 120 },
+          "zh-Hant": { type: "string", minLength: 1, maxLength: 120 },
+          ja: { type: "string", minLength: 1, maxLength: 120 },
+          en: { type: "string", minLength: 1, maxLength: 120 },
+          ko: { type: "string", minLength: 1, maxLength: 120 }
+        }
+      },
+      PlatformMembershipLocalizedDescription: {
+        type: "object",
+        additionalProperties: false,
+        required: ["zh", "zh-Hant", "ja", "en", "ko"],
+        properties: {
+          zh: { type: "string", minLength: 1, maxLength: 1000 },
+          "zh-Hant": { type: "string", minLength: 1, maxLength: 1000 },
+          ja: { type: "string", minLength: 1, maxLength: 1000 },
+          en: { type: "string", minLength: 1, maxLength: 1000 },
+          ko: { type: "string", minLength: 1, maxLength: 1000 }
         }
       },
       PlatformMembershipTierDraftInput: {
@@ -4451,9 +4509,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       PlatformMembershipBenefitUpdateInput: {
         type: "object",
         additionalProperties: false,
-        required: ["isGloballyEnabled", "expectedLockVersion"],
+        required: [
+          "isGloballyEnabled",
+          "sortOrder",
+          "nameTranslations",
+          "descriptionTranslations",
+          "expectedLockVersion"
+        ],
         properties: {
           isGloballyEnabled: { type: "boolean" },
+          sortOrder: { type: "integer", minimum: 0, maximum: 10000 },
+          nameTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedName" },
+          descriptionTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedDescription" },
           expectedLockVersion: { type: "integer", minimum: 1 }
         }
       },
@@ -14361,6 +14428,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           "401": { description: "Authentication required" },
           "422": { description: "Experience levels do not apply to this identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/platform-membership`]: {
+      get: {
+        tags: ["Platform Membership"],
+        summary: "Read the authenticated customer's resolved platform membership and published theme",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Customer platform membership projection", {
+            $ref: "#/components/schemas/PlatformMembershipSelfProjection"
+          }),
+          "401": { description: "Authentication required" },
+          "422": { description: "Platform membership does not apply to this identity" }
         }
       }
     },

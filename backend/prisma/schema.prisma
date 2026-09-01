@@ -1571,6 +1571,8 @@ model PlatformMembershipBenefit {
   code              PlatformMembershipBenefitCode @unique
   sortOrder         Int                           @map("sort_order")
   isGloballyEnabled Boolean                       @default(true) @map("is_globally_enabled")
+  nameTranslations  Json                          @map("name_translations")
+  descriptionTranslations Json                    @map("description_translations")
   lockVersion       Int                           @default(1) @map("lock_version")
   createdAt         DateTime                      @default(now()) @map("created_at")
   updatedAt         DateTime                      @updatedAt @map("updated_at")

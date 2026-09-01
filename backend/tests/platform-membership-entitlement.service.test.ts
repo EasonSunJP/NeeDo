@@ -35,6 +35,11 @@ const repository = (
     void userId;
     return true;
   }),
+  hasVerifiedEkycAt: jest.fn(async (userId: number, occurredAt: Date) => {
+    void userId;
+    void occurredAt;
+    return false;
+  }),
   findActiveEntitlementAt: jest.fn(),
   findPublishedTierAt: jest.fn(),
   findTierDraft: jest.fn(),
