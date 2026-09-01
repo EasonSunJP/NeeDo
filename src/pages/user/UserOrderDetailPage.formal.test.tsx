@@ -399,6 +399,53 @@ describe("formal user order detail", () => {
     expect(mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey).not.toBe(orderAKey);
   });
 
+  it.each(["resolve", "reject"] as const)("ignores an in-flight order A review %s after order B has submitted", async (settlement) => {
+    const orderAReview = { applied: true, review: { targetType: "technician" as const, rating: 5, tags: ["魅力值"], comment: "订单A", createdAt: "2026-09-01T12:00:00.000Z" } };
+    const orderACommand = deferred<typeof orderAReview>();
+    mocks.getOrder.mockImplementation(async (id: number) => makeOrder("completed", id));
+    mocks.getCheckout.mockImplementation(async (id: number) => ({
+      ...checkout,
+      orderId: id,
+      status: "completed",
+      paymentMethod: "ndp",
+      paymentEvidence: "ndp_ledger"
+    }));
+    mocks.createReview.mockImplementation((id: number) => id === 88
+      ? orderACommand.promise
+      : Promise.reject(new Error("ambiguous order B review")));
+
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/orders/88"]}>
+        <UserOrderNavigationProbe />
+        <Routes><Route path="/orders/:orderId" element={<UserOrderDetailPage />} /></Routes>
+      </MemoryRouter>
+    ));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
+    await click("提交评价");
+    expect(button("提交评价").disabled).toBe(true);
+
+    await click("打开用户订单B");
+    await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledWith(89));
+    await waitFor(() => expect(button("提交评价").disabled).toBe(false));
+    await click("提交评价");
+    await waitFor(() => expect(container.textContent).toContain("评价提交失败：预约操作失败，请检查网络后重试"));
+    const orderBKey = mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey;
+
+    await act(async () => {
+      if (settlement === "resolve") orderACommand.resolve(orderAReview);
+      else orderACommand.reject(new ApiClientError("error.order.invalid_transition", 40912, 409));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("评价提交失败：预约操作失败，请检查网络后重试");
+    expect(container.textContent).toContain("提交评价");
+    expect(button("提交评价").disabled).toBe(false);
+    await click("提交评价");
+    await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(3));
+    expect(mocks.createReview.mock.calls[2]?.[0]).toBe(89);
+    expect(mocks.createReview.mock.calls[2]?.[1]?.idempotencyKey).toBe(orderBKey);
+  });
+
   it("skips locally with zero writes and hides prompt for existing review or missing evidence", async () => {
     mocks.getOrder.mockResolvedValue(makeOrder("completed"));
     mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });

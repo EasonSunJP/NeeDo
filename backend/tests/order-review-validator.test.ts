@@ -45,6 +45,10 @@ describe("order review validator", () => {
     expect(() => orderReviewCreateBodySchema.parse({ ...validInput, tags })).toThrow();
   });
 
+  it("keeps dotless i distinct from latin i under Unicode default case folding", () => {
+    expect(orderReviewCreateBodySchema.parse({ ...validInput, tags: ["ı", "i"] }).tags).toEqual(["ı", "i"]);
+  });
+
   it("normalizes blank comments to null and rejects invisible or oversized comments", () => {
     expect(orderReviewCreateBodySchema.parse({ ...validInput, comment: "   " }).comment).toBeNull();
     expect(orderReviewCreateBodySchema.parse({ ...validInput, comment: null }).comment).toBeNull();

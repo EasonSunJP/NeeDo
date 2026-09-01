@@ -912,5 +912,5 @@ export function TechnicianOrderDetailRoutePage() {
   const { orderId } = useParams<{ orderId: string }>();
   const orderIdValue = parsePositiveRouteId(orderId);
   if (!orderIdValue) return <RouteUnavailable kind="order" />;
-  return <TechnicianOrderDetailBody orderId={orderIdValue} />;
+  return <TechnicianOrderDetailBody key={orderIdValue} orderId={orderIdValue} />;
 }

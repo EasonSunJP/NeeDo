@@ -329,6 +329,16 @@ async function click(text: string) {
   await act(async () => textButton(text).dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 async function waitFor(assertion: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -789,6 +799,54 @@ describe("formal technician order detail route", () => {
     await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(2));
     expect(mocks.createReview.mock.calls[1]?.[0]).toBe(30);
     expect(mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey).not.toBe(orderAKey);
+  });
+
+  it.each(["resolve", "reject"] as const)("ignores an in-flight technician order A review %s after order B has submitted", async (settlement) => {
+    const completedCheckout = { ...checkout, status: "completed" as const, paymentEvidence: "ndp_ledger" as const, paymentMethod: "ndp" as const, receiptConfirmedAt: null, receiptConfirmationReason: null };
+    const completedOrders = new Map([
+      [29, makeOrder("completed", 29)],
+      [30, makeOrder("completed", 30)]
+    ]);
+    const orderAReview = { applied: true, review: { targetType: "customer" as const, rating: 5, tags: [], comment: "订单A", createdAt: "2026-09-01T12:00:00.000Z" } };
+    const orderACommand = deferred<typeof orderAReview>();
+    mocks.orderResource.mockImplementation((_session: AuthSession | null, id: number) => ({
+      data: completedOrders.get(id) ?? null, error: null, loading: false, retry: mocks.retryOrder
+    }));
+    mocks.getCheckout.mockImplementation(async (id: number) => ({ ...completedCheckout, orderId: id }));
+    mocks.createReview.mockImplementation((id: number) => id === 29
+      ? orderACommand.promise
+      : Promise.reject(new Error("ambiguous order B review")));
+
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/technician/orders/29"]}>
+        <TechnicianOrderNavigationProbe />
+        <TestRoutes />
+      </MemoryRouter>
+    ));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
+    await click("提交评价");
+    expect(textButton("提交评价").disabled).toBe(true);
+
+    await click("打开技师订单B");
+    await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledWith(30));
+    await waitFor(() => expect(textButton("提交评价").disabled).toBe(false));
+    await click("提交评价");
+    await waitFor(() => expect(container.textContent).toContain("评价提交失败：正式订单操作失败，请检查网络后重试"));
+    const orderBKey = mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey;
+
+    await act(async () => {
+      if (settlement === "resolve") orderACommand.resolve(orderAReview);
+      else orderACommand.reject(new ApiClientError("error.order.invalid_transition", 40912, 409));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("评价提交失败：正式订单操作失败，请检查网络后重试");
+    expect(container.textContent).toContain("提交评价");
+    expect(textButton("提交评价").disabled).toBe(false);
+    await click("提交评价");
+    await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(3));
+    expect(mocks.createReview.mock.calls[2]?.[0]).toBe(30);
+    expect(mocks.createReview.mock.calls[2]?.[1]?.idempotencyKey).toBe(orderBKey);
   });
 
   it("retries a failed technician own-review lookup in place", async () => {

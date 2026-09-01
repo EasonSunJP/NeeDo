@@ -466,5 +466,5 @@ function LegacyUserOrderDetailPage() {
 
 export function UserOrderDetailPage() {
   const { orderId } = useParams();
-  return isBookingApiId(orderId) ? <FormalUserOrderDetailPage orderId={Number(orderId)} /> : <LegacyUserOrderDetailPage />;
+  return isBookingApiId(orderId) ? <FormalUserOrderDetailPage key={orderId} orderId={Number(orderId)} /> : <LegacyUserOrderDetailPage />;
 }
