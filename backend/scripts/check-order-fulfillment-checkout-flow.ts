@@ -254,7 +254,7 @@ export function assertNoCashDebit(
   before: CashNoDebitEvidence,
   after: CashNoDebitEvidence
 ): void {
-  if (JSON.stringify(before) !== JSON.stringify(after)) {
+  if (serializeEvidence(before) !== serializeEvidence(after)) {
     throw new Error("Formal order checker assertion failed: cash payment changed wallet or checkout ledger evidence");
   }
 }
@@ -389,7 +389,7 @@ export async function runRollbackOnlyTransaction<TTransaction extends object, TB
   }
   if (!rolledBack) throw new Error("Rollback-only transaction committed unexpectedly");
   const after = await captureBaseline();
-  if (JSON.stringify(after) !== JSON.stringify(before)) {
+  if (serializeEvidence(after) !== serializeEvidence(before)) {
     throw new Error("External database baseline changed after rollback");
   }
 }

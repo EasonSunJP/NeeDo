@@ -274,6 +274,9 @@ describe("rollback-only formal order fulfillment flow checker", () => {
       where: { referenceType: "order_checkout_payment", referenceId: 77, currency: "TEST_NDP" }
     });
     expect(() => assertNoCashDebit(before, before)).not.toThrow();
+    expect(() => assertNoCashDebit(before, Object.fromEntries(
+      Object.entries(before).reverse()
+    ) as typeof before)).not.toThrow();
     expect(() => assertNoCashDebit(before, { ...before, ledgerTransactionCount: 3 })).toThrow(
       "cash payment changed wallet or checkout ledger evidence"
     );
@@ -515,6 +518,24 @@ describe("rollback-only formal order fulfillment flow checker", () => {
       }
     )).rejects.toThrow("unexpected flow failure");
     expect(new RollbackCompleted()).toBeInstanceOf(Error);
+  });
+
+  it("treats external baseline object key order as non-semantic", async () => {
+    const client = {
+      $transaction: async (callback: (transaction: Record<string, never>) => Promise<void>) => {
+        await callback({});
+      }
+    };
+    const captureBaseline = jest.fn()
+      .mockResolvedValueOnce({ marker: 7, nested: { beta: 2, alpha: 1 } })
+      .mockResolvedValueOnce({ nested: { alpha: 1, beta: 2 }, marker: 7 });
+
+    await expect(runRollbackOnlyTransaction(
+      client,
+      captureBaseline,
+      async () => undefined
+    )).resolves.toBeUndefined();
+    expect(captureBaseline).toHaveBeenCalledTimes(2);
   });
 
   it("keeps preflight before dynamic Prisma imports and connects every required formal flow assertion", () => {
