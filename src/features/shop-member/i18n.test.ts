@@ -35,5 +35,8 @@ describe("shop membership feature translations", () => {
     expect(translateText("核销记录", "en")).toBe("Redemption history");
     expect(translateText("返点待发放", "ko")).toBe("리워드 지급 대기");
     expect(translateText("shop_membership.card_redemption.reward_settled.title", "zh-Hant")).toBe("會員卡返點已到帳");
+    expect(translateText("会员卡退款", "ja")).toBe("会員カード返金");
+    expect(translateText("关联订单完成正式退款后才可退卡", "en")).toContain("formally refunded");
+    expect(translateText("shop_membership.card_refund.applied_negative.body", "ko")).toContain("NDP");
   });
 });

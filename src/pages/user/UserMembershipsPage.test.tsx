@@ -16,7 +16,6 @@ describe("UserMembershipsPage formal UI", () => {
       expect(source).toContain(copy);
     }
     expect(source).not.toContain("扫码核销");
-    expect(source).not.toContain("申请退款");
     expect(source).not.toContain("开卡会在后续");
     for (const copy of ["方案版本", "开卡时间", "开卡来源", "线下已付款", "历史补卡", "人工发放", "平台费率快照", "开卡不会自动产生 NDP"]) {
       expect(source).toContain(copy);
