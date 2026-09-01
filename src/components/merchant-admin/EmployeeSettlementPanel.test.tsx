@@ -24,6 +24,8 @@ const result = {
     dailyRateJpy: 0,
     fixedOrderPayJpy: 0,
     commissionRatePercent: 20,
+    extensionCommissionRatePercent: 25,
+    nominationFeeJpy: 1_000,
     guaranteedMinimumJpy: 0,
     ndpFeeBearer: "shop",
     technicianNdpSharePercent: 0,

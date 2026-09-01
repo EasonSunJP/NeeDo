@@ -96,6 +96,8 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     await act(async () => root.render(
       <MemoryRouter>
         <FormalTechnicianScheduleWorkspace
+          dataCenterPeriod="last7days"
+          initialSelectedDate="2026-08-26"
           profileAvatarUrl="/media/technician.jpg"
           profileId={31}
           profileName="正式技师"
@@ -120,6 +122,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
       scope: "technician",
       searchQuery: "",
       showSourceDrawer: true,
+      initialSelectedDate: "2026-08-26",
       currentTechnician: {
         avatar: "/media/technician.jpg",
         id: "31",
@@ -127,6 +130,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
         storeId: "11"
       }
     }));
+    expect(container.textContent).toContain("数据中心期间：近7天");
 
     await click("排班设置");
     expect(container.querySelector('[data-testid="formal-order-panel"]')).not.toBeNull();

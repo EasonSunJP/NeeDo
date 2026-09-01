@@ -186,6 +186,7 @@ export type UnifiedUserCalendarProps = {
   currentStore?: Store;
   displayMode?: UnifiedCalendarDisplayMode;
   formalOnly?: boolean;
+  initialSelectedDate?: string;
   merchantLaneMode?: MerchantCalendarLaneMode;
   searchQuery?: string;
   showSourceDrawer?: boolean;
@@ -4849,6 +4850,7 @@ export function UnifiedUserCalendar({
   currentStore,
   displayMode,
   formalOnly = false,
+  initialSelectedDate,
   merchantLaneMode = "technician",
   searchQuery = "",
   showSourceDrawer = !formalOnly,
@@ -4866,9 +4868,10 @@ export function UnifiedUserCalendar({
   const effectiveMerchantLaneMode: MerchantCalendarLaneMode = activeScope === "merchant" ? merchantLaneMode : "technician";
   const isMerchantAppointmentStatusMode = activeScope === "merchant" && effectiveMerchantLaneMode === "appointmentStatus";
   const [view, setView] = useState<UnifiedCalendarView>("day");
-  const [anchorDate, setAnchorDate] = useState(getTodayDateKey());
-  const [selectedDate, setSelectedDate] = useState(getTodayDateKey());
-  const [agendaDateWindow, setAgendaDateWindow] = useState<AgendaDateWindow>(() => createAgendaDateWindow(getTodayDateKey()));
+  const initialDate = /^\d{4}-\d{2}-\d{2}$/.test(initialSelectedDate ?? "") ? initialSelectedDate! : getTodayDateKey();
+  const [anchorDate, setAnchorDate] = useState(initialDate);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [agendaDateWindow, setAgendaDateWindow] = useState<AgendaDateWindow>(() => createAgendaDateWindow(initialDate));
   const [agendaScrollRequestId, setAgendaScrollRequestId] = useState(0);
   const [sourceVisibility, setSourceVisibility] = useState(defaultSourceVisibility);
   const [sourceDrawerOpen, setSourceDrawerOpen] = useState(false);

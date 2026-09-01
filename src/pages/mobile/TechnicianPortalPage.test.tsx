@@ -121,6 +121,13 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain('role="alert">技师资料保存失败：{error}');
   });
 
+  it("shows actionable profile mutation errors instead of backend error keys", () => {
+    expect(source).toContain("function describeProfileMutationError");
+    expect(source).toContain("setError(describeProfileMutationError(mutationError))");
+    expect(source).toContain('return "请检查资料内容后重试"');
+    expect(source).not.toContain('setError(mutationError instanceof Error ? mutationError.message : "error.technician_profile.update_failed")');
+  });
+
   it("loads and mutates only persisted technician services", () => {
     const servicesStart = source.indexOf("function FormalTechnicianServicesPanel");
     const servicesEnd = source.indexOf("function DataCenter", servicesStart);
@@ -136,17 +143,31 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(servicesSource).not.toContain("fake");
   });
 
-  it("does not fabricate income or trend metrics before a formal statistics API exists", () => {
+  it("renders the formal dual-series data center and preserves its selected period", () => {
     const dataStart = source.indexOf("function DataCenter");
     const dataEnd = source.indexOf("function TechnicianPortalContent", dataStart);
     const dataSource = source.slice(dataStart, dataEnd);
 
-    expect(dataSource).toContain("technician.reviewSummary.ratingAverage");
-    expect(dataSource).toContain("technician.reviewSummary.reviewCount");
-    expect(dataSource).toContain("profile.yearsExperience");
-    expect(dataSource).toContain("当前页面不会生成演示统计");
-    expect(dataSource).not.toContain("本月收入");
-    expect(dataSource).not.toContain("收入趋势");
+    expect(source).toContain('import { TechnicianDataCenterPanel } from "../../components/technician/TechnicianDataCenterPanel"');
+    expect(dataSource).toContain("<TechnicianDataCenterPanel");
+    expect(dataSource).toContain("period={period}");
+    expect(dataSource).toContain("onPeriodChange={onPeriodChange}");
+    expect(source).toContain('const dataCenterPeriod = getDataCenterPeriod(searchParams.get("period"))');
+    expect(source).toContain('next.set("period", period)');
+    expect(source).toContain('showBottomNav={!(activeView === "me" && meTab === "data")}');
+    expect(source).toContain("确认详细排班记录");
+    expect(source).toContain('period=${dataCenterPeriod}');
+    expect(source).toContain("onRangeLoaded={setDataCenterRange}");
+    expect(source).toContain('from=${encodeURIComponent(dataCenterRange.startsAt)}');
+    expect(source).toContain('to=${encodeURIComponent(dataCenterRange.endsAt)}');
+  });
+
+  it("uses the shared personal-center header while retaining all profile tabs in the same container", () => {
+    expect(source).toContain("<MobileFullscreenHeader");
+    expect(source).toContain('title="个人中心"');
+    expect(source).toContain('label="打开技师设置"');
+    expect(source).toContain("footer={");
+    expect(source).not.toContain("<FloatingHomeHeader panelClassName=\"relative overflow-hidden\" stacked>");
   });
 
   it("permanently excludes the simplified and mock production implementations", () => {

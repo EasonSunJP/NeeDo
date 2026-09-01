@@ -111,4 +111,35 @@ describe("persistIdentityAvatar", () => {
       })
     });
   });
+
+  it("updates only the merchant personal identity after the first avatar was established", async () => {
+    const transaction = {
+      mediaAsset: {
+        create: jest.fn().mockResolvedValue({ id: 94 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      user: {
+        update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
+    } as unknown as Prisma.TransactionClient;
+
+    await persistIdentityAvatar(transaction, {
+      avatar: { mimeType: "image/png", url: "/media/avatars/merchant-personal.png" },
+      capturedAt: new Date("2026-09-01T00:00:00.000Z"),
+      identityId: 109,
+      source: { kind: "merchant", profileId: 61 },
+      userId: 9
+    });
+
+    expect(transaction.user.update).not.toHaveBeenCalled();
+    expect(transaction.mediaAsset.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entityId: 61,
+        entityType: "merchant_identity_profile",
+        ownerIdentityId: 109,
+        ownerUserId: 9
+      })
+    });
+  });
 });

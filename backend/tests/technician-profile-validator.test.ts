@@ -30,13 +30,25 @@ describe("technician profile self-edit validation", () => {
     });
   });
 
+  it("accepts intentionally cleared optional list fields", () => {
+    expect(technicianProfileUpdateBodySchema.parse({
+      languages: [],
+      serviceAreas: [],
+      profileTags: [],
+      paymentMethods: []
+    })).toEqual({
+      languages: [],
+      serviceAreas: [],
+      profileTags: [],
+      paymentMethods: []
+    });
+  });
+
   it.each([
     {},
     { unexpected: true },
     { age: 151 },
     { heightCm: 299 },
-    { languages: [] },
-    { serviceAreas: [] },
     { bidBudgetMinJpy: 20_000, bidBudgetMaxJpy: 10_000 },
     { paymentMethods: ["crypto"] },
     { visibility: "friends" },

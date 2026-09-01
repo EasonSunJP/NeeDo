@@ -1217,6 +1217,14 @@ const technicianProfileErrorResponses = {
   "500": { description: "Unexpected technician profile persistence error" }
 };
 
+const merchantProfileErrorResponses = {
+  "400": { description: "Invalid merchant identity self-profile update payload" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing merchant-profile permission or merchant identity scope" },
+  "404": { description: "Merchant identity profile not found in authenticated scope" },
+  "500": { description: "Unexpected merchant profile persistence error" }
+};
+
 const contentAnnouncementErrorResponses = {
   "400": {
     description:
@@ -4189,6 +4197,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "dailyRateJpy",
           "fixedOrderPayJpy",
           "commissionRatePercent",
+          "extensionCommissionRatePercent",
+          "nominationFeeJpy",
           "guaranteedMinimumJpy",
           "ndpFeeBearer",
           "technicianNdpSharePercent",
@@ -4209,6 +4219,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           dailyRateJpy: { type: "integer" },
           fixedOrderPayJpy: { type: "integer" },
           commissionRatePercent: { type: "number" },
+          extensionCommissionRatePercent: { type: "number" },
+          nominationFeeJpy: { type: "integer" },
           guaranteedMinimumJpy: { type: "integer" },
           ndpFeeBearer: { type: "string" },
           technicianNdpSharePercent: { type: "number" },
@@ -6147,6 +6159,200 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
+      TechnicianDataCenter: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "period",
+          "range",
+          "technician",
+          "affiliation",
+          "incomeModel",
+          "summary",
+          "series",
+          "recentOrders",
+          "nextOrder"
+        ],
+        properties: {
+          period: {
+            type: "string",
+            enum: ["last7days", "last30days", "week", "month", "year"]
+          },
+          range: {
+            type: "object",
+            required: ["startsAt", "endsAt", "timeZone", "bucketUnit"],
+            properties: {
+              startsAt: { type: "string", format: "date-time" },
+              endsAt: { type: "string", format: "date-time" },
+              timeZone: { type: "string", enum: ["Asia/Tokyo"] },
+              bucketUnit: { type: "string", enum: ["day", "five_days", "week", "month"] }
+            }
+          },
+          technician: {
+            type: "object",
+            required: ["id", "userId", "displayName", "employmentStartedAt"],
+            properties: {
+              id: { type: "integer" },
+              userId: { type: "integer" },
+              displayName: { type: "string" },
+              employmentStartedAt: { type: ["string", "null"], format: "date-time" }
+            }
+          },
+          affiliation: {
+            oneOf: [
+              {
+                type: "object",
+                required: ["shopId", "shopName", "relationshipType", "startsAt"],
+                properties: {
+                  shopId: { type: "integer" },
+                  shopName: { type: "string" },
+                  relationshipType: { type: "string" },
+                  startsAt: { type: "string", format: "date-time" }
+                }
+              },
+              { type: "null" }
+            ]
+          },
+          incomeModel: {
+            oneOf: [
+              {
+                type: "object",
+                required: [
+                  "sourceType",
+                  "name",
+                  "version",
+                  "updatedAt",
+                  "baseSalaryJpy",
+                  "serviceCommissionRatePercent",
+                  "extensionCommissionRatePercent",
+                  "nominationFeeJpy",
+                  "hasBonus"
+                ],
+                properties: {
+                  sourceType: { type: "string", enum: ["shop_default", "technician_override"] },
+                  name: { type: "string" },
+                  version: { type: "integer" },
+                  updatedAt: { type: "string", format: "date-time" },
+                  baseSalaryJpy: { type: "integer" },
+                  serviceCommissionRatePercent: { type: "number" },
+                  extensionCommissionRatePercent: { type: "number" },
+                  nominationFeeJpy: { type: "integer" },
+                  hasBonus: { type: "boolean" }
+                }
+              },
+              { type: "null" }
+            ]
+          },
+          summary: {
+            type: "object",
+            required: ["recognizedIncomeJpy", "completedOrderCount", "workedMinutes", "upcomingOrderCount"],
+            properties: {
+              recognizedIncomeJpy: { type: "integer" },
+              completedOrderCount: { type: "integer" },
+              workedMinutes: { type: "integer" },
+              upcomingOrderCount: { type: "integer" }
+            }
+          },
+          series: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["key", "label", "startsAt", "endsAt", "incomeJpy", "workedMinutes", "completedOrderCount"],
+              properties: {
+                key: { type: "string" },
+                label: { type: "string" },
+                startsAt: { type: "string", format: "date-time" },
+                endsAt: { type: "string", format: "date-time" },
+                incomeJpy: { type: "integer" },
+                workedMinutes: { type: "integer" },
+                completedOrderCount: { type: "integer" }
+              }
+            }
+          },
+          recentOrders: {
+            type: "array",
+            maxItems: 3,
+            items: {
+              type: "object",
+              required: ["id", "orderNo", "serviceName", "shopName", "status", "startsAt", "endsAt", "recognizedIncomeJpy"],
+              properties: {
+                id: { type: "integer" },
+                orderNo: { type: "string" },
+                serviceName: { type: "string" },
+                shopName: { type: "string" },
+                status: { type: "string" },
+                startsAt: { type: "string", format: "date-time" },
+                endsAt: { type: "string", format: "date-time" },
+                recognizedIncomeJpy: { type: ["integer", "null"] }
+              }
+            }
+          },
+          nextOrder: { type: ["object", "null"] }
+        }
+      },
+      MerchantIdentityProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "publicId",
+          "userId",
+          "identityId",
+          "displayName",
+          "avatarUrl",
+          "gender",
+          "age",
+          "heightCm",
+          "languages",
+          "bio",
+          "visibility",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          publicId: { type: "string", pattern: "^[bB][0-9]{10}$" },
+          userId: { type: "integer", minimum: 1 },
+          identityId: { type: "integer", minimum: 1 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"] },
+          gender: { type: "string", enum: ["female", "male", "private"] },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      MerchantIdentityProfileUpdate: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarDataUrl: {
+            type: "string",
+            maxLength: 900000,
+            pattern: "^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+          },
+          gender: { type: "string", enum: ["female", "male", "private"] },
+          age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
+        }
+      },
       HomeRecommendations: {
         type: "object",
         required: ["categories", "services", "shops", "technicians"],
@@ -6905,6 +7111,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "dailyRateJpy",
           "fixedOrderPayJpy",
           "commissionRatePercent",
+          "extensionCommissionRatePercent",
+          "nominationFeeJpy",
           "guaranteedMinimumJpy",
           "ndpFeeBearer",
           "technicianNdpSharePercent",
@@ -6927,6 +7135,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           dailyRateJpy: { type: "integer" },
           fixedOrderPayJpy: { type: "integer" },
           commissionRatePercent: { type: "number" },
+          extensionCommissionRatePercent: { type: "number" },
+          nominationFeeJpy: { type: "integer" },
           guaranteedMinimumJpy: { type: "integer" },
           ndpFeeBearer: { type: "string", enum: ["shop", "technician", "split"] },
           technicianNdpSharePercent: { type: "number" },
@@ -7019,8 +7229,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         required: [
           "serviceAmountJpy",
+          "baseServiceAmountJpy",
+          "extensionAmountJpy",
+          "nominationChargeAmountJpy",
+          "nominated",
           "platformFeeNdp",
           "basePayJpy",
+          "serviceCommissionPayJpy",
+          "extensionCommissionPayJpy",
+          "nominationPayJpy",
           "commissionPayJpy",
           "minimumGuaranteeAdjustmentJpy",
           "bonusPayJpy",
@@ -7036,8 +7253,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           serviceAmountJpy: { type: "integer" },
+          baseServiceAmountJpy: { type: "integer" },
+          extensionAmountJpy: { type: "integer" },
+          nominationChargeAmountJpy: { type: "integer" },
+          nominated: { type: "boolean" },
           platformFeeNdp: { type: "integer" },
           basePayJpy: { type: "integer" },
+          serviceCommissionPayJpy: { type: "integer" },
+          extensionCommissionPayJpy: { type: "integer" },
+          nominationPayJpy: { type: "integer" },
           commissionPayJpy: { type: "integer" },
           minimumGuaranteeAdjustmentJpy: { type: "integer" },
           bonusPayJpy: { type: "integer" },
@@ -7070,6 +7294,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "version",
           "wageMode",
           "commissionRatePercent",
+          "extensionCommissionRatePercent",
+          "nominationFeeJpy",
           "ndpFeeBearer",
           "bonusRules",
           "deductionRules",
@@ -7093,6 +7319,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           dailyRateJpy: { type: "integer" },
           fixedOrderPayJpy: { type: "integer" },
           commissionRatePercent: { type: "number" },
+          extensionCommissionRatePercent: { type: "number" },
+          nominationFeeJpy: { type: "integer" },
           guaranteedMinimumJpy: { type: "integer" },
           ndpFeeBearer: { type: "string", enum: ["shop", "technician", "split"] },
           technicianNdpSharePercent: { type: "number" },
@@ -7136,6 +7364,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "dailyRateJpy",
           "fixedOrderPayJpy",
           "commissionRatePercent",
+          "extensionCommissionRatePercent",
+          "nominationFeeJpy",
           "guaranteedMinimumJpy",
           "ndpFeeBearer",
           "technicianNdpSharePercent",
@@ -7160,6 +7390,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           dailyRateJpy: { type: "integer", minimum: 0 },
           fixedOrderPayJpy: { type: "integer", minimum: 0 },
           commissionRatePercent: { type: "number", minimum: 0, maximum: 100 },
+          extensionCommissionRatePercent: { type: "number", minimum: 0, maximum: 100 },
+          nominationFeeJpy: { type: "integer", minimum: 0 },
           guaranteedMinimumJpy: { type: "integer", minimum: 0 },
           ndpFeeBearer: { type: "string", enum: ["shop", "technician", "split"] },
           technicianNdpSharePercent: { type: "number", minimum: 0, maximum: 100 },
@@ -7266,6 +7498,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           dailyRateJpy: { type: "integer", minimum: 0, default: 0 },
           fixedOrderPayJpy: { type: "integer", minimum: 0, default: 0 },
           commissionRatePercent: { type: "number", minimum: 0, maximum: 100, default: 60 },
+          extensionCommissionRatePercent: {
+            type: "number",
+            minimum: 0,
+            maximum: 100,
+            default: 60
+          },
+          nominationFeeJpy: { type: "integer", minimum: 0, default: 0 },
           guaranteedMinimumJpy: { type: "integer", minimum: 0, default: 0 },
           ndpFeeBearer: {
             type: "string",
@@ -14253,6 +14492,64 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/technician/data-center`]: {
+      get: {
+        tags: ["Technician Data Center"],
+        summary: "Read formal income, completed work time, current income model, and three recent orders",
+        security: [{ bearerAuth: [] }],
+        parameters: [{
+          name: "period",
+          in: "query",
+          required: false,
+          schema: {
+            type: "string",
+            enum: ["last7days", "last30days", "week", "month", "year"],
+            default: "last7days"
+          }
+        }],
+        responses: {
+          "200": jsonDataResponse("Current technician data center", {
+            $ref: "#/components/schemas/TechnicianDataCenter"
+          }),
+          "400": { description: "error.validation — unsupported period" },
+          "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+          "403": { description: "Missing technician-data-center permission or technician identity scope" },
+          "404": { description: "error.technician_data_center.not_found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-profile/me`]: {
+      get: {
+        tags: ["Merchant Profile"],
+        summary: "Get the independent profile belonging to the authenticated merchant identity",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current merchant identity profile", {
+            $ref: "#/components/schemas/MerchantIdentityProfile"
+          }),
+          ...merchantProfileErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Merchant Profile"],
+        summary: "Update editable fields on the authenticated merchant identity profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantIdentityProfileUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated current merchant identity profile", {
+            $ref: "#/components/schemas/MerchantIdentityProfile"
+          }),
+          ...merchantProfileErrorResponses
+        }
+      }
+    },
     "/media/customer-avatars/{filename}": {
       get: {
         tags: ["Customer Profile"],
@@ -16453,6 +16750,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   dailyRateJpy: { type: "integer", minimum: 0, default: 0 },
                   fixedOrderPayJpy: { type: "integer", minimum: 0, default: 0 },
                   commissionRatePercent: { type: "number", minimum: 0, maximum: 100, default: 60 },
+                  extensionCommissionRatePercent: {
+                    type: "number",
+                    minimum: 0,
+                    maximum: 100,
+                    default: 60
+                  },
+                  nominationFeeJpy: { type: "integer", minimum: 0, default: 0 },
                   guaranteedMinimumJpy: { type: "integer", minimum: 0, default: 0 },
                   ndpFeeBearer: {
                     type: "string",
@@ -16591,6 +16895,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 required: ["serviceAmountJpy"],
                 properties: {
                   serviceAmountJpy: { type: "integer", minimum: 0 },
+                  baseServiceAmountJpy: { type: "integer", minimum: 0 },
+                  extensionAmountJpy: { type: "integer", minimum: 0 },
+                  nominationChargeAmountJpy: { type: "integer", minimum: 0 },
+                  wasTechnicianNominated: { type: "boolean" },
                   platformCollectedServiceAmountJpy: { type: "integer", minimum: 0, default: 0 },
                   offlineReportedServiceAmountJpy: { type: "integer", minimum: 0, default: 0 },
                   paymentChannel: {
@@ -16738,6 +17046,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       maximum: 100,
                       default: 60
                     },
+                    extensionCommissionRatePercent: {
+                      type: "number",
+                      minimum: 0,
+                      maximum: 100,
+                      default: 60
+                    },
+                    nominationFeeJpy: { type: "integer", minimum: 0, default: 0 },
                     guaranteedMinimumJpy: { type: "integer", minimum: 0, default: 0 },
                     ndpFeeBearer: {
                       type: "string",
@@ -16791,9 +17106,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "application/json": {
                 schema: {
                   type: "object",
-                  required: ["serviceAmountJpy"],
                   properties: {
                     serviceAmountJpy: { type: "integer", minimum: 0 },
+                    baseServiceAmountJpy: { type: "integer", minimum: 0 },
+                    extensionAmountJpy: { type: "integer", minimum: 0 },
+                    nominated: { type: "boolean", default: false },
                     platformFeeNdp: { type: "integer", minimum: 0, default: 500 },
                     workedMinutes: { type: "integer", minimum: 0, default: 60 },
                     monthlyCompletedOrders: { type: "integer", minimum: 0, default: 0 },
@@ -16899,9 +17216,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               schema: {
                 type: "object",
                 additionalProperties: false,
-                required: ["serviceAmountJpy"],
                 properties: {
                   serviceAmountJpy: { type: "integer", minimum: 0 },
+                  baseServiceAmountJpy: { type: "integer", minimum: 0 },
+                  extensionAmountJpy: { type: "integer", minimum: 0 },
+                  nominated: { type: "boolean", default: false },
                   platformFeeNdp: { type: "integer", minimum: 0, default: 500 },
                   workedMinutes: { type: "integer", minimum: 0, default: 60 },
                   monthlyCompletedOrders: { type: "integer", minimum: 0, default: 0 },

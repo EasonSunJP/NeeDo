@@ -113,6 +113,7 @@ describe("MerchantApplicationReviewRepository", () => {
           scopeId: 61
         })
       },
+      merchantIdentityProfile: { create: jest.fn().mockResolvedValue({ id: 61 }) },
       userRole: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 101 })
@@ -212,6 +213,14 @@ describe("MerchantApplicationReviewRepository", () => {
         activeKey: "identity-activation:7:merchant_owner:application:41",
         scopeId: 61
       })
+    });
+    expect(tx.merchantIdentityProfile.create).toHaveBeenCalledWith({
+      data: {
+        userId: 7,
+        identityId: 91,
+        displayName: "山本太郎",
+        languages: []
+      }
     });
     const merchantAudit = tx.auditLog.create.mock.calls.find(
       ([call]) => call.data.action === "identity_application.merchant.approved"

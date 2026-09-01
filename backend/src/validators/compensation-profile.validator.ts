@@ -37,6 +37,8 @@ export const compensationProfileBodySchema = z.object({
   dailyRateJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   fixedOrderPayJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   commissionRatePercent: z.number().min(0).max(100).default(60),
+  extensionCommissionRatePercent: z.number().min(0).max(100).default(60),
+  nominationFeeJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   guaranteedMinimumJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   ndpFeeBearer: z.enum(["shop", "technician", "split"]).default("shop"),
   technicianNdpSharePercent: z.number().min(0).max(100).default(0),
@@ -46,15 +48,37 @@ export const compensationProfileBodySchema = z.object({
   effectiveTo: z.coerce.date().nullable().optional()
 });
 
-export const compensationProfilePreviewBodySchema = z.object({
-  serviceAmountJpy: z.number().int().nonnegative().max(100_000_000),
-  platformFeeNdp: z.number().int().nonnegative().max(10_000_000).default(500),
-  workedMinutes: z.number().int().nonnegative().max(1440).default(60),
-  monthlyCompletedOrders: z.number().int().nonnegative().max(1_000_000).default(0),
-  monthlyServiceGmvJpy: z.number().int().nonnegative().max(1_000_000_000).default(0),
-  ratingAverage: z.number().min(0).max(5).default(0),
-  lateCancellationCount: z.number().int().nonnegative().max(1_000_000).default(0)
-});
+export const compensationProfilePreviewBodySchema = z
+  .object({
+    serviceAmountJpy: z.number().int().nonnegative().max(100_000_000).optional(),
+    baseServiceAmountJpy: z.number().int().nonnegative().max(100_000_000).optional(),
+    extensionAmountJpy: z.number().int().nonnegative().max(100_000_000).optional(),
+    nominated: z.boolean().default(false),
+    platformFeeNdp: z.number().int().nonnegative().max(10_000_000).default(500),
+    workedMinutes: z.number().int().nonnegative().max(1440).default(60),
+    monthlyCompletedOrders: z.number().int().nonnegative().max(1_000_000).default(0),
+    monthlyServiceGmvJpy: z.number().int().nonnegative().max(1_000_000_000).default(0),
+    ratingAverage: z.number().min(0).max(5).default(0),
+    lateCancellationCount: z.number().int().nonnegative().max(1_000_000).default(0)
+  })
+  .superRefine((value, context) => {
+    const hasAggregate = value.serviceAmountJpy !== undefined;
+    const hasComponents =
+      value.baseServiceAmountJpy !== undefined || value.extensionAmountJpy !== undefined;
+    if (hasAggregate === hasComponents) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide either aggregate service amount or component amounts"
+      });
+    }
+    if (value.nominated && !hasComponents) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["nominated"],
+        message: "Nomination requires component amounts"
+      });
+    }
+  });
 
 export type CompensationProfileParams = z.infer<typeof compensationProfileParamSchema>;
 export type EmployeeCompensationProfileParams = z.infer<

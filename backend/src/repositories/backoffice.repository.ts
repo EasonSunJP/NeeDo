@@ -1213,6 +1213,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         loginAllowed: true,
         searchable: true
       });
+      await transaction.merchantIdentityProfile.create({
+        data: {
+          userId: owner.id,
+          identityId: merchantIdentity.id,
+          displayName: input.ownerUsername,
+          languages: []
+        }
+      });
       await transaction.userRole.create({
         data: {
           userId: owner.id,

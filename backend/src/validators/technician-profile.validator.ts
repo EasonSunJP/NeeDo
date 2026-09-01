@@ -6,7 +6,7 @@ const avatarDataUrlSchema = z
   .regex(/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/);
 
 const stringList = (maxItems: number, maxLength: number) =>
-  z.array(z.string().trim().min(1).max(maxLength)).min(1).max(maxItems);
+  z.array(z.string().trim().min(1).max(maxLength)).max(maxItems);
 
 const technicianServiceBaseSchema = z
   .object({
@@ -44,7 +44,7 @@ export const technicianProfileUpdateBodySchema = z
       "paypal",
       "wechatpay",
       "alipay"
-    ])).min(1).max(8).optional(),
+    ])).max(8).optional(),
     serviceBase: technicianServiceBaseSchema.nullable().optional(),
     visibility: technicianProfileVisibilitySchema.optional()
   })

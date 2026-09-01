@@ -87,12 +87,16 @@ function buildStatusTimelineEntries(orders: BookingOrder[]): ContactEventTimelin
 }
 
 export function FormalTechnicianScheduleWorkspace({
+  dataCenterPeriod,
+  initialSelectedDate,
   profileAvatarUrl,
   profileId,
   profileName,
   shopId,
   shopName
 }: {
+  dataCenterPeriod?: "last7days" | "last30days" | "week" | "month" | "year";
+  initialSelectedDate?: string;
   profileAvatarUrl?: string | null;
   profileId: number;
   profileName: string;
@@ -112,6 +116,17 @@ export function FormalTechnicianScheduleWorkspace({
   }), [profileAvatarUrl, profileId, profileName, shopId]);
   const statusTimelineEntries = useMemo(() => buildStatusTimelineEntries(statusOrders), [statusOrders]);
   const statusRecordTarget = statusOrders[0] ?? null;
+  const dataCenterPeriodLabel = dataCenterPeriod === "last30days"
+    ? "近30天"
+    : dataCenterPeriod === "week"
+      ? "本周"
+      : dataCenterPeriod === "month"
+        ? "本月"
+        : dataCenterPeriod === "year"
+          ? "今年"
+          : dataCenterPeriod === "last7days"
+            ? "近7天"
+            : null;
 
   useEffect(() => {
     let active = true;
@@ -151,6 +166,7 @@ export function FormalTechnicianScheduleWorkspace({
       </FloatingHomeHeader>
 
       <div className="space-y-4">
+        {dataCenterPeriodLabel ? <p className="rounded-2xl border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] px-4 py-2.5 text-xs font-black text-[color:var(--client-muted)]">数据中心期间：{dataCenterPeriodLabel}</p> : null}
         {tab === "settings" ? (
         <div className="space-y-4" data-testid="formal-schedule-settings-surface">
           <section className={cn(schedulePanelClass, "p-4")}>
@@ -187,6 +203,7 @@ export function FormalTechnicianScheduleWorkspace({
             currentTechnician={calendarTechnician}
             displayMode="parallel"
             formalOnly
+            initialSelectedDate={initialSelectedDate}
             scope="technician"
             searchQuery={searchQuery}
             showSourceDrawer

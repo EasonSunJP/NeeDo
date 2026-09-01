@@ -238,6 +238,27 @@ export const SYSTEM_PERMISSIONS = [
     "记录通过 NeeDo 消息或系统能力成功分享的店铺与技师"
   ),
   createPermission(
+    "technician-data-center:read",
+    "查看技师数据中心",
+    "api",
+    "technician-data-center",
+    "读取当前技师身份的正式收入、工时和订单聚合"
+  ),
+  createPermission(
+    "merchant-profile:read",
+    "查看商户身份资料",
+    "api",
+    "merchant-profile",
+    "读取当前商户身份的独立个人资料"
+  ),
+  createPermission(
+    "merchant-profile:write",
+    "编辑商户身份资料",
+    "api",
+    "merchant-profile",
+    "更新当前商户身份的独立个人资料"
+  ),
+  createPermission(
     "identity-application:own",
     "本人身份申请",
     "api",
@@ -2050,6 +2071,8 @@ export const buildRolePermissionAssignments = (): Record<
     "button:user:update"
   ],
   merchant_owner: [
+    "merchant-profile:read",
+    "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
@@ -2064,6 +2087,8 @@ export const buildRolePermissionAssignments = (): Record<
     ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
   ],
   merchant_staff: [
+    "merchant-profile:read",
+    "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
@@ -2079,6 +2104,7 @@ export const buildRolePermissionAssignments = (): Record<
     "menu:technician-schedule",
     "technician-profile:read",
     "technician-profile:write",
+    "technician-data-center:read",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,

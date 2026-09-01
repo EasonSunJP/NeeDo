@@ -17,6 +17,7 @@ import {
   getRequestDispatchWalletSeedAmount,
   getAdminSeedConfig,
   getTestUserSeedPassword,
+  provisionRequiredTestAccountPortalData,
   shouldSeedRequiredTestAccounts
 } from "../prisma/seed";
 
@@ -146,6 +147,53 @@ describe("user management seed contract", () => {
       "scout"
     ]);
     expect(getTestAccountSwitchIdentityTypes("customer")).toEqual(["customer"]);
+  });
+
+  it("provisions independent merchant profile data and an independently configurable technician income model", async () => {
+    const tx = {
+      merchantIdentityProfile: { upsert: jest.fn(async () => ({ id: 1 })) },
+      technicianProfile: { update: jest.fn(async () => ({ id: 22 })) },
+      technicianShopAffiliation: { upsert: jest.fn(async () => ({ id: 3 })) },
+      technicianCompensationProfile: {
+        findFirst: jest.fn(async () => null),
+        create: jest.fn(async ({ data }) => ({ id: 4, ...data })),
+        update: jest.fn()
+      }
+    };
+
+    await provisionRequiredTestAccountPortalData(tx as never, {
+      identityType: "merchant",
+      identityId: 12,
+      userId: 7,
+      username: "Merchant",
+      shopId: 5,
+      scopeId: 5
+    });
+    await provisionRequiredTestAccountPortalData(tx as never, {
+      identityType: "technician",
+      identityId: 13,
+      userId: 8,
+      username: "Technician",
+      shopId: 5,
+      scopeId: 22
+    });
+
+    expect(tx.merchantIdentityProfile.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { identityId: 12 },
+      create: expect.objectContaining({ identityId: 12, userId: 7, displayName: "Merchant" })
+    }));
+    expect(tx.technicianShopAffiliation.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { activeKey: "technician:22:shop:5" }
+    }));
+    expect(tx.technicianCompensationProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        shopId: 5,
+        technicianProfileId: 22,
+        commissionRateBps: 4000,
+        extensionCommissionRateBps: 5500,
+        nominationFeeJpy: 2000
+      })
+    });
   });
 
   it("funds customer seed wallets enough for Request dispatch-fee smoke flows", () => {

@@ -818,11 +818,74 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/employees/{needoId}/compensation-profile/preview"
     );
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-profile/me");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/data-center");
+    expect(response.body.paths["/api/v1/technician/data-center"].get.parameters).toEqual([
+      expect.objectContaining({
+        name: "period",
+        schema: expect.objectContaining({
+          enum: ["last7days", "last30days", "week", "month", "year"]
+        })
+      })
+    ]);
+    expect(response.body.components.schemas.TechnicianDataCenter.properties.series.items.properties)
+      .toEqual(expect.objectContaining({
+        incomeJpy: { type: "integer" },
+        workedMinutes: { type: "integer" }
+      }));
+    expect(response.body.paths["/api/v1/merchant-profile/me"]).toMatchObject({
+      get: { responses: { "200": expect.any(Object), "403": expect.any(Object) } },
+      patch: { responses: { "200": expect.any(Object), "400": expect.any(Object) } }
+    });
+    expect(response.body.components.schemas.MerchantIdentityProfile).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        publicId: { type: "string", pattern: "^[bB][0-9]{10}$" },
+        displayName: { type: "string" },
+        languages: { type: "array" }
+      }
+    });
     const employeeCompensationSchema = response.body.components.schemas.EmployeeCompensationProfile;
     expect(employeeCompensationSchema.properties).not.toHaveProperty("shopId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("technicianProfileId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("createdById");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("updatedById");
+    for (const schemaName of [
+      "ShopFinanceRuleSet",
+      "TechnicianCompensationProfile",
+      "EmployeeCompensationProfile",
+      "CompensationProfileInput"
+    ]) {
+      expect(response.body.components.schemas[schemaName].properties).toEqual(
+        expect.objectContaining({
+          extensionCommissionRatePercent: expect.objectContaining({ type: "number" }),
+          nominationFeeJpy: expect.objectContaining({ type: "integer" })
+        })
+      );
+    }
+    expect(response.body.components.schemas.CompensationPreview.properties).toEqual(
+      expect.objectContaining({
+        baseServiceAmountJpy: expect.objectContaining({ type: "integer" }),
+        extensionAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominationChargeAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominated: expect.objectContaining({ type: "boolean" }),
+        serviceCommissionPayJpy: expect.objectContaining({ type: "integer" }),
+        extensionCommissionPayJpy: expect.objectContaining({ type: "integer" }),
+        nominationPayJpy: expect.objectContaining({ type: "integer" })
+      })
+    );
+    const serviceIncomeReportSchema =
+      response.body.paths[
+        "/api/v1/merchant-admin/finance/orders/{bookingOrderId}/service-income-report"
+      ].put.requestBody.content["application/json"].schema;
+    expect(serviceIncomeReportSchema.properties).toEqual(
+      expect.objectContaining({
+        baseServiceAmountJpy: expect.objectContaining({ type: "integer" }),
+        extensionAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominationChargeAmountJpy: expect.objectContaining({ type: "integer" }),
+        wasTechnicianNominated: expect.objectContaining({ type: "boolean" })
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}");

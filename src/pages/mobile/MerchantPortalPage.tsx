@@ -9,7 +9,8 @@ import {
 } from "../../api/backofficeRealData";
 import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
-import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
+import { AppIcon, FeatureSegmentedTabs, IconButton } from "../../components/client-ui/AppScaffold";
+import { MerchantIdentityInfoCard } from "../../components/merchant/MerchantIdentityInfoCard";
 import {
   createCustomContactCategoryDraft,
   CustomContactCategoryEditor,
@@ -81,7 +82,7 @@ import { StoreDetailExperience } from "../user/StoreDetailPage";
 import { ShopAnalyticsDashboard } from "../../features/shop-analytics/ShopAnalyticsDashboard";
 
 type MerchantView = "dashboard" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
-type MerchantMeTab = "service" | "data";
+type MerchantMeTab = "info" | "service" | "data";
 type MerchantSchedulePrimaryTab = "current" | "appointments" | "planning";
 type MerchantStaffTab = "all" | "fullTime" | "partTime";
 type StaffStatus = "出勤" | "休息" | "服务中" | "可指派";
@@ -235,11 +236,11 @@ function getMerchantView(view?: string): MerchantView {
 }
 
 function getMerchantMeTab(value?: string | null): MerchantMeTab {
-  if (value === "service") {
+  if (value === "service" || value === "data") {
     return value;
   }
 
-  return "data";
+  return "info";
 }
 
 function getMerchantLocationLabel(store?: Store | null) {
@@ -1616,6 +1617,7 @@ function MerchantPortalContent({
     [technicians]
   );
   const [selectedContact, setSelectedContact] = useState<MerchantContactModal>(null);
+  const [merchantProfileEditing, setMerchantProfileEditing] = useState(false);
   const [merchantOrderSearchOpen, setMerchantOrderSearchOpen] = useState(false);
   const [merchantOrderSearchQuery, setMerchantOrderSearchQuery] = useState("");
   const [merchantOrderStartDate, setMerchantOrderStartDate] = useState("");
@@ -2254,7 +2256,7 @@ function MerchantPortalContent({
   const updateMerchantMeTab = (nextTab: MerchantMeTab) => {
     const nextParams = new URLSearchParams(searchParams);
 
-    if (nextTab === "data") {
+    if (nextTab === "info") {
       nextParams.delete("meTab");
     } else {
       nextParams.set("meTab", nextTab);
@@ -2392,7 +2394,7 @@ function MerchantPortalContent({
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showBottomNav={!isMerchantAppointmentsView}
+      showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}
       showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
@@ -2414,31 +2416,22 @@ function MerchantPortalContent({
         </FloatingHomeHeader>
       ) : null}
       {activeView === "me" ? (
-        <FloatingHomeHeader
-          stacked
-          panelClassName="relative overflow-hidden"
-        >
-          <SharedHomeHeader
-            avatarAlt={store.name}
-            avatarLabel="打开经营数据中心"
-            avatarSrc={store.cover}
-            avatarTo={merchantPortalConfig.myPath}
-            forceLight
-            locationLabel={getMerchantLocationLabel(store)}
-            locationTo="/merchant/settings/service-range"
-            settingsLabel="打开设置中心"
-            settingsTo={merchantPortalConfig.settingsPath}
-          />
-          <FeatureSegmentedTabs
+        <MobileFullscreenHeader
+          action={<IconButton icon="settings" label="打开设置中心" to={merchantPortalConfig.settingsPath} />}
+          footer={<FeatureSegmentedTabs
             items={[
+              { label: "信息卡", value: "info" },
               { label: "服务展示", value: "service" },
               { label: "数据中心", value: "data" }
             ]}
             onChange={(value) => updateMerchantMeTab(value as MerchantMeTab)}
             value={activeMeTab}
             variant="header"
-          />
-        </FloatingHomeHeader>
+          />}
+          maxWidth="880px"
+          onBack={() => navigate("/merchant")}
+          title="个人中心"
+        />
       ) : null}
 
       <div
@@ -2792,6 +2785,7 @@ function MerchantPortalContent({
         {activeView === "me" && (
           <>
             <div className={cn("space-y-4 px-4 pb-0", isMerchantDataCenterView && "merchant-analytics-clean-content")}>
+              {activeMeTab === "info" ? <MerchantIdentityInfoCard onEditingChange={setMerchantProfileEditing} /> : null}
               {activeMeTab === "service" ? (
                 <StoreDetailExperience
                   embedded

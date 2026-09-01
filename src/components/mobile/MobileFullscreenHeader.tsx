@@ -79,6 +79,7 @@ export function MobileFullscreenHeader({
   onBack,
   onClose,
   action,
+  footer,
   dark = false,
   className,
   maxWidth,
@@ -95,6 +96,7 @@ export function MobileFullscreenHeader({
   onBack?: () => void;
   onClose?: () => void;
   action?: ReactNode;
+  footer?: ReactNode;
   dark?: boolean;
   className?: string;
   maxWidth?: CSSProperties["maxWidth"];
@@ -161,6 +163,7 @@ export function MobileFullscreenHeader({
             </div>
           ) : null}
         </div>
+        {footer ? <div className="mt-3">{footer}</div> : null}
       </div>
     </FloatingHomeHeader>
   );
