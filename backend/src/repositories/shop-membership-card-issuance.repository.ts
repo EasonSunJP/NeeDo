@@ -157,6 +157,17 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
         if (lockedUsers.length !== 1 || lockedUsers[0]?.id !== context.membership.customerUserId) {
           return { kind: "invalid_state" as const };
         }
+        const postLockExisting = await transaction.shopMembershipCard.findFirst({
+          where: {
+            issuanceIdempotencyKey: input.issuanceIdempotencyKey
+          },
+          select: issuedCardSelect
+        });
+        if (postLockExisting) {
+          return postLockExisting.membership.shopId === input.shopId && postLockExisting.issuanceFingerprint === input.issuanceFingerprint
+            ? { kind: "replayed" as const, value: this.mapCard(postLockExisting) }
+            : { kind: "idempotency_conflict" as const };
+        }
         const priorPaidCard = await transaction.shopMembershipCard.findFirst({
           where: {
             issuanceSource: {
@@ -263,7 +274,7 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
           }
         });
         return { kind: "created" as const, value: this.mapCard(created) };
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     } catch (error) {
       if (!this.isUniqueConflict(error)) throw error;
       const targets = this.uniqueTargets(error);

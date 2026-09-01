@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { ShopMembershipCardIssuanceRepository } from "../src/repositories/shop-membership-card-issuance.repository";
+import type { CreateMembershipCardIssuanceRepositoryInput } from "../src/services/shop-membership-card-issuance.service";
 
 const now = new Date("2026-08-31T03:00:00.000Z");
 const membershipPublicId = "00000000-0000-4000-8000-000000000401";
@@ -63,7 +64,7 @@ const card = {
   membership: { shopId: 71, customerProfile: { displayName: "王小美", user: { needoId: "u0000000041" } } }
 };
 
-const issuanceInput = {
+const issuanceInput: CreateMembershipCardIssuanceRepositoryInput = {
   actorId: 9,
   shopId: 71,
   membershipPublicId,
@@ -185,7 +186,7 @@ describe("ShopMembershipCardIssuanceRepository", () => {
       })
     }));
     expect(transaction.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(transaction.shopMembershipCard.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(transaction.shopMembershipCard.findFirst).toHaveBeenNthCalledWith(3, expect.objectContaining({
       where: expect.objectContaining({
         issuanceSource: { in: ["OFFLINE_PAID", "ONLINE_PAID", "RENEWAL"] },
         membership: { customerProfile: { userId: 41 } }
@@ -277,7 +278,7 @@ describe("ShopMembershipCardIssuanceRepository", () => {
     const issued = { ...card, issuanceSource: persistedSource };
     const transaction = {
       shopMembershipCard: {
-        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(prior),
+        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(prior),
         create: jest.fn().mockResolvedValue(issued)
       },
       shopMembershipCardStatusEvent: { create: jest.fn().mockResolvedValue({ id: 101 }) },
@@ -294,8 +295,8 @@ describe("ShopMembershipCardIssuanceRepository", () => {
     expect(result.kind).toBe(expectedKind);
     if (result.kind === "created") expect(result.value.issuanceSource).toBe(source);
     expect(transaction.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(transaction.shopMembershipCard.create.mock.invocationCallOrder[0] ?? Infinity);
-    expect(transaction.shopMembershipCard.findFirst.mock.invocationCallOrder[1]).toBeLessThan(transaction.shopMembershipCard.create.mock.invocationCallOrder[0] ?? Infinity);
-    const historyWhere = transaction.shopMembershipCard.findFirst.mock.calls[1]![0].where;
+    expect(transaction.shopMembershipCard.findFirst.mock.invocationCallOrder[2]).toBeLessThan(transaction.shopMembershipCard.create.mock.invocationCallOrder[0] ?? Infinity);
+    const historyWhere = transaction.shopMembershipCard.findFirst.mock.calls[2]![0].where;
     expect(JSON.stringify(historyWhere)).not.toMatch(/deletedAt|status/u);
     expect(transaction.shopMembershipCard.create).toHaveBeenCalledTimes(expectedKind === "created" ? 1 : 0);
     if (expectedKind === "created") expect(transaction.shopMembershipCard.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ issuanceSource: persistedSource }) }));
@@ -350,46 +351,142 @@ describe("ShopMembershipCardIssuanceRepository", () => {
     expect(state).toEqual({ cards: [], events: [], audits: [], notifications: [] });
   });
 
-  it("serializes different-key cross-shop first-paid commands for the same canonical user", async () => {
-    const persisted: Array<{ key: string; source: string; shopId: number }> = [];
-    let tail = Promise.resolve();
+  const runInterleavedRace = async (
+    firstOverrides: Partial<CreateMembershipCardIssuanceRepositoryInput>,
+    secondOverrides: Partial<CreateMembershipCardIssuanceRepositoryInput>
+  ) => {
+    type StoredCard = typeof card & { issuanceIdempotencyKey: string };
+    type FindArgs = { where: { issuanceIdempotencyKey?: string; issuanceSource?: { in: string[] } } };
+    type CardCreateArgs = { data: {
+      issuanceIdempotencyKey: string;
+      issuanceFingerprint: string;
+      issuanceSource: string;
+    } };
+    type ShopContextArgs = { where: { shopId: number } };
+    const state = {
+      cards: [] as StoredCard[],
+      events: [] as unknown[],
+      audits: [] as unknown[],
+      notifications: [] as unknown[]
+    };
+    const transactionOptions: Array<{ isolationLevel?: string } | undefined> = [];
+    let lockArrivals = 0;
+    let openLockBarrier!: () => void;
+    const lockBarrier = new Promise<void>((resolve) => { openLockBarrier = resolve; });
+    let lockTail = Promise.resolve();
+
     const client = {
-      $transaction: jest.fn(async (callback: (transaction: unknown) => Promise<unknown>) => {
-        let release!: () => void;
-        const previous = tail;
-        tail = new Promise<void>((resolve) => { release = resolve; });
-        await previous;
+      $transaction: jest.fn(async (
+        callback: (transaction: unknown) => Promise<unknown>,
+        options?: { isolationLevel?: string }
+      ) => {
+        transactionOptions.push(options);
+        const snapshot = [...state.cards];
+        const staged = { cards: [] as StoredCard[], events: [] as unknown[], audits: [] as unknown[], notifications: [] as unknown[] };
         let currentShopId = 0;
+        const lockRelease: { current: (() => void) | null } = { current: null };
+        const visibleCards = () => options?.isolationLevel === "ReadCommitted" ? state.cards : snapshot;
         const transaction = {
           shopMembershipCard: {
-            findFirst: jest.fn(async (args) => args.where.issuanceIdempotencyKey
-              ? null
-              : persisted.find((item) => ["OFFLINE_PAID", "ONLINE_PAID", "RENEWAL"].includes(item.source)) ?? null),
-            create: jest.fn(async (args) => {
-              persisted.push({ key: args.data.issuanceIdempotencyKey, source: args.data.issuanceSource, shopId: currentShopId });
-              return { ...card, id: 80 + persisted.length, publicId: `00000000-0000-4000-8000-00000000048${persisted.length}`, issuanceFingerprint: args.data.issuanceFingerprint, issuanceSource: args.data.issuanceSource, membership: { ...card.membership, shopId: currentShopId } };
+            findFirst: jest.fn(async (args: FindArgs) => {
+              const visible = visibleCards();
+              if (args.where.issuanceIdempotencyKey) {
+                return visible.find((item) => item.issuanceIdempotencyKey === args.where.issuanceIdempotencyKey) ?? null;
+              }
+              return visible.find((item) => args.where.issuanceSource?.in.includes(item.issuanceSource)) ?? null;
+            }),
+            create: jest.fn(async (args: CardCreateArgs) => {
+              const sequence = state.cards.length + staged.cards.length + 1;
+              const created = {
+                ...card,
+                id: 80 + sequence,
+                publicId: `00000000-0000-4000-8000-00000000048${sequence}`,
+                issuanceIdempotencyKey: args.data.issuanceIdempotencyKey,
+                issuanceFingerprint: args.data.issuanceFingerprint,
+                issuanceSource: args.data.issuanceSource,
+                membership: { ...card.membership, shopId: currentShopId }
+              } as StoredCard;
+              staged.cards.push(created);
+              return created;
             })
           },
-          shopMembershipCardStatusEvent: { create: jest.fn(async () => ({ id: 100 + persisted.length })) },
-          shopCustomerMembership: { findFirst: jest.fn(async (args) => {
+          shopMembershipCardStatusEvent: { create: jest.fn(async (value: unknown) => { staged.events.push(value); return { id: 101 }; }) },
+          shopCustomerMembership: { findFirst: jest.fn(async (args: ShopContextArgs) => {
             currentShopId = args.where.shopId;
             return { ...membership, id: 30 + currentShopId, shop: { ...membership.shop, id: currentShopId } };
           }) },
-          shopMembershipCardPlan: { findFirst: jest.fn(async (args) => ({ ...plan, id: 50 + args.where.shopId })) },
-          $queryRaw: jest.fn().mockResolvedValue([{ id: 41 }]),
+          shopMembershipCardPlan: { findFirst: jest.fn(async () => plan) },
+          $queryRaw: jest.fn(async () => {
+            lockArrivals += 1;
+            if (lockArrivals === 2) openLockBarrier();
+            await lockBarrier;
+            let unlock!: () => void;
+            const previous = lockTail;
+            lockTail = new Promise<void>((resolve) => { unlock = resolve; });
+            await previous;
+            lockRelease.current = unlock;
+            return [{ id: 41 }];
+          }),
           userIdentity: { findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 }) },
-          auditLog: { create: jest.fn(async () => ({ id: 91 })) },
-          notification: { create: jest.fn(async () => ({ id: 92 })) }
+          auditLog: { create: jest.fn(async (value: unknown) => { staged.audits.push(value); return { id: 91 }; }) },
+          notification: { create: jest.fn(async (value: unknown) => { staged.notifications.push(value); return { id: 92 }; }) }
         };
-        try { return await callback(transaction); } finally { release(); }
+        try {
+          const result = await callback(transaction);
+          state.cards.push(...staged.cards);
+          state.events.push(...staged.events);
+          state.audits.push(...staged.audits);
+          state.notifications.push(...staged.notifications);
+          return result;
+        } finally {
+          lockRelease.current?.();
+        }
       })
     } as unknown as PrismaClient;
     const repository = new ShopMembershipCardIssuanceRepository(client);
-    const [first, second] = await Promise.all([
-      repository.issueCardWithAuditAndNotification({ ...issuanceInput, shopId: 71, issuanceIdempotencyKey: "first-key", issuanceFingerprint: "first" }),
-      repository.issueCardWithAuditAndNotification({ ...issuanceInput, shopId: 72, issuanceIdempotencyKey: "second-key", issuanceFingerprint: "second", issuanceSource: "online_paid" })
+    const race = Promise.all([
+      repository.issueCardWithAuditAndNotification({ ...issuanceInput, ...firstOverrides }),
+      repository.issueCardWithAuditAndNotification({ ...issuanceInput, ...secondOverrides })
     ]);
-    expect([first.kind, second.kind].sort()).toEqual(["created", "invalid_state"]);
-    expect(persisted).toHaveLength(1);
+    const results = await Promise.race([
+      race,
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("concurrency harness deadlocked")), 1_000))
+    ]);
+    return { results, state, transactionOptions, lockArrivals };
+  };
+
+  it("uses current-visible post-lock reads so cross-shop different-key first-paid commands have one winner", async () => {
+    const race = await runInterleavedRace(
+      { shopId: 71, issuanceIdempotencyKey: "first-key", issuanceFingerprint: "first" },
+      { shopId: 72, issuanceIdempotencyKey: "second-key", issuanceFingerprint: "second", issuanceSource: "online_paid" }
+    );
+    expect(race.lockArrivals).toBe(2);
+    expect(race.transactionOptions).toEqual([{ isolationLevel: "ReadCommitted" }, { isolationLevel: "ReadCommitted" }]);
+    expect(race.results.map((result) => result.kind).sort()).toEqual(["created", "invalid_state"]);
+    expect(race.state.cards).toHaveLength(1);
+    expect(race.state.events).toHaveLength(1);
+    expect(race.state.audits).toHaveLength(1);
+    expect(race.state.notifications).toHaveLength(1);
+  });
+
+  it("replays the winner when two interleaved transactions use the same semantic command", async () => {
+    const race = await runInterleavedRace({}, {});
+    expect(race.results.map((result) => result.kind).sort()).toEqual(["created", "replayed"]);
+    expect(race.state.cards).toHaveLength(1);
+    expect(race.state.events).toHaveLength(1);
+    expect(race.state.audits).toHaveLength(1);
+    expect(race.state.notifications).toHaveLength(1);
+  });
+
+  it.each([
+    ["changed fingerprint", { issuanceFingerprint: "changed" }],
+    ["changed shop scope", { shopId: 72 }]
+  ] as const)("conflicts after the lock for same-key %s", async (_label, changed) => {
+    const race = await runInterleavedRace({}, changed);
+    expect(race.results.map((result) => result.kind).sort()).toEqual(["created", "idempotency_conflict"]);
+    expect(race.state.cards).toHaveLength(1);
+    expect(race.state.events).toHaveLength(1);
+    expect(race.state.audits).toHaveLength(1);
+    expect(race.state.notifications).toHaveLength(1);
   });
 });
