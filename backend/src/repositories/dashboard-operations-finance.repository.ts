@@ -162,6 +162,7 @@ implements DashboardOperationsFinanceReader {
               AND ledger.amount = checkout.payable_ndp
               AND ledger.actor_user_id = booking.payment_confirmed_by_id
               AND ledger.deleted_at IS NULL
+              AND checkout.payment_selected_at <= ledger.created_at
               AND ledger.created_at <= booking.payment_confirmed_at
               AND booking.payment_reference = CONCAT(
                 ${"checkout:"}, checkout.id, ${":ledger:"}, ledger.id
@@ -178,6 +179,7 @@ implements DashboardOperationsFinanceReader {
               AND ledger.id IS NULL
               AND checkout.receipt_confirmed_by_id IS NOT NULL
               AND checkout.receipt_confirmed_at IS NOT NULL
+              AND checkout.payment_selected_at <= checkout.receipt_confirmed_at
               AND checkout.receipt_confirmed_at <= booking.payment_confirmed_at
               AND checkout.receipt_confirmation_reason IS NOT NULL
               AND TRIM(checkout.receipt_confirmation_reason) <> ${""}

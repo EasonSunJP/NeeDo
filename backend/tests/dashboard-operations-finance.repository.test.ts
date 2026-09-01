@@ -80,8 +80,10 @@ describe("DashboardOperationsFinanceRepository", () => {
     expect(sql).toContain("ledger.amount = checkout.payable_ndp");
     expect(sql).toContain("ledger.actor_user_id = booking.payment_confirmed_by_id");
     expect(sql).toContain("ledger.deleted_at IS NULL");
+    expect(sql).toContain("checkout.payment_selected_at <= ledger.created_at");
     expect(sql).toContain("booking.payment_reference = CONCAT(");
     expect(sql).toContain("checkout.receipt_confirmed_at IS NULL");
+    expect(sql).toContain("checkout.payment_selected_at <= checkout.receipt_confirmed_at");
     expect(sql).toContain("checkout.receipt_confirmed_at <= booking.payment_confirmed_at");
     expect(sql).toContain("checkout.ledger_transaction_id IS NULL");
     expect(sql).toContain("TRIM(shop.city) =");

@@ -26,6 +26,169 @@ const requireSafeDatabaseUrl = (): URL => {
 
 const rollback = new Error("dashboard operations finance integration rollback");
 
+type SchemaColumn = { tableName: string; columnName: string };
+
+export const requiredOperationsFinanceIntegrationColumns = [
+  "users.id",
+  "users.needo_id",
+  "users.email",
+  "users.username",
+  "users.created_at",
+  "users.updated_at",
+  "users.deleted_at",
+  "shops.id",
+  "shops.name",
+  "shops.city",
+  "shops.address",
+  "shops.created_at",
+  "shops.updated_at",
+  "shops.deleted_at",
+  "schedule_slots.id",
+  "schedule_slots.shop_id",
+  "schedule_slots.starts_at",
+  "schedule_slots.ends_at",
+  "schedule_slots.status",
+  "schedule_slots.created_at",
+  "schedule_slots.updated_at",
+  "schedule_slots.deleted_at",
+  "booking_orders.id",
+  "booking_orders.order_no",
+  "booking_orders.customer_user_id",
+  "booking_orders.shop_id",
+  "booking_orders.schedule_slot_id",
+  "booking_orders.status",
+  "booking_orders.price_amount",
+  "booking_orders.starts_at",
+  "booking_orders.ends_at",
+  "booking_orders.payment_method",
+  "booking_orders.payment_status",
+  "booking_orders.payment_amount_jpy",
+  "booking_orders.payment_confirmed_by_id",
+  "booking_orders.payment_confirmed_at",
+  "booking_orders.payment_reference",
+  "booking_orders.payment_note",
+  "booking_orders.payment_refunded_by_id",
+  "booking_orders.payment_refunded_at",
+  "booking_orders.payment_refund_reference",
+  "booking_orders.payment_refund_reason",
+  "booking_orders.created_at",
+  "booking_orders.updated_at",
+  "booking_orders.deleted_at",
+  "ndp_exchange_rate_rules.id",
+  "ndp_exchange_rate_rules.public_id",
+  "ndp_exchange_rate_rules.version",
+  "ndp_exchange_rate_rules.ndp_units",
+  "ndp_exchange_rate_rules.jpy_units",
+  "ndp_exchange_rate_rules.status",
+  "ndp_exchange_rate_rules.effective_from",
+  "ndp_exchange_rate_rules.effective_to",
+  "ndp_exchange_rate_rules.active_key",
+  "ndp_exchange_rate_rules.idempotency_key",
+  "ndp_exchange_rate_rules.reason",
+  "ndp_exchange_rate_rules.created_by_id",
+  "ndp_exchange_rate_rules.created_at",
+  "ndp_exchange_rate_rules.updated_at",
+  "ndp_exchange_rate_rules.deleted_at",
+  "order_checkouts.id",
+  "order_checkouts.booking_order_id",
+  "order_checkouts.base_amount_jpy",
+  "order_checkouts.add_on_amount_jpy",
+  "order_checkouts.discount_amount_jpy",
+  "order_checkouts.checkout_amount_jpy",
+  "order_checkouts.payable_ndp",
+  "order_checkouts.ndp_rate_rule_id",
+  "order_checkouts.rate_snapshot_json",
+  "order_checkouts.calculation_snapshot_json",
+  "order_checkouts.payment_method",
+  "order_checkouts.payment_selected_at",
+  "order_checkouts.other_method_code",
+  "order_checkouts.other_method_label",
+  "order_checkouts.ledger_transaction_id",
+  "order_checkouts.receipt_confirmed_by_id",
+  "order_checkouts.receipt_confirmed_at",
+  "order_checkouts.receipt_confirmation_reason",
+  "order_checkouts.created_at",
+  "order_checkouts.updated_at",
+  "order_checkouts.deleted_at",
+  "ledger_transactions.id",
+  "ledger_transactions.transaction_no",
+  "ledger_transactions.idempotency_key",
+  "ledger_transactions.type",
+  "ledger_transactions.status",
+  "ledger_transactions.reference_type",
+  "ledger_transactions.reference_id",
+  "ledger_transactions.actor_user_id",
+  "ledger_transactions.amount",
+  "ledger_transactions.currency",
+  "ledger_transactions.created_at",
+  "ledger_transactions.updated_at",
+  "ledger_transactions.deleted_at"
+] as const;
+
+export function assertOperationsFinanceIntegrationSchema(
+  availableColumns: SchemaColumn[]
+): void {
+  const available = new Set(
+    availableColumns.map((column) => `${column.tableName}.${column.columnName}`)
+  );
+  const missing = requiredOperationsFinanceIntegrationColumns.filter(
+    (column) => !available.has(column)
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `Dashboard operations finance integration requires the order fulfillment checkout migration; missing ${missing.join(", ")}`
+    );
+  }
+}
+
+describe("Dashboard operations finance integration schema preflight", () => {
+  const completeSchema = requiredOperationsFinanceIntegrationColumns.map((column) => {
+    const separator = column.indexOf(".");
+    return {
+      tableName: column.slice(0, separator),
+      columnName: column.slice(separator + 1)
+    };
+  });
+
+  it("accepts the complete query and fixture column contract", () => {
+    expect(() => assertOperationsFinanceIntegrationSchema(completeSchema)).not.toThrow();
+  });
+
+  it.each([
+    "booking_orders.payment_reference",
+    "booking_orders.payment_note",
+    "booking_orders.payment_refunded_by_id",
+    "booking_orders.payment_refund_reference",
+    "booking_orders.payment_refund_reason",
+    "order_checkouts.other_method_code",
+    "order_checkouts.other_method_label",
+    "order_checkouts.payment_method",
+    "order_checkouts.payment_selected_at",
+    "order_checkouts.ledger_transaction_id",
+    "order_checkouts.receipt_confirmed_by_id",
+    "order_checkouts.receipt_confirmed_at",
+    "order_checkouts.receipt_confirmation_reason",
+    "ledger_transactions.actor_user_id",
+    "ledger_transactions.type",
+    "ledger_transactions.status",
+    "ledger_transactions.reference_type",
+    "ledger_transactions.reference_id",
+    "ledger_transactions.amount",
+    "ledger_transactions.created_at",
+    "ledger_transactions.deleted_at"
+  ])("rejects a missing %s before any fixture write", (missingColumn) => {
+    expect(() =>
+      assertOperationsFinanceIntegrationSchema(
+        completeSchema.filter(
+          (column) => `${column.tableName}.${column.columnName}` !== missingColumn
+        )
+      )
+    ).toThrow(
+      `Dashboard operations finance integration requires the order fulfillment checkout migration; missing ${missingColumn}`
+    );
+  });
+});
+
 describeIntegration("Dashboard operations finance against guarded local MySQL", () => {
   it("aggregates only coherent completion evidence and rolls every fixture back", async () => {
     const url = requireSafeDatabaseUrl();
@@ -55,67 +218,21 @@ describeIntegration("Dashboard operations finance against guarded local MySQL", 
     const marker = `opsfin-${randomUUID().replaceAll("-", "").slice(0, 10)}`;
 
     try {
-      const requiredColumns = [
-        "booking_orders.id",
-        "booking_orders.shop_id",
-        "booking_orders.status",
-        "booking_orders.payment_status",
-        "booking_orders.payment_method",
-        "booking_orders.payment_amount_jpy",
-        "booking_orders.payment_confirmed_by_id",
-        "booking_orders.payment_confirmed_at",
-        "booking_orders.payment_refunded_at",
-        "booking_orders.deleted_at",
-        "shops.id",
-        "shops.city",
-        "shops.deleted_at",
-        "order_checkouts.id",
-        "order_checkouts.booking_order_id",
-        "order_checkouts.base_amount_jpy",
-        "order_checkouts.add_on_amount_jpy",
-        "order_checkouts.discount_amount_jpy",
-        "order_checkouts.checkout_amount_jpy",
-        "order_checkouts.payable_ndp",
-        "order_checkouts.payment_method",
-        "order_checkouts.payment_selected_at",
-        "order_checkouts.ledger_transaction_id",
-        "order_checkouts.receipt_confirmed_by_id",
-        "order_checkouts.receipt_confirmed_at",
-        "order_checkouts.receipt_confirmation_reason",
-        "order_checkouts.deleted_at",
-        "ledger_transactions.id",
-        "ledger_transactions.type",
-        "ledger_transactions.status",
-        "ledger_transactions.reference_type",
-        "ledger_transactions.reference_id",
-        "ledger_transactions.amount",
-        "ledger_transactions.created_at",
-        "ledger_transactions.deleted_at",
-        "ndp_exchange_rate_rules.id"
-      ];
-      const availableColumns = await client.$queryRaw<
-        Array<{ tableName: string; columnName: string }>
-      >`
+      const availableColumns = await client.$queryRaw<SchemaColumn[]>`
         SELECT TABLE_NAME AS tableName, COLUMN_NAME AS columnName
         FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME IN (
+            'users',
             'booking_orders',
             'shops',
+            'schedule_slots',
             'order_checkouts',
             'ledger_transactions',
             'ndp_exchange_rate_rules'
           )
       `;
-      const available = new Set(
-        availableColumns.map((column) => `${column.tableName}.${column.columnName}`)
-      );
-      const missing = requiredColumns.filter((column) => !available.has(column));
-      if (missing.length > 0) {
-        throw new Error(
-          `Dashboard operations finance integration requires the order fulfillment checkout migration; missing ${missing.join(", ")}`
-        );
-      }
+      assertOperationsFinanceIntegrationSchema(availableColumns);
 
       const externalBaseline = await client.user.count({ where: { needoId: marker } });
       expect(externalBaseline).toBe(0);
@@ -195,12 +312,15 @@ describeIntegration("Dashboard operations finance against guarded local MySQL", 
             orderPaymentAmount?: number;
             invalidLedger?: boolean;
             lateReceipt?: boolean;
+            evidenceBeforeSelection?: boolean;
           }) => {
             sequence += 1;
             const selectedAt = new Date(input.confirmedAt.getTime() - 2_000);
-            const receiptAt = input.lateReceipt
-              ? new Date(input.confirmedAt.getTime() + 1_000)
-              : new Date(input.confirmedAt.getTime() - 1_000);
+            const evidenceAt = input.evidenceBeforeSelection
+              ? new Date(selectedAt.getTime() - 1_000)
+              : input.lateReceipt
+                ? new Date(input.confirmedAt.getTime() + 1_000)
+                : new Date(input.confirmedAt.getTime() - 1_000);
             const targetShopId = input.shopId ?? shop.id;
             const targetSlotId = input.slotId ?? slot.id;
             const isManual = input.method === "CASH" || input.method === "OTHER";
@@ -242,7 +362,7 @@ describeIntegration("Dashboard operations finance against guarded local MySQL", 
                 otherMethodCode: input.method === "OTHER" ? "bank" : null,
                 otherMethodLabel: input.method === "OTHER" ? "Bank" : null,
                 receiptConfirmedById: isManual ? customer.id : null,
-                receiptConfirmedAt: isManual ? receiptAt : null,
+                receiptConfirmedAt: isManual ? evidenceAt : null,
                 receiptConfirmationReason: reason
               }
             });
@@ -258,7 +378,7 @@ describeIntegration("Dashboard operations finance against guarded local MySQL", 
                   actorUserId: customer.id,
                   amount: input.amount,
                   currency: "NDP",
-                  createdAt: selectedAt
+                  createdAt: evidenceAt
                 }
               });
               await tx.orderCheckout.update({
@@ -350,6 +470,20 @@ describeIntegration("Dashboard operations finance against guarded local MySQL", 
             discount: 900,
             method: "CASH",
             lateReceipt: true
+          });
+          await createCompletedCheckout({
+            confirmedAt: currentInside,
+            amount: 9_000,
+            discount: 900,
+            method: "NDP",
+            evidenceBeforeSelection: true
+          });
+          await createCompletedCheckout({
+            confirmedAt: currentInside,
+            amount: 9_000,
+            discount: 900,
+            method: "CASH",
+            evidenceBeforeSelection: true
           });
           await createCompletedCheckout({
             shopId: otherCityShop.id,
