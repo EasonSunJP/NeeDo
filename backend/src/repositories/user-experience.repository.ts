@@ -141,8 +141,15 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
   }
 
   public async recordCalculatedEvent(
-    event: UserExperienceCalculatedEvent
+    event: UserExperienceCalculatedEvent,
+    options: { transactionClient?: unknown } = {}
   ): Promise<UserExperienceMutationResult> {
+    if (options.transactionClient) {
+      return this.recordOnceWithClient(
+        event,
+        options.transactionClient as Prisma.TransactionClient
+      );
+    }
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         return await this.recordOnce(event);
@@ -159,7 +166,15 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
   }
 
   private recordOnce(event: UserExperienceCalculatedEvent) {
-    return this.client.$transaction(async (transaction) => {
+    return this.client.$transaction((transaction) =>
+      this.recordOnceWithClient(event, transaction)
+    );
+  }
+
+  private async recordOnceWithClient(
+    event: UserExperienceCalculatedEvent,
+    transaction: Prisma.TransactionClient
+  ): Promise<UserExperienceMutationResult> {
       const existing = await transaction.userExperienceEntry.findUnique({
         where: { idempotencyKey: event.idempotencyKey },
         select: entrySelect
@@ -228,7 +243,6 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
         },
         entry: mapEntry(entry)
       };
-    });
   }
 
   private async findDuplicate(

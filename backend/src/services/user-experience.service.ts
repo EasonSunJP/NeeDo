@@ -28,7 +28,8 @@ export class UserExperienceService {
   ) {}
 
   public async recordEvent(
-    input: UserExperienceRecordEventInput
+    input: UserExperienceRecordEventInput,
+    options: { transactionClient?: unknown } = {}
   ): Promise<UserExperienceMutationResult> {
     this.assertInput(input);
     const account = await this.repository.findActiveAccount(input.userId);
@@ -58,7 +59,7 @@ export class UserExperienceService {
       extraUnits
     });
 
-    return this.repository.recordCalculatedEvent({
+    const calculatedEvent = {
       userId: input.userId,
       eventType: input.eventType,
       sourceType: input.sourceType,
@@ -75,7 +76,10 @@ export class UserExperienceService {
       campaignVersionId: input.campaignVersionId ?? null,
       occurredAt: input.occurredAt,
       reversalOfEntryId: null
-    });
+    };
+    return options.transactionClient
+      ? this.repository.recordCalculatedEvent(calculatedEvent, options)
+      : this.repository.recordCalculatedEvent(calculatedEvent);
   }
 
   private assertInput(input: UserExperienceRecordEventInput): void {

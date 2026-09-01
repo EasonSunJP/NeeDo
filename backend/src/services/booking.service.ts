@@ -31,6 +31,7 @@ import {
   type AffiliatePromotionInput
 } from "./affiliate-checkout.service";
 import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
+import type { UserExperienceService } from "./user-experience.service";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -104,7 +105,9 @@ export class BookingService {
       | "persistAttribution"
       | "invalidateCancelledBooking"
       | "settleCompletedBooking"
-    >
+    >,
+    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   public listAvailableSlots(input: AvailabilityListInput) {
@@ -657,6 +660,23 @@ export class BookingService {
           actorUserId: actor.userId,
           transactionClient: context.transactionClient
         })
+      );
+    }
+    if (action === "complete" && this.userExperienceService) {
+      const occurredAt = this.now();
+      actions.push((context) =>
+        this.userExperienceService!.recordEvent(
+          {
+            userId: order.customerUserId,
+            eventType: "service_completed",
+            sourceType: "booking_order",
+            sourcePublicId: order.orderNo,
+            idempotencyKey: `service-completed:${order.orderNo}`,
+            baseUnits: 100_000n,
+            occurredAt
+          },
+          { transactionClient: context.transactionClient }
+        ).then(() => undefined)
       );
     }
     if (action === "complete" && this.affiliateCheckoutService) {

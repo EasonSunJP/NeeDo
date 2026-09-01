@@ -92,7 +92,8 @@ export type UserExperienceMutationResult =
 export interface UserExperienceRepositoryPort {
   findActiveAccount: (userId: number) => Promise<UserExperienceAccountSnapshot | null>;
   recordCalculatedEvent: (
-    event: UserExperienceCalculatedEvent
+    event: UserExperienceCalculatedEvent,
+    options?: { transactionClient?: unknown }
   ) => Promise<UserExperienceMutationResult>;
 }
 

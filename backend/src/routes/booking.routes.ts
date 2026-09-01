@@ -32,6 +32,7 @@ import {
   scheduleSlotUpdateBodySchema
 } from "../validators/booking.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
+import { createUserExperienceServiceForRoutes } from "./user-experience-service.factory";
 
 export const BOOKING_ROUTE_PERMISSIONS = {
   create: "booking:create",
@@ -85,7 +86,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
           publicBaseUrl: config.AFFILIATE_PUBLIC_BASE_URL
         }),
         { rewardLedger: ledgerService }
-      )
+      ),
+    createUserExperienceServiceForRoutes(dependencies)
   );
   const controller = new BookingController(bookingService);
 
