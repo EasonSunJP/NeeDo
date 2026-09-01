@@ -7,6 +7,9 @@ import {
   ServicePaymentStatus,
   ServiceOwnerType,
   ShopPricingMode,
+  TechnicianEmploymentType,
+  TechnicianShopRelationshipType,
+  TechnicianShopWorkStatus,
   type Category,
   type Prisma
 } from "@prisma/client";
@@ -1322,7 +1325,7 @@ export const upsertSeedUser = async (
 const upsertSeedIdentity = async (
   tx: Prisma.TransactionClient,
   input: SeedIdentityInput
-): Promise<void> => {
+) => {
   const existing = await tx.userIdentity.findFirst({
     where: {
       userId: input.userId,
@@ -1364,7 +1367,7 @@ const upsertSeedIdentity = async (
       : ["merchant_organization", "owner", "o"].includes(input.type)
         ? "O"
         : null;
-  if (!aliasKind) return;
+  if (!aliasKind) return identity;
   if (identity.publicIdentifier && identity.publicIdentifier.kind !== aliasKind) {
     throw new Error(`Seed identity ${identity.id} has the wrong public identifier kind.`);
   }
@@ -1374,6 +1377,7 @@ const upsertSeedIdentity = async (
       userIdentityId: identity.id
     });
   }
+  return identity;
 };
 
 const ensureSeedShopIdentifiers = async (
@@ -1661,6 +1665,121 @@ const upsertTestAccountProfile = async (
   };
 };
 
+export const provisionRequiredTestAccountPortalData = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    identityType: TestUserAccountDefinition["identityType"];
+    identityId: number;
+    userId: number;
+    username: string;
+    shopId: number;
+    scopeId: number | null;
+  }
+): Promise<void> => {
+  if (input.identityType === "merchant") {
+    await tx.merchantIdentityProfile.upsert({
+      where: { identityId: input.identityId },
+      create: {
+        identityId: input.identityId,
+        userId: input.userId,
+        displayName: input.username,
+        gender: "private",
+        languages: [],
+        bio: "Formal local merchant identity profile for portal acceptance.",
+        visibility: "public"
+      },
+      update: {
+        userId: input.userId,
+        displayName: input.username,
+        deletedAt: null
+      }
+    });
+    return;
+  }
+
+  if (input.identityType !== "technician" || input.scopeId === null) return;
+
+  const employmentStartedAt = new Date("2026-04-01T00:00:00.000Z");
+  await tx.technicianProfile.update({
+    where: { id: input.scopeId },
+    data: {
+      employmentType: TechnicianEmploymentType.FULL_TIME,
+      employmentStartedAt
+    }
+  });
+
+  const affiliationActiveKey = `technician:${input.scopeId}:shop:${input.shopId}`;
+  await tx.technicianShopAffiliation.upsert({
+    where: { activeKey: affiliationActiveKey },
+    create: {
+      technicianProfileId: input.scopeId,
+      shopId: input.shopId,
+      relationshipType: TechnicianShopRelationshipType.EXCLUSIVE,
+      workStatus: TechnicianShopWorkStatus.ACTIVE,
+      startsAt: employmentStartedAt,
+      activeKey: affiliationActiveKey,
+      createdById: input.userId,
+      updatedById: input.userId
+    },
+    update: {
+      relationshipType: TechnicianShopRelationshipType.EXCLUSIVE,
+      workStatus: TechnicianShopWorkStatus.ACTIVE,
+      startsAt: employmentStartedAt,
+      endsAt: null,
+      updatedById: input.userId,
+      deletedAt: null
+    }
+  });
+
+  const stableName = "Formal test technician income model";
+  const existing = await tx.technicianCompensationProfile.findFirst({
+    where: {
+      shopId: input.shopId,
+      technicianProfileId: input.scopeId,
+      name: stableName
+    },
+    orderBy: [{ id: "desc" }]
+  });
+  const compensationData = {
+    name: stableName,
+    status: "active",
+    version: 1,
+    wageMode: "base_plus_commission",
+    baseSalaryJpy: 280_000,
+    hourlyRateJpy: 0,
+    dailyRateJpy: 0,
+    fixedOrderPayJpy: 0,
+    commissionRateBps: 4_000,
+    extensionCommissionRateBps: 5_500,
+    nominationFeeJpy: 2_000,
+    guaranteedMinimumJpy: 0,
+    ndpFeeBearer: "shop",
+    technicianNdpShareBps: 0,
+    bonusRulesJson: [{ code: "formal_test_completion_bonus", enabled: true }],
+    deductionRulesJson: [],
+    effectiveFrom: employmentStartedAt,
+    effectiveTo: null,
+    updatedById: input.userId,
+    deletedAt: null
+  } satisfies Prisma.TechnicianCompensationProfileUncheckedUpdateInput;
+
+  if (existing) {
+    await tx.technicianCompensationProfile.update({
+      where: { id: existing.id },
+      data: compensationData
+    });
+    return;
+  }
+  await tx.technicianCompensationProfile.create({
+    data: {
+      shopId: input.shopId,
+      technicianProfileId: input.scopeId,
+      createdById: input.userId,
+      ...compensationData
+    }
+  });
+};
+
 const seedRequiredTestAccounts = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -1706,13 +1825,21 @@ const seedRequiredTestAccounts = async (
     });
 
     const switchable = getTestAccountSwitchIdentityTypes(account.identityType).length > 1;
-    await upsertSeedIdentity(tx, {
+    const portalIdentity = await upsertSeedIdentity(tx, {
       userId: user.id,
       type: account.identityType,
       scopeType: identity.scopeType,
       scopeId: identity.scopeId,
       displayName: identity.displayName,
       isDefault: account.identityType === "customer"
+    });
+    await provisionRequiredTestAccountPortalData(tx, {
+      identityType: account.identityType,
+      identityId: portalIdentity.id,
+      userId: user.id,
+      username: account.username,
+      shopId: input.shopId,
+      scopeId: identity.scopeId
     });
     await assignSeedRole(tx, {
       userId: user.id,
