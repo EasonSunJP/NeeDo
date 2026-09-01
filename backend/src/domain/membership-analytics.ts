@@ -1,5 +1,7 @@
 import type { DashboardGranularity, DashboardPeriod, DashboardWindow } from "./dashboard-period";
 
+export const MAX_MEMBERSHIP_ANALYTICS_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / 100);
+
 export type MembershipAnalyticsScope =
   | { kind: "platform" }
   | { kind: "shop"; shopId: number };

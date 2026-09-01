@@ -2444,6 +2444,51 @@ describe("GET /api/v1/openapi.json", () => {
         { properties: { seriesKey: { const: "net" } } }
       ]
     });
+    const trendPoint = document.components.schemas.MembershipTrendPoint as {
+      properties: { value: Record<string, unknown> };
+    };
+    const netPoint = document.components.schemas.MembershipTrendNetPoint as {
+      properties: { value: Record<string, unknown> };
+    };
+    expect(trendPoint.properties.value).toMatchObject({ type: "integer", minimum: 0 });
+    expect(netPoint.properties.value).toEqual({ type: "integer" });
+
+    for (const path of contracts.filter(([path]) => !path.endsWith("/trend")).map(([path]) => path)) {
+      const page = document.paths[path].get.parameters.find((parameter) => parameter.name === "page");
+      expect(page?.schema).toMatchObject({
+        type: "integer",
+        minimum: 1,
+        maximum: 90071992547409
+      });
+    }
+
+    const trendExample = document.paths[contracts[0][0]].get.responses["200"].content?.[
+      "application/json"
+    ] as { example?: Record<string, unknown> };
+    const listExample = document.paths[contracts[1][0]].get.responses["200"].content?.[
+      "application/json"
+    ] as { example?: Record<string, unknown> };
+    expect(trendExample.example).toMatchObject({
+      code: 0,
+      message: "success",
+      data: {
+        dataStatus: "ready",
+        series: [
+          { seriesKey: "added", points: [{ value: 2 }] },
+          { seriesKey: "removed", points: [{ value: 3 }] },
+          { seriesKey: "net", points: [{ value: -1 }] }
+        ]
+      }
+    });
+    const merchantTrendExample = document.paths[contracts[2][0]].get.responses["200"].content?.[
+      "application/json"
+    ] as { example?: { data?: { filter?: { city?: unknown } } } };
+    expect(merchantTrendExample.example?.data?.filter?.city).toBeNull();
+    expect(listExample.example).toMatchObject({
+      code: 0,
+      message: "success",
+      data: { total: 1, page: 1, page_size: 20, list: [expect.objectContaining({ cardNoMasked: "•••• •••• •••• AABB" })] }
+    });
 
     const itemSchema = document.components.schemas.MemberAnalyticsListItem;
     expect(itemSchema.required).toEqual([

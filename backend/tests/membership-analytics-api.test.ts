@@ -182,6 +182,21 @@ describe("formal membership analytics API", () => {
       .expect(400);
   });
 
+  it("accepts the largest page whose maximum page-size offset remains a safe integer", async () => {
+    const operator = fixture(makeUser({
+      id: 192, identityType: "operator", scopeType: "global", scopeId: null,
+      role: "operator", permissions: [MEMBERSHIP_ANALYTICS_ROUTE_PERMISSIONS.backoffice]
+    }));
+    await request(operator.app)
+      .get("/api/v1/backoffice/analytics/members?period=last7days&page=90071992547409&pageSize=100")
+      .set(bearer(operator.token))
+      .expect(200);
+    expect(operator.repository.listAddedMembers).toHaveBeenCalledWith(expect.objectContaining({
+      page: 90071992547409,
+      pageSize: 100
+    }));
+  });
+
   it("requires authentication and exact permissions for both scopes", async () => {
     const noPermission = fixture(makeUser({
       id: 93, identityType: "operator", scopeType: "global", scopeId: null,
@@ -222,6 +237,7 @@ describe("formal membership analytics API", () => {
   it.each([
     ["/api/v1/backoffice/analytics/members/trend?period=custom&from=2026-08-01", "operator"],
     ["/api/v1/backoffice/analytics/members?period=last7days&pageSize=101", "operator"],
+    ["/api/v1/backoffice/analytics/members?period=last7days&page=90071992547410", "operator"],
     ["/api/v1/backoffice/analytics/members?period=last7days&needoId=U0000000041", "operator"],
     ["/api/v1/backoffice/analytics/members?period=last7days&nickname=%20", "operator"],
     ["/api/v1/merchant-admin/analytics/members?period=last7days&unknown=true", "merchant"]

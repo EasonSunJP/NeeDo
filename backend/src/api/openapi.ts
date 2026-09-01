@@ -4,6 +4,7 @@ import type { AppConfig } from "../config/env";
 import { IM_PRIVACY_TTL_MAX_SECONDS, IM_PRIVACY_TTL_MIN_SECONDS } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { PRISMA_INT_MAX } from "../constants/database";
+import { MAX_MEMBERSHIP_ANALYTICS_PAGE } from "../domain/membership-analytics";
 
 type OpenApiDocument = Record<string, unknown>;
 const safeIntegerMaximum = PRISMA_INT_MAX;
@@ -23,7 +24,11 @@ const payrollCsvResponse = (description: string) => ({
   }
 });
 
-const jsonDataResponse = (description: string, dataSchema: Record<string, unknown>) => ({
+const jsonDataResponse = (
+  description: string,
+  dataSchema: Record<string, unknown>,
+  example?: unknown
+) => ({
   description,
   content: {
     "application/json": {
@@ -35,7 +40,8 @@ const jsonDataResponse = (description: string, dataSchema: Record<string, unknow
           message: { type: "string", enum: ["success"] },
           data: dataSchema
         }
-      }
+      },
+      ...(example === undefined ? {} : { example })
     }
   }
 });
@@ -1356,7 +1362,17 @@ const membershipAnalyticsNicknameQueryParameter = {
 };
 
 const membershipAnalyticsPageQueryParameters = [
-  { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "page",
+    in: "query",
+    required: false,
+    schema: {
+      type: "integer",
+      minimum: 1,
+      maximum: MAX_MEMBERSHIP_ANALYTICS_PAGE,
+      default: 1
+    }
+  },
   {
     name: "pageSize",
     in: "query",
@@ -1400,6 +1416,70 @@ const membershipAnalyticsErrorResponses = {
     "error.membership_analytics.incomplete_history",
     "the persisted membership lifecycle is missing, ambiguous, or internally inconsistent"
   )
+};
+
+const membershipAnalyticsExampleFilter = {
+  period: "custom",
+  from: "2026-09-01",
+  to: "2026-09-01",
+  previousFrom: "2026-08-31",
+  previousTo: "2026-08-31",
+  timeZone: "Asia/Tokyo",
+  granularity: "day",
+  evaluatedAt: "2026-09-01T05:30:00.000Z"
+};
+
+const membershipTrendSuccessResponse = (city: string | null) => {
+  return jsonDataResponse(
+    "Fixed ordered membership trend",
+    { $ref: "#/components/schemas/MembershipTrendPayload" },
+    {
+      code: 0,
+      message: "success",
+      data: {
+        dataStatus: "ready",
+        filter: { ...membershipAnalyticsExampleFilter, city },
+        series: [
+          { seriesKey: "added", label: "Added members", unit: "people", points: [{ key: "2026-09-01", label: "09/01", value: 2 }] },
+          { seriesKey: "removed", label: "Removed members", unit: "people", points: [{ key: "2026-09-01", label: "09/01", value: 3 }] },
+          { seriesKey: "net", label: "Net members", unit: "people", points: [{ key: "2026-09-01", label: "09/01", value: -1 }] }
+        ]
+      }
+    }
+  );
+};
+
+const membershipListSuccessResponse = () => {
+  return jsonDataResponse(
+    "Paginated distinct member additions",
+    { $ref: "#/components/schemas/MemberAnalyticsListPayload" },
+    {
+      code: 0,
+      message: "success",
+      data: {
+        list: [{
+          userNeedoId: "u0000000041",
+          nickname: "美咲",
+          city: "东京",
+          shopPublicId: "shop0000000071",
+          shopName: "青山护理店",
+          membershipPublicId: "00000000-0000-4000-8000-000000000031",
+          planName: "月度会员",
+          cardPublicId: "00000000-0000-4000-8000-000000000481",
+          cardNoMasked: "•••• •••• •••• AABB",
+          acquisitionSource: "offline_paid",
+          addedAt: "2026-08-30T03:00:00.000Z",
+          firstPaidAt: "2026-05-01T03:00:00.000Z",
+          memberStatus: "active",
+          cardStatus: "active",
+          expiresAt: "2026-09-30T03:00:00.000Z"
+        }],
+        total: 1,
+        page: 1,
+        page_size: 20
+      }
+    }
+  );
 };
 
 const dashboardErrorResponses = {
@@ -1738,6 +1818,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           value: { type: "integer", minimum: 0 }
         }
       },
+      MembershipTrendNetPoint: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "label", "value"],
+        properties: {
+          key: { type: "string", minLength: 1 },
+          label: { type: "string", minLength: 1 },
+          value: { type: "integer" }
+        }
+      },
       MembershipTrendSeriesItem: {
         type: "object",
         additionalProperties: false,
@@ -1745,11 +1835,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           seriesKey: { type: "string", enum: ["added", "removed", "net"] },
           label: { type: "string", enum: ["Added members", "Removed members", "Net members"] },
-          unit: { type: "string", const: "people" },
-          points: {
-            type: "array",
-            items: { $ref: "#/components/schemas/MembershipTrendPoint" }
-          }
+          unit: { type: "string", const: "people" }
         }
       },
       MembershipTrendSeries: {
@@ -1763,21 +1849,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
             properties: {
               seriesKey: { type: "string", const: "added" },
-              label: { type: "string", const: "Added members" }
+              label: { type: "string", const: "Added members" },
+              points: {
+                type: "array",
+                items: { $ref: "#/components/schemas/MembershipTrendPoint" }
+              }
             }
           },
           {
             allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
             properties: {
               seriesKey: { type: "string", const: "removed" },
-              label: { type: "string", const: "Removed members" }
+              label: { type: "string", const: "Removed members" },
+              points: {
+                type: "array",
+                items: { $ref: "#/components/schemas/MembershipTrendPoint" }
+              }
             }
           },
           {
             allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
             properties: {
               seriesKey: { type: "string", const: "net" },
-              label: { type: "string", const: "Net members" }
+              label: { type: "string", const: "Net members" },
+              points: {
+                type: "array",
+                items: { $ref: "#/components/schemas/MembershipTrendNetPoint" }
+              }
             }
           }
         ],
@@ -13386,9 +13484,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-required-permission": "backoffice.member.analytics.view",
         parameters: [...dashboardQueryParameters, membershipAnalyticsCityQueryParameter],
         responses: {
-          "200": jsonDataResponse("Fixed ordered membership trend", {
-            $ref: "#/components/schemas/MembershipTrendPayload"
-          }),
+          "200": membershipTrendSuccessResponse("东京"),
           ...membershipAnalyticsErrorResponses
         }
       }
@@ -13410,9 +13506,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ...membershipAnalyticsPageQueryParameters
         ],
         responses: {
-          "200": jsonDataResponse("Paginated distinct member additions", {
-            $ref: "#/components/schemas/MemberAnalyticsListPayload"
-          }),
+          "200": membershipListSuccessResponse(),
           ...membershipAnalyticsErrorResponses
         }
       }
@@ -13428,9 +13522,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-required-permission": "shop.member.analytics.view",
         parameters: dashboardQueryParameters,
         responses: {
-          "200": jsonDataResponse("Fixed ordered selected-shop membership trend", {
-            $ref: "#/components/schemas/MembershipTrendPayload"
-          }),
+          "200": membershipTrendSuccessResponse(null),
           ...membershipAnalyticsErrorResponses
         }
       }
@@ -13451,9 +13543,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ...membershipAnalyticsPageQueryParameters
         ],
         responses: {
-          "200": jsonDataResponse("Paginated distinct selected-shop member additions", {
-            $ref: "#/components/schemas/MemberAnalyticsListPayload"
-          }),
+          "200": membershipListSuccessResponse(),
           ...membershipAnalyticsErrorResponses
         }
       }

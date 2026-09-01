@@ -3,11 +3,12 @@ import {
   dashboardQueryBaseSchema,
   refineDashboardQuery
 } from "./backoffice.validator";
+import { MAX_MEMBERSHIP_ANALYTICS_PAGE } from "../domain/membership-analytics";
 
 const needoIdSchema = z.string().trim().regex(/^u\d{10}$/u);
 const nicknameSchema = z.string().trim().min(1).max(100);
 const paginationShape = {
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(MAX_MEMBERSHIP_ANALYTICS_PAGE).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20)
 };
 

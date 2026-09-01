@@ -138,6 +138,53 @@ describe("MembershipAnalyticsRepository", () => {
     expect(`${validationSql} ${trendSql}`).not.toContain("membership.updated_at");
   });
 
+  it("keeps historical cards after membership end while deriving only current member status", async () => {
+    const fixture = createRepository([[{ anomalyCount: 0 }], trendRows]);
+    await fixture.repository.getTrend(baseInput);
+    const sql = queryText(fixture.queryRaw.mock.calls[0]?.[0] as SqlQuery);
+
+    expect(sql).toContain("membership_started_at");
+    expect(sql).toContain("membership_ended_at");
+    expect(sql).toContain("invalid_membership_shape");
+    expect(sql).toContain("invalid_membership_end_authority");
+    expect(sql).not.toContain("membership.status = ?\n         AND membership.started_at <= ?");
+  });
+
+  it("fails closed on membership status/end incoherence and every lifecycle event after end", async () => {
+    const fixture = createRepository([[{ anomalyCount: 0 }], trendRows]);
+    await fixture.repository.getTrend(baseInput);
+    const sql = queryText(fixture.queryRaw.mock.calls[0]?.[0] as SqlQuery);
+
+    expect(sql).toContain("invalid_membership_status_timing");
+    expect(sql).toContain("post_membership_end_event_count");
+    expect(sql).toContain("event.occurred_at > card.membership_ended_at");
+    expect(sql).toContain("ended.occurred_at <= card.membership_ended_at");
+    expect(sql).toContain("card.expires_at > card.membership_ended_at");
+    expect(sql).not.toContain("card.membership_ended_at,\n          membership.public_id");
+  });
+
+  it("requires exact Task2A issuance and migration-backfill provenance", async () => {
+    const fixture = createRepository([[{ anomalyCount: 0 }], trendRows]);
+    await fixture.repository.getTrend(baseInput);
+    const validation = fixture.queryRaw.mock.calls[0]?.[0] as SqlQuery;
+    const sql = queryText(validation);
+
+    for (const fragment of [
+      "reason_code",
+      "actor_user_id",
+      "metadata",
+      "card_public_id",
+      "issued_by_id",
+      "JSON_LENGTH",
+      "JSON_EXTRACT",
+      "CONCAT"
+    ]) expect(sql).toContain(fragment);
+    expect(validation.values).toEqual(expect.arrayContaining([
+      "issuance", "migration_backfill", "card_issued", "historical_card_issued",
+      ":issued", ":backfill-issued", "$.issuanceSource"
+    ]));
+  });
+
   it("groups same-time replacement and overlapping-card deltas before emitting member transitions", async () => {
     const fixture = createRepository([[{ anomalyCount: 0 }], trendRows]);
     await fixture.repository.getTrend(baseInput);
@@ -217,6 +264,26 @@ describe("MembershipAnalyticsRepository", () => {
     await expect(fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 }))
       .resolves.toEqual({ list: [], total: 0, page: 1, page_size: 20 });
     expect(fixture.queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["unsafe page", Number.MAX_SAFE_INTEGER, 100],
+    ["unsafe page size", 1, Number.MAX_SAFE_INTEGER],
+    ["zero page", 0, 20]
+  ])("rejects %s before issuing any repository query", async (_label, page, pageSize) => {
+    const fixture = createRepository([]);
+    await expect(fixture.repository.listAddedMembers({ ...baseInput, page, pageSize }))
+      .rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
+    expect(fixture.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing page rows", [[{ anomalyCount: 0 }], [{ total: 2 }], [listRow]]],
+    ["duplicate shop-user identity", [[{ anomalyCount: 0 }], [{ total: 2 }], [listRow, { ...listRow, cardId: 482, cardPublicId: "00000000-0000-4000-8000-000000000482" }]]]
+  ])("fails closed for malformed page cardinality: %s", async (_label, responses) => {
+    const fixture = createRepository(responses as unknown[][]);
+    await expect(fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 }))
+      .rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
   });
 
   it.each([

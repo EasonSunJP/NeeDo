@@ -7,7 +7,10 @@ import type {
   MembershipAnalyticsRepositoryInput,
   MembershipTrendSeries
 } from "../domain/membership-analytics";
-import { MembershipAnalyticsIncompleteHistoryError } from "../domain/membership-analytics";
+import {
+  MAX_MEMBERSHIP_ANALYTICS_PAGE,
+  MembershipAnalyticsIncompleteHistoryError
+} from "../domain/membership-analytics";
 import { maskMembershipCardNumber } from "../utils/membership-card-mask";
 
 type MembershipAnalyticsQueryClient = Pick<PrismaClient, "$queryRaw">;
@@ -116,6 +119,7 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
   public async listAddedMembers(
     input: MembershipAnalyticsListInput
   ): Promise<MemberAnalyticsListPayload> {
+    this.assertPagination(input.page, input.pageSize);
     await this.assertCompleteHistory(input);
     const countRows = await this.queryAddedMemberCount(input);
     if (countRows.length !== 1) this.incomplete();
@@ -123,8 +127,14 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
     if (total === 0) return { list: [], total, page: input.page, page_size: input.pageSize };
 
     const rows = await this.queryAddedMemberPage(input);
+    const offset = (input.page - 1) * input.pageSize;
+    const expectedRows = Math.max(0, Math.min(input.pageSize, total - offset));
+    if (rows.length !== expectedRows) this.incomplete();
+    const list = rows.map((row) => this.mapListItem(row));
+    const identities = new Set(list.map((item) => `${item.shopPublicId}\u0000${item.userNeedoId}`));
+    if (identities.size !== list.length) this.incomplete();
     return {
-      list: rows.map((row) => this.mapListItem(row)),
+      list,
       total,
       page: input.page,
       page_size: input.pageSize
@@ -140,6 +150,10 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           (SELECT COUNT(*) FROM card_authority
             WHERE initial_authority_count <> 1
                OR invalid_card_shape = 1
+               OR invalid_membership_shape = 1
+               OR invalid_membership_status_timing = 1
+               OR post_membership_end_event_count <> 0
+               OR invalid_membership_end_authority = 1
                OR invalid_persisted_status = 1)
           + (SELECT COUNT(*) FROM event_evaluated WHERE invalid_event = 1)
           + (SELECT COUNT(*) FROM member_state
@@ -239,11 +253,15 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           card.card_no,
           card.membership_id,
           card.plan_version_id,
+          card.issued_by_id,
           card.status AS persisted_status,
           card.issuance_source,
           card.issued_at,
           card.expires_at,
           membership.public_id AS membership_public_id,
+          membership.status AS membership_status,
+          membership.started_at AS membership_started_at,
+          membership.ended_at AS membership_ended_at,
           shop.id AS shop_id,
           shop.shop_no AS shop_public_id,
           shop.name AS shop_name,
@@ -255,9 +273,6 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
         INNER JOIN shop_customer_memberships AS membership
           ON membership.id = card.membership_id
          AND membership.deleted_at IS NULL
-         AND membership.status = ${"active"}
-         AND membership.started_at <= ${input.evaluatedAt}
-         AND (membership.ended_at IS NULL OR membership.ended_at > ${input.evaluatedAt})
         INNER JOIN customer_profiles AS customer
           ON customer.id = membership.customer_profile_id
          AND customer.deleted_at IS NULL
@@ -282,8 +297,15 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           event.to_status,
           event.source,
           event.occurred_at,
+          event.reason_code,
+          event.actor_user_id,
+          event.metadata,
+          card.card_public_id,
+          card.issued_by_id,
+          card.issuance_source,
           card.issued_at,
           card.expires_at,
+          card.membership_ended_at,
           ROW_NUMBER() OVER (
             PARTITION BY event.card_id ORDER BY event.occurred_at ASC, event.id ASC
           ) AS sequence_no,
@@ -301,14 +323,34 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
         SELECT event.*,
           CASE
             WHEN event.occurred_at < event.issued_at THEN 1
+            WHEN event.membership_ended_at IS NOT NULL
+              AND event.occurred_at > event.membership_ended_at THEN 1
             WHEN event.expires_at IS NOT NULL AND event.occurred_at >= event.expires_at
               AND event.sequence_no > 1 THEN 1
             WHEN event.duplicate_event_key_count > 1 OR event.simultaneous_event_count > 1 THEN 1
             WHEN event.sequence_no = 1 AND NOT (
               event.from_status IS NULL
               AND event.to_status = ${"active"}
-              AND event.source IN (${"issuance"}, ${"migration_backfill"})
               AND event.occurred_at = event.issued_at
+              AND (
+                (
+                  event.source = ${"issuance"}
+                  AND event.event_key = CONCAT(${"membership-card:"}, event.card_public_id, ${":issued"})
+                  AND event.reason_code = ${"card_issued"}
+                  AND event.actor_user_id = event.issued_by_id
+                  AND event.issued_by_id IS NOT NULL
+                )
+                OR (
+                  event.source = ${"migration_backfill"}
+                  AND event.event_key = CONCAT(${"membership-card:"}, event.card_public_id, ${":backfill-issued"})
+                  AND event.reason_code = ${"historical_card_issued"}
+                  AND event.actor_user_id IS NULL
+                )
+              )
+              AND JSON_TYPE(event.metadata) = ${"OBJECT"}
+              AND JSON_LENGTH(event.metadata) = 1
+              AND JSON_CONTAINS_PATH(event.metadata, ${"one"}, ${"$.issuanceSource"}) = 1
+              AND JSON_UNQUOTE(JSON_EXTRACT(event.metadata, ${"$.issuanceSource"})) = event.issuance_source
             ) THEN 1
             WHEN event.sequence_no > 1 AND NOT (
               event.source = ${"status_transition"}
@@ -328,12 +370,43 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           SUM(CASE WHEN event.sequence_no = 1
                     AND event.from_status IS NULL
                     AND event.to_status = ${"active"}
-                    AND event.source IN (${"issuance"}, ${"migration_backfill"})
                     AND event.occurred_at = card.issued_at
+                    AND event.invalid_event = 0
                    THEN 1 ELSE 0 END) AS initial_authority_count,
           CASE WHEN card.expires_at IS NOT NULL AND card.expires_at <= card.issued_at
                  OR card.issuance_source IS NULL
                THEN 1 ELSE 0 END AS invalid_card_shape,
+          CASE WHEN card.membership_started_at > card.issued_at
+                 OR (card.membership_ended_at IS NOT NULL AND (
+                   card.membership_ended_at <= card.membership_started_at
+                   OR card.issued_at >= card.membership_ended_at
+                 ))
+               THEN 1 ELSE 0 END AS invalid_membership_shape,
+          CASE WHEN (
+                   card.membership_status = ${"ended"}
+                   AND (card.membership_ended_at IS NULL
+                     OR card.membership_ended_at > ${input.evaluatedAt})
+                 ) OR (
+                   card.membership_status = ${"active"}
+                   AND card.membership_ended_at IS NOT NULL
+                   AND card.membership_ended_at <= ${input.evaluatedAt}
+                 )
+               THEN 1 ELSE 0 END AS invalid_membership_status_timing,
+          SUM(CASE WHEN card.membership_ended_at IS NOT NULL
+                     AND event.occurred_at > card.membership_ended_at
+                   THEN 1 ELSE 0 END) AS post_membership_end_event_count,
+          CASE WHEN card.membership_ended_at IS NOT NULL
+                 AND card.membership_ended_at <= ${input.evaluatedAt}
+                 AND (card.expires_at IS NULL OR card.expires_at > card.membership_ended_at)
+                 AND COALESCE((
+                   SELECT ended.to_status
+                   FROM event_evaluated AS ended
+                   WHERE ended.card_id = card.card_id
+                     AND ended.occurred_at <= card.membership_ended_at
+                   ORDER BY ended.occurred_at DESC, ended.event_id DESC
+                   LIMIT 1
+                 ), ${"missing"}) NOT IN (${"frozen"}, ${"void"})
+               THEN 1 ELSE 0 END AS invalid_membership_end_authority,
           CASE
             WHEN card.persisted_status IN (${"frozen"}, ${"void"})
               AND COALESCE((
@@ -359,7 +432,8 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
         FROM scoped_cards AS card
         LEFT JOIN event_evaluated AS event ON event.card_id = card.card_id
         GROUP BY card.card_id, card.issued_at, card.expires_at, card.issuance_source,
-                 card.persisted_status
+                 card.persisted_status, card.membership_status, card.membership_started_at,
+                 card.membership_ended_at
       ),
       event_deltas AS (
         SELECT
@@ -380,6 +454,8 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
         SELECT card.shop_id, card.user_id, card.card_id, card.expires_at AS occurred_at, -1 AS delta
         FROM scoped_cards AS card
         WHERE card.expires_at IS NOT NULL
+          AND (card.membership_ended_at IS NULL
+            OR card.expires_at <= card.membership_ended_at)
           AND (
             SELECT latest.to_status
             FROM event_evaluated AS latest
@@ -488,7 +564,17 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
               AND latest.occurred_at <= ${input.evaluatedAt}
             ORDER BY latest.occurred_at DESC
             LIMIT 1
-          ), 0) > 0 THEN ${"active"} ELSE ${"inactive"} END AS member_status,
+          ), 0) > 0
+          AND EXISTS (
+            SELECT 1
+            FROM scoped_cards AS current_card
+            WHERE current_card.shop_id = card.shop_id
+              AND current_card.user_id = card.user_id
+              AND current_card.membership_status = ${"active"}
+              AND current_card.membership_started_at <= ${input.evaluatedAt}
+              AND (current_card.membership_ended_at IS NULL
+                OR current_card.membership_ended_at > ${input.evaluatedAt})
+          ) THEN ${"active"} ELSE ${"inactive"} END AS member_status,
           CASE
             WHEN authority.latest_authoritative_status IN (${"frozen"}, ${"void"})
               THEN authority.latest_authoritative_status
@@ -543,6 +629,15 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
 
   private escapeLike(value: string): string {
     return value.replace(/[\\%_]/gu, (character) => `\\${character}`);
+  }
+
+  private assertPagination(page: number, pageSize: number): void {
+    if (!Number.isSafeInteger(page) || page < 1 || page > MAX_MEMBERSHIP_ANALYTICS_PAGE) {
+      this.incomplete();
+    }
+    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) this.incomplete();
+    const offset = (page - 1) * pageSize;
+    if (!Number.isSafeInteger(offset) || offset < 0) this.incomplete();
   }
 
   private toSafeCount(value: NumericValue): number {
