@@ -2,6 +2,7 @@ import type {
   PlatformMembershipBenefitCodeValue,
   PlatformMembershipTierCodeValue
 } from "./platform-membership";
+import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
 export const USER_EXPERIENCE_EVENT_TYPES = [
   "member_sign_in",
@@ -91,6 +92,10 @@ export type UserExperienceMutationResult =
 
 export interface UserExperienceRepositoryPort {
   findActiveAccount: (userId: number) => Promise<UserExperienceAccountSnapshot | null>;
+  listEntries: (
+    userId: number,
+    input: PaginationInput
+  ) => Promise<PaginatedResponse<UserExperienceEntrySnapshot>>;
   recordCalculatedEvent: (
     event: UserExperienceCalculatedEvent,
     options?: { transactionClient?: unknown }

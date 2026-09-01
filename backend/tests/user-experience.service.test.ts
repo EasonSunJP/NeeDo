@@ -19,6 +19,11 @@ const repository = (): jest.Mocked<UserExperienceRepositoryPort> => ({
     void userId;
     return account;
   }),
+  listEntries: jest.fn(async (userId, input) => {
+    void userId;
+    void input;
+    return { list: [], total: 0, page: 1, page_size: 20 };
+  }),
   recordCalculatedEvent: jest.fn(async (event: UserExperienceCalculatedEvent) => ({
     status: "awarded" as const,
     account: {
@@ -62,6 +67,35 @@ const membership = (
 });
 
 describe("UserExperienceService", () => {
+  it("summarizes nonlinear level progress with exact decimal EXP strings", async () => {
+    const repo = repository();
+    repo.findActiveAccount.mockResolvedValueOnce({
+      ...account,
+      totalUnits: 21_945_000n,
+      currentLevel: 30
+    });
+    const service = new UserExperienceService(repo, membership());
+
+    await expect(service.getSummary(41)).resolves.toEqual({
+      level: 30,
+      totalExp: "2194.5",
+      currentLevelExp: "0.5",
+      nextLevelExp: "138",
+      progressBps: 36
+    });
+  });
+
+  it("reports experience as not applicable without an active customer account", async () => {
+    const repo = repository();
+    repo.findActiveAccount.mockResolvedValueOnce(null);
+    const service = new UserExperienceService(repo, membership());
+
+    await expect(service.getSummary(52)).rejects.toMatchObject({
+      statusCode: 422,
+      message: "error.user_experience.not_applicable"
+    });
+  });
+
   it("applies campaign and membership BPS with integer floor then adds unmultiplied extras", async () => {
     const repo = repository();
     const service = new UserExperienceService(repo, membership(10));

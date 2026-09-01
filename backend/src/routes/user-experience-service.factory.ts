@@ -5,7 +5,7 @@ import { UserExperienceService } from "../services/user-experience.service";
 
 export const createUserExperienceServiceForRoutes = (
   dependencies: AppDependencies
-): Pick<UserExperienceService, "recordEvent"> | undefined => {
+): Pick<UserExperienceService, "recordEvent" | "getSummary" | "listEntries"> | undefined => {
   if (dependencies.userExperienceService) return dependencies.userExperienceService;
   if (!dependencies.userExperienceRepository) return undefined;
 

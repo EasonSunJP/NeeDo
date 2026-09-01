@@ -850,7 +850,11 @@ export const createStep06Fixture = async (
 
   const replaceAdminPermissions = (codes: string[]): void => {
     roles[0].rolePermissions = codes.map((code, index) => {
-      const permission = permissions.find((item) => item.code === code) ?? permissions[0];
+      let permission = permissions.find((item) => item.code === code);
+      if (!permission) {
+        permission = makeAuthOnlyPermission(code);
+        permissions.push(permission);
+      }
       return {
         id: 5000 + index,
         roleId: 1,

@@ -170,6 +170,7 @@ import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
+import { createUserExperienceRoutes } from "./routes/user-experience.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
 import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
@@ -286,7 +287,10 @@ export interface AppDependencies {
   backofficeRepository?: BackofficeRepositoryPort;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
   platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
-  userExperienceService?: Pick<UserExperienceService, "recordEvent">;
+  userExperienceService?: Pick<
+    UserExperienceService,
+    "recordEvent" | "getSummary" | "listEntries"
+  >;
   userExperienceRepository?: UserExperienceRepositoryPort;
   platformMembershipAdministrationService?: Pick<
     PlatformMembershipService,
@@ -420,6 +424,7 @@ export const createApp = (
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformMembershipRoutes(config, resolvedDependencies));
+  apiRouter.use(createUserExperienceRoutes(config, resolvedDependencies));
   apiRouter.use(createBackofficeUserGroupRoutes(config, resolvedDependencies));
   apiRouter.use(createUserGlobalPolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderAcceptancePauseRoutes(config, resolvedDependencies));

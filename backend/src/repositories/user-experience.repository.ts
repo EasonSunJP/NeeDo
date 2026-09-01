@@ -15,6 +15,12 @@ import type {
 import type { PlatformMembershipTierCodeValue } from "../domain/platform-membership";
 import { resolveLevel } from "../domain/user-experience-levels";
 import { prisma } from "../prisma/client";
+import {
+  buildPaginatedResponse,
+  toPrismaPagination,
+  type PaginatedResponse,
+  type PaginationInput
+} from "../utils/pagination";
 
 const eventTypeToDb: Readonly<
   Record<UserExperienceEventTypeValue, UserExperienceEventType>
@@ -138,6 +144,25 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
       select: accountSelect
     });
     return account ? mapAccount(account) : null;
+  }
+
+  public async listEntries(
+    userId: number,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<UserExperienceEntrySnapshot>> {
+    const pagination = toPrismaPagination(input);
+    const where = { userId, deletedAt: null } as const;
+    const [records, total] = await Promise.all([
+      this.client.userExperienceEntry.findMany({
+        where,
+        orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+        skip: pagination.skip,
+        take: pagination.take,
+        select: entrySelect
+      }),
+      this.client.userExperienceEntry.count({ where })
+    ]);
+    return buildPaginatedResponse(records.map(mapEntry), total, pagination);
   }
 
   public async recordCalculatedEvent(

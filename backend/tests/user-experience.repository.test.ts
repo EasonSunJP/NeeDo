@@ -56,6 +56,31 @@ const entry = {
 };
 
 describe("UserExperienceRepository", () => {
+  it("paginates active entries newest first without returning internal account ids", async () => {
+    const client = {
+      userExperienceEntry: {
+        findMany: jest.fn(async () => [entry]),
+        count: jest.fn(async () => 1)
+      }
+    };
+    const repository = new UserExperienceRepository(client as unknown as PrismaClient);
+
+    await expect(repository.listEntries(41, { page: 2, pageSize: 5 })).resolves.toEqual({
+      list: [expect.objectContaining({ publicId: "experience-entry-1", userId: 41 })],
+      total: 1,
+      page: 2,
+      page_size: 5
+    });
+    expect(client.userExperienceEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 41, deletedAt: null },
+        orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+        skip: 5,
+        take: 5
+      })
+    );
+  });
+
   it("retries a rolled-back optimistic account conflict and preserves the immutable snapshot", async () => {
     const updateMany = jest
       .fn()
