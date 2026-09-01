@@ -196,12 +196,19 @@ async function main(): Promise<void> {
             sequence: 5
           });
 
-          const category = await transaction.category.create({
-            data: { code: `${marker.slice(-28)}-category`, name: `${marker} category` }
-          });
+          const categoryCode = `${marker.slice(-28)}-category`;
+          await transaction.$executeRaw`
+            INSERT INTO categories (code, name, sort_order, is_active, created_at, updated_at)
+            VALUES (${categoryCode}, ${`${marker} category`}, 0, TRUE, ${now}, ${now})
+          `;
+          const categoryRows = await transaction.$queryRaw<Array<{ id: bigint | number }>>`
+            SELECT LAST_INSERT_ID() AS id
+          `;
+          const categoryId = Number(categoryRows[0]?.id);
+          assert(Number.isSafeInteger(categoryId) && categoryId > 0, "category fixture was not created");
           const serviceRecord = await transaction.service.create({
             data: {
-              categoryId: category.id,
+              categoryId,
               shopId: shop.id,
               name: `${marker} service`,
               city: "Tokyo",
