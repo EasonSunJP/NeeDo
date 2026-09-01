@@ -1322,6 +1322,207 @@ const dashboardErrorResponses = {
   "401": { description: "error.auth.token_invalid — missing or invalid access token" }
 };
 
+const dashboardAnalyticsMetricKeys = [
+  "gross_revenue",
+  "travel_fare",
+  "discount_amount",
+  "consumables_sales",
+  "dedicated_technician_commission",
+  "part_time_technician_commission",
+  "marketing_commission",
+  "agent_commission",
+  "ndp_income",
+  "affiliate_platform_income",
+  "consumables_profit",
+  "new_users",
+  "new_paid_members",
+  "technician_onboarding",
+  "agent_onboarding",
+  "franchisee_onboarding",
+  "supplier_onboarding"
+] as const;
+
+const dashboardAnalyticsCityQuerySchema = {
+  type: "string",
+  "x-min-utf16-code-units": 1,
+  "x-max-utf16-code-units": 100,
+  "x-normalization": "trim",
+  description:
+    "Optional city after trimming. The 1–100 bound is measured in JavaScript UTF-16 code units."
+};
+
+const dashboardAnalyticsDateSchema = {
+  type: "string",
+  format: "date",
+  pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+  description: "Canonical YYYY-MM-DD Tokyo calendar date"
+};
+
+const dashboardAnalyticsQueryParameters = [
+  dashboardPeriodQueryParameter,
+  {
+    name: "from",
+    in: "query",
+    required: false,
+    description: "Inclusive canonical date; required only when period=custom",
+    schema: dashboardAnalyticsDateSchema
+  },
+  {
+    name: "to",
+    in: "query",
+    required: false,
+    description: "Inclusive canonical date; required only when period=custom",
+    schema: dashboardAnalyticsDateSchema
+  },
+  {
+    name: "city",
+    in: "query",
+    required: false,
+    schema: dashboardAnalyticsCityQuerySchema
+  }
+];
+
+const dashboardAnalyticsOperationDescription =
+  "Strict query contract: custom requires both from and to; other periods reject from and to; " +
+  "from must be on or before to; a custom range covers at most 366 inclusive calendar days. " +
+  "Unknown query properties are rejected. not_connected and not_available are successful HTTP 200 data states.";
+
+const dashboardAnalyticsErrorResponse = (
+  code: number,
+  message: "error.validation" | "error.auth.token_invalid" | "error.forbidden",
+  description: string
+) => ({
+  description: `${message} — ${description}`,
+  content: {
+    "application/json": {
+      schema: { $ref: "#/components/schemas/ApiError" },
+      example: { code, message, data: null }
+    }
+  }
+});
+
+const dashboardAnalyticsErrorResponses = {
+  "400": dashboardAnalyticsErrorResponse(
+    40001,
+    "error.validation",
+    "strict query or metric-key validation failed; an unknown metric key is a 400 response"
+  ),
+  "401": dashboardAnalyticsErrorResponse(
+    40105,
+    "error.auth.token_invalid",
+    "missing, expired, or invalid bearer token"
+  ),
+  "403": dashboardAnalyticsErrorResponse(
+    40301,
+    "error.forbidden",
+    "the authenticated identity lacks the required permission"
+  )
+};
+
+const dashboardAnalyticsSuccessResponse = (
+  description: string,
+  schemaRef: string
+) => ({
+  description: `${description}; not_connected and not_available are HTTP 200 data states`,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "message", "data"],
+        properties: {
+          code: { type: "integer", const: 0 },
+          message: { type: "string", const: "success" },
+          data: { $ref: schemaRef }
+        }
+      }
+    }
+  }
+});
+
+const dashboardAnalyticsSafeIntegerSchema = {
+  type: "integer",
+  minimum: Number.MIN_SAFE_INTEGER,
+  maximum: Number.MAX_SAFE_INTEGER
+};
+
+const dashboardAnalyticsMetricExample = (
+  metricKey: string,
+  values: {
+    currentValue: number | null;
+    previousValue: number | null;
+    comparisonPercent: number | null;
+    comparisonDirection: "up" | "down" | "flat" | "unavailable";
+    dataStatus: "ready" | "not_connected" | "not_available";
+    unit: "jpy" | "ndp" | "people" | "count";
+    detailRoute: string | null;
+  }
+) => ({
+  metricKey,
+  ...values,
+  description: `${metricKey} formal description`,
+  formula: `${metricKey} formal calculation`
+});
+
+const dashboardAnalyticsMetricExamples = [
+  dashboardAnalyticsMetricExample("gross_revenue", {
+    currentValue: 1200,
+    previousValue: 0,
+    comparisonPercent: 100,
+    comparisonDirection: "up",
+    dataStatus: "ready",
+    unit: "jpy",
+    detailRoute: "/admin/analytics/metrics/gross_revenue"
+  }),
+  dashboardAnalyticsMetricExample("discount_amount", {
+    currentValue: 100,
+    previousValue: 100,
+    comparisonPercent: 0,
+    comparisonDirection: "flat",
+    dataStatus: "ready",
+    unit: "jpy",
+    detailRoute: "/admin/analytics/metrics/discount_amount"
+  }),
+  dashboardAnalyticsMetricExample("travel_fare", {
+    currentValue: null,
+    previousValue: null,
+    comparisonPercent: null,
+    comparisonDirection: "unavailable",
+    dataStatus: "not_connected",
+    unit: "jpy",
+    detailRoute: "/admin/analytics/metrics/travel_fare"
+  }),
+  dashboardAnalyticsMetricExample("supplier_onboarding", {
+    currentValue: null,
+    previousValue: null,
+    comparisonPercent: null,
+    comparisonDirection: "unavailable",
+    dataStatus: "not_available",
+    unit: "people",
+    detailRoute: null
+  })
+];
+
+const exactDashboardMetricArraySchema = (keys: readonly string[]) => ({
+  type: "array",
+  minItems: keys.length,
+  maxItems: keys.length,
+  prefixItems: keys.map((metricKey) => ({
+    allOf: [
+      { $ref: "#/components/schemas/AnalyticsMetricPayload" },
+      { properties: { metricKey: { const: metricKey } } }
+    ]
+  })),
+  items: false
+});
+
+const exactDashboardSeriesPointSchema = (key: "previous" | "current") => ({
+  allOf: [
+    { $ref: "#/components/schemas/AnalyticsMetricSeriesPoint" },
+    { properties: { key: { const: key } } }
+  ]
+});
+
 const billingProfileRequestBody = {
   required: true,
   content: {
@@ -1403,6 +1604,227 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "string",
         enum: ["today", "last7days", "last30days", "week", "month", "year", "custom"],
         default: "last7days"
+      },
+      DashboardAnalyticsMetricKey: {
+        type: "string",
+        enum: dashboardAnalyticsMetricKeys
+      },
+      DashboardAnalyticsFilter: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "period",
+          "from",
+          "to",
+          "previousFrom",
+          "previousTo",
+          "timeZone",
+          "granularity",
+          "city"
+        ],
+        description:
+          "The previous window is immediately preceding the current window and has equal inclusive length.",
+        properties: {
+          period: { $ref: "#/components/schemas/DashboardPeriod" },
+          from: dashboardAnalyticsDateSchema,
+          to: dashboardAnalyticsDateSchema,
+          previousFrom: dashboardAnalyticsDateSchema,
+          previousTo: dashboardAnalyticsDateSchema,
+          timeZone: { type: "string", const: "Asia/Tokyo" },
+          granularity: { type: "string", enum: ["hour", "day", "month"] },
+          city: {
+            type: ["string", "null"],
+            "x-min-utf16-code-units": 1,
+            "x-max-utf16-code-units": 100,
+            "x-normalization": "trim",
+            description: "Applied trimmed city filter, or null when all cities are included"
+          }
+        }
+      },
+      AnalyticsMetricPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "metricKey",
+          "currentValue",
+          "previousValue",
+          "comparisonPercent",
+          "comparisonDirection",
+          "unit",
+          "dataStatus",
+          "description",
+          "formula",
+          "detailRoute"
+        ],
+        properties: {
+          metricKey: { $ref: "#/components/schemas/DashboardAnalyticsMetricKey" },
+          currentValue: { oneOf: [dashboardAnalyticsSafeIntegerSchema, { type: "null" }] },
+          previousValue: { oneOf: [dashboardAnalyticsSafeIntegerSchema, { type: "null" }] },
+          comparisonPercent: { type: ["number", "null"] },
+          comparisonDirection: {
+            type: "string",
+            enum: ["up", "down", "flat", "unavailable"]
+          },
+          unit: { type: "string", enum: ["jpy", "ndp", "people", "count"] },
+          dataStatus: { type: "string", enum: ["ready", "not_connected", "not_available"] },
+          description: { type: "string", minLength: 1 },
+          formula: { type: "string", minLength: 1 },
+          detailRoute: {
+            oneOf: [
+              { type: "string", pattern: "^/admin/analytics/metrics/[a-z0-9_]+$" },
+              { type: "null" }
+            ]
+          }
+        },
+        allOf: [
+          {
+            oneOf: [
+              {
+                properties: {
+                  currentValue: dashboardAnalyticsSafeIntegerSchema,
+                  previousValue: dashboardAnalyticsSafeIntegerSchema,
+                  comparisonPercent: {
+                    type: "number",
+                    description: "Finite percentage; JSON does not represent NaN or infinity"
+                  },
+                  comparisonDirection: { type: "string", enum: ["up", "down", "flat"] },
+                  dataStatus: { type: "string", const: "ready" }
+                }
+              },
+              {
+                properties: {
+                  currentValue: { type: "null" },
+                  previousValue: { type: "null" },
+                  comparisonPercent: { type: "null" },
+                  comparisonDirection: { type: "string", const: "unavailable" },
+                  dataStatus: { type: "string", const: "not_connected" }
+                }
+              },
+              {
+                properties: {
+                  currentValue: { type: "null" },
+                  previousValue: { type: "null" },
+                  comparisonPercent: { type: "null" },
+                  comparisonDirection: { type: "string", const: "unavailable" },
+                  dataStatus: { type: "string", const: "not_available" }
+                }
+              }
+            ]
+          },
+          {
+            oneOf: [
+              ...dashboardAnalyticsMetricKeys.slice(0, 15).map((metricKey) => ({
+                properties: {
+                  metricKey: { type: "string", const: metricKey },
+                  detailRoute: {
+                    type: "string",
+                    const: `/admin/analytics/metrics/${metricKey}`
+                  }
+                }
+              })),
+              {
+                properties: {
+                  metricKey: { type: "string", enum: dashboardAnalyticsMetricKeys.slice(15) },
+                  detailRoute: { type: "null" }
+                }
+              }
+            ]
+          }
+        ],
+        examples: dashboardAnalyticsMetricExamples
+      },
+      AnalyticsMetricSeriesPoint: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "label", "value"],
+        properties: {
+          key: { type: "string", enum: ["previous", "current"] },
+          label: {
+            type: "string",
+            pattern: "^\\d{4}-\\d{2}-\\d{2} - \\d{4}-\\d{2}-\\d{2}$"
+          },
+          value: { oneOf: [dashboardAnalyticsSafeIntegerSchema, { type: "null" }] }
+        }
+      },
+      AnalyticsMetricSeries: {
+        type: "object",
+        additionalProperties: false,
+        required: ["seriesKey", "label", "unit", "points"],
+        properties: {
+          seriesKey: { $ref: "#/components/schemas/DashboardAnalyticsMetricKey" },
+          label: { type: "string", minLength: 1 },
+          unit: { type: "string", enum: ["jpy", "ndp", "people", "count"] },
+          points: {
+            type: "array",
+            minItems: 2,
+            maxItems: 2,
+            prefixItems: [
+              exactDashboardSeriesPointSchema("previous"),
+              exactDashboardSeriesPointSchema("current")
+            ],
+            items: false,
+            description: "Exactly previous then current; no daily series is returned"
+          }
+        }
+      },
+      DashboardAnalyticsOverview: {
+        type: "object",
+        additionalProperties: false,
+        required: ["filter", "operationsFinance", "commissionMetrics", "growthMetrics"],
+        properties: {
+          filter: { $ref: "#/components/schemas/DashboardAnalyticsFilter" },
+          operationsFinance: exactDashboardMetricArraySchema(dashboardAnalyticsMetricKeys.slice(0, 4)),
+          commissionMetrics: exactDashboardMetricArraySchema(dashboardAnalyticsMetricKeys.slice(4, 11)),
+          growthMetrics: exactDashboardMetricArraySchema(dashboardAnalyticsMetricKeys.slice(11))
+        }
+      },
+      DashboardAnalyticsMetricDetail: {
+        type: "object",
+        additionalProperties: false,
+        required: ["filter", "metric", "series"],
+        properties: {
+          filter: { $ref: "#/components/schemas/DashboardAnalyticsFilter" },
+          metric: { $ref: "#/components/schemas/AnalyticsMetricPayload" },
+          series: {
+            type: "array",
+            minItems: 1,
+            maxItems: 1,
+            prefixItems: [{ $ref: "#/components/schemas/AnalyticsMetricSeries" }],
+            items: false
+          }
+        },
+        example: {
+          filter: {
+            period: "last7days",
+            from: "2026-08-26",
+            to: "2026-09-01",
+            previousFrom: "2026-08-19",
+            previousTo: "2026-08-25",
+            timeZone: "Asia/Tokyo",
+            granularity: "day",
+            city: null
+          },
+          metric: dashboardAnalyticsMetricExample("new_users", {
+            currentValue: 8,
+            previousValue: 4,
+            comparisonPercent: 100,
+            comparisonDirection: "up",
+            dataStatus: "ready",
+            unit: "people",
+            detailRoute: "/admin/analytics/metrics/new_users"
+          }),
+          series: [
+            {
+              seriesKey: "new_users",
+              label: "new_users formal description",
+              unit: "people",
+              points: [
+                { key: "previous", label: "2026-08-19 - 2026-08-25", value: 4 },
+                { key: "current", label: "2026-08-26 - 2026-09-01", value: 8 }
+              ]
+            }
+          ]
+        }
       },
       DashboardMetricComparison: {
         type: "object",
@@ -12693,6 +13115,50 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...dashboardErrorResponses,
           "403": { description: "Missing backoffice dashboard permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/dashboard/overview`]: {
+      get: {
+        operationId: "getBackofficeDashboardOverview",
+        tags: ["Step 12 Backoffice"],
+        summary: "Read the comprehensive operations analytics overview",
+        description: dashboardAnalyticsOperationDescription,
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:dashboard:read",
+        parameters: dashboardAnalyticsQueryParameters,
+        responses: {
+          "200": dashboardAnalyticsSuccessResponse(
+            "Exact ordered operations-finance, commission, and growth metric groups",
+            "#/components/schemas/DashboardAnalyticsOverview"
+          ),
+          ...dashboardAnalyticsErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/dashboard/metrics/{metricKey}`]: {
+      get: {
+        operationId: "getBackofficeDashboardMetricDetail",
+        tags: ["Step 12 Backoffice"],
+        summary: "Read one focused operations analytics metric",
+        description: dashboardAnalyticsOperationDescription,
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:dashboard-detail:read",
+        parameters: [
+          {
+            name: "metricKey",
+            in: "path",
+            required: true,
+            schema: { $ref: "#/components/schemas/DashboardAnalyticsMetricKey" }
+          },
+          ...dashboardAnalyticsQueryParameters
+        ],
+        responses: {
+          "200": dashboardAnalyticsSuccessResponse(
+            "One metric with exactly one previous/current evidence series",
+            "#/components/schemas/DashboardAnalyticsMetricDetail"
+          ),
+          ...dashboardAnalyticsErrorResponses
         }
       }
     },
