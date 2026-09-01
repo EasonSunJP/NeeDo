@@ -596,6 +596,7 @@ enum ShopMembershipCardIssuanceSource {
 enum ShopMembershipCardStatusEventSource {
   ISSUANCE           @map("issuance")
   MIGRATION_BACKFILL @map("migration_backfill")
+  STATUS_TRANSITION @map("status_transition")
 
   @@map("shop_membership_card_status_event_source")
 }

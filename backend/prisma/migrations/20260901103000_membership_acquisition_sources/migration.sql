@@ -15,7 +15,7 @@ CREATE TABLE `shop_membership_card_status_events` (
   `card_id` INTEGER NOT NULL,
   `from_status` ENUM('active', 'frozen', 'expired', 'void') NULL,
   `to_status` ENUM('active', 'frozen', 'expired', 'void') NOT NULL,
-  `source` ENUM('issuance', 'migration_backfill') NOT NULL,
+  `source` ENUM('issuance', 'migration_backfill', 'status_transition') NOT NULL,
   `occurred_at` DATETIME(3) NOT NULL,
   `reason_code` VARCHAR(160) NOT NULL,
   `actor_user_id` INTEGER NULL,
@@ -52,6 +52,22 @@ SELECT
   CONCAT('membership-card:', `card`.`public_id`, ':backfill-issued'),
   `card`.`issued_at`, `card`.`issued_at`, NULL
 FROM `shop_membership_cards` AS `card`
+ON DUPLICATE KEY UPDATE `event_key` = VALUES(`event_key`);
+
+-- Only a persisted frozen_at on a currently frozen legacy card is authoritative
+-- enough to append a historical transition. Missing/invalid evidence stays incomplete.
+INSERT INTO `shop_membership_card_status_events` (
+  `card_id`, `from_status`, `to_status`, `source`, `occurred_at`, `reason_code`, `actor_user_id`,
+  `metadata`, `event_key`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT
+  `card`.`id`, 'active', 'frozen', 'status_transition', `card`.`frozen_at`, 'historical_card_frozen', NULL,
+  NULL, CONCAT('membership-card:', `card`.`public_id`, ':backfill-frozen'),
+  `card`.`frozen_at`, `card`.`frozen_at`, NULL
+FROM `shop_membership_cards` AS `card`
+WHERE `card`.`status` = 'frozen'
+  AND `card`.`frozen_at` IS NOT NULL
+  AND `card`.`frozen_at` >= `card`.`issued_at`
 ON DUPLICATE KEY UPDATE `event_key` = VALUES(`event_key`);
 
 INSERT INTO `permissions` (

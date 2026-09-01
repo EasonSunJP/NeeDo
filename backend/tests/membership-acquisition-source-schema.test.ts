@@ -37,6 +37,23 @@ describe("formal membership acquisition source schema", () => {
     expect(schema).toContain("Tokyo half-open buckets");
   });
 
+  it("allows formal status transitions and backfills only truthful frozen evidence", () => {
+    expect(schema).toContain("STATUS_TRANSITION @map(\"status_transition\")");
+    expect(migration).toContain("ENUM('issuance', 'migration_backfill', 'status_transition')");
+    const frozenMarker = migration.indexOf("historical_card_frozen");
+    expect(frozenMarker).toBeGreaterThan(0);
+    const frozenStart = migration.lastIndexOf("INSERT INTO `shop_membership_card_status_events`", frozenMarker);
+    const frozenEnd = migration.indexOf("INSERT INTO `permissions`", frozenMarker);
+    const frozenBackfill = migration.slice(frozenStart, frozenEnd).replace(/\s+/gu, " ");
+    expect(frozenBackfill).toContain("`card`.`id`, 'active', 'frozen', 'status_transition', `card`.`frozen_at`, 'historical_card_frozen', NULL");
+    expect(frozenBackfill).toContain("CONCAT('membership-card:', `card`.`public_id`, ':backfill-frozen')");
+    expect(frozenBackfill).toContain("`card`.`frozen_at`, `card`.`frozen_at`, NULL");
+    expect(frozenBackfill).toContain("WHERE `card`.`status` = 'frozen' AND `card`.`frozen_at` IS NOT NULL AND `card`.`frozen_at` >= `card`.`issued_at`");
+    expect(frozenBackfill).toContain("ON DUPLICATE KEY UPDATE `event_key` = VALUES(`event_key`)");
+    expect(frozenBackfill).not.toContain("`card`.`updated_at`");
+    expect(frozenBackfill).not.toMatch(/'void'|'expired'|`card`\.`expires_at`/u);
+  });
+
   it("adds acquisition history, lifecycle and future overlap lookup indexes", () => {
     const compact = migration.replace(/\s+/gu, " ");
     expect(compact).toContain("CREATE INDEX `shop_membership_cards_source_issued_id_idx` ON `shop_membership_cards`(`issuance_source`, `issued_at`, `id`)");
