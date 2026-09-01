@@ -1,4 +1,5 @@
 import { ERROR_CODES } from "../constants/error-codes";
+import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { TechnicianServiceBody } from "../validators/pricing-mode.validator";
@@ -33,6 +34,7 @@ export interface TechnicianServicePayload {
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
@@ -76,6 +78,7 @@ export interface TechnicianServiceCreateRepositoryInput extends TechnicianServic
   shopId: number;
   technicianId: number;
   createdBy: number;
+  auditLog: AuditLogCreateInput;
 }
 
 export interface TechnicianServiceUpdateRepositoryInput extends Partial<TechnicianServiceBody> {
@@ -97,6 +100,12 @@ export interface PricingModeRepositoryPort {
   listTechnicianServices: (
     input: PaginationInput & { shopId: number; technicianId: number; activeOnly?: boolean }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
+  listTechnicianServicesByProfile: (
+    input: PaginationInput & { technicianId: number; activeOnly?: boolean }
+  ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
+  findPrimaryTechnicianService: (
+    technicianId: number
+  ) => Promise<TechnicianServicePayload | null>;
   createTechnicianService: (
     input: TechnicianServiceCreateRepositoryInput
   ) => Promise<TechnicianServicePayload>;
@@ -196,11 +205,17 @@ export class PricingModeService {
       ...input,
       shopId,
       technicianId: scope.technicianId,
-      createdBy: actor.userId
-    });
-    await this.record(actor, context, "technician.services.create", shopId, {
-      technicianId: scope.technicianId,
-      serviceId: service.id
+      createdBy: actor.userId,
+      auditLog: this.transactionalAuditLog(
+        actor,
+        context,
+        "technician.services.create",
+        "technician_service",
+        {
+          technicianId: scope.technicianId,
+          shopId
+        }
+      )
     });
 
     return service;
@@ -320,6 +335,32 @@ export class PricingModeService {
     }
 
     return Math.min(200, Math.max(10, Math.round(value)));
+  }
+
+  private transactionalAuditLog(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    action: string,
+    targetType: string,
+    metadata?: Record<string, unknown>
+  ): AuditLogCreateInput {
+    const effectiveMetadata = actor.isReadOnlyMerchantPreview
+      ? {
+          ...metadata,
+          readOnlyMerchantPreview: true,
+          previewShopId: actor.merchantPreviewShopId
+        }
+      : metadata;
+
+    return {
+      actorId: actor.userId,
+      action,
+      targetType,
+      targetId: null,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      metadata: effectiveMetadata
+    };
   }
 
   private async getExistingShopPricingMode(shopId: number): Promise<ShopPricingModePayload> {

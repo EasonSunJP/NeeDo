@@ -1,5 +1,6 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { toAuditLogCreateData } from "./audit-log.repository";
 import {
   type BookingNavigationServicePayload,
   type BookingNavigationTechnicianPayload,
@@ -11,6 +12,7 @@ import {
   type TechnicianServiceUpdateRepositoryInput,
   type TechnicianShopScopePayload
 } from "../services/pricing-mode.service";
+import { assertTechnicianServiceQuota } from "../services/technician-service-policy";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -134,31 +136,88 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     );
   }
 
+  public async listTechnicianServicesByProfile(
+    input: PaginationInput & { technicianId: number; activeOnly?: boolean }
+  ): Promise<PaginatedResponse<TechnicianServicePayload>> {
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.TechnicianServiceWhereInput = {
+      technicianId: input.technicianId,
+      deletedAt: null,
+      ...(input.activeOnly ? { isActive: true } : {})
+    };
+    const [list, total] = await Promise.all([
+      this.client.technicianService.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.client.technicianService.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((service) => this.mapTechnicianService(service)),
+      total,
+      input
+    );
+  }
+
+  public async findPrimaryTechnicianService(
+    technicianId: number
+  ): Promise<TechnicianServicePayload | null> {
+    const service = await this.client.technicianService.findFirst({
+      where: {
+        technicianId,
+        deletedAt: null,
+        isActive: true,
+        reviewStatus: "APPROVED"
+      },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+    });
+
+    return service ? this.mapTechnicianService(service) : null;
+  }
+
   public async createTechnicianService(
     input: TechnicianServiceCreateRepositoryInput
   ): Promise<TechnicianServicePayload> {
-    const service = await this.client.technicianService.create({
-      data: {
-        shopId: input.shopId,
-        technicianId: input.technicianId,
-        sourceShopServiceId: input.sourceShopServiceId ?? null,
-        name: input.name,
-        description: input.description ?? null,
-        categoryId: input.categoryId,
-        priceAmount: input.priceAmount,
-        currency: input.currency,
-        durationMinutes: input.durationMinutes,
-        coverImageUrl: input.coverImageUrl ?? null,
-        imagesJson: input.images ?? [],
-        tagsJson: input.tags ?? [],
-        isActive: input.isActive ?? true,
-        isBookable: input.isBookable ?? true,
-        isRecommended: input.isRecommended ?? false,
-        sortOrder: input.sortOrder ?? 0,
-        reviewStatus: "APPROVED",
-        createdBy: input.createdBy,
-        updatedBy: input.createdBy
-      }
+    const service = await this.client.$transaction(async (transaction) => {
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM technician_profiles WHERE id = ${input.technicianId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      const nonDeletedCount = await transaction.technicianService.count({
+        where: { technicianId: input.technicianId, deletedAt: null }
+      });
+      assertTechnicianServiceQuota(nonDeletedCount + 1);
+
+      const created = await transaction.technicianService.create({
+        data: {
+          shopId: input.shopId,
+          technicianId: input.technicianId,
+          sourceShopServiceId: input.sourceShopServiceId ?? null,
+          name: input.name,
+          description: input.description ?? null,
+          categoryId: input.categoryId,
+          priceAmount: input.priceAmount,
+          currency: input.currency,
+          durationMinutes: input.durationMinutes,
+          coverImageUrl: input.coverImageUrl ?? null,
+          imagesJson: input.images ?? [],
+          tagsJson: input.tags ?? [],
+          isActive: input.isActive ?? true,
+          isBookable: input.isBookable ?? true,
+          isRecommended: input.isRecommended ?? false,
+          sortOrder: input.sortOrder ?? 0,
+          reviewStatus: "APPROVED",
+          createdBy: input.createdBy,
+          updatedBy: input.createdBy
+        }
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({ ...input.auditLog, targetId: created.id })
+      });
+
+      return created;
     });
 
     return this.mapTechnicianService(service);
@@ -326,6 +385,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       priceAmount: service.priceAmount,
       currency: service.currency,
       durationMinutes: service.durationMinutes,
+      taxIncluded: true,
       coverImageUrl: service.coverImageUrl,
       images: this.stringArrayFromJson(service.imagesJson),
       tags: this.stringArrayFromJson(service.tagsJson),

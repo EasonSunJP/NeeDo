@@ -168,7 +168,8 @@ describe("PricingModeService", () => {
 
   it("creates technician services only for the authenticated technician shop scope", async () => {
     const repository = createRepository();
-    const service = new PricingModeService(repository, { record: jest.fn() });
+    const auditLogService = { record: jest.fn() };
+    const service = new PricingModeService(repository, auditLogService);
 
     await service.createTechnicianService(technicianActor, context, 1, {
       name: "深层护理 60 分钟",
@@ -186,9 +187,17 @@ describe("PricingModeService", () => {
         shopId: 1,
         technicianId: 3,
         createdBy: 8,
-        name: "深层护理 60 分钟"
+        name: "深层护理 60 分钟",
+        auditLog: expect.objectContaining({
+          actorId: 8,
+          action: "technician.services.create",
+          targetType: "technician_service",
+          ip: "127.0.0.1",
+          userAgent: "jest"
+        })
       })
     );
+    expect(auditLogService.record).not.toHaveBeenCalled();
   });
 
   it("returns technician list navigation when a shop is in technician pricing mode", async () => {
