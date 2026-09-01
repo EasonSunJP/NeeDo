@@ -34,6 +34,7 @@
     "check:order-acceptance-control-flow": "tsx scripts/check-order-acceptance-control-flow.ts && tsx scripts/check-affiliate-checkout-attribution-flow.ts",
     "check:order-acceptance-control-migration": "tsx scripts/check-order-acceptance-control-migration.ts",
     "check:order-fulfillment-checkout": "tsx scripts/check-order-fulfillment-checkout-flow.ts",
+    "check:dashboard-overview": "tsx scripts/check-dashboard-overview-flow.ts",
     "check:message-reaction-slots": "ENV_FILE=.env.dev tsx scripts/check-message-reaction-slots.ts",
     "check:localized-carousel-publication-flow": "tsx scripts/check-localized-carousel-publication-flow.ts",
     "check:registration-flow": "tsx scripts/check-registration-flow.ts",
