@@ -284,6 +284,14 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).not.toContain('renderActiveInlineEditor("header-basic")');
   });
 
+  it("uses the formal shop taxonomy editor and keeps browse chips keyword-only", () => {
+    expect(pageSource).toContain("ShopServiceTaxonomyEditor");
+    expect(pageSource).toContain("isMerchantEditable && basicCardEditing");
+    expect(pageSource).toContain("onSavedKeywords={(labels) => {");
+    expect(pageSource).toContain("tags={displayedTaxonomyLabels}");
+    expect(pageSource).not.toContain('<EditableTagChips editing={basicCardEditing}');
+  });
+
   it("uses edit affordances instead of user selection plus buttons for merchant-owned services and technicians", () => {
     expect(pageSource).toContain('scope === "merchant"');
     expect(pageSource).toContain("showSelectAction={!isMerchantEditable}");

@@ -44,6 +44,7 @@ import {
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
+import { ShopServiceTaxonomyEditor } from "../../features/shop-taxonomy/ShopServiceTaxonomyEditor";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
@@ -2864,6 +2865,7 @@ export function StoreDetailExperience({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [activeEditor, setActiveEditor] = useState<ActiveStoreDisplayEditor | null>(null);
   const [pendingStoreImageEdit, setPendingStoreImageEdit] = useState<PendingStoreImageEdit | null>(null);
+  const [displayedTaxonomyLabels, setDisplayedTaxonomyLabels] = useState(() => store.tags);
 
   useEffect(() => {
     setActiveTab("home");
@@ -2883,6 +2885,7 @@ export function StoreDetailExperience({
     setOfferReplyBoosts({});
     setLightboxIndex(null);
     setActiveEditor(null);
+    setDisplayedTaxonomyLabels(store.tags);
   }, [industry, primaryCheckoutTarget, routeTechnicianId, routeTime, routeVisitDate, store.alwaysBookable, store.id, store.nextSlot]);
 
   useEffect(() => {
@@ -3487,7 +3490,17 @@ export function StoreDetailExperience({
                 </InfoRow>
               </div>
 
-              <EditableTagChips editing={basicCardEditing} onChange={(tags) => updateStoreEntity(store.id, { tags })} tags={store.tags} />
+              {isMerchantEditable && basicCardEditing ? (
+                <ShopServiceTaxonomyEditor
+                  language={language}
+                  onSavedKeywords={(labels) => {
+                    setDisplayedTaxonomyLabels(labels);
+                    updateStoreEntity(store.id, { tags: labels });
+                  }}
+                />
+              ) : (
+                <EditableTagChips editing={false} onChange={() => undefined} tags={displayedTaxonomyLabels} />
+              )}
             </FlatCard>
           </section>
 
