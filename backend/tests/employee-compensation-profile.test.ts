@@ -23,6 +23,8 @@ const activeProfile: CompensationProfilePayload = {
   dailyRateJpy: 0,
   fixedOrderPayJpy: 0,
   commissionRatePercent: 20,
+  extensionCommissionRatePercent: 60,
+  nominationFeeJpy: 1_500,
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "shop",
   technicianNdpSharePercent: 0,
@@ -189,6 +191,8 @@ describe("merchant employee compensation profile API", () => {
         dailyRateJpy: 0,
         fixedOrderPayJpy: 0,
         commissionRatePercent: 22,
+        extensionCommissionRatePercent: 65,
+        nominationFeeJpy: 1_800,
         guaranteedMinimumJpy: 0,
         ndpFeeBearer: "shop",
         technicianNdpSharePercent: 0,
@@ -202,25 +206,43 @@ describe("merchant employee compensation profile API", () => {
         expect(response.body.data.profile).toMatchObject({
           version: 3,
           baseSalaryJpy: 240_000,
-          commissionRatePercent: 22
+          commissionRatePercent: 22,
+          extensionCommissionRatePercent: 65,
+          nominationFeeJpy: 1_800
         });
       });
     expect(fixture.repository.replaceActiveProfile).toHaveBeenCalledWith(
       16,
       71,
-      expect.objectContaining({ baseSalaryJpy: 240_000, commissionRatePercent: 22 }),
+      expect.objectContaining({
+        baseSalaryJpy: 240_000,
+        commissionRatePercent: 22,
+        extensionCommissionRatePercent: 65,
+        nominationFeeJpy: 1_800
+      }),
       7
     );
 
     await request(fixture.app)
       .post(`${endpoint}/preview`)
       .set("Authorization", authorization)
-      .send({ serviceAmountJpy: 20_000, platformFeeNdp: 500, workedMinutes: 120 })
+      .send({
+        baseServiceAmountJpy: 10_000,
+        extensionAmountJpy: 4_000,
+        nominated: true,
+        platformFeeNdp: 0,
+        workedMinutes: 120
+      })
       .expect(200)
       .expect((response) => {
         expect(response.body.data).toMatchObject({
           employee: { needoId: "s0000000047" },
-          preview: { technicianNetIncomeJpy: 4_000 }
+          preview: {
+            serviceCommissionPayJpy: 2_000,
+            extensionCommissionPayJpy: 2_400,
+            nominationPayJpy: 1_500,
+            technicianNetIncomeJpy: 5_900
+          }
         });
       });
   });

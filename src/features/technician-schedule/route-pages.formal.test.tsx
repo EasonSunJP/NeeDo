@@ -315,7 +315,7 @@ describe("formal technician schedule routes", () => {
       retry: mocks.retrySchedule
     });
 
-    await render("/technician/schedule");
+    await render("/technician/schedule?period=last7days&from=2026-08-26T15%3A00%3A00.000Z&to=2026-09-02T15%3A00%3A00.000Z");
 
     expect(container.textContent).not.toContain("排班与预约");
     expect(container.textContent).toContain("正式技师");

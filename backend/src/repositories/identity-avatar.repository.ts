@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 export type IdentityAvatarSource =
   | { kind: "customer"; profileId: number }
+  | { kind: "merchant"; profileId: number }
   | { kind: "technician"; profileId: number }
   | { kind: "shop"; shopId: number };
 
@@ -37,12 +38,16 @@ export async function persistIdentityAvatar(
     ? { customerProfileId: input.source.profileId }
     : input.source.kind === "technician"
       ? { technicianProfileId: input.source.profileId }
-      : { shopId: input.source.shopId };
+      : input.source.kind === "shop"
+        ? { shopId: input.source.shopId }
+        : {};
   const entityType = input.source.kind === "customer"
     ? "customer_profile"
     : input.source.kind === "technician"
       ? "technician_profile"
-      : "shop";
+      : input.source.kind === "shop"
+        ? "shop"
+        : "merchant_identity_profile";
   const entityId = input.source.kind === "shop" ? input.source.shopId : input.source.profileId;
 
   await transaction.mediaAsset.updateMany({

@@ -3120,6 +3120,10 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   color: var(--client-text) !important;
 }
 
+.client-shell.client-theme-day .technician-data-center-panel :where(h2, h3, strong, dd, .technician-data-center-primary-text) {
+  color: var(--client-text) !important;
+}
+
 .client-shell .text-ink\/35,
 .client-shell .text-ink\/40,
 .client-shell .text-ink\/45,

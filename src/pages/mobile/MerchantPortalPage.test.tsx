@@ -34,7 +34,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(scheduleHeaderSource).toContain('placeholder="搜索预约、客户、员工、状态"');
     expect(scheduleHeaderSource).toContain('name="search"');
     expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
-    expect(shellSource).toContain("showBottomNav={!isMerchantAppointmentsView}");
+    expect(shellSource).toContain("showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}");
     expect(merchantSource).toContain('activeView === "schedule" && "relative z-30"');
     expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
@@ -78,6 +78,7 @@ describe("MerchantPortalPage store privacy control", () => {
   });
 
   it("adds the floating privacy menu to the merchant service card only", () => {
+    expect(merchantSource).toContain('{ label: "信息卡", value: "info" }');
     expect(merchantSource).toContain('{ label: "服务展示", value: "service" }');
     expect(merchantSource).toContain('{ label: "数据中心", value: "data" }');
     expect(merchantSource).toContain("function MerchantStorePrivacyControl");
@@ -102,6 +103,21 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(storeDetailSource).toContain("min-h-[112px]");
     expect(storeDetailSource).toContain('className="mt-3 grid grid-cols-2 gap-2"');
     expect(storeDetailSource).toContain('<div className="relative z-0">{content}</div>');
+  });
+
+  it("uses the shared personal-center header and keeps merchant identity data independent", () => {
+    const meHeaderSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "me" ? ('),
+      merchantSource.indexOf('<div\n        className={cn(', merchantSource.indexOf('{activeView === "me" ? ('))
+    );
+    expect(merchantSource).toContain('type MerchantMeTab = "info" | "service" | "data"');
+    expect(merchantSource).toContain('import { MerchantIdentityInfoCard } from "../../components/merchant/MerchantIdentityInfoCard"');
+    expect(merchantSource).toContain('<MerchantIdentityInfoCard onEditingChange={setMerchantProfileEditing} />');
+    expect(meHeaderSource).toContain("<MobileFullscreenHeader");
+    expect(meHeaderSource).toContain('title="个人中心"');
+    expect(meHeaderSource).toContain("footer={");
+    expect(meHeaderSource).not.toContain("<SharedHomeHeader");
+    expect(merchantSource).toContain('showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}');
   });
 
   it("adds the merchant pricing mode switch beside the privacy switch", () => {

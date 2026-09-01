@@ -56,6 +56,8 @@ function toDraft(
     dailyRateJpy: profile?.dailyRateJpy ?? 0,
     fixedOrderPayJpy: profile?.fixedOrderPayJpy ?? 0,
     commissionRatePercent: profile?.commissionRatePercent ?? 0,
+    extensionCommissionRatePercent: profile?.extensionCommissionRatePercent ?? 0,
+    nominationFeeJpy: profile?.nominationFeeJpy ?? 0,
     guaranteedMinimumJpy: profile?.guaranteedMinimumJpy ?? 0,
     ndpFeeBearer: profile?.ndpFeeBearer ?? "shop",
     technicianNdpSharePercent: profile?.technicianNdpSharePercent ?? 0,
@@ -254,7 +256,7 @@ export function EmployeeCompensationPanel({
                 </label>
               ))}
               <label className="text-sm font-black text-white/80">
-                <span className="mb-2 block">{t("分成比例")} · %</span>
+                <span className="mb-2 block">{t("服务完成分成")} · %</span>
                 <input
                   className={fieldClassName}
                   data-testid="employee-compensation-commission"
@@ -267,6 +269,34 @@ export function EmployeeCompensationPanel({
                   step="0.01"
                   type="number"
                   value={draft.commissionRatePercent ?? 0}
+                />
+              </label>
+              <label className="text-sm font-black text-white/80">
+                <span className="mb-2 block">{t("加钟分成")} · %</span>
+                <input
+                  className={fieldClassName}
+                  data-testid="employee-compensation-extension-commission"
+                  disabled={saving}
+                  max={100}
+                  min={0}
+                  onChange={(event) =>
+                    updateDraft("extensionCommissionRatePercent", Number(event.target.value))
+                  }
+                  step="0.01"
+                  type="number"
+                  value={draft.extensionCommissionRatePercent ?? 0}
+                />
+              </label>
+              <label className="text-sm font-black text-white/80">
+                <span className="mb-2 block">{t("指名费")} · JPY</span>
+                <input
+                  className={fieldClassName}
+                  data-testid="employee-compensation-nomination-fee"
+                  disabled={saving}
+                  min={0}
+                  onChange={(event) => updateDraft("nominationFeeJpy", Number(event.target.value))}
+                  type="number"
+                  value={draft.nominationFeeJpy ?? 0}
                 />
               </label>
               <label className="text-sm font-black text-white/80">
@@ -326,7 +356,9 @@ export function EmployeeCompensationPanel({
                 ["时薪", yen(profile.hourlyRateJpy)],
                 ["日薪", yen(profile.dailyRateJpy)],
                 ["单次报酬", yen(profile.fixedOrderPayJpy)],
-                ["分成比例", `${profile.commissionRatePercent}%`],
+                ["服务完成分成", `${profile.commissionRatePercent}%`],
+                ["加钟分成", `${profile.extensionCommissionRatePercent}%`],
+                ["指名费", yen(profile.nominationFeeJpy)],
                 ["保障最低额", yen(profile.guaranteedMinimumJpy)],
                 [
                   "NDP 费用承担",

@@ -1578,13 +1578,15 @@ export class MerchantSaasBillingRepository implements MerchantSaasBillingReposit
       select: { id: true }
     });
 
+    let merchantIdentityId: number;
     if (identity) {
       await tx.userIdentity.update({
         where: { id: identity.id },
         data: { isActive: true, deletedAt: null }
       });
+      merchantIdentityId = identity.id;
     } else {
-      await tx.userIdentity.create({
+      const createdIdentity = await tx.userIdentity.create({
         data: {
           userId,
           type: "merchant_owner",
@@ -1595,7 +1597,19 @@ export class MerchantSaasBillingRepository implements MerchantSaasBillingReposit
           isActive: true
         }
       });
+      merchantIdentityId = createdIdentity.id;
     }
+
+    await tx.merchantIdentityProfile.upsert({
+      where: { identityId: merchantIdentityId },
+      create: {
+        userId,
+        identityId: merchantIdentityId,
+        displayName: "Shop Account Administrator",
+        languages: []
+      },
+      update: { deletedAt: null }
+    });
 
     const userRole = await tx.userRole.findFirst({
       where: { userId, roleId, scopeType: "shop", scopeId: shopId },

@@ -52,6 +52,8 @@ const defaultFinanceRuleInput: ShopFinanceRuleSetInput = {
   dailyRateJpy: 0,
   fixedOrderPayJpy: 1000,
   commissionRatePercent: 50,
+  extensionCommissionRatePercent: 50,
+  nominationFeeJpy: 0,
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "split",
   technicianNdpSharePercent: 30,
@@ -86,6 +88,8 @@ const defaultCompensationProfileInput: TechnicianCompensationProfileInput = {
   dailyRateJpy: 0,
   fixedOrderPayJpy: 1000,
   commissionRatePercent: 50,
+  extensionCommissionRatePercent: 50,
+  nominationFeeJpy: 0,
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "split",
   technicianNdpSharePercent: 30,
@@ -181,6 +185,8 @@ function financeRuleToInput(rule: ShopFinanceRuleSetPayload): ShopFinanceRuleSet
     dailyRateJpy: rule.dailyRateJpy,
     fixedOrderPayJpy: rule.fixedOrderPayJpy,
     commissionRatePercent: rule.commissionRatePercent,
+    extensionCommissionRatePercent: rule.extensionCommissionRatePercent,
+    nominationFeeJpy: rule.nominationFeeJpy,
     guaranteedMinimumJpy: rule.guaranteedMinimumJpy,
     ndpFeeBearer: rule.ndpFeeBearer,
     technicianNdpSharePercent: rule.technicianNdpSharePercent,
@@ -202,6 +208,8 @@ function compensationProfileToInput(
     dailyRateJpy: profile.dailyRateJpy,
     fixedOrderPayJpy: profile.fixedOrderPayJpy,
     commissionRatePercent: profile.commissionRatePercent,
+    extensionCommissionRatePercent: profile.extensionCommissionRatePercent,
+    nominationFeeJpy: profile.nominationFeeJpy,
     guaranteedMinimumJpy: profile.guaranteedMinimumJpy,
     ndpFeeBearer: profile.ndpFeeBearer,
     technicianNdpSharePercent: profile.technicianNdpSharePercent,
@@ -763,7 +771,7 @@ export function MerchantStoreOperationsWorkspace() {
                   />
                 </label>
                 <label className="space-y-1 text-xs font-bold text-ink/55">
-                  分成比例 %
+                  服务完成分成 %
                   <input
                     className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-bold text-ink"
                     max={100}
@@ -772,6 +780,28 @@ export function MerchantStoreOperationsWorkspace() {
                     type="number"
                     value={financeRuleForm.commissionRatePercent ?? 0}
                     onChange={(event) => updateFinanceRuleField("commissionRatePercent", toNumberInput(event.currentTarget.value))}
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-bold text-ink/55">
+                  加钟分成 %
+                  <input
+                    className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-bold text-ink"
+                    max={100}
+                    min={0}
+                    step={0.1}
+                    type="number"
+                    value={financeRuleForm.extensionCommissionRatePercent ?? 0}
+                    onChange={(event) => updateFinanceRuleField("extensionCommissionRatePercent", toNumberInput(event.currentTarget.value))}
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-bold text-ink/55">
+                  指名费 JPY
+                  <input
+                    className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-bold text-ink"
+                    min={0}
+                    type="number"
+                    value={financeRuleForm.nominationFeeJpy ?? 0}
+                    onChange={(event) => updateFinanceRuleField("nominationFeeJpy", toNumberInput(event.currentTarget.value))}
                   />
                 </label>
                 <label className="space-y-1 text-xs font-bold text-ink/55">
@@ -1061,7 +1091,7 @@ export function MerchantStoreOperationsWorkspace() {
                 />
               </label>
               <label className="text-xs font-bold text-ink/55">
-                分成比例 %
+                服务完成分成 %
                 <input
                   className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm"
                   max={100}
@@ -1069,6 +1099,27 @@ export function MerchantStoreOperationsWorkspace() {
                   onChange={(event) => updateCompensationProfileField("commissionRatePercent", toNumberInput(event.target.value))}
                   type="number"
                   value={compensationProfileForm.commissionRatePercent ?? 0}
+                />
+              </label>
+              <label className="text-xs font-bold text-ink/55">
+                加钟分成 %
+                <input
+                  className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm"
+                  max={100}
+                  min={0}
+                  onChange={(event) => updateCompensationProfileField("extensionCommissionRatePercent", toNumberInput(event.target.value))}
+                  type="number"
+                  value={compensationProfileForm.extensionCommissionRatePercent ?? 0}
+                />
+              </label>
+              <label className="text-xs font-bold text-ink/55">
+                指名费 JPY
+                <input
+                  className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm"
+                  min={0}
+                  onChange={(event) => updateCompensationProfileField("nominationFeeJpy", toNumberInput(event.target.value))}
+                  type="number"
+                  value={compensationProfileForm.nominationFeeJpy ?? 0}
                 />
               </label>
               <label className="text-xs font-bold text-ink/55">

@@ -36,6 +36,8 @@ const activeRuleSet: ShopFinanceRuleSetPayload = {
   dailyRateJpy: 0,
   fixedOrderPayJpy: 1000,
   commissionRatePercent: 50,
+  extensionCommissionRatePercent: 50,
+  nominationFeeJpy: 0,
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "split",
   technicianNdpSharePercent: 30,
@@ -114,6 +116,8 @@ describe("MerchantFinanceRulesService", () => {
       name: "Roppongi hybrid payout",
       wageMode: "commission",
       commissionRatePercent: 62.5,
+      extensionCommissionRatePercent: 72.5,
+      nominationFeeJpy: 1_800,
       fixedOrderPayJpy: 0,
       guaranteedMinimumJpy: 4200,
       ndpFeeBearer: "technician",
@@ -127,6 +131,8 @@ describe("MerchantFinanceRulesService", () => {
       shopId: 11,
       name: "Roppongi hybrid payout",
       commissionRatePercent: 62.5,
+      extensionCommissionRatePercent: 72.5,
+      nominationFeeJpy: 1_800,
       ndpFeeBearer: "technician"
     });
     expect(repository.replaceActiveRuleSet).toHaveBeenCalledWith(
@@ -134,6 +140,8 @@ describe("MerchantFinanceRulesService", () => {
       expect.objectContaining({
         name: "Roppongi hybrid payout",
         commissionRatePercent: 62.5,
+        extensionCommissionRatePercent: 72.5,
+        nominationFeeJpy: 1_800,
         technicianNdpSharePercent: 100
       }),
       7
