@@ -45,6 +45,11 @@ type LedgerTransactionRecord = Prisma.LedgerTransactionGetPayload<{
     entries: {
       where: { deletedAt: null };
       orderBy: { id: "asc" };
+      include: {
+        wallet: {
+          select: { ownerType: true; ownerId: true; currency: true };
+        };
+      };
     };
   };
 }>;
@@ -535,7 +540,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       }),
       this.client.wallet.findFirst({
         where: { id: input.walletId, deletedAt: null },
-        select: { currency: true }
+        select: { ownerType: true, ownerId: true, currency: true }
       })
     ]);
     const transactionCurrency = LedgerCurrencyService.fromStored(transaction?.currency ?? "");
@@ -556,7 +561,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       }
     });
 
-    return this.mapLedgerEntry(entry);
+    return this.mapLedgerEntry({ ...entry, wallet: wallet ?? undefined });
   }
 
   public async createFinanceReconciliation(input: {
@@ -1387,7 +1392,10 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return {
       entries: {
         where: { deletedAt: null },
-        orderBy: { id: "asc" as const }
+        orderBy: { id: "asc" as const },
+        include: {
+          wallet: { select: { ownerType: true, ownerId: true, currency: true } }
+        }
       }
     };
   }
@@ -1445,6 +1453,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     frozenBalanceAfter: number;
     reason: string;
     createdAt: Date;
+    wallet?: { ownerType: string; ownerId: number; currency: string };
   }): WalletLedgerPayload {
     return {
       id: entry.id,
@@ -1457,7 +1466,14 @@ export class LedgerRepository implements LedgerRepositoryPort {
       availableBalanceAfter: entry.availableBalanceAfter,
       frozenBalanceAfter: entry.frozenBalanceAfter,
       reason: entry.reason,
-      createdAt: entry.createdAt
+      createdAt: entry.createdAt,
+      ...(entry.wallet
+        ? {
+            walletOwnerType: this.ownerTypeFromDb(entry.wallet.ownerType),
+            walletOwnerId: entry.wallet.ownerId,
+            walletCurrency: LedgerCurrencyService.fromStored(entry.wallet.currency)
+          }
+        : {})
     };
   }
 

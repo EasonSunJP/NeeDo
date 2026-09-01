@@ -11,7 +11,7 @@ const transaction = (overrides: Record<string, unknown> = {}) => ({
   referenceId: 501,
   currency: "NDP",
   occurredAt,
-  metadata: null,
+  metadata: { experienceConsumptionKind: "service" },
   ...overrides
 });
 
@@ -40,7 +40,8 @@ describe("NDP experience settlement source classification", () => {
       classifyExperienceSource(
         transaction({
           type: "product_consumption_settlement",
-          referenceType: "product_order"
+          referenceType: "product_order",
+          metadata: { experienceConsumptionKind: "product" }
         }),
         userDebit({ direction: "frozen_debit", availableDelta: 0, frozenDelta: -12_345 })
       ).kind
@@ -53,6 +54,7 @@ describe("NDP experience settlement source classification", () => {
     ["unfreeze", transaction({ type: "booking_cancel_unfreeze" }), userDebit({ direction: "unfreeze" })],
     ["platform fee", transaction(), userDebit({ walletOwnerType: "platform" })],
     ["affiliate transfer", transaction({ type: "affiliate_reward_settlement" }), userDebit()],
+    ["unmarked fee debit", transaction({ metadata: null }), userDebit()],
     ["top-up", transaction({ type: "manual_topup_approved" }), userDebit({ direction: "available_credit", availableDelta: 12_345 })],
     ["test currency", transaction({ currency: "TEST_NDP" }), userDebit({ walletCurrency: "TEST_NDP" })],
     ["mismatched amount", transaction(), userDebit({ availableDelta: -100 })]

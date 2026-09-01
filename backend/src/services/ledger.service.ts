@@ -16,6 +16,8 @@ import type {
 } from "./platform-fee-policy.service";
 import type { ExchangeRequestFeeSnapshot } from "./exchange-request-fee.service";
 import { LedgerCurrencyService, type LedgerCurrency } from "./ledger-currency.service";
+import { classifyExperienceSource } from "../domain/ndp-experience-source";
+import type { NdpConsumptionExperienceSource } from "../domain/user-experience";
 
 export type { LedgerCurrency } from "./ledger-currency.service";
 
@@ -151,6 +153,9 @@ export interface WalletLedgerPayload {
   frozenBalanceAfter: number;
   reason: string;
   createdAt: Date;
+  walletOwnerType?: WalletOwnerType;
+  walletOwnerId?: number;
+  walletCurrency?: LedgerCurrency;
 }
 
 export interface LedgerTransactionPayload {
@@ -657,6 +662,13 @@ export interface MembershipRewardDebtAllocatorPort {
   }) => Promise<void>;
 }
 
+export interface NdpExperienceRecorderPort {
+  recordNdpConsumption: (
+    source: NdpConsumptionExperienceSource,
+    options?: { transactionClient?: LedgerTransactionClient }
+  ) => Promise<unknown>;
+}
+
 export interface BookingLedgerSettlementPort {
   freezeBookingAcceptance: (
     input: BookingLedgerSettlementInput,
@@ -689,8 +701,52 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       PlatformFeePolicyService,
       "resolveForBookingSettlement"
     >,
-    private readonly membershipRewardDebtAllocator?: MembershipRewardDebtAllocatorPort
+    private readonly membershipRewardDebtAllocator?: MembershipRewardDebtAllocatorPort,
+    private readonly ndpExperienceRecorder?: NdpExperienceRecorderPort
   ) {}
+
+  public async recordNdpExperienceForAppliedTransaction(
+    transaction: LedgerTransactionPayload,
+    transactionClient?: LedgerTransactionClient
+  ): Promise<void> {
+    if (!this.ndpExperienceRecorder) return;
+    for (const entry of transaction.entries) {
+      if (
+        !entry.walletOwnerType ||
+        entry.walletOwnerId === undefined ||
+        !entry.walletCurrency
+      ) {
+        continue;
+      }
+      const classification = classifyExperienceSource(
+        {
+          ledgerTransactionId: transaction.id,
+          transactionNo: transaction.transactionNo,
+          type: transaction.type,
+          status: transaction.status,
+          referenceType: transaction.referenceType,
+          referenceId: transaction.referenceId,
+          currency: transaction.currency,
+          occurredAt: transaction.createdAt,
+          metadata: transaction.metadata
+        },
+        {
+          walletOwnerType: entry.walletOwnerType,
+          walletOwnerId: entry.walletOwnerId,
+          walletCurrency: entry.walletCurrency,
+          direction: entry.direction,
+          amount: entry.amount,
+          availableDelta: entry.availableDelta,
+          frozenDelta: entry.frozenDelta
+        }
+      );
+      if (classification.kind === "qualifying_consumption") {
+        await this.ndpExperienceRecorder.recordNdpConsumption(classification, {
+          transactionClient
+        });
+      }
+    }
+  }
 
   public freezeExchangeRequestPublication(
     input: ExchangeRequestFreezeInput,
@@ -1925,6 +1981,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
 
       if (existing) {
+        await this.recordNdpExperienceForAppliedTransaction(existing, transactionClient);
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
@@ -2094,7 +2151,10 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         actualAmount: transactionAmount
       });
 
-      return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+      const persisted =
+        (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+      await this.recordNdpExperienceForAppliedTransaction(persisted, transactionClient);
+      return persisted;
     }, context.transactionClient);
   }
 
@@ -2294,18 +2354,25 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       actualAmount: transactionAmount
     });
 
-    return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+    const persisted =
+      (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+    await this.recordNdpExperienceForAppliedTransaction(
+      persisted,
+      context.transactionClient
+    );
+    return persisted;
   }
 
   private settleRequestCompletion(
     input: BookingLedgerSettlementInput & { customerUserId: number },
     context: LedgerMutationContext
   ): Promise<LedgerTransactionPayload | void> {
-    return this.repository.runInTransaction(async (repository) => {
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
       const idempotencyKey = `booking:${input.bookingOrderId}:complete:settlement`;
       const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
 
       if (existing) {
+        await this.recordNdpExperienceForAppliedTransaction(existing, transactionClient);
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
@@ -2420,7 +2487,10 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         actualAmount: transactionAmount
       });
 
-      return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+      const persisted =
+        (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+      await this.recordNdpExperienceForAppliedTransaction(persisted, transactionClient);
+      return persisted;
     }, context.transactionClient);
   }
 

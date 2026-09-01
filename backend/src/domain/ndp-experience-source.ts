@@ -59,9 +59,9 @@ export type NdpExperienceSourceClassification =
     };
 
 const QUALIFYING_SETTLEMENTS = new Set([
-  "booking_complete_settlement:booking_order",
-  "service_consumption_settlement:service_order",
-  "product_consumption_settlement:product_order"
+  "booking_complete_settlement:booking_order:service",
+  "service_consumption_settlement:service_order:service",
+  "product_consumption_settlement:product_order:product"
 ]);
 
 const REVERSAL_SETTLEMENTS = new Set([
@@ -183,7 +183,11 @@ export const classifyExperienceSource = (
     };
   }
 
-  if (!QUALIFYING_SETTLEMENTS.has(settlementKey)) {
+  const consumptionKind = metadataValue(transaction.metadata, "experienceConsumptionKind");
+  if (
+    typeof consumptionKind !== "string" ||
+    !QUALIFYING_SETTLEMENTS.has(`${settlementKey}:${consumptionKind}`)
+  ) {
     return { kind: "ineligible", reason: "unsupported_settlement" };
   }
   const settledNdp = finalDebitAmount(userEntry);
