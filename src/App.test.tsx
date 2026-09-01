@@ -128,8 +128,14 @@ describe("production route chunk boundaries", () => {
     expect(appSource).toContain(
       'path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)}'
     );
+    expect(appSource).toContain(
+      'import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";'
+    );
+    expect(appSource).toContain(
+      'path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <DashboardMetricDetailPage />)}'
+    );
     expect(appSource).not.toContain('import { AnalyticsPage } from "./pages/admin/AnalyticsPage";');
-    expect(appSource).not.toContain('path="/admin/analytics"');
+    expect(appSource).not.toContain('path="/admin/analytics" element=');
     expect(appSource).not.toContain("<AnalyticsPage />");
   });
 

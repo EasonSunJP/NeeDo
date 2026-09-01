@@ -23,6 +23,7 @@ import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
 import { CRMPage } from "./pages/admin/CRMPage";
 import { DashboardPage } from "./pages/admin/DashboardPage";
+import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";
 import { DataCenterPage } from "./pages/admin/DataCenterPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
@@ -1386,6 +1387,7 @@ export default function App() {
               <Route path="/technician/:view" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
 
               <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
+              <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <DashboardMetricDetailPage />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
               <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />

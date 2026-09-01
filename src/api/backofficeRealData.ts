@@ -52,6 +52,30 @@ export interface AnalyticsMetricSeries {
   points: Array<{ key: string; label: string; value: number | null }>;
 }
 
+export interface AnalyticsDashboardFilter {
+  period: DashboardPeriod;
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  timeZone: "Asia/Tokyo";
+  granularity: DashboardGranularity;
+  city: string | null;
+}
+
+export interface DashboardOverviewPayload {
+  filter: AnalyticsDashboardFilter;
+  operationsFinance: AnalyticsMetricPayload[];
+  commissionMetrics: AnalyticsMetricPayload[];
+  growthMetrics: AnalyticsMetricPayload[];
+}
+
+export interface DashboardMetricDetailPayload {
+  filter: AnalyticsDashboardFilter;
+  metric: AnalyticsMetricPayload;
+  series: AnalyticsMetricSeries[];
+}
+
 export interface DashboardNdpPair {
   ndp: number;
   testNdp: number;
@@ -712,6 +736,228 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+const dashboardPeriods = new Set<DashboardPeriod>([
+  "today",
+  "last7days",
+  "last30days",
+  "week",
+  "month",
+  "year",
+  "custom"
+]);
+const dashboardGranularities = new Set<DashboardGranularity>(["hour", "day", "month"]);
+const analyticsStatuses = new Set<AnalyticsDataStatus>([
+  "ready",
+  "not_connected",
+  "not_available"
+]);
+const analyticsUnits = new Set<AnalyticsMetricPayload["unit"]>([
+  "jpy",
+  "ndp",
+  "people",
+  "count"
+]);
+const analyticsDirections = new Set<AnalyticsComparisonDirection>([
+  "up",
+  "down",
+  "flat",
+  "unavailable"
+]);
+const analyticsMetricGroups = {
+  operationsFinance: ["gross_revenue", "travel_fare", "discount_amount", "consumables_sales"],
+  commissionMetrics: [
+    "dedicated_technician_commission", "part_time_technician_commission", "marketing_commission",
+    "agent_commission", "ndp_income", "affiliate_platform_income", "consumables_profit"
+  ],
+  growthMetrics: [
+    "new_users", "new_paid_members", "technician_onboarding", "agent_onboarding",
+    "franchisee_onboarding", "supplier_onboarding"
+  ]
+} as const;
+const analyticsMetricKeys = new Set<string>(Object.values(analyticsMetricGroups).flat());
+const analyticsMetricUnits: Record<string, AnalyticsMetricPayload["unit"]> = {
+  gross_revenue: "jpy",
+  travel_fare: "jpy",
+  discount_amount: "jpy",
+  consumables_sales: "jpy",
+  dedicated_technician_commission: "jpy",
+  part_time_technician_commission: "jpy",
+  marketing_commission: "ndp",
+  agent_commission: "jpy",
+  ndp_income: "ndp",
+  affiliate_platform_income: "ndp",
+  consumables_profit: "jpy",
+  new_users: "people",
+  new_paid_members: "people",
+  technician_onboarding: "people",
+  agent_onboarding: "people",
+  franchisee_onboarding: "people",
+  supplier_onboarding: "people"
+};
+
+function isExactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actualKeys = Object.keys(value).sort();
+  return actualKeys.length === keys.length && actualKeys.every((key, index) => key === [...keys].sort()[index]);
+}
+
+function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function requireAnalyticsFilter(value: unknown): AnalyticsDashboardFilter {
+  const keys = [
+    "period", "from", "to", "previousFrom", "previousTo", "timeZone", "granularity", "city"
+  ];
+  if (
+    !isExactObject(value, keys) ||
+    !dashboardPeriods.has(value.period as DashboardPeriod) ||
+    !isCalendarDate(value.from) ||
+    !isCalendarDate(value.to) ||
+    !isCalendarDate(value.previousFrom) ||
+    !isCalendarDate(value.previousTo) ||
+    value.timeZone !== "Asia/Tokyo" ||
+    !dashboardGranularities.has(value.granularity as DashboardGranularity) ||
+    !(value.city === null || (
+      typeof value.city === "string" && value.city.trim() === value.city &&
+      value.city.length > 0 && value.city.length <= 100
+    ))
+  ) {
+    throw new Error("error.api");
+  }
+  return value as unknown as AnalyticsDashboardFilter;
+}
+
+function compareMetric(current: number, previous: number) {
+  if (current === previous) return { comparisonPercent: 0, comparisonDirection: "flat" as const };
+  const raw = previous === 0
+    ? current > 0 ? 100 : -100
+    : ((current - previous) / Math.abs(previous)) * 100;
+  const scaledMagnitude = Number((Math.abs(raw) * 100).toPrecision(15));
+  const rounded = Math.sign(raw) * (Math.round(scaledMagnitude) / 100);
+  const comparisonPercent = Object.is(rounded, -0) ? 0 : rounded;
+  return {
+    comparisonPercent,
+    comparisonDirection: comparisonPercent > 0 ? "up" as const : comparisonPercent < 0 ? "down" as const : "flat" as const
+  };
+}
+
+function requireAnalyticsMetric(value: unknown): AnalyticsMetricPayload {
+  const keys = [
+    "metricKey", "currentValue", "previousValue", "comparisonPercent", "comparisonDirection",
+    "unit", "dataStatus", "description", "formula", "detailRoute"
+  ];
+  if (
+    !isExactObject(value, keys) ||
+    typeof value.metricKey !== "string" || !analyticsMetricKeys.has(value.metricKey) ||
+    !analyticsUnits.has(value.unit as AnalyticsMetricPayload["unit"]) ||
+    value.unit !== analyticsMetricUnits[value.metricKey as string] ||
+    !analyticsStatuses.has(value.dataStatus as AnalyticsDataStatus) ||
+    !analyticsDirections.has(value.comparisonDirection as AnalyticsComparisonDirection) ||
+    typeof value.description !== "string" || value.description.trim().length === 0 ||
+    typeof value.formula !== "string" || value.formula.trim().length === 0 ||
+    value.detailRoute !== (
+      value.metricKey === "franchisee_onboarding" || value.metricKey === "supplier_onboarding"
+        ? null
+        : `/admin/analytics/metrics/${value.metricKey}`
+    )
+  ) {
+    throw new Error("error.api");
+  }
+
+  if (value.dataStatus === "ready") {
+    if (!Number.isSafeInteger(value.currentValue) || !Number.isSafeInteger(value.previousValue)) {
+      throw new Error("error.api");
+    }
+    const expected = compareMetric(value.currentValue as number, value.previousValue as number);
+    if (
+      value.comparisonPercent !== expected.comparisonPercent ||
+      value.comparisonDirection !== expected.comparisonDirection
+    ) {
+      throw new Error("error.api");
+    }
+  } else if (
+    value.currentValue !== null || value.previousValue !== null ||
+    value.comparisonPercent !== null || value.comparisonDirection !== "unavailable"
+  ) {
+    throw new Error("error.api");
+  }
+
+  return value as unknown as AnalyticsMetricPayload;
+}
+
+function requireMetricList(value: unknown): AnalyticsMetricPayload[] {
+  if (!Array.isArray(value)) throw new Error("error.api");
+  return value.map(requireAnalyticsMetric);
+}
+
+function requireDashboardOverview(value: unknown): DashboardOverviewPayload {
+  if (!isExactObject(value, ["filter", "operationsFinance", "commissionMetrics", "growthMetrics"])) {
+    throw new Error("error.api");
+  }
+  const payload = {
+    filter: requireAnalyticsFilter(value.filter),
+    operationsFinance: requireMetricList(value.operationsFinance),
+    commissionMetrics: requireMetricList(value.commissionMetrics),
+    growthMetrics: requireMetricList(value.growthMetrics)
+  };
+  for (const groupName of Object.keys(analyticsMetricGroups) as Array<keyof typeof analyticsMetricGroups>) {
+    const expected = analyticsMetricGroups[groupName];
+    const actual = payload[groupName];
+    if (actual.length !== expected.length || actual.some((metric, index) => metric.metricKey !== expected[index])) {
+      throw new Error("error.api");
+    }
+  }
+  const keys = payload.operationsFinance.concat(payload.commissionMetrics, payload.growthMetrics)
+    .map((metric) => metric.metricKey);
+  if (new Set(keys).size !== keys.length) throw new Error("error.api");
+  return payload;
+}
+
+function requireDashboardMetricDetail(value: unknown): DashboardMetricDetailPayload {
+  if (!isExactObject(value, ["filter", "metric", "series"])) throw new Error("error.api");
+  const filter = requireAnalyticsFilter(value.filter);
+  const metric = requireAnalyticsMetric(value.metric);
+  if (!Array.isArray(value.series) || value.series.length > 1) throw new Error("error.api");
+  if (value.series.length === 0) return { filter, metric, series: [] };
+  const seriesValue = value.series[0];
+  if (
+    !isExactObject(seriesValue, ["seriesKey", "label", "unit", "points"]) ||
+    seriesValue.seriesKey !== metric.metricKey ||
+    typeof seriesValue.label !== "string" || seriesValue.label.trim().length === 0 ||
+    seriesValue.unit !== metric.unit ||
+    !Array.isArray(seriesValue.points) || seriesValue.points.length !== 2
+  ) {
+    throw new Error("error.api");
+  }
+  const expectedPointKeys = ["previous", "current"];
+  const expectedValues = [metric.previousValue, metric.currentValue];
+  const points = seriesValue.points.map((point, index) => {
+    if (
+      !isExactObject(point, ["key", "label", "value"]) ||
+      point.key !== expectedPointKeys[index] ||
+      typeof point.label !== "string" || point.label.trim().length === 0 ||
+      point.value !== expectedValues[index] ||
+      !(point.value === null || Number.isSafeInteger(point.value))
+    ) {
+      throw new Error("error.api");
+    }
+    return point as unknown as AnalyticsMetricSeries["points"][number];
+  });
+  return {
+    filter,
+    metric,
+    series: [{
+      seriesKey: seriesValue.seriesKey,
+      label: seriesValue.label,
+      unit: seriesValue.unit as AnalyticsMetricPayload["unit"],
+      points
+    }]
+  };
+}
+
 function requireManageableMerchantShopsPage(
   value: unknown,
   expectedPage: number,
@@ -770,6 +1016,29 @@ export const backofficeRealDataApi = {
       query: serializeDashboardQuery(scope, query),
       ...(options?.signal ? { signal: options.signal } : {})
     });
+  },
+  async dashboardOverview(query: DashboardQuery, options?: { signal?: AbortSignal }) {
+    const payload = await httpClient.request<unknown>("/backoffice/dashboard/overview", {
+      query: serializeDashboardQuery("backoffice", query),
+      ...(options?.signal ? { signal: options.signal } : {})
+    });
+    return requireDashboardOverview(payload);
+  },
+  async dashboardMetricDetail(
+    metricKey: string,
+    query: DashboardQuery,
+    options?: { signal?: AbortSignal }
+  ) {
+    const payload = await httpClient.request<unknown>(
+      `/backoffice/dashboard/metrics/${encodeURIComponent(metricKey)}`,
+      {
+        query: serializeDashboardQuery("backoffice", query),
+        ...(options?.signal ? { signal: options.signal } : {})
+      }
+    );
+    const detail = requireDashboardMetricDetail(payload);
+    if (detail.metric.metricKey !== metricKey) throw new Error("error.api");
+    return detail;
   },
   async manageableMerchantShops(page = 1, pageSize = 20, options?: { signal?: AbortSignal }) {
     if (

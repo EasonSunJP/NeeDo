@@ -6,6 +6,8 @@ import {
   type AnalyticsMetricPayload,
   type AnalyticsMetricSeries,
   type BackofficeDashboardPayload,
+  type DashboardMetricDetailPayload,
+  type DashboardOverviewPayload,
   type DashboardPlatformGlobalNdpPair,
   type DashboardQuery,
   type ManageableMerchantShopPayload
@@ -322,5 +324,225 @@ describe("formal dashboard frontend API contract", () => {
       unit: AnalyticsMetricPayload["unit"];
       points: Array<{ key: string; label: string; value: number | null }>;
     }>();
+  });
+
+  const analyticsFilter = {
+    period: "last7days" as const,
+    from: "2026-08-25",
+    to: "2026-09-01",
+    previousFrom: "2026-08-18",
+    previousTo: "2026-08-25",
+    timeZone: "Asia/Tokyo" as const,
+    granularity: "day" as const,
+    city: "Tokyo"
+  };
+  const readyMetric: AnalyticsMetricPayload = {
+    metricKey: "gross_revenue",
+    currentValue: 1200,
+    previousValue: 1000,
+    comparisonPercent: 20,
+    comparisonDirection: "up",
+    unit: "jpy",
+    dataStatus: "ready",
+    description: "Formal backend description",
+    formula: "completed confirmed orders",
+    detailRoute: "/admin/analytics/metrics/gross_revenue"
+  };
+  const metricForKey = (metricKey: string): AnalyticsMetricPayload => ({
+    ...readyMetric,
+    metricKey,
+    unit: metricKey === "marketing_commission" || metricKey === "ndp_income" || metricKey === "affiliate_platform_income"
+      ? "ndp"
+      : metricKey.includes("onboarding") || metricKey === "new_users" || metricKey === "new_paid_members"
+        ? "people"
+        : "jpy",
+    detailRoute: metricKey === "franchisee_onboarding" || metricKey === "supplier_onboarding"
+      ? null
+      : `/admin/analytics/metrics/${metricKey}`
+  });
+  const analyticsOverview = (grossRevenue = readyMetric): DashboardOverviewPayload => ({
+    filter: analyticsFilter,
+    operationsFinance: [
+      grossRevenue,
+      metricForKey("travel_fare"),
+      metricForKey("discount_amount"),
+      metricForKey("consumables_sales")
+    ],
+    commissionMetrics: [
+      "dedicated_technician_commission",
+      "part_time_technician_commission",
+      "marketing_commission",
+      "agent_commission",
+      "ndp_income",
+      "affiliate_platform_income",
+      "consumables_profit"
+    ].map(metricForKey),
+    growthMetrics: [
+      "new_users",
+      "new_paid_members",
+      "technician_onboarding",
+      "agent_onboarding",
+      "franchisee_onboarding",
+      "supplier_onboarding"
+    ].map(metricForKey)
+  });
+
+  it("loads and strictly projects the formal analytics overview with the serialized dashboard query", async () => {
+    const payload = analyticsOverview();
+    const controller = new AbortController();
+    vi.mocked(httpClient.request).mockResolvedValueOnce(payload);
+
+    await expect(backofficeRealDataApi.dashboardOverview({
+      period: "custom",
+      from: "2026-08-25",
+      to: "2026-09-01",
+      city: "Tokyo"
+    }, { signal: controller.signal })).resolves.toEqual(payload);
+
+    expect(httpClient.request).toHaveBeenCalledWith("/backoffice/dashboard/overview", {
+      query: {
+        period: "custom",
+        from: "2026-08-25",
+        to: "2026-09-01",
+        city: "Tokyo"
+      },
+      signal: controller.signal
+    });
+  });
+
+  it("loads the metric detail without normalizing authoritative null values", async () => {
+    const unavailableMetric: AnalyticsMetricPayload = {
+      ...readyMetric,
+      metricKey: "travel_fare",
+      currentValue: null,
+      previousValue: null,
+      comparisonPercent: null,
+      comparisonDirection: "unavailable",
+      dataStatus: "not_connected",
+      detailRoute: "/admin/analytics/metrics/travel_fare"
+    };
+    const payload: DashboardMetricDetailPayload = {
+      filter: analyticsFilter,
+      metric: unavailableMetric,
+      series: [{
+        seriesKey: "travel_fare",
+        label: "Formal backend series label",
+        unit: "jpy",
+        points: [
+          { key: "previous", label: "previous label", value: null },
+          { key: "current", label: "current label", value: null }
+        ]
+      }]
+    };
+    vi.mocked(httpClient.request).mockResolvedValueOnce(payload);
+
+    await expect(backofficeRealDataApi.dashboardMetricDetail("travel_fare", {
+      period: "last7days",
+      city: "Tokyo"
+    })).resolves.toEqual(payload);
+
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/backoffice/dashboard/metrics/travel_fare",
+      { query: { period: "last7days", city: "Tokyo" } }
+    );
+  });
+
+  it.each([
+    { ...readyMetric, currentValue: null },
+    { ...readyMetric, comparisonPercent: 19 },
+    { ...readyMetric, comparisonDirection: "flat" },
+    { ...readyMetric, dataStatus: "not_available", currentValue: null, previousValue: null },
+    { ...readyMetric, metricKey: "" },
+    { ...readyMetric, currentValue: Number.POSITIVE_INFINITY }
+  ])("rejects incoherent analytics metric payloads", async (metric) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      ...analyticsOverview(metric as AnalyticsMetricPayload)
+    });
+
+    await expect(backofficeRealDataApi.dashboardOverview({ period: "last7days" }))
+      .rejects.toThrow("error.api");
+  });
+
+  it.each([
+    { ...analyticsFilter, timeZone: "UTC" },
+    { ...analyticsFilter, availableCities: ["must not be accepted"] },
+    { ...analyticsFilter, city: 17 },
+    { ...analyticsFilter, from: "not-a-date" }
+  ])("rejects malformed analytics filters", async (filter) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      ...analyticsOverview(),
+      filter
+    });
+
+    await expect(backofficeRealDataApi.dashboardOverview({ period: "last7days" }))
+      .rejects.toThrow("error.api");
+  });
+
+  it("rejects missing or reordered overview metrics instead of inventing cards", async () => {
+    const payload = analyticsOverview();
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ ...payload, growthMetrics: payload.growthMetrics.slice(1) })
+      .mockResolvedValueOnce({
+        ...payload,
+        operationsFinance: [payload.operationsFinance[1], payload.operationsFinance[0], ...payload.operationsFinance.slice(2)]
+      });
+    await expect(backofficeRealDataApi.dashboardOverview({ period: "last7days" }))
+      .rejects.toThrow("error.api");
+    await expect(backofficeRealDataApi.dashboardOverview({ period: "last7days" }))
+      .rejects.toThrow("error.api");
+  });
+
+  it.each([
+    [[{ seriesKey: "gross_revenue", label: "x", unit: "jpy", points: [] }]],
+    [[{
+      seriesKey: "wrong",
+      label: "x",
+      unit: "jpy",
+      points: [
+        { key: "previous", label: "p", value: 1000 },
+        { key: "current", label: "c", value: 1200 }
+      ]
+    }]],
+    [[{
+      seriesKey: "gross_revenue",
+      label: "x",
+      unit: "jpy",
+      points: [
+        { key: "previous", label: "p", value: 1000 },
+        { key: "current", label: "c", value: Number.NaN }
+      ]
+    }]]
+  ])("rejects malformed analytics detail series", async (series) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      filter: analyticsFilter,
+      metric: readyMetric,
+      series
+    });
+
+    await expect(backofficeRealDataApi.dashboardMetricDetail("gross_revenue", {
+      period: "last7days"
+    })).rejects.toThrow("error.api");
+  });
+
+  it("preserves an authoritative empty detail series for the explicit empty state", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      filter: analyticsFilter,
+      metric: readyMetric,
+      series: []
+    });
+    await expect(backofficeRealDataApi.dashboardMetricDetail("gross_revenue", {
+      period: "last7days"
+    })).resolves.toMatchObject({ series: [] });
+  });
+
+  it("rejects a detail projection for a different metric than the requested route key", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      filter: analyticsFilter,
+      metric: readyMetric,
+      series: []
+    });
+    await expect(backofficeRealDataApi.dashboardMetricDetail("travel_fare", {
+      period: "last7days"
+    })).rejects.toThrow("error.api");
   });
 });

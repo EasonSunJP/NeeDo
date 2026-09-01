@@ -44,6 +44,55 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 
 type TranslationMap = Record<string, TranslationEntry>;
 
+const analyticsTask6Translations: TranslationMap = {
+  "运营财务": fourLanguageTranslation("營運財務", "運営財務", "Operations finance", "운영 재무"),
+  "佣金统计": fourLanguageTranslation("佣金統計", "報酬集計", "Commission metrics", "수수료 통계"),
+  "用户与增长": fourLanguageTranslation("使用者與成長", "ユーザーと成長", "Users and growth", "사용자 및 성장"),
+  "营业总额": fourLanguageTranslation("營業總額", "売上総額", "Gross revenue", "총매출"),
+  "车费": fourLanguageTranslation("交通費", "交通費", "Travel fare", "교통비"),
+  "优惠金额": fourLanguageTranslation("優惠金額", "割引額", "Discount amount", "할인 금액"),
+  "消耗品销售总额": fourLanguageTranslation("消耗品銷售總額", "消耗品売上総額", "Consumables sales", "소모품 총매출"),
+  "专属技师佣金": fourLanguageTranslation("專屬技師佣金", "専属スタッフ報酬", "Dedicated technician commission", "전속 스태프 수수료"),
+  "兼职技师佣金": fourLanguageTranslation("兼職技師佣金", "パートスタッフ報酬", "Part-time technician commission", "파트타임 스태프 수수료"),
+  "营销佣金": fourLanguageTranslation("行銷佣金", "マーケティング報酬", "Marketing commission", "마케팅 수수료"),
+  "代理商分佣": fourLanguageTranslation("代理商分佣", "代理店報酬", "Agent commission", "대리점 수수료"),
+  "NDP 收入": fourLanguageTranslation("NDP 收入", "NDP 収入", "NDP income", "NDP 수입"),
+  "联盟营销收益": fourLanguageTranslation("聯盟行銷收益", "アフィリエイト収益", "Affiliate platform income", "제휴 마케팅 수익"),
+  "消耗品销售利润": fourLanguageTranslation("消耗品銷售利潤", "消耗品販売利益", "Consumables profit", "소모품 판매 이익"),
+  "新增用户": fourLanguageTranslation("新增使用者", "新規ユーザー", "New users", "신규 사용자"),
+  "新增付费会员": fourLanguageTranslation("新增付費會員", "新規有料会員", "New paid members", "신규 유료 회원"),
+  "技师入住": fourLanguageTranslation("技師入駐", "スタッフ登録", "Technician onboarding", "스태프 입점"),
+  "代理商入住": fourLanguageTranslation("代理商入駐", "代理店登録", "Agent onboarding", "대리점 입점"),
+  "加盟商入住": fourLanguageTranslation("加盟商入駐", "加盟店登録", "Franchisee onboarding", "가맹점 입점"),
+  "供货商入住": fourLanguageTranslation("供貨商入駐", "仕入先登録", "Supplier onboarding", "공급업체 입점"),
+  "查看详细数据": fourLanguageTranslation("查看詳細資料", "詳細データを表示", "View details", "상세 데이터 보기"),
+  "TEST 功能暂未开放": fourLanguageTranslation("TEST 功能暫未開放", "TEST 機能は準備中です", "TEST feature unavailable", "TEST 기능 준비 중"),
+  "查看指标说明和计算公式": fourLanguageTranslation("查看指標說明和計算公式", "指標の説明と計算式を表示", "View metric description and formula", "지표 설명 및 계산식 보기"),
+  "上一周期": fourLanguageTranslation("上一週期", "前期間", "Previous period", "이전 기간"),
+  "数据已连接": fourLanguageTranslation("資料已連接", "データ接続済み", "Data connected", "데이터 연결됨"),
+  "数据接口尚未连接": fourLanguageTranslation("資料介面尚未連接", "データ連携準備中", "Data not connected", "데이터 미연결"),
+  "数据暂不可用": fourLanguageTranslation("資料暫不可用", "データは利用できません", "Data unavailable", "데이터 사용 불가"),
+  "环比暂不可用": fourLanguageTranslation("環比暫不可用", "前期間比は利用できません", "Comparison unavailable", "기간 대비 사용 불가"),
+  "综合数据概要": fourLanguageTranslation("綜合資料概要", "総合データ概要", "Comprehensive overview", "종합 데이터 개요"),
+  "指标详细数据": fourLanguageTranslation("指標詳細資料", "指標詳細", "Metric details", "지표 상세"),
+  "返回数据大盘": fourLanguageTranslation("返回資料大盤", "データダッシュボードに戻る", "Back to dashboard", "데이터 대시보드로 돌아가기"),
+  "正在加载详细分析": fourLanguageTranslation("正在載入詳細分析", "詳細分析を読み込み中", "Loading detailed analytics", "상세 분석 불러오는 중"),
+  "正在更新详细分析，当前仍显示同一指标的上次结果": fourLanguageTranslation("正在更新詳細分析，目前仍顯示同一指標的上次結果", "詳細分析を更新中です。同じ指標の前回結果を表示しています", "Updating analytics; the last result for this metric remains visible", "상세 분석 업데이트 중이며 같은 지표의 이전 결과를 표시합니다"),
+  "详细分析加载失败": fourLanguageTranslation("詳細分析載入失敗", "詳細分析の読み込みに失敗しました", "Detailed analytics failed to load", "상세 분석을 불러오지 못했습니다"),
+  "重试加载详细分析": fourLanguageTranslation("重試載入詳細分析", "詳細分析を再読み込み", "Retry detailed analytics", "상세 분석 다시 시도"),
+  "当前身份没有查看详细分析的权限": fourLanguageTranslation("目前身分沒有查看詳細分析的權限", "このアカウントには詳細分析を表示する権限がありません", "You do not have permission to view detailed analytics", "현재 계정에는 상세 분석 조회 권한이 없습니다"),
+  "该分析指标或筛选条件无效": fourLanguageTranslation("該分析指標或篩選條件無效", "分析指標または絞り込み条件が無効です", "The metric or filter is invalid", "분석 지표 또는 필터가 올바르지 않습니다"),
+  "详细分析服务暂时不可用，请稍后重试": fourLanguageTranslation("詳細分析服務暫時不可用，請稍後重試", "詳細分析サービスは一時的に利用できません", "Detailed analytics are temporarily unavailable", "상세 분석 서비스를 일시적으로 사용할 수 없습니다"),
+  "详细分析加载失败，请检查网络后重试": fourLanguageTranslation("詳細分析載入失敗，請檢查網路後重試", "ネットワークを確認して詳細分析を再読み込みしてください", "Check your network and retry detailed analytics", "네트워크를 확인한 후 상세 분석을 다시 시도하세요"),
+  "指标概要": fourLanguageTranslation("指標概要", "指標概要", "Metric overview", "지표 개요"),
+  "计算公式": fourLanguageTranslation("計算公式", "計算式", "Formula", "계산식"),
+  "至少选择一个图例以显示图表": fourLanguageTranslation("至少選擇一個圖例以顯示圖表", "グラフを表示するには凡例を1つ以上選択してください", "Select at least one legend item to show the chart", "차트를 표시하려면 범례를 하나 이상 선택하세요"),
+  "隐藏图例": fourLanguageTranslation("隱藏圖例", "系列を非表示", "Hide series", "범례 숨기기"),
+  "显示图例": fourLanguageTranslation("顯示圖例", "系列を表示", "Show series", "범례 표시"),
+  "周期对比趋势": fourLanguageTranslation("週期對比趨勢", "期間比較", "Period comparison", "기간 비교 추이"),
+  "暂无可展示的序列数据": fourLanguageTranslation("暫無可展示的序列資料", "表示できる系列データがありません", "No series data to display", "표시할 시계열 데이터가 없습니다")
+};
+
 export const authTrustGatewayTranslations: TranslationMap = {
   保存密码: {
     "zh-Hant": "儲存密碼",
@@ -16151,7 +16200,7 @@ export function translateText(source: string, language: Language): string {
     return `${leading}${cleanupRuntimeTranslation(dynamicFastestMinutesLabel, language)}${trailing}`;
   }
 
-  const exact = resolveTranslationEntry(translations[core], language);
+  const exact = resolveTranslationEntry(analyticsTask6Translations[core] ?? translations[core], language);
 
   if (exact) {
     return `${leading}${cleanupRuntimeTranslation(exact, language)}${trailing}`;

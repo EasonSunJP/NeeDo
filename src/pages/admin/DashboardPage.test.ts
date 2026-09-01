@@ -1,10 +1,207 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { act, createElement, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "./DashboardPage.tsx?raw";
+import { DashboardPage } from "./DashboardPage";
+import { translateTextForContext } from "../../i18n/translations";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const apiMocks = vi.hoisted(() => ({ dashboard: vi.fn(), dashboardOverview: vi.fn() }));
+vi.mock("../../api/backofficeRealData", () => ({ backofficeRealDataApi: apiMocks }));
+vi.mock("../../components/admin/AdminLayout", () => ({
+  AdminLayout: ({ children }: { children: ReactNode }) => createElement("div", null, children)
+}));
+vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
+vi.mock("../../features/dashboard/DashboardCharts", () => ({
+  DualAxisLineChart: ({ title }: { title: string }) => createElement("div", null, title)
+}));
+
+const filter = {
+  period: "last7days",
+  from: "2026-08-25",
+  to: "2026-09-01",
+  previousFrom: "2026-08-18",
+  previousTo: "2026-08-25",
+  timeZone: "Asia/Tokyo",
+  granularity: "day",
+  city: null,
+  availableCities: ["Tokyo", "Osaka"]
+};
+const comparison = { current: 2, previous: 1, changeRatePercent: 100 };
+const dashboardPayload = {
+  filter,
+  summary: {
+    availableScheduleSlots: comparison,
+    activeTechnicians: comparison,
+    registeredTechnicians: comparison,
+    shopCount: comparison,
+    newCustomers: comparison,
+    pendingOrders: 0,
+    serviceGmvJpy: 0
+  },
+  series: { buckets: [] },
+  finance: {
+    platformNetRevenue: { ndp: 0, testNdp: 0 },
+    frozen: { ndp: 0, testNdp: 0 },
+    userReward: { ndp: 0, testNdp: 0 },
+    walletStock: null,
+    withdrawn: null,
+    shopNdpCost: null
+  },
+  shop: null,
+  membership: null,
+  scope: { kind: "platform", shopPublicId: null }
+};
+const metric = (metricKey: string, detailRoute: string | null = `/admin/analytics/metrics/${metricKey}`) => ({
+  metricKey,
+  currentValue: 0,
+  previousValue: 0,
+  comparisonPercent: 0,
+  comparisonDirection: "flat",
+  unit: "count",
+  dataStatus: "ready",
+  description: `${metricKey} description`,
+  formula: `${metricKey} formula`,
+  detailRoute
+});
+const overviewPayload = {
+  filter: (({ availableCities: _availableCities, ...rest }) => rest)(filter),
+  operationsFinance: [metric("gross_revenue")],
+  commissionMetrics: [metric("ndp_income")],
+  growthMetrics: [
+    metric("new_users"),
+    metric("franchisee_onboarding", null),
+    metric("supplier_onboarding", null)
+  ]
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
+}
 
 describe("operations unified data dashboard", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("commits the dashboard and overview atomically from one query generation", async () => {
+    const dashboardRequest = deferred<typeof dashboardPayload>();
+    const overviewRequest = deferred<typeof overviewPayload>();
+    apiMocks.dashboard.mockReturnValue(dashboardRequest.promise);
+    apiMocks.dashboardOverview.mockReturnValue(overviewRequest.promise);
+
+    act(() => root.render(createElement(MemoryRouter, null, createElement(DashboardPage))));
+    expect(apiMocks.dashboard).toHaveBeenCalledWith("backoffice", { period: "last7days" }, expect.any(Object));
+    expect(apiMocks.dashboardOverview).toHaveBeenCalledWith({ period: "last7days" }, expect.any(Object));
+    expect(apiMocks.dashboard.mock.calls[0][2].signal).toBe(apiMocks.dashboardOverview.mock.calls[0][1].signal);
+
+    await act(async () => { overviewRequest.resolve(overviewPayload); });
+    expect(container.textContent).not.toContain("运营财务");
+    await act(async () => { dashboardRequest.resolve(dashboardPayload); });
+
+    const text = container.textContent ?? "";
+    expect(text.indexOf("运营财务")).toBeLessThan(text.indexOf("佣金统计"));
+    expect(text.indexOf("佣金统计")).toBeLessThan(text.indexOf("用户与增长"));
+    expect(text).toContain("0");
+    expect(text).toContain("TEST 功能暂未开放");
+    expect([...container.querySelectorAll("button")].some((item) => item.textContent?.includes("TEST"))).toBe(false);
+  });
+
+  it("provides complete five-language dashboard analytics chrome", () => {
+    const sources = [
+      "运营财务", "佣金统计", "用户与增长", "营业总额", "车费", "优惠金额",
+      "消耗品销售总额", "专属技师佣金", "兼职技师佣金", "营销佣金", "代理商分佣",
+      "NDP 收入", "联盟营销收益", "消耗品销售利润", "新增付费会员", "技师入住",
+      "代理商入住", "加盟商入住", "供货商入住", "指标详细数据", "正在加载详细分析",
+      "暂无可展示的序列数据"
+    ];
+    for (const sourceText of sources) {
+      for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
+        expect(translateTextForContext(sourceText, language, { portal: "admin" }).trim()).not.toBe("");
+      }
+      expect(translateTextForContext(sourceText, "ja", { portal: "admin" })).not.toBe(sourceText);
+      expect(translateTextForContext(sourceText, "en", { portal: "admin" })).not.toBe(sourceText);
+      expect(translateTextForContext(sourceText, "ko", { portal: "admin" })).not.toBe(sourceText);
+    }
+  });
+
+  it("fails closed on mismatched independently resolved windows and preserves the coherent pair", async () => {
+    apiMocks.dashboard
+      .mockResolvedValueOnce(dashboardPayload)
+      .mockResolvedValueOnce(dashboardPayload);
+    apiMocks.dashboardOverview
+      .mockResolvedValueOnce(overviewPayload)
+      .mockResolvedValueOnce({
+        ...overviewPayload,
+        filter: { ...overviewPayload.filter, from: "2026-08-26" }
+      });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(DashboardPage)));
+    });
+    expect(container.textContent).toContain("运营财务");
+
+    const reset = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "重置")!;
+    await act(async () => { reset.click(); });
+
+    expect(container.textContent).toContain("经营数据加载失败");
+    expect(container.textContent).toContain("运营财务");
+    expect(container.textContent).toContain("以下仍显示上次成功结果");
+  });
+
+  it("aborts and ignores an older paired generation", async () => {
+    const oldDashboard = deferred<typeof dashboardPayload>();
+    const oldOverview = deferred<typeof overviewPayload>();
+    apiMocks.dashboard
+      .mockReturnValueOnce(oldDashboard.promise)
+      .mockResolvedValueOnce(dashboardPayload);
+    apiMocks.dashboardOverview
+      .mockReturnValueOnce(oldOverview.promise)
+      .mockResolvedValueOnce(overviewPayload);
+    act(() => root.render(createElement(MemoryRouter, null, createElement(DashboardPage))));
+    const oldSignal = apiMocks.dashboard.mock.calls[0][2].signal as AbortSignal;
+
+    const reset = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "重置")!;
+    await act(async () => { reset.click(); });
+    expect(oldSignal.aborted).toBe(true);
+    expect(container.textContent).toContain("运营财务");
+
+    await act(async () => {
+      oldDashboard.resolve(dashboardPayload);
+      oldOverview.resolve({
+        ...overviewPayload,
+        operationsFinance: [{
+          ...overviewPayload.operationsFinance[0],
+          currentValue: 999,
+          comparisonPercent: 100,
+          comparisonDirection: "up"
+        }]
+      });
+    });
+    expect(container.textContent).not.toContain("999");
+    expect(container.textContent).toContain("运营财务");
+  });
   it("queries the formal aggregate with the shared date and city filter", () => {
     expect(source).toContain("DashboardFilterBar");
     expect(source).toContain('backofficeRealDataApi.dashboard("backoffice", query, { signal: controller.signal })');
+    expect(source).toContain("backofficeRealDataApi.dashboardOverview(query, { signal: controller.signal })");
     expect(source).toContain("dashboard?.filter.availableCities");
     expect(source).toContain("dashboard.filter.previousFrom");
     expect(source).toContain("dashboard.filter.previousTo");
@@ -68,7 +265,7 @@ describe("operations unified data dashboard", () => {
     expect(source).toContain("const controller = new AbortController()");
     expect(source).toContain("requestId !== requestIdRef.current");
     expect(source).toContain("controller.abort()");
-    expect(source).not.toContain("setDashboard(null)");
+    expect(source).not.toContain("setPair(null)");
     expect(source).toContain('aria-busy={loadStatus === "loading"}');
     expect(source).toContain('loadStatus === "error"');
     expect(source).toContain("dashboard ? (");

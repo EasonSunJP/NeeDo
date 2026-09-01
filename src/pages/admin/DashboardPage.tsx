@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeDashboardPayload,
+  type DashboardOverviewPayload,
   type DashboardQuery
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
@@ -12,10 +13,54 @@ import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { DualAxisLineChart } from "../../features/dashboard/DashboardCharts";
 import { DashboardFilterBar, type DashboardFilterValue } from "../../features/dashboard/DashboardFilterBar";
 import { DashboardMetricCard } from "../../features/dashboard/DashboardMetricCard";
+import { AnalyticsMetricGrid } from "../../features/dashboard/AnalyticsMetricGrid";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
 
 const defaultQuery: DashboardQuery = { period: "last7days" };
+
+type DashboardPair = {
+  dashboard: BackofficeDashboardPayload;
+  overview: DashboardOverviewPayload;
+};
+
+export function analyticsFiltersMatch(
+  left: BackofficeDashboardPayload["filter"],
+  right: DashboardOverviewPayload["filter"]
+) {
+  return left.period === right.period &&
+    left.from === right.from &&
+    left.to === right.to &&
+    left.previousFrom === right.previousFrom &&
+    left.previousTo === right.previousTo &&
+    left.timeZone === right.timeZone &&
+    left.granularity === right.granularity &&
+    left.city === right.city;
+}
+
+const metricTitleSources: Record<string, string> = {
+  gross_revenue: "营业总额",
+  travel_fare: "车费",
+  discount_amount: "优惠金额",
+  consumables_sales: "消耗品销售总额",
+  dedicated_technician_commission: "专属技师佣金",
+  part_time_technician_commission: "兼职技师佣金",
+  marketing_commission: "营销佣金",
+  agent_commission: "代理商分佣",
+  ndp_income: "NDP 收入",
+  affiliate_platform_income: "联盟营销收益",
+  consumables_profit: "消耗品销售利润",
+  new_users: "新增用户",
+  new_paid_members: "新增付费会员",
+  technician_onboarding: "技师入住",
+  agent_onboarding: "代理商入住",
+  franchisee_onboarding: "加盟商入住",
+  supplier_onboarding: "供货商入住"
+};
+
+export function getAnalyticsMetricTitleSource(metricKey: string) {
+  return metricTitleSources[metricKey] ?? metricKey;
+}
 
 function describeDashboardError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -27,9 +72,10 @@ function describeDashboardError(error: unknown) {
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
-  const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
+  const [pair, setPair] = useState<DashboardPair | null>(null);
   const [query, setQuery] = useState<DashboardQuery>(defaultQuery);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
   const [loadError, setLoadError] = useState("");
@@ -43,10 +89,16 @@ export function DashboardPage() {
     setLoadStatus("loading");
     setLoadError("");
 
-    void backofficeRealDataApi.dashboard("backoffice", query, { signal: controller.signal })
-      .then((payload) => {
+    void Promise.all([
+      backofficeRealDataApi.dashboard("backoffice", query, { signal: controller.signal }),
+      backofficeRealDataApi.dashboardOverview(query, { signal: controller.signal })
+    ])
+      .then(([dashboard, overview]) => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
-        setDashboard(payload);
+        if (!analyticsFiltersMatch(dashboard.filter, overview.filter)) {
+          throw new Error("error.dashboard.filter_mismatch");
+        }
+        setPair({ dashboard, overview });
         setLoadStatus("success");
       })
       .catch((error: unknown) => {
@@ -59,6 +111,9 @@ export function DashboardPage() {
       controller.abort();
     };
   }, [query, revision]);
+
+  const dashboard = pair?.dashboard ?? null;
+  const overview = pair?.overview ?? null;
 
   const headlineMetrics = dashboard
     ? [
@@ -249,6 +304,37 @@ export function DashboardPage() {
                 <DashboardMetricCard key={card.title} {...card} />
               ))}
             </section>
+
+            {overview ? (
+              <div className="min-w-0 space-y-5 border-t border-line pt-5">
+                {[
+                  ["运营财务", overview.operationsFinance],
+                  ["佣金统计", overview.commissionMetrics],
+                  ["用户与增长", overview.growthMetrics]
+                ].map(([groupTitle, metrics]) => (
+                  <AnalyticsMetricGrid
+                    detailLabel={t("查看详细数据")}
+                    getDisabledDetailLabel={(metric) =>
+                      metric.metricKey === "franchisee_onboarding" || metric.metricKey === "supplier_onboarding"
+                        ? t("TEST 功能暂未开放")
+                        : undefined}
+                    getInfoLabel={() => t("查看指标说明和计算公式")}
+                    getMetricTitle={(metric) => t(getAnalyticsMetricTitleSource(metric.metricKey))}
+                    groupTitle={t(groupTitle as string)}
+                    key={groupTitle as string}
+                    metrics={metrics as DashboardOverviewPayload["operationsFinance"]}
+                    onNavigate={(route) => navigate(route)}
+                    previousLabel={t("上一周期")}
+                    statusMessages={{
+                      ready: t("数据已连接"),
+                      not_connected: t("数据接口尚未连接"),
+                      not_available: t("数据暂不可用")
+                    }}
+                    unavailableComparisonLabel={t("环比暂不可用")}
+                  />
+                ))}
+              </div>
+            ) : null}
           </>
         ) : null}
       </div>
