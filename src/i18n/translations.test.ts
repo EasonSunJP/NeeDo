@@ -1272,22 +1272,4 @@ describe("translations", () => {
     expect(translateText("帮助与反馈", "ko")).toBe("도움말 센터");
   });
 
-  it("localizes formal technician contact-card empty states in all App languages", () => {
-    const keys = [
-      "未设置接单预算",
-      "未设置支付方式",
-      "暂无特殊标签",
-      "暂无标签",
-      "暂无服务信息",
-      "分钟（含税）",
-    ];
-
-    for (const key of keys) {
-      for (const { code } of languages) {
-        const value = translateText(key, code);
-        expect(value.trim().length, `${key}:${code}`).toBeGreaterThan(0);
-        if (code !== "zh") expect(value, `${key}:${code}`).not.toBe(key);
-      }
-    }
-  });
 });

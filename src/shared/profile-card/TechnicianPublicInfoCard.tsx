@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import type { Language } from "../../i18n/translations";
 import {
   getServiceReviewStampVisual,
   serviceReviewSpecialTags,
@@ -23,6 +25,24 @@ const paymentMethodLabels: Record<ServicePaymentMethod, string> = {
   wechatpay: "WeChat Pay",
   alipay: "Alipay"
 };
+
+const formalContactCardTranslations = {
+  "未设置接单预算": { "zh-Hant": "未設定接單預算", ja: "受付予算は未設定です", en: "Booking budget not set", ko: "접수 예산이 설정되지 않았습니다" },
+  "未设置支付方式": { "zh-Hant": "未設定付款方式", ja: "支払い方法は未設定です", en: "Payment methods not set", ko: "결제 수단이 설정되지 않았습니다" },
+  "暂无特殊标签": { "zh-Hant": "暫無特殊標籤", ja: "特別タグはありません", en: "No special tags", ko: "특수 태그가 없습니다" },
+  "暂无标签": { "zh-Hant": "暫無標籤", ja: "タグがありません", en: "No tags", ko: "태그가 없습니다" },
+  "暂无服务信息": { "zh-Hant": "暫無服務資訊", ja: "サービス情報はありません", en: "No service information", ko: "서비스 정보가 없습니다" },
+  "分钟（含税）": { "zh-Hant": "分鐘（含稅）", ja: "分（税込）", en: "minutes (tax included)", ko: "분(세금 포함)" }
+} as const;
+
+export function translateTechnicianContactCardText(
+  source: keyof typeof formalContactCardTranslations,
+  language: Language,
+) {
+  return language === "zh"
+    ? source
+    : formalContactCardTranslations[source][language];
+}
 
 export type TechnicianPublicInfoCardThemeScope = "user" | "merchant" | "technician";
 
@@ -148,6 +168,9 @@ export function TechnicianPublicInfoCard({
   themeScope?: TechnicianPublicInfoCardThemeScope;
 }) {
   const surface = publicInfoCardSurface;
+  const { language } = useOptionalI18n();
+  const tf = (source: keyof typeof formalContactCardTranslations) =>
+    translateTechnicianContactCardText(source, language);
   const themeStyle = getTechnicianPublicInfoCardThemeStyle();
   const displayName = technician.nickname?.trim() || technician.name;
   const introductionText = technician.bio?.trim() || "这个技师暂时还没有补充介绍。";
@@ -265,7 +288,7 @@ export function TechnicianPublicInfoCard({
               <p className={cn("text-xs font-bold", surface.label)}>接单预算</p>
               <p className={cn("mt-2 text-sm font-bold leading-6", surface.muted)}>
                 {details.bidBudgetMinJpy === null && details.bidBudgetMaxJpy === null
-                  ? "未设置接单预算"
+                  ? tf("未设置接单预算")
                   : `${details.bidBudgetMinJpy === null ? "—" : formatJpy(details.bidBudgetMinJpy)} - ${details.bidBudgetMaxJpy === null ? "—" : formatJpy(details.bidBudgetMaxJpy)}`}
               </p>
             </div>
@@ -275,7 +298,7 @@ export function TechnicianPublicInfoCard({
               <p className={cn("mt-2 text-sm font-bold leading-6", surface.muted)}>
                 {details.paymentMethods.length > 0
                   ? formatPaymentMethodLabels(details.paymentMethods)
-                  : "未设置支付方式"}
+                  : tf("未设置支付方式")}
               </p>
             </div>
           </>
@@ -293,7 +316,7 @@ export function TechnicianPublicInfoCard({
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {details.specialTags.length > 0 ? details.specialTags.map((tag) => (
                   <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", surface.chip)} key={tag}>{tag}</span>
-                )) : <span className={cn("text-sm font-bold", surface.muted)}>暂无特殊标签</span>}
+                )) : <span className={cn("text-sm font-bold", surface.muted)}>{tf("暂无特殊标签")}</span>}
               </div>
             </div>
 
@@ -302,7 +325,7 @@ export function TechnicianPublicInfoCard({
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {details.profileTags.length > 0 ? details.profileTags.map((tag) => (
                   <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", surface.chip)} key={tag}>{tag}</span>
-                )) : <span className={cn("text-sm font-bold", surface.muted)}>暂无标签</span>}
+                )) : <span className={cn("text-sm font-bold", surface.muted)}>{tf("暂无标签")}</span>}
               </div>
             </div>
 
@@ -314,12 +337,12 @@ export function TechnicianPublicInfoCard({
                     <article className={cn("rounded-[16px] border p-3", surface.metric)} key={service.id}>
                       <strong className="block text-sm">{service.name}</strong>
                       <p className={cn("mt-1 text-xs font-bold", surface.muted)}>
-                        {formatJpy(service.priceAmount)} / {service.durationMinutes} 分钟（含税）
+                        {formatJpy(service.priceAmount)} / {service.durationMinutes} {tf("分钟（含税）")}
                       </p>
                     </article>
                   ))}
                 </div>
-              ) : <p className={cn("mt-2 text-sm font-bold", surface.muted)}>暂无服务信息</p>}
+              ) : <p className={cn("mt-2 text-sm font-bold", surface.muted)}>{tf("暂无服务信息")}</p>}
             </div>
           </>
         ) : null}

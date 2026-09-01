@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import type { Technician } from "../../types/domain";
-import { TechnicianPublicInfoCard } from "./TechnicianPublicInfoCard";
+import {
+  TechnicianPublicInfoCard,
+  translateTechnicianContactCardText,
+} from "./TechnicianPublicInfoCard";
 import type { TechnicianFormalContactCardData } from "./types";
 
 const technician: Technician = {
@@ -74,6 +77,26 @@ function render(formal?: TechnicianFormalContactCardData) {
 }
 
 describe("TechnicianPublicInfoCard formal contact data", () => {
+  it("localizes contact-only empty states in all five App languages", () => {
+    const keys = [
+      "未设置接单预算",
+      "未设置支付方式",
+      "暂无特殊标签",
+      "暂无标签",
+      "暂无服务信息",
+      "分钟（含税）",
+    ] as const;
+    const languages = ["zh", "zh-Hant", "ja", "en", "ko"] as const;
+
+    for (const key of keys) {
+      for (const language of languages) {
+        const value = translateTechnicianContactCardText(key, language);
+        expect(value.trim().length, `${key}:${language}`).toBeGreaterThan(0);
+        if (language !== "zh") expect(value, `${key}:${language}`).not.toBe(key);
+      }
+    }
+  });
+
   it("renders formal completed orders, rating, and acceptance rate in the metric row", () => {
     const markup = render(formalData);
 
