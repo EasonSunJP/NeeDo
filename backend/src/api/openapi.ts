@@ -539,34 +539,37 @@ const ndpExchangeRateErrorResponses = {
   "400": jsonErrorResponse("40001 error.validation — strict request validation failed"),
   "401": jsonErrorResponse("40105 error.auth.token_invalid — missing or invalid access token"),
   "403": jsonErrorResponse(
-    "40301 error.forbidden or 40305 error.identity.forbidden — denied permission or platform scope"
+    "40301 error.forbidden — missing required permission; 40305 error.identity.forbidden — authenticated identity is not global or platform scoped"
   ),
   "409": jsonErrorResponse(
-    "40963 error.ndp_exchange_rate.conflict or 40961 error.idempotency.key_reused — version, chronology, race, uniqueness, or idempotency conflict"
+    "40963 error.ndp_exchange_rate.conflict — expected version, chronology, race, or unique future-rate constraint failed; 40961 error.idempotency.key_reused — the key's stored publication is not equivalent"
   )
 };
 const formalOrderCommonErrorResponses = {
   "400": jsonErrorResponse("40001 error.validation — strict request validation failed"),
   "401": jsonErrorResponse("40105 error.auth.token_invalid — missing, expired, or invalid bearer token"),
-  "403": jsonErrorResponse(
-    "40301 error.forbidden or error.auth.identity_forbidden — missing permission or authenticated actor identity mismatch"
-  ),
+  "403": jsonErrorResponse("40301 error.forbidden — missing required permission"),
   "404": jsonErrorResponse(
     "40401 error.order.not_found — the order or participant is deliberately hidden from this actor"
   )
 };
+const fulfillmentForbiddenResponse = jsonErrorResponse(
+  "40301 error.forbidden — missing permission; 40301 error.auth.identity_forbidden — requested actor does not match the authenticated identity"
+);
 const fulfillmentConflictResponse = jsonErrorResponse(
-  "40906 error.order.invalid_transition or error.order.unresolved_add_on; 40961 error.idempotency.key_reused"
+  "40906 error.order.invalid_transition — state transition is invalid, including unresolved add-ons; 40961 error.idempotency.key_reused — the key's stored command is not equivalent"
 );
 const checkoutConflictResponse = jsonErrorResponse(
-  "40907 error.wallet.insufficient_balance; 40961 error.idempotency.key_reused; 40964 error.order.checkout_invalid_state; 40965 error.order.checkout_invalid_snapshot"
+  "40961 error.idempotency.key_reused — the key's stored command is not equivalent; 40964 error.order.checkout.invalid_state — checkout state rejects the command; 40965 error.order.checkout.invalid_snapshot — stored checkout evidence is inconsistent"
+);
+const checkoutNdpConflictResponse = jsonErrorResponse(
+  "40907 error.wallet.insufficient_available — the customer NDP wallet cannot cover payableNdp; 40961 error.idempotency.key_reused — the key's stored command is not equivalent; 40964 error.order.checkout.invalid_state — checkout state rejects payment; 40965 error.order.checkout.invalid_snapshot — stored checkout evidence is inconsistent"
 );
 const reviewConflictResponse = jsonErrorResponse(
-  "40906 error.order.review_requires_completion; 40961 error.order.review_already_submitted or error.idempotency.key_reused; 40965 error.order.review_invalid_settlement"
+  "40906 error.order.review_requires_completion — the order is not completed; 40961 error.order.review_already_submitted — this reviewer already submitted the directional review; 40961 error.idempotency.key_reused — the key's stored review is not equivalent; 40965 error.order.review_invalid_settlement — formal checkout settlement evidence is missing or inconsistent"
 );
-const checkoutDependencyResponse = jsonErrorResponse(
-  "50301 error.dependency.unavailable or error.order.checkout_rate_required — required rate or settlement dependency unavailable"
-);
+const dependencyUnavailableResponse = (condition: string) =>
+  jsonErrorResponse(`50301 error.dependency_unavailable — ${condition}`);
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -1360,6 +1363,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     schemas: {
       ...shopMembershipCardPlanOpenApiSchemas,
+      TrimmedVisibleIdempotencyKey: {
+        type: "string",
+        minLength: 16,
+        maxLength: 160,
+        "x-normalization": "trim",
+        "x-requires-visible-code-point": true,
+        description:
+          "The server trims leading and trailing whitespace before applying the 16–160 length bound, then requires at least one Unicode letter, number, punctuation, or symbol. Whitespace-only input is invalid and 16 spaces do not satisfy the minimum."
+      },
+      TrimmedVisibleReason500: {
+        type: "string",
+        minLength: 1,
+        maxLength: 500,
+        "x-normalization": "trim",
+        "x-requires-visible-code-point": true,
+        description:
+          "The server trims the reason, limits it to 500 Unicode code points, and rejects empty or whitespace-only input without a visible letter, number, punctuation, or symbol."
+      },
+      TrimmedVisibleOtherMethodCode: {
+        type: "string",
+        minLength: 1,
+        maxLength: 40,
+        "x-normalization": "trim",
+        "x-requires-visible-code-point": true,
+        description:
+          "The server trims this code and rejects empty or whitespace-only input without a visible Unicode code point."
+      },
+      TrimmedVisibleOtherMethodLabel: {
+        type: "string",
+        minLength: 1,
+        maxLength: 80,
+        "x-normalization": "trim",
+        "x-requires-visible-code-point": true,
+        description:
+          "The server trims this label and rejects empty or whitespace-only input without a visible Unicode code point."
+      },
       DashboardPeriod: {
         type: "string",
         enum: ["today", "last7days", "last30days", "week", "month", "year", "custom"],
@@ -6490,8 +6529,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           jpyUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           expectedVersion: { type: "integer", minimum: 0, maximum: safeIntegerMaximum - 1 },
           effectiveFrom: { type: "string", format: "date-time" },
-          reason: { type: "string", minLength: 1, maxLength: 500 },
-          idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+          reason: { $ref: "#/components/schemas/TrimmedVisibleReason500" },
+          idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
         },
         description:
           "Publishes the next global rate version with optimistic concurrency and a request-only idempotency key."
@@ -11798,10 +11837,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     properties: {
                       actor: { type: "string", enum: ["customer"] },
                       idempotencyKey: {
-                        type: "string",
-                        minLength: 16,
-                        maxLength: 160,
-                        description: "Visible trimmed request key"
+                        $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
                       }
                     }
                   },
@@ -11813,10 +11849,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       actor: { type: "string", enum: ["technician"] },
                       verificationCode: { type: "string", pattern: "^[0-9]{6}$" },
                       idempotencyKey: {
-                        type: "string",
-                        minLength: 16,
-                        maxLength: 160,
-                        description: "Visible trimmed request key"
+                        $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
                       }
                     }
                   }
@@ -11832,8 +11865,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...formalOrderCommonErrorResponses,
           "400": jsonErrorResponse(
-            "40001 error.validation or 40108 error.order.verification_code_invalid"
+            "40001 error.validation — strict request validation failed; 40108 error.order.verification_code_invalid — the assigned technician supplied an invalid service verification code"
           ),
+          "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse
         }
       }
@@ -11852,10 +11886,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             serviceId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
             idempotencyKey: {
-              type: "string",
-              minLength: 16,
-              maxLength: 160,
-              description: "Visible trimmed request key"
+              $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
             }
           },
           ["serviceId", "idempotencyKey"]
@@ -11866,8 +11897,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...formalOrderCommonErrorResponses,
           "400": jsonErrorResponse(
-            "40001 error.validation or error.order.add_on_service_invalid"
+            "40001 error.validation — strict request validation failed; 40001 error.order.add_on_service_invalid — service is not an eligible published same-shop add-on"
           ),
+          "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse
         }
       }
@@ -11880,7 +11912,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:add-on:write",
         parameters: [
-          idPathParameter(),
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
+          },
           {
             name: "addOnId",
             in: "path",
@@ -11890,7 +11927,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         requestBody: authJsonBody(
           {
-            idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
           },
           ["idempotencyKey"]
         ),
@@ -11899,6 +11936,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/BookingOrder"
           }),
           ...formalOrderCommonErrorResponses,
+          "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse
         }
       }
@@ -11911,7 +11949,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:add-on:write",
         parameters: [
-          idPathParameter(),
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
+          },
           {
             name: "addOnId",
             in: "path",
@@ -11921,7 +11964,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         requestBody: authJsonBody(
           {
-            idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
           },
           ["idempotencyKey"]
         ),
@@ -11930,6 +11973,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/BookingOrder"
           }),
           ...formalOrderCommonErrorResponses,
+          "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse
         }
       }
@@ -11945,13 +11989,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [idPathParameter()],
         requestBody: authJsonBody(
           {
-            reason: {
-              type: "string",
-              minLength: 1,
-              maxLength: 500,
-              description: "Visible trimmed reason, limited to 500 Unicode code points"
-            },
-            idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+            reason: { $ref: "#/components/schemas/TrimmedVisibleReason500" },
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
           },
           ["reason", "idempotencyKey"]
         ),
@@ -11960,6 +11999,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/BookingOrder"
           }),
           ...formalOrderCommonErrorResponses,
+          "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse
         }
       }
@@ -11993,6 +12033,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     items: {
                       type: "string",
                       maxLength: 40,
+                      "x-normalization": "NFKC+trim",
+                      "x-requires-visible-code-point": true,
                       description: "NFKC-normalized visible text; maximum 40 Unicode code points"
                     }
                   },
@@ -12001,12 +12043,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       {
                         type: "string",
                         maxLength: 1000,
+                        "x-normalization": "NFKC+trim",
+                        "x-requires-visible-code-point": true,
                         description: "NFKC-normalized visible text; maximum 1000 Unicode code points"
                       },
                       { type: "null" }
                     ]
                   },
-                  idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                  idempotencyKey: {
+                    $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
+                  }
                 }
               }
             }
@@ -12017,7 +12063,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/OrderReviewMutationResult"
           }),
           ...formalOrderCommonErrorResponses,
-          "409": reviewConflictResponse
+          "403": fulfillmentForbiddenResponse,
+          "409": reviewConflictResponse,
+          "503": dependencyUnavailableResponse("the formal review audit dependency is unavailable")
         }
       }
     },
@@ -12033,7 +12081,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": jsonDataResponse("Own review or null", {
             $ref: "#/components/schemas/OrderReviewMineResult"
           }),
-          ...formalOrderCommonErrorResponses
+          ...formalOrderCommonErrorResponses,
+          "403": fulfillmentForbiddenResponse
         }
       }
     },
@@ -12050,10 +12099,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": jsonDataResponse("Checkout projection", { $ref: "#/components/schemas/OrderCheckout" }),
           ...formalOrderCommonErrorResponses,
           "404": jsonErrorResponse(
-            "40401 error.order.not_found or 40418 error.ndp_exchange_rate.not_found — participant is hidden or no effective rate exists"
+            "40401 error.order.not_found — the order or participant is deliberately hidden from this actor; 40418 error.ndp_exchange_rate.not_found — no exchange rate is effective at checkout creation time"
           ),
           "409": checkoutConflictResponse,
-          "503": checkoutDependencyResponse
+          "503": dependencyUnavailableResponse(
+            "checkout requires an exchange rate but the NDP exchange-rate dependency is unavailable"
+          )
         }
       }
     },
@@ -12077,7 +12128,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     required: ["method", "idempotencyKey"],
                     properties: {
                       method: { type: "string", enum: ["cash"] },
-                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                      idempotencyKey: {
+                        $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
+                      }
                     }
                   },
                   {
@@ -12086,7 +12139,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     required: ["method", "idempotencyKey"],
                     properties: {
                       method: { type: "string", enum: ["ndp"] },
-                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                      idempotencyKey: {
+                        $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
+                      }
                     }
                   },
                   {
@@ -12101,18 +12156,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     properties: {
                       method: { type: "string", enum: ["other"] },
                       otherMethodCode: {
-                        type: "string",
-                        minLength: 1,
-                        maxLength: 40,
-                        description: "Visible trimmed text"
+                        $ref: "#/components/schemas/TrimmedVisibleOtherMethodCode"
                       },
                       otherMethodLabel: {
-                        type: "string",
-                        minLength: 1,
-                        maxLength: 80,
-                        description: "Visible trimmed text"
+                        $ref: "#/components/schemas/TrimmedVisibleOtherMethodLabel"
                       },
-                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                      idempotencyKey: {
+                        $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
+                      }
                     }
                   }
                 ],
@@ -12138,17 +12189,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:checkout:ndp:pay",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
-        requestBody: authJsonBody({ idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["idempotencyKey"]),
+        requestBody: authJsonBody(
+          {
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
+          },
+          ["idempotencyKey"]
+        ),
         responses: {
           "200": jsonDataResponse("Completed NDP checkout", {
             $ref: "#/components/schemas/OrderCheckout"
           }),
           ...formalOrderCommonErrorResponses,
-          "404": jsonErrorResponse(
-            "40401 error.order.not_found or 40418 error.ndp_exchange_rate.not_found"
-          ),
-          "409": checkoutConflictResponse,
-          "503": checkoutDependencyResponse
+          "409": checkoutNdpConflictResponse,
+          "503": dependencyUnavailableResponse(
+            "the checkout ledger or booking-settlement dependency is unavailable"
+          )
         }
       }
     },
@@ -12160,14 +12215,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:checkout:receipt:confirm",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
-        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 }, idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["reason", "idempotencyKey"]),
+        requestBody: authJsonBody(
+          {
+            reason: { $ref: "#/components/schemas/TrimmedVisibleReason500" },
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
+          },
+          ["reason", "idempotencyKey"]
+        ),
         responses: {
           "200": jsonDataResponse("Completed receipt checkout", {
             $ref: "#/components/schemas/OrderCheckout"
           }),
           ...formalOrderCommonErrorResponses,
           "409": checkoutConflictResponse,
-          "503": checkoutDependencyResponse
+          "503": dependencyUnavailableResponse(
+            "the checkout ledger, affiliate, or booking-settlement dependency is unavailable"
+          )
         }
       }
     },
@@ -12179,14 +12242,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:order:checkout:receipt-override",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
-        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 }, idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["reason", "idempotencyKey"]),
+        requestBody: authJsonBody(
+          {
+            reason: { $ref: "#/components/schemas/TrimmedVisibleReason500" },
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
+          },
+          ["reason", "idempotencyKey"]
+        ),
         responses: {
           "200": jsonDataResponse("Completed operations override", {
             $ref: "#/components/schemas/OrderCheckout"
           }),
           ...formalOrderCommonErrorResponses,
           "409": checkoutConflictResponse,
-          "503": checkoutDependencyResponse
+          "503": dependencyUnavailableResponse(
+            "the operations audit, checkout ledger, affiliate, or booking-settlement dependency is unavailable"
+          )
         }
       }
     },
