@@ -189,6 +189,7 @@ enum LedgerTransactionType {
   EXCHANGE_REQUEST_PUBLICATION_CAPTURE @map("exchange_request_publication_capture")
   EXCHANGE_REQUEST_PUBLICATION_RELEASE @map("exchange_request_publication_release")
   SHOP_MEMBERSHIP_REWARD_SETTLEMENT    @map("shop_membership_reward_settlement")
+  SHOP_MEMBERSHIP_REWARD_REVERSAL      @map("shop_membership_reward_reversal")
 
   @@map("ledger_transaction_type")
 }
@@ -665,6 +666,20 @@ enum ShopMembershipCardRewardStatus {
   @@map("shop_membership_card_reward_status")
 }
 
+enum ShopMembershipCardRefundStatus {
+  APPLIED @map("applied")
+
+  @@map("shop_membership_card_refund_status")
+}
+
+enum ShopMembershipRewardReversalMode {
+  NONE              @map("none")
+  CANCELLED_PENDING @map("cancelled_pending")
+  LEDGER_REVERSED   @map("ledger_reversed")
+
+  @@map("shop_membership_reward_reversal_mode")
+}
+
 enum MembershipRewardFeePolicyStatus {
   ACTIVE     @map("active")
   SUPERSEDED @map("superseded")
@@ -861,6 +876,8 @@ model User {
   createdShopMembershipCardTopUps         ShopMembershipCardTopUp[]             @relation("ShopMembershipCardTopUpCreatedBy")
   redeemedShopMembershipCards             ShopMembershipCardRedemption[]        @relation("ShopMembershipCardRedemptionRedeemedBy")
   shopMembershipCardRedemptions           ShopMembershipCardRedemption[]        @relation("ShopMembershipCardRedemptionCustomer")
+  refundedShopMembershipCardRedemptions   ShopMembershipCardRedemptionRefund[]  @relation("ShopMembershipCardRedemptionRefundedBy")
+  shopMembershipCardRedemptionRefunds     ShopMembershipCardRedemptionRefund[]  @relation("ShopMembershipCardRedemptionRefundCustomer")
   createdMembershipRewardFeePolicies      MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyCreatedBy")
   updatedMembershipRewardFeePolicies      MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyUpdatedBy")
   ledgerTransactions                      LedgerTransaction[]                   @relation("LedgerTransactionActor")
@@ -1097,6 +1114,7 @@ model Shop {
   membershipCardAdjustments  ShopMembershipCardAdjustmentRequest[]
   membershipCardTopUps       ShopMembershipCardTopUp[]
   membershipCardRedemptions  ShopMembershipCardRedemption[]
+  membershipCardRefunds      ShopMembershipCardRedemptionRefund[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -1718,6 +1736,7 @@ model ShopMembershipCard {
   adjustments ShopMembershipCardAdjustmentRequest[]
   topUps      ShopMembershipCardTopUp[]
   redemptions ShopMembershipCardRedemption[]
+  refunds     ShopMembershipCardRedemptionRefund[]
 
   @@index([membershipId, status, deletedAt], map: "shop_membership_cards_membership_status_idx")
   @@index([planId, deletedAt], map: "shop_membership_cards_plan_idx")
@@ -1849,16 +1868,17 @@ model ShopMembershipCardRedemption {
   updatedAt                 DateTime                           @updatedAt @map("updated_at")
   deletedAt                 DateTime?                          @map("deleted_at")
 
-  card              ShopMembershipCard            @relation(fields: [cardId], references: [id], onDelete: Restrict)
-  shop              Shop                          @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  customer          User                          @relation("ShopMembershipCardRedemptionCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
-  bookingOrder      BookingOrder                  @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
-  planVersion       ShopMembershipCardPlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
-  redeemedBy        User                          @relation("ShopMembershipCardRedemptionRedeemedBy", fields: [redeemedById], references: [id], onDelete: Restrict)
-  shopWallet        Wallet?                       @relation("ShopMembershipRedemptionShopWallet", fields: [shopWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  customerWallet    Wallet?                       @relation("ShopMembershipRedemptionCustomerWallet", fields: [customerWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  platformWallet    Wallet?                       @relation("ShopMembershipRedemptionPlatformWallet", fields: [platformWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  ledgerTransaction LedgerTransaction?            @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  card              ShopMembershipCard                  @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  shop              Shop                                @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  customer          User                                @relation("ShopMembershipCardRedemptionCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  bookingOrder      BookingOrder                        @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  planVersion       ShopMembershipCardPlanVersion       @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+  redeemedBy        User                                @relation("ShopMembershipCardRedemptionRedeemedBy", fields: [redeemedById], references: [id], onDelete: Restrict)
+  shopWallet        Wallet?                             @relation("ShopMembershipRedemptionShopWallet", fields: [shopWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customerWallet    Wallet?                             @relation("ShopMembershipRedemptionCustomerWallet", fields: [customerWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  platformWallet    Wallet?                             @relation("ShopMembershipRedemptionPlatformWallet", fields: [platformWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  ledgerTransaction LedgerTransaction?                  @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  refund            ShopMembershipCardRedemptionRefund?
 
   @@index([cardId, redeemedAt, deletedAt], map: "shop_membership_card_redemptions_card_redeemed_idx")
   @@index([shopId, redeemedAt, deletedAt], map: "shop_membership_card_redemptions_shop_redeemed_idx")
@@ -1872,6 +1892,68 @@ model ShopMembershipCardRedemption {
   @@index([status, redeemedAt, deletedAt], map: "shop_membership_card_redemptions_status_idx")
   @@index([deletedAt], map: "shop_membership_card_redemptions_deleted_idx")
   @@map("shop_membership_card_redemptions")
+}
+
+model ShopMembershipCardRedemptionRefund {
+  id                          Int                                @id @default(autoincrement())
+  publicId                    String                             @unique @default(uuid()) @map("public_id") @db.Char(36)
+  redemptionId                Int                                @unique(map: "shop_membership_card_redemption_refunds_redemption_id_key") @map("redemption_id")
+  cardId                      Int                                @map("card_id")
+  shopId                      Int                                @map("shop_id")
+  bookingOrderId              Int                                @unique(map: "shop_membership_card_redemption_refunds_booking_order_id_key") @map("booking_order_id")
+  customerUserId              Int                                @map("customer_user_id")
+  refundedById                Int                                @map("refunded_by_id")
+  reason                      String                             @db.VarChar(500)
+  orderPaymentRefundedAt      DateTime                           @map("order_payment_refunded_at")
+  orderPaymentRefundReference String?                            @map("order_payment_refund_reference") @db.VarChar(120)
+  redemptionStatusBefore      ShopMembershipCardRedemptionStatus @map("redemption_status_before")
+  rewardStatusBefore          ShopMembershipCardRewardStatus     @map("reward_status_before")
+  restoredPrincipalJpy        Int                                @default(0) @map("restored_principal_jpy")
+  restoredUses                Int                                @default(0) @map("restored_uses")
+  principalBalanceBeforeJpy   Int?                               @map("principal_balance_before_jpy")
+  principalBalanceAfterJpy    Int?                               @map("principal_balance_after_jpy")
+  remainingUsesBefore         Int?                               @map("remaining_uses_before")
+  remainingUsesAfter          Int?                               @map("remaining_uses_after")
+  cardLockVersionBefore       Int                                @map("card_lock_version_before")
+  reversalMode                ShopMembershipRewardReversalMode   @map("reversal_mode")
+  customerRewardReversedNdp   Int                                @default(0) @map("customer_reward_reversed_ndp")
+  platformFeeReversedNdp      Int                                @default(0) @map("platform_fee_reversed_ndp")
+  totalShopCreditNdp          Int                                @default(0) @map("total_shop_credit_ndp")
+  shopWalletId                Int?                               @map("shop_wallet_id")
+  customerWalletId            Int?                               @map("customer_wallet_id")
+  platformWalletId            Int?                               @map("platform_wallet_id")
+  customerBalanceBeforeNdp    Int?                               @map("customer_balance_before_ndp")
+  customerBalanceAfterNdp     Int?                               @map("customer_balance_after_ndp")
+  reversalLedgerTransactionId Int?                               @unique(map: "shop_membership_card_refund_reversal_ledger_tx_key") @map("reversal_ledger_transaction_id")
+  status                      ShopMembershipCardRefundStatus     @default(APPLIED)
+  refundedAt                  DateTime                           @default(now()) @map("refunded_at")
+  idempotencyKey              String                             @unique(map: "shop_membership_card_redemption_refunds_idempotency_key") @map("idempotency_key") @db.VarChar(160)
+  requestFingerprint          String                             @map("request_fingerprint") @db.Char(64)
+  createdAt                   DateTime                           @default(now()) @map("created_at")
+  updatedAt                   DateTime                           @updatedAt @map("updated_at")
+  deletedAt                   DateTime?                          @map("deleted_at")
+
+  redemption                ShopMembershipCardRedemption @relation(fields: [redemptionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  card                      ShopMembershipCard           @relation(fields: [cardId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shop                      Shop                         @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingOrder              BookingOrder                 @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customer                  User                         @relation("ShopMembershipCardRedemptionRefundCustomer", fields: [customerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  refundedBy                User                         @relation("ShopMembershipCardRedemptionRefundedBy", fields: [refundedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shopWallet                Wallet?                      @relation("ShopMembershipRefundShopWallet", fields: [shopWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customerWallet            Wallet?                      @relation("ShopMembershipRefundCustomerWallet", fields: [customerWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  platformWallet            Wallet?                      @relation("ShopMembershipRefundPlatformWallet", fields: [platformWalletId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversalLedgerTransaction LedgerTransaction?           @relation(fields: [reversalLedgerTransactionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([cardId, refundedAt, deletedAt], map: "shop_membership_card_redemption_refunds_card_idx")
+  @@index([shopId, refundedAt, deletedAt], map: "shop_membership_card_redemption_refunds_shop_idx")
+  @@index([customerUserId, refundedAt, deletedAt], map: "shop_membership_card_redemption_refunds_customer_idx")
+  @@index([refundedById], map: "shop_membership_card_redemption_refunds_refunded_by_idx")
+  @@index([shopWalletId], map: "shop_membership_card_redemption_refunds_shop_wallet_idx")
+  @@index([customerWalletId], map: "shop_membership_card_redemption_refunds_customer_wallet_idx")
+  @@index([platformWalletId], map: "shop_membership_card_redemption_refunds_platform_wallet_idx")
+  @@index([status, refundedAt, deletedAt], map: "shop_membership_card_redemption_refunds_status_idx")
+  @@index([deletedAt], map: "shop_membership_card_redemption_refunds_deleted_idx")
+  @@map("shop_membership_card_redemption_refunds")
 }
 
 model MembershipRewardFeePolicyVersion {
@@ -2488,23 +2570,24 @@ model BookingOrder {
   updatedAt               DateTime             @updatedAt @map("updated_at")
   deletedAt               DateTime?            @map("deleted_at")
 
-  customer                 User                          @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
-  service                  Service?                      @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  technicianService        TechnicianService?            @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
-  shop                     Shop                          @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile        TechnicianProfile?            @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  scheduleSlot             ScheduleSlot                  @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
-  statusHistory            OrderStatusHistory[]
-  reviews                  OrderReview[]
-  timelineComments         OrderTimelineComment[]
-  feeCalculationLogs       FeeCalculationLog[]
-  walletHolds              WalletHold[]
-  financial                OrderFinancial?
-  paymentConfirmer         User?                         @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
-  paymentRefunder          User?                         @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
-  affiliateAttributions    AffiliateAttribution[]
-  affiliateRewards         AffiliateReward[]
-  membershipCardRedemption ShopMembershipCardRedemption?
+  customer                       User                                @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  service                        Service?                            @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService              TechnicianService?                  @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
+  shop                           Shop                                @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile              TechnicianProfile?                  @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  scheduleSlot                   ScheduleSlot                        @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
+  statusHistory                  OrderStatusHistory[]
+  reviews                        OrderReview[]
+  timelineComments               OrderTimelineComment[]
+  feeCalculationLogs             FeeCalculationLog[]
+  walletHolds                    WalletHold[]
+  financial                      OrderFinancial?
+  paymentConfirmer               User?                               @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
+  paymentRefunder                User?                               @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
+  affiliateAttributions          AffiliateAttribution[]
+  affiliateRewards               AffiliateReward[]
+  membershipCardRedemption       ShopMembershipCardRedemption?
+  membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -3905,12 +3988,15 @@ model Wallet {
   ledgerEntries                   WalletLedger[]
   adjustmentRequests              WalletAdjustmentRequest[]
   affiliateBudgetReservations     AffiliateBudgetReservation[]
-  affiliateRewardsAsPublisher     AffiliateReward[]              @relation("AffiliateRewardPublisherWallet")
-  affiliateRewardsAsClaimant      AffiliateReward[]              @relation("AffiliateRewardClaimantWallet")
-  affiliateRewardsAsPlatform      AffiliateReward[]              @relation("AffiliateRewardPlatformWallet")
-  membershipRedemptionsAsShop     ShopMembershipCardRedemption[] @relation("ShopMembershipRedemptionShopWallet")
-  membershipRedemptionsAsCustomer ShopMembershipCardRedemption[] @relation("ShopMembershipRedemptionCustomerWallet")
-  membershipRedemptionsAsPlatform ShopMembershipCardRedemption[] @relation("ShopMembershipRedemptionPlatformWallet")
+  affiliateRewardsAsPublisher     AffiliateReward[]                    @relation("AffiliateRewardPublisherWallet")
+  affiliateRewardsAsClaimant      AffiliateReward[]                    @relation("AffiliateRewardClaimantWallet")
+  affiliateRewardsAsPlatform      AffiliateReward[]                    @relation("AffiliateRewardPlatformWallet")
+  membershipRedemptionsAsShop     ShopMembershipCardRedemption[]       @relation("ShopMembershipRedemptionShopWallet")
+  membershipRedemptionsAsCustomer ShopMembershipCardRedemption[]       @relation("ShopMembershipRedemptionCustomerWallet")
+  membershipRedemptionsAsPlatform ShopMembershipCardRedemption[]       @relation("ShopMembershipRedemptionPlatformWallet")
+  membershipRefundsAsShop         ShopMembershipCardRedemptionRefund[] @relation("ShopMembershipRefundShopWallet")
+  membershipRefundsAsCustomer     ShopMembershipCardRedemptionRefund[] @relation("ShopMembershipRefundCustomerWallet")
+  membershipRefundsAsPlatform     ShopMembershipCardRedemptionRefund[] @relation("ShopMembershipRefundPlatformWallet")
 
   @@unique([ownerType, ownerId, currency])
   @@index([ownerType, ownerId])
@@ -3935,13 +4021,14 @@ model LedgerTransaction {
   updatedAt      DateTime                @updatedAt @map("updated_at")
   deletedAt      DateTime?               @map("deleted_at")
 
-  actor                        User?                         @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  entries                      WalletLedger[]
-  reconciliation               FinanceReconciliation?
-  walletAdjustmentRequest      WalletAdjustmentRequest?
-  affiliateRewardTransactions  AffiliateRewardTransaction[]  @relation("AffiliateRewardLedgerTransaction")
-  affiliateBudgetTransactions  AffiliateBudgetTransaction[]  @relation("AffiliateBudgetLedgerTransaction")
-  shopMembershipCardRedemption ShopMembershipCardRedemption?
+  actor                              User?                               @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  entries                            WalletLedger[]
+  reconciliation                     FinanceReconciliation?
+  walletAdjustmentRequest            WalletAdjustmentRequest?
+  affiliateRewardTransactions        AffiliateRewardTransaction[]        @relation("AffiliateRewardLedgerTransaction")
+  affiliateBudgetTransactions        AffiliateBudgetTransaction[]        @relation("AffiliateBudgetLedgerTransaction")
+  shopMembershipCardRedemption       ShopMembershipCardRedemption?
+  shopMembershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
 
   @@index([type])
   @@index([status])
